@@ -73,7 +73,7 @@ Do not describe the standard configuration as MIT-only: MPL and font notices rem
 
 - AE1. A long Swimlane HTML edge label wraps into visible fallback lines rather than losing its beginning or end. Covers R1.
 - AE2. A Go host loads the standard WASI artifact with no preopened filesystem, renders SVG and scaled PNG, then reuses the instance after a parse error. Covers R3, R5-R7.
-- AE3. A standard consumer receives a typed missing-capability error for explicit ELK or math requests; a math consumer can render formulas without linking ELK. Covers R8.
+- AE3. A standard consumer discovers that ELK and math are absent; math requests return the existing typed error, and absent ELK uses Mermaid's documented family fallback. A math consumer renders formulas without linking ELK. Covers R8.
 - AE4. A C application links a packaged SDK using only its include/lib contents and obtains the artifact's runtime catalog. Covers R4, R9.
 
 ---
@@ -85,13 +85,14 @@ Do not describe the standard configuration as MIT-only: MPL and font notices rem
 - KTD1. Use separate feature branches for main implementation and maintenance adaptation; forward-port the behavior, not development-only APIs. R2 and R11 explicitly permit additive SDK delivery without importing the theme migration.
 - KTD2. Repair the label writer using existing HTML measurement and overflow conventions; preserve family-specific wrapping width, padding and style precedence. Follow `createText.ts` and the ordinary Flowchart node writer.
 - KTD3. Extract memory-font admission from file acquisition inside `merman-export`; share validation, deduplication, face limits and selection precedence. Preserve the exhaustive public `FontSource` enum by adding a constructor/builder rather than another enum variant.
-- KTD4. Separate codecs from system-font discovery on main; on maintenance preserve existing native behavior through explicit product recipes or a compatibility feature route.
+- KTD4. Separate codecs from system-font discovery on main. Maintenance retains the published native `png`, `jpeg` and `pdf` feature semantics; its WASI implementation uses an additive memory-only path and target-specific acquisition guards.
 - KTD5. Implement `merman-wasi` over safe `merman-bindings-core`, independently version its ABI, and register a distinct transport. Do not expose the native C function-pointer table to WASM hosts.
 - KTD6. Use fixed-width offsets/lengths and result handles; input buffers belong to the module and results own their payloads until release. Bound allocations before copying and validate live input ranges before borrowing.
 - KTD7. Reuse canonical artifact recipes and legal projections for standard/math/full; publish only combinations whose imports, output and legal closure pass their owner checks.
 - KTD8. Record SVG logical viewport size separately from PNG pixel size through shared output metadata. Preserve parser-provided byte spans rather than inventing universal exact line/column diagnostics.
 - KTD9. Bundled fonts are production resources with pinned provenance and license text; caller-provided fonts precede bundled defaults. Reject unsupported strict-font operations instead of silently claiming exact measurement.
 - KTD10. Add a new C font constructor through an appended ABI 3 function slot and a separately named record; preserve every existing record and minimum-prefix digest. Its owned font context supplies measurement and painting without a host callback.
+- KTD11. Preserve the existing absent-loader fallback in `layout_backend.rs` and `capabilities/feature-surface-v1.json`; advertise ELK absence without inventing a transport-specific source parser or changing Mermaid semantics.
 
 ### High-Level Technical Design
 
@@ -168,7 +169,7 @@ Dependency resolution and platform tools may block local builds; record the exac
 1. The same fixture supplied as bytes and as a file yields equal measurement and PNG output.
 2. Malformed fonts, duplicate data and face/byte limits use existing structured errors.
 3. PNG with only memory fonts performs no system discovery and remains usable after a normal error.
-4. Existing native system-font product recipes retain their advertised behavior.
+4. Existing maintenance consumers enabling only the published native codec features retain system-font behavior, independently of release recipes.
 **Verification:** memory-font and export tests, native regression tests, WASI closure and compilation.
 
 ### U3. Implement the reusable WASI transport and production font resource
