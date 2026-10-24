@@ -261,7 +261,11 @@ fn malformed_empty_and_over_limit_memory_fonts_return_structured_errors() {
         .find(|entry| &entry[..4] == b"hhea")
         .expect("fixture has horizontal metrics");
     metrics_entry[..4].copy_from_slice(b"bad!");
-    for bytes in [Vec::new(), b"not an OpenType font".to_vec(), missing_metrics] {
+    for bytes in [
+        Vec::new(),
+        b"not an OpenType font".to_vec(),
+        missing_metrics,
+    ] {
         let temporary = TestDirectory::new();
         let path = temporary.0.join("malformed.ttf");
         std::fs::write(&path, &bytes).unwrap();

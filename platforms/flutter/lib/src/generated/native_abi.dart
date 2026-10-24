@@ -56,6 +56,18 @@ import 'dart:ffi' as ffi;
 /// unknown operation code returns the same status with kind unknown-operation and a null
 /// capability_id. Both failures are written results with nonzero allocation_token values and must
 /// be released with result_free.
+/// - engine_fonts: engine_new_with_fonts borrows its configuration, options, font slice array and
+/// font bytes only until return, copies caller bytes, and installs one immutable native font
+/// context for measurement and painting without a host callback or ambient font discovery. Caller
+/// fonts precede bundled fallback. Structural records must not overlap payload bytes; outputs must
+/// be disjoint from each other and every input. Read-only payload slices may overlap each other
+/// and duplicate buffers are charged independently. Detectable overlap failures leave outputs
+/// untouched. The constructor bounds font count and cumulative byte lengths before copying and
+/// delegates font validation, deduplication, face limits and option conflicts to their existing
+/// owners. Without native-fonts, the constructor returns missing-capability without dereferencing
+/// the font array; requesting unavailable bundled fonts also returns missing-capability. Failed
+/// construction publishes no engine, and a successful engine remains usable after all input
+/// storage is released.
 /// - engine_services: engine_new_with_services borrows the outer configuration, embedded options,
 /// pack records, IconifyJSON bytes, and registration names only until return and never invokes the
 /// host callback during construction. A successful engine owns the fully validated immutable
@@ -132,7 +144,7 @@ external int merman_get_native_api(
 );
 
 const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
-    'sha256:dba2870ab611b435c600961b56537a79a0199dc83186bbd96b99830d33e9f02f';
+    'sha256:d97b4505217a6d68ebd30877d748ad610732b82b4994ce43a4efce1b2de966af';
 
 const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
     'sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41';
@@ -150,6 +162,8 @@ const String MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL = 'reentrant-call';
 const String MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION = 'unknown-operation';
 
 const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW = 1;
+
+const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_FONTS = 11;
 
 const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6;
 
@@ -597,6 +611,8 @@ final class MermanNativeApi extends ffi.Struct {
   external MermanNativeOperationControlReleaseFn operation_control_release;
 
   external MermanNativeExecuteCollectControlledFn execute_collect_controlled;
+
+  external MermanNativeEngineNewWithFontsFn engine_new_with_fonts;
 }
 
 final class MermanNativeApiRequest extends ffi.Struct {
@@ -651,6 +667,20 @@ typedef MermanNativeEngineNewFnFunction =
 typedef DartMermanNativeEngineNewFnFunction =
     DartMermanNativeStatus Function(
       ffi.Pointer<MermanNativeEngineConfig> config,
+      ffi.Pointer<MermanNativeEngineToken> out_engine,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef MermanNativeEngineNewWithFontsFn =
+    ffi.Pointer<ffi.NativeFunction<MermanNativeEngineNewWithFontsFnFunction>>;
+typedef MermanNativeEngineNewWithFontsFnFunction =
+    MermanNativeStatus Function(
+      ffi.Pointer<MermanNativeFontEngineConfig> config,
+      ffi.Pointer<MermanNativeEngineToken> out_engine,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef DartMermanNativeEngineNewWithFontsFnFunction =
+    DartMermanNativeStatus Function(
+      ffi.Pointer<MermanNativeFontEngineConfig> config,
       ffi.Pointer<MermanNativeEngineToken> out_engine,
       ffi.Pointer<MermanNativeResult> out_result,
     );
@@ -723,6 +753,22 @@ typedef DartMermanNativeExecuteCollectFnFunction =
       ffi.Pointer<MermanNativeOperationRequest> request,
       ffi.Pointer<MermanNativeResult> out_result,
     );
+
+final class MermanNativeFontEngineConfig extends ffi.Struct {
+  @ffi.Uint32()
+  external int struct_size;
+
+  external MermanNativeSlice options_json;
+
+  external ffi.Pointer<MermanNativeSlice> fonts;
+
+  @ffi.Size()
+  external int font_count;
+
+  @ffi.Uint8()
+  external int use_bundled_fonts;
+}
+
 typedef MermanNativeFunctionSlot = ffi.Int32;
 typedef DartMermanNativeFunctionSlot = int;
 

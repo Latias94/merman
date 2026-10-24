@@ -115,7 +115,7 @@ impl ConstructorServiceKey {
     /// Whether this crate compiled the service implementation.
     ///
     /// A transport must still select an installable service explicitly; compiled dependency
-    /// features never add the Rust-only native font context to a foreign transport.
+    /// features never add a native font context constructor to another transport.
     #[must_use]
     pub const fn is_compiled(self) -> bool {
         self.spec().is_available(cfg!(feature = "svg"))

@@ -167,11 +167,12 @@ internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionG
 
 internal val MERMAN_BINDING_TRANSPORT_EXPOSURE_SPECS: Map<String, MermanBindingTransportExposureSpec> = listOf(
     MermanBindingTransportExposureSpec("android-jni", setOf("binding-result", "operation-metadata"), setOf("host-text-measurement", "icon-registry")),
-    MermanBindingTransportExposureSpec("native-c", setOf("binding-result", "operation-metadata"), setOf("host-text-measurement", "icon-registry")),
+    MermanBindingTransportExposureSpec("native-c", setOf("binding-result", "operation-metadata"), setOf("host-text-measurement", "icon-registry", "native-font-context")),
     MermanBindingTransportExposureSpec("node", setOf("binding-result", "operation-metadata"), setOf()),
     MermanBindingTransportExposureSpec("rust", setOf("binding-result", "operation-metadata"), setOf("host-text-measurement", "icon-registry", "native-font-context")),
     MermanBindingTransportExposureSpec("typst", setOf(), setOf()),
     MermanBindingTransportExposureSpec("uniffi", setOf("binding-result", "operation-metadata"), setOf("host-text-measurement", "icon-registry")),
+    MermanBindingTransportExposureSpec("wasi", setOf("binding-result", "operation-metadata"), setOf("native-font-context")),
     MermanBindingTransportExposureSpec("web", setOf("binding-result"), setOf("host-text-measurement")),
 ).associateBy(MermanBindingTransportExposureSpec::id)
 

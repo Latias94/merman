@@ -28,7 +28,7 @@ static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 /// The protocol version belongs to the independently versioned text-measurement contract. Provider
 /// IDs describe actual installation routes, not Cargo features: `deterministic` is the built-in
 /// renderer measurer and `host-callback` means this transport accepts a host callback.
-/// `native-fonts` means the Rust transport accepts an already loaded native font context.
+/// `native-fonts` means the transport accepts an owned native font context or font bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct TextMeasurementCapabilities {
@@ -1140,6 +1140,10 @@ mod tests {
         let capabilities = full_native_contract().runtime_capabilities();
 
         assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
+        assert_eq!(
+            capabilities.has_capability("native-fonts"),
+            cfg!(feature = "native-fonts")
+        );
         assert!(!capabilities.has_capability("embedded-fonts"));
         assert_eq!(
             capabilities.has_capability("analysis"),

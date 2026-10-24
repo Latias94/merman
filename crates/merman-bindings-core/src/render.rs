@@ -246,18 +246,16 @@ mod tests {
     fn render_svg_flowchart_elk_follows_the_artifact_owner_feature() {
         let result = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"");
 
-        if cfg!(feature = "layout-elk") {
-            let svg = String::from_utf8(result.unwrap()).expect("SVG is UTF-8");
-            assert!(svg.contains("<svg"));
-            assert!(svg.contains("Hello"));
-            assert!(svg.contains("World"));
-            assert!(!svg.contains("NaN"));
-        } else {
-            let err =
-                result.expect_err("ELK must be denied when the artifact owner did not select it");
-            assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
-            assert!(err.message().contains("layout-elk"), "{err:?}");
+        if !cfg!(feature = "layout-elk") && merman_render::layout_elk_available() {
+            let error = result.expect_err("ambient ELK cannot widen the artifact contract");
+            assert_eq!(error.capability_id(), Some("layout-elk"));
+            return;
         }
+        let svg = String::from_utf8(result.unwrap()).expect("SVG is UTF-8");
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("Hello"));
+        assert!(svg.contains("World"));
+        assert!(!svg.contains("NaN"));
     }
 
     #[cfg(feature = "svg")]
@@ -271,9 +269,18 @@ mod tests {
             b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[Hello] --> B[World]",
             b"",
         );
-        let err = result.expect_err("ambient ELK must not widen the artifact contract");
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
-        assert_eq!(err.capability_id(), Some("layout-elk"));
+        if merman_render::layout_elk_available() {
+            let error = result.expect_err("ambient ELK cannot widen the artifact contract");
+            assert_eq!(error.capability_id(), Some("layout-elk"));
+            return;
+        }
+        let fallback = result.expect("an unregistered ELK loader uses the family fallback");
+        let dagre = render_svg(
+            b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA[Hello] --> B[World]",
+            b"",
+        )
+        .unwrap();
+        assert_eq!(fallback, dagre);
     }
 
     #[cfg(feature = "svg")]

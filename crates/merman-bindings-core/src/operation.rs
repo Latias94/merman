@@ -819,6 +819,8 @@ pub struct BindingOperationMetadata {
     output_plan: Option<BindingOutputPlan>,
     layout_adaptation: Option<BindingLayoutAdaptationObservation>,
     theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
+    #[cfg(feature = "svg")]
+    svg_viewport: Option<crate::BindingSvgViewport>,
     json: Arc<[u8]>,
 }
 
@@ -872,6 +874,17 @@ impl BindingOperationMetadata {
             Some(value) => Some(parse_theme_execution_evidence(value)?),
         };
 
+        #[cfg(feature = "svg")]
+        let svg_viewport = object
+            .get("svg_viewport")
+            .filter(|value| !value.is_null())
+            .map(|value| {
+                serde_json::from_value::<crate::BindingSvgViewport>(value.clone())
+                    .map_err(|_| BindingError::invalid_argument("invalid SVG viewport metadata"))
+                    .and_then(crate::BindingSvgViewport::validate)
+            })
+            .transpose()?;
+
         Ok(Self {
             version,
             operation_id,
@@ -881,6 +894,8 @@ impl BindingOperationMetadata {
             output_plan,
             layout_adaptation,
             theme_execution_evidence,
+            #[cfg(feature = "svg")]
+            svg_viewport,
             json: Arc::from(json),
         })
     }
@@ -892,6 +907,7 @@ impl BindingOperationMetadata {
         output_plan: Option<BindingOutputPlan>,
         layout_adaptation: Option<BindingLayoutAdaptationObservation>,
         theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
+        #[cfg(feature = "svg")] svg_viewport: Option<crate::BindingSvgViewport>,
     ) -> Result<Self, BindingError> {
         #[cfg(test)]
         METADATA_SERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
@@ -905,6 +921,8 @@ impl BindingOperationMetadata {
             output_plan: output_plan.as_ref(),
             layout_adaptation: layout_adaptation.as_ref(),
             theme_execution_evidence: theme_execution_evidence.as_ref(),
+            #[cfg(feature = "svg")]
+            svg_viewport,
         })
         .map_err(|error| {
             BindingError::internal(format!("failed to serialize operation metadata: {error}"))
@@ -919,6 +937,8 @@ impl BindingOperationMetadata {
             output_plan,
             layout_adaptation,
             theme_execution_evidence,
+            #[cfg(feature = "svg")]
+            svg_viewport,
             json: Arc::from(json),
         })
     }
@@ -961,6 +981,12 @@ impl BindingOperationMetadata {
     #[must_use]
     pub const fn theme_execution_evidence(&self) -> Option<&BindingThemeExecutionEvidence> {
         self.theme_execution_evidence.as_ref()
+    }
+
+    #[must_use]
+    #[cfg(feature = "svg")]
+    pub const fn svg_viewport(&self) -> Option<crate::BindingSvgViewport> {
+        self.svg_viewport
     }
 
     #[must_use]
@@ -1080,6 +1106,9 @@ struct BindingOperationMetadataWire<'a> {
     layout_adaptation: Option<&'a BindingLayoutAdaptationObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     theme_execution_evidence: Option<&'a BindingThemeExecutionEvidence>,
+    #[cfg(feature = "svg")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    svg_viewport: Option<crate::BindingSvgViewport>,
 }
 
 fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
@@ -1533,6 +1562,12 @@ pub(crate) fn operation_result(
     let byte_length = u64::try_from(data.len()).map_err(|_| {
         BindingError::internal("operation result byte length exceeds unsigned 64-bit range")
     })?;
+    #[cfg(feature = "svg")]
+    let svg_viewport = if operation.key() == OperationKey::Svg {
+        Some(crate::svg_viewport::from_svg(&data)?)
+    } else {
+        None
+    };
     let metadata = BindingOperationMetadata::from_execution(
         operation,
         runtime_policy_id,
@@ -1540,6 +1575,8 @@ pub(crate) fn operation_result(
         output_plan,
         layout_adaptation,
         theme_execution_evidence,
+        #[cfg(feature = "svg")]
+        svg_viewport,
     )?;
 
     Ok(BindingOperationResult {
@@ -3083,6 +3120,25 @@ mod tests {
         assert_eq!(metadata["operation_id"], "svg");
         assert_eq!(metadata["byte_length"], result.data.len());
         assert_eq!(metadata["runtime_policy"], "deterministic");
+        let svg = std::str::from_utf8(result.data()).unwrap();
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let view_box = document.root_element().attribute("viewBox").unwrap();
+        let expected = view_box
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        let viewport = result.metadata().svg_viewport().unwrap();
+        assert_eq!(
+            [
+                viewport.min_x,
+                viewport.min_y,
+                viewport.width,
+                viewport.height
+            ],
+            expected.as_slice()
+        );
+        let decoded = BindingOperationMetadata::from_json_bytes(result.metadata_json()).unwrap();
+        assert_eq!(decoded.svg_viewport(), Some(viewport));
         let evidence = &metadata["theme_execution_evidence"];
         assert_eq!(evidence["version"], 1);
         assert_eq!(evidence["family_id"], "flowchart");
@@ -3313,12 +3369,16 @@ mod tests {
 
         if cfg!(feature = "layout-elk") {
             assert_eq!(result.unwrap().media_type, "image/svg+xml");
-        } else {
-            let error = result.expect_err("the artifact owner did not select ELK");
-            assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
-            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+        } else if merman_render::layout_elk_available() {
+            let error = result.expect_err("ambient ELK cannot widen the artifact contract");
             assert_eq!(error.capability_id(), Some("layout-elk"));
-            assert!(error.message().contains("`layout-elk`"));
+        } else {
+            // Mermaid falls back when its requested loader was not registered.
+            let fallback = result.expect("absent ELK falls back to the family default");
+            let dagre = engine
+                .render_svg(b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\n  A --> B\n")
+                .unwrap();
+            assert_eq!(fallback.data(), dagre);
         }
     }
 
