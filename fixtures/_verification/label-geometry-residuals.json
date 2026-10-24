@@ -15,12 +15,12 @@
       },
       "text": "1: Submits credentials to",
       "input_sha256": "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-      "upstream_svg_sha256": "056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf",
+      "upstream_svg_sha256": "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
       "reason": "Mermaid 12.0 and 12.1 produce byte-identical SVG for this fixture when replayed with the same seeded renderer, Chromium headless shell 151.0.7922.77, viewport, and fonts; that SVG exactly matches the 12.1 baseline. The C4 source is unchanged between the pinned commits. Refreshed upstream node heights, generated text rows, and relation geometry therefore reflect the baseline collection environment, not a new routing rule. Center-based intersections, relation identity, text, styles, named offsets, midpoint placement, and line/Q topology agree; the unchanged local signatures retain only browser text measurement differences from c4LabelHelper.ts/createText.ts and c4Renderer.ts calcC4ShapeTextWH. See docs/alignment/C4_LAYOUT_UPSTREAM_TEST_COVERAGE.md.",
       "upstream": {
         "world": {
-          "anchor_x": 665.037,
-          "anchor_y": 366.099,
+          "anchor_x": 664.527,
+          "anchor_y": 366.455,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
           "y_axis_x": 0.0,
@@ -30,10 +30,10 @@
         "edge": {
           "tag": "line",
           "attributes": {
-            "x1": "581.55",
-            "x2": "616.523",
-            "y1": "277.256",
-            "y2": "534.941"
+            "x1": "581.551",
+            "x2": "616.502",
+            "y1": "277.466",
+            "y2": "535.444"
           }
         }
       },
@@ -69,12 +69,12 @@
       },
       "text": "[JSON/HTTPS]",
       "input_sha256": "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-      "upstream_svg_sha256": "056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf",
+      "upstream_svg_sha256": "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
       "reason": "Mermaid 12.0 and 12.1 produce byte-identical SVG for this fixture when replayed with the same seeded renderer, Chromium headless shell 151.0.7922.77, viewport, and fonts; that SVG exactly matches the 12.1 baseline. The C4 source is unchanged between the pinned commits. Refreshed upstream node heights, generated text rows, and relation geometry therefore reflect the baseline collection environment, not a new routing rule. Center-based intersections, relation identity, text, styles, named offsets, midpoint placement, and line/Q topology agree; the unchanged local signatures retain only browser text measurement differences from c4LabelHelper.ts/createText.ts and c4Renderer.ts calcC4ShapeTextWH. See docs/alignment/C4_LAYOUT_UPSTREAM_TEST_COVERAGE.md.",
       "upstream": {
         "world": {
-          "anchor_x": 665.037,
-          "anchor_y": 383.099,
+          "anchor_x": 664.527,
+          "anchor_y": 383.455,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
           "y_axis_x": 0.0,
@@ -84,10 +84,10 @@
         "edge": {
           "tag": "line",
           "attributes": {
-            "x1": "581.55",
-            "x2": "616.523",
-            "y1": "277.256",
-            "y2": "534.941"
+            "x1": "581.551",
+            "x2": "616.502",
+            "y1": "277.466",
+            "y2": "535.444"
           }
         }
       },
@@ -123,12 +123,12 @@
       },
       "text": "2: Calls isAuthenticated() on",
       "input_sha256": "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-      "upstream_svg_sha256": "056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf",
+      "upstream_svg_sha256": "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
       "reason": "Mermaid 12.0 and 12.1 produce byte-identical SVG for this fixture when replayed with the same seeded renderer, Chromium headless shell 151.0.7922.77, viewport, and fonts; that SVG exactly matches the 12.1 baseline. The C4 source is unchanged between the pinned commits. Refreshed upstream node heights, generated text rows, and relation geometry therefore reflect the baseline collection environment, not a new routing rule. Center-based intersections, relation identity, text, styles, named offsets, midpoint placement, and line/Q topology agree; the unchanged local signatures retain only browser text measurement differences from c4LabelHelper.ts/createText.ts and c4Renderer.ts calcC4ShapeTextWH. See docs/alignment/C4_LAYOUT_UPSTREAM_TEST_COVERAGE.md.",
       "upstream": {
         "world": {
           "anchor_x": 501.0,
-          "anchor_y": 650.3,
+          "anchor_y": 650.981,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
           "y_axis_x": 0.0,
@@ -138,7 +138,7 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 516.0, y: 590.215 }, Quadratic { abs: true, x1: 491.0, y1: 590.3, x: 416.0, y: 590.385 }]"
+            "d": "[MoveTo { abs: true, x: 516.0, y: 590.918 }, Quadratic { abs: true, x1: 491.0, y1: 590.981, x: 416.0, y: 591.043 }]"
           }
         }
       },
@@ -171,12 +171,12 @@
       },
       "text": "3: select * from users where username = ?",
       "input_sha256": "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-      "upstream_svg_sha256": "056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf",
+      "upstream_svg_sha256": "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
       "reason": "Mermaid 12.0 and 12.1 produce byte-identical SVG for this fixture when replayed with the same seeded renderer, Chromium headless shell 151.0.7922.77, viewport, and fonts; that SVG exactly matches the 12.1 baseline. The C4 source is unchanged between the pinned commits. Refreshed upstream node heights, generated text rows, and relation geometry therefore reflect the baseline collection environment, not a new routing rule. Center-based intersections, relation identity, text, styles, named offsets, midpoint placement, and line/Q topology agree; the unchanged local signatures retain only browser text measurement differences from c4LabelHelper.ts/createText.ts and c4Renderer.ts calcC4ShapeTextWH. See docs/alignment/C4_LAYOUT_UPSTREAM_TEST_COVERAGE.md.",
       "upstream": {
         "world": {
-          "anchor_x": 407.883,
-          "anchor_y": 391.893,
+          "anchor_x": 407.892,
+          "anchor_y": 392.396,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
           "y_axis_x": 0.0,
@@ -186,7 +186,7 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 299.893, y: 534.941 }, Quadratic { abs: true, x1: 292.388, y1: 431.893, x: 269.873, y: 328.845 }]"
+            "d": "[MoveTo { abs: true, x: 299.886, y: 535.444 }, Quadratic { abs: true, x1: 292.389, y1: 432.396, x: 269.897, y: 329.348 }]"
           }
         }
       },
@@ -219,12 +219,12 @@
       },
       "text": "[JDBC]",
       "input_sha256": "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-      "upstream_svg_sha256": "056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf",
+      "upstream_svg_sha256": "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
       "reason": "Mermaid 12.0 and 12.1 produce byte-identical SVG for this fixture when replayed with the same seeded renderer, Chromium headless shell 151.0.7922.77, viewport, and fonts; that SVG exactly matches the 12.1 baseline. The C4 source is unchanged between the pinned commits. Refreshed upstream node heights, generated text rows, and relation geometry therefore reflect the baseline collection environment, not a new routing rule. Center-based intersections, relation identity, text, styles, named offsets, midpoint placement, and line/Q topology agree; the unchanged local signatures retain only browser text measurement differences from c4LabelHelper.ts/createText.ts and c4Renderer.ts calcC4ShapeTextWH. See docs/alignment/C4_LAYOUT_UPSTREAM_TEST_COVERAGE.md.",
       "upstream": {
         "world": {
-          "anchor_x": 407.883,
-          "anchor_y": 408.893,
+          "anchor_x": 407.892,
+          "anchor_y": 409.396,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
           "y_axis_x": 0.0,
@@ -234,7 +234,7 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 299.893, y: 534.941 }, Quadratic { abs: true, x1: 292.388, y1: 431.893, x: 269.873, y: 328.845 }]"
+            "d": "[MoveTo { abs: true, x: 299.886, y: 535.444 }, Quadratic { abs: true, x1: 292.389, y1: 432.396, x: 269.897, y: 329.348 }]"
           }
         }
       },
@@ -266,7 +266,7 @@
       },
       "text": "calls",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
       "upstream": {
         "world": {
@@ -359,7 +359,7 @@
       },
       "text": "reads",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix. Mermaid 12.1 resolveEdgeLabelPosition preserves the layout anchor plus the updated-minus-original path midpoint delta; both renderers now apply that rule. This receipt retains the measured-width residual after that semantic correction.",
       "upstream": {
         "world": {
@@ -452,7 +452,7 @@
       },
       "text": "writes",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
       "upstream": {
         "world": {
@@ -545,7 +545,7 @@
       },
       "text": "shares",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
       "upstream": {
         "world": {
@@ -638,7 +638,7 @@
       },
       "text": "caches",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix. Mermaid 12.1 resolveEdgeLabelPosition preserves the layout anchor plus the updated-minus-original path midpoint delta; both renderers now apply that rule. This receipt retains the measured-width residual after that semantic correction.",
       "upstream": {
         "world": {
@@ -731,7 +731,7 @@
       },
       "text": "depends",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
       "upstream": {
         "world": {
@@ -824,7 +824,7 @@
       },
       "text": "emits",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
       "upstream": {
         "world": {
@@ -917,7 +917,7 @@
       },
       "text": "feedback",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-      "upstream_svg_sha256": "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+      "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
       "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
       "upstream": {
         "world": {
@@ -1330,7 +1330,7 @@
       },
       "text": "<<satisfies>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
@@ -1423,7 +1423,7 @@
       },
       "text": "<<copies>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
@@ -1516,7 +1516,7 @@
       },
       "text": "<<verifies>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
@@ -1609,7 +1609,7 @@
       },
       "text": "<<traces>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
@@ -1702,7 +1702,7 @@
       },
       "text": "<<contains>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
@@ -1795,7 +1795,7 @@
       },
       "text": "<<contains>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
@@ -1888,7 +1888,7 @@
       },
       "text": "<<derives>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
@@ -1981,7 +1981,7 @@
       },
       "text": "<<refines>>",
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "upstream_svg_sha256": "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+      "upstream_svg_sha256": "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
       "reason": "Mermaid 12 rendering-elements/edges.js insertEdgeLabel measures HTML getBoundingClientRect before ELK layout; deterministic text widths change label centering and node bounds while preserving the Neo rounded orthogonal route and edge mask pattern.",
       "upstream": {
         "world": {
