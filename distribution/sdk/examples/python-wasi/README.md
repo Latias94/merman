@@ -7,6 +7,10 @@ is the pinned runtime in `requirements.txt`; the tests use the standard library.
 Use an existing environment with that dependency, or install the requirements
 in your own environment. This directory does not build or download a module.
 
+The shown PNG options use binding schema 2 (`raster.background`). Main schema 3
+artifacts use `raster.matte`; inspect `options_schema_versions` in the loaded catalog.
+The client forwards options to core without a schema-migration layer.
+
 The reactor must include `native-fonts`, `bundled-fonts`, SVG, PNG and flowchart
 support for these examples and tests. Standard and math-enabled release modules
 can both be used; the runtime catalog describes the actual compiled capabilities.
@@ -41,7 +45,7 @@ with Client(module, fonts=[Path("Cousine-Regular.ttf").read_bytes()]) as client:
         print(viewport["width"], viewport["height"])
 
     png, png_meta = client.execute("png", source, {
-        "raster": {"scale": 2.0, "matte": "#ffffff"}
+        "raster": {"scale": 2.0, "background": "#ffffff"}
     })
     Path("diagram.png").write_bytes(png)
     plan = png_meta["output_plan"]             # actual raster pixel dimensions
@@ -66,7 +70,7 @@ this example adds no parallel options schema or renderer.
 Create `diagram.mmd` locally and optionally `png-options.json` containing:
 
 ```json
-{"raster": {"scale": 2.0, "matte": "#ffffff"}}
+{"raster": {"scale": 2.0, "background": "#ffffff"}}
 ```
 
 ```console

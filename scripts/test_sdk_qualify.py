@@ -431,6 +431,7 @@ class SdkQualificationTests(unittest.TestCase):
         module = self.installed / "lib/merman_wasi.wasm"
         module.parent.mkdir()
         module.write_bytes(b"fixture module")
+        (self.installed / "manifest.json").write_text('{"options_schema_versions":[3]}')
         calls = []
         mismatch = False
 
@@ -443,8 +444,13 @@ class SdkQualificationTests(unittest.TestCase):
             if "--output" in command:
                 output = Path(command[command.index("--output") + 1])
                 output.write_bytes(b"different" if mismatch and "python." in output.name else b"render")
+                if "--options" in command:
+                    options_path = Path(command[command.index("--options") + 1])
+                    raster = json.loads(options_path.read_text())["raster"]
+                    self.assertIn("background" if schema == 2 else "matte", raster)
 
         with mock.patch.object(sdk_qualify, "run", side_effect=example):
+            schema = 3
             self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
                                     version=self.version, repo_root=self.repo,
                                     output_dir=self.root / "examples")
@@ -453,6 +459,11 @@ class SdkQualificationTests(unittest.TestCase):
             self.assertIn("-count=1", calls[0])
             self.assertIn("unittest", calls[1])
             self.assertTrue((self.root / "examples/verified.json").is_file())
+            schema = 2
+            (self.installed / "manifest.json").write_text('{"options_schema_versions":[2]}')
+            self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
+                                    version=self.version, repo_root=self.repo,
+                                    output_dir=self.root / "schema-two-examples")
             mismatch = True
             with self.assertRaisesRegex(RuntimeError, "example output mismatch"):
                 self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",

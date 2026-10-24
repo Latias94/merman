@@ -71,7 +71,7 @@ class ClientTests(unittest.TestCase):
         outputs = []
         for scale in (1, 2):
             png, meta = self.client.execute("png", SOURCE, {
-                "svg": OPTIONS["svg"], "raster": {"scale": scale, "matte": "#f1e2d3"}})
+                "svg": OPTIONS["svg"], "raster": {"scale": scale, "background": "#f1e2d3"}})
             width, height, pixel = png_info(png)
             self.assertEqual(pixel, bytes((241, 226, 211, 255)))
             self.assertEqual(meta["media_type"], "image/png")

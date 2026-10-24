@@ -363,6 +363,9 @@ class PreflightWorkflowTests(unittest.TestCase):
         reference = self.job(owner, "cli-reference")
         self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}", reference)
         self.assertIn("cli-release --build-host --locked", reference)
+        self.assertIn("cp -R THIRD_PARTY_LICENSES", reference)
+        self.assertIn("SOURCE_AVAILABILITY.txt", reference)
+        self.assertIn("path: target/sdk-cli-reference/", reference)
         self.assertNotIn("continue-on-error", reference)
         self.assertNotIn("continue-on-error", parity)
 

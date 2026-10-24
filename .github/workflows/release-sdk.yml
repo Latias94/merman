@@ -195,11 +195,19 @@ jobs:
           toolchain: 1.95.0
       - name: Build the descriptor-owned CLI release recipe once
         run: python scripts/artifact_profile_recipe.py cli-release --build-host --locked
+      - name: Stage the comparison CLI with the normal CLI license material
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/sdk-cli-reference
+          cp target/sdk-cli/dist/merman-cli LICENSE-MIT LICENSE-APACHE THIRD_PARTY_NOTICES.md target/sdk-cli-reference/
+          cp -R THIRD_PARTY_LICENSES target/sdk-cli-reference/
+          printf 'Corresponding source: https://github.com/%s/tree/%s\n' "$GITHUB_REPOSITORY" "$(git rev-parse HEAD)" > target/sdk-cli-reference/SOURCE_AVAILABILITY.txt
       - name: Retain the internal comparison executable
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sdk-cli-reference
-          path: target/sdk-cli/dist/merman-cli
+          path: target/sdk-cli-reference/
           if-no-files-found: error
 
   native-wasi-parity:

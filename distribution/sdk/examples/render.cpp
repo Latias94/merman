@@ -1,4 +1,5 @@
 #include "merman.h"
+#include "merman_resource_contract.h"
 
 #include <filesystem>
 #include <fstream>
@@ -8,6 +9,10 @@
 #include <string_view>
 
 namespace {
+static_assert(MERMAN_BINDING_OPTIONS_SCHEMA_VERSION == 2 ||
+              MERMAN_BINDING_OPTIONS_SCHEMA_VERSION == 3,
+              "Update the example for this binding options schema");
+
 MermanNativeSlice slice(std::string_view text) {
     MermanNativeSlice value{};
     value.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice);
@@ -121,9 +126,11 @@ int main(int argc, char** argv) {
         engine.render(MERMAN_NATIVE_OPERATION_SVG, source,
                       R"({"svg":{"pipeline":"resvg-safe","diagram_id":"cpp-example"}})",
                       output / "diagram.svg");
-        engine.render(MERMAN_NATIVE_OPERATION_PNG, source,
-                      R"({"svg":{"pipeline":"resvg-safe","diagram_id":"cpp-example"},"raster":{"scale":2,"matte":"#ffffff"}})",
-                      output / "diagram.png");
+        const auto paint_key = MERMAN_BINDING_OPTIONS_SCHEMA_VERSION == 2 ? "background" : "matte";
+        const std::string png_options =
+            std::string(R"({"svg":{"pipeline":"resvg-safe","diagram_id":"cpp-example"},"raster":{"scale":2,")") +
+            paint_key + R"(":"#ffffff"}})";
+        engine.render(MERMAN_NATIVE_OPERATION_PNG, source, png_options, output / "diagram.png");
         engine.close();
         return 0;
     } catch (const std::exception& error) {

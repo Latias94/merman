@@ -6,6 +6,10 @@ merman-wasi ABI 1 contract, not the native C ABI. Requires Go 1.25+ and wazero
 PNG and bundled fonts (standard, math or full); this example does not build one.
 Keep the artifact's notices and bundled font licenses with your application.
 
+The shown PNG options use binding schema 2 (`raster.background`). Main schema 3
+artifacts use `raster.matte`; inspect `options_schema_versions` in the loaded catalog.
+The raw Execute API does not translate or normalize caller options.
+
 ## Run
 
 From this directory, substitute your artifact and source paths:
@@ -20,7 +24,7 @@ operation-specific: the `raster` group applies to PNG, not SVG. For PNG:
 Create `png-options.json` containing:
 
 ```json
-{"svg":{"pipeline":"resvg-safe"},"raster":{"scale":2,"matte":"#ffffff"}}
+{"svg":{"pipeline":"resvg-safe"},"raster":{"scale":2,"background":"#ffffff"}}
 ```
 
 ```console

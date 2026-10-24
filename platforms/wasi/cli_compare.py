@@ -62,6 +62,10 @@ def compare(args):
               "flavor": args.flavor, "fuel_per_call": fuel,
               "fonts": font_inputs()[2], "comparisons": {}}
     with example.Client(module.read_bytes(), options=FIXTURES["engine_options"], fonts=fonts, fuel=fuel) as client:
+        schemas = client.catalog()["options_schema_versions"]
+        require(schemas in ([2], [3]), "update the comparison options for this binding schema")
+        paint_key = "background" if schemas == [2] else "matte"
+        report["options_schema_versions"] = schemas
         for name, source in cases.items():
             path = output / (name + ".mmd")
             path.write_bytes(source.encode())
@@ -72,7 +76,7 @@ def compare(args):
                 options = {"svg": {"root_background_color": background}}
                 flags = ["--svg-pipeline", "resvg-safe"] if operation == "svg" else ["--scale", "2"]
                 if operation == "png":
-                    options["raster"] = {"scale": 2, "matte": background}
+                    options["raster"] = {"scale": 2, paint_key: background}
                 data, metadata = client.execute(operation, source.encode(), options)
                 wasi_output = output / (name + ".wasi." + operation)
                 cli_output = output / (name + ".cli." + operation)

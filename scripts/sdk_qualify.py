@@ -116,6 +116,10 @@ def verify_installed_wasi_examples(*, archive: Path, profile: str, version: str,
     ) as extracted:
         prefix = extracted.root
         module = prefix / "lib/merman_wasi.wasm"
+        schemas = json.loads((prefix / "manifest.json").read_text())["options_schema_versions"]
+        if schemas not in ([2], [3]):
+            raise RuntimeError("update the example options for this artifact's binding schema")
+        paint_key = "background" if schemas == [2] else "matte"
         environment = os.environ.copy()
         environment.update(MERMAN_WASI_MODULE=str(module),
                            MERMAN_WASI_FONT=str(prefix / "fonts/Cousine-Regular.ttf"))
@@ -134,7 +138,7 @@ def verify_installed_wasi_examples(*, archive: Path, profile: str, version: str,
                           encoding="utf-8")
         options = output_dir / "options.json"
         options.write_text(json.dumps({"svg": {"pipeline": "resvg-safe", "diagram_id": "sdk-example"},
-                                       "raster": {"scale": 2, "matte": "#ffffff"}}), encoding="utf-8")
+                                       "raster": {"scale": 2, paint_key: "#ffffff"}}), encoding="utf-8")
         report = {"module_sha256": sdk_archive.sha256_file(module), "outputs": {}}
         for operation in ("svg", "png"):
             for language, command in (

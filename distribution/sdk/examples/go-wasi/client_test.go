@@ -93,7 +93,7 @@ func TestSVGPNG(t *testing.T) {
 	if err := json.Unmarshal(svg.Metadata, &svgMeta); err != nil {
 		t.Fatal(err)
 	}
-	raster, err := client.Execute(ctx, "png", []byte(testSource), []byte(`{"svg":{"pipeline":"resvg-safe","diagram_id":"go-example","root_background_color":"transparent"},"raster":{"scale":2,"matte":"#ffffff"}}`))
+	raster, err := client.Execute(ctx, "png", []byte(testSource), []byte(`{"svg":{"pipeline":"resvg-safe","diagram_id":"go-example","root_background_color":"transparent"},"raster":{"scale":2,"background":"#ffffff"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
