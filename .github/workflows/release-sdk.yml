@@ -393,4 +393,3 @@ jobs:
           name: sdk-parity-${{ matrix.flavor }}
           path: sdk-parity/parity.json
           if-no-files-found: error
-

@@ -24,6 +24,13 @@ Use `release/0.9.x` for the compatible 0.9 maintenance line, including 0.9.1, 0.
 - Keep `v0.9.1`, `v0.9.2`, and later release tags immutable. The branch moves as fixes are merged; a tag identifies the exact released source.
 - Freeze the candidate to a 40-character commit SHA and run the release preflight for that SHA and version before creating its tag. The preflight takes an immutable SHA rather than the maintenance branch name; publication remains owned by the existing tag and dispatch workflows.
 
+The maintainer-authorized exception for issues #242/#243 adds the native C and WASI SDK
+delivery surface to 0.9.x. It does not authorize other feature backports or a baseline,
+Options schema, existing ABI-prefix, codec-discovery or resource-policy migration.
+In particular, maintenance retains its legacy constrained math admission rather than
+adopting main's newer rejection policy. Each SDK profile still requires its own preflight
+and actual host qualification before publication.
+
 The branch name does not publish a version. Historical release notes may retain the branch name used at the time of publication.
 
 ## Contract version baseline
@@ -72,6 +79,8 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | Workflow | Publishes | Channel |
 | --- | --- | --- |
 | `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
+| `release-sdk.yml` | Nothing; qualifies native C and WASI standard/math/full archives | GitHub Actions artifacts |
+| `release-sdk-publish.yml` | Already-qualified SDK archives from a successful, tag-matched run | Existing GitHub Release only |
 | `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
 | `release-cli-registries.yml` | Nothing; verifies published stable assets and produces separately validated WinGet/Scoop candidates | GitHub Actions artifacts |
 | `release-crates.yml` | Rust workspace crates | crates.io |
