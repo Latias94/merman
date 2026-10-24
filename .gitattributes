@@ -47,7 +47,8 @@ THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 **/THIRD_PARTY_NOTICES.md -whitespace
 **/THIRD_PARTY_LICENSES/npm-production-dependencies.txt text eol=lf
 
-# Test font license copies retain their upstream whitespace.
+# Font license copies retain their upstream whitespace and line endings.
+crates/merman-export/assets/fonts/OFL.txt text eol=lf -whitespace
 crates/merman-export/tests/fonts/OFL.txt text eol=lf -whitespace
 crates/merman-export/tests/fonts/NotoSans-OFL.txt text eol=lf -whitespace
 crates/merman-export/tests/fonts/NotoSansSC-OFL.txt text eol=lf -whitespace

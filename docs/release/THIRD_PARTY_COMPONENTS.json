@@ -58,6 +58,55 @@
   ],
   "artifact_scopes": [
     {
+      "id": "sdk-native-standard",
+      "description": "Native C standard SDK, including its ASCII source notices.",
+      "extends": ["sdk-standard", "ascii-render"],
+      "components": []
+    },
+    {
+      "id": "sdk-native-math",
+      "description": "Native C math SDK, including its ASCII source notices.",
+      "extends": ["sdk-math", "ascii-render"],
+      "components": []
+    },
+    {
+      "id": "sdk-native-full",
+      "description": "Native C full SDK, including its ASCII source notices.",
+      "extends": ["sdk-full", "ascii-render"],
+      "components": []
+    },
+    {
+      "id": "sdk-standard",
+      "description": "Embedding SDK standard legal closure.",
+      "extends": [
+        "rust-render-base"
+      ],
+      "components": [
+        "sdk-cousine"
+      ]
+    },
+    {
+      "id": "sdk-math",
+      "description": "Embedding SDK math legal closure.",
+      "extends": [
+        "ratex-render"
+      ],
+      "components": [
+        "sdk-cousine"
+      ]
+    },
+    {
+      "id": "sdk-full",
+      "description": "Embedding SDK full legal closure.",
+      "extends": [
+        "elk-render",
+        "ratex-render"
+      ],
+      "components": [
+        "sdk-cousine"
+      ]
+    },
+    {
       "id": "rust-render-base",
       "description": "Headless parser and renderer artifacts without optional ELK, RaTeX, ASCII, or Typst transport features.",
       "extends": [],
@@ -832,6 +881,40 @@
         }
       ],
       "notice": "The roughr fork aligns its randomization and drawing-operation semantics with Rough.js as used by Mermaid."
+    },
+    {
+      "id": "sdk-cousine",
+      "name": "Cousine SDK fallback fonts",
+      "version": "google-fonts@62e55e586fc0c29d428ee47b7c359cd33143f93d",
+      "source": {
+        "repository": "https://github.com/google/fonts.git",
+        "ref": "62e55e586fc0c29d428ee47b7c359cd33143f93d",
+        "commit": "62e55e586fc0c29d428ee47b7c359cd33143f93d",
+        "path": "ofl/cousine"
+      },
+      "relationships": [
+        "embedded"
+      ],
+      "local_paths": [
+        "crates/merman-export/assets/fonts"
+      ],
+      "license_expression": "OFL-1.1",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/sdk-cousine/OFL.txt",
+          "sha256": "b81c4d4dc0a9f72c9155e78187316e016e2012a8102468804173dc61468b906d",
+          "source_url": "https://raw.githubusercontent.com/google/fonts/62e55e586fc0c29d428ee47b7c359cd33143f93d/ofl/cousine/OFL.txt",
+          "source_path": "ofl/cousine/OFL.txt",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-source",
+          "evidence": "crates/merman-export/assets/fonts/manifest.json"
+        }
+      ],
+      "notice": "The optional bundled-fonts capability embeds unmodified Cousine Regular, Bold and Italic under OFL-1.1. The runtime font manifest pins source identity and exact bytes."
     },
     {
       "id": "sanitize-url",

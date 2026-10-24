@@ -19,6 +19,7 @@ The crate has no default features. Enable only the formats the application emits
 | `jpeg` | Bounded JPEG bitmap | `svg_to_jpeg`, `prepare_raster`, `RasterOptions`, `RasterPlan` |
 | `pdf` | Vector PDF with bounded localized raster work | `svg_to_pdf`, `svg_to_pdf_with_options`, `prepare_pdf`, `PdfOptions` |
 | `native-fonts` | Explicit font services, independent of output codecs | `NativeFontOptions`, `NativeFontContext`, `NativeFontLimits` |
+| `bundled-fonts` | Production Cousine regular, bold, and italic; enables `native-fonts` | `bundled_font_data` |
 | `system-fonts` | Compile usvg system discovery; legacy codecs also select this | `system_font_discovery_available` |
 | `experimental-system-font-query` | Opt-in platform-managed discovery, not a bounded metadata scan | `NativeFontOptions::load_platform` |
 
@@ -49,6 +50,40 @@ Merman's scan budgets or preemptive cancellation. Selected font snapshots remain
 bounded; all ordinary `load` and default-feature behavior remains unchanged.
 The context identity describes policy and initially admitted bytes, not a
 cross-process content hash of every subsequently selected platform font.
+
+### Owned Font Bytes And Bundled Resources
+
+`NativeFontContext::from_font_bytes` admits owned TTF/OTF/TTC buffers without filesystem
+access or system discovery. It shares validation, face selection, content identity, and
+limits with explicit files. `max_files` counts every input buffer and `max_bytes` charges
+all input bytes before deduplication. Earlier equal family/style descriptors win.
+
+Enable `bundled-fonts` on `merman-export` to use the production Cousine resources:
+
+```rust
+use merman_core::OperationControl;
+use merman_export::{NativeFontContext, bundled_font_data};
+
+let fonts = NativeFontContext::from_font_bytes(
+    bundled_font_data(),
+    Default::default(),
+    &OperationControl::new(),
+)?;
+# Ok::<(), merman_export::NativeFontError>(())
+```
+
+Chain caller buffers before `bundled_font_data()` to give them precedence. The bundle
+covers Latin, Greek, and Cyrillic, not CJK or emoji. Its OFL license and pinned inventory
+are retained in `assets/fonts/`; runtime code does not reference test fixtures.
+
+`with_strict_glyph_coverage(true)` makes unsupported native measurement an error instead
+of a declined request. `for_operation` resets operation state while sharing immutable
+font data; `for_export` also retains admitted system snapshots and acquisition charges.
+
+On this maintenance line, native `png`, `jpeg`, and `pdf` still implicitly enable system
+font discovery. WebAssembly, including WASI, excludes filesystem and system acquisition
+through target guards even when those features are unified. Supply owned font bytes there;
+bundled fonts are opt-in and are never silently installed as a process-global fallback.
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 

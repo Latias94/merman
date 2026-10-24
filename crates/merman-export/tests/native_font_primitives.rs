@@ -1,4 +1,4 @@
-#![cfg(feature = "native-fonts")]
+#![cfg(all(feature = "native-fonts", not(target_family = "wasm")))]
 
 use merman_core::{OperationControl, OperationLedgerError, OperationPhase};
 use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions};

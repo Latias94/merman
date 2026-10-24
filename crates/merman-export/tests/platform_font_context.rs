@@ -1,4 +1,7 @@
-#![cfg(feature = "experimental-system-font-query")]
+#![cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
 
 use merman_core::{OperationControl, OperationLedgerError, OperationPhase};
 use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions};

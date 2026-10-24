@@ -26,7 +26,8 @@ static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 ///
 /// The protocol version belongs to the independently versioned text-measurement contract. Provider
 /// IDs describe actual installation routes, not Cargo features: `deterministic` is the built-in
-/// renderer measurer and `host-callback` means this transport accepts a host callback.
+/// renderer measurer, `host-callback` means this transport accepts a host callback, and
+/// `native-fonts` means it accepts an immutable native font context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct TextMeasurementCapabilities {
@@ -1098,6 +1099,8 @@ mod tests {
                 [
                     TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC,
                     TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+                    #[cfg(feature = "native-fonts")]
+                    "native-fonts",
                 ]
             );
         }
@@ -1173,13 +1176,18 @@ mod tests {
                     assert!(output.embedded_images.is_none());
                 }
                 "jpeg" | "pdf" | "png" => {
-                    let fonts = output.system_fonts.as_ref().expect("system font contract");
-                    assert_eq!(fonts.source_id, "host-system");
-                    assert_eq!(fonts.discovery, "first-use");
-                    assert_eq!(fonts.cache_scope, "process-global");
-                    assert!(fonts.host_dependent);
-                    assert!(!fonts.caller_configurable);
-                    assert!(!fonts.resource_bounded);
+                    assert_eq!(
+                        output.system_fonts.is_some(),
+                        cfg!(not(target_family = "wasm"))
+                    );
+                    if let Some(fonts) = &output.system_fonts {
+                        assert_eq!(fonts.source_id, "host-system");
+                        assert_eq!(fonts.discovery, "first-use");
+                        assert_eq!(fonts.cache_scope, "process-global");
+                        assert!(fonts.host_dependent);
+                        assert!(!fonts.caller_configurable);
+                        assert!(!fonts.resource_bounded);
+                    }
                     let images = output
                         .embedded_images
                         .as_ref()

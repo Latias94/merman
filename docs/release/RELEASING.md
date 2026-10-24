@@ -24,6 +24,13 @@ Use `release/0.9.x` for the compatible 0.9 maintenance line, including 0.9.1, 0.
 - Keep `v0.9.1`, `v0.9.2`, and later release tags immutable. The branch moves as fixes are merged; a tag identifies the exact released source.
 - Freeze the candidate to a 40-character commit SHA and run the release preflight for that SHA and version before creating its tag. The preflight takes an immutable SHA rather than the maintenance branch name; publication remains owned by the existing tag and dispatch workflows.
 
+The maintainer-authorized exception for issues #242/#243 adds the native C and WASI SDK
+delivery surface to 0.9.x. It does not authorize other feature backports or a baseline,
+Options schema, existing ABI-prefix, codec-discovery or resource-policy migration.
+In particular, maintenance retains its legacy constrained math admission rather than
+adopting main's newer rejection policy. Each SDK profile still requires its own preflight
+and actual host qualification before publication.
+
 The branch name does not publish a version. Historical release notes may retain the branch name used at the time of publication.
 
 ## Release Workflows
@@ -357,7 +364,11 @@ The preflight workflow verifies release versions, the static release-surface con
 prerelease fresh-resolution compatibility, independent-crate Rust API compatibility,
 package file lists, registry-independent Rust crate publish dry-runs, Python wheels, Android AAR
 builds, Apple XCFramework builds, the web npm package dry-run, Node native package-group
-build/install smokes, platform VSIX packaging, and Flutter `dart pub publish --dry-run`. It does
+build/install smokes, platform VSIX packaging, Flutter `dart pub publish --dry-run`, and
+the native C/WASI SDK archive matrix. The SDK owner qualifies standard, math, and full
+separately: five native library targets plus `wasm32-wasip1`, with actual host catalog,
+font/output smokes, artifact-specific legal reports and native/WASI PNG comparisons.
+See [SDK delivery](../../distribution/sdk/README.md) for the exact recipes. It does
 not publish to any registry.
 
 Release CI keeps integrity checks at boundaries where bytes or trust cross jobs or registries. GitHub

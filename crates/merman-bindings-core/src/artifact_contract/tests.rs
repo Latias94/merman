@@ -61,6 +61,67 @@ fn transport_candidate_services_require_explicit_artifact_selection() {
     );
 }
 
+#[cfg(feature = "native-fonts")]
+#[test]
+fn native_font_capability_follows_the_selected_constructor_not_ambient_features() {
+    let spec = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+        .with_operations(&[OperationKey::Svg]);
+    let absent = spec.materialize();
+    assert!(!absent.exposes_capability(CapabilityKey::NativeFonts));
+    assert!(!absent.runtime_capabilities().has_capability("native-fonts"));
+    let present = spec
+        .with_constructor_services(&[ConstructorServiceKey::NativeFontContext])
+        .materialize();
+    assert!(present.exposes_capability(CapabilityKey::NativeFonts));
+    assert!(
+        present
+            .runtime_capabilities()
+            .has_capability("native-fonts")
+    );
+}
+
+#[test]
+fn wasi_snapshot_is_deterministic_and_selects_only_the_local_font_service() {
+    const WASI: ValidatedArtifactContract = crate::native_sdk_artifact_contract!(Wasi);
+    assert_eq!(WASI.target(), TargetKey::Native);
+    assert_eq!(
+        WASI.runtime_policy_exposure(),
+        RuntimePolicyExposure::DeterministicOnly
+    );
+    assert!(WASI.system_adapter_keys().next().is_none());
+    assert_eq!(
+        WASI.constructor_service_keys().collect::<Vec<_>>(),
+        vec![
+            #[cfg(feature = "native-fonts")]
+            ConstructorServiceKey::NativeFontContext,
+        ]
+    );
+    assert_eq!(
+        WASI.exposes_capability(CapabilityKey::NativeFonts),
+        cfg!(feature = "native-fonts")
+    );
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Wasi)
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+            .materialize();
+    }));
+}
+
+#[test]
+fn native_c_font_service_and_capability_follow_the_local_feature() {
+    const NATIVE_C: ValidatedArtifactContract = crate::native_sdk_artifact_contract!(NativeC);
+    assert_eq!(
+        NATIVE_C
+            .constructor_service_keys()
+            .any(|key| key == ConstructorServiceKey::NativeFontContext),
+        cfg!(feature = "native-fonts")
+    );
+    assert_eq!(
+        NATIVE_C.exposes_capability(CapabilityKey::NativeFonts),
+        cfg!(feature = "native-fonts")
+    );
+}
+
 #[test]
 fn semantic_snapshot_is_exact_and_does_not_inherit_compiled_features() {
     assert_eq!(STATIC_SEMANTIC_CONTRACT.target(), TargetKey::Native);
@@ -265,6 +326,10 @@ fn semantic_contract_rejects_unadvertised_request_option_groups_after_feature_un
 #[test]
 fn full_default_snapshot_matches_the_feature_owned_declaration() {
     assert_eq!(
+        DEFAULT_ARTIFACT_SNAPSHOT.exposes_capability(CapabilityKey::NativeFonts),
+        cfg!(feature = "native-fonts")
+    );
+    assert_eq!(
         DEFAULT_ARTIFACT_SNAPSHOT
             .payload_schema_keys()
             .collect::<Vec<_>>(),
@@ -278,6 +343,8 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
             vec![
                 ConstructorServiceKey::HostTextMeasurement,
                 ConstructorServiceKey::IconRegistry,
+                #[cfg(feature = "native-fonts")]
+                ConstructorServiceKey::NativeFontContext,
             ]
         } else {
             Vec::new()

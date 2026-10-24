@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef MermanNativeStatus (*MermanGetNativeApiFn)(
@@ -225,7 +226,8 @@ int merman_c_consumer_smoke(
         api.execute_collect == NULL ||
         api.result_free == NULL ||
         api.metadata_collect == NULL ||
-        api.engine_new_with_services == NULL
+        api.engine_new_with_services == NULL ||
+        api.engine_new_with_fonts == NULL
     ) {
         return 2;
     }
@@ -589,4 +591,109 @@ int merman_c_consumer_smoke(
         return 9;
     }
     return 0;
+}
+
+#if defined(_WIN32)
+__declspec(dllexport)
+#else
+__attribute__((visibility("default")))
+#endif
+int merman_c_font_consumer_smoke(
+    const MermanNativeApi *api,
+    const uint8_t *font_data,
+    size_t font_len,
+    uint8_t use_bundled_fonts
+) {
+    static const uint8_t options_json[] =
+        "{\"version\":2,\"svg\":{\"pipeline\":\"resvg-safe\",\"diagram_id\":\"c-memory-fonts\"}}";
+    static const uint8_t source[] =
+        "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n"
+        "---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]";
+    static const uint8_t png_signature[] = {137, 80, 78, 71, 13, 10, 26, 10};
+    const MermanNativeOperationCode operations[] = {
+        MERMAN_NATIVE_OPERATION_SVG,
+        MERMAN_NATIVE_OPERATION_PNG
+    };
+    MermanNativeEngineToken engine = 0;
+    MermanNativeResult result = empty_result();
+    MermanNativeOperationRequest request = {0};
+    MermanNativeFontEngineConfig *config;
+    MermanNativeSlice *fonts;
+    uint8_t *font_copy;
+    uint8_t *options_copy;
+    MermanNativeStatus status;
+    size_t index;
+    int failure = 0;
+
+    if (api == NULL || api->struct_size < MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE ||
+        api->engine_new_with_fonts == NULL || font_data == NULL || font_len == 0) {
+        return 1;
+    }
+    config = (MermanNativeFontEngineConfig *)calloc(1, sizeof(*config));
+    fonts = (MermanNativeSlice *)malloc(sizeof(*fonts));
+    font_copy = (uint8_t *)malloc(font_len);
+    options_copy = (uint8_t *)malloc(sizeof(options_json) - 1);
+    if (config == NULL || fonts == NULL || font_copy == NULL || options_copy == NULL) {
+        free(config);
+        free(fonts);
+        free(font_copy);
+        free(options_copy);
+        return 2;
+    }
+    memcpy(font_copy, font_data, font_len);
+    memcpy(options_copy, options_json, sizeof(options_json) - 1);
+    fonts[0] = borrowed_slice(font_copy, font_len);
+    config->struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeFontEngineConfig);
+    config->options_json = borrowed_slice(options_copy, sizeof(options_json) - 1);
+    config->fonts = fonts;
+    config->font_count = 1;
+    config->use_bundled_fonts = use_bundled_fonts;
+    status = api->engine_new_with_fonts(config, &engine, &result);
+
+    /* All constructor inputs are destroyed before the engine's first operation. */
+    memset(font_copy, 0, font_len);
+    memset(options_copy, 0, sizeof(options_json) - 1);
+    memset(fonts, 0, sizeof(*fonts));
+    memset(config, 0, sizeof(*config));
+    free(font_copy);
+    free(options_copy);
+    free(fonts);
+    free(config);
+    if (status != MERMAN_NATIVE_STATUS_OK || result.status != status ||
+        engine == 0 || result.allocation_token == 0) {
+        api->result_free(&result);
+        if (engine != 0) api->engine_try_close(engine);
+        return 3;
+    }
+    api->result_free(&result);
+
+    request.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeOperationRequest);
+    request.source = borrowed_slice(source, sizeof(source) - 1);
+    request.uri = borrowed_slice(NULL, 0);
+    request.options_json = borrowed_slice(NULL, 0);
+    for (index = 0; index < sizeof(operations) / sizeof(operations[0]); index += 1) {
+        request.operation = operations[index];
+        result = empty_result();
+        status = api->execute_collect(engine, &request, &result);
+        if (status != MERMAN_NATIVE_STATUS_OK || result.status != status ||
+            result.operation != request.operation || result.allocation_token == 0 ||
+            result.data.data == NULL || result.data.len == 0) {
+            failure = 4;
+        } else if (request.operation == MERMAN_NATIVE_OPERATION_SVG &&
+            !bytes_contain(result.data.data, result.data.len, "<svg")) {
+            failure = 5;
+        } else if (request.operation == MERMAN_NATIVE_OPERATION_PNG &&
+            (result.data.len < sizeof(png_signature) ||
+                memcmp(result.data.data, png_signature, sizeof(png_signature)) != 0)) {
+            failure = 6;
+        }
+        api->result_free(&result);
+        if (failure != 0) break;
+        if (result.allocation_token != 0) {
+            failure = 7;
+            break;
+        }
+    }
+    if (api->engine_try_close(engine) != MERMAN_NATIVE_STATUS_OK) failure = 8;
+    return failure;
 }

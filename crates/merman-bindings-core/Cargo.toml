@@ -105,7 +105,9 @@ native-runtime = [
 ]
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
-svg = ["merman/svg"]
+svg = ["dep:quick-xml", "merman/svg"]
+native-fonts = ["svg", "merman/native-fonts"]
+system-fonts = ["native-fonts", "merman/system-fonts"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]
@@ -116,6 +118,7 @@ math = ["svg", "merman/math"]
 [dependencies]
 merman-analysis = { workspace = true, optional = true }
 merman.workspace = true
+quick-xml = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 

@@ -7,6 +7,8 @@
 //! allocation or Rust object pointer crosses this boundary.
 
 use merman::OperationControl;
+#[cfg(feature = "native-fonts")]
+use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontLimits};
 use merman_bindings_core::{
     BindingDiagnosticErrorDetails, BindingEngine, BindingEngineAdmission,
     BindingEngineAdmissionError, BindingEngineAdmissionMode, BindingEngineServices, BindingError,
@@ -101,7 +103,7 @@ impl NativeFailure {
         }
     }
 
-    #[cfg(not(feature = "svg"))]
+    #[cfg(any(not(feature = "svg"), not(feature = "bundled-fonts")))]
     fn missing_capability(capability_id: &'static str, message: impl Into<String>) -> Self {
         Self::classified(
             MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
@@ -1445,6 +1447,7 @@ unsafe fn get_native_api_impl(
             operation_control_cancel: Some(native_operation_control_cancel),
             operation_control_release: Some(native_operation_control_release),
             execute_collect_controlled: Some(native_execute_collect_controlled),
+            engine_new_with_fonts: Some(native_engine_new_with_fonts),
         };
         let initialized_size = MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES
             .iter()
@@ -1706,6 +1709,344 @@ unsafe extern "C" fn native_engine_new_with_services(
             engine_new_with_services_impl(config, out_engine, out_result)
         })
     }
+}
+
+unsafe extern "C" fn native_engine_new_with_fonts(
+    config: *const MermanNativeFontEngineConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            engine_new_with_fonts_impl(config, out_engine, out_result)
+        })
+    }
+}
+
+unsafe fn engine_new_with_fonts_impl(
+    config_ptr: *const MermanNativeFontEngineConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    if let Err(failure) = unsafe { result_is_writable(out_result) } {
+        return failure.status;
+    }
+    let out_engine_len = if out_engine.is_null() {
+        0
+    } else {
+        size_of::<MermanNativeEngineToken>()
+    };
+    let outputs = [
+        (
+            out_engine.cast::<u8>().cast_const(),
+            out_engine_len,
+            "out_engine",
+        ),
+        (
+            out_result.cast::<u8>().cast_const(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        ),
+    ];
+    let fixed_storage_validation = (|| {
+        validate_disjoint_storage(
+            outputs[0].0,
+            outputs[0].1,
+            outputs[0].2,
+            outputs[1].0,
+            outputs[1].1,
+            outputs[1].2,
+        )?;
+        for (output, len, name) in outputs {
+            validate_disjoint_storage(
+                config_ptr.cast(),
+                size_of::<MermanNativeFontEngineConfig>(),
+                "config",
+                output,
+                len,
+                name,
+            )?;
+        }
+        if config_ptr.is_null() {
+            return Err(NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "config must not be null",
+            ));
+        }
+        validate_pointer_alignment(config_ptr, "config")?;
+        validate_struct_size::<MermanNativeFontEngineConfig>(
+            unsafe { read_record_struct_size(config_ptr) },
+            "config",
+        )
+    })();
+    if let Err(failure) = fixed_storage_validation {
+        return failure.status;
+    }
+    let config = unsafe { ptr::read(config_ptr) };
+    let input_storage_validation = (|| {
+        validate_disjoint_storage(
+            config_ptr.cast(),
+            size_of::<MermanNativeFontEngineConfig>(),
+            "config",
+            config.options_json.data,
+            config.options_json.len,
+            "config.options_json",
+        )?;
+        for (output, len, name) in outputs {
+            validate_disjoint_storage(
+                config.options_json.data,
+                config.options_json.len,
+                "config.options_json",
+                output,
+                len,
+                name,
+            )?;
+            validate_declared_record_array_disjoint(
+                config.fonts,
+                config.font_count,
+                "config.fonts",
+                output,
+                len,
+                name,
+            )?;
+        }
+        validate_declared_record_array_disjoint(
+            config.fonts,
+            config.font_count,
+            "config.fonts",
+            config_ptr.cast(),
+            size_of::<MermanNativeFontEngineConfig>(),
+            "config",
+        )?;
+        validate_declared_record_array_disjoint(
+            config.fonts,
+            config.font_count,
+            "config.fonts",
+            config.options_json.data,
+            config.options_json.len,
+            "config.options_json",
+        )
+    })();
+    if let Err(failure) = input_storage_validation {
+        return failure.status;
+    }
+
+    let mut deferred_failure = None;
+    if let Err(failure) = validate_native_slice_shape(config.options_json, "config.options_json") {
+        defer_first_failure(&mut deferred_failure, failure);
+    }
+    if config.use_bundled_fonts > 1 {
+        defer_first_failure(
+            &mut deferred_failure,
+            NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "config.use_bundled_fonts must be zero or one",
+            ),
+        );
+    }
+
+    #[cfg(feature = "native-fonts")]
+    let fonts = {
+        let limits = NativeFontLimits::default();
+        let mut fonts = Vec::new();
+        if config.font_count > limits.max_files {
+            defer_first_failure(
+                &mut deferred_failure,
+                native_failure_from_font(NativeFontError::Limit {
+                    resource: "files",
+                    actual: config.font_count,
+                    limit: limits.max_files,
+                }),
+            );
+        } else if config.font_count != 0 && config.fonts.is_null() {
+            defer_first_failure(
+                &mut deferred_failure,
+                NativeFailure::new(
+                    MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                    "config.fonts must not be null when font_count is non-zero",
+                ),
+            );
+        } else {
+            let array_len = match validate_record_array_range(
+                config.fonts,
+                config.font_count,
+                "config.fonts",
+            ) {
+                Ok(len) => len,
+                Err(failure) => return failure.status,
+            };
+            if config.font_count != 0
+                && let Err(failure) = validate_pointer_alignment(config.fonts, "config.fonts")
+            {
+                return failure.status;
+            }
+            for index in 0..config.font_count {
+                let font_ptr = unsafe { config.fonts.add(index) };
+                if let Err(failure) = validate_struct_size::<MermanNativeSlice>(
+                    unsafe { read_record_struct_size(font_ptr) },
+                    "config.fonts[]",
+                ) {
+                    defer_first_status_only_failure(&mut deferred_failure, failure);
+                    continue;
+                }
+                let font = unsafe { ptr::read(font_ptr) };
+                let storage_validation: Result<(), NativeFailure> = (|| {
+                    validate_disjoint_storage(
+                        config_ptr.cast(),
+                        size_of::<MermanNativeFontEngineConfig>(),
+                        "config",
+                        font.data,
+                        font.len,
+                        "config.fonts[].data",
+                    )?;
+                    validate_disjoint_storage(
+                        config.fonts.cast(),
+                        array_len,
+                        "config.fonts",
+                        font.data,
+                        font.len,
+                        "config.fonts[].data",
+                    )?;
+                    for (output, len, name) in outputs {
+                        validate_disjoint_storage(
+                            font.data,
+                            font.len,
+                            "config.fonts[].data",
+                            output,
+                            len,
+                            name,
+                        )?;
+                    }
+                    Ok(())
+                })();
+                if let Err(failure) = storage_validation {
+                    return failure.status;
+                }
+                if let Err(failure) = validate_native_slice_shape(font, "config.fonts[]") {
+                    defer_first_failure(&mut deferred_failure, failure);
+                }
+                fonts.push(font);
+            }
+        }
+        if let Some(failure) = deferred_failure.as_ref()
+            && !failure.result_write_is_safe
+        {
+            return failure.failure.status;
+        }
+        fonts
+    };
+
+    let output_validation = if out_engine.is_null() {
+        Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_engine must not be null",
+        ))
+    } else {
+        validate_pointer_alignment(out_engine, "out_engine").and_then(|()| {
+            if unsafe { ptr::read(out_engine) } == 0 {
+                Ok(())
+            } else {
+                Err(NativeFailure::new(
+                    MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                    "out_engine must be initialized to zero",
+                ))
+            }
+        })
+    };
+    if let Err(failure) = output_validation {
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+    if let Some(failure) = deferred_failure {
+        return unsafe {
+            write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure.failure)
+        };
+    }
+
+    #[cfg(not(feature = "native-fonts"))]
+    {
+        let failure = NativeFailure::missing_capability(
+            "native-fonts",
+            "memory-font construction requires an artifact with the native-fonts capability",
+        );
+        unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) }
+    }
+    #[cfg(feature = "native-fonts")]
+    {
+        let outcome = (|| {
+            let mut bundled = Vec::new();
+            if config.use_bundled_fonts != 0 {
+                #[cfg(feature = "bundled-fonts")]
+                bundled.extend(merman::svg::export::bundled_font_data());
+                #[cfg(not(feature = "bundled-fonts"))]
+                return Err(NativeFailure::missing_capability(
+                    "native-fonts",
+                    "bundled fallback requires an artifact built with bundled-fonts",
+                ));
+            }
+            let limits = NativeFontLimits::default();
+            let count = fonts.len() + bundled.len();
+            if count > limits.max_files {
+                return Err(native_failure_from_font(NativeFontError::Limit {
+                    resource: "files",
+                    actual: count,
+                    limit: limits.max_files,
+                }));
+            }
+            let mut bytes = 0usize;
+            for len in fonts
+                .iter()
+                .map(|font| font.len)
+                .chain(bundled.iter().map(Vec::len))
+            {
+                bytes = bytes.saturating_add(len);
+                if bytes > limits.max_bytes {
+                    return Err(native_failure_from_font(NativeFontError::Limit {
+                        resource: "font-bytes",
+                        actual: bytes,
+                        limit: limits.max_bytes,
+                    }));
+                }
+            }
+            let mut owned_fonts = Vec::with_capacity(count);
+            for font in fonts {
+                owned_fonts.push(unsafe { native_slice_bytes(font, "config.fonts[]") }?.to_vec());
+            }
+            owned_fonts.append(&mut bundled);
+            let control = OperationControl::new();
+            let context = NativeFontContext::from_font_bytes(owned_fonts, limits, &control)
+                .map_err(native_failure_from_font)?
+                .with_strict_glyph_coverage(true);
+            let services = BindingEngineServices::new().with_native_font_context(context);
+            let options_json =
+                unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
+            let engine_config = MermanNativeEngineConfig {
+                struct_size: native_struct_size::<MermanNativeEngineConfig>(),
+                options_json: config.options_json,
+                text_measure: None,
+                text_measure_user_data: ptr::null_mut(),
+            };
+            let state = create_native_engine_state(engine_config, options_json, services)?;
+            unsafe {
+                publish_native_engine_result(state, out_engine, out_result, "engine-new-with-fonts")
+            }
+        })();
+        match outcome {
+            Ok(status) => status,
+            Err(failure) => unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            },
+        }
+    }
+}
+
+#[cfg(feature = "native-fonts")]
+fn native_failure_from_font(error: NativeFontError) -> NativeFailure {
+    let status = if matches!(error, NativeFontError::Limit { .. }) {
+        MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED
+    } else {
+        MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+    };
+    NativeFailure::new(status, error.to_string())
 }
 
 unsafe fn engine_new_with_services_impl(
@@ -2612,6 +2953,7 @@ mod tests {
             operation_control_cancel: None,
             operation_control_release: None,
             execute_collect_controlled: None,
+            engine_new_with_fonts: None,
         }
     }
 
@@ -3007,6 +3349,7 @@ mod tests {
         assert!(api.operation_control_cancel.is_some());
         assert!(api.operation_control_release.is_some());
         assert!(api.execute_collect_controlled.is_some());
+        assert!(api.engine_new_with_fonts.is_some());
     }
 
     #[test]
@@ -3081,11 +3424,12 @@ mod tests {
         );
         assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
         assert_eq!(
-            MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
+            MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE,
             native_struct_size::<MermanNativeApi>()
         );
         assert!(buffer.api.metadata_collect.is_some());
         assert!(buffer.api.engine_new_with_services.is_some());
+        assert!(buffer.api.engine_new_with_fonts.is_some());
         assert_eq!(buffer.suffix, [0xa5; 32]);
         let prefix_digest = unsafe {
             std::slice::from_raw_parts(
@@ -3116,6 +3460,7 @@ mod tests {
                 MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
                 MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
                 MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
+                MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE,
             ]
         );
 
@@ -4598,10 +4943,19 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                     .collect::<Vec<_>>()
             )
         );
-        #[cfg(feature = "svg")]
+        #[cfg(all(feature = "svg", not(feature = "native-fonts")))]
         assert_eq!(
             catalog["constructor_service_ids"],
             serde_json::json!(["host-text-measurement", "icon-registry"])
+        );
+        #[cfg(feature = "native-fonts")]
+        assert_eq!(
+            catalog["constructor_service_ids"],
+            serde_json::json!([
+                "host-text-measurement",
+                "icon-registry",
+                "native-font-context"
+            ])
         );
         #[cfg(not(feature = "svg"))]
         assert_eq!(catalog["constructor_service_ids"], serde_json::json!([]));
@@ -4643,6 +4997,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
             ("layout-elk", cfg!(feature = "layout-elk")),
             ("math", cfg!(feature = "math")),
+            ("native-fonts", cfg!(feature = "native-fonts")),
         ] {
             assert_eq!(
                 capability_ids.iter().any(|id| id == capability_id),

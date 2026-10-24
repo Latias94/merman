@@ -112,6 +112,14 @@ const FULL_NATIVE_SDK_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::IconRegistry,
 ];
 
+const RUST_SERVICES: &[ConstructorServiceKey] = &[
+    ConstructorServiceKey::HostTextMeasurement,
+    ConstructorServiceKey::IconRegistry,
+    ConstructorServiceKey::NativeFontContext,
+];
+
+const WASI_SERVICES: &[ConstructorServiceKey] = &[ConstructorServiceKey::NativeFontContext];
+
 define_binding_transports! {
     AndroidJni => {
         id: "android-jni",
@@ -123,7 +131,7 @@ define_binding_transports! {
         id: "native-c",
         targets: NATIVE_TARGET,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
-        constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
+        constructor_service_candidates: RUST_SERVICES,
     },
     Node => {
         id: "node",
@@ -135,7 +143,7 @@ define_binding_transports! {
         id: "rust",
         targets: NATIVE_TARGET,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
-        constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
+        constructor_service_candidates: RUST_SERVICES,
     },
     Typst => {
         id: "typst",
@@ -148,6 +156,12 @@ define_binding_transports! {
         targets: NATIVE_TARGET,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
         constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
+    },
+    Wasi => {
+        id: "wasi",
+        targets: NATIVE_TARGET,
+        payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
+        constructor_service_candidates: WASI_SERVICES,
     },
     Web => {
         id: "web",

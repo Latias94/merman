@@ -12,7 +12,7 @@ struct InitialSources {
     bytes: usize,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct SnapshotState {
     pub(super) files: BTreeMap<PathBuf, Arc<Vec<u8>>>,
     aliases: BTreeMap<PathBuf, PathBuf>,
@@ -57,6 +57,16 @@ impl FontSourceRegistry {
             initial: Arc::clone(&self.initial),
             snapshots: Mutex::new(SnapshotState::default()),
         }
+    }
+
+    pub(super) fn for_export(&self) -> Result<Self, NativeFontError> {
+        let snapshots = self.snapshots.lock().map_err(|_| {
+            NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
+        })?;
+        Ok(Self {
+            initial: Arc::clone(&self.initial),
+            snapshots: Mutex::new(snapshots.clone()),
+        })
     }
 
     pub(super) fn resident_bytes(&self) -> usize {
@@ -352,6 +362,66 @@ mod tests {
             )
             .unwrap();
         assert_eq!(registry.resident_bytes(), resident);
+        let export = registry.for_export().unwrap();
+        export
+            .materialize(
+                make_candidate(),
+                &mut Arc::new(Database::new()),
+                &NativeFontLimits::default(),
+                &OperationControl::new(),
+            )
+            .expect("export must retain the admitted bytes after the source disappears");
+        assert_eq!(export.resident_bytes(), resident);
+        let extra_path = root.join("extra.ttf");
+        fs::write(&extra_path, &bytes).unwrap();
+        for (resource, limits) in [
+            (
+                "system-snapshot-files",
+                NativeFontLimits {
+                    max_files: 1,
+                    ..Default::default()
+                },
+            ),
+            (
+                "system-font-bytes",
+                NativeFontLimits {
+                    max_bytes: bytes.len(),
+                    ..Default::default()
+                },
+            ),
+            (
+                "font-faces",
+                NativeFontLimits {
+                    max_faces: 1,
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let export = registry.for_export().unwrap();
+            let mut extra = make_candidate();
+            let FontCandidate::File { path, .. } = &mut extra else {
+                unreachable!()
+            };
+            *path = extra_path.clone();
+            let error = export
+                .materialize(
+                    extra,
+                    &mut Arc::new(Database::new()),
+                    &limits,
+                    &OperationControl::new(),
+                )
+                .unwrap_err();
+            assert!(
+                matches!(error, NativeFontError::Limit { resource: actual, .. } if actual == resource),
+                "{error}"
+            );
+            assert_eq!(
+                registry.resident_bytes(),
+                resident,
+                "export admission must not modify the source snapshots"
+            );
+        }
+        fs::remove_file(extra_path).unwrap();
         let next = registry.for_operation();
         assert_eq!(next.resident_bytes(), 0);
         assert!(

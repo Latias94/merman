@@ -1,0 +1,159 @@
+name: Publish Qualified SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "Successful Release SDK or Release Preflight run for this exact tag commit"
+        type: string
+        required: true
+      release_tag:
+        description: "Existing vX.Y.Z GitHub Release and immutable source tag"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      version: ${{ steps.source.outputs.version }}
+      build_run_id: ${{ steps.source.outputs.build_run_id }}
+      release_tag: ${{ steps.source.outputs.release_tag }}
+    steps:
+      - name: Check out trusted release validation tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Bind a successful owner run to the existing immutable release tag
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          version="$(python3 scripts/release-version.py canonical --version "${RELEASE_TAG#v}")"
+          test "$RELEASE_TAG" = "v$version"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          source_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" > "$RUNNER_TEMP/sdk-build-run.json"
+          SOURCE_SHA="$source_sha" python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads((Path(os.environ['RUNNER_TEMP']) / 'sdk-build-run.json').read_text())
+          assert run['id'] == int(os.environ['BUILD_RUN_ID'])
+          assert run['head_repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          assert run['head_sha'] == os.environ['SOURCE_SHA'], 'build run must belong to the exact tag commit'
+          assert run['status'] == 'completed' and run['conclusion'] == 'success', 'producer run is not successful'
+          assert run['event'] in ('workflow_dispatch', 'push'), 'untrusted producer event'
+          assert run['path'] in ('.github/workflows/release-sdk.yml', '.github/workflows/release-preflight.yml'), 'unexpected producer workflow'
+          PY
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'version=%s\n' "$version"
+            printf 'build_run_id=%s\n' "$BUILD_RUN_ID"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    environment: github-release
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out the verified source for archive validation and provenance
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Download only SDK packages from the specified qualified run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sdk-package-*
+          merge-multiple: true
+          path: sdk-release-input
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.validate-inputs.outputs.build_run_id }}
+      - name: Verify all 18 archives and persist only checksum-bound snapshots
+        shell: python
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, os.getcwd())
+          from scripts.sdk_archive import NATIVE_TARGETS, PROFILES, WASI_TARGET, verify_sdk_archive
+          from scripts.release_archive import release_archive_name_for
+          source, verified = Path('sdk-release-input'), Path('sdk-release-verified')
+          expected = set()
+          selected = []
+          for profile in PROFILES:
+              for target in ((WASI_TARGET,) if profile.startswith('sdk-wasi-') else NATIVE_TARGETS):
+                  name = release_archive_name_for('merman-' + profile, target)
+                  expected.update((name, name + '.sha256'))
+                  selected.append((profile, target, name))
+          assert {path.name for path in source.iterdir()} == expected, 'missing or unexpected SDK package assets'
+          assert len(selected) == 18 and len(expected) == 36
+          verified.mkdir()
+          for profile, target, name in selected:
+              verify_sdk_archive(repo_root=Path.cwd(), profile=profile, target=target,
+                                 archive=source / name, checksum=source / (name + '.sha256'),
+                                 source_commit=os.environ['SOURCE_SHA'], version=os.environ['VERSION'],
+                                 verified_output_dir=verified)
+      - name: Recheck producer success and immutable tag before attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ needs.validate-inputs.outputs.build_run_id }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)" = "$SOURCE_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" --jq '.status + ":" + .conclusion')" = completed:success
+      - name: Attest only the verified SDK snapshots
+        # Official v4.2.2 ref, matching the existing Release workflow action.
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            sdk-release-verified/*.tar.xz
+            sdk-release-verified/*.zip
+      - name: Upload without creating releases or replacing existing assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)" = "$SOURCE_SHA"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          (cd sdk-release-verified && sha256sum --strict --check ./*.sha256)
+          gh release upload "$RELEASE_TAG" sdk-release-verified/* --repo "$GITHUB_REPOSITORY"
