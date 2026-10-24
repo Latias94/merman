@@ -1,0 +1,396 @@
+name: Release SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Immutable commit, main, or matching release tag"
+        type: string
+        required: true
+        default: main
+      release_tag:
+        description: "Matching vX.Y.Z release tag (need not exist for validation)"
+        type: string
+        required: true
+  workflow_call:
+    inputs:
+      source_ref:
+        type: string
+        default: main
+      release_tag:
+        type: string
+        required: true
+    outputs:
+      source_sha:
+        value: ${{ jobs.validate-inputs.outputs.source_sha }}
+      version:
+        value: ${{ jobs.validate-inputs.outputs.version }}
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_tree: ${{ steps.source.outputs.source_tree }}
+      version: ${{ steps.inputs.outputs.version }}
+    steps:
+      - name: Check out trusted release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Validate release inputs
+        id: inputs
+        shell: bash
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          version="$(python3 scripts/release-version.py canonical --version "${RELEASE_TAG#v}")"
+          test "$RELEASE_TAG" = "v$version"
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            source_ref="$SOURCE_REF"
+          elif [[ "$SOURCE_REF" == main || "$SOURCE_REF" == refs/heads/main ]]; then
+            source_ref=refs/heads/main
+          elif [[ "$SOURCE_REF" == "$RELEASE_TAG" || "$SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
+            source_ref="refs/tags/$RELEASE_TAG"
+          else
+            echo '::error::source_ref must be an immutable commit, main, or the matching release tag.'
+            exit 1
+          fi
+          printf 'source_ref=%s\nversion=%s\n' "$source_ref" "$version" >> "$GITHUB_OUTPUT"
+      - name: Resolve selected source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.inputs.outputs.source_ref }}
+          fetch-tags: true
+          persist-credentials: false
+      - name: Pin immutable source
+        id: source
+        shell: bash
+        env:
+          SOURCE_REF: ${{ steps.inputs.outputs.source_ref }}
+          VERSION: ${{ steps.inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse 'HEAD^{commit}')"
+          source_tree="$(git rev-parse 'HEAD^{tree}')"
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            test "$source_sha" = "$SOURCE_REF"
+          fi
+          python3 -c 'import os,tomllib; assert tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["version"] == os.environ["VERSION"]'
+          printf 'source_sha=%s\nsource_tree=%s\n' "$source_sha" "$source_tree" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: sdk-${{ matrix.platform.kind }}-${{ matrix.flavor }} (${{ matrix.platform.target }})
+    needs: validate-inputs
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        flavor: [standard, math, full]
+        platform:
+          - {kind: native, target: x86_64-unknown-linux-gnu, runner: ubuntu-24.04}
+          - {kind: native, target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm}
+          - {kind: native, target: aarch64-apple-darwin, runner: macos-15}
+          - {kind: native, target: x86_64-apple-darwin, runner: macos-15-intel}
+          - {kind: native, target: x86_64-pc-windows-msvc, runner: windows-2025}
+          - {kind: wasi, target: wasm32-wasip1, runner: ubuntu-24.04}
+    env:
+      SDK_PROFILE: sdk-${{ matrix.platform.kind }}-${{ matrix.flavor }}
+      SDK_TARGET: ${{ matrix.platform.target }}
+      SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+      SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+      VERSION: ${{ needs.validate-inputs.outputs.version }}
+      CARGO_TARGET_DIR: target/sdk-build/${{ matrix.platform.kind }}-${{ matrix.flavor }}-${{ matrix.platform.target }}
+      CARGO_BUILD_JOBS: "2"
+    steps:
+      - name: Check out pinned source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        # Official v7.0.0 ref resolved from actions/setup-python.
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Verify pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+      - name: Install the pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        with:
+          toolchain: 1.95.0
+          targets: ${{ matrix.platform.target }}
+      - name: Install the existing license report tool
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-about@0.9.2
+      - name: Install pinned host qualification dependencies
+        shell: bash
+        run: python -m pip install --requirement platforms/wasi/requirements.txt
+      - name: Fetch locked dependencies and build the exact descriptor recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fetch --locked
+          python scripts/artifact_profile_recipe.py "$SDK_PROFILE" --build --locked --target-triple "$SDK_TARGET"
+      - name: Stage only this just-built profile
+        id: staged
+        shell: python
+        run: |
+          import os, platform, shutil, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, os.getcwd())
+          from scripts.artifact_profile_recipe import load_artifact_profile
+          from scripts.sdk_archive import library_names
+          profile, target = os.environ['SDK_PROFILE'], os.environ['SDK_TARGET']
+          if target != 'wasm32-wasip1':
+              expected = {'aarch64': ('aarch64', 'arm64'), 'x86_64': ('amd64', 'x86_64')}
+              assert platform.machine().lower() in expected[target.split('-')[0]], 'not the native target host'
+          recipe = load_artifact_profile(profile)
+          built = Path(os.environ['CARGO_TARGET_DIR']) / target / recipe.cargo_profile
+          artifact = (Path('sdk-input') / profile / target).resolve()
+          artifact.mkdir(parents=True)
+          for name in library_names(target).values():
+              shutil.copyfile(built / name, artifact / name)
+          if 'apple' in target:
+              library = artifact / library_names(target)['dynamic']
+              subprocess.run(['install_name_tool', '-id', '@rpath/' + library.name, str(library)], check=True)
+              subprocess.run(['codesign', '--force', '--sign', '-', '--timestamp=none', str(library)], check=True)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'artifact_dir={artifact}\n')
+      - name: Build native consumers and capture the artifact-owned catalog
+        id: native
+        if: matrix.platform.kind == 'native'
+        shell: python
+        env:
+          ARTIFACT_DIR: ${{ steps.staged.outputs.artifact_dir }}
+          SDK_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          import os, shutil, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, os.getcwd())
+          from scripts.sdk_archive import HEADERS, _native_metadata, library_names
+          artifact = Path(os.environ['ARTIFACT_DIR'])
+          target = os.environ['SDK_TARGET']
+          prefix, build = artifact / 'consumer-prefix', artifact / 'consumer-build'
+          names = library_names(target)
+          for kind, name in names.items():
+              relative = ('bin/' if kind == 'dynamic' and 'windows' in target else 'lib/') + name
+              destination = prefix / relative
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(artifact / name, destination)
+          (prefix / 'include').mkdir()
+          for name in HEADERS:
+              shutil.copyfile(Path('crates/merman-ffi/include') / name, prefix / 'include' / name)
+          metadata = {}
+          _native_metadata(metadata, Path.cwd(), target, os.environ['VERSION'], names)
+          for relative, data in metadata.items():
+              destination = prefix / relative
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              destination.write_bytes(data)
+          environment = os.environ.copy()
+          environment['PATH'] = str(prefix / 'bin') + os.pathsep + environment['PATH']
+          subprocess.run(['cmake', '-S', 'distribution/sdk', '-B', str(build),
+                          '-DCMAKE_PREFIX_PATH=' + str(prefix)], check=True, env=environment)
+          subprocess.run(['cmake', '--build', str(build), '--config', 'Release', '--parallel', '2'],
+                         check=True, env=environment)
+          binary_dir = build / 'Release' if 'windows' in target else build
+          render = binary_dir / ('merman-render.exe' if 'windows' in target else 'merman-render')
+          subprocess.run([str(render), '--catalog-out', str(artifact / 'raw-catalog.json')],
+                         check=True, env=environment, stdout=subprocess.DEVNULL)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'binary_dir={binary_dir}\nprefix={prefix}\n')
+      - name: Qualify native memory-font SVG, PNG and math through the C probe
+        if: matrix.platform.kind == 'native'
+        shell: python
+        env:
+          ARTIFACT_DIR: ${{ steps.staged.outputs.artifact_dir }}
+          BINARY_DIR: ${{ steps.native.outputs.binary_dir }}
+          CONSUMER_PREFIX: ${{ steps.native.outputs.prefix }}
+          SDK_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          import os, subprocess, sys
+          from pathlib import Path
+          artifact = Path(os.environ['ARTIFACT_DIR'])
+          probe = Path(os.environ['BINARY_DIR']) / ('merman-probe.exe' if os.name == 'nt' else 'merman-probe')
+          environment = os.environ.copy()
+          environment['PATH'] = str(Path(os.environ['CONSUMER_PREFIX']) / 'bin') + os.pathsep + environment['PATH']
+          subprocess.run([sys.executable, 'platforms/wasi/native_smoke.py',
+                          '--probe', str(probe), '--flavor', os.environ['SDK_FLAVOR'],
+                          '--output-dir', str(artifact / 'native-smoke'),
+                          '--catalog-out', str(artifact / 'raw-catalog.json')],
+                         check=True, env=environment)
+      - name: Qualify the same WASI module in both real runtimes
+        if: matrix.platform.kind == 'wasi'
+        shell: bash
+        env:
+          ARTIFACT_DIR: ${{ steps.staged.outputs.artifact_dir }}
+          SDK_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          python platforms/wasi/smoke.py --module "$ARTIFACT_DIR/merman_wasi.wasm" --flavor "$SDK_FLAVOR" \
+            --catalog-out "$ARTIFACT_DIR/raw-catalog.json" --output-dir "$ARTIFACT_DIR/wasi-smoke"
+      - name: Bind actual runtime catalog and generate exact dependency legal report
+        shell: bash
+        env:
+          ARTIFACT_DIR: ${{ steps.staged.outputs.artifact_dir }}
+        run: |
+          set -euo pipefail
+          python scripts/sdk_archive.py catalog-sidecar --profile "$SDK_PROFILE" --target "$SDK_TARGET" \
+            --artifact-dir "$ARTIFACT_DIR" --catalog-in "$ARTIFACT_DIR/raw-catalog.json" \
+            --output "$ARTIFACT_DIR/runtime-catalog.json" --source-commit "$SOURCE_SHA"
+          python scripts/generate-rust-license-report.py --write --artifact-profile "$SDK_PROFILE" \
+            --target "$SDK_TARGET" --output "$ARTIFACT_DIR/rust-cargo-dependencies.json"
+      - name: Immediately package the qualified profile before any other build
+        id: archive
+        shell: python
+        env:
+          ARTIFACT_DIR: ${{ steps.staged.outputs.artifact_dir }}
+        run: |
+          import os, subprocess, sys
+          from pathlib import Path
+          profile, target = os.environ['SDK_PROFILE'], os.environ['SDK_TARGET']
+          artifact = Path(os.environ['ARTIFACT_DIR'])
+          archive = subprocess.check_output([
+              sys.executable, 'scripts/sdk_archive.py', 'package',
+              '--profile', profile, '--target', target,
+              '--artifact-dir', str(artifact), '--output-dir', 'sdk-output',
+              '--source-commit', os.environ['SOURCE_SHA'],
+          ], text=True).strip()
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'archive={archive}\n')
+      - name: Compile and run the installed native C consumer on its own architecture
+        if: matrix.platform.kind == 'native'
+        shell: python
+        env:
+          SDK_ARCHIVE: ${{ steps.archive.outputs.archive }}
+        run: |
+          import os, platform, subprocess, sys, tempfile
+          from pathlib import Path
+          sys.path.insert(0, os.getcwd())
+          from scripts.release_archive import verified_archive_contents
+          target = os.environ['SDK_TARGET']
+          expected = {'aarch64': ('aarch64', 'arm64'), 'x86_64': ('amd64', 'x86_64')}
+          assert platform.machine().lower() in expected[target.split('-')[0]], 'not a native-host smoke'
+          archive = Path(os.environ['SDK_ARCHIVE'])
+          with verified_archive_contents(
+              archive, Path(str(archive) + '.sha256'),
+              package_name='merman-' + os.environ['SDK_PROFILE'],
+              target=target, version=os.environ['VERSION'],
+          ) as extracted, tempfile.TemporaryDirectory() as build:
+              environment = os.environ.copy()
+              environment['PATH'] = str(extracted.root / 'bin') + os.pathsep + environment['PATH']
+              subprocess.run(['cmake', '-S', str(extracted.root), '-B', build,
+                              '-DCMAKE_PREFIX_PATH=' + str(extracted.root)], check=True, env=environment)
+              subprocess.run(['cmake', '--build', build, '--config', 'Release', '--parallel', '2'],
+                             check=True, env=environment)
+              if 'apple' in target:
+                  consumer = Path(build) / 'merman-render'
+                  linked = subprocess.check_output(['otool', '-L', str(consumer)], text=True)
+                  assert '@rpath/libmerman_ffi.dylib' in linked, 'consumer retains a producer install name'
+                  trace_environment = dict(environment, DYLD_PRINT_LIBRARIES='1')
+                  loaded = subprocess.run([str(consumer)], check=True, env=trace_environment,
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                  assert str(extracted.root / 'lib' / 'libmerman_ffi.dylib') in loaded.stderr, 'consumer did not load the extracted SDK'
+              subprocess.run(['ctest', '--test-dir', build, '-C', 'Release', '--output-on-failure'],
+                             check=True, env=environment)
+      - name: Upload SDK archive and checksum
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdk-package-${{ env.SDK_PROFILE }}-${{ env.SDK_TARGET }}
+          path: sdk-output/*
+          if-no-files-found: error
+      - name: Collect only host qualification evidence
+        shell: python
+        env:
+          ARTIFACT_DIR: ${{ steps.staged.outputs.artifact_dir }}
+        run: |
+          import os, shutil
+          from pathlib import Path
+          name = 'wasi-smoke' if os.environ['SDK_TARGET'] == 'wasm32-wasip1' else 'native-smoke'
+          shutil.copytree(Path(os.environ['ARTIFACT_DIR']) / name, Path('sdk-smoke-evidence') / name)
+      - name: Retain host qualification evidence separately from public SDK payloads
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdk-smoke-${{ env.SDK_PROFILE }}-${{ env.SDK_TARGET }}
+          path: sdk-smoke-evidence
+          if-no-files-found: error
+
+  native-wasi-parity:
+    name: native/WASI decoded PNG parity (${{ matrix.flavor }})
+    needs: [validate-inputs, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [standard, math, full]
+    steps:
+      - name: Check out the same pinned qualification helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install the pinned shared qualification dependencies
+        run: python -m pip install --requirement platforms/wasi/requirements.txt
+      - name: Download native host evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sdk-smoke-sdk-native-${{ matrix.flavor }}-x86_64-unknown-linux-gnu
+          path: sdk-parity/native
+      - name: Download both WASI host outputs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sdk-smoke-sdk-wasi-${{ matrix.flavor }}-wasm32-wasip1
+          path: sdk-parity/wasi
+      - name: Compare dimensions and decoded RGBA8, not PNG compression bytes
+        shell: python
+        env:
+          SDK_FLAVOR: ${{ matrix.flavor }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('platforms/wasi').resolve()))
+          from common import compare_pixels, write_json
+          root = Path('sdk-parity')
+          names = ['basic'] + ([] if os.environ['SDK_FLAVOR'] == 'standard' else ['math'])
+          report = {}
+          for runtime in ('wazero', 'wasmtime'):
+              for name in names:
+                  report[runtime + '/' + name] = compare_pixels(
+                      root / 'native' / 'native-smoke' / (name + '.png'),
+                      root / 'wasi' / 'wasi-smoke' / runtime / (name + '.png'))
+          write_json(root / 'parity.json', {'source_commit': os.environ['SOURCE_SHA'],
+                                           'flavor': os.environ['SDK_FLAVOR'], 'artifacts': report})
+      - name: Retain native/WASI pixel comparison evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdk-parity-${{ matrix.flavor }}
+          path: sdk-parity/parity.json
+          if-no-files-found: error
+

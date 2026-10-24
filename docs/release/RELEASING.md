@@ -529,7 +529,11 @@ The preflight workflow verifies release versions, the static release-surface con
 prerelease fresh-resolution compatibility, independent-crate Rust API compatibility,
 package file lists, registry-independent Rust crate publish dry-runs, Python wheels, Android AAR
 builds, Apple XCFramework builds, the web npm package dry-run, Node native package-group
-build/install smokes, platform VSIX packaging, and Flutter `dart pub publish --dry-run`. It does
+build/install smokes, platform VSIX packaging, Flutter `dart pub publish --dry-run`, and
+the native C/WASI SDK archive matrix. The SDK owner qualifies standard, math, and full
+separately: five native library targets plus `wasm32-wasip1`, with actual host catalog,
+font/output smokes, artifact-specific legal reports and native/WASI PNG comparisons.
+See [SDK delivery](../../distribution/sdk/README.md) for the exact recipes. It does
 not publish to any registry.
 
 Release CI keeps integrity checks at boundaries where bytes or trust cross jobs or registries. GitHub

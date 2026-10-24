@@ -125,6 +125,30 @@ SURFACES = (
             ("flutter-desktop-native", "merman-ffi"),
         ),
     ),
+    ReleaseSurface(
+        surface_id="headless-sdk-archives",
+        workflow=WORKFLOW_ROOT / "release-sdk.yml",
+        delivery="GitHub Release native C and WASI SDK archives",
+        publication_mode="manual-dispatch-via-release-sdk-publish",
+        preflight_job="sdk-archives",
+        workflow_markers=(
+            "workflow_call:",
+            "workflow_dispatch:",
+            "scripts/artifact_profile_recipe.py",
+            "--build --locked --target-triple",
+            "merman-probe",
+            "platforms/wasi/smoke.py",
+            "catalog-sidecar",
+            "--artifact-profile",
+            "scripts/sdk_archive.py",
+            "if-no-files-found: error",
+        ),
+        profile_packages=tuple(
+            (f"sdk-{kind}-{variant}", package)
+            for kind, package in (("native", "merman-ffi"), ("wasi", "merman-wasi"))
+            for variant in ("standard", "math", "full")
+        ),
+    ),
 )
 
 

@@ -75,6 +75,27 @@ class NameStatusParserTests(unittest.TestCase):
 
 
 class PlannerTests(unittest.TestCase):
+    def test_sdk_paths_select_existing_native_security_and_workflow_owners(self) -> None:
+        fixtures = {
+            "crates/merman-wasi/src/lib.rs": {"core", "fuzz", "hygiene", "platform", "security"},
+            "distribution/sdk/README.md": {"core", "hygiene", "platform", "security"},
+            "distribution/sdk/cmake/merman-config.cmake": {"core", "hygiene", "platform", "security"},
+            "scripts/sdk_archive.py": {"core", "hygiene", "platform", "security"},
+            "scripts/test_sdk_archive.py": {"core", "hygiene", "platform", "security"},
+            "scripts/sdk_native_smoke.py": {"core", "hygiene", "platform", "security"},
+            "scripts/test_sdk_native_smoke.py": {"core", "hygiene", "platform", "security"},
+            "scripts/release_preflight_evidence.py": {"hygiene", "workflow"},
+            "scripts/test_release_preflight_evidence.py": {"hygiene", "workflow"},
+            "platforms/wasi/smoke.py": {"core", "hygiene", "platform", "security"},
+            "platforms/wasi/README.md": {"core", "hygiene", "platform", "security"},
+        }
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(parse_name_status_z(f"M\0{path}\0".encode()),
+                                    base="a" * 40, head="b" * 40)
+                self.assertFalse(plan["fallback"])
+                self.assertEqual({name for name, enabled in plan["owners"].items() if enabled}, expected)
+
     def test_cli_distribution_changes_select_cli_without_unrelated_owners(self) -> None:
         for path in (
             "distribution/container/Dockerfile",

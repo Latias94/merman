@@ -39,6 +39,8 @@ Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter 
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `merman-android-<tag>.aar` | GitHub Release AAR |
 | Apple host integration | `Merman.xcframework` | GitHub Release asset or local SwiftPM package |
+| Language-neutral native embedding with explicit fonts and binary exports | `sdk-native-{standard,math,full}` | C headers, static/shared libraries, CMake and pkg-config archive recipes |
+| Non-JavaScript sandbox embedding | `sdk-wasi-{standard,math,full}` | `wasm32-wasip1` reactor archive recipes with independent scalar ABI 1 |
 | Binding source integration | `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, `merman-wasm` | crates.io source crates; native artifacts are separate owner surfaces |
 | Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
@@ -54,6 +56,41 @@ ELK and therefore ship under an artifact-specific notice closure; they are not e
 default `merman` Cargo feature. The C ABI crate has no default features, so custom embedders can
 select semantic-only, SVG-only, export-capable, or complete builds. LSP remains a separate
 executable product and is not linked into any native binding artifact.
+
+## Headless SDK Profiles
+
+The SDK archive recipes add a separate delivery surface; they do not change the default
+Android, Apple, Python, Flutter, Node or Web package contents. Archives are release-qualified
+by their owner workflow, not implied to exist for an already published version.
+
+| Profile | Math | ELK | Native outputs | WASI outputs |
+| --- | --- | --- | --- | --- |
+| `standard` | No | No | SVG, PNG, JPEG, PDF, ASCII | SVG, PNG |
+| `math` | Yes | No | SVG, PNG, JPEG, PDF, ASCII | SVG, PNG |
+| `full` | Yes | Yes | SVG, PNG, JPEG, PDF, ASCII | SVG, PNG |
+
+Native archives target Apple ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64
+MSVC; each includes both shared and static libraries. WASI uses `wasm32-wasip1`, without
+JavaScript, browser APIs, preopened directories or ambient font discovery. Its ABI is not
+the native function-pointer table. Standard and math preserve Mermaid's family fallback
+when ELK is not compiled; the catalog still reports ELK as absent. Math absence is a typed
+capability error. Math/full use the supported interactive resource policy and host limits;
+explicit constrained math requests remain rejected.
+
+Both transports can own caller-supplied font bytes and share them between measurement and
+painting. Bundled Cousine is a limited fallback, not full CJK/emoji coverage. The SVG keeps
+text rather than embedding those fonts; see the [output guide](../rendering/RASTER_OUTPUT.md).
+Every archive records its actual catalog, target, ABI/options schemas, font inventory,
+checksums and corresponding source commit. Standard is not "MIT-only": dependency MPL
+and font OFL notices still apply. Math adds its own renderer/font notices; full additionally
+includes EPL/ELK material and source-availability information.
+
+See [SDK integration and packaging](../../distribution/sdk/README.md) and the
+[real WASI host examples](../../platforms/wasi/README.md). On `release/0.9.x`, this SDK
+surface is a maintainer-authorized additive maintenance exception: Mermaid 12.1, Options
+schema 2, old ABI prefixes and native codec discovery semantics remain unchanged. Main
+retains its separate development baseline and Options schema 3. Match artifacts to the
+same source line and version rather than mixing wrappers from the two lines.
 
 ## Rustdoc Documentation
 
