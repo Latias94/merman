@@ -100,13 +100,6 @@ caller-supplied memory fonts and the shared SVG/PNG/math fixtures used by WASI.
 The small `merman-render` example does not claim font-parity or formula qualification
 by itself.
 
-Compiled math capability does not override resource policy. Native C keeps the
-existing conservative option defaults: pass
-`{"resources":{"profile":"interactive"}}` when constructing a math engine and
-impose host execution/memory limits. WASI selects interactive for omitted or empty
-constructor options. An explicit constrained profile still rejects mathematical
-rendering in either transport; selecting a math/full archive is not a policy bypass.
-
 ## WASI SDK
 
 `lib/merman_wasi.wasm` uses the independently versioned WASI ABI 1 in
@@ -114,8 +107,13 @@ rendering in either transport; selecting a math/full archive is not a policy byp
 implement the documented ABI and resource policy; `docs/WASI_ABI.md` in the WASI
 archive contains allocation, ownership, request and descriptor examples. Execute the module with the
 owner harness `platforms/wasi/smoke.py` before packaging. That harness owns the
-WASI-standard-import-only check, formula SVG/PNG execution and constrained-resource
-rejection; the packager does not parse WASM imports or claim execution evidence.
+WASI-standard-import-only check, formula SVG/PNG execution and legacy constrained
+policy qualification; the packager does not parse WASM imports or claim execution
+evidence. This maintenance line preserves small-formula rendering under constrained
+requests and constructors, unlike main's newer rejection policy. The native C default
+remains conservative; select `{"resources":{"profile":"interactive"}}` explicitly
+for the shared transport-parity inputs. WASI selects interactive for empty constructor
+options. Neither profile replaces host execution/memory isolation for untrusted input.
 
 ## Build and packaging handoff
 
