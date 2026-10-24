@@ -82,6 +82,8 @@ class PlannerTests(unittest.TestCase):
             "distribution/sdk/cmake/merman-config.cmake": {"core", "hygiene", "platform", "security"},
             "scripts/sdk_archive.py": {"core", "hygiene", "platform", "security"},
             "scripts/test_sdk_archive.py": {"core", "hygiene", "platform", "security"},
+            "scripts/sdk_qualify.py": {"core", "hygiene", "platform", "security"},
+            "scripts/test_sdk_qualify.py": {"core", "hygiene", "platform", "security"},
             "scripts/sdk_native_smoke.py": {"core", "hygiene", "platform", "security"},
             "scripts/test_sdk_native_smoke.py": {"core", "hygiene", "platform", "security"},
             "scripts/release_preflight_evidence.py": {"hygiene", "workflow"},

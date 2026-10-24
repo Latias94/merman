@@ -134,13 +134,11 @@ SURFACES = (
         workflow_markers=(
             "workflow_call:",
             "workflow_dispatch:",
-            "scripts/artifact_profile_recipe.py",
-            "--build --locked --target-triple",
-            "merman-probe",
-            "platforms/wasi/smoke.py",
-            "catalog-sidecar",
-            "--artifact-profile",
-            "scripts/sdk_archive.py",
+            "scripts/sdk_qualify.py",
+            '--profile "$SDK_PROFILE" --target "$SDK_TARGET"',
+            '--work-dir "sdk-input/$SDK_PROFILE/$SDK_TARGET"',
+            "--output-dir sdk-output",
+            '--source-commit "$SOURCE_SHA"',
             "if-no-files-found: error",
         ),
         profile_packages=tuple(

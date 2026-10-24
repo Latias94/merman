@@ -117,8 +117,9 @@ class ReleaseSurfaceContractTests(unittest.TestCase):
 
     def test_missing_sdk_build_or_qualification_owner_fails_closed(self) -> None:
         original_read = contract._read
-        for marker in ("--build --locked --target-triple", "merman-probe",
-                       "platforms/wasi/smoke.py", "catalog-sidecar", "--artifact-profile"):
+        for marker in ("scripts/sdk_qualify.py", '--profile "$SDK_PROFILE"',
+                       '--target "$SDK_TARGET"', "--work-dir", "--output-dir",
+                       '--source-commit "$SOURCE_SHA"'):
             def missing_owner(root: Path, path: Path) -> str:
                 text = original_read(root, path)
                 return text.replace(marker, "missing-owner") if path.name == "release-sdk.yml" else text

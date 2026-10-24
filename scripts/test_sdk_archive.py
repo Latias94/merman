@@ -190,6 +190,21 @@ class SdkArchiveTests(unittest.TestCase):
         self.assertIn("fonts/manifest.json", members)
         self.assertNotIn("examples/render.c", members)
 
+    def test_native_staging_and_archives_share_integration_files_and_library_layout(self):
+        for target in sdk_archive.NATIVE_TARGETS:
+            with self.subTest(target=target):
+                self.configure(target=target)
+                members = self.members(self.package(output_dir=self.output / target))
+                files = sdk_archive.native_consumer_files(self.repo, target, self.version)
+                self.assertTrue(files)
+                for name, data in files.items():
+                    self.assertEqual(members[name], data, name)
+                names = sdk_archive.library_names(target)
+                for kind, relative in sdk_archive.library_layout(target).items():
+                    self.assertEqual(members[relative], (self.artifacts / names[kind]).read_bytes())
+        with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "native SDK target"):
+            sdk_archive.native_consumer_files(self.repo, sdk_archive.WASI_TARGET, self.version)
+
     def test_all_eighteen_profile_target_combinations(self):
         for target in (*sdk_archive.NATIVE_TARGETS, sdk_archive.WASI_TARGET):
             for flavor in ("standard", "math", "full"):
