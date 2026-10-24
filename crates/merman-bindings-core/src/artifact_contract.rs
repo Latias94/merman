@@ -108,6 +108,8 @@ macro_rules! native_sdk_artifact_contract {
             #[cfg(feature = "math")]
             $crate::CapabilityKey::Math,
         ];
+        // Optional font constructors are local features only on their implementing transports.
+        #[allow(unexpected_cfgs)]
         const CONSTRUCTOR_SERVICES: &[$crate::ConstructorServiceKey] = match TRANSPORT {
             $crate::BindingTransportKey::Wasi => &[
                 #[cfg(feature = "native-fonts")]
