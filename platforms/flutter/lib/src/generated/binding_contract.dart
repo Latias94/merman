@@ -433,6 +433,14 @@ const Map<String, MermanBindingConstructorServiceSpec>
       ),
     ],
   ),
+  "native-font-context": MermanBindingConstructorServiceSpec(
+    id: "native-font-context",
+    requiresSvgPipeline: true,
+    providedTextMeasurementProviderIds: <String>{
+      "native-fonts",
+    },
+    resourceLimits: <MermanBindingConstructorResourceLimitSpec>[],
+  ),
 };
 
 const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
@@ -569,6 +577,7 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+      "native-font-context",
     },
   ),
   "node": MermanBindingTransportExposureSpec(
@@ -588,6 +597,7 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+      "native-font-context",
     },
   ),
   "typst": MermanBindingTransportExposureSpec(
@@ -604,6 +614,16 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+    },
+  ),
+  "wasi": MermanBindingTransportExposureSpec(
+    id: "wasi",
+    payloadSchemaIds: <String>{
+      "binding-result",
+      "operation-metadata",
+    },
+    constructorServiceCandidateIds: <String>{
+      "native-font-context",
     },
   ),
   "web": MermanBindingTransportExposureSpec(

@@ -29,6 +29,37 @@ GENERATOR_SPEC.loader.exec_module(generator)
 
 
 class ReleaseLegalMaterialTests(unittest.TestCase):
+    def test_sdk_font_source_and_wasi_project_licenses_are_projected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            seed_root(root)
+            expected = sync.expected_projections(root)
+            self.assertEqual(
+                expected[root / "crates/merman-export/THIRD_PARTY_LICENSES/sdk-cousine/LICENSE"],
+                b"sdk-cousine terms\n",
+            )
+            for name in ("LICENSE-MIT", "LICENSE-APACHE"):
+                self.assertEqual(expected[root / "crates/merman-wasi" / name],
+                                 (root / name).read_bytes())
+
+    def test_sdk_legal_scopes_keep_ascii_native_only_on_maintenance_baseline(self) -> None:
+        contract = sync.load_component_contract(MODULE_PATH.parents[1])
+        components = sync.component_index(contract)
+        self.assertEqual(components["mermaid"]["version"], "12.1.0")
+        _, ascii_components = sync.resolve_artifact_components(contract, "ascii-render")
+        ascii_ids = {component["id"] for component in ascii_components}
+        for flavor in ("standard", "math", "full"):
+            with self.subTest(flavor=flavor):
+                _, native = sync.resolve_artifact_components(contract, f"sdk-native-{flavor}")
+                _, wasi = sync.resolve_artifact_components(contract, f"sdk-{flavor}")
+                native_ids = {component["id"] for component in native}
+                wasi_ids = {component["id"] for component in wasi}
+                self.assertEqual(native_ids, wasi_ids | ascii_ids)
+                self.assertNotIn("mermaid-ascii", wasi_ids)
+                self.assertIn("sdk-cousine", wasi_ids)
+                self.assertEqual("ratex" in wasi_ids, flavor != "standard")
+                self.assertEqual("eclipse-elk" in wasi_ids, flavor == "full")
+
     def test_native_report_sources_match_generator_outputs(self) -> None:
         generated_reports = {
             spec.output.parents[1].as_posix(): spec.output

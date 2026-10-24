@@ -560,6 +560,21 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     if ctx.node_html_labels {
         let label_html =
             flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
+        let needs_wrap = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
+            && crate::graph_label::flowchart_label_metrics_for_layout(
+                crate::flowchart::FlowchartLabelMetricsRequest {
+                    measurer: ctx.measurer,
+                    raw_label: label_text,
+                    label_type,
+                    style: label_text_style.as_ref(),
+                    max_width_px: None,
+                    wrap_mode: ctx.node_wrap_mode,
+                    config: ctx.config,
+                    math_renderer: None,
+                },
+            )
+            .width
+                > ctx.wrapping_width;
         // `createText` maps only the first literal `fill:` occurrence to `color:` before applying
         // the copied label style to the HTML span and div. Later fixed declarations override the
         // corresponding inline properties exactly as Mermaid's chained D3 `.style()` calls do.
@@ -569,16 +584,25 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             div_style.push_str(html_label_style.trim());
             div_style.push(';');
         }
-        let _ = write!(
-            &mut div_style,
-            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
-            fmt_display(ctx.wrapping_width),
-        );
+        if needs_wrap {
+            let _ = write!(
+                &mut div_style,
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;",
+                width = fmt_display(ctx.wrapping_width),
+            );
+        } else {
+            let _ = write!(
+                &mut div_style,
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                fmt_display(ctx.wrapping_width),
+            );
+        }
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
             fmt_display(width),
             fmt_display(height),
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
             escape_xml_display(&div_style),
             OptionalStyleXmlAttr(&html_label_style),
             label_html,

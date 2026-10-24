@@ -4,16 +4,18 @@
 pub enum TextMeasurementProviderKey {
     Deterministic,
     HostCallback,
+    NativeFonts,
 }
 
 impl TextMeasurementProviderKey {
-    pub const ALL: &'static [Self] = &[Self::Deterministic, Self::HostCallback];
+    pub const ALL: &'static [Self] = &[Self::Deterministic, Self::HostCallback, Self::NativeFonts];
 
     #[must_use]
     pub const fn id(self) -> &'static str {
         match self {
             Self::Deterministic => "deterministic",
             Self::HostCallback => "host-callback",
+            Self::NativeFonts => "native-fonts",
         }
     }
 
@@ -29,6 +31,9 @@ impl TextMeasurementProviderKey {
             Self::Deterministic => TextMeasurementProviderSource::SvgPipeline,
             Self::HostCallback => TextMeasurementProviderSource::ConstructorService(
                 ConstructorServiceKey::HostTextMeasurement,
+            ),
+            Self::NativeFonts => TextMeasurementProviderSource::ConstructorService(
+                ConstructorServiceKey::NativeFontContext,
             ),
         }
     }
@@ -68,6 +73,7 @@ impl TextMeasurementProviderSource {
 pub enum ConstructorServiceKey {
     HostTextMeasurement,
     IconRegistry,
+    NativeFontContext,
 }
 
 /// Descriptor-owned resource catalog attached to a constructor service.
@@ -77,13 +83,18 @@ pub(crate) enum ConstructorServiceResourceCatalog {
 }
 
 impl ConstructorServiceKey {
-    pub const ALL: &'static [Self] = &[Self::HostTextMeasurement, Self::IconRegistry];
+    pub const ALL: &'static [Self] = &[
+        Self::HostTextMeasurement,
+        Self::IconRegistry,
+        Self::NativeFontContext,
+    ];
 
     #[must_use]
     pub const fn id(self) -> &'static str {
         match self {
             Self::HostTextMeasurement => "host-text-measurement",
             Self::IconRegistry => "icon-registry",
+            Self::NativeFontContext => "native-font-context",
         }
     }
 
@@ -96,8 +107,18 @@ impl ConstructorServiceKey {
     #[must_use]
     pub const fn requires_svg_pipeline(self) -> bool {
         match self.spec().availability {
-            ConstructorServiceAvailability::SvgPipeline => true,
+            ConstructorServiceAvailability::SvgPipeline
+            | ConstructorServiceAvailability::NativeFonts => true,
         }
+    }
+
+    /// Whether this crate compiled the service implementation.
+    ///
+    /// A transport must still select an installable service explicitly; compiled dependency
+    /// features never add the Rust-only native font context to a foreign transport.
+    #[must_use]
+    pub const fn is_compiled(self) -> bool {
+        self.spec().is_available(cfg!(feature = "svg"))
     }
 
     #[must_use]
@@ -105,6 +126,7 @@ impl ConstructorServiceKey {
         match self {
             Self::HostTextMeasurement => &CONSTRUCTOR_SERVICE_SPECS[0],
             Self::IconRegistry => &CONSTRUCTOR_SERVICE_SPECS[1],
+            Self::NativeFontContext => &CONSTRUCTOR_SERVICE_SPECS[2],
         }
     }
 }
@@ -112,6 +134,7 @@ impl ConstructorServiceKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConstructorServiceAvailability {
     SvgPipeline,
+    NativeFonts,
 }
 
 /// Internal availability and resource relation for one immutable constructor-owned service.
@@ -129,6 +152,9 @@ impl ConstructorServiceSpec {
     pub(crate) const fn is_available(&self, uses_svg_pipeline: bool) -> bool {
         match self.availability {
             ConstructorServiceAvailability::SvgPipeline => uses_svg_pipeline,
+            ConstructorServiceAvailability::NativeFonts => {
+                uses_svg_pipeline && cfg!(feature = "native-fonts")
+            }
         }
     }
 }
@@ -142,7 +168,33 @@ const CONSTRUCTOR_SERVICE_SPECS: &[ConstructorServiceSpec] = &[
         availability: ConstructorServiceAvailability::SvgPipeline,
         resource_catalog: Some(ConstructorServiceResourceCatalog::IconRegistry),
     },
+    ConstructorServiceSpec {
+        availability: ConstructorServiceAvailability::NativeFonts,
+        resource_catalog: None,
+    },
 ];
+
+#[cfg(test)]
+mod native_font_tests {
+    use super::*;
+
+    #[test]
+    fn native_font_service_availability_is_feature_owned() {
+        let service = ConstructorServiceKey::NativeFontContext;
+        assert!(service.requires_svg_pipeline());
+        assert_eq!(service.is_compiled(), cfg!(feature = "native-fonts"));
+        assert!(!service.spec().is_available(false));
+        assert_eq!(
+            TextMeasurementProviderKey::NativeFonts.source(),
+            TextMeasurementProviderSource::ConstructorService(service)
+        );
+        assert_eq!(ConstructorServiceKey::from_id(service.id()), Some(service));
+        assert_eq!(
+            TextMeasurementProviderKey::from_id("native-fonts"),
+            Some(TextMeasurementProviderKey::NativeFonts)
+        );
+    }
+}
 
 /// Runtime-policy choices a transport actually accepts through binding options.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

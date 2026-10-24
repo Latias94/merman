@@ -30,6 +30,7 @@ LICENSE-*      text eol=lf
 *.sh      text eol=lf
 *.mjs     text eol=lf
 *.lock    text eol=lf
+crates/merman-ffi/include/*.h text eol=lf
 
 # Tree-sitter generated language artifacts are reviewed through deterministic regeneration.
 distribution/tree-sitter-mermaid/**/*.scm text eol=lf
@@ -47,7 +48,8 @@ THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 **/THIRD_PARTY_NOTICES.md -whitespace
 **/THIRD_PARTY_LICENSES/npm-production-dependencies.txt text eol=lf
 
-# Test font license copies retain their upstream whitespace.
+# Font license copies retain their upstream whitespace and line endings.
+crates/merman-export/assets/fonts/OFL.txt text eol=lf -whitespace
 crates/merman-export/tests/fonts/OFL.txt text eol=lf -whitespace
 crates/merman-export/tests/fonts/NotoSans-OFL.txt text eol=lf -whitespace
 crates/merman-export/tests/fonts/NotoSansSC-OFL.txt text eol=lf -whitespace

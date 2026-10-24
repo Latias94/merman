@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: npm ls --omit=dev --parseable --all / Merman license report
-package-lock.json SHA-256: 1ce6fb338a72e5de50603c17700bfd4adee5b070b14faf475f64a9a778c13556
+package-lock.json SHA-256: f6fa1f9a88792f1e5eceab6ed74a95f62f343858c15cf8d97636cd85d52919eb
 
 The following npm package may be included in this product:
 
@@ -177,7 +177,7 @@ The following npm packages may be included in this product:
  - @chevrotain/utils@13.2.0
  - baseline-browser-mapping@2.11.20
  - chevrotain@13.2.0
- - dompurify@3.4.16
+ - dompurify@3.4.17
 
 These packages each contain the following license:
 

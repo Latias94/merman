@@ -941,6 +941,22 @@ impl CascadeIndex {
                         .check_ancestry_depth(next_depth, selector_limit)?
                     {
                         let element = Self::source_element(tag, Namespace::Xhtml, checkpoint)?;
+                        if element.local_name == "svg"
+                            && element.classes.contains("merman-native-math-svg")
+                            && element
+                                .attributes
+                                .get("xmlns")
+                                .and_then(|value| value.as_deref())
+                                == Some("http://www.w3.org/2000/svg")
+                            && path.last().is_some_and(|parent| {
+                                parent.local_name == "div"
+                                    && parent.classes.contains("merman-native-math-row")
+                            })
+                        {
+                            // RaTeX outlines have no text leaves; observe their HTML owner so
+                            // background ownership stays shared with ordinary label text.
+                            observed.observe(&path, &computed_styles);
+                        }
                         if !is_void_html_element(&element.local_name)
                             && !tag.trim_end().ends_with("/>")
                         {
@@ -2839,6 +2855,75 @@ fn bounded_positive(value: f64) -> Option<f64> {
 mod tests {
     use super::*;
     use std::convert::Infallible;
+
+    #[test]
+    fn native_math_leaf_preserves_background_owner_and_explicit_clears() {
+        for (background, expected) in [
+            ("", Some("#c0ffee")),
+            ("background-color:inherit", Some("#c0ffee")),
+            ("background-color:transparent", None),
+            ("background-color:initial", None),
+            ("background-color:unset", None),
+        ] {
+            let mut checkpoint = || Ok::<(), Infallible>(());
+            let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+            let mut cascade =
+                CascadeIndex::new("<svg/>", &mut checkpoint, &mut selector_limit).unwrap();
+            let html = format!(
+                "<div class='labelBkg' style='background-color:#c0ffee'><span style='{background}'><div class='merman-native-math-row'><svg xmlns='http://www.w3.org/2000/svg' class='merman-native-math-svg' viewBox='0 0 1 1' width='1em' height='1em'><path d='M0 0H1V1Z'/></svg></div></span></div>"
+            );
+            let resolved = cascade
+                .resolve_foreign_object(
+                    &[],
+                    "<foreignObject/>",
+                    &html,
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+            assert_eq!(
+                resolved.typography.label_background.as_deref(),
+                expected,
+                "{background}"
+            );
+        }
+    }
+
+    #[test]
+    fn arbitrary_svg_does_not_become_a_native_math_background_leaf() {
+        for (row_class, svg_attributes) in [
+            (
+                "merman-native-math-row",
+                "xmlns='http://www.w3.org/2000/svg'",
+            ),
+            (
+                "ordinary-row",
+                "xmlns='http://www.w3.org/2000/svg' class='merman-native-math-svg'",
+            ),
+            (
+                "merman-native-math-row",
+                "xmlns='http://www.w3.org/1999/xhtml' class='merman-native-math-svg'",
+            ),
+        ] {
+            let mut checkpoint = || Ok::<(), Infallible>(());
+            let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+            let mut cascade =
+                CascadeIndex::new("<svg/>", &mut checkpoint, &mut selector_limit).unwrap();
+            let html = format!(
+                "<div class='labelBkg' style='background-color:#c0ffee'><div class='{row_class}'><svg {svg_attributes}><path d='M0 0H1V1Z'/></svg></div></div>"
+            );
+            let resolved = cascade
+                .resolve_foreign_object(
+                    &[],
+                    "<foreignObject/>",
+                    &html,
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+            assert_eq!(resolved.typography.label_background, None, "{html}");
+        }
+    }
 
     #[test]
     fn text_fragment_boundaries_use_the_nearest_common_ancestor_white_space() {

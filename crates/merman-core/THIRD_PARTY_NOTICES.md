@@ -7,8 +7,8 @@ It is generated from `docs/release/THIRD_PARTY_COMPONENTS.json`.
 
 Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved.
 
-- Version: `3.4.16`
-- Source: https://github.com/cure53/DOMPurify.git @ `b9b9d80f7e401771c2ccaef5f45def7eec8f27d7`
+- Version: `3.4.17`
+- Source: https://github.com/cure53/DOMPurify.git @ `a77a3e78b59f72fa4d1c83f22e121ad9cc7d3575`
 - Relationship: `generated`, `translated`
 - License: `(Apache-2.0 OR MPL-2.0)`
 - Legal file: `THIRD_PARTY_LICENSES/dompurify/LICENSE`

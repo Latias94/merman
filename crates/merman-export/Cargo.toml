@@ -18,6 +18,7 @@ artifact-profile-required = true
 
 [features]
 default = []
+bundled-fonts = ["native-fonts"]
 native-fonts = [
     "dep:merman-core",
     "dep:merman-render",
@@ -78,7 +79,6 @@ pdf = [
 [dependencies]
 cssparser = { workspace = true, optional = true }
 data-url = { workspace = true, optional = true }
-fontique = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
@@ -95,6 +95,9 @@ ttf-parser = { workspace = true, optional = true }
 unicase = { workspace = true, optional = true }
 unicode-script = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["text"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+fontique = { workspace = true, optional = true }
 
 [dev-dependencies]
 base64.workspace = true

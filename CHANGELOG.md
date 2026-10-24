@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Fixed
+
+- Swimlane HTML edge labels wrap consistently with layout and retain their complete text in native SVG/PNG fallback output. [issue #242](https://github.com/Latias94/merman/issues/242)
+
+### Added
+
+- Add descriptor-owned native C and WASI SDK build and archive recipes in standard, math-without-ELK, and full configurations. C ABI 3 gains an appended memory-font constructor without changing its existing prefix; the WASI reactor has its own scalar ABI 1. Both share bounded font bytes for measurement and painting, expose output dimensions, and package artifact-specific capability and license information. This additive maintenance exception retains Mermaid 12.1, Options schema 2, and the published native codec font-discovery semantics. Cross-platform release qualification remains required before publishing these archives. [issue #243](https://github.com/Latias94/merman/issues/243)
+
 ## [0.9.2] - 2026-10-22
 
 ### Fixed

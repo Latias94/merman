@@ -1035,6 +1035,7 @@ version = "0.9.2"
 dependencies = [
  "merman",
  "merman-analysis",
+ "quick-xml",
  "serde",
  "serde_json",
 ]

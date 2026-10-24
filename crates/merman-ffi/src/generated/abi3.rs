@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:750705737201639db1b1d1318412f5ea0734381d562231c68e1ec7d0f842e48d";
+    "sha256:cf2a177f11ee8c9a420f54224bf4abcfb5413b62756893cf2b4385e13680ac2f";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -503,6 +503,7 @@ pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW: MermanNativeFunctionSlot
 pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL: MermanNativeFunctionSlot = 8;
 pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE: MermanNativeFunctionSlot = 9;
 pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED: MermanNativeFunctionSlot = 10;
+pub const MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_FONTS: MermanNativeFunctionSlot = 11;
 
 pub type MermanNativeEngineToken = u64;
 pub(crate) const MERMAN_NATIVE_TOKEN_DOMAIN_MASK: u64 = 3;
@@ -642,6 +643,7 @@ pub struct MermanNativeApi {
     pub operation_control_cancel: Option<MermanNativeOperationControlCancelFn>,
     pub operation_control_release: Option<MermanNativeOperationControlReleaseFn>,
     pub execute_collect_controlled: Option<MermanNativeExecuteCollectControlledFn>,
+    pub engine_new_with_fonts: Option<MermanNativeEngineNewWithFontsFn>,
 }
 
 /// One size-tagged borrowed IconifyJSON collection for transactional engine construction. A
@@ -665,6 +667,18 @@ pub struct MermanNativeEngineServicesConfig {
     pub engine_config: MermanNativeEngineConfig,
     pub icon_packs: *const MermanNativeIconPack,
     pub icon_pack_count: usize,
+}
+
+/// An independent size-tagged memory-font engine configuration with no host callback. Caller
+/// buffers precede optional bundled fallback and the engine retains its own immutable font context.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MermanNativeFontEngineConfig {
+    pub struct_size: u32,
+    pub options_json: MermanNativeSlice,
+    pub fonts: *const MermanNativeSlice,
+    pub font_count: usize,
+    pub use_bundled_fonts: u8,
 }
 
 pub type MermanNativeTextMeasureCallback = unsafe extern "C" fn(
@@ -713,6 +727,11 @@ pub type MermanNativeExecuteCollectControlledFn = unsafe extern "C" fn(
     request: *const MermanNativeOperationRequest,
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus;
+pub type MermanNativeEngineNewWithFontsFn = unsafe extern "C" fn(
+    config: *const MermanNativeFontEngineConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus;
 
 pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, engine_new_with_services)
@@ -734,12 +753,17 @@ pub const MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, execute_collect_controlled)
         + std::mem::size_of::<Option<MermanNativeExecuteCollectControlledFn>>()) as u32;
 
+pub const MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, engine_new_with_fonts)
+        + std::mem::size_of::<Option<MermanNativeEngineNewWithFontsFn>>()) as u32;
+
 pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
     MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
+    MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE,
 ];
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
@@ -750,6 +774,10 @@ pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     (
         "disabled_capabilities",
         "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free.",
+    ),
+    (
+        "engine_fonts",
+        "engine_new_with_fonts borrows its configuration, options, font slice array and font bytes only until return, copies caller bytes, and installs one immutable native font context for measurement and painting without a host callback or ambient font discovery. Caller fonts precede bundled fallback. Structural records must not overlap payload bytes; outputs must be disjoint from each other and every input. Read-only payload slices may overlap each other and duplicate buffers are charged independently. Detectable overlap failures leave outputs untouched. The constructor bounds font count and cumulative byte lengths before copying and delegates font validation, deduplication, face limits and option conflicts to their existing owners. Without native-fonts, the constructor returns missing-capability without dereferencing the font array; requesting unavailable bundled fonts also returns missing-capability. Failed construction publishes no engine, and a successful engine remains usable after all input storage is released.",
     ),
     (
         "engine_services",

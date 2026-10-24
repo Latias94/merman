@@ -61,6 +61,7 @@ macro_rules! native_sdk_artifact_contract {
             $crate::BindingTransportKey::AndroidJni
             | $crate::BindingTransportKey::NativeC
             | $crate::BindingTransportKey::Rust
+            | $crate::BindingTransportKey::Wasi
             | $crate::BindingTransportKey::UniFfi => {}
             _ => panic!("native SDK profile requires a maintained native transport"),
         };
@@ -101,20 +102,54 @@ macro_rules! native_sdk_artifact_contract {
             #[cfg(feature = "math")]
             $crate::CapabilityKey::Math,
         ];
-        const CONSTRUCTOR_SERVICES: &[$crate::ConstructorServiceKey] = &[
-            #[cfg(feature = "svg")]
-            $crate::ConstructorServiceKey::HostTextMeasurement,
-            #[cfg(feature = "svg")]
-            $crate::ConstructorServiceKey::IconRegistry,
-        ];
+        // Optional font constructors are local features only on their implementing transports.
+        #[allow(unexpected_cfgs)]
+        const CONSTRUCTOR_SERVICES: &[$crate::ConstructorServiceKey] = match TRANSPORT {
+            $crate::BindingTransportKey::Wasi => &[
+                #[cfg(feature = "native-fonts")]
+                $crate::ConstructorServiceKey::NativeFontContext,
+            ],
+            $crate::BindingTransportKey::Rust
+                if cfg!(feature = "svg")
+                    && $crate::ConstructorServiceKey::NativeFontContext.is_compiled() =>
+            {
+                &[
+                    #[cfg(feature = "svg")]
+                    $crate::ConstructorServiceKey::HostTextMeasurement,
+                    #[cfg(feature = "svg")]
+                    $crate::ConstructorServiceKey::IconRegistry,
+                    $crate::ConstructorServiceKey::NativeFontContext,
+                ]
+            }
+            $crate::BindingTransportKey::NativeC if cfg!(feature = "native-fonts") => &[
+                #[cfg(feature = "svg")]
+                $crate::ConstructorServiceKey::HostTextMeasurement,
+                #[cfg(feature = "svg")]
+                $crate::ConstructorServiceKey::IconRegistry,
+                $crate::ConstructorServiceKey::NativeFontContext,
+            ],
+            _ => &[
+                #[cfg(feature = "svg")]
+                $crate::ConstructorServiceKey::HostTextMeasurement,
+                #[cfg(feature = "svg")]
+                $crate::ConstructorServiceKey::IconRegistry,
+            ],
+        };
+        const RUNTIME_POLICY: $crate::RuntimePolicyExposure = match TRANSPORT {
+            $crate::BindingTransportKey::Wasi => $crate::RuntimePolicyExposure::DeterministicOnly,
+            _ => $crate::RuntimePolicyExposure::BindingOptions,
+        };
         let spec = $crate::ArtifactContractSpec::new($crate::TargetKey::Native, TRANSPORT)
             .with_operations(OPERATIONS)
             .with_supplemental_capabilities(SUPPLEMENTAL_CAPABILITIES)
             .with_all_available_metadata()
             .with_constructor_services(CONSTRUCTOR_SERVICES)
-            .with_runtime_policy_exposure($crate::RuntimePolicyExposure::BindingOptions);
+            .with_runtime_policy_exposure(RUNTIME_POLICY);
         #[cfg(feature = "native-runtime")]
-        let spec = spec.with_native_runtime();
+        let spec = match TRANSPORT {
+            $crate::BindingTransportKey::Wasi => spec,
+            _ => spec.with_native_runtime(),
+        };
         spec.materialize()
     }};
 }
@@ -268,6 +303,14 @@ impl ArtifactContractSpec {
 
         let uses_svg_pipeline = capabilities & CapabilityKey::Svg.compact_bit() != 0
             || compiled_prerequisites & CapabilityKey::Svg.compact_bit() != 0;
+        if matches!(self.transport, BindingTransportKey::Wasi)
+            && !matches!(
+                self.runtime_policy,
+                RuntimePolicyExposure::DeterministicOnly
+            )
+        {
+            panic!("WASI transport requires deterministic-only runtime policy");
+        }
         if matches!(self.runtime_policy, RuntimePolicyExposure::BindingOptions)
             && !matches!(self.target, TargetKey::Native)
         {
@@ -311,6 +354,10 @@ impl ArtifactContractSpec {
             compiled_capabilities,
             uses_svg_pipeline,
         );
+        if constructor_services & ConstructorServiceKey::NativeFontContext.compact_bit() != 0 {
+            capabilities |= CapabilityKey::NativeFonts.compact_bit();
+            validate_capability_bits(capabilities, self.target, compiled_capabilities);
+        }
 
         ValidatedArtifactContract {
             target: self.target,
