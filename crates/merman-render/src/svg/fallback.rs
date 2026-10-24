@@ -252,11 +252,13 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     continue;
                 }
                 let native_math = native_math::project_native_math(
-                    inner,
-                    &resolved.typography,
-                    width,
-                    height,
-                    text_measurer,
+                    native_math::NativeMathRequest {
+                        inner,
+                        typography: &resolved.typography,
+                        width,
+                        height,
+                        text_measurer,
+                    },
                     checkpoint,
                     &mut |bytes, elements, depth| {
                         preflight_generated(

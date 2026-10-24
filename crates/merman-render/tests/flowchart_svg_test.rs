@@ -4090,8 +4090,17 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
     )
     .expect("render svg");
 
-    let inline_formula_count = svg
-        .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let inline_formula_count = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name(("http://www.w3.org/2000/svg", "svg"))
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "merman-native-math-svg")
+                })
+        })
         .count();
     assert_eq!(
         inline_formula_count, 7,

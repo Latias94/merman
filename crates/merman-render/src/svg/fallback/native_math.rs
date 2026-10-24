@@ -16,6 +16,14 @@ pub(super) struct NativeMathProjection {
     pub(super) depth: usize,
 }
 
+pub(super) struct NativeMathRequest<'a> {
+    pub(super) inner: &'a str,
+    pub(super) typography: &'a ResolvedFallbackTypography,
+    pub(super) width: f64,
+    pub(super) height: f64,
+    pub(super) text_measurer: &'a dyn TextMeasurer,
+}
+
 enum Run<'a> {
     Text {
         text: String,
@@ -280,10 +288,8 @@ fn parse_rows<'a, E>(
                     }
                     row = Some(Row::default());
                     row_depth = next_depth;
-                    if empty {
-                        if let Some(row) = row.take() {
-                            rows.push(row);
-                        }
+                    if empty && let Some(row) = row.take() {
+                        rows.push(row);
                     }
                 } else if name == "svg" {
                     let Some(current_row) = row.as_mut() else {
@@ -358,11 +364,11 @@ fn parse_rows<'a, E>(
                             elements: open.elements,
                         });
                     }
-                } else if row.is_some() && depth == row_depth {
-                    if let Some(mut row) = row.take() {
-                        flush_text(&mut text, &mut row, checkpoint)?;
-                        rows.push(row);
-                    }
+                } else if depth == row_depth
+                    && let Some(mut row) = row.take()
+                {
+                    flush_text(&mut text, &mut row, checkpoint)?;
+                    rows.push(row);
                 }
                 if glyph_text_depth == Some(depth) {
                     glyph_text_depth = None;
@@ -408,15 +414,18 @@ fn parse_rows<'a, E>(
 }
 
 pub(super) fn project_native_math<E>(
-    inner: &str,
-    typography: &ResolvedFallbackTypography,
-    width: f64,
-    height: f64,
-    text_measurer: &dyn TextMeasurer,
+    request: NativeMathRequest<'_>,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
     preflight: &mut impl FnMut(usize, usize, usize) -> Result<(), E>,
     invalid: &mut impl FnMut(&str) -> Result<(), E>,
 ) -> Result<Option<NativeMathProjection>, E> {
+    let NativeMathRequest {
+        inner,
+        typography,
+        width,
+        height,
+        text_measurer,
+    } = request;
     checkpoint()?;
     if find_with_checkpoints(inner, ROW_CLASS, checkpoint)?.is_none()
         && find_with_checkpoints(inner, SVG_CLASS, checkpoint)?.is_none()
@@ -619,11 +628,13 @@ mod tests {
 
     fn project(inner: &str) -> Result<Option<NativeMathProjection>, &'static str> {
         project_native_math(
-            inner,
-            &typography(),
-            100.0,
-            60.0,
-            &Measurer,
+            NativeMathRequest {
+                inner,
+                typography: &typography(),
+                width: 100.0,
+                height: 60.0,
+                text_measurer: &Measurer,
+            },
             &mut || Ok(()),
             &mut |_, _, _| Ok(()),
             &mut |_| Err("invalid"),
@@ -641,11 +652,13 @@ mod tests {
             assert!(project(inner).unwrap().is_none(), "{inner}");
         }
         let result = project_native_math(
-            "<svg/>",
-            &typography(),
-            f64::NAN,
-            -1.0,
-            &Measurer,
+            NativeMathRequest {
+                inner: "<svg/>",
+                typography: &typography(),
+                width: f64::NAN,
+                height: -1.0,
+                text_measurer: &Measurer,
+            },
             &mut || Ok::<_, ()>(()),
             &mut |_, _, _| Ok(()),
             &mut |_| panic!("unowned input"),
@@ -766,22 +779,26 @@ mod tests {
     fn checkpoint_and_invalid_callback_errors_propagate() {
         let inner = format!("<div class='{ROW_CLASS}'>{}</div>", formula());
         let result = project_native_math(
-            &inner,
-            &typography(),
-            100.0,
-            60.0,
-            &Measurer,
+            NativeMathRequest {
+                inner: &inner,
+                typography: &typography(),
+                width: 100.0,
+                height: 60.0,
+                text_measurer: &Measurer,
+            },
             &mut || Err::<(), _>("cancelled"),
             &mut |_, _, _| Ok(()),
             &mut |_| Err("invalid"),
         );
         assert!(matches!(result, Err("cancelled")));
         let result = project_native_math(
-            &inner,
-            &typography(),
-            -1.0,
-            60.0,
-            &Measurer,
+            NativeMathRequest {
+                inner: &inner,
+                typography: &typography(),
+                width: -1.0,
+                height: 60.0,
+                text_measurer: &Measurer,
+            },
             &mut || Ok::<_, ()>(()),
             &mut |_, _, _| Ok(()),
             &mut |_| Ok(()),
@@ -799,11 +816,13 @@ mod tests {
         typography.font_family = "A".repeat(4096);
         let mut checked = Vec::new();
         let result = project_native_math(
-            &inner,
-            &typography,
-            100.0,
-            60.0,
-            &Measurer,
+            NativeMathRequest {
+                inner: &inner,
+                typography: &typography,
+                width: 100.0,
+                height: 60.0,
+                text_measurer: &Measurer,
+            },
             &mut || Ok(()),
             &mut |bytes, elements, depth| {
                 checked.push((bytes, elements, depth));
