@@ -5,8 +5,8 @@
     "mermaid_cli_version": "12.0.0",
     "mermaid_source_tag": "mermaid@12.2.0",
     "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "615e8b5275a450c494dbf3bcd373580c26c870c7ab3c4537ed95e5ab097e3c09",
-    "package_lock_sha256": "9889a82fd053706d1611786765cee89cb9d5a9c5c0ff08dd0e8516fdfff3be13",
+    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
+    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -17,30 +17,30 @@
         "product": "HeadlessChrome",
         "version": "151.0.7922.77",
         "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "zh-CN",
+        "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
-        "version": "25.6.0"
+        "version": "25.16.0"
       },
       "operating_system": {
-        "platform": "win32",
-        "arch": "x64",
-        "release": "10.0.26300"
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "27.0.0"
       },
       "mermaid_runtime": {
         "mermaid_version": "12.2.0",
-        "dompurify_version": "3.4.16",
+        "dompurify_version": "3.4.17",
         "compiler_version": "0.28.1",
-        "artifact_sha256": "a6ba3f89fc1442ea9b66f3274e2e35d8122af1f99f723b144b6f4a374bab968b",
-        "dompurify_package_sha256": "8e62ee67206b530948d8db894569ddee4e258b9e7785dd7b796fae7136be65eb",
+        "artifact_sha256": "29d255aa0a6d1d69e6d7c56a67b64c6c89318e2acf079587ec85743c70b44a2e",
+        "dompurify_package_sha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
         "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
         "mermaid_package_sha256": "428bc8e4372395ef8c7d3c35c0e9845fe016e7c4cba6f1e442d752251232dd87",
         "mermaid_cli_package_sha256": "8f204052d8117c099211557288ef4c34597785da3843d1864a46fa12b1c8663d"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
       }
     }
   },
@@ -63,7 +63,7 @@
     },
     "stress_er_font_size_precedence_001": {
       "input_sha256": "a42a3c7121f5d193c89d06f421961b543b62834a3cc963f8e2a445ebaceada41",
-      "svg_sha256": "8c07e9bebca2d64e72724489b8749a5bb1d609043faf5701172629793ed21988",
+      "svg_sha256": "f6a587ae7312ee5700267230ff8607c917ce4dbf7799a0f1ff455620b872ca44",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_accessibility_multiline_spec": {
@@ -78,12 +78,12 @@
     },
     "upstream_attribute_blocks_whitespace_spec": {
       "input_sha256": "a7a0db881dec700cb321de0cc141d63d5833a80cf535cd388fda56e7baa41c04",
-      "svg_sha256": "58ec9e337bb4fa320228e292979d7df9a12a25e305291024b2d1c75d7ae0bab2",
+      "svg_sha256": "18c1db97f02cf827753edc912158071c67251223148ed3de5bf41fd1c6979c91",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_attributes_styles_classes": {
       "input_sha256": "f7fd1a19efb3305a82a3f435f8a0f30dcd11ad04c42fc827691f6984b1322f5e",
-      "svg_sha256": "135963cded7589469d9d70625e6c77194c274712a00405eed3a03bfa953f245b",
+      "svg_sha256": "46b410a1a5273beba8e3faf45f97cc134cb8571cdbd2f568eaeca93f41ed6c12",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009": {
@@ -93,7 +93,7 @@
     },
     "upstream_cypress_erdiagram_spec_has_a_label_with_char_sequence_graph_012": {
       "input_sha256": "9801760458c453f3d130531dcaf3e9614221706a0f1b282001161ea94b59f8c5",
-      "svg_sha256": "dd0436046a242cdf37eff1384ecfb268d40cffea6d728542a1f8445a13d6c5cf",
+      "svg_sha256": "320e221f01525c4137dd3ac724e5a897be2a02db32519089512e1a585660ed87",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_erdiagram_spec_should_render_a_cyclical_er_diagram_004": {
@@ -128,17 +128,17 @@
     },
     "upstream_cypress_erdiagram_spec_should_render_edge_labels_correctly_when_flowchart_htmllabels_is_019": {
       "input_sha256": "3fe6711f9b8215704807e5143fd5e6647a958278ccb3ada275192a103c0b8a8c",
-      "svg_sha256": "383e7014f61f769a9015ed6f78d3410e4393c6ac0e1c3cc7e6cca6ea9d1602f5",
+      "svg_sha256": "fa57d20db677bc25b9ba59b0628df262a58f76bde67fef2bfa933c821cf10080",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_erdiagram_spec_should_render_entities_with_attributes_that_begin_with_asterisk_008": {
       "input_sha256": "207d619a4e27aa24b5015a8c47a09ce0902124fe61db5cd18822266d5f9cb81e",
-      "svg_sha256": "229643baeed62e89b04bd8530febe4bac1b3d35a6cd6bd6c16040e020f6be33b",
+      "svg_sha256": "a83e4638edf37596f8a2272969a0601576bd1c26ec0b562daf998e65e000507c",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_erdiagram_spec_should_render_entities_with_entity_name_aliases_010": {
       "input_sha256": "5566ad25d68c3107d204b59d397f5f6e949e5d9b3c6a3589c4a076dfce3bfe8b",
-      "svg_sha256": "4c0276344a0d4239e5b6153e2fcead891fce16a353d309e50917d208eaf4f3c7",
+      "svg_sha256": "5b4b1bf7ec7dddd5341b1e962ca01d724b9fb7ca44d53b92be83fcf8d35f2f62",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020": {
@@ -158,12 +158,12 @@
     },
     "upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011": {
       "input_sha256": "1ed001aeb61e286b8a8f869877fc410453e18b77f1601a482b6372bb26d2bb21",
-      "svg_sha256": "6dc02724a266711c934f921bbf2a2c89fa6af7e7898ea1cd10335f2c23fb0d46",
+      "svg_sha256": "320d43c5fbc522971949e9b4d25f0c2438464512a71db4a9577e73f6b2c3132b",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_erdiagram_unified_spec_example_014": {
       "input_sha256": "287f2ee92065b1e326dcfb65b31d83b39a454165713f548b8d7b65edbd4afb15",
-      "svg_sha256": "c1840d6b42c3e1dc6a5199ee4e7824c957ac6b87d52a92465b0ac5bbaabf9c87",
+      "svg_sha256": "c124f62750fc39ba810eeef3791c8d36a8015146b25575b054cff73a551842ad",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_theme_spec_should_render_a_er_diagram_005": {
@@ -183,42 +183,42 @@
     },
     "upstream_docs_entityrelationshipdiagram_attribute_keys_and_comments_020": {
       "input_sha256": "0bce57d423be8f2e4dc0d127a4ad45f7ac77f4447c0cde4da9e4993f80833ecf",
-      "svg_sha256": "065acc96d2016749ff005e53d0659b684088f95ed65552acdc616781442a0c2b",
+      "svg_sha256": "46de9fe79ef536d0dfacc2fe608622278dc1b0b4ec8b86c9b8b526e47b035008",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_attributes_015": {
       "input_sha256": "38d6e4a4399d6bef178dd6d0bd0fe1ce0abb141f33a33c09bdef37c6c6edb8bb",
-      "svg_sha256": "1ac4a8e15c2eca141a6088e589602be3392707c56394c7e1701a15f1383ec855",
+      "svg_sha256": "9ce1af414e2cbf0fcc392a0111017e6bfa40085b983a448c71064c0316e4ff66",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_classes_034": {
       "input_sha256": "685e5730a5e743fa0fecfbddd1fb0af0ca4354d6981d21a62bebad0a53604151",
-      "svg_sha256": "aa8a9ad9c4c0ab04589ede2ca0b001287116d809efd4f1907323a9f3cba28d21",
+      "svg_sha256": "258631556421e03228fb5d69ed0aa0c40dbc11877ad03b4053b22ff68f351b12",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_classes_036": {
       "input_sha256": "cd17cfb2345a33fbc8360bcaacc9ea2ed7ebb273293691416cff75824273c3ed",
-      "svg_sha256": "bcefd20fc4cc7917eb0a21576cf60d6cbad31200f8ad797a386e2cfedad79c7a",
+      "svg_sha256": "ed6e2bebc7de8007045a6cf122c78e9d57eb30d73d8c61379be7b90db10f2cb0",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_default_class_025": {
       "input_sha256": "1838b7a479e5110008e068a1f1f4ef1cb1f2b5629ec2101180e5370cc4d223cf",
-      "svg_sha256": "fe78af5af269b3c9ba1e70072d5837126a31d827280f087fa0bff362bbc84d6b",
+      "svg_sha256": "986d6eebee8182b01c96ab3c5520900633d1fcd98e0a95549588726265dcf740",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_direction_012": {
       "input_sha256": "84744d9ec428f780102ec75a15ff6362d8ac7a275046846abbe53e3c761a68a3",
-      "svg_sha256": "3014a16b04c3de154c485eecfebc310ac3cb10c69b2914c654c24c8918abf3bd",
+      "svg_sha256": "1727669a86e7d9275b4e244bb57fa37e82945207775c82cca2eee0f62784f350",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_direction_013": {
       "input_sha256": "4accb2527f09e89b73929bc3250671e1dfed23c48b027d7f3dc5bea7a80f839a",
-      "svg_sha256": "2826db518e611fedffaaa02c39d0c37c68ecd56a96982da549437c79420ea1f0",
+      "svg_sha256": "ffa7a78e3cd5f9d0c8b618898938697add930d4b10e97b807f502c4070838a5a",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_entity_name_aliases_017": {
       "input_sha256": "48baec41314cb4f555a1cf7e444450a6bf0928bc615fff065b2651bacaf98004",
-      "svg_sha256": "082e436e1eaa7ed7eadeaa6153be983ae844f94fdf9de5dd2e3f1a5febd945d5",
+      "svg_sha256": "af99b33d0112984c8abe718ac18cb68840fdc238373ccb71fbfc26ae6392448c",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_entity_relationship_diagrams_001": {
@@ -228,7 +228,7 @@
     },
     "upstream_docs_entityrelationshipdiagram_entity_relationship_diagrams_004": {
       "input_sha256": "421f7b70668e1fe69e7b60664dc713d1e5ee3cd39cfbcab8feb709e15ddd59ab",
-      "svg_sha256": "a5d3c8f1cfcf32d9f1b30c51a0977744403b7661fd64813d94f6b700a185006d",
+      "svg_sha256": "1a67796cfe703ad98e73c8464f942303391b18737f75b48345d55175d739a7d6",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_entityrelationshipdiagram_identification_011": {
@@ -258,7 +258,7 @@
     },
     "upstream_docs_entityrelationshipdiagram_unicode_text_007": {
       "input_sha256": "99e1dfb4c158699e33a425420c1e9f3c85fa63c0c2274e46ee393970416065fc",
-      "svg_sha256": "424be7fd416d79c5b9e3c56dec13ab0ba5236ce940a41db73cab7d204ff34d50",
+      "svg_sha256": "1b4582822cb48075aacb9dbc34e2e02e0ece1b7e20d4cb61081c4bb6a9e19b98",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_examples_entity_relationship_diagram_exclamation_experimental_syntax_enti_006": {
@@ -273,52 +273,52 @@
     },
     "upstream_examples_er_basic_er_schema_001": {
       "input_sha256": "6c6ecac0afe2cceeee625456fbbc7037b06c911fbb59609850d914bb6ae1cead",
-      "svg_sha256": "b68d6fffc75a306ae9e112372ce214db727c86615ed6701eb4bd7d06058b20ce",
+      "svg_sha256": "a8f6304c050786edb0389e9e8f44c2b71e8f6e86d72220c5942cce3249d1aee3",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_example_001": {
       "input_sha256": "3b806a39bd49cc2079fc54167f0ab9d8fe78df64160e142f7f089d827136e5b7",
-      "svg_sha256": "9ede9abd9829c466843d5d2a43e08ff465fe79b1175dc3edcd471bccb46cc680",
+      "svg_sha256": "02407a7cd15c88e21c84a6f473d936cce92668ab1b5d9f2c58e3bd6668ff606b",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_example_002": {
       "input_sha256": "276ca1c448e447e6c45eae9d5b67cd55568c84e1240f24ad689701015fe15f91",
-      "svg_sha256": "3ca19f2cd5a4ee7191fe9fb9a0a7b995e06ce7c0db56c70afafb21547e611e1f",
+      "svg_sha256": "6df21a316e31a5cac9b64dbdd9d819f7b0e0e1ce49ff573c13aea36ef97fbfdc",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_example_003": {
       "input_sha256": "0a04ab394b8f9c2815e3813191c7e4f760f93fcd61a7f7d053617ebc2321ca40",
-      "svg_sha256": "9632d576212f8c19a4f5acb86bfbb3258a14c9136edf8519d90a619c205b999e",
+      "svg_sha256": "752bba2a918cc78b40f46a4033717fe2b1a575c489bdaf022f8ba9e387670d8f",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_example_004": {
       "input_sha256": "d0c169e5daacb8165a6a97bce2b5a3717069bdb05c0edcbea234cd0bd7a91826",
-      "svg_sha256": "15b7e3cafd6c31bf69f62ebaba279990aa3d12ec35b9f3b8bf612ee7180b4629",
+      "svg_sha256": "4f823327384cd137928293b91f3adbaf09c293bd367a0bbd42f25d45f1430a31",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_example_005": {
       "input_sha256": "ee3063c099c7c1edabbe884dfe42390ce91d82fed12fa079f52d48662deb33d1",
-      "svg_sha256": "f544b56bbc9a125f5394788c532136b33440c8ee1c3c2f3cd9b6d16e7238b72f",
+      "svg_sha256": "2c05a7021741d241323ad7944331c1fba414aa72961e5b0e8b8cffdecb400ad1",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_example_006": {
       "input_sha256": "5b56a64ee740fc22146d0d369d21a22a4b1998a91bcf4199b4b21b07de41dbaf",
-      "svg_sha256": "4f3e4059b26d83a0ba9f209eeffa0d8ca264aaf5afa1ba7bd85ca96b1a66cc2b",
+      "svg_sha256": "9ff5b4bec42352bbeedc2ac556409e41167fd7141c8a17d7422d9951ed286d86",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_example_007": {
       "input_sha256": "dd02aeaec5233a62626e7d67ef924c610601550ac587bd23dd8f3464b54d0f58",
-      "svg_sha256": "d7847524e69655e1c4ac87f3ac8c96086e23a7d5bf07dfdb55d582a22d4ef351",
+      "svg_sha256": "c0b39af4774b390c49ac825d16c120469c10763aaa1bb7d2bcf555ae88e34ff8",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_multiline_example_001": {
       "input_sha256": "28470cd172032a45c3d4ce115f187949c89418d889566d00be600bf2bc72b4f3",
-      "svg_sha256": "1967720e4bf83237fa1299462639e04ffabe4b1c1c240b91f2e7cbb6e5509fd3",
+      "svg_sha256": "16a934fab46dd8473001cfe60a3f665bb820e9d6616648c13a012bd6ab299777",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_er_multiline_example_002": {
       "input_sha256": "fd1d93920d33968de20c1afc4806eef0a8ac2050cae7196fe2ed11614f34d96c",
-      "svg_sha256": "8517256cbbe3c5eeb62639f8080f86769b4c55b2b28487bd82b6ecd344523691",
+      "svg_sha256": "fc9f1eed403158af9feb5129019573f8259c8f796d648f2acac80aa3bb10d690",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_error_example_001": {
@@ -328,7 +328,7 @@
     },
     "upstream_pkgtests_diagram_orchestration_spec_004": {
       "input_sha256": "2e7a2df67252b23e0feb3b3c1775bce3971fabf394caa715b81059201b4946a4",
-      "svg_sha256": "2590694b537d4dd0575637ccaae397aa542f3b2e3c4bad17f11d75050dfe398a",
+      "svg_sha256": "27444494269982656c4c7ff3b8c5e6cee3375a6c432629af18e847029f662f95",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_diagram_orchestration_spec_030": {
@@ -548,7 +548,7 @@
     },
     "zed_pr_57644_er": {
       "input_sha256": "1a350285bcbe7dcf4b31317aaec118b97660e016f8be586a47ce4a15882c7655",
-      "svg_sha256": "8c624b9bb0d1bbb9ddd3e67f09f961c134014f7b1f594073a7966b3cb012760d",
+      "svg_sha256": "96542dbf4fb5be2fb40171b5f679d3e8b0aaa060099fd155b9b5a7f58041a23f",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     }
   },

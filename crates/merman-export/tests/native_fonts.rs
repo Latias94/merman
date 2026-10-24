@@ -27,6 +27,21 @@ fn load(limits: NativeFontLimits, control: &OperationControl) -> NativeFontConte
         .expect("controlled font fixtures load")
 }
 
+fn font_buffers() -> impl Iterator<Item = Vec<u8>> {
+    [
+        include_bytes!("fonts/Cousine-Regular.ttf").as_slice(),
+        include_bytes!("fonts/Cousine-Bold.ttf").as_slice(),
+        include_bytes!("fonts/Cousine-Italic.ttf").as_slice(),
+    ]
+    .into_iter()
+    .map(<[u8]>::to_vec)
+}
+
+fn load_memory(limits: NativeFontLimits, control: &OperationControl) -> NativeFontContext {
+    NativeFontContext::from_font_bytes(font_buffers(), limits, control)
+        .expect("owned font buffers load")
+}
+
 fn style(weight: &str, face_style: &str) -> TextStyle {
     TextStyle {
         font_family: Some("Cousine".to_owned()),
@@ -102,6 +117,243 @@ fn explicit_file_and_directory_order_produce_stable_content_identities() {
     assert_eq!(first, first.clone());
 }
 
+#[test]
+fn bytes_and_files_share_identity_face_count_residency_and_metrics() {
+    let control = OperationControl::new();
+    let file = load(Default::default(), &control);
+    let memory = load_memory(Default::default(), &control);
+    assert_eq!(file.identity(), memory.identity());
+    assert_eq!(file.face_count(), memory.face_count());
+    assert_eq!(file.resident_font_bytes(), memory.resident_font_bytes());
+    assert!(!memory.uses_system_fonts());
+    for (weight, face_style) in [("400", "normal"), ("700", "normal"), ("400", "italic")] {
+        let style = style(weight, face_style);
+        for operation in TextMeasurementOperation::ALL {
+            let request = HostTextMeasurementRequest {
+                operation,
+                phase: TextMeasurementPhase::SvgBBox,
+                text: "Owned font bytes",
+                style: &style,
+                max_width: Some(80.0),
+                wrap_mode: WrapMode::HtmlLike,
+            };
+            let actual = memory.measure(request).unwrap().expect("native metrics");
+            let expected = file.measure(request).unwrap().expect("file metrics");
+            merman_render::environment::validate_host_text_measurement(&request, &actual).unwrap();
+            match (actual, expected) {
+                (HostTextMeasurement::Length(actual), HostTextMeasurement::Length(expected)) => {
+                    assert_eq!(actual, expected);
+                }
+                (
+                    HostTextMeasurement::HorizontalExtents { left, right },
+                    HostTextMeasurement::HorizontalExtents {
+                        left: other_left,
+                        right: other_right,
+                    },
+                ) => {
+                    assert_eq!((left, right), (other_left, other_right));
+                }
+                (HostTextMeasurement::Metrics(actual), HostTextMeasurement::Metrics(expected)) => {
+                    assert_eq!(
+                        (actual.width, actual.height, actual.line_count),
+                        (expected.width, expected.height, expected.line_count)
+                    );
+                }
+                (
+                    HostTextMeasurement::WrappedWithRawWidth {
+                        metrics: actual,
+                        raw_width,
+                    },
+                    HostTextMeasurement::WrappedWithRawWidth {
+                        metrics: expected,
+                        raw_width: other_raw,
+                    },
+                ) => {
+                    assert_eq!(
+                        (actual.width, actual.height, actual.line_count, raw_width),
+                        (
+                            expected.width,
+                            expected.height,
+                            expected.line_count,
+                            other_raw
+                        )
+                    );
+                }
+                _ => panic!("mismatched native result variants for {operation:?}"),
+            }
+        }
+    }
+    assert_eq!(file.selected_faces(), memory.selected_faces());
+}
+
+#[test]
+fn memory_duplicates_share_faces_but_charge_all_input_sources_and_bytes() {
+    let bytes = include_bytes!("fonts/Cousine-Regular.ttf").to_vec();
+    let control = OperationControl::new();
+    let limits = NativeFontLimits {
+        max_files: 2,
+        max_bytes: bytes.len() * 2,
+        max_faces: 1,
+        ..Default::default()
+    };
+    let memory = NativeFontContext::from_font_bytes(
+        [bytes.clone(), bytes.clone()],
+        limits.clone(),
+        &control,
+    )
+    .unwrap();
+    let files = NativeFontOptions::default()
+        .with_font_file(font("Cousine-Regular.ttf"))
+        .with_font_file(font("Cousine-Regular.ttf"))
+        .with_limits(limits.clone())
+        .load(&control)
+        .unwrap();
+    let single =
+        NativeFontContext::from_font_bytes([bytes.clone()], limits.clone(), &control).unwrap();
+    assert_eq!(memory.face_count(), 1);
+    assert_eq!(memory.resident_font_bytes(), bytes.len());
+    assert_eq!(memory.identity(), single.identity());
+    assert_eq!(memory.identity(), files.identity());
+    for (limits, expected) in [
+        (
+            NativeFontLimits {
+                max_files: 1,
+                ..limits.clone()
+            },
+            "files",
+        ),
+        (
+            NativeFontLimits {
+                max_bytes: bytes.len(),
+                ..limits
+            },
+            "font-bytes",
+        ),
+    ] {
+        let from_bytes = NativeFontContext::from_font_bytes(
+            [bytes.clone(), bytes.clone()],
+            limits.clone(),
+            &control,
+        );
+        let from_files = NativeFontOptions::default()
+            .with_font_file(font("Cousine-Regular.ttf"))
+            .with_font_file(font("Cousine-Regular.ttf"))
+            .with_limits(limits)
+            .load(&control);
+        for result in [from_bytes, from_files] {
+            assert!(matches!(result,
+                Err(NativeFontError::Limit { resource, .. }) if resource == expected));
+        }
+    }
+}
+
+#[test]
+fn malformed_empty_and_over_limit_memory_fonts_return_structured_errors() {
+    let control = OperationControl::new();
+    assert!(matches!(
+        NativeFontContext::from_font_bytes([], Default::default(), &control),
+        Err(NativeFontError::EmptyFontSet)
+    ));
+    let mut missing_metrics = include_bytes!("fonts/Cousine-Regular.ttf").to_vec();
+    let table_count = u16::from_be_bytes([missing_metrics[4], missing_metrics[5]]) as usize;
+    let metrics_entry = missing_metrics[12..12 + table_count * 16]
+        .chunks_exact_mut(16)
+        .find(|entry| &entry[..4] == b"hhea")
+        .expect("fixture has horizontal metrics");
+    metrics_entry[..4].copy_from_slice(b"bad!");
+    for bytes in [
+        Vec::new(),
+        b"not an OpenType font".to_vec(),
+        missing_metrics,
+    ] {
+        let temporary = TestDirectory::new();
+        let path = temporary.0.join("malformed.ttf");
+        std::fs::write(&path, &bytes).unwrap();
+        let memory = NativeFontContext::from_font_bytes([bytes], Default::default(), &control);
+        let file = NativeFontOptions::default()
+            .with_font_file(path)
+            .load(&control);
+        let Err(NativeFontError::Source { path, message }) = memory else {
+            panic!("malformed memory font must report its source");
+        };
+        assert_eq!(path, Path::new("<memory-font-1>"));
+        assert!(
+            matches!(file, Err(NativeFontError::Source { message: other, .. }) if other == message)
+        );
+    }
+    let bytes = include_bytes!("fonts/Cousine-Regular.ttf").to_vec();
+    for (limits, resource) in [
+        (
+            NativeFontLimits {
+                max_files: 0,
+                ..Default::default()
+            },
+            "files",
+        ),
+        (
+            NativeFontLimits {
+                max_bytes: bytes.len() - 1,
+                ..Default::default()
+            },
+            "font-bytes",
+        ),
+        (
+            NativeFontLimits {
+                max_faces: 0,
+                ..Default::default()
+            },
+            "font-faces",
+        ),
+    ] {
+        assert!(matches!(
+            NativeFontContext::from_font_bytes([bytes.clone()], limits, &control),
+            Err(NativeFontError::Limit { resource: actual, .. }) if actual == resource
+        ));
+    }
+    // A collection's advertised cardinality is bounded before fontdb parses its faces.
+    let mut collection = b"ttcf\x00\x01\x00\x00".to_vec();
+    collection.extend_from_slice(&u32::MAX.to_be_bytes());
+    assert!(matches!(
+        NativeFontContext::from_font_bytes([collection], Default::default(), &control),
+        Err(NativeFontError::Limit {
+            resource: "font-faces",
+            ..
+        })
+    ));
+    assert!(
+        measure(
+            &load_memory(Default::default(), &control),
+            "recovered",
+            &style("400", "normal")
+        )
+        .unwrap()
+        .is_some()
+    );
+}
+
+#[test]
+fn memory_admission_observes_cancellation_before_and_between_iterator_items() {
+    let control = OperationControl::new();
+    control.cancel();
+    let unread = std::iter::once_with(|| -> Vec<u8> {
+        panic!("cancelled admission must not request a buffer")
+    });
+    assert!(matches!(
+        NativeFontContext::from_font_bytes(unread, Default::default(), &control),
+        Err(NativeFontError::Operation(OperationLedgerError::Cancelled(
+            _
+        )))
+    ));
+    let control = OperationControl::new();
+    let buffers = font_buffers().inspect(|_| control.cancel());
+    assert!(matches!(
+        NativeFontContext::from_font_bytes(buffers, Default::default(), &control),
+        Err(NativeFontError::Operation(OperationLedgerError::Cancelled(
+            _
+        )))
+    ));
+}
+
 struct TestDirectory(PathBuf);
 
 impl TestDirectory {
@@ -134,7 +386,7 @@ fn earlier_equal_face_descriptor_wins_even_when_source_bytes_differ() {
     let alternate = temporary.0.join("alternate.ttf");
     let mut bytes = std::fs::read(font("Cousine-Regular.ttf")).unwrap();
     bytes.extend_from_slice(b"non-table trailing bytes");
-    std::fs::write(&alternate, bytes).unwrap();
+    std::fs::write(&alternate, &bytes).unwrap();
     let original = NativeFontOptions::default()
         .with_font_file(font("Cousine-Regular.ttf"))
         .load(&OperationControl::new())
@@ -153,6 +405,20 @@ fn earlier_equal_face_descriptor_wins_even_when_source_bytes_differ() {
     assert_eq!(alternate_first.face_count(), 1);
     assert_eq!(original.identity(), original_first.identity());
     assert_ne!(original.identity(), alternate_first.identity());
+    let original_bytes = std::fs::read(font("Cousine-Regular.ttf")).unwrap();
+    for (buffers, expected) in [
+        ([original_bytes.clone(), bytes.clone()], original_first),
+        ([bytes, original_bytes], alternate_first),
+    ] {
+        let memory = NativeFontContext::from_font_bytes(
+            buffers,
+            Default::default(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(memory.face_count(), expected.face_count());
+        assert_eq!(memory.identity(), expected.identity());
+    }
 }
 
 #[test]
@@ -336,6 +602,227 @@ fn missing_glyph_declines_and_all_shared_operations_use_native_metrics() {
             .unwrap_or_else(|error| panic!("invalid {operation:?}: {error:?}"));
     }
     context.check().unwrap();
+}
+
+#[test]
+fn strict_coverage_errors_instead_of_declining_and_operation_forks_recover() {
+    let source = load_memory(Default::default(), &OperationControl::new());
+    let strict = source.clone().with_strict_glyph_coverage(true);
+    let style = style("400", "normal");
+    assert_ne!(source.identity(), strict.identity());
+    assert_eq!(
+        source.identity(),
+        strict.clone().with_strict_glyph_coverage(false).identity()
+    );
+    for operation in TextMeasurementOperation::ALL {
+        let operation_context = strict.for_operation(&OperationControl::new());
+        assert!(
+            operation_context
+                .measure(HostTextMeasurementRequest {
+                    operation,
+                    phase: TextMeasurementPhase::SvgBBox,
+                    text: "\u{10ffff}",
+                    style: &style,
+                    max_width: Some(80.0),
+                    wrap_mode: WrapMode::SvgLike,
+                })
+                .is_err(),
+            "strict {operation:?} must not decline"
+        );
+        assert!(matches!(
+            operation_context.check(),
+            Err(NativeFontError::MissingGlyphCoverage)
+        ));
+        assert!(matches!(
+            operation_context.for_export(&OperationControl::new()),
+            Err(NativeFontError::MissingGlyphCoverage)
+        ));
+        let recovered = operation_context.for_operation(&OperationControl::new());
+        assert!(measure(&recovered, "Recovered", &style).unwrap().is_some());
+    }
+    let export = strict.for_export(&OperationControl::new()).unwrap();
+    assert!(measure(&export, "\u{10ffff}", &style).is_err());
+    strict.check().unwrap();
+    source.check().unwrap();
+    assert!(measure(&source, "\u{10ffff}", &style).unwrap().is_none());
+    let next_export = strict.for_export(&OperationControl::new()).unwrap();
+    assert!(
+        measure(&next_export, "Recovered", &style)
+            .unwrap()
+            .is_some()
+    );
+    assert!(measure(&next_export, "\u{10ffff}", &style).is_err());
+}
+
+#[test]
+fn memory_operation_and_export_forks_isolate_budgets_caches_and_cancellation() {
+    let source = load_memory(
+        NativeFontLimits {
+            max_measurements: 1,
+            ..Default::default()
+        },
+        &OperationControl::new(),
+    );
+    let first_control = OperationControl::new();
+    let first = source.for_operation(&first_control);
+    let second = source.for_operation(&OperationControl::new());
+    let export = first.for_export(&OperationControl::new()).unwrap();
+    let style = style("400", "normal");
+    assert!(measure(&first, "first", &style).unwrap().is_some());
+    assert!(measure(&first, "exhausted", &style).is_err());
+    assert!(measure(&second, "second", &style).unwrap().is_some());
+    assert!(measure(&export, "export", &style).unwrap().is_some());
+    first_control.cancel();
+    source.check().unwrap();
+    second.check().unwrap();
+    export.check().unwrap();
+    assert!(source.selected_faces().is_empty());
+    for context in [&first, &second, &export] {
+        assert_eq!(source.identity(), context.identity());
+        assert_eq!(source.resident_font_bytes(), context.resident_font_bytes());
+    }
+}
+
+#[cfg(feature = "bundled-fonts")]
+#[test]
+fn bundled_fonts_are_opt_in_owned_buffers_with_caller_precedence() {
+    let bundled: Vec<_> = merman_export::bundled_font_data().collect();
+    assert_eq!(bundled.len(), 3);
+    let source = NativeFontContext::from_font_bytes(
+        bundled.clone(),
+        Default::default(),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    assert_eq!(source.face_count(), 3);
+    assert!(!source.uses_system_fonts());
+    let mut caller = bundled[0].clone();
+    caller.extend_from_slice(b"caller priority");
+    let caller_first = NativeFontContext::from_font_bytes(
+        std::iter::once(caller.clone()).chain(merman_export::bundled_font_data()),
+        Default::default(),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    let expected = NativeFontContext::from_font_bytes(
+        [caller, bundled[1].clone(), bundled[2].clone()],
+        Default::default(),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    assert_eq!(caller_first.face_count(), 3);
+    assert_eq!(caller_first.identity(), expected.identity());
+    assert_ne!(caller_first.identity(), source.identity());
+    for (weight, face_style) in [("400", "normal"), ("700", "normal"), ("400", "italic")] {
+        assert!(
+            measure(&caller_first, "Bundled fonts", &style(weight, face_style))
+                .unwrap()
+                .is_some()
+        );
+    }
+}
+
+#[cfg(feature = "png")]
+fn export_svg(label: &str) -> merman_render::svg::ResvgCompatibleSvg {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let source = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="8" y="32" font-family="Cousine" font-size="22">{label}</text></svg>"#
+    );
+    merman_render::svg::finalize_resvg_svg(&source, &session).unwrap()
+}
+
+#[cfg(feature = "png")]
+fn png_pixels(bytes: Vec<u8>) -> (u32, u32, Vec<u8>) {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert_eq!(info.color_type, png::ColorType::Rgba);
+    pixels.truncate(info.buffer_size());
+    (info.width, info.height, pixels)
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn bytes_and_files_paint_identical_nonempty_png_pixels() {
+    let control = OperationControl::new();
+    let svg = export_svg(
+        "Owned regular <tspan font-weight=\"700\">bold</tspan> <tspan font-style=\"italic\">italic</tspan>",
+    );
+    let render = |context| {
+        merman_export::svg_to_png_with_report(
+            &svg,
+            &merman_export::RasterOptions::default().with_font_context(context),
+        )
+        .unwrap()
+    };
+    let (file, file_report) = render(load(Default::default(), &control));
+    let (memory, memory_report) = render(load_memory(Default::default(), &control));
+    assert_eq!(file_report.fonts(), memory_report.fonts());
+    assert_eq!(
+        memory_report.fonts().source_mode(),
+        merman_export::ExportFontMode::NativeContext
+    );
+    assert!(!memory_report.fonts().used_system_fonts());
+    assert!(!memory_report.fonts().unresolved_font_request());
+    assert!(!memory_report.fonts().unresolved_glyph_fallback());
+    let file_pixels = png_pixels(file);
+    let memory_pixels = png_pixels(memory);
+    assert_eq!(file_pixels, memory_pixels);
+    assert_eq!((memory_pixels.0, memory_pixels.1), (400, 80));
+    assert!(
+        memory_pixels.2.chunks_exact(4).any(|pixel| pixel[3] != 0),
+        "the PNG must paint actual font glyphs, not an empty canvas"
+    );
+}
+
+#[cfg(all(feature = "png", not(feature = "system-fonts")))]
+#[test]
+fn no_system_png_requires_context_and_recovers_after_normal_errors() {
+    use merman_export::{ExportError, RasterOptions, svg_to_png};
+    assert!(!merman_export::system_font_discovery_available());
+    assert!(
+        merman_export::output_environment_contract("png")
+            .unwrap()
+            .system_fonts
+            .is_none()
+    );
+    let svg = export_svg("Memory only");
+    assert!(matches!(
+        svg_to_png(&svg, &RasterOptions::default()),
+        Err(ExportError::FontSourceUnavailable)
+    ));
+    let source =
+        load_memory(Default::default(), &OperationControl::new()).with_strict_glyph_coverage(true);
+    let export_options = || {
+        RasterOptions::default()
+            .with_font_context(source.for_export(&OperationControl::new()).unwrap())
+    };
+    let missing = export_svg("Missing &#x10ffff;");
+    assert!(matches!(
+        svg_to_png(&missing, &export_options()),
+        Err(ExportError::NativeFont(
+            NativeFontError::MissingGlyphCoverage
+        ))
+    ));
+    let mut invalid = export_options();
+    invalid.scale = f32::NAN;
+    assert!(matches!(
+        svg_to_png(&svg, &invalid),
+        Err(ExportError::InvalidScale)
+    ));
+    source.check().unwrap();
+    let (_, _, pixels) = png_pixels(svg_to_png(&svg, &export_options()).unwrap());
+    assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] != 0));
+    let permissive = RasterOptions::default()
+        .with_font_context(source.clone().with_strict_glyph_coverage(false));
+    assert!(
+        svg_to_png(&missing, &permissive).is_ok(),
+        "default coverage behavior stays permissive"
+    );
 }
 
 #[test]

@@ -1124,11 +1124,8 @@ mod tests {
             json!({"securityLevel":"loose", "dompurifyConfig":{"ADD_TAGS":["noscript", "xmp"]}}),
         );
         let text = "<body><noscript>&lt;img src=x onerror=alert(1)&gt;</noscript></body>";
-        assert_eq!(
-            sanitize_text(text, &config),
-            "<noscript>&lt;img src=x onerror=alert(1)&gt;</noscript>"
-        );
         for input in [
+            text,
             "<body><noscript>&lt;/noscript&gt;&lt;img src=x onerror=alert(1)&gt;</noscript></body>",
             "<body><noscript><img src=x onerror=alert(1)></noscript></body>",
             "<xmp><img src=x onerror=alert(1)></xmp>",
@@ -1136,6 +1133,18 @@ mod tests {
             assert_eq!(sanitize_text(input, &config), "", "{input}");
             assert_eq!(sanitize_xhtml(input, &config), "", "{input}");
         }
+        let unsafe_config = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "dompurifyConfig": {"ADD_TAGS": ["noscript", "xmp"], "SAFE_FOR_XML": false}
+        }));
+        assert_eq!(
+            sanitize_text(text, &unsafe_config),
+            "<noscript>&lt;img src=x onerror=alert(1)&gt;</noscript>"
+        );
+        assert_eq!(
+            sanitize_xhtml(text, &unsafe_config),
+            "<noscript>&lt;img src=x onerror=alert(1)&gt;</noscript>"
+        );
     }
 
     #[test]

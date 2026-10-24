@@ -19,6 +19,7 @@ const TRANSPORT_TARGETS: &[(&str, &str)] = &[
     ("merman-ffi", "native"),
     ("merman-typst-plugin", "typst"),
     ("merman-uniffi", "native"),
+    ("merman-wasi", "native"),
     ("merman-wasm", "web"),
 ];
 const HOST_TRANSPORT_PACKAGES: &[&str] = &["merman-ffi", "merman-uniffi"];
@@ -35,6 +36,7 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-render",
     "merman-typst-plugin",
     "merman-uniffi",
+    "merman-wasi",
     "merman-wasm",
 ];
 const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
@@ -48,9 +50,9 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
         ],
     ),
     ("merman-analysis", &[]),
-    ("merman-android-jni", &["native-runtime"]),
+    ("merman-android-jni", &["native-runtime", "system-fonts"]),
     ("merman-ascii", &[]),
-    ("merman-bindings-core", &["native-runtime"]),
+    ("merman-bindings-core", &["native-runtime", "system-fonts"]),
     (
         "merman-cli",
         &["system-fonts", "experimental-system-font-query"],
@@ -59,14 +61,25 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-editor-core", &[]),
     (
         "merman-export",
-        &["system-fonts", "experimental-system-font-query"],
+        &[
+            "bundled-fonts",
+            "system-fonts",
+            "experimental-system-font-query",
+        ],
     ),
-    ("merman-ffi", &["native-runtime"]),
+    (
+        "merman-ffi",
+        &["bundled-fonts", "native-runtime", "system-fonts"],
+    ),
     ("merman-lsp", &["stdio"]),
     ("merman-render", &[]),
     ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
-    ("merman-uniffi", &["binding-generation", "native-runtime"]),
+    (
+        "merman-uniffi",
+        &["binding-generation", "native-runtime", "system-fonts"],
+    ),
+    ("merman-wasi", &["bundled-fonts"]),
     ("merman-wasm", &[]),
     ("roughr-merman", &["host-random", "legacy-compat"]),
 ];
@@ -85,6 +98,16 @@ const NATIVE_RUNTIME_FORWARDERS: &[(&str, &str)] = &[
     ("merman-android-jni", "merman-bindings-core"),
     ("merman-ffi", "merman-bindings-core"),
     ("merman-uniffi", "merman-bindings-core"),
+];
+const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
+    ("merman-export", "bundled-fonts", "native-fonts"),
+    ("merman-bindings-core", "native-fonts", "svg"),
+    ("merman-bindings-core", "system-fonts", "native-fonts"),
+    ("merman-ffi", "native-fonts", "svg"),
+    ("merman-ffi", "bundled-fonts", "native-fonts"),
+    ("merman-ffi", "system-fonts", "native-fonts"),
+    ("merman-wasi", "native-fonts", "svg"),
+    ("merman-wasi", "bundled-fonts", "native-fonts"),
 ];
 const PRODUCT_FEATURE_CONTRACTS: usize = 7;
 
@@ -127,6 +150,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "pdf",
             "png",
             "svg",
+            "system-fonts",
         ],
     },
     FeatureForwardingContract {
@@ -138,9 +162,11 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "layout-cytoscape",
             "layout-elk",
             "math",
+            "native-fonts",
             "pdf",
             "png",
             "svg",
+            "system-fonts",
         ],
     },
     FeatureForwardingContract {
@@ -173,10 +199,17 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "layout-cytoscape",
             "layout-elk",
             "math",
+            "native-fonts",
             "pdf",
             "png",
             "svg",
+            "system-fonts",
         ],
+    },
+    FeatureForwardingContract {
+        package: "merman-ffi",
+        dependency: "merman-export",
+        features: &["bundled-fonts"],
     },
     FeatureForwardingContract {
         package: "merman-uniffi",
@@ -191,7 +224,27 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "pdf",
             "png",
             "svg",
+            "system-fonts",
         ],
+    },
+    FeatureForwardingContract {
+        package: "merman-wasi",
+        dependency: "merman-bindings-core",
+        features: &[
+            "analysis",
+            "ascii",
+            "layout-cytoscape",
+            "layout-elk",
+            "math",
+            "native-fonts",
+            "png",
+            "svg",
+        ],
+    },
+    FeatureForwardingContract {
+        package: "merman-wasi",
+        dependency: "merman-export",
+        features: &["bundled-fonts", "native-fonts"],
     },
     FeatureForwardingContract {
         package: "merman-wasm",
@@ -237,6 +290,48 @@ const PUBLISHED_DEFAULT_CONTRACTS: &[PublishedDefaultContract] = &[PublishedDefa
 }];
 
 const DEPENDENCY_FEATURE_CONTRACTS: &[DependencyFeatureContract] = &[
+    DependencyFeatureContract {
+        package: "merman-bindings-core",
+        dependency: "merman",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
+    },
+    DependencyFeatureContract {
+        package: "merman-ffi",
+        dependency: "merman-bindings-core",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
+    },
+    DependencyFeatureContract {
+        package: "merman-ffi",
+        dependency: "merman",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
+    },
+    DependencyFeatureContract {
+        package: "merman-ffi",
+        dependency: "merman-export",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
+    },
+    DependencyFeatureContract {
+        package: "merman-wasi",
+        dependency: "merman-bindings-core",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
+    },
+    DependencyFeatureContract {
+        package: "merman-wasi",
+        dependency: "merman",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
+    },
+    DependencyFeatureContract {
+        package: "merman-wasi",
+        dependency: "merman-export",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
+    },
     DependencyFeatureContract {
         package: "dugong",
         dependency: "serde_json",
@@ -499,7 +594,8 @@ impl FeatureGraph {
         report.feature_allowlists = self.validate_public_feature_allowlists()?;
         self.validate_diagram_selectors()?;
         report.forwarding_edges = self.validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)?
-            + self.validate_native_runtime_feature_contract()?;
+            + self.validate_native_runtime_feature_contract()?
+            + self.validate_font_feature_contracts()?;
         report.dependency_feature_boundaries =
             self.validate_dependency_feature_contracts(DEPENDENCY_FEATURE_CONTRACTS)?;
         let transport_package_names = transport_packages().collect::<Vec<_>>();
@@ -699,6 +795,20 @@ impl FeatureGraph {
             }
         }
         Ok(checked)
+    }
+
+    fn validate_font_feature_contracts(&self) -> Result<usize, XtaskError> {
+        for (package_name, feature, prerequisite) in LOCAL_FONT_FEATURE_CONTRACTS {
+            let closure = self.local_closure(package_name, [*feature])?;
+            if !closure.contains(*prerequisite) {
+                let package = self.package(package_name)?;
+                return Err(matrix_error(format!(
+                    "{}: feature `{feature}` must imply this crate's `{prerequisite}` feature",
+                    package.manifest_path.display()
+                )));
+            }
+        }
+        Ok(LOCAL_FONT_FEATURE_CONTRACTS.len())
     }
 
     fn validate_native_runtime_feature_contract(&self) -> Result<usize, XtaskError> {
@@ -1180,6 +1290,7 @@ impl FeatureGraph {
     fn build_target_for(&self, package_name: &str) -> Option<String> {
         match package_name {
             "merman-android-jni" => Some("aarch64-linux-android".to_string()),
+            "merman-wasi" => Some("wasm32-wasip1".to_string()),
             package if wasm_transport_packages().any(|candidate| candidate == package) => {
                 Some("wasm32-unknown-unknown".to_string())
             }
@@ -1682,6 +1793,151 @@ mod tests {
         }
     }
 
+    fn manifest_feature_graph() -> FeatureGraph {
+        let root = super::super::workspace_root();
+        graph(
+            PUBLIC_FEATURE_ALLOWLIST_EXTRAS
+                .iter()
+                .map(|(name, _)| {
+                    let mut package = package(name, &[]);
+                    let directory = if *name == "roughr-merman" {
+                        "roughr"
+                    } else {
+                        name
+                    };
+                    package.manifest_path = root.join("crates").join(directory).join("Cargo.toml");
+                    let source = std::fs::read_to_string(&package.manifest_path).unwrap();
+                    let manifest = toml::from_str::<toml::Table>(&source).unwrap();
+                    package.features = manifest
+                        .get("features")
+                        .unwrap()
+                        .clone()
+                        .try_into()
+                        .unwrap();
+                    package
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn workspace_manifests_satisfy_static_feature_owner_contracts() {
+        let graph = manifest_feature_graph();
+        graph.validate_public_feature_allowlists().unwrap();
+        graph
+            .validate_empty_default_contracts(EMPTY_DEFAULT_PACKAGES)
+            .unwrap();
+        graph
+            .validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)
+            .unwrap();
+        graph.validate_font_feature_contracts().unwrap();
+        graph
+            .validate_transport_contracts(&transport_packages().collect::<Vec<_>>())
+            .unwrap();
+    }
+
+    #[test]
+    fn font_owners_require_local_prerequisites_despite_dependency_forwarding() {
+        for (name, feature, prerequisite) in [
+            ("merman-export", "bundled-fonts", "native-fonts"),
+            ("merman-bindings-core", "native-fonts", "svg"),
+            ("merman-bindings-core", "system-fonts", "native-fonts"),
+            ("merman-ffi", "native-fonts", "svg"),
+            ("merman-ffi", "bundled-fonts", "native-fonts"),
+            ("merman-ffi", "system-fonts", "native-fonts"),
+            ("merman-wasi", "native-fonts", "svg"),
+            ("merman-wasi", "bundled-fonts", "native-fonts"),
+        ] {
+            let mut graph = manifest_feature_graph();
+            graph
+                .packages
+                .get_mut(name)
+                .unwrap()
+                .features
+                .get_mut(feature)
+                .unwrap()
+                .retain(|edge| edge != prerequisite);
+
+            let error = graph.validate_font_feature_contracts().unwrap_err();
+            let message = error.to_string();
+            assert!(message.contains(name), "{error}");
+            assert!(message.contains(&format!("feature `{feature}`")), "{error}");
+            assert!(
+                message.contains(&format!("this crate's `{prerequisite}`")),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn font_forwarders_reject_wrong_dependency_edges() {
+        for contract in FEATURE_FORWARDING_CONTRACTS {
+            for feature in contract.features.iter().filter(|feature| {
+                matches!(**feature, "native-fonts" | "bundled-fonts" | "system-fonts")
+            }) {
+                let mut graph = manifest_feature_graph();
+                graph
+                    .packages
+                    .get_mut(contract.package)
+                    .unwrap()
+                    .features
+                    .insert((*feature).to_string(), vec![format!("ambient/{feature}")]);
+
+                let error = graph.validate_feature_forwarding(&[*contract]).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("must forward `{feature}`")),
+                    "{error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_font_owners_reject_eager_dependency_features_and_defaults() {
+        for (name, dependency) in [
+            ("merman-bindings-core", "merman"),
+            ("merman-ffi", "merman-bindings-core"),
+            ("merman-ffi", "merman"),
+            ("merman-ffi", "merman-export"),
+            ("merman-wasi", "merman-bindings-core"),
+            ("merman-wasi", "merman"),
+            ("merman-wasi", "merman-export"),
+        ] {
+            let contract = *DEPENDENCY_FEATURE_CONTRACTS
+                .iter()
+                .find(|contract| contract.package == name && contract.dependency == dependency)
+                .unwrap();
+            let owner = package_with_dependency_features(name, &[(dependency, &[])]);
+            graph(vec![owner.clone()])
+                .validate_dependency_feature_contracts(&[contract])
+                .unwrap();
+
+            let mut widened = owner.clone();
+            widened.dependencies[0]
+                .features
+                .push("native-fonts".to_string());
+            let error = graph(vec![widened])
+                .validate_dependency_feature_contracts(&[contract])
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("feature boundary expected {}"),
+                "{error}"
+            );
+
+            let mut owner = owner;
+            owner.dependencies[0].uses_default_features = true;
+            let error = graph(vec![owner])
+                .validate_dependency_feature_contracts(&[contract])
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("default-feature boundary"),
+                "{error}"
+            );
+        }
+    }
+
     fn product_contract_graph() -> FeatureGraph {
         graph(vec![
             package(
@@ -2018,6 +2274,7 @@ mod tests {
                 "merman-ffi",
                 "merman-typst-plugin",
                 "merman-uniffi",
+                "merman-wasi",
                 "merman-wasm",
             ]
         );
@@ -2187,6 +2444,27 @@ mod tests {
     }
 
     #[test]
+    fn public_feature_allowlist_does_not_share_font_extras_across_owners() {
+        for (name, feature) in [
+            ("merman-wasi", "system-fonts"),
+            ("merman-wasi", "native-runtime"),
+            ("merman-wasm", "bundled-fonts"),
+            ("merman-typst-plugin", "bundled-fonts"),
+            ("merman-bindings-core", "bundled-fonts"),
+        ] {
+            let graph = graph(vec![package(name, &[("default", &[]), (feature, &[])])]);
+            let extras = PUBLIC_FEATURE_ALLOWLIST_EXTRAS
+                .iter()
+                .find_map(|(candidate, extras)| (*candidate == name).then_some(*extras))
+                .unwrap();
+            let error = graph
+                .validate_public_feature_allowlist(name, extras)
+                .unwrap_err();
+            assert!(error.to_string().contains(feature), "{error}");
+        }
+    }
+
+    #[test]
     fn public_feature_allowlist_still_rejects_unknown_features() {
         let graph = graph(vec![package(
             "merman-render",
@@ -2333,5 +2611,46 @@ mod tests {
             Some("wasm32-unknown-unknown")
         );
         assert_eq!(graph.build_target_for("merman-ffi"), None);
+        assert_eq!(transport_target("merman-wasi").unwrap(), "native");
+        assert_eq!(
+            graph.build_target_for("merman-wasi").as_deref(),
+            Some("wasm32-wasip1")
+        );
+    }
+
+    #[test]
+    fn wasi_build_cases_use_wasip1_without_expanding_the_representative_matrix() {
+        let graph = manifest_feature_graph();
+        let representative = graph.build_cases(false, &[]).unwrap();
+        assert!(
+            !representative
+                .iter()
+                .any(|case| case.package == "merman-wasi")
+        );
+
+        let strict = graph.build_cases(true, &[]).unwrap();
+        let wasi = strict
+            .iter()
+            .filter(|case| case.package == "merman-wasi")
+            .collect::<Vec<_>>();
+        assert!(!wasi.is_empty());
+        assert!(wasi.iter().all(|case| {
+            case.target.as_deref() == Some("wasm32-wasip1") && !case.default_features
+        }));
+        for features in [
+            vec![],
+            vec!["svg"],
+            vec!["native-fonts"],
+            vec!["png"],
+            vec!["all-diagrams"],
+        ] {
+            assert!(
+                wasi.iter().any(|case| case.features == features),
+                "{features:?}"
+            );
+        }
+        for selector in merman_core::diagram_family_selectors() {
+            assert!(wasi.iter().any(|case| case.features == [selector.feature]));
+        }
     }
 }

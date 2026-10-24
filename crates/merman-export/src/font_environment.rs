@@ -1,10 +1,14 @@
+#[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
 use super::font_selection::FontSelectionPolicy;
 use super::{ExportError, Result};
+#[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
 use merman_render::diagram_theme::{FontCatalog, FontSource};
 use merman_render::svg::ResvgCompatibleSvg;
 use std::collections::{BTreeSet, HashSet};
+use std::sync::Arc;
+#[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
 
 /// Effective font-source order admitted for one native export.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,11 +292,20 @@ pub(crate) struct ExportFontEnvironment {
 
 impl ExportFontEnvironment {
     pub(crate) fn from_svg(svg: &ResvgCompatibleSvg) -> Result<Self> {
-        Self::from_resources(svg.font_catalog(), svg.font_source_policy(), || {
-            shared_system_fonts().clone()
-        })
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        {
+            Self::from_resources(svg.font_catalog(), svg.font_source_policy(), || {
+                shared_system_fonts().clone()
+            })
+        }
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+        {
+            let _ = svg;
+            Err(ExportError::FontSourceUnavailable)
+        }
     }
 
+    #[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
     fn from_resources(
         catalog: &FontCatalog,
         policy: &merman_render::diagram_theme::FontSourcePolicy,
@@ -308,6 +321,9 @@ impl ExportFontEnvironment {
         }
 
         let (fontdb, selection) = system_fonts();
+        if fontdb.faces().next().is_none() {
+            return Err(ExportError::FontSourceUnavailable);
+        }
         let recorder = Arc::new(FontResolutionRecorder::default());
         let default_family = selection.default_family(&fontdb).unwrap_or_default();
         let resolver = system_font_resolver(Arc::clone(&fontdb), selection, Arc::clone(&recorder));
@@ -327,6 +343,7 @@ impl ExportFontEnvironment {
     }
 }
 
+#[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
 fn system_font_resolver(
     fontdb: Arc<usvg::fontdb::Database>,
     selection: Arc<FontSelectionPolicy>,
@@ -368,6 +385,7 @@ fn system_font_resolver(
     }
 }
 
+#[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 fn shared_system_fonts() -> &'static (Arc<usvg::fontdb::Database>, Arc<FontSelectionPolicy>) {
     static FONTS: OnceLock<(Arc<usvg::fontdb::Database>, Arc<FontSelectionPolicy>)> =
         OnceLock::new();
@@ -380,7 +398,7 @@ fn shared_system_fonts() -> &'static (Arc<usvg::fontdb::Database>, Arc<FontSelec
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "system-fonts", not(target_family = "wasm")))]
 pub(crate) fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
     Arc::clone(&shared_system_fonts().0)
 }
@@ -407,6 +425,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     fn system_font_catalog_reuses_the_shared_system_database() {
         for policy in [
             FontSourcePolicy::system_only(),
@@ -551,7 +570,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "system-fonts"))]
     #[test]
     fn linux_fontconfig_symbol_alias_preserves_serif_and_zenuml_default_stack() {
         const CHILD: &str = "MERMAN_SYMBOL_FONTCONFIG_CHILD";
@@ -794,10 +813,12 @@ mod tests {
     #[test]
     fn explicit_native_context_is_host_owned_without_claiming_a_system_face() {
         let control = merman_core::OperationControl::new();
-        let context = crate::NativeFontOptions::default()
-            .with_font_file("tests/fonts/Cousine-Regular.ttf")
-            .load(&control)
-            .expect("explicit fixture font loads");
+        let context = crate::NativeFontContext::from_font_bytes(
+            [include_bytes!("../tests/fonts/Cousine-Regular.ttf").to_vec()],
+            crate::NativeFontLimits::default(),
+            &control,
+        )
+        .expect("explicit fixture font loads");
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
         let seed = ExportFontPlanSeed::from_native_context(&context, observer);

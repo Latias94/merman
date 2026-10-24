@@ -155,6 +155,8 @@ fn has_native_sdk_operation_features() -> bool {
 
 fn matches_native_sdk_artifact_profile() -> bool {
     has_native_sdk_operation_features()
+        && cfg!(feature = "all-diagrams")
+        && cfg!(feature = "system-fonts")
 }
 
 fn hash_size_t(mut hash: u64, value: usize) -> u64 {

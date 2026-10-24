@@ -15,19 +15,24 @@ use merman_render::text::{
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+#[cfg(not(target_family = "wasm"))]
 use std::fs;
+#[cfg(not(target_family = "wasm"))]
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-#[cfg(feature = "experimental-system-font-query")]
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
 mod platform;
-#[cfg(feature = "system-fonts")]
+#[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 mod registry;
-#[cfg(feature = "system-fonts")]
+#[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 mod resolver;
-#[cfg(feature = "system-fonts")]
+#[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 mod system;
 
 /// Explicit sources are processed in order; directory contents use stable path order.
@@ -40,7 +45,9 @@ pub enum FontSource {
 /// Independent ceilings for font acquisition, residency, and shaping probes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeFontLimits {
+    /// Maximum input sources, including duplicate files or memory buffers.
     pub max_files: usize,
+    /// Cumulative input bytes, charged before content deduplication.
     pub max_bytes: usize,
     pub max_faces: usize,
     pub max_directory_entries: usize,
@@ -118,7 +125,10 @@ impl NativeFontOptions {
     /// Authorizes platform-managed discovery when system fonts are requested.
     /// Platform metadata access is outside Merman's acquisition limits; selected
     /// font bytes remain bounded and shared by measurement and painting.
-    #[cfg(feature = "experimental-system-font-query")]
+    #[cfg(all(
+        feature = "experimental-system-font-query",
+        not(target_family = "wasm")
+    ))]
     pub fn load_platform(
         self,
         control: &OperationControl,
@@ -132,121 +142,35 @@ impl NativeFontOptions {
         platform_requested: bool,
     ) -> Result<NativeFontContext, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Admission)?;
-        #[cfg(not(feature = "system-fonts"))]
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         if self.system_fonts {
             return Err(NativeFontError::SystemDiscoveryUnavailable);
         }
         let mut loader = FontLoader::new(self.limits, control.clone());
         for source in self.sources {
+            #[cfg(not(target_family = "wasm"))]
             match source {
                 FontSource::File(path) => loader.file(&path)?,
                 FontSource::Directory(path) => loader.directory(&path, 0)?,
             }
-        }
-        #[cfg(feature = "experimental-system-font-query")]
-        let explicit_face_count = loader.database.faces().count();
-        #[cfg(feature = "experimental-system-font-query")]
-        let platform = if self.system_fonts && platform_requested {
-            let mut explicit = loader.database.clone();
-            loader.selection.configure_generics(&mut explicit);
-            let catalog = platform::PlatformCatalog::new(control)?;
-            if loader.database.faces().next().is_none() {
-                loader.file(&catalog.default_path(control)?)?;
+            #[cfg(target_family = "wasm")]
+            match source {
+                FontSource::File(path) | FontSource::Directory(path) => {
+                    return Err(source_error(
+                        &path,
+                        "filesystem font acquisition is unavailable on WebAssembly; provide font bytes",
+                    ));
+                }
             }
-            Some((Arc::new(catalog), Arc::new(explicit)))
-        } else {
-            None
-        };
-        #[cfg(not(feature = "experimental-system-font-query"))]
-        let _ = platform_requested;
-        loader.selection.configure_generics(&mut loader.database);
-        #[cfg(feature = "experimental-system-font-query")]
-        let initial_system_faces = if platform.is_some() && explicit_face_count == 0 {
-            loader.database.faces().map(|face| face.id).collect()
-        } else {
-            BTreeSet::new()
-        };
-        #[cfg(not(feature = "experimental-system-font-query"))]
-        let initial_system_faces = BTreeSet::new();
-        #[cfg(feature = "system-fonts")]
-        let system = if self.system_fonts && !platform_requested {
-            Some(system::SystemCatalog::discover(&loader, control)?)
-        } else {
-            None
-        };
-        #[cfg(feature = "system-fonts")]
-        let metadata = system
-            .as_ref()
-            .map_or(&loader.database, |catalog| catalog.database.as_ref());
-        #[cfg(not(feature = "system-fonts"))]
-        let metadata = &loader.database;
-        if metadata.faces().next().is_none() {
-            return Err(NativeFontError::EmptyFontSet);
         }
-        #[cfg(feature = "system-fonts")]
-        let selection = system
-            .as_ref()
-            .map_or(&loader.selection, |catalog| &catalog.selection);
-        #[cfg(not(feature = "system-fonts"))]
-        let selection = &loader.selection;
-        // A symbol-only context remains usable through an explicit family name.
-        let default_family = selection.default_family(metadata).unwrap_or_default();
-        loader
-            .hash
-            .update(b"merman-native-text-v3/usvg-0.47/resolver-v2");
-        #[cfg(feature = "experimental-system-font-query")]
-        if platform.is_some() {
-            // Platform identities describe policy and admitted initial bytes,
-            // not a content digest of every installed system font.
-            loader.hash.update(b"platform-query/fontique-0.12.0/v2");
-        }
-        #[cfg(feature = "system-fonts")]
-        if let Some(catalog) = &system {
-            loader.hash.update(&catalog.identity);
-        }
-        let identity = loader
-            .hash
-            .finalize()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
-        control.terminal_checkpoint_at(OperationPhase::Admission)?;
-        #[cfg(feature = "system-fonts")]
-        let discovery =
-            system.map(|catalog| resolver::DiscoveryProvider::Bounded(Arc::new(catalog)));
-        #[cfg(feature = "experimental-system-font-query")]
-        let discovery = platform
-            .map(|(catalog, explicit)| resolver::DiscoveryProvider::Platform { catalog, explicit })
-            .or(discovery);
-        #[cfg(feature = "system-fonts")]
-        let sources = registry::FontSourceRegistry::new(
-            loader.initial_sources,
-            loader.source_aliases,
-            loader.files,
-            loader.database.faces().count(),
-        );
-        Ok(NativeFontContext(Arc::new(FontContextInner {
-            database: Arc::new(loader.database),
-            selection: Arc::new(loader.selection),
-            initial_system_faces,
-            #[cfg(feature = "system-fonts")]
-            discovery,
-            #[cfg(feature = "system-fonts")]
-            sources,
-            default_family,
-            identity,
-            limits: loader.limits,
-            control: control.clone(),
-            state: Mutex::new(MeasurementState::default()),
-            fatal: OnceLock::new(),
-        })))
+        loader.finish(self.system_fonts, platform_requested, control)
     }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum NativeFontError {
     #[error(
-        "bounded system font discovery is unavailable; provide explicit font files or directories"
+        "bounded system font discovery is unavailable; provide font bytes or supported explicit files"
     )]
     SystemDiscoveryUnavailable,
     #[error("explicit font sources contain no usable font faces")]
@@ -268,7 +192,8 @@ pub enum NativeFontError {
 }
 
 /// Shared font bytes and selection policy for text measurement and native export.
-/// Fonts are not embedded in SVG output. Missing glyph coverage is explicitly declined.
+/// Fonts are not embedded in SVG output. Missing glyph coverage is declined by default;
+/// [`Self::with_strict_glyph_coverage`] makes it an operation error.
 #[derive(Clone)]
 pub struct NativeFontContext(Arc<FontContextInner>);
 
@@ -384,9 +309,9 @@ struct FontContextInner {
     database: Arc<usvg::fontdb::Database>,
     selection: Arc<FontSelectionPolicy>,
     initial_system_faces: BTreeSet<usvg::fontdb::ID>,
-    #[cfg(feature = "system-fonts")]
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     discovery: Option<resolver::DiscoveryProvider>,
-    #[cfg(feature = "system-fonts")]
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     sources: registry::FontSourceRegistry,
     default_family: String,
     identity: String,
@@ -398,6 +323,7 @@ struct FontContextInner {
 
 #[derive(Default)]
 struct MeasurementState {
+    strict_glyph_coverage: bool,
     cache: BTreeMap<String, NativeMetrics>,
     cache_bytes: usize,
     measurements: usize,
@@ -422,6 +348,68 @@ struct ProbeSemantics {
 }
 
 impl NativeFontContext {
+    /// Admits owned OpenType buffers in caller order without filesystem or system discovery.
+    ///
+    /// Files and buffers share byte validation, deduplication, face ceilings, and identity
+    /// ordering. `max_files` counts buffers and `max_bytes` charges all input bytes before
+    /// deduplication. Earlier equal family/style descriptors win. Malformed buffers report
+    /// [`NativeFontError::Source`] with a synthetic `<memory-font-N>` diagnostic path.
+    pub fn from_font_bytes(
+        fonts: impl IntoIterator<Item = Vec<u8>>,
+        limits: NativeFontLimits,
+        control: &OperationControl,
+    ) -> Result<Self, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Admission)?;
+        let mut loader = FontLoader::new(limits, control.clone());
+        let mut fonts = fonts.into_iter();
+        loop {
+            loader.checkpoint()?;
+            let Some(bytes) = fonts.next() else {
+                break;
+            };
+            loader.begin_source()?;
+            let path = PathBuf::from(format!("<memory-font-{}>", loader.files));
+            let admitted = loader.admit_bytes(bytes, &path)?;
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+            if let Some(bytes) = admitted {
+                loader.initial_sources.insert(path, bytes);
+            }
+            #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+            let _ = admitted;
+        }
+        loader.finish(false, false, control)
+    }
+
+    /// Starts an independent operation scope with the selected glyph coverage policy.
+    ///
+    /// Strict contexts return an error instead of declining unsupported shaping requests.
+    /// Font bytes and selection order are shared; caches, counters, and failures are reset.
+    /// Both [`Self::for_operation`] and [`Self::for_export`] preserve this policy.
+    #[must_use]
+    pub fn with_strict_glyph_coverage(self, enabled: bool) -> Self {
+        let mut inner = self.operation_inner(&self.0.control);
+        inner.state = Mutex::new(MeasurementState {
+            strict_glyph_coverage: enabled,
+            ..Default::default()
+        });
+        const SUFFIX: &str = "/strict-glyph-coverage-v1";
+        if let Some(identity) = inner.identity.strip_suffix(SUFFIX) {
+            inner.identity = identity.to_owned();
+        }
+        if enabled {
+            inner.identity.push_str(SUFFIX);
+        }
+        Self(Arc::new(inner))
+    }
+
+    pub(crate) fn strict_glyph_coverage(&self) -> bool {
+        self.0
+            .state
+            .lock()
+            .map(|state| state.strict_glyph_coverage)
+            .unwrap_or(true)
+    }
+
     /// Names and collection indices selected by successful native shaping probes.
     /// This does not describe deterministic fallback or other painting operations.
     pub fn selected_faces(&self) -> Vec<String> {
@@ -444,7 +432,7 @@ impl NativeFontContext {
     }
 
     pub fn face_count(&self) -> usize {
-        #[cfg(feature = "system-fonts")]
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(discovery) = &self.0.discovery {
             return discovery
                 .catalog_face_count()
@@ -465,11 +453,11 @@ impl NativeFontContext {
         options.fontdb = Arc::clone(&self.0.database);
         options.font_family.clone_from(&self.0.default_family);
         options.font_resolver = super::browser_like_font_resolver(Arc::clone(&self.0.selection));
-        #[cfg(feature = "system-fonts")]
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if self.0.discovery.is_some() {
             options.font_resolver = resolver::resolver(self.clone(), control.clone(), None);
         }
-        #[cfg(not(feature = "system-fonts"))]
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
     }
 
@@ -485,12 +473,12 @@ impl NativeFontContext {
         options.font_family.clone_from(&self.0.default_family);
         options.font_resolver =
             native_export_font_resolver(observer.clone(), Arc::clone(&self.0.selection));
-        #[cfg(feature = "system-fonts")]
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if self.0.discovery.is_some() {
             options.font_resolver =
                 resolver::resolver(self.clone(), control.clone(), Some(observer.clone()));
         }
-        #[cfg(not(feature = "system-fonts"))]
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
         observer
     }
@@ -505,21 +493,28 @@ impl NativeFontContext {
 
     /// Reuses font metadata without inheriting operation failures or measurement counts.
     pub fn for_operation(&self, control: &OperationControl) -> Self {
-        Self(Arc::new(FontContextInner {
+        Self(Arc::new(self.operation_inner(control)))
+    }
+
+    fn operation_inner(&self, control: &OperationControl) -> FontContextInner {
+        FontContextInner {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
             initial_system_faces: self.0.initial_system_faces.clone(),
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             sources: self.0.sources.for_operation(),
             default_family: self.0.default_family.clone(),
             identity: self.0.identity.clone(),
             limits: self.0.limits.clone(),
             control: control.clone(),
-            state: Mutex::new(MeasurementState::default()),
+            state: Mutex::new(MeasurementState {
+                strict_glyph_coverage: self.strict_glyph_coverage(),
+                ..Default::default()
+            }),
             fatal: OnceLock::new(),
-        }))
+        }
     }
 
     /// Starts an independently controlled export while retaining already admitted font bytes.
@@ -534,15 +529,18 @@ impl NativeFontContext {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
             initial_system_faces: self.0.initial_system_faces.clone(),
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             sources: self.0.sources.for_export()?,
             default_family: self.0.default_family.clone(),
             identity: self.0.identity.clone(),
             limits: self.0.limits.clone(),
             control: control.clone(),
-            state: Mutex::new(MeasurementState::default()),
+            state: Mutex::new(MeasurementState {
+                strict_glyph_coverage: self.strict_glyph_coverage(),
+                ..Default::default()
+            }),
             fatal: OnceLock::new(),
         }));
         control.terminal_checkpoint_at(OperationPhase::Export)?;
@@ -551,11 +549,11 @@ impl NativeFontContext {
 
     /// Whether the explicitly authorized font set includes host-system discovery.
     pub fn uses_system_fonts(&self) -> bool {
-        #[cfg(feature = "system-fonts")]
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         {
             self.0.discovery.is_some()
         }
-        #[cfg(not(feature = "system-fonts"))]
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         {
             false
         }
@@ -563,11 +561,11 @@ impl NativeFontContext {
 
     /// Font bytes retained by the context, excluding temporary discovery buffers.
     pub fn resident_font_bytes(&self) -> usize {
-        #[cfg(feature = "system-fonts")]
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         {
             self.0.sources.resident_bytes()
         }
-        #[cfg(not(feature = "system-fonts"))]
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         {
             binary_bytes(self.0.database.as_ref())
         }
@@ -625,11 +623,12 @@ struct FontLoader {
     limits: NativeFontLimits,
     control: OperationControl,
     files: usize,
-    #[cfg(feature = "system-fonts")]
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     initial_sources: BTreeMap<PathBuf, Arc<Vec<u8>>>,
-    #[cfg(feature = "system-fonts")]
+    #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     source_aliases: BTreeMap<PathBuf, PathBuf>,
     bytes: usize,
+    #[cfg(not(target_family = "wasm"))]
     entries: usize,
     hashes: BTreeSet<Vec<u8>>,
     descriptors: BTreeSet<String>,
@@ -637,6 +636,135 @@ struct FontLoader {
 }
 
 impl FontLoader {
+    fn finish(
+        self,
+        system_fonts: bool,
+        platform_requested: bool,
+        control: &OperationControl,
+    ) -> Result<NativeFontContext, NativeFontError> {
+        let mut loader = self;
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+        let _ = system_fonts;
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let explicit_face_count = loader.database.faces().count();
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let platform = if system_fonts && platform_requested {
+            let mut explicit = loader.database.clone();
+            loader.selection.configure_generics(&mut explicit);
+            let catalog = platform::PlatformCatalog::new(control)?;
+            if loader.database.faces().next().is_none() {
+                loader.file(&catalog.default_path(control)?)?;
+            }
+            Some((Arc::new(catalog), Arc::new(explicit)))
+        } else {
+            None
+        };
+        #[cfg(not(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        )))]
+        let _ = platform_requested;
+        loader.selection.configure_generics(&mut loader.database);
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let initial_system_faces = if platform.is_some() && explicit_face_count == 0 {
+            loader.database.faces().map(|face| face.id).collect()
+        } else {
+            BTreeSet::new()
+        };
+        #[cfg(not(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        )))]
+        let initial_system_faces = BTreeSet::new();
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        let system = if system_fonts && !platform_requested {
+            Some(system::SystemCatalog::discover(&loader, control)?)
+        } else {
+            None
+        };
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        let metadata = system
+            .as_ref()
+            .map_or(&loader.database, |catalog| catalog.database.as_ref());
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+        let metadata = &loader.database;
+        if metadata.faces().next().is_none() {
+            return Err(NativeFontError::EmptyFontSet);
+        }
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        let selection = system
+            .as_ref()
+            .map_or(&loader.selection, |catalog| &catalog.selection);
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+        let selection = &loader.selection;
+        // A symbol-only context remains usable through an explicit family name.
+        let default_family = selection.default_family(metadata).unwrap_or_default();
+        loader
+            .hash
+            .update(b"merman-native-text-v3/usvg-0.47/resolver-v2");
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        if platform.is_some() {
+            // Platform identities describe policy and admitted initial bytes,
+            // not a content digest of every installed system font.
+            loader.hash.update(b"platform-query/fontique-0.12.0/v2");
+        }
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        if let Some(catalog) = &system {
+            loader.hash.update(&catalog.identity);
+        }
+        let identity = loader
+            .hash
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        control.terminal_checkpoint_at(OperationPhase::Admission)?;
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        let discovery =
+            system.map(|catalog| resolver::DiscoveryProvider::Bounded(Arc::new(catalog)));
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let discovery = platform
+            .map(|(catalog, explicit)| resolver::DiscoveryProvider::Platform { catalog, explicit })
+            .or(discovery);
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        let sources = registry::FontSourceRegistry::new(
+            loader.initial_sources,
+            loader.source_aliases,
+            loader.files,
+            loader.database.faces().count(),
+        );
+        Ok(NativeFontContext(Arc::new(FontContextInner {
+            database: Arc::new(loader.database),
+            selection: Arc::new(loader.selection),
+            initial_system_faces,
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+            discovery,
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+            sources,
+            default_family,
+            identity,
+            limits: loader.limits,
+            control: control.clone(),
+            state: Mutex::new(MeasurementState::default()),
+            fatal: OnceLock::new(),
+        })))
+    }
+
     fn new(limits: NativeFontLimits, control: OperationControl) -> Self {
         Self {
             database: usvg::fontdb::Database::new(),
@@ -644,11 +772,12 @@ impl FontLoader {
             limits,
             control,
             files: 0,
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             initial_sources: BTreeMap::new(),
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             source_aliases: BTreeMap::new(),
             bytes: 0,
+            #[cfg(not(target_family = "wasm"))]
             entries: 0,
             hashes: BTreeSet::new(),
             descriptors: BTreeSet::new(),
@@ -662,6 +791,13 @@ impl FontLoader {
         Ok(())
     }
 
+    fn begin_source(&mut self) -> Result<(), NativeFontError> {
+        self.checkpoint()?;
+        self.files = self.files.saturating_add(1);
+        check_limit("files", self.files, self.limits.max_files)
+    }
+
+    #[cfg(not(target_family = "wasm"))]
     fn directory(&mut self, path: &Path, depth: usize) -> Result<(), NativeFontError> {
         self.checkpoint()?;
         check_limit("directory-depth", depth, self.limits.max_directory_depth)?;
@@ -698,14 +834,14 @@ impl FontLoader {
         Ok(())
     }
 
+    #[cfg(not(target_family = "wasm"))]
     fn file(&mut self, path: &Path) -> Result<(), NativeFontError> {
         self.checkpoint()?;
         let metadata = fs::symlink_metadata(path).map_err(|e| source_error(path, e))?;
         if metadata.is_symlink() || !metadata.is_file() {
             return Err(source_error(path, "expected a regular file, not a symlink"));
         }
-        self.files = self.files.saturating_add(1);
-        check_limit("files", self.files, self.limits.max_files)?;
+        self.begin_source()?;
         let remaining = self.limits.max_bytes.saturating_sub(self.bytes);
         if metadata.len() > remaining as u64 {
             return Err(limit_error(
@@ -731,10 +867,30 @@ impl FontLoader {
             )?;
             bytes.extend_from_slice(&chunk[..count]);
         }
+        let admitted = self.admit_bytes(bytes, path)?;
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        if let Some(bytes) = admitted {
+            let key = fs::canonicalize(path).map_err(|error| source_error(path, error))?;
+            self.source_aliases.insert(path.to_owned(), key.clone());
+            self.initial_sources.insert(key, bytes);
+        }
+        #[cfg(not(feature = "system-fonts"))]
+        let _ = admitted;
+        Ok(())
+    }
+
+    fn admit_bytes(
+        &mut self,
+        bytes: Vec<u8>,
+        path: &Path,
+    ) -> Result<Option<Arc<Vec<u8>>>, NativeFontError> {
+        self.checkpoint()?;
         self.bytes = self.bytes.saturating_add(bytes.len());
+        check_limit("font-bytes", self.bytes, self.limits.max_bytes)?;
         let digest = Sha256::digest(&bytes).to_vec();
+        self.checkpoint()?;
         if !self.hashes.insert(digest.clone()) {
-            return Ok(());
+            return Ok(None);
         }
         // Check collection cardinality before fontdb allocates or parses all its faces.
         let faces = rustybuzz::ttf_parser::fonts_in_collection(&bytes).unwrap_or(1) as usize;
@@ -743,15 +899,16 @@ impl FontLoader {
             self.database.faces().count().saturating_add(faces),
             self.limits.max_faces,
         )?;
+        // fontdb admits metadata-only faces; shaping also requires valid metrics tables.
+        for index in 0..faces {
+            self.checkpoint()?;
+            rustybuzz::ttf_parser::Face::parse(&bytes, index as u32).map_err(|error| {
+                source_error(path, format!("invalid OpenType face {index}: {error:?}"))
+            })?;
+        }
         let mut candidate = usvg::fontdb::Database::new();
         let bytes = Arc::new(bytes);
         candidate.load_font_source(usvg::fontdb::Source::Binary(bytes.clone()));
-        #[cfg(feature = "system-fonts")]
-        {
-            let key = fs::canonicalize(path).map_err(|error| source_error(path, error))?;
-            self.source_aliases.insert(path.to_owned(), key.clone());
-            self.initial_sources.insert(key, bytes);
-        }
         self.checkpoint()?;
         if candidate.faces().next().is_none() {
             return Err(source_error(path, "no usable OpenType font faces"));
@@ -766,7 +923,7 @@ impl FontLoader {
                 self.selection.admit(id, &candidate, face.id);
             }
         }
-        Ok(())
+        Ok(Some(bytes))
     }
 }
 
@@ -784,6 +941,7 @@ fn face_descriptor(face: &usvg::fontdb::FaceInfo) -> String {
     )
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn is_font_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -794,7 +952,7 @@ fn is_font_path(path: &Path) -> bool {
         })
 }
 
-#[cfg(any(not(feature = "system-fonts"), test))]
+#[cfg(any(not(all(feature = "system-fonts", not(target_family = "wasm"))), test))]
 fn binary_bytes(database: &usvg::fontdb::Database) -> usize {
     let mut sources = BTreeSet::new();
     database
@@ -845,7 +1003,7 @@ impl HostTextMeasurer for NativeFontContext {
     ) -> HostMeasurementResult {
         match self.measure_operation(request, control) {
             Ok(result) => Ok(Some(result)),
-            Err(NativeFontError::MissingGlyphCoverage) => Ok(None),
+            Err(NativeFontError::MissingGlyphCoverage) if !self.strict_glyph_coverage() => Ok(None),
             Err(error) => {
                 if let NativeFontError::Limit {
                     resource,
@@ -1278,7 +1436,7 @@ fn escape_xml(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
     use merman_render::environment::TextMeasurementPhase;
@@ -1336,7 +1494,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "system-fonts"))]
+    #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
     fn system_discovery_is_explicitly_unavailable() {
         assert!(matches!(
             NativeFontOptions::default()
@@ -1374,9 +1532,9 @@ mod tests {
             database: Arc::new(usvg::fontdb::Database::new()),
             selection: Arc::new(FontSelectionPolicy::default()),
             initial_system_faces: BTreeSet::new(),
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: None,
-            #[cfg(feature = "system-fonts")]
+            #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             sources: registry::FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0),
             default_family: "sans-serif".to_owned(),
             identity: "test".to_owned(),

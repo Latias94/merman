@@ -379,7 +379,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "native-c",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
-        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
+        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry", "native-font-context"),
     },
     {
         "id": "node",
@@ -400,6 +400,11 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
         "id": "uniffi",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
         "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
+    },
+    {
+        "id": "wasi",
+        "payload_schema_ids": ("binding-result", "operation-metadata"),
+        "constructor_service_candidate_ids": ("native-font-context",),
     },
     {
         "id": "web",

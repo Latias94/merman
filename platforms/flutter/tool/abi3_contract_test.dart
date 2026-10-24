@@ -933,13 +933,14 @@ void rejectsMalformedAdditiveTransportSections() {
                     >)['provided_text_measurement_provider_ids']
                 as List<Object?>)
             .add('unavailable-provider'),
-    (catalog) =>
-        ((((catalog['constructor_service_contracts'] as List<Object?>).last
-                            as Map<String, Object?>)['resource_limits']
-                        as List<Object?>)
-                    .first
-                as Map<String, Object?>)['value'] =
-            -1,
+    (catalog) {
+      final iconRegistry = _constructorServiceContract(
+        catalog,
+        'icon-registry',
+      );
+      final limits = iconRegistry['resource_limits'] as List<Object?>;
+      (limits.first as Map<String, Object?>)['value'] = -1;
+    },
     (catalog) {
       final iconRegistry = _constructorServiceContract(
         catalog,

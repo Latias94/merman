@@ -480,7 +480,8 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
     ],
     "constructor_service_candidate_ids": [
       "host-text-measurement",
-      "icon-registry"
+      "icon-registry",
+      "native-font-context"
     ]
   },
   {
@@ -517,6 +518,16 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
     "constructor_service_candidate_ids": [
       "host-text-measurement",
       "icon-registry"
+    ]
+  },
+  {
+    "id": "wasi",
+    "payload_schema_ids": [
+      "binding-result",
+      "operation-metadata"
+    ],
+    "constructor_service_candidate_ids": [
+      "native-font-context"
     ]
   },
   {

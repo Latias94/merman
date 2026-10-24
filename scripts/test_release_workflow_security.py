@@ -79,6 +79,21 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_sdk_native_qualification_uses_native_errors_and_relocatable_libraries(self) -> None:
+        package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
+        self.assertIn("python scripts/sdk_qualify.py", package)
+        self.assertNotIn("shell: python", package)
+        qualifier = read(ROOT / "scripts/sdk_qualify.py")
+        self.assertIn('repo_root / "platforms/wasi/native_smoke.py"', qualifier)
+        self.assertIn('DYLD_PRINT_LIBRARIES="1"', qualifier)
+        self.assertIn("consumer did not load the extracted SDK", qualifier)
+        native_smoke = read(ROOT / "platforms/wasi/native_smoke.py")
+        self.assertIn("validate_native_error(", native_smoke)
+        self.assertNotIn("validate_error(", native_smoke)
+        consumers = read(ROOT / "distribution/sdk/CMakeLists.txt")
+        self.assertIn("target_link_libraries(merman-render-static PRIVATE Merman::Static)", consumers)
+        self.assertIn("add_test(NAME sdk-render-static COMMAND merman-render-static)", consumers)
+
     def test_pull_request_orchestrator_and_reusable_owners_are_read_only(self) -> None:
         for path in [*PR_REACHABLE_WORKFLOWS, WORKFLOW_ROOT / "performance.yml"]:
             text = read(path)

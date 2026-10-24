@@ -110,6 +110,7 @@ _CRATE_OWNER_RULES = (
     ("crates/merman-node/", {"core", "hygiene", "node", "npm", "security"}),
     ("crates/merman-typst-plugin/", {"core", "hygiene", "typst"}),
     ("crates/merman-uniffi/", {"core", "hygiene", "platform", "python"}),
+    ("crates/merman-wasi/", {"core", "fuzz", "hygiene", "platform", "security"}),
     ("crates/merman-wasm/", {"core", "hygiene", "npm", "web"}),
     (
         "crates/merman-analysis/",
@@ -145,6 +146,8 @@ _CRATE_OWNER_RULES = (
     ("crates/xtask/", _CORE_OWNERS),
 )
 _SCRIPT_EXACT_OWNER_RULES = {
+    "scripts/release_preflight_evidence.py": frozenset({"hygiene", "workflow"}),
+    "scripts/test_release_preflight_evidence.py": frozenset({"hygiene", "workflow"}),
     "scripts/run_theme_acceptance.py": frozenset({"core", "hygiene"}),
     "scripts/test_run_theme_acceptance.py": frozenset({"core", "hygiene"}),
     "scripts/verify_theme_acceptance_boundary.py": frozenset({"core", "hygiene"}),
@@ -186,6 +189,8 @@ _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/verify_prerelease_compatibility.py": frozenset({"core", "hygiene"}),
 }
 _SCRIPT_PREFIX_OWNER_RULES = (
+    ("scripts/sdk_", {"core", "hygiene", "platform", "security"}),
+    ("scripts/test_sdk_", {"core", "hygiene", "platform", "security"}),
     ("scripts/build-python-", {"hygiene", "python"}),
     ("scripts/python_", {"hygiene", "python"}),
     ("scripts/test_python_", {"hygiene", "python"}),
@@ -263,6 +268,7 @@ _PLAYGROUND_EXAMPLE_CATALOG_OWNERS = frozenset({"core", "hygiene", "npm", "web"}
 _PLAYGROUND_EXAMPLE_CATALOG_INPUT_PREFIX = "playground/examples/"
 _PLAYGROUND_EXAMPLE_CATALOG_OUTPUT = "playground/src/generated/examples.ts"
 _PACKAGE_DOCUMENT_OWNER_RULES = (
+    ("distribution/sdk/", {"core", "hygiene", "platform", "security"}),
     ("distribution/arch/", {"arch", "hygiene"}),
     ("distribution/container/", {"cli", "hygiene"}),
     ("distribution/github-action/", {"cli", "hygiene"}),
@@ -274,6 +280,7 @@ _PACKAGE_DOCUMENT_OWNER_RULES = (
     ("platforms/flutter/", {"hygiene", "platform"}),
     ("platforms/node/", {"hygiene", "node"}),
     ("platforms/python/", {"hygiene", "python"}),
+    ("platforms/wasi/", {"core", "hygiene", "platform", "security"}),
     ("platforms/web/", {"hygiene", "web"}),
     ("tools/vscode-extension/", {"hygiene", "vscode"}),
 )
@@ -659,6 +666,12 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path.startswith("distribution/arch/"):
         return frozenset({"arch", "hygiene"}), f"Arch package changed: {path}", False
+    if path.startswith("distribution/sdk/"):
+        return (
+            frozenset({"core", "hygiene", "platform", "security"}),
+            f"headless SDK distribution changed: {path}",
+            False,
+        )
     if path.startswith(("distribution/container/", "distribution/github-action/")):
         return frozenset({"cli", "hygiene"}), f"CLI distribution changed: {path}", False
 
@@ -795,6 +808,12 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         if path.endswith(("Cargo.lock", "Cargo.toml")) or "/legal/" in path:
             owners.add("security")
         return frozenset(owners), f"Python owner changed: {path}", False
+    if path.startswith("platforms/wasi/"):
+        return (
+            frozenset({"core", "hygiene", "platform", "security"}),
+            f"WASI SDK owner changed: {path}",
+            False,
+        )
     if path.startswith(("platforms/android/", "platforms/apple/", "platforms/flutter/", "platforms/ios/")):
         return frozenset({"hygiene", "platform"}), f"native platform owner changed: {path}", False
     if path.startswith("fuzz/"):

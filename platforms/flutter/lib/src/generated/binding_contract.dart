@@ -588,6 +588,7 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+      "native-font-context",
     },
   ),
   "node": MermanBindingTransportExposureSpec(
@@ -624,6 +625,16 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+    },
+  ),
+  "wasi": MermanBindingTransportExposureSpec(
+    id: "wasi",
+    payloadSchemaIds: <String>{
+      "binding-result",
+      "operation-metadata",
+    },
+    constructorServiceCandidateIds: <String>{
+      "native-font-context",
     },
   ),
   "web": MermanBindingTransportExposureSpec(
