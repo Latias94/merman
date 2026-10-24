@@ -12,6 +12,10 @@ The artifact admits only deterministic runtime policy and an immutable
 operation codes, tokens and layouts do **not** define this ABI. The authoritative
 wire descriptor is `../../contracts/abi/merman-wasi-v1.json`.
 
+ABI 1 is the initial WASI contract. Unpublished protocol iterations do not have
+compatibility aliases or migration adapters. Its version does not reset the
+shared binding options schema, native C ABI, or workspace package version.
+
 ## Building
 
 The low-level crate defaults to **no features**. A typical standard reactor is:
