@@ -187,6 +187,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "pdf",
                 "png",
                 "svg",
+                "system-fonts",
             ),
         )
 
