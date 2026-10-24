@@ -14,7 +14,10 @@
     feature = "pdf"
 ))]
 mod font_selection;
-#[cfg(feature = "experimental-system-font-query")]
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
 use font_selection::{query_font_family, query_named_font_family_case_insensitively};
 
 #[cfg(feature = "native-fonts")]
@@ -23,6 +26,21 @@ pub mod fonts;
 pub use fonts::{
     FontSource, NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions,
 };
+
+/// Returns production Cousine regular, bold, and italic font bytes in that order.
+///
+/// Chain caller fonts before this iterator to give them precedence over bundled faces.
+/// The fonts' OFL license and provenance are retained in `assets/fonts/`.
+#[cfg(feature = "bundled-fonts")]
+pub fn bundled_font_data() -> impl Iterator<Item = Vec<u8>> {
+    [
+        include_bytes!("../assets/fonts/Cousine-Regular.ttf").as_slice(),
+        include_bytes!("../assets/fonts/Cousine-Bold.ttf").as_slice(),
+        include_bytes!("../assets/fonts/Cousine-Italic.ttf").as_slice(),
+    ]
+    .into_iter()
+    .map(<[u8]>::to_vec)
+}
 
 /// Reports the actual feature-unified system-font discovery capability of this dependency.
 #[cfg(any(
@@ -34,7 +52,7 @@ pub use fonts::{
 ))]
 #[must_use]
 pub const fn system_font_discovery_available() -> bool {
-    cfg!(feature = "system-fonts")
+    cfg!(all(feature = "system-fonts", not(target_family = "wasm")))
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -995,7 +1013,7 @@ pub fn output_environment_contract(output_id: &str) -> Option<ExportEnvironmentC
         _ => false,
     };
     compiled.then_some(ExportEnvironmentContract {
-        system_fonts: cfg!(not(target_arch = "wasm32")).then_some(SystemFontEnvironmentContract {
+        system_fonts: system_font_discovery_available().then_some(SystemFontEnvironmentContract {
             source_id: "host-system",
             discovery: "first-use",
             cache_scope: "process-global",
@@ -1913,6 +1931,10 @@ fn prepare_raster_source_on_backend_stack(
         native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
     });
     let font_plan = font_plan.finish_with_tree(&tree);
+    #[cfg(feature = "native-fonts")]
+    if let Some(context) = &options.font_context {
+        check_export_glyph_coverage(context, font_plan)?;
+    }
     let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let directional_filter_transform_residual =
@@ -2256,7 +2278,26 @@ fn parse_pdf_tree(
     }
     let tree = tree?;
     let font_plan = font_plan.finish_with_tree(&tree);
+    #[cfg(feature = "native-fonts")]
+    if let Some(context) = &options.font_context {
+        check_export_glyph_coverage(context, font_plan)?;
+    }
     Ok((tree, font_plan))
+}
+
+#[cfg(all(
+    feature = "native-fonts",
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+fn check_export_glyph_coverage(context: &NativeFontContext, plan: ExportFontPlan) -> Result<()> {
+    if context.strict_glyph_coverage()
+        && (plan.unresolved_font_request()
+            || plan.unresolved_glyph_fallback()
+            || plan.notdef_glyph_count() != 0)
+    {
+        return Err(NativeFontError::MissingGlyphCoverage.into());
+    }
+    Ok(())
 }
 
 #[cfg(feature = "pdf")]
@@ -3735,7 +3776,12 @@ fn tiny_skia_color(color: ExportRgbaColor) -> tiny_skia::Color {
     tiny_skia::Color::from_rgba8(color.red(), color.green(), color.blue(), color.alpha())
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
+#[cfg(all(
+    test,
+    feature = "system-fonts",
+    not(target_family = "wasm"),
+    any(feature = "png", feature = "jpeg")
+))]
 mod font_resolver_tests {
     use super::*;
     use crate::font_environment::shared_system_fontdb;
@@ -3883,7 +3929,100 @@ mod font_resolver_tests {
     }
 }
 
+#[cfg(all(
+    test,
+    feature = "native-fonts",
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+fn fixture_native_font_context() -> NativeFontContext {
+    NativeFontContext::from_font_bytes(
+        [include_bytes!("../tests/fonts/Cousine-Regular.ttf").to_vec()],
+        NativeFontLimits::default(),
+        &OperationControl::new(),
+    )
+    .expect("explicit export test font")
+}
+
+#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
+fn fixture_raster_options() -> RasterOptions {
+    #[cfg(feature = "native-fonts")]
+    if !system_font_discovery_available() {
+        return RasterOptions::default().with_font_context(fixture_native_font_context());
+    }
+    RasterOptions::default()
+}
+
+#[cfg(all(test, feature = "pdf"))]
+fn fixture_pdf_options() -> PdfOptions {
+    #[cfg(feature = "native-fonts")]
+    if !system_font_discovery_available() {
+        return PdfOptions::default().with_font_context(fixture_native_font_context());
+    }
+    PdfOptions::default()
+}
+
+#[cfg(all(
+    test,
+    not(all(feature = "system-fonts", not(target_family = "wasm"))),
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+mod unavailable_source_tests {
+    use super::*;
+
+    fn sealed_svg() -> ResvgCompatibleSvg {
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        merman_render::svg::finalize_resvg_svg(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="40"><text x="4" y="24">No implicit fonts</text></svg>"#,
+            &session,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn catalogs_do_not_advertise_uncompiled_system_discovery() {
+        assert!(!system_font_discovery_available());
+        for format in ["png", "jpeg", "pdf"] {
+            if let Some(contract) = output_environment_contract(format) {
+                assert!(contract.system_fonts.is_none());
+            }
+        }
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn png_without_context_returns_font_source_unavailable() {
+        assert!(matches!(
+            svg_to_png(&sealed_svg(), &RasterOptions::default()),
+            Err(ExportError::FontSourceUnavailable)
+        ));
+    }
+
+    #[cfg(feature = "jpeg")]
+    #[test]
+    fn jpeg_without_context_returns_font_source_unavailable() {
+        assert!(matches!(
+            svg_to_jpeg(&sealed_svg(), &RasterOptions::default()),
+            Err(ExportError::FontSourceUnavailable)
+        ));
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn pdf_without_context_returns_font_source_unavailable() {
+        assert!(matches!(
+            svg_to_pdf(&sealed_svg()),
+            Err(ExportError::FontSourceUnavailable)
+        ));
+    }
+}
+
 #[cfg(all(test, feature = "png"))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(feature = "system-fonts", not(target_family = "wasm"))
+))]
 mod png_feature_tests {
     use super::*;
 
@@ -3913,7 +4052,7 @@ mod png_feature_tests {
             .expect("deterministic color render session");
         let svg = merman_render::svg::finalize_resvg_svg(&source, &session)
             .expect("seal typed color SVG");
-        let bytes = svg_to_png(&svg, &RasterOptions::default()).expect("export typed color PNG");
+        let bytes = svg_to_png(&svg, &fixture_raster_options()).expect("export typed color PNG");
         let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
         let mut reader = decoder.read_info().expect("read color PNG");
         let mut pixels = vec![0; reader.output_buffer_size().expect("PNG output size")];
@@ -3979,7 +4118,7 @@ mod png_feature_tests {
 
     #[test]
     fn png_leaf_encodes_a_sealed_svg() {
-        let bytes = svg_to_png(&compatible_svg(), &RasterOptions::default())
+        let bytes = svg_to_png(&compatible_svg(), &fixture_raster_options())
             .expect("PNG export should be callable when its leaf is enabled");
 
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -3988,9 +4127,9 @@ mod png_feature_tests {
     #[test]
     fn controlled_png_preserves_successful_bytes() {
         let svg = compatible_svg();
-        let legacy = svg_to_png(&svg, &RasterOptions::default()).expect("legacy PNG export");
+        let legacy = svg_to_png(&svg, &fixture_raster_options()).expect("legacy PNG export");
         let controlled =
-            svg_to_png_controlled(&svg, &RasterOptions::default(), OperationControl::new())
+            svg_to_png_controlled(&svg, &fixture_raster_options(), OperationControl::new())
                 .expect("controlled PNG export");
 
         assert_eq!(controlled, legacy);
@@ -4003,7 +4142,7 @@ mod png_feature_tests {
         control.cancel();
 
         let prepared_error =
-            match prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone()) {
+            match prepare_raster_controlled(&svg, &fixture_raster_options(), control.clone()) {
                 Ok(_) => panic!("pre-cancelled preparation must fail"),
                 Err(error) => error,
             };
@@ -4016,7 +4155,7 @@ mod png_feature_tests {
         ));
         assert!(prepared_error.resource_limit_details().is_none());
 
-        let bytes_error = svg_to_png_controlled(&svg, &RasterOptions::default(), control)
+        let bytes_error = svg_to_png_controlled(&svg, &fixture_raster_options(), control)
             .expect_err("pre-cancelled encoding must fail");
         assert!(matches!(
             bytes_error,
@@ -4031,7 +4170,7 @@ mod png_feature_tests {
     fn cancellation_after_preparation_returns_no_png_bytes() {
         let svg = compatible_svg();
         let control = OperationControl::new();
-        let prepared = prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone())
+        let prepared = prepare_raster_controlled(&svg, &fixture_raster_options(), control.clone())
             .expect("preparation should succeed before cancellation");
         control.cancel();
 
@@ -4050,6 +4189,10 @@ mod png_feature_tests {
 }
 
 #[cfg(all(test, feature = "jpeg"))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(feature = "system-fonts", not(target_family = "wasm"))
+))]
 mod jpeg_feature_tests {
     use super::*;
 
@@ -4066,7 +4209,7 @@ mod jpeg_feature_tests {
 
     #[test]
     fn jpeg_leaf_encodes_a_sealed_svg() {
-        let bytes = svg_to_jpeg(&compatible_svg(), &RasterOptions::default())
+        let bytes = svg_to_jpeg(&compatible_svg(), &fixture_raster_options())
             .expect("JPEG export should be callable when its leaf is enabled");
 
         assert!(bytes.starts_with(b"\xff\xd8\xff"));
@@ -4078,7 +4221,7 @@ mod jpeg_feature_tests {
         let control = OperationControl::new();
         control.cancel();
 
-        let error = svg_to_jpeg_controlled(&svg, &RasterOptions::default(), control)
+        let error = svg_to_jpeg_controlled(&svg, &fixture_raster_options(), control)
             .expect_err("pre-cancelled JPEG encoding must fail");
         assert!(matches!(
             error,
@@ -4140,6 +4283,10 @@ mod root_svg_metadata_tests {
 }
 
 #[cfg(all(test, feature = "pdf"))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(feature = "system-fonts", not(target_family = "wasm"))
+))]
 mod pdf_feature_tests {
     use super::*;
 
@@ -4156,7 +4303,7 @@ mod pdf_feature_tests {
 
     #[test]
     fn pdf_leaf_encodes_a_sealed_svg() {
-        let bytes = svg_to_pdf(&compatible_svg())
+        let bytes = svg_to_pdf_with_options(&compatible_svg(), &fixture_pdf_options())
             .expect("PDF export should be callable when its leaf is enabled");
 
         assert!(bytes.starts_with(b"%PDF-"));
@@ -4169,7 +4316,7 @@ mod pdf_feature_tests {
         control.cancel();
 
         let prepared_error =
-            match prepare_pdf_controlled(&svg, &PdfOptions::default(), control.clone()) {
+            match prepare_pdf_controlled(&svg, &fixture_pdf_options(), control.clone()) {
                 Ok(_) => panic!("pre-cancelled PDF preparation must fail"),
                 Err(error) => error,
             };
@@ -4182,7 +4329,7 @@ mod pdf_feature_tests {
         ));
         assert!(prepared_error.resource_limit_details().is_none());
 
-        let bytes_error = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)
+        let bytes_error = svg_to_pdf_controlled(&svg, &fixture_pdf_options(), control)
             .expect_err("pre-cancelled PDF encoding must fail");
         assert!(matches!(
             bytes_error,
@@ -4195,6 +4342,10 @@ mod pdf_feature_tests {
 }
 
 #[cfg(all(test, feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(feature = "system-fonts", not(target_family = "wasm"))
+))]
 mod tests {
     use super::*;
     use base64::Engine as _;
@@ -4274,7 +4425,7 @@ mod tests {
         let svg = compatible_svg(&source);
         let options = RasterOptions {
             embedded_image_limit: EmbeddedImageLimit::new(Some(16), None, None, None),
-            ..RasterOptions::default()
+            ..fixture_raster_options()
         };
         let control = OperationControl::new();
         let first = match super::prepare_raster_controlled(&svg, &options, control.clone()) {
@@ -4304,7 +4455,7 @@ mod tests {
             &compatible_svg(
                 r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>"#,
             ),
-            &RasterOptions::default(),
+            &fixture_raster_options(),
             control,
         ) {
             Ok(_) => panic!("the existing terminal must prevent a second prepared artifact"),
@@ -4377,14 +4528,17 @@ mod tests {
         for output_id in ["jpeg", "pdf", "png"] {
             let contract = output_environment_contract(output_id)
                 .expect("each compiled export must disclose its environment");
-            let system_fonts = contract
-                .system_fonts
-                .expect("native exports must disclose host system fonts");
-            assert_eq!(system_fonts.source_id, "host-system");
-            assert_eq!(system_fonts.discovery, "first-use");
-            assert_eq!(system_fonts.cache_scope, "process-global");
-            assert!(system_fonts.host_dependent);
-            assert!(!system_fonts.resource_bounded);
+            assert_eq!(
+                contract.system_fonts.is_some(),
+                system_font_discovery_available()
+            );
+            if let Some(system_fonts) = contract.system_fonts {
+                assert_eq!(system_fonts.source_id, "host-system");
+                assert_eq!(system_fonts.discovery, "first-use");
+                assert_eq!(system_fonts.cache_scope, "process-global");
+                assert!(system_fonts.host_dependent);
+                assert!(!system_fonts.resource_bounded);
+            }
             assert_eq!(contract.embedded_images.source_ids, ["data-url"]);
             assert!(!contract.embedded_images.filesystem_access);
             assert!(!contract.embedded_images.network_access);
@@ -4428,7 +4582,7 @@ mod tests {
     }
 
     fn svg_to_pdf(svg: &str) -> Result<Vec<u8>> {
-        super::svg_to_pdf(&compatible_svg(svg))
+        super::svg_to_pdf_with_options(&compatible_svg(svg), &fixture_pdf_options())
     }
 
     fn nested_group_svg(depth: usize) -> String {
@@ -4506,7 +4660,7 @@ mod tests {
     #[test]
     fn svg_to_png_produces_png_signature() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
-        let bytes = svg_to_png(svg, &RasterOptions::default()).unwrap();
+        let bytes = svg_to_png(svg, &fixture_raster_options()).unwrap();
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 
@@ -4516,13 +4670,13 @@ mod tests {
 
         let raster_error = prepare_raster(
             svg,
-            &RasterOptions::default().with_matte("not-a-solid-color"),
+            &fixture_raster_options().with_matte("not-a-solid-color"),
         )
         .err()
         .expect("invalid raster matte should fail during preparation");
         let pdf_error = prepare_pdf(
             svg,
-            &PdfOptions::default().with_page_paint("not-a-solid-color"),
+            &fixture_pdf_options().with_page_paint("not-a-solid-color"),
         )
         .err()
         .expect("invalid PDF page paint should fail during preparation");
@@ -4535,7 +4689,7 @@ mod tests {
     fn png_report_retains_dimensions_and_requested_matte() {
         let source = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let (bytes, report) =
-            svg_to_png_with_report(source, &RasterOptions::default().with_matte("#12345678"))
+            svg_to_png_with_report(source, &fixture_raster_options().with_matte("#12345678"))
                 .unwrap();
 
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -4559,9 +4713,9 @@ mod tests {
     #[test]
     fn jpeg_report_exposes_its_effective_default_or_requested_matte() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"/>"#;
-        let (_, default_report) = svg_to_jpeg_with_report(svg, &RasterOptions::default()).unwrap();
+        let (_, default_report) = svg_to_jpeg_with_report(svg, &fixture_raster_options()).unwrap();
         let (_, requested_report) =
-            svg_to_jpeg_with_report(svg, &RasterOptions::default().with_matte("#010203")).unwrap();
+            svg_to_jpeg_with_report(svg, &fixture_raster_options().with_matte("#010203")).unwrap();
 
         assert_eq!(default_report.output(), RasterOutputKind::Jpeg);
         assert_eq!(default_report.matte(), Some(ExportRgbaColor::WHITE));
@@ -4581,7 +4735,7 @@ mod tests {
     #[test]
     fn pdf_report_retains_page_filter_plan_and_page_paint() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 20"><rect width="10" height="20" fill="black"/></svg>"#;
-        let options = PdfOptions::default()
+        let options = fixture_pdf_options()
             .with_page_policy(PdfPagePolicy::Fixed {
                 width_pt: 612.0,
                 height_pt: 792.0,
@@ -4615,7 +4769,7 @@ mod tests {
         let compatible = merman_render::svg::SvgPipeline::resvg_safe()
             .process_resvg_compatible(source, &session)
             .unwrap();
-        let bytes = super::svg_to_png(&compatible, &RasterOptions::default()).unwrap();
+        let bytes = super::svg_to_png(&compatible, &fixture_raster_options()).unwrap();
         assert_eq!(png_size(&bytes), (200, 200));
         for (x, y) in [(51, 70), (51, 100), (51, 130)] {
             assert_eq!(
@@ -4645,7 +4799,7 @@ mod tests {
         let compatible = merman_render::svg::SvgPipeline::resvg_safe()
             .process_resvg_compatible(source, &session)
             .unwrap();
-        let bytes = super::svg_to_png(&compatible, &RasterOptions::default()).unwrap();
+        let bytes = super::svg_to_png(&compatible, &fixture_raster_options()).unwrap();
         assert_eq!(rgba_pixel(&bytes, 12, 12), [255, 0, 0, 128]);
         assert_eq!(
             rgba_pixel(&bytes, 35, 12)[3],
@@ -4676,7 +4830,7 @@ mod tests {
                 .unwrap();
             assert_eq!(svg.finalization_report().fallback_css_residual(), expected);
 
-            let raster = super::prepare_raster(&svg, &RasterOptions::default()).unwrap();
+            let raster = super::prepare_raster(&svg, &fixture_raster_options()).unwrap();
             assert_eq!(
                 raster
                     .report_for_output(RasterOutputKind::Png)
@@ -4694,11 +4848,11 @@ mod tests {
             assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
 
             let (jpeg, report) =
-                super::svg_to_jpeg_with_report(&svg, &RasterOptions::default()).unwrap();
+                super::svg_to_jpeg_with_report(&svg, &fixture_raster_options()).unwrap();
             assert_eq!(report.fallback_css_residual(), expected);
             assert!(jpeg.starts_with(&[0xff, 0xd8]));
 
-            let pdf = super::prepare_pdf(&svg, &PdfOptions::default()).unwrap();
+            let pdf = super::prepare_pdf(&svg, &fixture_pdf_options()).unwrap();
             assert_eq!(pdf.report().fallback_css_residual(), expected);
             let (pdf, report) = pdf.encode_with_report().unwrap();
             assert_eq!(report.fallback_css_residual(), expected);
@@ -4709,7 +4863,7 @@ mod tests {
     #[test]
     fn root_viewport_dimensions_drive_raster_planning_and_pixels() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
-        let options = RasterOptions::default();
+        let options = fixture_raster_options();
         let plan = svg_raster_plan(svg, &options).unwrap();
 
         assert_eq!(plan.requested_width_px, 200.0);
@@ -4734,7 +4888,7 @@ mod tests {
     #[test]
     fn explicit_root_size_without_viewbox_preserves_canvas() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect x="20" y="30" width="10" height="10" fill="red"/></svg>"#;
-        let options = RasterOptions::default();
+        let options = fixture_raster_options();
         let png = svg_to_png(svg, &options).unwrap();
 
         assert_eq!(png_size(&png), (100, 100));
@@ -4749,7 +4903,7 @@ mod tests {
     #[test]
     fn explicit_root_size_without_viewbox_preserves_filter_pixels() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><filter id="shadow" x="-100%" y="-100%" width="400%" height="300%"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><rect x="20" y="30" width="10" height="10" fill="red" filter="url(#shadow)"/></svg>"##;
-        let png = svg_to_png(svg, &RasterOptions::default()).unwrap();
+        let png = svg_to_png(svg, &fixture_raster_options()).unwrap();
 
         assert_eq!(png_size(&png), (100, 100));
         assert_eq!(rgba_pixel(&png, 25, 35), [255, 0, 0, 255]);
@@ -4759,7 +4913,7 @@ mod tests {
     #[test]
     fn dimensionless_root_keeps_content_fit() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><rect x="20" y="30" width="10" height="10" fill="red"/></svg>"#;
-        let png = svg_to_png(svg, &RasterOptions::default()).unwrap();
+        let png = svg_to_png(svg, &fixture_raster_options()).unwrap();
 
         assert_eq!(png_size(&png), (10, 10));
         assert_eq!(rgba_pixel(&png, 5, 5), [255, 0, 0, 255]);
@@ -4768,7 +4922,7 @@ mod tests {
     #[test]
     fn dimensionless_root_content_fit_preserves_filter_pixels() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><defs><filter id="shadow" filterUnits="userSpaceOnUse" x="10" y="20" width="40" height="30"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><rect x="20" y="30" width="10" height="10" fill="red" filter="url(#shadow)"/></svg>"##;
-        let png = svg_to_png(svg, &RasterOptions::default()).unwrap();
+        let png = svg_to_png(svg, &fixture_raster_options()).unwrap();
 
         assert_eq!(png_size(&png), (40, 30));
         assert_eq!(rgba_pixel(&png, 15, 15), [255, 0, 0, 255]);
@@ -4785,7 +4939,7 @@ mod tests {
             let source = format!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px">{body}</svg>"#
             );
-            let prepared = prepare_pdf(&source, &PdfOptions::default())
+            let prepared = prepare_pdf(&source, &fixture_pdf_options())
                 .expect("best-effort PDF reports a derived-viewport limitation and still exports");
             assert!(prepared.report().implicit_viewport_clipping_residual());
             assert!(prepared.encode().unwrap().starts_with(b"%PDF-"));
@@ -4793,7 +4947,7 @@ mod tests {
                 r#"width="100%" style="max-width:400px""#,
                 r#"width="100" height="100""#,
             );
-            let prepared = prepare_pdf(&explicit, &PdfOptions::default())
+            let prepared = prepare_pdf(&explicit, &fixture_pdf_options())
                 .expect("a caller's explicit viewport keeps intentional source clipping");
             assert!(!prepared.report().implicit_viewport_clipping_residual());
         }
@@ -4802,7 +4956,7 @@ mod tests {
     #[test]
     fn dimensionless_pdf_preserves_visible_info_style_text() {
         let source = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><text x="100" y="40" font-size="32" text-anchor="middle" fill="#333">v0.9.0</text></svg>"##;
-        let prepared = prepare_pdf(source, &PdfOptions::default())
+        let prepared = prepare_pdf(source, &fixture_pdf_options())
             .expect("ordinary dimensionless Info text stays inside its derived viewport");
         let page = prepared.report().page();
         assert!(page.page_width_pt > 0.0 && page.page_height_pt > 0.0);
@@ -4825,7 +4979,7 @@ mod tests {
                 let svg = format!(
                     r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" x="-100%" y="-100%" width="400%" height="400%">{primitive}</filter></defs><g transform="translate(50 50) {transform}"><rect width="10" height="20" fill="red" filter="url(#effect)"/></g></svg>"##
                 );
-                let prepared = prepare_raster(&svg, &RasterOptions::default()).expect(
+                let prepared = prepare_raster(&svg, &fixture_raster_options()).expect(
                     "best-effort raster export still renders directional filter transforms",
                 );
                 assert!(
@@ -4842,7 +4996,7 @@ mod tests {
                 assert!(report.directional_filter_transform_residual());
                 assert_png_has_visible_non_background_ink(&png);
                 let (jpeg, report) =
-                    svg_to_jpeg_with_report(&svg, &RasterOptions::default()).unwrap();
+                    svg_to_jpeg_with_report(&svg, &fixture_raster_options()).unwrap();
                 assert!(report.directional_filter_transform_residual());
                 assert!(jpeg.starts_with(&[0xff, 0xd8]));
             }
@@ -4859,7 +5013,7 @@ mod tests {
             let svg = format!(
                 r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" x="-100%" y="-100%" width="400%" height="400%">{primitive}</filter></defs><g transform="translate(50 20) rotate(90)"><rect width="10" height="20" fill="red" filter="url(#effect)"/></g></svg>"##
             );
-            let (png, report) = svg_to_png_with_report(&svg, &RasterOptions::default()).unwrap();
+            let (png, report) = svg_to_png_with_report(&svg, &fixture_raster_options()).unwrap();
             assert!(!report.directional_filter_transform_residual());
             assert!(rgba_pixel(&png, 40, 25)[3] > 200, "{primitive}");
         }
@@ -4868,7 +5022,7 @@ mod tests {
     #[test]
     fn directional_filters_keep_axis_aligned_raster_and_localized_pdf_support() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" primitiveUnits="objectBoundingBox" x="-100%" y="-100%" width="400%" height="400%"><feDropShadow dx=".5" dy=".5" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(20 20) scale(2)"><rect width="10" height="10" fill="red" filter="url(#effect)"/></g></svg>"##;
-        let (png, report) = svg_to_png_with_report(svg, &RasterOptions::default()).unwrap();
+        let (png, report) = svg_to_png_with_report(svg, &fixture_raster_options()).unwrap();
         assert!(!report.directional_filter_transform_residual());
         assert_eq!(rgba_pixel(&png, 45, 45), [0, 0, 255, 255]);
 
@@ -4887,7 +5041,7 @@ mod tests {
                 let svg = format!(
                     r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80">{primitive}</filter></defs><g transform="translate(60 20) {transform}" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##
                 );
-                let prepared = prepare_pdf(&svg, &PdfOptions::default()).expect(
+                let prepared = prepare_pdf(&svg, &fixture_pdf_options()).expect(
                     "best-effort PDF still exports localized directional filter transforms",
                 );
                 assert!(prepared.report().directional_filter_transform_residual());
@@ -4904,7 +5058,7 @@ mod tests {
             let svg = format!(
                 r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) {transform}"><g filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></g></svg>"##
             );
-            let prepared = prepare_pdf(&svg, &PdfOptions::default())
+            let prepared = prepare_pdf(&svg, &fixture_pdf_options())
                 .expect("vector ancestor transforms remain supported outside the filter image");
             let plan = prepared.filter_plan();
             assert_eq!(plan.filtered_groups, 1);
@@ -4926,7 +5080,7 @@ mod tests {
             let svg = format!(
                 r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80">{primitive}</filter></defs><g transform="translate(60 20) rotate(90)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##
             );
-            let prepared = prepare_pdf(&svg, &PdfOptions::default()).unwrap();
+            let prepared = prepare_pdf(&svg, &fixture_pdf_options()).unwrap();
             assert_eq!(prepared.filter_plan().filtered_groups, 1);
             assert!(prepared.filter_plan().effective_image_pixels > 0);
             assert!(!prepared.report().directional_filter_transform_residual());
@@ -4937,7 +5091,7 @@ mod tests {
     #[test]
     fn pdf_directional_filters_report_nested_local_transform_residual() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="outer"><feGaussianBlur stdDeviation="0"/></filter><filter id="shadow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g filter="url(#outer)"><g transform="translate(60 20) rotate(90)" filter="url(#shadow)"><rect width="20" height="10" fill="red"/></g></g></svg>"##;
-        let prepared = prepare_pdf(svg, &PdfOptions::default())
+        let prepared = prepare_pdf(svg, &fixture_pdf_options())
             .expect("descendant transform limitations must not disable best-effort PDF output");
         assert!(prepared.report().directional_filter_transform_residual());
         let (pdf, report) = prepared.encode_with_report().unwrap();
@@ -4951,7 +5105,7 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:i="urn:ignored" i:viewBox="0 0 9000 9000"><rect width="12" height="8" fill="black"/></svg>"#,
             r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" s:viewBox="invalid" viewBox="0 0 9000 9000"><rect width="12" height="8" fill="black"/></svg>"#,
         ] {
-            let plan = svg_raster_plan(svg, &RasterOptions::default()).unwrap();
+            let plan = svg_raster_plan(svg, &fixture_raster_options()).unwrap();
             assert_eq!(
                 (plan.width_px, plan.height_px),
                 (12, 8),
@@ -4983,8 +5137,8 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     fn scheduling_weights_include_the_recursive_backend_stack() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>"#;
-        let raster = prepare_raster(svg, &RasterOptions::default()).unwrap();
-        let pdf = prepare_pdf(svg, &PdfOptions::default()).unwrap();
+        let raster = prepare_raster(svg, &fixture_raster_options()).unwrap();
+        let pdf = prepare_pdf(svg, &fixture_pdf_options()).unwrap();
 
         assert!(raster.png_scheduling_weight_bytes() >= RECURSIVE_SVG_BACKEND_STACK_BYTES as u64);
         assert!(pdf.scheduling_weight_bytes() >= RECURSIVE_SVG_BACKEND_STACK_BYTES as u64);
@@ -4995,7 +5149,7 @@ mod tests {
         let depth = merman_render::resources::MAX_RESVG_TREE_DEPTH;
         let svg = trusted_compatible_svg(&nested_group_svg(depth));
         let options =
-            RasterOptions::default().with_conversion_limits(SvgConversionLimits::unbounded());
+            fixture_raster_options().with_conversion_limits(SvgConversionLimits::unbounded());
         let prepared = super::prepare_raster(&svg, &options).unwrap();
         assert_eq!(prepared.report.conversion.max_tree_depth, depth - 1);
 
@@ -5008,7 +5162,7 @@ mod tests {
         let depth = merman_render::resources::MAX_RESVG_TREE_DEPTH;
         let svg = trusted_compatible_svg(&nested_group_svg(depth));
         let options =
-            PdfOptions::default().with_conversion_limits(SvgConversionLimits::unbounded());
+            fixture_pdf_options().with_conversion_limits(SvgConversionLimits::unbounded());
         let prepared = super::prepare_pdf(&svg, &options).unwrap();
         assert_eq!(prepared.report().conversion().max_tree_depth, depth - 1);
 
@@ -5051,7 +5205,7 @@ mod tests {
                 None,
                 None,
             ),
-            ..RasterOptions::default()
+            ..fixture_raster_options()
         };
 
         let error = super::prepare_raster(&svg, &options)
@@ -5086,7 +5240,7 @@ mod tests {
                     None,
                     None,
                 ),
-                ..RasterOptions::default()
+                ..fixture_raster_options()
             };
 
             let error = super::prepare_raster(&svg, &options)
@@ -5116,7 +5270,7 @@ mod tests {
                 None,
                 None,
             ),
-            ..RasterOptions::default()
+            ..fixture_raster_options()
         };
 
         let error = super::prepare_raster(&svg, &options)
@@ -5134,7 +5288,7 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="white"/><image href="{href}" width="10" height="10"/></svg>"#
         );
 
-        let bytes = svg_to_png(&svg, &RasterOptions::default()).unwrap();
+        let bytes = svg_to_png(&svg, &fixture_raster_options()).unwrap();
         let center = rgba_pixel(&bytes, 5, 5);
 
         assert!(
@@ -5150,10 +5304,10 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><image href="{href}" width="10" height="10"/></svg>"#
         );
 
-        let png_err = prepare_raster(&svg, &RasterOptions::default())
+        let png_err = prepare_raster(&svg, &fixture_raster_options())
             .err()
             .expect("PNG preparation should reject the decoded image size");
-        let pdf_err = prepare_pdf(&svg, &PdfOptions::default())
+        let pdf_err = prepare_pdf(&svg, &fixture_pdf_options())
             .err()
             .expect("PDF preparation should reject the decoded image size");
 
@@ -5167,7 +5321,7 @@ mod tests {
         let svg = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><image href="{href}" width="10" height="10"/></svg>"#
         );
-        let prepared = prepare_raster(&svg, &RasterOptions::default()).unwrap();
+        let prepared = prepare_raster(&svg, &fixture_raster_options()).unwrap();
 
         assert_eq!(
             prepared.report.embedded_images,
@@ -5258,7 +5412,7 @@ mod tests {
         );
         let options = RasterOptions {
             embedded_image_limit: EmbeddedImageLimit::new(Some(16), None, None, None),
-            ..RasterOptions::default()
+            ..fixture_raster_options()
         };
 
         let error = prepare_raster(&svg, &options)
@@ -5276,11 +5430,11 @@ mod tests {
         );
         let raster_options = RasterOptions {
             embedded_image_limit: EmbeddedImageLimit::new(Some(16), None, None, None),
-            ..RasterOptions::default()
+            ..fixture_raster_options()
         };
         let pdf_options = PdfOptions {
             embedded_image_limit: EmbeddedImageLimit::new(Some(16), None, None, None),
-            ..PdfOptions::default()
+            ..fixture_pdf_options()
         };
 
         let png_error = prepare_raster(&svg, &raster_options)
@@ -5301,10 +5455,10 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><defs><filter id="f"><feImage xlink:href="{href}"/></filter></defs><rect width="10" height="10" filter="url(#f)"/></svg>"#
         );
 
-        let png_error = prepare_raster(&svg, &RasterOptions::default())
+        let png_error = prepare_raster(&svg, &fixture_raster_options())
             .err()
             .expect("filter image intrinsic pixels should be bounded for raster output");
-        let pdf_error = prepare_pdf(&svg, &PdfOptions::default())
+        let pdf_error = prepare_pdf(&svg, &fixture_pdf_options())
             .err()
             .expect("filter image intrinsic pixels should be bounded for PDF output");
 
@@ -5321,7 +5475,7 @@ mod tests {
 
         let options = RasterOptions {
             embedded_image_limit: EmbeddedImageLimit::new(None, None, Some(10), None),
-            ..RasterOptions::default()
+            ..fixture_raster_options()
         };
         let error = prepare_raster(&svg, &options)
             .err()
@@ -5342,7 +5496,7 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 20"><rect width="10" height="20" fill="black"/></svg>"#;
         let bytes = svg_to_pdf_with_options(
             svg,
-            &PdfOptions::default()
+            &fixture_pdf_options()
                 .with_page_paint("white")
                 .with_page_policy(PdfPagePolicy::Fixed {
                     width_pt: 612.0,
@@ -5367,7 +5521,7 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>"#;
         let err = svg_to_pdf_with_options(
             svg,
-            &PdfOptions::default().with_page_policy(PdfPagePolicy::Fixed {
+            &fixture_pdf_options().with_page_policy(PdfPagePolicy::Fixed {
                 width_pt: f32::NAN,
                 height_pt: 792.0,
             }),
@@ -5385,7 +5539,7 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9000 9000"><rect width="9000" height="9000" fill="black"/></svg>"#;
         let bytes = svg_to_pdf_with_options(
             svg,
-            &PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
+            &fixture_pdf_options().with_page_policy(PdfPagePolicy::FitCssWidth {
                 max_width_px: 800.0,
             }),
         )
@@ -5404,7 +5558,7 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9000 9000"><rect width="9000" height="9000" fill="black"/></svg>"#;
         let bytes = svg_to_pdf_with_options(
             svg,
-            &PdfOptions::default().with_page_policy(PdfPagePolicy::Fixed {
+            &fixture_pdf_options().with_page_policy(PdfPagePolicy::Fixed {
                 width_pt: 612.0,
                 height_pt: 792.0,
             }),
@@ -5433,7 +5587,7 @@ mod tests {
     #[test]
     fn svg_to_pdf_rejects_invalid_filter_scale() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>"#;
-        let err = svg_to_pdf_with_options(svg, &PdfOptions::default().with_filter_scale(0.0))
+        let err = svg_to_pdf_with_options(svg, &fixture_pdf_options().with_filter_scale(0.0))
             .unwrap_err();
 
         assert!(err.to_string().contains("PDF filter_scale"), "{err}");
@@ -5446,7 +5600,7 @@ mod tests {
           <g filter="url(#blur)"><rect width="10000" height="10000" fill="black"/></g>
           <g filter="url(#blur)"><rect width="10000" height="10000" fill="white"/></g>
         </svg>"##;
-        let prepared = prepare_pdf(svg, &PdfOptions::default()).unwrap();
+        let prepared = prepare_pdf(svg, &fixture_pdf_options()).unwrap();
         let plan = prepared.report().filters();
 
         assert_eq!(plan.filtered_groups, 2);
@@ -5467,7 +5621,7 @@ mod tests {
           <g filter="url(#blur)"><rect width="10000" height="10000" fill="white"/></g>
         </svg>"##;
         let prepared =
-            prepare_pdf(svg, &PdfOptions::default().with_unbounded_filter_images()).unwrap();
+            prepare_pdf(svg, &fixture_pdf_options().with_unbounded_filter_images()).unwrap();
         let plan = prepared.report().filters();
 
         assert_eq!(plan.requested_image_pixels, 50_000_000);
@@ -5481,7 +5635,7 @@ mod tests {
     fn pdf_filter_budget_rejects_zero_dimension_images() {
         let error = prepare_pdf(
             TWO_FILTERED_SQUARES,
-            &PdfOptions::default().with_filter_image_limit(PdfFilterImageLimit::new(Some(1))),
+            &fixture_pdf_options().with_filter_image_limit(PdfFilterImageLimit::new(Some(1))),
         )
         .err()
         .expect("two filtered groups cannot be represented by one retained pixel");
@@ -5501,7 +5655,7 @@ mod tests {
     #[test]
     fn pdf_filter_cap_rejects_zero_dimension_images() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="identity" filterUnits="userSpaceOnUse" x="0" y="0" width="1000000" height="1"><feGaussianBlur stdDeviation="0"/></filter></defs><rect width="1000000" height="1" fill="red" filter="url(#identity)"/></svg>"##;
-        let error = prepare_pdf(svg, &PdfOptions::default())
+        let error = prepare_pdf(svg, &fixture_pdf_options())
             .err()
             .expect("the backend's side cap must not silently erase a thin filtered group");
 
@@ -5512,7 +5666,7 @@ mod tests {
     fn pdf_filter_small_requested_scale_rejects_zero_dimension_images() {
         let error = prepare_pdf(
             TWO_FILTERED_SQUARES,
-            &PdfOptions::default().with_filter_scale(0.001),
+            &fixture_pdf_options().with_filter_scale(0.001),
         )
         .err()
         .expect("a requested scale that erases every filter image must fail preparation");
@@ -5524,7 +5678,7 @@ mod tests {
     fn pdf_filter_budget_retains_nonzero_images_when_feasible() {
         let prepared = prepare_pdf(
             TWO_FILTERED_SQUARES,
-            &PdfOptions::default().with_filter_image_limit(PdfFilterImageLimit::new(Some(2))),
+            &fixture_pdf_options().with_filter_image_limit(PdfFilterImageLimit::new(Some(2))),
         )
         .unwrap();
         let plan = prepared.filter_plan();
@@ -5549,7 +5703,7 @@ mod tests {
             );
             let prepared = prepare_pdf(
                 &svg,
-                &PdfOptions::default().with_filter_image_limit(PdfFilterImageLimit::new(Some(1))),
+                &fixture_pdf_options().with_filter_image_limit(PdfFilterImageLimit::new(Some(1))),
             )
             .unwrap();
             let plan = prepared.filter_plan();
@@ -5565,7 +5719,7 @@ mod tests {
     #[test]
     fn pdf_filter_plan_matches_isolated_content_stream_scale() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="identity"><feGaussianBlur stdDeviation="0"/></filter></defs><g transform="scale(5)" opacity=".5"><rect width="16" height="16" fill="red" filter="url(#identity)"/></g></svg>"##;
-        let prepared = prepare_pdf(svg, &PdfOptions::default()).unwrap();
+        let prepared = prepare_pdf(svg, &fixture_pdf_options()).unwrap();
         let plan = prepared.filter_plan();
         // 16px * the default 1.2 filter region * 4 sampling = 76.8, rounded to 77.
         // The opacity content stream is isolated before the parent's scale is reapplied.
@@ -5595,7 +5749,7 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><defs><filter id="f">{primitives}</filter></defs><g filter="url(#f)"><rect width="16" height="16"/></g></svg>"#
         );
 
-        let error = prepare_pdf(&svg, &PdfOptions::default())
+        let error = prepare_pdf(&svg, &fixture_pdf_options())
             .err()
             .expect("filter primitive fanout should be rejected during preparation");
 
@@ -5617,7 +5771,7 @@ mod tests {
         svg.push_str(&"</g>".repeat(depth));
         svg.push_str("</svg>");
 
-        let error = prepare_raster(&svg, &RasterOptions::default())
+        let error = prepare_raster(&svg, &fixture_raster_options())
             .err()
             .expect("deep isolation should be rejected during preparation");
 
@@ -5631,7 +5785,7 @@ mod tests {
           <g filter="url(#blur)"><g filter="url(#blur)"><rect width="100" height="100"/></g></g>
         </svg>"##;
 
-        let prepared = prepare_pdf(svg, &PdfOptions::default()).unwrap();
+        let prepared = prepare_pdf(svg, &fixture_pdf_options()).unwrap();
         let report = prepared.report();
 
         assert_eq!(report.filters().filtered_groups, 1);
@@ -5642,7 +5796,7 @@ mod tests {
     #[test]
     fn svg_to_jpeg_defaults_to_white_background() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"></svg>"#;
-        let bytes = svg_to_jpeg(svg, &RasterOptions::default()).unwrap();
+        let bytes = svg_to_jpeg(svg, &fixture_raster_options()).unwrap();
         let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
             .unwrap()
             .to_rgb8();
@@ -5657,7 +5811,7 @@ mod tests {
     #[test]
     fn jpeg_encoder_limit_is_checked_before_allocating_the_pixmap() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 65536 1"><rect width="65536" height="1" fill="black"/></svg>"#;
-        let err = svg_to_jpeg(svg, &RasterOptions::default().with_unbounded_size()).unwrap_err();
+        let err = svg_to_jpeg(svg, &fixture_raster_options().with_unbounded_size()).unwrap_err();
 
         assert!(matches!(err, ExportError::JpegDimensionLimit));
     }
@@ -5668,14 +5822,14 @@ mod tests {
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 400px; background-color: white;"><text x="100" y="40" fill="#333333" font-size="32" style="font-family: '__merman_missing_font__'; text-anchor: middle;">v{}</text></svg>"##,
             merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
         );
-        let bytes = svg_to_png(&svg, &RasterOptions::default()).unwrap();
+        let bytes = svg_to_png(&svg, &fixture_raster_options()).unwrap();
         assert_png_has_visible_non_background_ink(&bytes);
     }
 
     #[test]
     fn default_plan_downscales_large_intrinsic_svg_without_allocating() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14544.4375 6565.5"><rect width="14544.4375" height="6565.5" fill="white"/></svg>"#;
-        let plan = svg_raster_plan(svg, &RasterOptions::default()).unwrap();
+        let plan = svg_raster_plan(svg, &fixture_raster_options()).unwrap();
 
         assert_eq!(plan.requested_width_px, 14545.0);
         assert_eq!(plan.requested_height_px, 6566.0);
@@ -5688,7 +5842,7 @@ mod tests {
     #[test]
     fn fit_to_models_browser_preview_container_before_scale() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><rect width="1000" height="500" fill="black"/></svg>"#;
-        let options = RasterOptions::default()
+        let options = fixture_raster_options()
             .with_fit_to(RasterFitBox::width(250))
             .with_scale(2.0);
         let plan = svg_raster_plan(svg, &options).unwrap();
@@ -5703,7 +5857,7 @@ mod tests {
     #[test]
     fn size_limit_caps_actual_png_dimensions() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><rect width="1000" height="500" fill="black"/></svg>"#;
-        let options = RasterOptions::default()
+        let options = fixture_raster_options()
             .with_size_limit(RasterSizeLimit::max_side_length(128))
             .with_matte("white");
         let bytes = svg_to_png(svg, &options).unwrap();
@@ -5715,7 +5869,7 @@ mod tests {
     #[test]
     fn size_limit_caps_by_total_pixels() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="black"/></svg>"#;
-        let options = RasterOptions::default().with_size_limit(RasterSizeLimit::new(
+        let options = fixture_raster_options().with_size_limit(RasterSizeLimit::new(
             None,
             None,
             Some(10_000),
@@ -5729,7 +5883,7 @@ mod tests {
     #[test]
     fn unbounded_size_keeps_requested_dimensions() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9000 4500"><rect width="9000" height="4500" fill="black"/></svg>"#;
-        let plan = svg_raster_plan(svg, &RasterOptions::default().with_unbounded_size()).unwrap();
+        let plan = svg_raster_plan(svg, &fixture_raster_options().with_unbounded_size()).unwrap();
 
         assert_eq!((plan.width_px, plan.height_px), (9000, 4500));
         assert!(!plan.limited);
