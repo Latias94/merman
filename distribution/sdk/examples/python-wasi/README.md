@@ -7,6 +7,10 @@ is the pinned runtime in `requirements.txt`; the tests use the standard library.
 Use an existing environment with that dependency, or install the requirements
 in your own environment. This directory does not build or download a module.
 
+The shown PNG options use binding schema 3 (`raster.matte`). Schema 2 artifacts
+use `raster.background`; inspect `options_schema_versions` in the loaded catalog.
+The client forwards options to core without a schema-migration layer.
+
 The reactor must include `native-fonts`, `bundled-fonts`, SVG, PNG and flowchart
 support for these examples and tests. Standard and math-enabled release modules
 can both be used; the runtime catalog describes the actual compiled capabilities.

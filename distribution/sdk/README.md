@@ -32,7 +32,8 @@ runtime catalog into the selected output directory.
 WASI ABI 1 is independent of native C ABI 3 and the binding options schema.
 Discover the loaded catalog: maintenance uses options schema 2, while main uses
 schema 3. Do not forward CLI flags as binding JSON, equate raster pixel dimensions
-with SVG CSS pixels, or share a WASI instance concurrently. An owned parse/option
+with SVG CSS pixels, or share a WASI instance concurrently. PNG uses
+`raster.background` in schema 2 and `raster.matte` in schema 3. An owned parse/option
 error permits reuse; a trapped or interrupted instance must be discarded. A
 production service owns pool sizing, deadlines and replacement. Python's example
 limits instructions with fuel, not a wall-clock timeout.
