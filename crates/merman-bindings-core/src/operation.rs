@@ -1564,7 +1564,7 @@ pub(crate) fn operation_result(
     })?;
     #[cfg(feature = "svg")]
     let svg_viewport = if operation.key() == OperationKey::Svg {
-        Some(crate::svg_viewport::from_svg(&data)?)
+        crate::svg_viewport::from_svg(&data)?
     } else {
         None
     };
@@ -3171,6 +3171,29 @@ mod tests {
                 "version",
             ]
         );
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-info"))]
+    #[test]
+    fn responsive_info_svg_remains_available_without_invented_viewport_metadata() {
+        let engine = BindingEngine::new(b"").unwrap();
+        let result = engine
+            .execute(BindingOperationRequest {
+                operation_id: "svg",
+                source: b"info",
+                uri: None,
+                options_json: b"",
+                operation_control: None,
+            })
+            .unwrap();
+        let svg = std::str::from_utf8(result.data()).unwrap();
+        let document = roxmltree::Document::parse(svg).unwrap();
+        assert_eq!(document.root_element().attribute("width"), Some("100%"));
+        assert!(document.root_element().attribute("viewBox").is_none());
+        assert!(result.metadata().svg_viewport().is_none());
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
+        assert_eq!(metadata["byte_length"], result.data().len());
+        assert!(metadata.get("svg_viewport").is_none());
     }
 
     #[cfg(feature = "svg")]

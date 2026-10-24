@@ -31,7 +31,7 @@ impl BindingSvgViewport {
     }
 }
 
-pub(crate) fn from_svg(svg: &[u8]) -> Result<BindingSvgViewport, BindingError> {
+pub(crate) fn from_svg(svg: &[u8]) -> Result<Option<BindingSvgViewport>, BindingError> {
     // Read only the root emitted by the renderer, not another SVG tree or layout.
     let mut reader = Reader::from_str(std::str::from_utf8(svg).map_err(|_| invalid_root())?);
     loop {
@@ -60,10 +60,12 @@ pub(crate) fn from_svg(svg: &[u8]) -> Result<BindingSvgViewport, BindingError> {
                             width: *width,
                             height: *height,
                         }
-                        .validate();
+                        .validate()
+                        .map(Some);
                     }
                 }
-                return Err(invalid_root());
+                // Responsive Mermaid roots such as Info have no intrinsic viewBox.
+                return Ok(None);
             }
             Ok(Event::Decl(_) | Event::Comment(_) | Event::PI(_)) => {}
             Ok(Event::Text(text))
@@ -85,6 +87,7 @@ mod tests {
     fn viewport_uses_logical_view_box_not_percentage_width() {
         let viewport =
             from_svg(br#"<svg width="100%" height="90" viewBox="-4 2 120 90"><path/></svg>"#)
+                .unwrap()
                 .unwrap();
         assert_eq!(
             (
@@ -95,6 +98,11 @@ mod tests {
             ),
             (-4.0, 2.0, 120.0, 90.0)
         );
+    }
+
+    #[test]
+    fn responsive_root_without_view_box_has_no_intrinsic_viewport() {
+        assert_eq!(from_svg(br#"<svg width="100%"><g/></svg>"#).unwrap(), None);
     }
 
     #[test]

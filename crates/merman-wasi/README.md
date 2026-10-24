@@ -87,7 +87,9 @@ Constructor success has empty `data`, `application/json` media, and
 Catalog and named metadata successes have JSON in `data` and empty `json`.
 Execute successes have raw SVG/PNG/other enabled operation output in `data` and
 the unchanged core `BindingOperationMetadata` in `json`. In particular, the
-additive `svg_viewport` carries `min_x, min_y, width, height` in CSS pixels; PNG
+additive `svg_viewport` carries `min_x, min_y, width, height` in CSS pixels when
+the SVG root declares a viewBox. Responsive roots without one (such as Info)
+omit that field rather than inventing dimensions or failing the render. PNG
 pixel dimensions remain in its core `output_plan`. This transport never parses
 SVG to invent metadata.
 
