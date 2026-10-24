@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -42,7 +43,8 @@ def consumer_environment(prefix: Path) -> dict[str, str]:
 
 def build_consumer(prefix: Path, build: Path, *, repo_root: Path) -> Path:
     environment = consumer_environment(prefix)
-    run(["cmake", "-S", prefix, "-B", build, "-DCMAKE_PREFIX_PATH=" + str(prefix)],
+    run(["cmake", "-S", prefix, "-B", build, "-DCMAKE_PREFIX_PATH=" + str(prefix),
+         "-DMERMAN_BUILD_CPP_EXAMPLES=ON"],
         repo_root=repo_root, environment=environment)
     run(["cmake", "--build", build, "--config", "Release", "--parallel", "2"],
         repo_root=repo_root, environment=environment)
@@ -106,6 +108,54 @@ def verify_installed_consumer(archive: Path, profile: str, target: str, version:
             repo_root=repo_root, environment=environment)
 
 
+def verify_installed_wasi_examples(*, archive: Path, profile: str, version: str,
+                                   repo_root: Path, output_dir: Path) -> None:
+    with verified_archive_contents(
+        archive, Path(str(archive) + ".sha256"), package_name="merman-" + profile,
+        target=sdk_archive.WASI_TARGET, version=version,
+    ) as extracted:
+        prefix = extracted.root
+        module = prefix / "lib/merman_wasi.wasm"
+        environment = os.environ.copy()
+        environment.update(MERMAN_WASI_MODULE=str(module),
+                           MERMAN_WASI_FONT=str(prefix / "fonts/Cousine-Regular.ttf"))
+        environment.setdefault("GOMAXPROCS", "2")
+        go = prefix / "examples/go-wasi"
+        python = prefix / "examples/python-wasi"
+        run(["go", "-C", go, "test", "-mod=readonly", "-p=1", "-count=1", "./..."],
+            repo_root=repo_root, environment=environment, timeout=300)
+        run([sys.executable, "-m", "unittest", "discover", "-s", python,
+             "-p", "test_client.py", "-v"],
+            repo_root=repo_root, environment=environment, timeout=300)
+        output_dir.mkdir(parents=True, exist_ok=False)
+        source = output_dir / "example.mmd"
+        source.write_text("---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n"
+                          "    htmlLabels: false\n---\nflowchart LR\nA[SDK] --> B[Examples]\n",
+                          encoding="utf-8")
+        options = output_dir / "options.json"
+        options.write_text(json.dumps({"svg": {"pipeline": "resvg-safe", "diagram_id": "sdk-example"},
+                                       "raster": {"scale": 2, "matte": "#ffffff"}}), encoding="utf-8")
+        report = {"module_sha256": sdk_archive.sha256_file(module), "outputs": {}}
+        for operation in ("svg", "png"):
+            for language, command in (
+                ("go", ["go", "-C", go, "run", "-mod=readonly", "-p=1", "./cmd/render"]),
+                ("python", [sys.executable, python / "render.py"]),
+            ):
+                output = output_dir / f"{language}.{operation}"
+                args = ["--module", module, "--source", source, "--operation", operation,
+                        "--font", prefix / "fonts/Cousine-Regular.ttf", "--output", output,
+                        "--metadata", Path(str(output) + ".metadata.json"),
+                        "--catalog", output_dir / f"{language}.catalog.json"]
+                if operation == "png":
+                    args += ["--options", options]
+                run(command + args, repo_root=repo_root, environment=environment, timeout=300)
+            data = (output_dir / f"go.{operation}").read_bytes()
+            if data != (output_dir / f"python.{operation}").read_bytes():
+                raise RuntimeError("packaged Go/Python example output mismatch: " + operation)
+            report["outputs"][operation] = hashlib.sha256(data).hexdigest()
+        (output_dir / "verified.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+
 def qualify_sdk(*, profile: str, target: str, work_dir: Path, output_dir: Path,
                 repo_root: Path = REPO_ROOT, source_commit: str | None = None,
                 wasi_dir: Path | None = None) -> dict:
@@ -113,6 +163,7 @@ def qualify_sdk(*, profile: str, target: str, work_dir: Path, output_dir: Path,
     descriptor = repo_root / "capabilities/artifact-profiles-v2.json"
     command = sdk_archive.build_command(profile, target, descriptor, repo_root)
     recipe = load_artifact_profile(profile, descriptor)
+    sdk_archive.require_clean_source_tree(repo_root)
     commit = sdk_archive.resolve_source_commit(repo_root, source_commit)
     version = tomllib.loads((repo_root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
     wasi = target == sdk_archive.WASI_TARGET
@@ -159,7 +210,10 @@ def qualify_sdk(*, profile: str, target: str, work_dir: Path, output_dir: Path,
         repo_root=repo_root, profile=profile, target=target, archive=archive,
         checksum=Path(str(archive) + ".sha256"), source_commit=commit, version=version,
     )
-    if not wasi:
+    if wasi:
+        verify_installed_wasi_examples(archive=archive, profile=profile, version=version,
+                                       repo_root=repo_root, output_dir=artifact / smoke_name / "examples")
+    else:
         verify_installed_consumer(archive, profile, target, version, repo_root=repo_root)
     evidence = artifact / "evidence"
     shutil.copytree(artifact / smoke_name, evidence / smoke_name)

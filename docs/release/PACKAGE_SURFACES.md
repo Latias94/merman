@@ -134,21 +134,22 @@ The repository-owned delivery routes are:
 
 1. crates.io for Rust crates, using `docs/release/PUBLISH_ORDER.md`.
 2. GitHub Release artifacts for `merman-cli` and `merman-lsp`.
-3. GitHub Release XCFramework packaging for Apple.
-4. GitHub Release wheels and PyPI publishing for Python.
-5. pub.dev for Flutter.
-6. GitHub Release AAR for Android.
-7. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
+3. Native C and WASI headless SDK archives attached manually to an existing GitHub Release.
+4. GitHub Release XCFramework packaging for Apple.
+5. GitHub Release wheels and PyPI publishing for Python.
+6. pub.dev for Flutter.
+7. GitHub Release AAR for Android.
+8. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
    `release-web.yml` after Trusted Publishing setup.
-8. lockstep npm publishing for `@mermanjs/node`, its five native platform packages, and the
+9. lockstep npm publishing for `@mermanjs/node`, its five native platform packages, and the
    explicit `@mermanjs/node-wasm` package through `release-node.yml`. Node is an experimental alpha
    surface; it requires first-publish bootstrap before npm Trusted Publishing can take over.
-9. Platform VSIX artifacts for the independently versioned VS Code extension through
+10. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
-10. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
+11. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
     `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
-11. Typst Universe submission for `@preview/merman:0.5.0`, bundling Merman `0.9.0`; wrapper `0.4.0` bundles Merman `0.8.0`. The wrapper has an independent version axis and is not published by the crates.io workflow or a workspace tag.
+12. Typst Universe submission for `@preview/merman:0.5.0`, bundling Merman `0.9.0`; wrapper `0.4.0` bundles Merman `0.8.0`. The wrapper has an independent version axis and is not published by the crates.io workflow or a workspace tag.
 
 The source-crate route and native-artifact routes must be audited separately. Publishing
 `merman-ffi` or `merman-uniffi` to crates.io does not publish an Android AAR, Apple XCFramework,

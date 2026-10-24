@@ -154,25 +154,59 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/sdk_qualify.py --profile "$SDK_PROFILE" --target "$SDK_TARGET" \
-            --work-dir "sdk-input/$SDK_PROFILE/$SDK_TARGET" --output-dir sdk-output \
+            --work-dir "target/sdk-input/$SDK_PROFILE/$SDK_TARGET" --output-dir target/sdk-output \
             --source-commit "$SOURCE_SHA"
       - name: Upload SDK archive and checksum
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sdk-package-${{ env.SDK_PROFILE }}-${{ env.SDK_TARGET }}
-          path: sdk-output/*
+          path: target/sdk-output/*
           if-no-files-found: error
       - name: Retain host qualification evidence separately from public SDK payloads
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sdk-smoke-${{ env.SDK_PROFILE }}-${{ env.SDK_TARGET }}
-          path: sdk-input/${{ env.SDK_PROFILE }}/${{ env.SDK_TARGET }}/evidence
+          path: target/sdk-input/${{ env.SDK_PROFILE }}/${{ env.SDK_TARGET }}/evidence
+          if-no-files-found: error
+
+  cli-reference:
+    name: Build the existing release CLI for SDK comparison
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      CARGO_TARGET_DIR: target/sdk-cli
+      CARGO_BUILD_JOBS: "2"
+    steps:
+      - name: Check out the same pinned source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install the pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        with:
+          toolchain: 1.95.0
+      - name: Build the descriptor-owned CLI release recipe once
+        run: python scripts/artifact_profile_recipe.py cli-release --build-host --locked
+      - name: Retain the internal comparison executable
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdk-cli-reference
+          path: target/sdk-cli/dist/merman-cli
           if-no-files-found: error
 
   native-wasi-parity:
-    name: native/WASI decoded PNG parity (${{ matrix.flavor }})
-    needs: [validate-inputs, package]
+    name: native/WASI/CLI output parity (${{ matrix.flavor }})
+    needs: [validate-inputs, package, cli-reference]
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -201,6 +235,40 @@ jobs:
         with:
           name: sdk-smoke-sdk-wasi-${{ matrix.flavor }}-wasm32-wasip1
           path: sdk-parity/wasi
+      - name: Download the same-source CLI
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sdk-cli-reference
+          path: sdk-parity/cli
+      - name: Download the qualified WASI archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sdk-package-sdk-wasi-${{ matrix.flavor }}-wasm32-wasip1
+          path: sdk-parity/archive
+      - name: Compare CLI and extracted WASI with matching fonts, scale and background
+        shell: python
+        env:
+          SDK_FLAVOR: ${{ matrix.flavor }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          import os, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
+          from scripts.release_archive import verified_archive_contents
+          root = Path('sdk-parity').resolve()
+          cli = root / 'cli/merman-cli'
+          cli.chmod(0o755)
+          flavor = os.environ['SDK_FLAVOR']
+          archive = root / 'archive' / ('merman-sdk-wasi-' + flavor + '-wasm32-wasip1.tar.xz')
+          with verified_archive_contents(
+              archive, Path(str(archive) + '.sha256'), package_name='merman-sdk-wasi-' + flavor,
+              target='wasm32-wasip1', version=os.environ['VERSION'],
+          ) as extracted:
+              subprocess.run([
+                  sys.executable, 'platforms/wasi/cli_compare.py', '--cli', str(cli),
+                  '--module', str(extracted.root / 'lib/merman_wasi.wasm'), '--flavor', flavor,
+                  '--output-dir', str(root / 'cli-comparison'),
+              ], check=True)
       - name: Compare dimensions and decoded RGBA8, not PNG compression bytes
         shell: python
         env:
@@ -225,5 +293,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sdk-parity-${{ matrix.flavor }}
-          path: sdk-parity/parity.json
+          path: |
+            sdk-parity/parity.json
+            sdk-parity/cli-comparison
           if-no-files-found: error

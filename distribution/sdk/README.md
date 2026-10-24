@@ -7,15 +7,64 @@ Standard omits math and ELK, math adds formula rendering without ELK, and full i
 ELK. Native and WASI have different descriptor-owned output surfaces. The artifact's
 runtime catalog, not its Cargo feature names, proves the surface.
 
+## Language examples
+
+Choose a transport before choosing a platform library. WASI is the single-module
+option for non-JavaScript hosts; native C is the direct-linking option. All
+examples consume existing SDK bytes, not a Rust source build.
+
+| Consumer | SDK | Included source | Run |
+| --- | --- | --- | --- |
+| Go / wazero | WASI, any flavor | `examples/go-wasi/` | `go run ./cmd/render` with the flags in its README |
+| Python / wasmtime | WASI, any flavor | `examples/python-wasi/` | `python render.py` with the flags in its README |
+| C99 | Native C, matching host | `examples/render.c` | CMake target `merman-render` or `merman-render-static` |
+| C++17 | Native C, matching host | `examples/render.cpp` | CMake target `merman-render-cpp-shared` or `merman-render-cpp-static` |
+
+Go/Python demonstrate repeated **serial** calls, owned errors and raw bytes,
+caller-supplied font bytes, catalog discovery, SVG/PNG metadata and scale/matte.
+Each includes a command-line example and real-module tests. Go also demonstrates
+`go:embed`; an application can embed the module and extra fonts without extracting
+a CLI or granting guest filesystem access. These are source examples for
+adaptation, not newly published language packages. The C++ example uses RAII to
+release results and the engine, writing SVG, 2x PNG, their metadata and the
+runtime catalog into the selected output directory.
+
+WASI ABI 1 is independent of native C ABI 3 and the binding options schema.
+Discover the loaded catalog: maintenance uses options schema 2, while main uses
+schema 3. Do not forward CLI flags as binding JSON, equate raster pixel dimensions
+with SVG CSS pixels, or share a WASI instance concurrently. An owned parse/option
+error permits reuse; a trapped or interrupted instance must be discarded. A
+production service owns pool sizing, deadlines and replacement. Python's example
+limits instructions with fuel, not a wall-clock timeout.
+
+The compact Cousine bundle does not cover all CJK/emoji; supply suitable font
+bytes when needed. SVG does not embed these text fonts, so its eventual viewer
+still needs matching fonts. Preserve the complete notices: excluding ELK/EPL
+does not remove MPL dependency or OFL font terms.
+
+Existing platform packages have separate APIs and recipes; see the source-tree
+guides for [Node](../../platforms/node/README.md),
+[Python/UniFFI](../../platforms/python/merman/README.md),
+[Android](../../platforms/android/README.md), [Apple](../../platforms/apple/README.md),
+and [Flutter](../../platforms/flutter/README.md). These wrappers do not acquire
+the larger headless SDK's capabilities merely by sharing the renderer. In an
+extracted archive, locate those guides in the exact source commit recorded in
+`SOURCE_AVAILABILITY.md`.
+
 ## Native C SDK
 
 Extract the archive and configure the included consumer against its installed prefix:
 
 ```text
-cmake -S /path/to/sdk -B consumer-build -DCMAKE_PREFIX_PATH=/path/to/sdk
+cmake -S /path/to/sdk -B consumer-build -DCMAKE_PREFIX_PATH=/path/to/sdk -DMERMAN_BUILD_CPP_EXAMPLES=ON
 cmake --build consumer-build --config Release
 ctest --test-dir consumer-build -C Release --output-on-failure
 ```
+
+C++ examples are opt-in so C-only consumers need no C++ toolchain; the qualifier
+always enables them. With the flag above CMake requires a C++17 compiler. To run C++ manually, execute
+`consumer-build/merman-render-cpp-shared output-directory` (multi-config generators
+place it in `consumer-build/Release/`). CTest runs both C and both C++ linkages.
 
 `Merman::Merman` imports the shared library; `Merman::Static` imports the static
 library and platform system dependencies. `lib/pkgconfig/merman.pc` supports
@@ -89,13 +138,19 @@ does not install tools. Run it with the Python environment containing those host
 dependencies; it invokes that same interpreter for all Python helpers.
 
 `--work-dir` must not already exist. Failed runs retain their files for diagnosis;
-retry with a new directory. Existing archives are never replaced. An optional
+retry with a new directory. Existing archives are never replaced. The source worktree must be clean;
+tracked and untracked changes are rejected before qualification or packaging. Keep generated work,
+output, and Cargo artifacts under ignored `target/` or outside the repository. An optional
 `--source-commit` must equal the checked-out HEAD. A successful run writes
 `qualification.json`, exact catalogs and legal report beside the staged libraries;
 `evidence/` contains only the host-smoke files for CI upload. Native consumers use
 the same generated headers, CMake/pkg-config files and installed library layout as
 the archive. The extracted archive's shared/static consumers must pass before the
-command reports success. No successful local run publishes an archive.
+command reports success. WASI qualification also executes the Go and Python tests
+and command-line examples from the **extracted archive**, using that archive's
+module and fonts. Both languages must produce identical SVG/PNG bytes for matching
+inputs. This does not replace native/WASI pixel comparison or establish direct
+CLI equivalence. No successful local run publishes an archive.
 
 Print the descriptor-owned build command without executing it:
 
@@ -198,6 +253,17 @@ attested and uploaded. Only its publication job has write permissions, behind th
 existing `github-release` environment. It rechecks the tag and successful run,
 uses official build attestations, and uploads only to an existing release, without
 creating releases or replacing assets. No release is triggered by packaging.
+
+After publication, GitHub lists the SDK archive and checksum files under the release's Assets
+section. Filenames identify both profile and target; the asset list is not inserted into the release
+notes body automatically.
+
+The publisher currently adds all 18 archives: 15 native builds and three WASI builds. Native names
+follow `merman-sdk-native-<flavor>-<target>.tar.xz`, except Windows uses `.zip`; WASI names follow
+`merman-sdk-wasi-<flavor>-wasm32-wasip1.tar.xz`. Every archive has an adjacent `.sha256` file. The
+five native targets are GNU Linux x86-64/ARM64, macOS ARM64/x86-64, and Windows x86-64 MSVC. Select
+`standard`, `math`, or `full` according to the [profile table](../../docs/release/PACKAGE_SURFACES.md#headless-sdk-profiles).
+The version is in the GitHub Release tag and archive manifest, not the filename.
 
 ```text
 python3 scripts/sdk_archive.py verify --profile sdk-native-standard --target x86_64-unknown-linux-gnu --archive merman-sdk-native-standard-x86_64-unknown-linux-gnu.tar.xz --checksum merman-sdk-native-standard-x86_64-unknown-linux-gnu.tar.xz.sha256 --source-commit <tag-commit> --version <version> --verified-output-dir <existing-empty-directory>

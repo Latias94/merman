@@ -357,7 +357,13 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertNotIn("secrets: inherit", owner)
         self.assertNotIn("gh release upload", owner)
         parity = self.job(owner, "native-wasi-parity")
-        self.assertIn("needs: [validate-inputs, package]", parity)
+        self.assertIn("needs: [validate-inputs, package, cli-reference]", parity)
+        self.assertIn("platforms/wasi/cli_compare.py", parity)
+        self.assertIn("verified_archive_contents", parity)
+        reference = self.job(owner, "cli-reference")
+        self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}", reference)
+        self.assertIn("cli-release --build-host --locked", reference)
+        self.assertNotIn("continue-on-error", reference)
         self.assertNotIn("continue-on-error", parity)
 
     def test_sdk_publication_is_a_separate_manual_workflow(self):
@@ -380,7 +386,7 @@ class PreflightWorkflowTests(unittest.TestCase):
         positions = [publish.index(stage) for stage in stages]
         self.assertEqual(positions, sorted(positions))
         self.assertIn("verified_output_dir=verified", publish)
-        self.assertIn("sdk-release-verified/*", publish)
+        self.assertIn("target/sdk-release-verified/*", publish)
         self.assertIn("environment: github-release", publisher)
         self.assertNotIn("secrets: inherit", publisher)
         self.assertNotIn("continue-on-error", publisher)
@@ -398,9 +404,9 @@ class PreflightWorkflowTests(unittest.TestCase):
         positions = [package.index(stage) for stage in stages]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('--profile "$SDK_PROFILE" --target "$SDK_TARGET"', package)
-        self.assertIn('--work-dir "sdk-input/$SDK_PROFILE/$SDK_TARGET"', package)
+        self.assertIn('--work-dir "target/sdk-input/$SDK_PROFILE/$SDK_TARGET"', package)
         self.assertIn('--source-commit "$SOURCE_SHA"', package)
-        self.assertIn("sdk-input/${{ env.SDK_PROFILE }}/${{ env.SDK_TARGET }}/evidence", package)
+        self.assertIn("target/sdk-input/${{ env.SDK_PROFILE }}/${{ env.SDK_TARGET }}/evidence", package)
 
     def test_sdk_producer_matrix_covers_every_descriptor_target_exactly_once(self):
         owner = (ROOT / ".github/workflows/release-sdk.yml").read_text()

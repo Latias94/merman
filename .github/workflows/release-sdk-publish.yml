@@ -95,7 +95,7 @@ jobs:
         with:
           pattern: sdk-package-*
           merge-multiple: true
-          path: sdk-release-input
+          path: target/sdk-release-input
           github-token: ${{ github.token }}
           run-id: ${{ needs.validate-inputs.outputs.build_run_id }}
       - name: Verify all 18 archives and persist only checksum-bound snapshots
@@ -109,7 +109,7 @@ jobs:
           sys.path.insert(0, os.getcwd())
           from scripts.sdk_archive import NATIVE_TARGETS, PROFILES, WASI_TARGET, verify_sdk_archive
           from scripts.release_archive import release_archive_name_for
-          source, verified = Path('sdk-release-input'), Path('sdk-release-verified')
+          source, verified = Path('target/sdk-release-input'), Path('target/sdk-release-verified')
           expected = set()
           selected = []
           for profile in PROFILES:
@@ -143,8 +143,8 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
-            sdk-release-verified/*.tar.xz
-            sdk-release-verified/*.zip
+            target/sdk-release-verified/*.tar.xz
+            target/sdk-release-verified/*.zip
       - name: Upload without creating releases or replacing existing assets
         shell: bash
         env:
@@ -155,5 +155,5 @@ jobs:
           set -euo pipefail
           test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)" = "$SOURCE_SHA"
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
-          (cd sdk-release-verified && sha256sum --strict --check ./*.sha256)
-          gh release upload "$RELEASE_TAG" sdk-release-verified/* --repo "$GITHUB_REPOSITORY"
+          (cd target/sdk-release-verified && sha256sum --strict --check ./*.sha256)
+          gh release upload "$RELEASE_TAG" target/sdk-release-verified/* --repo "$GITHUB_REPOSITORY"

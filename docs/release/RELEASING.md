@@ -95,6 +95,26 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
+The SDK workflow is deliberately separate from the normal tag-triggered Release: preflight uploads
+qualified SDK archives as Actions artifacts, while `release-sdk-publish.yml` manually attaches them
+to an existing GitHub Release. To use a preflight run as the SDK producer, dispatch it from a ref
+whose run `head_sha` is the exact release source commit; the publisher checks that identity against
+the immutable tag. After the primary Release exists, publish using that successful preflight run:
+
+```bash
+RELEASE_TAG="v<version>"
+PREFLIGHT_RUN_ID="<successful source-matched release-preflight run id>"
+gh workflow run release-sdk-publish.yml \
+  --ref "$RELEASE_TAG" \
+  -f build_run_id="$PREFLIGHT_RUN_ID" \
+  -f release_tag="$RELEASE_TAG"
+```
+
+The publisher validates all 18 archives and 18 checksum sidecars, attests the verified archive
+bytes, and uploads them without rebuilding or replacing existing assets. A successful preflight by
+itself does not make SDK downloads available. See [SDK delivery](../../distribution/sdk/README.md)
+for the profile and target choices.
+
 The word "FFI" covers two different deliverables. `merman-bindings-core`, `merman-ffi`,
 `merman-uniffi`, and `merman-wasm` are source crates in the crates.io graph. Android AAR, Apple
 XCFramework, Python wheels, and Flutter Native Assets are separately built artifacts owned by their
@@ -543,7 +563,9 @@ the native C/WASI SDK archive matrix. The SDK owner qualifies standard, math, an
 separately: five native library targets plus `wasm32-wasip1`, with actual host catalog,
 font/output smokes, artifact-specific legal reports and native/WASI PNG comparisons.
 See [SDK delivery](../../distribution/sdk/README.md) for the exact recipes. It does
-not publish to any registry.
+not publish to any registry or attach the SDK archives to the GitHub Release. SDK publication is a
+separate manual workflow after the primary release exists; the selected preflight run must have
+`head_sha` equal to the tag commit.
 
 Release CI keeps integrity checks at boundaries where bytes or trust cross jobs or registries. GitHub
 Actions use reviewed full version tags; source identity uses the commit and tree; SHA-256
@@ -770,6 +792,22 @@ gh workflow run release-node.yml -f release_tag="$RELEASE_TAG" -f source_ref="$S
 gh workflow run vscode-extension.yml -f source_ref="$RELEASE_TAG"
 gh workflow run homebrew.yml
 ```
+
+If the SDK surface is selected, publish its already-qualified artifacts separately:
+
+```bash
+RELEASE_TAG="v<version>"
+PREFLIGHT_RUN_ID="<successful source-matched release-preflight run id>"
+gh workflow run release-sdk-publish.yml \
+  --ref "$RELEASE_TAG" \
+  -f build_run_id="$PREFLIGHT_RUN_ID" \
+  -f release_tag="$RELEASE_TAG"
+```
+
+This step adds all 18 native C and WASI SDK archives to the existing Release only after checking the
+producer run, tag commit, manifests, catalogs, payload hashes, and checksum sidecars. It does not
+rebuild the SDK or update the release notes body; after verifying the assets, add a concise download
+table for the available profiles and targets to that release's notes.
 
 The VS Code workflow currently packages and verifies platform VSIX artifacts only; Marketplace or
 Open VSX publishing requires a separate credential-backed release workflow.
