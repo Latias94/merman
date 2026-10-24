@@ -17,8 +17,10 @@ use merman::{
 #[cfg(feature = "ascii")]
 use merman::{
     ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy},
-    diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask},
+    diagrams::gantt::{GanttDiagramModel, GanttTask, GanttTerminalView},
 };
+#[cfg(feature = "ascii")]
+use merman_ascii::AsciiDiagram;
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";
 const PROVENANCE_CHILD: &str = "MERMAN_TZ_PROVENANCE_CHILD";
@@ -118,35 +120,34 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
     const EARLIER_MS: i64 = 1_793_511_000_000;
     const LATER_MS: i64 = 1_793_514_600_000;
 
-    let mut model = GanttDiagramRenderModel::default();
+    let mut model = GanttDiagramModel::default();
     model.sections.push("Fold".to_string());
     model.tasks = vec![
-        GanttRenderTask {
+        GanttTask {
             id: "earlier".to_string(),
             task: "Earlier instant".to_string(),
             section: "Fold".to_string(),
             order: 0,
             start_ms: EARLIER_MS,
             end_ms: EARLIER_MS,
-            ..GanttRenderTask::default()
+            ..GanttTask::default()
         },
-        GanttRenderTask {
+        GanttTask {
             id: "later".to_string(),
             task: "Later instant".to_string(),
             section: "Fold".to_string(),
             order: 1,
             start_ms: LATER_MS,
             end_ms: LATER_MS,
-            ..GanttRenderTask::default()
+            ..GanttTask::default()
         },
     ];
 
     let context = runtime_policy
         .begin_operation()
         .expect("capture New York operation context");
-    let ascii_model = merman::ascii::AsciiDiagram::Gantt(
-        merman::diagrams::gantt::GanttTerminalView::from_render(&model),
-    );
+    let config = merman::MermaidConfig::default();
+    let ascii_model = AsciiDiagram::Gantt(GanttTerminalView::from_model(&model, &config));
     let rendered = AsciiRenderer::new(AsciiRenderOptions::ascii())
         .expect("ASCII options should validate")
         .render_model(
