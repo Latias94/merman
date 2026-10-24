@@ -9,6 +9,7 @@ mod cascade;
 mod context;
 mod css;
 mod html;
+mod native_math;
 mod transform;
 
 use crate::svg::pipeline::{
@@ -250,8 +251,35 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     i = i_next;
                     continue;
                 }
-                let normalized = normalized_foreign_object_text(&resolved.fragments, checkpoint)?;
-                if !normalized.is_empty() {
+                let native_math = native_math::project_native_math(
+                    inner,
+                    &resolved.typography,
+                    width,
+                    height,
+                    text_measurer,
+                    checkpoint,
+                    &mut |bytes, elements, depth| {
+                        preflight_generated(
+                            svg.len()
+                                .saturating_add(instance_bytes)
+                                .saturating_add(overlays.len())
+                                .saturating_add(bytes),
+                            generated_elements.saturating_add(elements),
+                            geometry_stack
+                                .len()
+                                .saturating_add(2)
+                                .max(5)
+                                .saturating_add(depth),
+                        )
+                    },
+                    invalid_geometry,
+                )?;
+                let normalized = if native_math.is_some() {
+                    crate::text::html_wrap::NormalizedHtmlText::default()
+                } else {
+                    normalized_foreign_object_text(&resolved.fragments, checkpoint)?
+                };
+                if native_math.is_some() || !normalized.is_empty() {
                     let typography = resolved.typography;
                     let source_attr = if from_switch {
                         r#" data-merman-foreignobject-source="switch-native-fallback""#
@@ -266,13 +294,17 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         .unwrap_or_default();
                     let measure_style = typography.text_style();
                     let wrapping = foreign_object_html_wrapping(tag, inner, checkpoint)?;
-                    let lines = wrap_html_text(
-                        &normalized,
-                        wrapping,
-                        text_measurer,
-                        &measure_style,
-                        checkpoint,
-                    )?;
+                    let lines = if native_math.is_some() {
+                        Vec::new()
+                    } else {
+                        wrap_html_text(
+                            &normalized,
+                            wrapping,
+                            text_measurer,
+                            &measure_style,
+                            checkpoint,
+                        )?
+                    };
                     let line_height = typography.line_height;
                     let y0 = text_y - line_height * (lines.len() as f64 - 1.0) / 2.0;
                     let mut positions = Vec::with_capacity(lines.len());
@@ -456,6 +488,17 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     let text_attributes = format!(
                         r#" class="merman-foreignobject-fallback-text"{source_classes_attr}"#
                     );
+                    if let Some(projection) = native_math {
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!("{}", projection.svg),
+                            projection.elements,
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth.saturating_add(projection.depth),
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
+                    }
                     for (idx, (line, (line_x, y_line))) in lines.iter().zip(positions).enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
                         let text = escape_xml_text_with_checkpoints(&line.text, checkpoint)?;

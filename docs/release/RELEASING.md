@@ -38,6 +38,8 @@ The branch name does not publish a version. Historical release notes may retain 
 | Workflow | Publishes | Channel |
 | --- | --- | --- |
 | `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
+| `release-sdk.yml` | Nothing; qualifies native C and WASI standard/math/full archives | GitHub Actions artifacts |
+| `release-sdk-publish.yml` | Already-qualified SDK archives from a successful, tag-matched run | Existing GitHub Release only |
 | `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
 | `release-cli-registries.yml` | Nothing; verifies published stable assets and produces separately validated WinGet/Scoop candidates | GitHub Actions artifacts |
 | `release-crates.yml` | Rust workspace crates | crates.io |

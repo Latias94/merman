@@ -30,6 +30,15 @@ and both hosts run without preopens. The maintenance-specific legacy feature
 exception is documented under Dependency provenance. Do not confuse compiled
 third-party helpers with ambient discovery permission.
 
+RaTeX 0.1.15 additionally retains the standard WASI `path_readlink` import through
+its Unicode-font path canonicalization helper (`ratex-unicode-font/src/lib.rs`,
+`load_font_file`). Its actual scalar type is six i32 parameters returning i32.
+The host supplies only the ordinary WASI implementation, with no preopened directory
+or added path rights. A real-runtime adapter regression verifies that a readlink
+request cannot resolve a host path or overwrite its output buffer. This reviewed
+dependency residual does not add a Merman filesystem operation or permit JavaScript,
+network, directory mutation, or other unlisted imports.
+
 ## Workflow interface
 
 Requirements: Python 3.11+ and Go 1.25+. Python dependencies are pinned in

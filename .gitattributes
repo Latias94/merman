@@ -30,6 +30,7 @@ LICENSE-*      text eol=lf
 *.sh      text eol=lf
 *.mjs     text eol=lf
 *.lock    text eol=lf
+crates/merman-ffi/include/*.h text eol=lf
 
 # Tree-sitter generated language artifacts are reviewed through deterministic regeneration.
 distribution/tree-sitter-mermaid/**/*.scm text eol=lf

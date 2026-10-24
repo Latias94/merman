@@ -97,6 +97,25 @@ class RealRuntimeAuditTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.audit(reactor_wat(extra=helper.replace("(param i32 i32)", "(param i64 i32)")))
 
+    def test_dependency_readlink_import_cannot_access_host_paths(self):
+        imports = '''
+          (import "wasi_snapshot_preview1" "path_readlink"
+            (func $readlink (param i32 i32 i32 i32 i32 i32) (result i32)))
+        '''
+        initialize = '''
+          i32.const 16 i32.const 120 i32.store8
+          i32.const 80 i32.const 238 i32.const 16 memory.fill
+          i32.const 108
+          i32.const 3 i32.const 16 i32.const 1 i32.const 80 i32.const 16 i32.const 104
+          call $readlink i32.store
+        '''
+        host = Host(self.wt.wat2wasm(reactor_wat(imports, initialize)))
+        try:
+            self.assertNotEqual(struct.unpack("<I", host.read(108, 4))[0], 0)
+            self.assertEqual(host.read(80, 16), bytes([238]) * 16)
+        finally:
+            host.close()
+
     def test_actual_host_has_no_preopens_environment_or_ambient_entropy(self):
         imports = '''
           (import "wasi_snapshot_preview1" "random_get" (func $rand (param i32 i32) (result i32)))

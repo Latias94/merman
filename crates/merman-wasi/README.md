@@ -33,6 +33,19 @@ standard must not contain them. Math uses embedded KaTeX fonts, not system disco
 The integration owner maintains the bounded implementation-export inventory
 alongside the WASI host qualification harness.
 
+This line's RaTeX 0.1.15 also retains a WASI `path_readlink` import from Unicode-font
+path canonicalization. It grants no filesystem access: the required host policy
+still has no preopened directories, and the adapter tests verify denied path access.
+
+Headless math preserves RaTeX-owned inline SVG outlines when the resvg-safe pipeline
+replaces HTML label shells. It does not add a general HTML/CSS layout engine. As in the
+pinned Mermaid 12.1 `createText` source, explicit global `htmlLabels: false` retains the
+literal SVG-text branch; use HTML labels for formula interpretation. The final headless
+output contains native SVG geometry rather than depending on `foreignObject` rendering.
+RaTeX's bounded SVG glyph-text fallback is also retained when no outline is available;
+its visible coverage still depends on the admitted fonts. Bundled Cousine does not
+provide general CJK or emoji coverage.
+
 Diagram selectors forward to the shared facade and binding engine. `analysis`
 and `ascii` can also be selected explicitly. No `native-runtime`, system-clock,
 system-timezone, or system-random feature is exposed. `svg`, `native-fonts`, `png`,
