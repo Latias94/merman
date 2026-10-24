@@ -70,6 +70,12 @@ def library_names(target: str) -> dict[str, str]:
             "dynamic": "libmerman_ffi.dylib" if "apple" in target else "libmerman_ffi.so"}
 
 
+def library_layout(target: str) -> dict[str, str]:
+    """Map library roles to their installed archive-relative paths."""
+    return {kind: ("bin/" if kind == "dynamic" and "windows" in target else "lib/") + name
+            for kind, name in library_names(target).items()}
+
+
 def _object_pairs(pairs):
     result = {}
     for key, value in pairs:
@@ -260,7 +266,7 @@ def write_catalog_sidecar(*, repo_root: Path, profile: str, target: str,
 
 
 def _native_metadata(files, repo_root, target, version, names):
-    dynamic_path = ("bin/" if "windows" in target else "lib/") + names["dynamic"]
+    dynamic_path = library_layout(target)["dynamic"]
     template = _input(repo_root, "distribution/sdk/cmake/MermanConfig.cmake.in").read_text()
     import_library = (f'  set_property(TARGET Merman::Merman PROPERTY IMPORTED_IMPLIB "${{_merman_prefix}}/lib/{names["import"]}")'
                       if "import" in names else "")
@@ -278,6 +284,19 @@ def _native_metadata(files, repo_root, target, version, names):
     if "windows" in target:
         files["lib/pkgconfig/merman-static.pc"] = pc.replace(
             "-lmerman_ffi.dll", "-lmerman_ffi").encode()
+
+
+def native_consumer_files(repo_root: Path, target: str, version: str) -> dict[str, bytes]:
+    """Generate the same native headers, examples and integration files for every consumer."""
+    names = library_names(target)
+    if target == WASI_TARGET:
+        raise ArchiveVerificationError("native consumer files require a native SDK target")
+    files = {f"include/{name}": _input(repo_root, f"crates/merman-ffi/include/{name}").read_bytes()
+             for name in HEADERS}
+    for name in ("CMakeLists.txt", "examples/render.c", "examples/probe.c"):
+        files[name] = _input(repo_root, f"distribution/sdk/{name}").read_bytes()
+    _native_metadata(files, repo_root, target, version, names)
+    return files
 
 
 def _header_version(data, macro):
@@ -354,10 +373,11 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
             raise ArchiveVerificationError(f"duplicate SDK payload member: {destination}")
         files[destination] = _input(source_root, relative).read_bytes()
 
+    layout = library_layout(target)
     for kind, name in names.items():
-        add(artifact_dir, name, ("bin/" if kind == "dynamic" and "windows" in target else "lib/") + name)
+        add(artifact_dir, name, layout[kind])
     for name, digest in sidecar["artifacts"].items():
-        destination = ("bin/" if "windows" in target and name.endswith(".dll") else "lib/") + name
+        destination = next(layout[kind] for kind, filename in names.items() if filename == name)
         if hashlib.sha256(files[destination]).hexdigest() != digest:
             raise ArchiveVerificationError("built artifact changed while preparing the SDK archive")
     add(repo_root, "distribution/sdk/README.md", "README.md")
@@ -406,8 +426,7 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
         raise ArchiveVerificationError("packaged ABI contract disagrees with artifact catalog")
     add(repo_root, contract_path)
     if not wasi:
-        for name in HEADERS:
-            add(repo_root, f"crates/merman-ffi/include/{name}", f"include/{name}")
+        files.update(native_consumer_files(repo_root, target, version))
         if _header_version(files["include/merman.h"], "MERMAN_NATIVE_ABI_VERSION") != catalog["transport_api_version"]:
             raise ArchiveVerificationError("native header ABI version disagrees with artifact catalog")
         if _header_version(files["include/merman_resource_contract.h"], "MERMAN_BINDING_OPTIONS_SCHEMA_VERSION") not in catalog["options_schema_versions"]:
@@ -417,9 +436,6 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
         if _header_version(files["include/merman_text_measurement_abi.h"], "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION") != measurement.get("protocol_version"):
             raise ArchiveVerificationError("text measurement header disagrees with its protocol contract")
         add(repo_root, measurement_path)
-        for name in ("CMakeLists.txt", "examples/render.c", "examples/probe.c"):
-            add(repo_root, f"distribution/sdk/{name}", name)
-        _native_metadata(files, repo_root, target, version, names)
     else:
         add(repo_root, "crates/merman-wasi/README.md", "docs/WASI_ABI.md")
     source_paths = ["Cargo.lock", recipe.manifest, "crates/merman", "crates/merman-render", "crates/merman-export"]
@@ -521,10 +537,8 @@ def verify_sdk_archive(*, repo_root: Path, profile: str, target: str, archive: P
             if (not isinstance(details, dict) or type(details.get("size")) is not int or
                     details != {"size": path.stat().st_size, "sha256": sha256_file(path)}):
                 raise ArchiveVerificationError(f"SDK archive payload checksum mismatch: {name}")
-        names = library_names(target)
-        binaries = {kind: _input(extracted.root,
-                    ("bin/" if kind == "dynamic" and "windows" in target else "lib/") + name)
-                    for kind, name in names.items()}
+        binaries = {kind: _input(extracted.root, path)
+                    for kind, path in library_layout(target).items()}
         catalog = _catalog(_json(_input(extracted.root, "runtime-catalog.json")),
                            profile=profile, target=target, commit=source_commit, version=version,
                            expected=document.get("expected"), binaries=binaries)

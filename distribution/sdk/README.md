@@ -68,6 +68,37 @@ options. Neither profile replaces host execution/memory isolation for untrusted 
 
 ## Build and packaging handoff
 
+Build and qualify one SDK locally with the same entry point used by CI:
+
+```text
+python3 scripts/sdk_qualify.py --profile sdk-wasi-math --target wasm32-wasip1 --work-dir target/sdk-check/wasi-math --output-dir target/sdk-check/archives
+python3 scripts/sdk_qualify.py --profile sdk-native-math --target aarch64-apple-darwin --work-dir target/sdk-check/native-math --output-dir target/sdk-check/archives --wasi-dir target/sdk-check/wasi-math/wasi-smoke
+```
+
+Choose a native target matching `rustc -vV` on the machine running the command.
+Use `standard`, `math`, or `full` in either profile name. Run different profiles
+serially when reusing `CARGO_TARGET_DIR`; each invocation stages its libraries and
+finishes qualification and packaging before returning. The optional native
+`--wasi-dir` compares against the existing two-runtime outputs for that same flavor.
+The independent CI parity job performs that comparison across matrix jobs.
+
+The command needs Python 3.11+, the repository Rust toolchain with the selected
+target installed, cargo-about 0.9.2 on `PATH`, and the pinned host dependencies in
+`platforms/wasi/requirements.txt`. WASI additionally needs the Go version in
+`platforms/wasi/README.md`; native qualification needs CMake and the platform's C
+toolchain. macOS uses its `install_name_tool`, `codesign` and `otool`. The command
+does not install tools. Run it with the Python environment containing those host
+dependencies; it invokes that same interpreter for all Python helpers.
+
+`--work-dir` must not already exist. Failed runs retain their files for diagnosis;
+retry with a new directory. Existing archives are never replaced. An optional
+`--source-commit` must equal the checked-out HEAD. A successful run writes
+`qualification.json`, exact catalogs and legal report beside the staged libraries;
+`evidence/` contains only the host-smoke files for CI upload. Native consumers use
+the same generated headers, CMake/pkg-config files and installed library layout as
+the archive. The extracted archive's shared/static consumers must pass before the
+command reports success. No successful local run publishes an archive.
+
 Print the descriptor-owned build command without executing it:
 
 ```text
@@ -134,11 +165,12 @@ its matching release tag explicitly. The existing release tooling's `main`
 default selects the development line, not this maintenance branch.
 
 The 18 matrix jobs each own one profile/target-specific `CARGO_TARGET_DIR` and stage
-only that just-built library set. They execute the exact descriptor command through
-`artifact_profile_recipe.py --build --locked --target-triple`, run real host smokes,
-write the sidecar with `catalog-sidecar`, generate the exact cargo-about report,
-then immediately package the same bytes. No job rebuilds another profile before
-catalog capture and archiving have finished. The packager itself never runs Cargo.
+only that just-built library set. They call `scripts/sdk_qualify.py`, which executes
+the exact locked descriptor command, runs real host smokes, writes the actual catalog
+sidecar, generates the exact cargo-about report, packages and verifies the same
+bytes, then runs extracted native consumers. No job rebuilds another profile before
+catalog capture and archiving have finished. The packager itself never runs Cargo;
+the workflow owns source trust, tool installation, scheduling and artifact upload.
 
 The native lanes compile and run the shared memory-font probe on five actual
 target hosts and build the installed consumer against the extracted archive.

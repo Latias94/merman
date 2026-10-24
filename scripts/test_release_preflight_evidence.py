@@ -394,26 +394,13 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertNotIn("actions/download-artifact", package)
         self.assertNotIn("continue-on-error", package)
         self.assertIn("flavor: [standard, math, full]", package)
-        stages = (
-            "scripts/artifact_profile_recipe.py",
-            "merman-probe",
-            "platforms/wasi/smoke.py",
-            "catalog-sidecar",
-            "scripts/generate-rust-license-report.py",
-            "'scripts/sdk_archive.py', 'package'",
-            "ctest",
-            "actions/upload-artifact",
-        )
-        for stage in stages:
-            self.assertIn(stage, package)
+        stages = ("cargo fetch --locked", "python scripts/sdk_qualify.py", "actions/upload-artifact")
         positions = [package.index(stage) for stage in stages]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("--build --locked --target-triple", package)
-        self.assertIn('--artifact-profile "$SDK_PROFILE"', package)
+        self.assertIn('--profile "$SDK_PROFILE" --target "$SDK_TARGET"', package)
+        self.assertIn('--work-dir "sdk-input/$SDK_PROFILE/$SDK_TARGET"', package)
         self.assertIn('--source-commit "$SOURCE_SHA"', package)
-        self.assertLess(package.index("install_name_tool"), package.index("codesign"))
-        self.assertLess(package.index("codesign"), package.index("merman-probe"))
-        self.assertIn("platforms/wasi/native_smoke.py", package)
+        self.assertIn("sdk-input/${{ env.SDK_PROFILE }}/${{ env.SDK_TARGET }}/evidence", package)
         consumers = (ROOT / "distribution/sdk/CMakeLists.txt").read_text()
         for consumer in ("sdk-render COMMAND merman-render",
                          "sdk-render-static COMMAND merman-render-static"):
