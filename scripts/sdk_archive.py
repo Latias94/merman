@@ -45,6 +45,12 @@ NATIVE_TARGETS = (
 )
 WASI_TARGET = "wasm32-wasip1"
 HEADERS = ("merman.h", "merman_text_measurement_abi.h", "merman_resource_contract.h")
+WASI_EXAMPLE_FILES = (
+    *(f"go-wasi/{name}" for name in ("go.mod", "go.sum", "client.go", "client_test.go",
+                                    "cmd/render/main.go", "README.md")),
+    *(f"python-wasi/{name}" for name in ("client.py", "render.py", "test_client.py",
+                                        "requirements.txt", "README.md")),
+)
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 FORBIDDEN_PARTS = frozenset({".git", "tests", "fixtures", "__pycache__", "target"})
@@ -152,6 +158,19 @@ def build_command(profile: str, target: str, descriptor: Path, repo_root: Path) 
     return cargo_build_args(recipe, target=target, locked=True, repo_root=repo_root)
 
 
+def require_clean_source_tree(repo_root: Path) -> None:
+    repo_root = require_repository_root(Path(repo_root))
+    completed = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain=v1",
+         "--untracked-files=all"],
+        check=False, capture_output=True, text=True,
+    )
+    if completed.returncode:
+        raise ArchiveVerificationError("cannot verify that the SDK source tree is clean")
+    if completed.stdout.strip():
+        raise ArchiveVerificationError("SDK source tree has uncommitted changes")
+
+
 def resolve_source_commit(repo_root: Path, expected: str | None) -> str:
     if expected is not None and not COMMIT.fullmatch(expected):
         raise ArchiveVerificationError("source_commit must be a lowercase 40-character Git commit")
@@ -242,6 +261,7 @@ def write_catalog_sidecar(*, repo_root: Path, profile: str, target: str,
                           source_commit: str | None = None, descriptor: Path | None = None) -> Path:
     repo_root = require_repository_root(Path(repo_root))
     artifact_dir = require_repository_root(Path(artifact_dir))
+    require_clean_source_tree(repo_root)
     descriptor = Path(descriptor) if descriptor else repo_root / "capabilities/artifact-profiles-v2.json"
     _recipe(profile, target, descriptor, repo_root)
     document = next(item for item in _json(descriptor)["profiles"] if item["id"] == profile)
@@ -293,7 +313,7 @@ def native_consumer_files(repo_root: Path, target: str, version: str) -> dict[st
         raise ArchiveVerificationError("native consumer files require a native SDK target")
     files = {f"include/{name}": _input(repo_root, f"crates/merman-ffi/include/{name}").read_bytes()
              for name in HEADERS}
-    for name in ("CMakeLists.txt", "examples/render.c", "examples/probe.c"):
+    for name in ("CMakeLists.txt", "examples/render.c", "examples/probe.c", "examples/render.cpp"):
         files[name] = _input(repo_root, f"distribution/sdk/{name}").read_bytes()
     _native_metadata(files, repo_root, target, version, names)
     return files
@@ -348,6 +368,7 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
     repo_root = require_repository_root(Path(repo_root))
     original_artifact_dir = Path(artifact_dir).absolute()
     artifact_dir = require_repository_root(original_artifact_dir)
+    require_clean_source_tree(repo_root)
     descriptor = Path(descriptor) if descriptor else repo_root / "capabilities/artifact-profiles-v2.json"
     require_regular_input(descriptor, "artifact descriptor")
     recipe = _recipe(profile, target, descriptor, repo_root)
@@ -438,6 +459,8 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
         add(repo_root, measurement_path)
     else:
         add(repo_root, "crates/merman-wasi/README.md", "docs/WASI_ABI.md")
+        for name in WASI_EXAMPLE_FILES:
+            add(repo_root, "distribution/sdk/examples/" + name, "examples/" + name)
     source_paths = ["Cargo.lock", recipe.manifest, "crates/merman", "crates/merman-render", "crates/merman-export"]
     if flavor == "full":
         source_paths.append("crates/merman-layout-elk")

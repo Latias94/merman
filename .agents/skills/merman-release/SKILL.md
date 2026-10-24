@@ -76,6 +76,7 @@ Write the changelog for users:
 - While the next workspace version is unselected, keep the root entry as `## [Unreleased]`. Once the maintainer selects a workspace version, rename it to `## [version] - Unreleased`; immediately before immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form.
 - Treat the root `CHANGELOG.md` as the canonical project-wide release narrative. For every intended publish surface that owns a package-local changelog, update that file as a curated projection of the same release delta: include only changes, migrations, compatibility notes, and verified performance claims that affect that package's users.
 - Keep workspace-coupled package changelog entries at `Unreleased` during preparation, then stamp them with the same intended tag date as the root entry immediately before immutable preflight. Independently versioned surfaces keep their own version and publication date.
+- For a selected headless SDK release, describe the `standard`, `math`, and `full` choices and supported transports in user-facing notes; claim downloads are available only after the SDK publisher succeeds and the matching GitHub Release assets are verified.
 - Review `platforms/node/CHANGELOG.md`, `platforms/flutter/CHANGELOG.md`, `platforms/python/merman/CHANGELOG.md`, `platforms/android/CHANGELOG.md`, and `platforms/apple/CHANGELOG.md` when their surfaces are in scope. Review `tools/vscode-extension/CHANGELOG.md` only for the extension's independent release. Do not create per-crate changelogs or copy the complete root entry into every package.
 - For an authorized channel-only publication, leave the root workspace entry at `Unreleased`, but stamp that channel's package-local version entry with the intended publication date before the immutable package artifact is built. Confirm the date against registry evidence after publication.
 - State installation, integration, migration, compatibility, or behavior changes users can act on.
@@ -155,6 +156,10 @@ Keep release smoke tests strict about user-observable behavior and loose about v
 
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
+For the SDK owner, run qualification only from a clean source tree. Preflight qualification uploads
+Actions artifacts but does not publish them; retain its run ID only when that run's `head_sha` equals
+the selected release commit.
+
 Preparation is complete when version projections and release notes are committed, the release-ready check passes, preflight is green for the exact version and `SOURCE_SHA`, and every tag-triggered package fits the current registry upload constraints. Treat an exit-zero package dry-run that reports a server-enforced size or content hint as unresolved release evidence. For eligible source-check reuse, follow [Reusing Immutable Preflight Evidence](../../../docs/release/RELEASING.md#reusing-immutable-preflight-evidence); missing or stale evidence runs the original checks, and publication barriers still execute.
 
 For crates.io, inspect the derived topological batches before shipping. The credentialed workflow
@@ -220,6 +225,11 @@ from this skill.
 
 Skipped jobs must be explained by channel rules. A manual surface is not authorized merely because the tag-triggered bundle succeeded.
 
+After the primary GitHub Release exists, publish the full SDK matrix with the manual SDK publisher,
+using the successful source-matched qualification run. Do not treat preflight or Actions artifacts
+as public downloads. Follow the publisher's exact source/tag checks, verify all attached assets, and
+update the release body with download choices only after publication succeeds.
+
 ### GitHub Pages Deployment
 
 Under explicit Pages `ship` authorization, dispatch `.github/workflows/pages-deploy.yml`, bind the
@@ -265,6 +275,7 @@ all refer to the approved commit before reporting Pages complete.
 Use direct GitHub, registry, and artifact evidence documented in `docs/release/RELEASING.md`. Confirm that:
 
 - the GitHub Release state and assets match the channel and configured target matrix;
+- all 18 SDK archives and their 18 SHA-256 sidecars match the verified producer run before the SDK is marked available; the release body links only to assets confirmed present on that release;
 - crates.io, npm, PyPI, and pub.dev show only the surfaces that were actually published;
 - every crates.io batch result receipt is `complete`, with no `pending_recovery` or `mismatch`
   state and no dependent batch started before its predecessors matched;

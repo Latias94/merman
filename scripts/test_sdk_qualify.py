@@ -33,11 +33,12 @@ class SdkQualificationTests(unittest.TestCase):
         self.version = "1.2.3"
         self.events = []
         self.failure = None
-        self.cargo_target = self.repo / "sdk-target"
+        self.git_status = ""
+        self.cargo_target = self.repo / "target/sdk-target"
         self.write("Cargo.toml", '[workspace.package]\nversion = "1.2.3"\n')
         for name in sdk_archive.HEADERS:
             self.write(f"crates/merman-ffi/include/{name}", "#pragma once\n")
-        for relative in ("CMakeLists.txt", "examples/render.c", "examples/probe.c",
+        for relative in ("CMakeLists.txt", "examples/render.c", "examples/probe.c", "examples/render.cpp",
                          "cmake/MermanConfig.cmake.in"):
             self.write("distribution/sdk/" + relative,
                        (sdk_archive.REPO_ROOT / "distribution/sdk" / relative).read_text())
@@ -64,6 +65,11 @@ class SdkQualificationTests(unittest.TestCase):
         self.extract = self.enterContext(mock.patch.object(
             sdk_qualify, "verified_archive_contents"))
         self.extract.return_value.__enter__.return_value = SimpleNamespace(root=self.installed)
+        self.real_wasi_examples = sdk_qualify.verify_installed_wasi_examples
+        self.wasi_examples = self.enterContext(mock.patch.object(
+            sdk_qualify, "verify_installed_wasi_examples",
+            side_effect=lambda **options: self.checkpoint("installed-wasi-examples"),
+            create=True))
 
     def write(self, relative, text):
         path = self.repo / relative
@@ -106,7 +112,7 @@ class SdkQualificationTests(unittest.TestCase):
         }))
         self.catalog = {
             "schema_version": 1, "transport_api_version": 1 if wasi else 3,
-            "package_version": self.version, "options_schema_versions": [3],
+            "package_version": self.version, "options_schema_versions": [2],
             "capabilities": {"capability_ids": features, "output_ids": ["png", "svg"],
                              "text_measurement": {"provider_ids": ["native-fonts"]}},
             "constructor_service_ids": ["native-font-context"],
@@ -133,8 +139,10 @@ class SdkQualificationTests(unittest.TestCase):
         command = [str(item) for item in command]
         tool = Path(command[0]).name
         if tool == "git":
-            self.assertEqual(command[-1], "HEAD^{commit}")
-            return subprocess.CompletedProcess(command, 0, self.commit + "\n", "")
+            if command[-1] == "HEAD^{commit}":
+                return subprocess.CompletedProcess(command, 0, self.commit + "\n", "")
+            self.assertIn("--untracked-files=all", command)
+            return subprocess.CompletedProcess(command, 0, self.git_status, "")
         if tool == "rustc":
             self.assertEqual(command[1:], ["-vV"])
             return subprocess.CompletedProcess(command, 0, f"host: {self.host}\n", "")
@@ -209,6 +217,10 @@ class SdkQualificationTests(unittest.TestCase):
     def command(self, name):
         for call in self.process.call_args_list:
             arguments = call.args[0]
+            if name == "cargo":
+                if len(arguments) > 1 and arguments[1] == "build":
+                    return arguments, call.kwargs
+                continue
             if any(Path(str(item)).name == name for item in arguments[:2]):
                 return arguments, call.kwargs
         self.fail(f"command was not run: {name}")
@@ -242,6 +254,7 @@ class SdkQualificationTests(unittest.TestCase):
                             ("--manifest-path", str(self.repo / "crates/merman-ffi/Cargo.toml"))):
             self.assertEqual(command[command.index(flag) + 1], value)
         self.assertTrue({"--locked", "--lib", "--no-default-features"}.issubset(command))
+        self.assertIn("-DMERMAN_BUILD_CPP_EXAMPLES=ON", self.command("cmake")[0])
         command, options = self.command("native_smoke.py")
         self.assertEqual(command[:2], [sys.executable, str(self.repo / "platforms/wasi/native_smoke.py")])
         self.assertEqual(command[command.index("--probe") + 1],
@@ -261,7 +274,8 @@ class SdkQualificationTests(unittest.TestCase):
     def test_wasi_build_uses_wasi_harness_and_skips_native_consumer(self):
         self.configure(target=sdk_archive.WASI_TARGET, flavor="full")
         report = self.qualify()
-        self.assertEqual(self.events, ["build", "smoke", "catalog", "legal", "package", "verify"])
+        self.assertEqual(self.events, ["build", "smoke", "catalog", "legal", "package", "verify",
+                                       "installed-wasi-examples"])
         command, _ = self.command("smoke.py")
         self.assertEqual(command[:2], [sys.executable, str(self.repo / "platforms/wasi/smoke.py")])
         self.assertEqual(command[command.index("--module") + 1], str(self.work / "merman_wasi.wasm"))
@@ -270,6 +284,9 @@ class SdkQualificationTests(unittest.TestCase):
         commands = [call.args[0] for call in self.process.call_args_list]
         self.assertFalse(any(command[0] in {"rustc", "cmake", "ctest"} for command in commands))
         self.extract.assert_not_called()
+        self.wasi_examples.assert_called_once_with(
+            archive=self.output / "sdk.tar.xz", profile=self.profile, version=self.version,
+            repo_root=self.repo, output_dir=self.work / "wasi-smoke/examples")
         self.assert_qualified(report, "wasi-smoke")
 
     def test_mac_library_is_normalized_and_signed_before_catalog_hashing(self):
@@ -289,7 +306,7 @@ class SdkQualificationTests(unittest.TestCase):
         sidecar = json.loads((self.work / "runtime-catalog.json").read_text())
         self.assertEqual(sidecar["artifacts"][library.name],
                          hashlib.sha256(library.read_bytes()).hexdigest())
-        original = self.repo / "sdk-target" / self.target / self.cargo_profile / library.name
+        original = self.cargo_target / self.target / self.cargo_profile / library.name
         self.assertEqual(original.read_bytes(), b"built libmerman_ffi.dylib")
         self.assert_qualified(report, "native-smoke")
 
@@ -310,6 +327,17 @@ class SdkQualificationTests(unittest.TestCase):
         self.assertFalse(self.work.exists())
         self.package.assert_not_called()
         self.verify.assert_not_called()
+
+    def test_dirty_source_tree_is_rejected_before_the_sdk_build(self):
+        for status in (" M crates/merman/src/lib.rs\n", "?? crates/merman/src/new.rs\n"):
+            with self.subTest(status=status):
+                self.git_status = status
+                with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "uncommitted changes"):
+                    self.qualify()
+                self.assertFalse(self.work.exists())
+                self.assertEqual(self.events, [])
+                self.package.assert_not_called()
+                self.verify.assert_not_called()
 
     def test_native_requires_rustc_host_even_when_environment_claims_target(self):
         self.host = "aarch64-apple-darwin"
@@ -388,6 +416,49 @@ class SdkQualificationTests(unittest.TestCase):
         self.assertTrue((self.work / "native-smoke/renders/smoke.png").is_file())
         self.assertTrue((self.work / "rust-cargo-dependencies.json").is_file())
         self.assert_unqualified()
+
+    def test_installed_wasi_example_failure_prevents_success_record(self):
+        self.configure(target=sdk_archive.WASI_TARGET)
+        self.failure = "installed-wasi-examples"
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.qualify()
+        self.package.assert_called_once()
+        self.verify.assert_called_once()
+        self.wasi_examples.assert_called_once()
+        self.assert_unqualified()
+
+    def test_extracted_wasi_examples_run_both_languages_and_reject_output_disagreement(self):
+        module = self.installed / "lib/merman_wasi.wasm"
+        module.parent.mkdir()
+        module.write_bytes(b"fixture module")
+        calls = []
+        mismatch = False
+
+        def example(command, **options):
+            command = [str(item) for item in command]
+            calls.append(command)
+            self.assertEqual(options["environment"]["MERMAN_WASI_MODULE"], str(module))
+            self.assertEqual(options["environment"]["MERMAN_WASI_FONT"],
+                             str(self.installed / "fonts/Cousine-Regular.ttf"))
+            if "--output" in command:
+                output = Path(command[command.index("--output") + 1])
+                output.write_bytes(b"different" if mismatch and "python." in output.name else b"render")
+
+        with mock.patch.object(sdk_qualify, "run", side_effect=example):
+            self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
+                                    version=self.version, repo_root=self.repo,
+                                    output_dir=self.root / "examples")
+            self.assertEqual(len(calls), 6)
+            self.assertEqual(calls[0][0], "go")
+            self.assertIn("-count=1", calls[0])
+            self.assertIn("unittest", calls[1])
+            self.assertTrue((self.root / "examples/verified.json").is_file())
+            mismatch = True
+            with self.assertRaisesRegex(RuntimeError, "example output mismatch"):
+                self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
+                                        version=self.version, repo_root=self.repo,
+                                        output_dir=self.root / "mismatched-examples")
+            self.assertFalse((self.root / "mismatched-examples/verified.json").exists())
 
 
 if __name__ == "__main__":

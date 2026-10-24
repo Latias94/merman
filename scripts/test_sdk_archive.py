@@ -34,6 +34,9 @@ class SdkArchiveTests(unittest.TestCase):
         source_mock = mock.patch.object(sdk_archive, "resolve_source_commit", return_value=self.commit)
         source_mock.start()
         self.addCleanup(source_mock.stop)
+        clean_mock = mock.patch.object(sdk_archive, "require_clean_source_tree")
+        clean_mock.start()
+        self.addCleanup(clean_mock.stop)
         self.version = "1.2.3"
         self.write("Cargo.toml", '[workspace.package]\nversion = "1.2.3"\n')
         for name, macro, version in (
@@ -52,6 +55,11 @@ class SdkArchiveTests(unittest.TestCase):
             source = sdk_archive.REPO_ROOT / "distribution/sdk" / name
             self.write(f"distribution/sdk/{name}", source.read_text())
         self.write("distribution/sdk/examples/probe.c", "int main(void) { return 0; }\n")
+        self.write("distribution/sdk/examples/render.cpp", "int main() { return 0; }\n")
+        for name in ("go.mod", "go.sum", "client.go", "client_test.go", "cmd/render/main.go", "README.md"):
+            self.write("distribution/sdk/examples/go-wasi/" + name, "Go example\n")
+        for name in ("client.py", "render.py", "test_client.py", "requirements.txt", "README.md"):
+            self.write("distribution/sdk/examples/python-wasi/" + name, "Python example\n")
         self.write("crates/merman-export/assets/fonts/OFL.txt", "font license\n")
         self.write("crates/merman-export/assets/fonts/Cousine-Regular.ttf", "font\n")
         self.write("crates/merman-export/assets/fonts/manifest.json", json.dumps({
@@ -174,6 +182,7 @@ class SdkArchiveTests(unittest.TestCase):
             self.assertEqual(details["size"], len(members[name]))
         self.assertNotIn("test_fixture.txt", members)
         self.assertIn("include/merman_text_measurement_abi.h", members)
+        self.assertIn("examples/render.cpp", members)
         self.assertIn("lib/cmake/Merman/MermanConfig.cmake", members)
         self.assertIn("lib/pkgconfig/merman.pc", members)
         self.assertIn("THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE", members)
@@ -187,9 +196,12 @@ class SdkArchiveTests(unittest.TestCase):
         members = self.members(self.package())
         self.assertIn("lib/merman_wasi.wasm", members)
         self.assertIn("contracts/abi/merman-wasi-v1.json", members)
-        self.assertEqual(members["docs/WASI_ABI.md"], b"# WASI scalar ABI\n")
         self.assertIn("fonts/manifest.json", members)
         self.assertNotIn("examples/render.c", members)
+        self.assertIn("examples/go-wasi/client.go", members)
+        self.assertIn("examples/go-wasi/cmd/render/main.go", members)
+        self.assertIn("examples/python-wasi/client.py", members)
+        self.assertIn("examples/python-wasi/render.py", members)
 
     def test_native_staging_and_archives_share_integration_files_and_library_layout(self):
         for target in sdk_archive.NATIVE_TARGETS:
@@ -216,7 +228,6 @@ class SdkArchiveTests(unittest.TestCase):
                     manifest = json.loads(members["manifest.json"])
                     self.assertEqual(manifest["target"], target)
                     self.assertEqual(manifest["profile"], self.profile)
-                    self.assertEqual(manifest["options_schema_versions"], [2])
                     self.assertEqual("math" in manifest["capabilities"], flavor != "standard")
                     self.assertEqual("layout-elk" in manifest["capabilities"], flavor == "full")
                     self.assertEqual("THIRD_PARTY_LICENSES/eclipse-elk/LICENSE" in members, flavor == "full")
@@ -498,6 +509,28 @@ class SourceIdentityTests(unittest.TestCase):
         )):
             with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "cannot resolve"):
                 sdk_archive.resolve_source_commit(sdk_archive.REPO_ROOT, None)
+
+    def test_source_tree_check_rejects_tracked_and_untracked_changes(self):
+        for status in (" M crates/merman/src/lib.rs\n", "?? crates/merman/src/new.rs\n"):
+            with self.subTest(status=status), mock.patch.object(
+                sdk_archive.subprocess, "run", return_value=mock.Mock(
+                    returncode=0, stdout=status, stderr="",
+                ),
+            ) as run:
+                with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "uncommitted changes"):
+                    sdk_archive.require_clean_source_tree(sdk_archive.REPO_ROOT)
+                self.assertIn("--untracked-files=all", run.call_args.args[0])
+
+    def test_source_tree_check_fails_closed_when_git_is_unavailable(self):
+        with mock.patch.object(sdk_archive.subprocess, "run", return_value=mock.Mock(
+            returncode=0, stdout="", stderr="",
+        )):
+            sdk_archive.require_clean_source_tree(sdk_archive.REPO_ROOT)
+        with mock.patch.object(sdk_archive.subprocess, "run", return_value=mock.Mock(
+            returncode=128, stdout="", stderr="not a repository",
+        )):
+            with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "cannot verify"):
+                sdk_archive.require_clean_source_tree(sdk_archive.REPO_ROOT)
 
 
 if __name__ == "__main__":

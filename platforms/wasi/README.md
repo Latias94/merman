@@ -142,6 +142,28 @@ explicit Dagre SVG**. Full must advertise and plan `layout-elk`. Both use the
 real `svg-plan-json` operation; hosts never invent a missing-capability error or
 change a Mermaid source to conceal family fallback.
 
+## Direct CLI comparison
+
+`cli_compare.py` consumes a built `cli-release` executable and the actual WASI
+module, with identical explicit Cousine bytes, deterministic runtime policy,
+interactive resources and diagram ID. It compares byte-identical resvg-safe SVG
+and decoded PNG dimensions/RGBA8 at 2x with an explicit background. Inputs cover
+the shared basic fixture, the wrapped Swimlane labels from issue #242, and a
+formula for math/full. Common cases explicitly select Dagre; full additionally
+compares explicit ELK. This avoids equating different optional-loader defaults.
+It builds nothing and reads no host fonts implicitly.
+
+```console
+python platforms/wasi/cli_compare.py --cli /path/merman-cli --module /path/merman_wasi.wasm --flavor standard --output-dir target/cli-wasi-comparison
+```
+
+The output directory must not already exist. Outputs and `comparison.json`
+record the exact binary/module/font/source hashes. The SDK release owner builds
+the existing CLI release recipe once and runs this check for all three extracted
+WASI flavors, separately from the native C comparison and packaged examples.
+These are representative source-backed checks, not whole-corpus byte equality
+with the CLI or Mermaid.js.
+
 ## Native C comparison
 
 `native_smoke.py` drives the parent's already-built C probe. It never builds
