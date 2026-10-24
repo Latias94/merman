@@ -77,7 +77,9 @@ python render.py --module merman_wasi.wasm --source diagram.mmd --operation png 
 `--options` is a JSON-file path, not inline JSON; it overlays the execution
 request, not constructor options. `--font` is repeatable. `--catalog` writes the
 runtime catalog alongside the requested render. Output parent directories must
-already exist. Ordinary guest failures emit the full structured error JSON to
+already exist. `--fuel` selects the per-call instruction budget; large rasters
+and SVG filters can require more than the default even for modest source text.
+Ordinary guest failures emit the full structured error JSON to
 stderr and exit 1; host/protocol/runtime failures emit their type and message.
 The CLI reads complete local files into host memory before ABI input checks;
 it is an example for trusted local inputs, not a bounded host upload service.

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 
-from client import Client, GuestError
+from client import Client, FUEL, GuestError
 
 
 def write_json(path, value):
@@ -22,10 +22,11 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--metadata", type=Path, help="write operation metadata JSON")
     parser.add_argument("--catalog", type=Path, help="write runtime catalog JSON")
+    parser.add_argument("--fuel", type=int, default=FUEL, help="positive instruction budget per guest call")
     args = parser.parse_args()
     try:
         options = json.loads(args.options.read_text(encoding="utf-8")) if args.options else None
-        with Client(args.module.read_bytes(), fonts=[p.read_bytes() for p in args.font]) as client:
+        with Client(args.module.read_bytes(), fonts=[p.read_bytes() for p in args.font], fuel=args.fuel) as client:
             if args.catalog:
                 write_json(args.catalog, client.catalog())
             data, metadata = client.execute(args.operation, args.source.read_bytes(), options)
