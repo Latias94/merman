@@ -1290,14 +1290,20 @@ mod tests {
                     assert!(output.system_fonts.is_none());
                     assert!(output.embedded_images.is_none());
                 }
+                #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
                 "jpeg" | "pdf" | "png" => {
-                    let fonts = output.system_fonts.as_ref().expect("system font contract");
-                    assert_eq!(fonts.source_id, "host-system");
-                    assert_eq!(fonts.discovery, "first-use");
-                    assert_eq!(fonts.cache_scope, "process-global");
-                    assert!(fonts.host_dependent);
-                    assert!(!fonts.caller_configurable);
-                    assert!(!fonts.resource_bounded);
+                    assert_eq!(
+                        output.system_fonts.is_some(),
+                        merman::svg::export::system_font_discovery_available()
+                    );
+                    if let Some(fonts) = &output.system_fonts {
+                        assert_eq!(fonts.source_id, "host-system");
+                        assert_eq!(fonts.discovery, "first-use");
+                        assert_eq!(fonts.cache_scope, "process-global");
+                        assert!(fonts.host_dependent);
+                        assert!(!fonts.caller_configurable);
+                        assert!(!fonts.resource_bounded);
+                    }
                     let images = output
                         .embedded_images
                         .as_ref()

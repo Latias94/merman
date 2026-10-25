@@ -1,3 +1,5 @@
+use crate::CapabilityKey;
+
 /// One renderer text-measurement route advertised by a transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -109,6 +111,15 @@ impl ConstructorServiceKey {
         match self.spec().availability {
             ConstructorServiceAvailability::SvgPipeline
             | ConstructorServiceAvailability::NativeFonts => true,
+        }
+    }
+
+    /// Additional public capability required beyond the SVG pipeline.
+    #[must_use]
+    pub const fn required_capability(self) -> Option<CapabilityKey> {
+        match self.spec().availability {
+            ConstructorServiceAvailability::SvgPipeline => None,
+            ConstructorServiceAvailability::NativeFonts => Some(CapabilityKey::NativeFonts),
         }
     }
 

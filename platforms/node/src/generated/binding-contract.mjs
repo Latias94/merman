@@ -999,6 +999,7 @@ export const CONSTRUCTOR_SERVICE_SPECS = [
   {
     "id": "host-text-measurement",
     "requires_svg_pipeline": true,
+    "required_capability_id": null,
     "provided_text_measurement_provider_ids": [
       "host-callback"
     ],
@@ -1007,6 +1008,7 @@ export const CONSTRUCTOR_SERVICE_SPECS = [
   {
     "id": "icon-registry",
     "requires_svg_pipeline": true,
+    "required_capability_id": null,
     "provided_text_measurement_provider_ids": [],
     "resource_limits": [
       {
@@ -1168,6 +1170,7 @@ export const CONSTRUCTOR_SERVICE_SPECS = [
   {
     "id": "native-font-context",
     "requires_svg_pipeline": true,
+    "required_capability_id": "native-fonts",
     "provided_text_measurement_provider_ids": [
       "native-fonts"
     ],
