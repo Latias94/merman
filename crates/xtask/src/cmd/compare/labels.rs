@@ -3745,7 +3745,33 @@ mod tests {
 
     #[test]
     fn c4_relation_labels_extract_signed_dynamic_fixture_coordinates() {
+        const RELATION_TEXT: &str = "2: Calls isAuthenticated() on";
         let svg = signed_c4_dynamic_svg();
+        let document = roxmltree::Document::parse(&svg).expect("signed C4 SVG should parse");
+        let mut relation_labels = document.descendants().filter(|node| {
+            node.has_tag_name("text")
+                && node
+                    .descendants()
+                    .filter(roxmltree::Node::is_text)
+                    .filter_map(|text| text.text())
+                    .collect::<String>()
+                    == RELATION_TEXT
+        });
+        let label = relation_labels
+            .next()
+            .expect("the C4 baseline should contain the relation label");
+        assert!(
+            relation_labels.next().is_none(),
+            "the C4 baseline must contain exactly one matching relation label"
+        );
+        assert!(
+            label
+                .ancestors()
+                .all(|node| node.attribute("transform").is_none()),
+            "direct fixture coordinates require an untransformed label and ancestors"
+        );
+        let expected_x = label.attribute("x").unwrap().parse::<f64>().unwrap();
+        let expected_y = label.attribute("y").unwrap().parse::<f64>().unwrap();
 
         let labels = extract_c4_relation_labels(&svg).unwrap();
         let message = labels
@@ -3756,9 +3782,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(labels.len(), 5);
-        assert_eq!(message.text, "2: Calls isAuthenticated() on");
-        assert_eq!(message.geometry.anchor_x, 501.0);
-        assert_eq!(message.geometry.anchor_y, 650.2998428344727);
+        assert_eq!(message.text, RELATION_TEXT);
+        assert_eq!(message.geometry.anchor_x, expected_x);
+        assert_eq!(message.geometry.anchor_y, expected_y);
     }
 
     #[test]

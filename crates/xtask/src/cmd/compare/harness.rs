@@ -2985,6 +2985,7 @@ mod tests {
     #[test]
     fn semantic_label_gate_runs_when_dom_profile_comparison_is_disabled() {
         const FIXTURE: &str = "upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010";
+        const RELATION_TEXT: &str = "2: Calls isAuthenticated() on";
         let source = fs::read_to_string(
             crate::cmd::fixtures_root()
                 .join("c4")
@@ -2996,13 +2997,38 @@ mod tests {
             .join("c4")
             .join(format!("{FIXTURE}.svg"));
         let upstream = fs::read_to_string(&upstream_path).expect("signed C4 SVG should exist");
-        let label_position = r#"x="501" y="650.2998428344727""#;
-        assert_eq!(
-            upstream.matches(label_position).count(),
-            1,
+        let document = roxmltree::Document::parse(&upstream).expect("signed C4 SVG should parse");
+        let mut relation_labels = document.descendants().filter(|node| {
+            node.has_tag_name("text")
+                && node
+                    .descendants()
+                    .filter(roxmltree::Node::is_text)
+                    .filter_map(|text| text.text())
+                    .collect::<String>()
+                    == RELATION_TEXT
+        });
+        let label = relation_labels
+            .next()
+            .expect("the C4 baseline should contain the relation label");
+        assert!(
+            relation_labels.next().is_none(),
             "the current C4 baseline must identify exactly one relation label to mutate"
         );
-        let local = upstream.replacen(label_position, r#"x="593.9486587427764" y="842""#, 1);
+        let y = label
+            .attribute_node("y")
+            .expect("the relation label should have a y coordinate");
+        let baseline_y = y.value().parse::<f64>().expect("label y should be numeric");
+        let displaced_y = baseline_y + 1000.0;
+        assert!(
+            displaced_y.is_finite(),
+            "displaced label y must stay finite"
+        );
+        assert_ne!(
+            displaced_y, baseline_y,
+            "the displacement must move the label"
+        );
+        let mut local = upstream.clone();
+        local.replace_range(y.range_value(), &displaced_y.to_string());
         assert_ne!(
             local, upstream,
             "the label geometry mutation must be applied"
