@@ -384,6 +384,7 @@ CONSTRUCTOR_SERVICE_SPECS = (
     {
         "id": "host-text-measurement",
         "requires_svg_pipeline": True,
+        "required_capability_id": None,
         "provided_text_measurement_provider_ids": ("host-callback",),
         "resource_limits": (
         ),
@@ -391,6 +392,7 @@ CONSTRUCTOR_SERVICE_SPECS = (
     {
         "id": "icon-registry",
         "requires_svg_pipeline": True,
+        "required_capability_id": None,
         "provided_text_measurement_provider_ids": (),
         "resource_limits": (
             {
@@ -552,6 +554,7 @@ CONSTRUCTOR_SERVICE_SPECS = (
     {
         "id": "native-font-context",
         "requires_svg_pipeline": True,
+        "required_capability_id": "native-fonts",
         "provided_text_measurement_provider_ids": ("native-fonts",),
         "resource_limits": (
         ),

@@ -87,6 +87,7 @@ struct PayloadSchemaProjection {
 struct ConstructorServiceProjection {
     id: &'static str,
     requires_svg_pipeline: bool,
+    required_capability_id: Option<&'static str>,
     provided_text_measurement_provider_ids: Vec<&'static str>,
     resource_limits: Vec<RuntimeConstructorResourceLimit>,
 }
@@ -466,6 +467,7 @@ fn binding_registry_projections() -> BindingRegistryProjections {
         .map(|key| ConstructorServiceProjection {
             id: key.id(),
             requires_svg_pipeline: key.requires_svg_pipeline(),
+            required_capability_id: key.required_capability().map(CapabilityKey::id),
             provided_text_measurement_provider_ids: providers
                 .iter()
                 .filter(|provider| provider.constructor_service_id == Some(key.id()))
@@ -810,7 +812,7 @@ fn render_kotlin() -> String {
         "internal data class MermanBindingConstructorResourceLimitSpec(\n    val id: String,\n    val phase: String,\n    val unit: String,\n    val description: String,\n    val value: Long,\n)\n\n",
     );
     out.push_str(
-        "internal data class MermanBindingConstructorServiceSpec(\n    val id: String,\n    val requiresSvgPipeline: Boolean,\n    val providedTextMeasurementProviderIds: Set<String>,\n    val resourceLimits: List<MermanBindingConstructorResourceLimitSpec>,\n)\n\n",
+        "internal data class MermanBindingConstructorServiceSpec(\n    val id: String,\n    val requiresSvgPipeline: Boolean,\n    val requiredCapabilityId: String?,\n    val providedTextMeasurementProviderIds: Set<String>,\n    val resourceLimits: List<MermanBindingConstructorResourceLimitSpec>,\n)\n\n",
     );
     out.push_str(
         "internal data class MermanBindingOperationExpectation(\n    val operationId: String,\n    val outputId: String?,\n    val mediaType: String,\n    val metadataSchemaVersion: Int,\n    val requiresUri: Boolean,\n    val availabilityCapabilityId: String?,\n)\n\n",
@@ -918,6 +920,9 @@ fn render_kotlin() -> String {
 
     out.push_str("internal val MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS: Map<String, MermanBindingConstructorServiceSpec> = listOf(\n");
     for spec in &projections.constructor_services {
+        let required = spec
+            .required_capability_id
+            .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
         let resource_limits = spec
             .resource_limits
             .iter()
@@ -931,7 +936,7 @@ fn render_kotlin() -> String {
             .join(", ");
         writeln!(
             out,
-            "    MermanBindingConstructorServiceSpec({:?}, {}, setOf({}), listOf({})),",
+            "    MermanBindingConstructorServiceSpec({:?}, {}, {required}, setOf({}), listOf({})),",
             spec.id,
             spec.requires_svg_pipeline,
             spec.provided_text_measurement_provider_ids
@@ -1296,12 +1301,14 @@ final class MermanBindingConstructorServiceSpec {
   const MermanBindingConstructorServiceSpec({
     required this.id,
     required this.requiresSvgPipeline,
+    required this.requiredCapabilityId,
     required this.providedTextMeasurementProviderIds,
     required this.resourceLimits,
   });
 
   final String id;
   final bool requiresSvgPipeline;
+  final String? requiredCapabilityId;
   final Set<String> providedTextMeasurementProviderIds;
   final List<MermanBindingConstructorResourceLimitSpec> resourceLimits;
 }
@@ -1370,6 +1377,10 @@ final class MermanBindingOperationExpectation {
             spec.requires_svg_pipeline
         )
         .unwrap();
+        let required = spec
+            .required_capability_id
+            .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
+        writeln!(out, "    requiredCapabilityId: {required},").unwrap();
         write_dart_string_set_argument(
             &mut out,
             "    ",
@@ -1855,6 +1866,10 @@ fn render_python() -> String {
             }
         )
         .unwrap();
+        match spec.required_capability_id {
+            Some(id) => writeln!(out, "        \"required_capability_id\": {id:?},").unwrap(),
+            None => out.push_str("        \"required_capability_id\": None,\n"),
+        }
         out.push_str("        \"provided_text_measurement_provider_ids\": (");
         for (index, provider_id) in spec
             .provided_text_measurement_provider_ids
@@ -2062,6 +2077,20 @@ mod tests {
         assert!(generated.contains("constructor_service_candidate_ids"));
         for key in BindingPayloadSchemaKey::ALL {
             assert!(generated.contains(&format!("{:?}: {}", key.id(), key.version())));
+        }
+    }
+
+    #[test]
+    fn constructor_services_project_optional_capability_requirements() {
+        let projections = binding_registry_projections();
+        for spec in projections.constructor_services {
+            let expected = if spec.id == ConstructorServiceKey::NativeFontContext.id() {
+                Some(CapabilityKey::NativeFonts.id())
+            } else {
+                None
+            };
+            assert!(spec.requires_svg_pipeline);
+            assert_eq!(spec.required_capability_id, expected, "{}", spec.id);
         }
     }
 

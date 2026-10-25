@@ -1967,6 +1967,7 @@ class MermanRuntimeCatalog {
     if (hasConstructorServiceIds) {
       _validateRuntimeConstructorServiceIds(
         constructorServiceIds,
+        capabilitySet,
         usesSvgPipeline: textMeasurement is Map,
       );
     }
@@ -4441,7 +4442,8 @@ void _validateRuntimeMetadataRelations(
 }
 
 void _validateRuntimeConstructorServiceIds(
-  List<String> ids, {
+  List<String> ids,
+  Set<String> capabilityIds, {
   required bool usesSvgPipeline,
 }) {
   final candidates = mermanBindingTransportExposureSpecs['native-c']!
@@ -4451,7 +4453,9 @@ void _validateRuntimeConstructorServiceIds(
           .where(
             (spec) =>
                 candidates.contains(spec.id) &&
-                (!spec.requiresSvgPipeline || usesSvgPipeline),
+                (!spec.requiresSvgPipeline || usesSvgPipeline) &&
+                (spec.requiredCapabilityId == null ||
+                    capabilityIds.contains(spec.requiredCapabilityId)),
           )
           .map((spec) => spec.id)
           .toList()
@@ -4683,6 +4687,15 @@ _parseRuntimeConstructorServiceContracts(
     throw MermanException.contract(
       'runtime constructor service contracts must exactly match service IDs',
     );
+  }
+  for (final providerId in availableProviderIds) {
+    final owner = generatedProviderOwners[providerId];
+    if (owner != null && providerOwners[providerId] != owner) {
+      throw MermanException.contract(
+        'runtime text measurement provider `$providerId` requires '
+        'constructor service `$owner`',
+      );
+    }
   }
   return contracts;
 }
