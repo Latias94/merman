@@ -1,6 +1,8 @@
 # Semantic boundary WASM CI investigation
 
-Status: the source candidate was rejected; existing WASM budgets remain a CI blocker.
+Status: historical source candidate rejected. The maintainer subsequently authorized the
+[2026-10-25 budget reassessment](semantic_wasm_budget_2026-10-25.md) after source and artifact
+review. That new decision does not restore this candidate or change its recorded outcome.
 
 ## Scope and frozen acceptance
 
