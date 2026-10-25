@@ -22,6 +22,8 @@ closure. Feature names describe compile-time inputs; the generated runtime catal
 recipe, and bundled notices describe the resulting artifact.
 
 - `svg` enables SVG rendering through the main Merman facade.
+- `native-fonts` compiles the `NativeFontContext` constructor service and implies `svg`; each artifact still selects its installable services explicitly.
+- `system-fonts` enables explicit native system discovery for that service; WebAssembly excludes acquisition.
 - `analysis` enables diagnostics analysis, validation JSON, document facts, and lint rule catalog helpers.
 - `ascii` enables ASCII/Unicode text rendering.
 - `layout-cytoscape` and `layout-elk` enable their named SVG layout engines.
@@ -79,6 +81,25 @@ let engine = BindingEngine::from_options_and_services(options_json, services)?;
 ```
 
 This example requires the `svg` feature. An explicit `environment.text_measurement` selector conflicts with the constructor service in both base options and request overlays. Construction only installs the callback; it never invokes it. Foreign callback lifetime, close admission, and out-of-lock destruction remain transport responsibilities.
+
+With `native-fonts`, Rust callers can instead install already loaded fonts through
+`BindingEngineServices::with_native_font_context`. Construct the context with
+`merman::svg::export::NativeFontContext::from_font_bytes` to avoid filesystem acquisition.
+Every render operation receives independent measurement state, limits, and cancellation;
+typed PNG, JPEG, and PDF requests share the selected fonts with native painting. Cloned
+engines and option overlays retain the immutable service, not a previous request's failures.
+
+The native service rejects both a host text measurer and an explicit
+`environment.text_measurement` selector, including `null`, in constructor or overlay options.
+Font sources are not JSON options. This addition retains options schema2. Rust, native C, and
+WASI artifacts can select the native context; unselected services remain unavailable even
+when dependency features are unified. Native codec features retain their implicit system-font
+behavior; WASI callers supply owned font bytes and use deterministic runtime policy only.
+
+Schema-1 SVG operation metadata adds an optional `svg_viewport` with `min_x`, `min_y`,
+`width`, and `height` in logical CSS pixels, read from the returned SVG's root `viewBox`.
+It is independent of percentage sizing and raster scaling. Existing metadata without this
+field remains valid; non-SVG outputs omit it.
 
 ## SVG Output Contract
 

@@ -322,11 +322,17 @@ TEXT_MEASUREMENT_PROVIDER_SPECS = (
         "source": "constructor-service",
         "constructor_service_id": "host-text-measurement",
     },
+    {
+        "id": "native-fonts",
+        "source": "constructor-service",
+        "constructor_service_id": "native-font-context",
+    },
 )
 
 TEXT_MEASUREMENT_PROVIDER_IDS = (
     "deterministic",
     "host-callback",
+    "native-fonts",
 )
 
 BINDING_TRANSPORT_EXPOSURE_SPECS = (
@@ -338,7 +344,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "native-c",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
-        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
+        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry", "native-font-context"),
     },
     {
         "id": "node",
@@ -348,7 +354,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "rust",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
-        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
+        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry", "native-font-context"),
     },
     {
         "id": "typst",
@@ -359,6 +365,11 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
         "id": "uniffi",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
         "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
+    },
+    {
+        "id": "wasi",
+        "payload_schema_ids": ("binding-result", "operation-metadata"),
+        "constructor_service_candidate_ids": ("native-font-context",),
     },
     {
         "id": "web",
@@ -373,6 +384,7 @@ CONSTRUCTOR_SERVICE_SPECS = (
     {
         "id": "host-text-measurement",
         "requires_svg_pipeline": True,
+        "required_capability_id": None,
         "provided_text_measurement_provider_ids": ("host-callback",),
         "resource_limits": (
         ),
@@ -380,6 +392,7 @@ CONSTRUCTOR_SERVICE_SPECS = (
     {
         "id": "icon-registry",
         "requires_svg_pipeline": True,
+        "required_capability_id": None,
         "provided_text_measurement_provider_ids": (),
         "resource_limits": (
             {
@@ -536,6 +549,14 @@ CONSTRUCTOR_SERVICE_SPECS = (
                 "description": "Maximum XML elements in one direct icon SVG fragment",
                 "value": 4096,
             },
+        ),
+    },
+    {
+        "id": "native-font-context",
+        "requires_svg_pipeline": True,
+        "required_capability_id": "native-fonts",
+        "provided_text_measurement_provider_ids": ("native-fonts",),
+        "resource_limits": (
         ),
     },
 )

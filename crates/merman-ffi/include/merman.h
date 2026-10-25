@@ -22,7 +22,7 @@ extern "C" {
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
 #define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:750705737201639db1b1d1318412f5ea0734381d562231c68e1ec7d0f842e48d"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:cf2a177f11ee8c9a420f54224bf4abcfb5413b62756893cf2b4385e13680ac2f"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -162,7 +162,8 @@ enum {
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW = 7,
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL = 8,
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9,
-    MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED = 10
+    MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED = 10,
+    MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_FONTS = 11
 };
 
 typedef uint64_t MermanNativeEngineToken;
@@ -179,6 +180,7 @@ typedef struct MermanNativeApiRequest MermanNativeApiRequest;
 typedef struct MermanNativeApi MermanNativeApi;
 typedef struct MermanNativeIconPack MermanNativeIconPack;
 typedef struct MermanNativeEngineServicesConfig MermanNativeEngineServicesConfig;
+typedef struct MermanNativeFontEngineConfig MermanNativeFontEngineConfig;
 
 typedef MermanNativeStatus (*MermanNativeTextMeasureCallback)(const MermanNativeTextMeasureRequest *request, MermanNativeTextMeasureResult *out_result, void *user_data) MERMAN_NATIVE_NOEXCEPT;
 
@@ -193,6 +195,7 @@ typedef MermanNativeStatus (*MermanNativeOperationControlNewFn)(uint64_t timeout
 typedef MermanNativeStatus (*MermanNativeOperationControlCancelFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeOperationControlReleaseFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeExecuteCollectControlledFn)(MermanNativeEngineToken engine, MermanNativeOperationControlToken control, const MermanNativeOperationRequest *request, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeEngineNewWithFontsFn)(const MermanNativeFontEngineConfig *config, MermanNativeEngineToken *out_engine, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 
 struct MermanNativeSlice {
     uint32_t struct_size;
@@ -289,6 +292,7 @@ struct MermanNativeApi {
     MermanNativeOperationControlCancelFn operation_control_cancel;
     MermanNativeOperationControlReleaseFn operation_control_release;
     MermanNativeExecuteCollectControlledFn execute_collect_controlled;
+    MermanNativeEngineNewWithFontsFn engine_new_with_fonts;
 };
 
 struct MermanNativeIconPack {
@@ -304,12 +308,21 @@ struct MermanNativeEngineServicesConfig {
     size_t icon_pack_count;
 };
 
+struct MermanNativeFontEngineConfig {
+    uint32_t struct_size;
+    MermanNativeSlice options_json;
+    const MermanNativeSlice *fonts;
+    size_t font_count;
+    uint8_t use_bundled_fonts;
+};
+
 #define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_services) + sizeof(((MermanNativeApi *)0)->engine_new_with_services)))
 
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_new) + sizeof(((MermanNativeApi *)0)->operation_control_new)))
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_cancel) + sizeof(((MermanNativeApi *)0)->operation_control_cancel)))
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_release) + sizeof(((MermanNativeApi *)0)->operation_control_release)))
 #define MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, execute_collect_controlled) + sizeof(((MermanNativeApi *)0)->execute_collect_controlled)))
+#define MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_fonts) + sizeof(((MermanNativeApi *)0)->engine_new_with_fonts)))
 
 /*
  * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability
@@ -361,6 +374,18 @@ struct MermanNativeEngineServicesConfig {
  *   unknown operation code returns the same status with kind unknown-operation and a null
  *   capability_id. Both failures are written results with nonzero allocation_token values and must
  *   be released with result_free.
+ * - engine_fonts: engine_new_with_fonts borrows its configuration, options, font slice array and
+ *   font bytes only until return, copies caller bytes, and installs one immutable native font
+ *   context for measurement and painting without a host callback or ambient font discovery. Caller
+ *   fonts precede bundled fallback. Structural records must not overlap payload bytes; outputs must
+ *   be disjoint from each other and every input. Read-only payload slices may overlap each other
+ *   and duplicate buffers are charged independently. Detectable overlap failures leave outputs
+ *   untouched. The constructor bounds font count and cumulative byte lengths before copying and
+ *   delegates font validation, deduplication, face limits and option conflicts to their existing
+ *   owners. Without native-fonts, the constructor returns missing-capability without dereferencing
+ *   the font array; requesting unavailable bundled fonts also returns missing-capability. Failed
+ *   construction publishes no engine, and a successful engine remains usable after all input
+ *   storage is released.
  * - engine_services: engine_new_with_services borrows the outer configuration, embedded options,
  *   pack records, IconifyJSON bytes, and registration names only until return and never invokes the
  *   host callback during construction. A successful engine owns the fully validated immutable

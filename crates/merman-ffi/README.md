@@ -86,6 +86,11 @@ complete appended prefix. Release-matched consumers require the complete table t
 layout-compatibility key rather than a supported reduced host surface. The append-only function
 preserves the original ABI 3 request-record layout.
 
+`engine_new_with_fonts` is a separate additive constructor at slot `11`. Check that the discovered
+table includes `MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE` before using it. Its independent
+`MermanNativeFontEngineConfig` record does not change either older constructor or any frozen
+minimum-prefix record or digest.
+
 Caller-supplied record pointers must be naturally aligned. Every record and reachable byte range
 must remain readable, live, and immutable for the complete call, except for declared output
 storage, which must remain writable. Merman can reject detectable size, alignment, range, and
@@ -96,7 +101,7 @@ Every operation follows the same path:
 
 1. Call `merman_get_native_api`.
 2. Create an engine token with `api.engine_new`, or use `api.engine_new_with_services` when the
-   engine owns Iconify packs.
+   engine owns Iconify packs, or `api.engine_new_with_fonts` for memory-only fonts.
 3. Optionally create an operation-control token with `api.operation_control_new`.
 4. Set `MermanNativeOperationRequest.operation` to the requested operation enum. Call
    `api.execute_collect` without a caller control, or call `api.execute_collect_controlled` with a
@@ -105,7 +110,7 @@ Every operation follows the same path:
 6. Release any operation-control token with `api.operation_control_release`, then close the engine
    token with `api.engine_try_close`.
 
-Initialize the `out_engine` value to zero before either constructor; a nonzero value is rejected
+Initialize the `out_engine` value to zero before any constructor; a nonzero value is rejected
 without being overwritten. `MERMAN_NATIVE_OPERATION_NONE` is a defined metadata/result sentinel
 and is not executable: `execute_collect` returns invalid argument with the generic error kind.
 Unknown numeric operation codes continue to return unsupported operation with
@@ -128,6 +133,45 @@ Include [`include/merman_resource_contract.h`](include/merman_resource_contract.
 `api.runtime_catalog` returns the flat schema-1 catalog with package version, supported options and binding-payload schemas, named metadata IDs, transport-callable capability/operation/output/system-adapter IDs, registry facts, resource-to-operation mappings, and text-measurement providers. The native clock, time-zone, and random adapters appear only as a complete selectable set, and timing instrumentation is never exposed through binding JSON. The catalog is the source of truth for the loaded artifact; do not infer availability from Cargo feature names.
 
 The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis, validation, and URI-requiring document analysis. An unavailable operation returns the typed `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API. Failure JSON schema `1` distinguishes `unknown-operation`, `missing-capability`, `reentrant-call`, and `busy` from `generic`; only `missing-capability` carries a non-null descriptor `capability_id`. Parser and ASCII failures may carry additive `details.diagnostic` fields (`code`, bounded byte `span`, `field`, and `diagram_type`) without embedding complete source text.
+
+## Memory-Only Fonts
+
+Enable `native-fonts` to construct an engine with caller-supplied OpenType bytes, or enable
+`bundled-fonts` to additionally permit Merman's bundled fallback set. Neither feature enables
+system-font discovery. `native-fonts` implies `svg`; select `png` separately for raster output.
+
+`api.engine_new_with_fonts(&config, &engine, &result)` accepts the independent
+`MermanNativeFontEngineConfig` record:
+
+- Set `struct_size` to `MERMAN_NATIVE_STRUCT_SIZE(MermanNativeFontEngineConfig)`.
+- Set `options_json` to a size-tagged borrowed JSON slice, or an empty slice for defaults.
+- Set `fonts` to a contiguous array of size-tagged `MermanNativeSlice` font buffers and
+  `font_count` to the number of buffers. A null array is valid only for a zero count.
+- Set `use_bundled_fonts` to exactly `0` or `1`. Caller buffers take precedence over bundled
+  fallback; the flag requires an artifact built with `bundled-fonts`.
+
+Nonempty options retain the maintenance binding-options schema `2`; for example,
+`{"version":2,"svg":{"pipeline":"resvg-safe"}}`. This constructor does not migrate
+the existing presentation/theme model or accept schema `3`.
+
+Initialize `engine` to zero and `result` with `MERMAN_NATIVE_RESULT_INIT`. Construction copies
+caller bytes and admits them through `NativeFontContext` with the default count, byte and face
+ceilings; duplicate buffers still consume the input count and byte budgets. At least one usable
+font is required. A successful engine retains one immutable context for both measurement and
+painting, so the caller may immediately destroy the config, array, options and font buffers.
+Release the constructor result, including any written failure, with `api.result_free`.
+
+This constructor has no callback fields. An explicit `environment.text_measurement` selector
+in engine or request JSON conflicts with its font service and is rejected by the shared binding
+layer. Its closed font context uses strict glyph coverage: unsupported labels fail instead of
+silently switching to deterministic measurement. SVG does not embed the font bytes.
+
+The config and font array must not overlap payload bytes. Both output records must be disjoint
+from each other and every input; read-only font/options payloads may overlap. Detectable overlap
+errors leave outputs untouched. An artifact without `native-fonts` returns an owned typed
+`missing-capability` failure without dereferencing the font array. Ordinary invalid-font failures
+publish no engine and do not affect other engines. The real C lifetime smoke is
+`tests/c_consumer_smoke.c`, driven by the independent `tests/native_fonts.rs` integration test.
 
 ## Cooperative Operation Control
 
@@ -208,6 +252,8 @@ The public feature names describe callable capabilities:
 - `native-runtime` installs the complete system clock, time-zone, and random adapter set. This
   binding-owned feature is intentionally atomic; the runtime catalog still reports the concrete
   adapter IDs `system-clock`, `system-timezone`, and `system-random`.
+- `native-fonts` enables the independent memory-font constructor; `bundled-fonts` additionally
+  makes its bundled fallback available and adds the fonts' OFL-1.1 notices to the artifact.
 
 This crate exports only the native C ABI discovery surface. Android JNI transport code lives in the internal `merman-android-jni` crate, so C ABI artifacts cannot acquire JNI exports through a feature combination.
 

@@ -3,7 +3,7 @@
   "mermaid_version": "12.1.0",
   "mermaid_source_commit": "21f72f07ea22c0af48a3149c550654e80d8e40cb",
   "browser": "Microsoft Edge 153.0.4234.48",
-  "measurement_source": "Mermaid ELK input and pre-sanitization provider routes captured with the recorded browser; measurements revalidated against Mermaid 12.1 SVGs. All node and label dimensions and edge paths are unchanged; three outer edge-label translations follow resolveEdgeLabelPosition.",
+  "measurement_source": "Mermaid ELK input and pre-sanitization provider routes captured with the recorded browser; measurements revalidated against Mermaid 12.1 SVGs. All node and label dimensions and edge paths are unchanged; three outer edge-label translations follow resolveEdgeLabelPosition. The browser field records the original collection; the four fixtures documented in ADR 0024 were recaptured with HeadlessChrome/151.0.7922.77 on 2026-10-25, while other entries retain their original measurements.",
   "entries": [
     {
       "fixture": "stress_flowchart_edge_labels_far_from_arrows_066",
@@ -135,7 +135,7 @@
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh27_set_text_color_of_nodes_and_links_according_to_styles_when_027",
       "input_sha256": "e37d2bc5cfa26cefde0177a1c617384e8a8e6bf4de30269c5b35d9e1277ba8d1",
-      "upstream_svg_sha256": "9af8bf52048b3cb969bc39f0fd231763abed382375bb781121c69f978edbe639",
+      "upstream_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
       "nodes": [
         {"id": "A","size": [182.5831756591797,75.37354278564453],"center": [114.13587188720703,49.686771392822266],"label_box": {"text": "red<br>text","size": [120,42]}},
         {"id": "B","size": [153.47325134277344,75.00777435302734],"center": [424.9765853881836,49.686771392822266],"label_box": {"text": "blue<br>text","size": [120,42]}},
@@ -196,24 +196,24 @@
     {
       "fixture": "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020",
       "input_sha256": "89d1f6cdd6662da4eefc4f4023587c64545f50df14d3690946354d7aa58a92e9",
-      "upstream_svg_sha256": "4997b1b4041978a66144f28a1c904d580f2efefd3dbb1a275f2c6cc8228cff1f",
+      "upstream_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
       "nodes": [
         {"id": "A","size": [152,45],"center": [184,34.5],"label_box": {"text": "h","size": [120,21]}},
-        {"id": "B","size": [152,45],"center": [88,179.5],"label_box": {"text": "test","size": [120,21]}},
-        {"id": "C","size": [152,45],"center": [280,179.5],"label_box": {"text": "C","size": [120,21]}},
-        {"id": "D","size": [152,45],"center": [184,264.5],"label_box": {"text": "D","size": [120,21]}}
+        {"id": "B","size": [152,45],"center": [88,179.49999809265137],"label_box": {"text": "test","size": [120,21]}},
+        {"id": "C","size": [152,45],"center": [280,179.49999809265137],"label_box": {"text": "C","size": [120,21]}},
+        {"id": "D","size": [152,45],"center": [184,264.49999809265137],"label_box": {"text": "D","size": [120,21]}}
       ],
       "edges": [
-        {"id": "L_A_B_0","source": "A","target": "B","points": [[162,57],[162,77],[88,77],[88,157]],"label_size": [46.015625,20]},
-        {"id": "L_A_C_0","source": "A","target": "C","points": [[206,57],[206,77],[280,77],[280,157]],"label_size": [46.015625,20]},
-        {"id": "L_B_D_0","source": "B","target": "D","points": [[88,202],[88,222],[162,222],[162,242]]},
-        {"id": "L_C_D_0","source": "C","target": "D","points": [[280,202],[280,222],[206,222],[206,242]]}
+        {"id": "L_A_B_0","source": "A","target": "B","points": [[162,57],[162,77],[88,77],[88,156.99999809265137]],"label_size": [46.015625,19.999998092651367]},
+        {"id": "L_A_C_0","source": "A","target": "C","points": [[206,57],[206,77],[280,77],[280,156.99999809265137]],"label_size": [46.015625,19.999998092651367]},
+        {"id": "L_B_D_0","source": "B","target": "D","points": [[88,201.99999809265137],[88,221.99999809265137],[162,221.99999809265137],[162,241.99999809265137]]},
+        {"id": "L_C_D_0","source": "C","target": "D","points": [[280,201.99999809265137],[280,221.99999809265137],[206,221.99999809265137],[206,241.99999809265137]]}
       ]
     },
     {
       "fixture": "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024",
       "input_sha256": "9d416eaedbeda364326ad0d96ad075d2d12a96eda9278d763eba79cf1c939918",
-      "upstream_svg_sha256": "fc613fbd47d1600e893921cd8a32f39eafd46a226f59c06157a0628155eeaad4",
+      "upstream_svg_sha256": "f17a0c1af81960d550479592f65de196b80dc1760bc30a0f16513e9960a457dd",
       "nodes": [
         {"id": "A","size": [64,64],"center": [44,44],"label_box": {"text": "","size": [0,0]}},
         {"id": "B","size": [64,64],"center": [242.421875,44],"label_box": {"text": "","size": [0,0]}},
@@ -221,9 +221,9 @@
         {"id": "D","size": [64,64],"center": [639.265625,44],"label_box": {"text": "","size": [0,0]}}
       ],
       "edges": [
-        {"id": "L_A_B_0","source": "A","target": "B","points": [[76,44],[210.421875,44]],"label_size": [54.421875,20]},
-        {"id": "L_B_C_0","source": "B","target": "C","points": [[274.421875,44],[408.84375,44]],"label_size": [54.421875,20]},
-        {"id": "L_C_D_0","source": "C","target": "D","points": [[472.84375,44],[607.265625,44]],"label_size": [54.421875,20]}
+        {"id": "L_A_B_0","source": "A","target": "B","points": [[76,44],[210.421875,44]],"label_size": [54.421875,19.999998092651367]},
+        {"id": "L_B_C_0","source": "B","target": "C","points": [[274.421875,44],[408.84375,44]],"label_size": [54.421875,19.999998092651367]},
+        {"id": "L_C_D_0","source": "C","target": "D","points": [[472.84375,44],[607.265625,44]],"label_size": [54.421875,19.999998092651367]}
       ]
     },
     {
@@ -569,7 +569,7 @@
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_false_094",
       "input_sha256": "fcc1647a03d968d09a49f5be57be869fa34639476d4c06065e49c686a9b69380",
-      "upstream_svg_sha256": "286f80c578be31b571bfae4c63c21a7cc7aa09b56302bd5b9fe9f230bbca129a",
+      "upstream_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
       "nodes": [
         {"id": "n0","size": [152,40],"center": [88,63.720001220703125],"label_box": {"text": "n0","size": [120,15.999999046325684]}},
         {"id": "n00","size": [173.24000549316406,103.44000244140625],"center": [290.62000274658203,63.720001220703125],"label_box": {"text": "This is **bold** </br>and <strong>strong</strong> for brace-r shape","size": [120,62.20000076293945]}},

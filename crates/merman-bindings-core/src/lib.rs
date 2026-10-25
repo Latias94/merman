@@ -24,6 +24,10 @@ mod service_contract;
 mod services;
 mod svg_plan;
 #[cfg(feature = "svg")]
+mod svg_viewport;
+#[cfg(feature = "svg")]
+pub use svg_viewport::BindingSvgViewport;
+#[cfg(feature = "svg")]
 mod text_measurement;
 mod transport_contract;
 

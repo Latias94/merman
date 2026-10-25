@@ -264,12 +264,18 @@ export const TEXT_MEASUREMENT_PROVIDER_SPECS = [
     "id": "host-callback",
     "source": "constructor-service",
     "constructor_service_id": "host-text-measurement"
+  },
+  {
+    "id": "native-fonts",
+    "source": "constructor-service",
+    "constructor_service_id": "native-font-context"
   }
 ] as const;
 
 export const TEXT_MEASUREMENT_PROVIDER_IDS = [
   "deterministic",
-  "host-callback"
+  "host-callback",
+  "native-fonts"
 ] as const;
 export const DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID = "deterministic" as const;
 export const HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID = "host-callback" as const;
@@ -278,6 +284,7 @@ export const CONSTRUCTOR_SERVICE_SPECS = [
   {
     "id": "host-text-measurement",
     "requires_svg_pipeline": true,
+    "required_capability_id": null,
     "provided_text_measurement_provider_ids": [
       "host-callback"
     ],
@@ -286,6 +293,7 @@ export const CONSTRUCTOR_SERVICE_SPECS = [
   {
     "id": "icon-registry",
     "requires_svg_pipeline": true,
+    "required_capability_id": null,
     "provided_text_measurement_provider_ids": [],
     "resource_limits": [
       {
@@ -443,6 +451,15 @@ export const CONSTRUCTOR_SERVICE_SPECS = [
         "value": 4096
       }
     ]
+  },
+  {
+    "id": "native-font-context",
+    "requires_svg_pipeline": true,
+    "required_capability_id": "native-fonts",
+    "provided_text_measurement_provider_ids": [
+      "native-fonts"
+    ],
+    "resource_limits": []
   }
 ] as const;
 export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
@@ -465,7 +482,8 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
     ],
     "constructor_service_candidate_ids": [
       "host-text-measurement",
-      "icon-registry"
+      "icon-registry",
+      "native-font-context"
     ]
   },
   {
@@ -484,7 +502,8 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
     ],
     "constructor_service_candidate_ids": [
       "host-text-measurement",
-      "icon-registry"
+      "icon-registry",
+      "native-font-context"
     ]
   },
   {
@@ -501,6 +520,16 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
     "constructor_service_candidate_ids": [
       "host-text-measurement",
       "icon-registry"
+    ]
+  },
+  {
+    "id": "wasi",
+    "payload_schema_ids": [
+      "binding-result",
+      "operation-metadata"
+    ],
+    "constructor_service_candidate_ids": [
+      "native-font-context"
     ]
   },
   {

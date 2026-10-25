@@ -28,6 +28,7 @@ REQUIRED_JOBS = frozenset({
     "python-wheel", "android-aar", "apple-xcframework", "web-npm-dry-run",
     "node-loader-package", "node-wasm-package", "node-platform-package",
     "node-npm-dry-run", "vscode-extension-dry-run", "flutter-dry-run",
+    "sdk-archives",
 })
 MAX_RUNS = 20
 MAX_ARTIFACTS = 100

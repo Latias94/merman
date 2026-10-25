@@ -189,7 +189,11 @@ impl FontSelectionPolicy {
 
 /// Classify only bytes already admitted through the native source registry.
 /// Platform family ranking remains owned by Fontique; this gate owns text suitability.
-#[cfg(all(feature = "native-fonts", feature = "system-fonts"))]
+#[cfg(all(
+    feature = "native-fonts",
+    feature = "system-fonts",
+    not(target_family = "wasm")
+))]
 pub(crate) fn allows_implicit_binary_face(face: &FaceInfo) -> bool {
     let usvg::fontdb::Source::Binary(bytes) = &face.source else {
         return false;

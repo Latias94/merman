@@ -34,11 +34,23 @@ stack. Raw parity SVG does not enter this recursive backend and is not subject t
 
 ### Host fonts and embedded images
 
-The native PNG, JPEG, and PDF exporters discover fonts from the host system on their first use.
-That scan is cached process-wide and shared by subsequent exports. It is host-dependent: the same
+On `release/0.9.x`, the native PNG, JPEG, and PDF codec features retain their published
+implicit host-font discovery. The SDK adds explicit memory-font constructors without
+changing those existing feature semantics. The sealed SVG retains its font context and
+authorized source policy; export consults host fonts only when that policy permits it.
+A first authorized scan is cached process-wide and shared by subsequent exports. It is host-dependent: the same
 SVG can select different installed fonts, metrics, or fallback glyphs on different machines. Font
 discovery is not covered by Merman's resource profiles or raster/PDF allocation budgets, so hosts
 that require isolation or a hard memory/latency ceiling must provide it at the process boundary.
+
+`NativeFontContext::from_font_bytes(...)` admits a bounded caller-owned set without
+filesystem discovery. `with_strict_glyph_coverage(true)` rejects missing coverage in
+measurement and final painting. The C font constructor and WASI transport use this
+strict policy and share the same admitted bytes across layout and encoding.
+The optional `bundled-fonts` resource is a small Latin/Greek/Cyrillic Cousine fallback,
+not a complete CJK or emoji font pack. Supply additional licensed fonts for those
+scripts. Ordinary SVG keeps text and only uses the context for measurement: it does
+not embed these fonts, so its eventual viewer must have suitable fonts too.
 
 Embedded images have a narrower input contract. The native exporters resolve only `data:` URLs;
 they do not read image paths from the filesystem and do not fetch images over the network. The

@@ -14,7 +14,10 @@
     feature = "pdf"
 ))]
 mod font_selection;
-#[cfg(feature = "experimental-system-font-query")]
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
 use font_selection::{query_font_family, query_named_font_family_case_insensitively};
 
 #[cfg(feature = "native-fonts")]
@@ -23,6 +26,21 @@ pub mod fonts;
 pub use fonts::{
     FontSource, NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions,
 };
+
+/// Returns production Cousine regular, bold, and italic font bytes in that order.
+///
+/// Chain caller fonts before this iterator to give them precedence over bundled faces.
+/// The fonts' OFL license and provenance are retained in `assets/fonts/`.
+#[cfg(feature = "bundled-fonts")]
+pub fn bundled_font_data() -> impl Iterator<Item = Vec<u8>> {
+    [
+        include_bytes!("../assets/fonts/Cousine-Regular.ttf").as_slice(),
+        include_bytes!("../assets/fonts/Cousine-Bold.ttf").as_slice(),
+        include_bytes!("../assets/fonts/Cousine-Italic.ttf").as_slice(),
+    ]
+    .into_iter()
+    .map(<[u8]>::to_vec)
+}
 
 /// Reports the actual feature-unified system-font discovery capability of this dependency.
 #[cfg(any(
@@ -34,7 +52,7 @@ pub use fonts::{
 ))]
 #[must_use]
 pub const fn system_font_discovery_available() -> bool {
-    cfg!(feature = "system-fonts")
+    cfg!(all(feature = "system-fonts", not(target_family = "wasm")))
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -976,7 +994,7 @@ pub fn output_environment_contract(output_id: &str) -> Option<ExportEnvironmentC
         _ => false,
     };
     compiled.then_some(ExportEnvironmentContract {
-        system_fonts: cfg!(not(target_arch = "wasm32")).then_some(SystemFontEnvironmentContract {
+        system_fonts: system_font_discovery_available().then_some(SystemFontEnvironmentContract {
             source_id: "host-system",
             discovery: "first-use",
             cache_scope: "process-global",
@@ -2903,6 +2921,7 @@ fn shared_system_fonts() -> &'static SystemFonts {
     static FONTS: OnceLock<SystemFonts> = OnceLock::new();
     FONTS.get_or_init(|| {
         let mut database = usvg::fontdb::Database::new();
+        #[cfg(not(target_family = "wasm"))]
         database.load_system_fonts();
         let selection = font_selection::FontSelectionPolicy::from_database(&database);
         selection.configure_generics(&mut database);
@@ -3677,14 +3696,17 @@ mod tests {
         for output_id in ["jpeg", "pdf", "png"] {
             let contract = output_environment_contract(output_id)
                 .expect("each compiled export must disclose its environment");
-            let system_fonts = contract
-                .system_fonts
-                .expect("native exports must disclose host system fonts");
-            assert_eq!(system_fonts.source_id, "host-system");
-            assert_eq!(system_fonts.discovery, "first-use");
-            assert_eq!(system_fonts.cache_scope, "process-global");
-            assert!(system_fonts.host_dependent);
-            assert!(!system_fonts.resource_bounded);
+            assert_eq!(
+                contract.system_fonts.is_some(),
+                cfg!(not(target_family = "wasm"))
+            );
+            if let Some(system_fonts) = contract.system_fonts {
+                assert_eq!(system_fonts.source_id, "host-system");
+                assert_eq!(system_fonts.discovery, "first-use");
+                assert_eq!(system_fonts.cache_scope, "process-global");
+                assert!(system_fonts.host_dependent);
+                assert!(!system_fonts.resource_bounded);
+            }
             assert_eq!(contract.embedded_images.source_ids, ["data-url"]);
             assert!(!contract.embedded_images.filesystem_access);
             assert!(!contract.embedded_images.network_access);

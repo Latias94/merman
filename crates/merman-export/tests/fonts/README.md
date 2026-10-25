@@ -1,7 +1,9 @@
 # Test Fonts
 
-Cousine Regular, Bold, and Italic are test-only fixtures under the SIL Open Font
-License 1.1 in `OFL.txt`. They are not bundled into production binaries.
+Cousine Regular, Bold, and Italic in this directory are test-only fixtures under
+the SIL Open Font License 1.1 in `OFL.txt`. Production `bundled-fonts` resources use
+separate, unmodified copies of the same pinned sources under `assets/fonts`, with
+their own manifest and license. Production code does not reference these fixture paths.
 
 Source: Google Fonts, `ofl/cousine`, commit
 `62e55e586fc0c29d428ee47b7c359cd33143f93d`.

@@ -673,6 +673,8 @@ pub struct BindingOperationMetadata {
     runtime_policy: String,
     byte_length: u64,
     output_plan: Option<BindingOutputPlan>,
+    #[cfg(feature = "svg")]
+    svg_viewport: Option<crate::BindingSvgViewport>,
     json: Arc<[u8]>,
 }
 
@@ -701,6 +703,17 @@ impl BindingOperationMetadata {
             Some(value) => Some(parse_output_plan(value)?),
         };
 
+        #[cfg(feature = "svg")]
+        let svg_viewport = object
+            .get("svg_viewport")
+            .filter(|value| !value.is_null())
+            .map(|value| {
+                serde_json::from_value::<crate::BindingSvgViewport>(value.clone())
+                    .map_err(|_| BindingError::invalid_argument("invalid SVG viewport metadata"))
+                    .and_then(crate::BindingSvgViewport::validate)
+            })
+            .transpose()?;
+
         Ok(Self {
             version,
             operation_id,
@@ -708,6 +721,8 @@ impl BindingOperationMetadata {
             runtime_policy,
             byte_length,
             output_plan,
+            #[cfg(feature = "svg")]
+            svg_viewport,
             json: Arc::from(json),
         })
     }
@@ -717,6 +732,7 @@ impl BindingOperationMetadata {
         runtime_policy: &str,
         byte_length: u64,
         output_plan: Option<BindingOutputPlan>,
+        #[cfg(feature = "svg")] svg_viewport: Option<crate::BindingSvgViewport>,
     ) -> Result<Self, BindingError> {
         #[cfg(test)]
         METADATA_SERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
@@ -728,6 +744,8 @@ impl BindingOperationMetadata {
             runtime_policy,
             byte_length,
             output_plan: output_plan.as_ref(),
+            #[cfg(feature = "svg")]
+            svg_viewport,
         })
         .map_err(|error| {
             BindingError::internal(format!("failed to serialize operation metadata: {error}"))
@@ -740,6 +758,8 @@ impl BindingOperationMetadata {
             runtime_policy: runtime_policy.to_owned(),
             byte_length,
             output_plan,
+            #[cfg(feature = "svg")]
+            svg_viewport,
             json: Arc::from(json),
         })
     }
@@ -772,6 +792,12 @@ impl BindingOperationMetadata {
     #[must_use]
     pub const fn output_plan(&self) -> Option<&BindingOutputPlan> {
         self.output_plan.as_ref()
+    }
+
+    #[must_use]
+    #[cfg(feature = "svg")]
+    pub const fn svg_viewport(&self) -> Option<crate::BindingSvgViewport> {
+        self.svg_viewport
     }
 
     #[must_use]
@@ -845,6 +871,9 @@ struct BindingOperationMetadataWire<'a> {
     byte_length: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_plan: Option<&'a BindingOutputPlan>,
+    #[cfg(feature = "svg")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    svg_viewport: Option<crate::BindingSvgViewport>,
 }
 
 fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
@@ -1229,11 +1258,19 @@ fn operation_result(
     let byte_length = u64::try_from(data.len()).map_err(|_| {
         BindingError::internal("operation result byte length exceeds unsigned 64-bit range")
     })?;
+    #[cfg(feature = "svg")]
+    let svg_viewport = if operation.key() == OperationKey::Svg {
+        crate::svg_viewport::from_svg(&data)?
+    } else {
+        None
+    };
     let metadata = BindingOperationMetadata::from_execution(
         operation,
         runtime_policy_id,
         byte_length,
         output_plan,
+        #[cfg(feature = "svg")]
+        svg_viewport,
     )?;
 
     Ok(BindingOperationResult {
@@ -1355,6 +1392,52 @@ mod tests {
         };
         assert_eq!(plan.kind(), "future-plan");
         assert_eq!(plan.value()["nested"]["answer"], 42);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn typed_metadata_preserves_optional_svg_viewport_in_schema_one() {
+        let json = br#"{ "version":1,"operation_id":"svg","media_type":"image/svg+xml","runtime_policy":"deterministic","byte_length":42,"svg_viewport":{"min_x":-4,"min_y":2,"width":120,"height":90},"future_field":true }"#;
+        let metadata = BindingOperationMetadata::from_json_bytes(json).unwrap();
+        assert_eq!(metadata.version(), 1);
+        assert_eq!(metadata.json_bytes(), json);
+        let viewport = metadata.svg_viewport().unwrap();
+        assert_eq!(
+            (
+                viewport.min_x,
+                viewport.min_y,
+                viewport.width,
+                viewport.height
+            ),
+            (-4.0, 2.0, 120.0, 90.0)
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn typed_metadata_allows_missing_or_null_viewport_but_rejects_invalid_dimensions() {
+        let mut value = serde_json::json!({
+            "version": 1,
+            "operation_id": "svg",
+            "media_type": "image/svg+xml",
+            "runtime_policy": "deterministic",
+            "byte_length": 42
+        });
+        for viewport in [None, Some(Value::Null)] {
+            if let Some(viewport) = viewport {
+                value["svg_viewport"] = viewport;
+            }
+            let json = serde_json::to_vec(&value).unwrap();
+            let metadata = BindingOperationMetadata::from_json_bytes(&json).unwrap();
+            assert!(metadata.svg_viewport().is_none());
+            assert_eq!(metadata.json_bytes(), json);
+        }
+        value["svg_viewport"] = serde_json::json!({
+            "min_x": 0, "min_y": 0, "width": 0, "height": 10
+        });
+        let error = BindingOperationMetadata::from_json_bytes(&serde_json::to_vec(&value).unwrap())
+            .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
     }
 
     #[test]
@@ -2273,6 +2356,48 @@ mod tests {
         assert_eq!(metadata["operation_id"], "svg");
         assert_eq!(metadata["byte_length"], result.data.len());
         assert_eq!(metadata["runtime_policy"], "deterministic");
+        let svg = std::str::from_utf8(result.data()).unwrap();
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let view_box = document.root_element().attribute("viewBox").unwrap();
+        let expected = view_box
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        let viewport = result.metadata().svg_viewport().unwrap();
+        assert_eq!(
+            [
+                viewport.min_x,
+                viewport.min_y,
+                viewport.width,
+                viewport.height
+            ],
+            expected.as_slice()
+        );
+        let decoded = BindingOperationMetadata::from_json_bytes(result.metadata_json()).unwrap();
+        assert_eq!(decoded.svg_viewport(), Some(viewport));
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-info"))]
+    #[test]
+    fn responsive_info_svg_remains_available_without_invented_viewport_metadata() {
+        let engine = BindingEngine::new(b"").unwrap();
+        let result = engine
+            .execute(BindingOperationRequest {
+                operation_id: "svg",
+                source: b"info",
+                uri: None,
+                options_json: b"",
+                operation_control: None,
+            })
+            .unwrap();
+        let svg = std::str::from_utf8(result.data()).unwrap();
+        let document = roxmltree::Document::parse(svg).unwrap();
+        assert_eq!(document.root_element().attribute("width"), Some("100%"));
+        assert!(document.root_element().attribute("viewBox").is_none());
+        assert!(result.metadata().svg_viewport().is_none());
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
+        assert_eq!(metadata["byte_length"], result.data().len());
+        assert!(metadata.get("svg_viewport").is_none());
     }
 
     #[cfg(feature = "svg")]

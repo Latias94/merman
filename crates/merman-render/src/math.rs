@@ -351,7 +351,7 @@ impl RatexMathRenderer {
         let width = Self::fmt_num(width_em);
         let height = Self::fmt_num(height_em);
         format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
+            r#"<svg xmlns="http://www.w3.org/2000/svg" class="merman-native-math-svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
         )
     }
 
@@ -398,10 +398,13 @@ impl RatexMathRenderer {
                 let rendered_line = Self::render_katex_like_line_html(parsed)?;
                 let _ = write!(
                     &mut html,
-                    r#"<div style="display: flex; align-items: center; justify-content: center; white-space: nowrap;">{rendered_line}</div>"#
+                    r#"<div class="merman-native-math-row" style="display: flex; align-items: center; justify-content: center; white-space: nowrap;">{rendered_line}</div>"#
                 );
             } else {
-                let _ = write!(&mut html, "<div>{line}</div>");
+                let _ = write!(
+                    &mut html,
+                    r#"<div class="merman-native-math-row">{line}</div>"#
+                );
             }
         }
 
@@ -1019,7 +1022,7 @@ mod tests {
             "only the complete formula should render: {html}"
         );
         assert!(
-            html.contains("<div>literal $$</div>"),
+            html.contains(r#"<div class="merman-native-math-row">literal $$</div>"#),
             "the unmatched delimiter should remain plain text: {html}"
         );
     }

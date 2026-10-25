@@ -105,7 +105,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--write", action="store_true")
-    return parser.parse_args(argv)
+    parser.add_argument("--artifact-profile", help="Generate one descriptor-owned native SDK report")
+    parser.add_argument("--target", help="Exact target triple for the selected artifact")
+    parser.add_argument("--output", type=Path, help="Destination for the selected artifact report")
+    args = parser.parse_args(argv)
+    if bool(args.artifact_profile) != bool(args.output):
+        parser.error("--artifact-profile and --output must be supplied together")
+    if args.target and not args.artifact_profile:
+        parser.error("--target requires --artifact-profile")
+    return args
 
 
 def generate_report(root: Path) -> bytes:
@@ -684,31 +692,35 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
         verify_cargo_about_version(ROOT)
-        web_recipes = load_web_profile_recipes(ROOT)
-        native_recipes = load_native_profile_recipes(ROOT)
-        native_specs = (*NATIVE_REPORT_SPECS, *python_target_report_specs(native_recipes))
-        generated_outputs = {
-            OUTPUT: generate_report_for_profile(ROOT, None),
-            **{
-                ROOT / WEB_REPORT_ROOT / f"{profile_id}.json": generate_report_for_profile(
-                    ROOT, recipe
-                )
-                for profile_id, recipe in web_recipes.items()
-            },
-        }
-        generated_outputs.update(
-            generate_native_outputs(
-                ROOT,
-                native_specs,
-                native_recipes,
+        if args.artifact_profile:
+            recipe = load_profile_recipes(
+                ROOT, (args.artifact_profile,), semantic_target="native"
+            )[args.artifact_profile]
+            generated_outputs = {
+                args.output: generate_report_for_profile(ROOT, recipe, target=args.target)
+            }
+        else:
+            web_recipes = load_web_profile_recipes(ROOT)
+            native_recipes = load_native_profile_recipes(ROOT)
+            native_specs = (*NATIVE_REPORT_SPECS, *python_target_report_specs(native_recipes))
+            generated_outputs = {
+                OUTPUT: generate_report_for_profile(ROOT, None),
+                **{
+                    ROOT / WEB_REPORT_ROOT / f"{profile_id}.json": generate_report_for_profile(
+                        ROOT, recipe
+                    )
+                    for profile_id, recipe in web_recipes.items()
+                },
+            }
+            generated_outputs.update(
+                generate_native_outputs(ROOT, native_specs, native_recipes)
             )
-        )
         if args.write:
             for output, generated in generated_outputs.items():
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_bytes(generated)
         stale = [
-            output.relative_to(ROOT).as_posix()
+            str(output)
             for output, generated in generated_outputs.items()
             if not output.is_file() or output.read_bytes() != generated
         ]

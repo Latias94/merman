@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-vscode
 Generator: npm ls --omit=dev --parseable --all / Merman license report
-package-lock.json SHA-256: 603055a8f5f0104e54d05f8c3027a98466893742af67b7f2979830be1f211d85
+package-lock.json SHA-256: 8a7c93b0199edc48c5b2f822d646edf07a972ed21c7470b09b655ef2c88dc699
 
 The following npm package may be included in this product:
 

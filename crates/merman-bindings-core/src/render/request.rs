@@ -22,6 +22,8 @@ pub(super) struct RenderRequestPlan {
     parse_options: merman::ParseOptions,
     input_resources: merman::resources::InputResourcePolicy,
     resource_profile: merman::resources::ResourceProfile,
+    #[cfg(feature = "native-fonts")]
+    native_font_context: Option<merman::svg::export::NativeFontContext>,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -52,7 +54,11 @@ impl RenderRequestPlan {
     ) -> Result<Vec<u8>, BindingError> {
         let output = self
             .renderer
-            .render(self.request(source, merman::RenderTarget::Svg(self.svg.clone()), control))
+            .render(self.request(
+                source,
+                merman::RenderTarget::Svg(self.svg_for_operation(&control)?),
+                control,
+            ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::Svg(svg) = output else {
             return Err(unexpected_render_output("svg"));
@@ -70,7 +76,7 @@ impl RenderRequestPlan {
             .renderer
             .render(self.request(
                 source,
-                merman::RenderTarget::LayoutJson(self.svg.clone()),
+                merman::RenderTarget::LayoutJson(self.svg_for_operation(&control)?),
                 control.clone(),
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
@@ -98,7 +104,7 @@ impl RenderRequestPlan {
             .renderer
             .render(self.request(
                 source,
-                merman::RenderTarget::EdgeGeometryJson(self.svg.clone()),
+                merman::RenderTarget::EdgeGeometryJson(self.svg_for_operation(&control)?),
                 control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
@@ -119,7 +125,7 @@ impl RenderRequestPlan {
             .renderer
             .render(self.request(
                 source,
-                merman::RenderTarget::SvgPlan(self.svg.clone()),
+                merman::RenderTarget::SvgPlan(self.svg_for_operation(&control)?),
                 control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
@@ -142,7 +148,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Png(merman::PngRequest {
-                    svg: self.svg.clone(),
+                    svg: self.svg_for_operation(&control)?,
                     options: self.raster_options.clone(),
                 }),
                 control,
@@ -169,7 +175,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Jpeg(merman::JpegRequest {
-                    svg: self.svg.clone(),
+                    svg: self.svg_for_operation(&control)?,
                     options: self.raster_options.clone(),
                 }),
                 control,
@@ -196,7 +202,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Pdf(merman::PdfRequest {
-                    svg: self.svg.clone(),
+                    svg: self.svg_for_operation(&control)?,
                     options: self.pdf_options.clone(),
                 }),
                 control,
@@ -210,6 +216,22 @@ impl RenderRequestPlan {
             output.bytes,
             output.plan,
         ))
+    }
+
+    fn svg_for_operation(&self, control: &OperationControl) -> Result<SvgRequest, BindingError> {
+        let svg = self.svg.clone();
+        #[cfg(feature = "native-fonts")]
+        if let Some(context) = &self.native_font_context {
+            let mut svg = svg;
+            svg.environment = svg
+                .environment
+                .with_native_font_context(context.for_operation(control))
+                .map_err(|error| classify_render_error(error.into(), self.resource_profile))?;
+            return Ok(svg);
+        }
+        #[cfg(not(feature = "native-fonts"))]
+        let _ = control;
+        Ok(svg)
     }
 
     fn request<'a>(
@@ -451,6 +473,8 @@ impl RenderOperationConfig {
             parse_options,
             input_resources,
             resource_profile,
+            #[cfg(feature = "native-fonts")]
+            native_font_context: services.native_font_context(),
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options: self.raster_options,
             #[cfg(feature = "pdf")]

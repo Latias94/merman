@@ -131,6 +131,60 @@ CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 ProbePreparer = Callable[[VerificationCase, Path], Path]
 
 
+def _sdk_claim(kind: str, variant: str) -> ClosureClaim:
+    """Keep the six SDK recipes on the existing package/feature boundary checker."""
+    profile_id = f"sdk-{kind}-{variant}"
+    root = "merman-ffi" if kind == "native" else "merman-wasi"
+    elk = ("merman-elk-layered", "merman-layout-elk")
+    math = ("ratex-layout", "ratex-parser", "ratex-svg", "ratex-types")
+    required = [root, "merman-bindings-core", "merman", "merman-core", "merman-render",
+                "merman-export", "manatee", "usvg", "fontdb"]
+    forbidden = list(NATIVE_BINDING_FORBIDDEN_PACKAGES)
+    omitted_features = []
+    if variant == "full":
+        required.extend(elk)
+    else:
+        forbidden.extend(elk)
+        omitted_features.append("layout-elk")
+    if variant == "standard":
+        forbidden.extend(math)
+        omitted_features.append("math")
+    else:
+        required.extend(math)
+    exclusions = [
+        PackageFeatureExclusion(package, tuple(omitted_features))
+        for package in (root, "merman-bindings-core", "merman", "merman-render")
+        if omitted_features
+    ]
+    if kind == "wasi":
+        forbidden.extend((
+            "async-std", "async-io", "chrono", "fontconfig-parser", "fontique",
+            "getrandom", "hyper", "jiff", "mio", "native-tls", "rustls", "socket2",
+            "ureq", "web-time",
+        ))
+        host_features = (
+            "experimental-system-font-query", "native-runtime", "network-icons",
+            "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing",
+        )
+        exclusions.extend(
+            PackageFeatureExclusion(package, host_features)
+            for package in (root, "merman-bindings-core", "merman", "merman-core",
+                            "merman-render")
+        )
+        # Maintenance codecs retain their published native system-font features.
+        # WASI acquisition is target-guarded and qualified in no-preopen hosts.
+        exclusions.append(PackageFeatureExclusion(
+            "merman-export", tuple(feature for feature in host_features if feature != "system-fonts")
+        ))
+    return ClosureClaim(
+        claim_id=f"{profile_id}-capability-and-runtime-boundary",
+        profile_id=profile_id,
+        required_packages=tuple(required),
+        forbidden_packages=tuple(forbidden),
+        forbidden_features=tuple(exclusions),
+    )
+
+
 SEMANTIC_CLAIMS = (
     ClosureClaim(
         claim_id="static-svg-is-environment-and-export-free",
@@ -340,7 +394,8 @@ SEMANTIC_CLAIMS = (
             "web-time",
         ),
     ),
-)
+) + tuple(_sdk_claim(kind, variant)
+          for kind in ("native", "wasi") for variant in ("standard", "math", "full"))
 
 
 def load_verification_cases(

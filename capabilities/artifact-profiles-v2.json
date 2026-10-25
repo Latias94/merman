@@ -877,6 +877,174 @@
       }
     },
     {
+      "id": "sdk-native-full",
+      "description": "Official native full embedding SDK; explicit fonts and no ambient runtime adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+        }
+      },
+      "expected": {
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
+        "capabilities": ["analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
+        "runtime_ids": ["analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "sdk-native-math",
+      "description": "Official native math embedding SDK; explicit fonts and no ambient runtime adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "jpeg", "layout-cytoscape", "math", "native-fonts", "pdf", "png", "svg"],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+        }
+      },
+      "expected": {
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
+        "capabilities": ["analysis", "ascii", "jpeg", "layout-cytoscape", "math", "native-fonts", "pdf", "png", "svg"],
+        "runtime_ids": ["analysis", "ascii", "jpeg", "layout-cytoscape", "math", "native-fonts", "pdf", "png", "svg"],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "sdk-native-standard",
+      "description": "Official native standard embedding SDK; explicit fonts and no ambient runtime adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-ffi",
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "profile": "native-sdk",
+        "default_features": false,
+        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "jpeg", "layout-cytoscape", "native-fonts", "pdf", "png", "svg"],
+        "target": {
+          "name": "merman_ffi",
+          "kinds": ["cdylib", "rlib", "staticlib"],
+          "crate_types": ["cdylib", "rlib", "staticlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+        }
+      },
+      "expected": {
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
+        "capabilities": ["analysis", "ascii", "jpeg", "layout-cytoscape", "native-fonts", "pdf", "png", "svg"],
+        "runtime_ids": ["analysis", "ascii", "jpeg", "layout-cytoscape", "native-fonts", "pdf", "png", "svg"],
+        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+      }
+    },
+    {
+      "id": "sdk-wasi-full",
+      "description": "Official wasi full embedding SDK; explicit fonts and no ambient runtime adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-wasi",
+        "manifest": "crates/merman-wasi/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "layout-elk", "math", "native-fonts", "png", "svg"],
+        "target": {
+          "name": "merman_wasi",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-wasip1"]
+        }
+      },
+      "expected": {
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
+        "capabilities": ["layout-cytoscape", "layout-elk", "math", "native-fonts", "png", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "native-fonts", "png", "svg"],
+        "outputs": ["png", "svg"]
+      }
+    },
+    {
+      "id": "sdk-wasi-math",
+      "description": "Official wasi math embedding SDK; explicit fonts and no ambient runtime adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-wasi",
+        "manifest": "crates/merman-wasi/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "math", "native-fonts", "png", "svg"],
+        "target": {
+          "name": "merman_wasi",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-wasip1"]
+        }
+      },
+      "expected": {
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
+        "capabilities": ["layout-cytoscape", "math", "native-fonts", "png", "svg"],
+        "runtime_ids": ["layout-cytoscape", "math", "native-fonts", "png", "svg"],
+        "outputs": ["png", "svg"]
+      }
+    },
+    {
+      "id": "sdk-wasi-standard",
+      "description": "Official wasi standard embedding SDK; explicit fonts and no ambient runtime adapters.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-wasi",
+        "manifest": "crates/merman-wasi/Cargo.toml",
+        "profile": "wasm-size",
+        "default_features": false,
+        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "native-fonts", "png", "svg"],
+        "target": {
+          "name": "merman_wasi",
+          "kinds": ["cdylib", "rlib"],
+          "crate_types": ["cdylib", "rlib"],
+          "required_features": []
+        },
+        "build_target": {
+          "kind": "target-set",
+          "triples": ["wasm32-wasip1"]
+        }
+      },
+      "expected": {
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
+        "capabilities": ["layout-cytoscape", "native-fonts", "png", "svg"],
+        "runtime_ids": ["layout-cytoscape", "native-fonts", "png", "svg"],
+        "outputs": ["png", "svg"]
+      }
+    },
+    {
       "id": "typst-wasm",
       "description": "Published Typst WASM build for SVG and canonical analysis without uncallable export or math closures.",
       "semantic_target": "typst",

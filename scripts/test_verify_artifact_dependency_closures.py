@@ -248,6 +248,70 @@ def write_descriptor(
 
 
 class VerificationCaseTests(unittest.TestCase):
+    def test_sdk_profiles_keep_variant_and_wasi_runtime_boundaries(self) -> None:
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()
+                 if current.recipe.profile_id.startswith("sdk-")}
+        self.assertEqual(set(cases), {
+            f"sdk-{kind}-{variant}"
+            for kind in ("native", "wasi") for variant in ("standard", "math", "full")
+        })
+        for profile_id, current in cases.items():
+            with self.subTest(profile=profile_id):
+                self.assertIn("manatee", current.claim.required_packages)
+                self.assertNotIn("manatee", current.claim.forbidden_packages)
+                baseline = {name: () for name in current.claim.required_packages}
+                closure = parse_fixture_metadata(
+                    metadata_document(current.recipe.package, baseline),
+                    root_package=current.recipe.package,
+                )
+                self.assertEqual(check_case(current, closure)[0], [])
+                forbidden = []
+                if not profile_id.endswith("full"):
+                    forbidden.extend(["merman-layout-elk", "merman-elk-layered"])
+                if profile_id.endswith("standard"):
+                    forbidden.extend(["ratex-layout", "ratex-parser", "ratex-svg", "ratex-types"])
+                if "-wasi-" in profile_id:
+                    forbidden.extend(["fontique", "fontconfig-parser", "reqwest", "tokio", "async-std"])
+                for package in forbidden:
+                    with self.subTest(leaked_package=package):
+                        closure = parse_fixture_metadata(
+                            metadata_document(current.recipe.package, {**baseline, package: ()}),
+                            root_package=current.recipe.package,
+                        )
+                        self.assertTrue(any(f"forbidden packages present: {package}" in failure
+                                            for failure in check_case(current, closure)[0]))
+
+    def test_wasi_closures_preserve_legacy_codec_flags_without_ambient_runtime(self) -> None:
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()
+                 if current.recipe.profile_id.startswith("sdk-wasi-")}
+        for current in cases.values():
+            self.assertEqual(current.target, "wasm32-wasip1")
+            baseline = {name: () for name in current.claim.required_packages}
+            closure = parse_fixture_metadata(
+                metadata_document(current.recipe.package, {
+                    **baseline,
+                    "merman-export": ("system-fonts",),
+                    "usvg": ("system-fonts",),
+                    "fontdb": ("fs", "memmap", "fontconfig"),
+                }),
+                root_package=current.recipe.package,
+            )
+            self.assertEqual(check_case(current, closure)[0], [])
+            for package, feature in (
+                ("merman-wasi", "system-fonts"),
+                ("merman-bindings-core", "native-runtime"),
+                ("merman", "system-fonts"),
+                ("merman", "network-icons"),
+                ("merman-export", "experimental-system-font-query"),
+            ):
+                with self.subTest(profile=current.recipe.profile_id, package=package, feature=feature):
+                    closure = parse_fixture_metadata(
+                        metadata_document(current.recipe.package, {**baseline, package: (feature,)}),
+                        root_package=current.recipe.package,
+                    )
+                    self.assertIn(f"package {package!r} enables forbidden features: {feature}",
+                                  check_case(current, closure)[0])
+
     def test_tree_sitter_packages_are_forbidden_from_non_lsp_profiles(self) -> None:
         loaded_case = case(
             loaded_claim=claim(

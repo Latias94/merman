@@ -325,6 +325,119 @@ fn swimlane_issue_200_export_keeps_lane_titles_rotated_and_centered() {
 }
 
 #[test]
+fn swimlane_long_html_edge_label_resvg_safe_keeps_all_wrapped_text_visible() {
+    for (html, expected_text, expected_lines) in [
+        (
+            "First <b>review</b> the complete request before sending the final <i>reply</i>",
+            "First review the complete request before sending the final reply",
+            None,
+        ),
+        ("<b>Ready</b>", "Ready", Some(1)),
+        ("First<br/>last", "First last", Some(2)),
+        (
+            "Supercalifragilisticexpialidocious",
+            "Supercalifragilisticexpialidocious",
+            Some(1),
+        ),
+    ] {
+        let source = format!(
+            r#"---
+config:
+  htmlLabels: true
+  themeVariables:
+    fontSize: 22px
+  flowchart:
+    wrappingWidth: 96
+---
+swimlane-beta LR
+A -->|{html}| B
+"#
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let layout: merman_render::model::SwimlaneLayout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
+        )
+        .unwrap();
+        let label_id = layout.edges[0].label_node_id.as_deref().unwrap();
+        let parity = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap()
+            .svg()
+            .to_string();
+        let output = process(&parity, SvgPipeline::resvg_safe());
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| {
+                node.attribute("class") == Some("label edgeLabel")
+                    && node.attribute("id") == Some(label_id)
+            })
+            .unwrap();
+        let overlay = label
+            .descendants()
+            .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+            .unwrap();
+        let definition = content(overlay);
+        let lines = definition
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        if let Some(expected_lines) = expected_lines {
+            assert_eq!(lines.len(), expected_lines, "{html}");
+        } else {
+            assert!(
+                lines.len() > 1,
+                "the exported long HTML edge label must actually wrap into multiple SVG text lines"
+            );
+        }
+        let text = lines
+            .iter()
+            .map(|line| {
+                line.descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            text.split_whitespace().collect::<Vec<_>>().join(" "),
+            expected_text
+        );
+        let viewport = definition
+            .children()
+            .find(|node| node.has_tag_name("svg"))
+            .unwrap();
+        assert!(has_style(viewport, "overflow: visible"));
+        let root_viewbox = document
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        for line in lines {
+            assert!(has_style(line, "font-size: 22px"));
+            let y = coordinate(line, "y");
+            assert!(y >= 11.0 && y + 11.0 <= coordinate(viewport, "height"));
+            let (_, root_y) = mapped_through_ancestors(overlay, (coordinate(line, "x"), y));
+            assert!(root_y - 11.0 >= root_viewbox[1]);
+            assert!(root_y + 11.0 <= root_viewbox[1] + root_viewbox[3]);
+        }
+        assert!(!output.contains("<foreignObject"));
+    }
+}
+
+#[test]
 fn overflowing_fallback_transforms_fail_with_a_named_pipeline_error() {
     for transform in ["scale(1e308) scale(1e308)", "scale(1e308)"] {
         let svg = format!(

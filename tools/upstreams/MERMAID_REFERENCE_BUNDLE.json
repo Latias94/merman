@@ -3,7 +3,7 @@
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "da9492b0251b8a094e5745c4bf9049ea772f76642e233cb0b5e55c740e738885"
+    "sha256": "541622ec46ac1b83be097fd402da8007c15d36fd9961da227a89d24f14742822"
   },
   "release": {
     "id": "mermaid",
@@ -57,15 +57,15 @@
     "id": "dompurify",
     "role": "sanitizer",
     "package": "dompurify",
-    "version": "3.4.16",
-    "declaredRange": "3.4.16",
-    "integrity": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==",
-    "tarballUrl": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz",
-    "installedContentSha256": "8e62ee67206b530948d8db894569ddee4e258b9e7785dd7b796fae7136be65eb",
+    "version": "3.4.17",
+    "declaredRange": "3.4.17",
+    "integrity": "sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==",
+    "tarballUrl": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.17.tgz",
+    "installedContentSha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
     "source": {
       "repository": "https://github.com/cure53/DOMPurify.git",
-      "reference": "3.4.16",
-      "commit": "b9b9d80f7e401771c2ccaef5f45def7eec8f27d7",
+      "reference": "3.4.17",
+      "commit": "a77a3e78b59f72fa4d1c83f22e121ad9cc7d3575",
       "checkoutPath": "repo-ref/dompurify",
       "packagePath": "."
     },
@@ -255,8 +255,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "81cc5e4e334729c153d87dda03a0060086e28ddd3aedc1c0d67a495fe13f751f",
-    "packageLockSha256": "30ae22ff02bddda5a2b4479fdc27cb882cc2fb17e366d6f1320260ad2e3a7651",
+    "packageJsonSha256": "1c764e768d841724f7a98ee2b75e9ea7dcad60cee43489d7f53c694c388d3528",
+    "packageLockSha256": "a12ff560532b5a19abb16e16c81e906165a5de3291446ab5d1491f65d840e1dc",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "rendererTools": [
@@ -264,15 +264,15 @@
       "id": "puppeteer-browsers",
       "role": "renderer-tool",
       "package": "@puppeteer/browsers",
-      "version": "3.2.0",
-      "declaredRange": "3.2.0",
-      "integrity": "sha512-LlBrE8oqGfU7b1Nk2d5Q1SbuPhZxTj0cJEMDPEws28OjNMELlflekmPPuf4FnK03x0ZRjKaYwJElUcKK4kyqJA==",
-      "tarballUrl": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.0.tgz",
-      "installedContentSha256": "19471ee170159334103c514581e661d261cf7f78637d331f1e856df799d0444a",
+      "version": "3.2.6",
+      "declaredRange": "3.2.6",
+      "integrity": "sha512-MJP29gVoHznmqmwhH1tlZqzfeQ3aylTpSSa6WKZXtkwYUH02i9imBmWGTyZrbnAou5paX78SE4jMAUqnEPf8ug==",
+      "tarballUrl": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.6.tgz",
+      "installedContentSha256": "f319d74307111acd588795bb8912bbd212ec86c02effb01a3367fb93488435b2",
       "source": {
         "repository": "https://github.com/puppeteer/puppeteer.git",
-        "reference": "browsers-v3.2.0",
-        "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+        "reference": "browsers-v3.2.6",
+        "commit": "a207faf527ce4305b33a6c0f9706b090c21c115e",
         "checkoutPath": null,
         "packagePath": "packages/browsers"
       },
@@ -307,15 +307,15 @@
       "id": "puppeteer",
       "role": "renderer-tool",
       "package": "puppeteer",
-      "version": "25.6.0",
-      "declaredRange": "25.6.0",
-      "integrity": "sha512-TXUolDddU4AwISjOOrGk2AhJDpbM/ZDt2KvGIqz74EOk+8bKwXFo+acUvP1sQx3hUda7owOeNuuT1UnJT1o0qA==",
-      "tarballUrl": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.6.0.tgz",
-      "installedContentSha256": "477011bd9dec4b70bb3c7f9a7f6665f47861064861d8c38a6bf194bb44d6d3a7",
+      "version": "25.16.0",
+      "declaredRange": "25.16.0",
+      "integrity": "sha512-LOr3reYnxAYYfQkpopz1fQnL0LdvqhpR5U2Fu+QnwzTX2gpVTHsn91UETo5NNC1md2/oC54Zu1ChBXgZDNSP1A==",
+      "tarballUrl": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.16.0.tgz",
+      "installedContentSha256": "f543c2f9ad47f377962e85b5181a00d483371c73191b63e5f53afd0ef83e1584",
       "source": {
         "repository": "https://github.com/puppeteer/puppeteer.git",
-        "reference": "puppeteer-v25.6.0",
-        "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+        "reference": "puppeteer-v25.16.0",
+        "commit": "a207faf527ce4305b33a6c0f9706b090c21c115e",
         "checkoutPath": null,
         "packagePath": "packages/puppeteer"
       },
@@ -328,15 +328,15 @@
       "id": "puppeteer-core",
       "role": "renderer-tool",
       "package": "puppeteer-core",
-      "version": "25.6.0",
-      "declaredRange": "25.6.0",
-      "integrity": "sha512-GJ67rjZdVQzZmD2Ab0cgttfQN9j387QYMv3t6MN3/4nmjursNt6M5Utj4/T/4y0AwNrSwJzjw6Q/zuWFEIizOg==",
-      "tarballUrl": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.6.0.tgz",
-      "installedContentSha256": "ca5e31e7c6d9bbbe018da519c153d024647486d0dcf3280633240d1a03bfbaee",
+      "version": "25.16.0",
+      "declaredRange": "25.16.0",
+      "integrity": "sha512-VA5Pf54N8shfopNkZZXCdiiwfnnY8ZJYAMqFQRhlH5mGUhfwf53Ar770GPtdpTDLUqvQeYpIBtC9/G2Jij2IJw==",
+      "tarballUrl": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.16.0.tgz",
+      "installedContentSha256": "e7029a9394b8fb96bdfed19b5690f41d13e708a61314c95faff0ed15a56b8522",
       "source": {
         "repository": "https://github.com/puppeteer/puppeteer.git",
-        "reference": "puppeteer-core-v25.6.0",
-        "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+        "reference": "puppeteer-core-v25.16.0",
+        "commit": "a207faf527ce4305b33a6c0f9706b090c21c115e",
         "checkoutPath": null,
         "packagePath": "packages/puppeteer-core"
       },
@@ -359,7 +359,7 @@
       },
       {
         "workspace": "tools/mermaid-cli",
-        "package": "puppeteer@25.6.0",
+        "package": "puppeteer@25.16.0",
         "action": "ignored",
         "reason": "CI and local parity commands provide an audited browser executable."
       },
