@@ -56,6 +56,9 @@ published ABI boundaries, historical evidence identities and unknown-version rej
   its artifact. Independently published wrappers use their own intended publication date.
 - Prepare normal install/import examples as documentation of the target package. Keep availability,
   pending PRs, source identities, and receipts in operator records.
+- For a selected headless SDK release, describe the `standard`, `math`, and `full` choices and
+  supported transports in user-facing notes; claim downloads are available only after the SDK
+  publisher succeeds and the matching GitHub Release assets are verified.
 - Describe performance in representative user workflows with bounded evidence. For optional font
   measurement, explain its approximate cost and when improved layout warrants enabling it.
 - Use plain fenced code blocks for Mermaid source examples in changelogs so GitHub displays the
@@ -77,6 +80,10 @@ workspace tag. Independent owners use their documented source, compatibility, pa
 checks. Inspect upload-size warnings even when a dry run exits zero. Preserve documented target
 coverage and measure the final compressed upload, including native/WASM artifacts.
 
+For the SDK owner, run qualification only from a clean source tree. Preflight qualification uploads
+Actions artifacts but does not publish them; retain its run ID only when that run's `head_sha` equals
+the selected release commit.
+
 Read [Required Credentials](../../../docs/release/RELEASING.md#required-credentials) for the
 selected registries. Distinguish configured bindings, live token exchange, and successful upload.
 Existing bindings generally span versions; a new package name may need bootstrap and registration.
@@ -91,6 +98,11 @@ credentials and upload constraints are ready for the authorized publication.
 Follow [Tag And Push](../../../docs/release/RELEASING.md#tag-and-push) and each selected workflow's
 actual inputs. Keep workflow revision, artifact source, producing run/attempt, and receipts
 distinct. Workspace, Flutter and independent grammar tags retain their owning trigger contracts.
+
+After the primary GitHub Release exists, publish the full SDK matrix with the manual SDK publisher,
+using the successful source-matched qualification run. Do not treat preflight or Actions artifacts
+as public downloads. Follow the publisher's exact source/tag checks, verify all attached assets, and
+update the release body with download choices only after publication succeeds.
 
 For Typst, Homebrew, Scoop, WinGet, Conda-forge, Nixpkgs, or Pages, read
 [external channels](references/external-channels.md) before submission or deployment.
@@ -111,6 +123,9 @@ preserve its accepted version.
 Record observed results and outstanding upstream review in Publish Order. Mark checklist items
 complete only for the state actually proven: prepared, submitted, merged, or available. Inspect
 channel semantics: AAR/XCFramework release assets do not establish Maven Central/SwiftPM delivery.
+For SDK publication, reconcile all 18 archives and their 18 SHA-256 sidecars against the verified
+producer run and the matching GitHub Release before marking the SDK available; the release body
+must link only to assets confirmed present on that release.
 Confirm the latest commit's relevant CI after workflow repairs; identify cancellations or external
 failures separately from source regressions.
 

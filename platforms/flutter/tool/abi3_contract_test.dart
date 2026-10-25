@@ -19,6 +19,8 @@ void main() {
   preservesScopedPresetQualification();
   preservesPresetFamilyDesigns();
   matchesThePubPackageVersionProjection();
+  acceptsSvgCatalogWithOptionalNativeFonts();
+  rejectsInconsistentNativeFontServices();
   acceptsAFlatAbi3Catalog();
   acceptsAdditiveConstructorResourceLimits();
   rejectsMalformedAdditiveTransportSections();
@@ -842,6 +844,75 @@ void requiresSdkUpgradeForUnknownCatalogOperation() {
   throw StateError('unknown catalog operation unexpectedly became callable');
 }
 
+void acceptsSvgCatalogWithOptionalNativeFonts() {
+  for (final nativeFonts in [false, true]) {
+    for (final output in ['svg', 'png']) {
+      final catalog = MermanRuntimeCatalog.fromJson(
+        _catalog(
+          capabilityIds: [output],
+          outputIds: [output],
+          operationIds: [output, 'semantic-json']..sort(),
+          nativeFonts: nativeFonts,
+        ),
+      );
+      _expect(
+        catalog.constructorServiceIds.contains('host-text-measurement') &&
+            catalog.constructorServiceIds.contains('icon-registry') &&
+            catalog.constructorServiceIds.contains('native-font-context') ==
+                nativeFonts &&
+            catalog.textMeasurementProviderIds.contains('native-fonts') ==
+                nativeFonts,
+        'SVG pipeline services must support both slim and native-font builds',
+      );
+    }
+  }
+}
+
+void rejectsInconsistentNativeFontServices() {
+  for (final serviceId in [
+    'host-text-measurement',
+    'icon-registry',
+    'native-font-context',
+  ]) {
+    final catalog = _catalog(nativeFonts: true);
+    final removedProviders =
+        _constructorServiceContract(
+              catalog,
+              serviceId,
+            )['provided_text_measurement_provider_ids']
+            as List<String>;
+    (catalog['constructor_service_ids'] as List<String>).remove(serviceId);
+    (catalog['constructor_service_contracts'] as List<Object?>).removeWhere(
+      (value) => (value as Map<String, Object?>)['id'] == serviceId,
+    );
+    ((_runtimeCapabilities(catalog)['text_measurement']
+                as Map<String, Object?>)['provider_ids']
+            as List<String>)
+        .removeWhere(removedProviders.contains);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
+  for (final mutation in <void Function(Map<String, Object?>)>[
+    (catalog) =>
+        (_runtimeCapabilities(catalog)['capability_ids'] as List<String>)
+            .remove('native-fonts'),
+    (catalog) =>
+        ((_runtimeCapabilities(catalog)['text_measurement']
+                    as Map<String, Object?>)['provider_ids']
+                as List<String>)
+            .remove('native-fonts'),
+  ]) {
+    final catalog = _catalog(nativeFonts: true);
+    mutation(catalog);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
+  final orphanProvider = _catalog();
+  ((_runtimeCapabilities(orphanProvider)['text_measurement']
+              as Map<String, Object?>)['provider_ids']
+          as List<String>)
+      .add('native-fonts');
+  _expectContractFailure(() => MermanRuntimeCatalog.fromJson(orphanProvider));
+}
+
 void acceptsAFlatAbi3Catalog() {
   final catalog = MermanRuntimeCatalog.fromJson(_catalog());
   _expect(
@@ -933,13 +1004,14 @@ void rejectsMalformedAdditiveTransportSections() {
                     >)['provided_text_measurement_provider_ids']
                 as List<Object?>)
             .add('unavailable-provider'),
-    (catalog) =>
-        ((((catalog['constructor_service_contracts'] as List<Object?>).last
-                            as Map<String, Object?>)['resource_limits']
-                        as List<Object?>)
-                    .first
-                as Map<String, Object?>)['value'] =
-            -1,
+    (catalog) {
+      final iconRegistry = _constructorServiceContract(
+        catalog,
+        'icon-registry',
+      );
+      final limits = iconRegistry['resource_limits'] as List<Object?>;
+      (limits.first as Map<String, Object?>)['value'] = -1;
+    },
     (catalog) {
       final iconRegistry = _constructorServiceContract(
         catalog,
@@ -2532,6 +2604,7 @@ Map<String, Object?> _catalog({
   List<String> operationIds = const ['semantic-json', 'svg'],
   List<String> systemAdapterIds = const [],
   List<String>? metadataIds,
+  bool nativeFonts = false,
 }) {
   final usesSvgPipeline =
       capabilityIds.contains('svg') ||
@@ -2542,6 +2615,10 @@ Map<String, Object?> _catalog({
               expectation.compiledPrerequisiteIds.contains('svg'),
         ),
       );
+  capabilityIds = [
+    ...capabilityIds,
+    if (nativeFonts && usesSvgPipeline) 'native-fonts',
+  ]..sort();
   final optionGroupIds =
       binding.mermanBindingOptionGroupSpecs.values
           .where(
@@ -2559,7 +2636,8 @@ Map<String, Object?> _catalog({
           .where(
             (spec) =>
                 transport.constructorServiceCandidateIds.contains(spec.id) &&
-                (!spec.requiresSvgPipeline || usesSvgPipeline),
+                (!spec.requiresSvgPipeline || usesSvgPipeline) &&
+                (spec.id != 'native-font-context' || nativeFonts),
           )
           .toList()
         ..sort((left, right) => left.id.compareTo(right.id));

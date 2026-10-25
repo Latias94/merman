@@ -5,8 +5,8 @@
     "mermaid_cli_version": "12.0.0",
     "mermaid_source_tag": "mermaid@12.2.0",
     "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "c345557163f1af788848d68282840272cffcc31e11b5fed8ea37677b10270980",
-    "package_lock_sha256": "77fc2de952489e23378910bbc5942e92eecc0532d645b2f9ec0b932d5fc55c2a",
+    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
+    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -15,18 +15,18 @@
     "render_environment": {
       "browser": {
         "product": "HeadlessChrome",
-        "version": "156.0.8078.47",
-        "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
-        "locale": "zh-CN",
+        "version": "151.0.7922.77",
+        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
+        "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.16.0"
       },
       "operating_system": {
-        "platform": "win32",
-        "arch": "x64",
-        "release": "10.0.26300"
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "27.0.0"
       },
       "mermaid_runtime": {
         "mermaid_version": "12.2.0",
@@ -40,7 +40,7 @@
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
       }
     }
   },
@@ -48,12 +48,12 @@
   "fixtures": {
     "activation_explicit": {
       "input_sha256": "cf08746ac1bc329a33cbb8525875ef56ec6615f0c4c842ae5575f6ad6ba3dec6",
-      "svg_sha256": "b05e72098483793b459f5c3bea3a40f7256f5048f7ba2f86e5f71d732fadec97",
+      "svg_sha256": "45d4b680b344f1187abdc14518c1b829522ed182409866ce434605d2b4ebcad2",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "activation_stacked": {
       "input_sha256": "ad1862835cf27c36528108757798c6d6675396f1db9533a7e709f860e7838d25",
-      "svg_sha256": "1f63c8f4906b92c10162ee0433e1f0e4905ccab161690154386e7bd0a5c91da4",
+      "svg_sha256": "d7577c0a0368d88dc7aa47742504ebe6e0b9fec0385596c379cda44e0023ba2c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "actor_config_spacing_and_menu_endpoints": {
@@ -63,7 +63,7 @@
     },
     "actor_ids_dashes_and_equals": {
       "input_sha256": "69c787ec597874c95c393c1a2f2277873f5afc360fde55f33b4c83ea29afcaa6",
-      "svg_sha256": "e8cdfbcc93748dbd713c262c8e22cc1039f1677b6901be85a99c95caeb4ff188",
+      "svg_sha256": "188235a72ec47b537f25191479f30832b8549a05d318aa284963b5fbba110d3e",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "alt_loop": {
@@ -73,7 +73,7 @@
     },
     "arrows_variants": {
       "input_sha256": "c9d9e568f9f2fa19a7be5b970e68be4fb402bf3b3ca0a3072b123924ba8fce88",
-      "svg_sha256": "46f6f1a67b337fab84a39df1843796819ac023e7c253b9f8a53e2d2c7b6a9a44",
+      "svg_sha256": "aa28c472865e95b94758d6a1f6592b480dd77835974e2683b31b87891f2710f8",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "autonumber_variants": {
@@ -93,7 +93,7 @@
     },
     "comments_and_blank_lines": {
       "input_sha256": "287717bf802b5249b083ddb6fefb02ad286c6b196a8c91000c7951c34e552444",
-      "svg_sha256": "d0702d0c5bb1c231c105b7148228e45d682186b073994dc4352b272fa83d5f44",
+      "svg_sha256": "9cc969170fcfa79d4cfa8eae92f9f04ad88b8a4a6333fb714a7538ff6168c0e8",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "create_destroy_same_actor": {
@@ -113,7 +113,7 @@
     },
     "html_br_variants_and_wrap": {
       "input_sha256": "a810bdaf900684c7c720f6216465773bc800f279bae59b1b177344d640e4d4bb",
-      "svg_sha256": "4e2a36da93ea3ae1f8c0832868ce1f2fa96411168995ee292cc83eab53a05b77",
+      "svg_sha256": "5afdb438211a714a2c5626b3d5f9d9e92423c7f96ff990ea2f42113a723b79c8",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "links_and_properties": {
@@ -123,7 +123,7 @@
     },
     "no_label_blocks": {
       "input_sha256": "5cfa5b17bd1d735ac4f81ac7fc083019e63fa2c0518d6676be7c0d1e4b44dc89",
-      "svg_sha256": "1ed84e5439eff247342afc9c4675809e180188e43eb79ef4f78bec17ccacb2d1",
+      "svg_sha256": "1367fe36cbaf9ba9e1817a5e25515fc6901b21bac2a978019f22ce932d801c5e",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "notes_placements": {
@@ -138,7 +138,7 @@
     },
     "semicolons_and_comments": {
       "input_sha256": "1d77affc9f55e1a3e1e60d2706ad094a93533c647910ae2ca623ff70bdc1440c",
-      "svg_sha256": "25ca1363f26d6130e2922d0bdf5e3b96017c84fea56f27165dfa5e625f3da030",
+      "svg_sha256": "081365ffe404b397488d43511286b51b1d3065964c0681ee4b853c3d5980fe58",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "special_characters": {
@@ -228,12 +228,12 @@
     },
     "stress_entities_and_escaping_005": {
       "input_sha256": "c64035d0269a39c2fcbf4094cfbefe042fc32ff01d2b48ee6828c95dc4badb26",
-      "svg_sha256": "a5d3e44fa9b01d0fe49322525987990d60f4a6397d3d868b279493b0c9ed45b4",
+      "svg_sha256": "f7013c0bdec96b1b01a4a91f72a68b1dcbcd9e046864eb17c92b6aa502f8a0ee",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_html_entities_and_escaping_038": {
       "input_sha256": "c417b97e7b2e6911d35042bb22171755dcbeb0399f408bd04b0929b16b850ed3",
-      "svg_sha256": "f759a1f61b0ace6f219083913b42db3db3fad9dd2797526da8cd385f69c37519",
+      "svg_sha256": "627b314433c9cbd12dd871167460baaf3ad220c2ff325d89b73c183a3db8025c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_inline_activation_mix_020": {
@@ -248,7 +248,7 @@
     },
     "stress_long_participant_labels_br_031": {
       "input_sha256": "be2305144a7d5caa508aed28a087700a5cf0d4f766b25ddf2f3937a1196486b0",
-      "svg_sha256": "173d64b632d163c590f16688b6b65d0c4428831cd3fd07a682c751c6037871ec",
+      "svg_sha256": "d5c81327ef363ba8c61384af95341c52eb63a670a56a3ef4af80fb516b5ff800",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_loop_opt_alt_mix_034": {
@@ -258,7 +258,7 @@
     },
     "stress_message_text_with_colons_039": {
       "input_sha256": "61fd66c340faeafad3d72d47320f75039bb65682a3d7e82f2dffdf20568bd98b",
-      "svg_sha256": "ae3499623128ee4e3ea09265bccae9ee84958640e465766d33a5af10011733ed",
+      "svg_sha256": "d3cf03c85af32bfd2fc93d5a3c7aa161de19da8ded390cba2c005efa51683d96",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_multiple_boxes_and_notes_026": {
@@ -313,7 +313,7 @@
     },
     "stress_semicolons_022": {
       "input_sha256": "e2e0e58c7b219c0fb9f18405bc73176b44c873fa3626ee4ae98c9d026ea1a068",
-      "svg_sha256": "01a5e7c656d0c4d70d48eb14f399b9f78204c0335d54f5a55beefe8822043eee",
+      "svg_sha256": "72f1305806c68f6e3795dce833a48e45cc52326c84e2acaa4f406c3a82978edb",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_sequence_batch5_activation_mixed_045": {
@@ -323,7 +323,7 @@
     },
     "stress_sequence_batch5_alt_par_nested_040": {
       "input_sha256": "2777609e86a893a11478449e0af1ab6b7983f61af01f37fb724a2c2a41fd9edf",
-      "svg_sha256": "86c7982aac854cf34ce0846f0a6fbd76d9b14d3250897dd8a734dd7bc1f768ab",
+      "svg_sha256": "4ceebce4eae2acc0637952f072b0254374462d423449e7aa8c927cccb9361011",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_sequence_batch5_autonumber_on_off_043": {
@@ -358,7 +358,7 @@
     },
     "stress_sequence_batch5_reserved_words_in_labels_049": {
       "input_sha256": "9ba501577265c861f3ccfd3781fb23f5eacbf55c0ba32a1720c7ce03f4083c5b",
-      "svg_sha256": "8c1ad15e759691daeccc8d5dd5f193621b51a9a10c83d1cc3e01a17c4c74be4f",
+      "svg_sha256": "1b4873c111c283363eea772f653059b58ea0cf4f05aef3b95829ce08fd9d136d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_sequence_batch5_strict_links_properties_044": {
@@ -368,12 +368,12 @@
     },
     "stress_sequence_batch5_whitespace_semicolons_051": {
       "input_sha256": "c1b8a55f506b235bc8a3f81f45eb2a0040f3316e243cde966db861cf2e30fcf8",
-      "svg_sha256": "c26e33106e528cfa9adc4a50116463b423b72fa94fbd87365d205172efc5e50d",
+      "svg_sha256": "efa0a6759cc12601f6b3473b2cfbac338ad9e99266795b371b8eff79fcddc4e8",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_sequence_batch5_wrap_html_br_spans_042": {
       "input_sha256": "232b8a804dcabb7e92e9f82d688facfa3de0590723be51d06a140306cb98b651",
-      "svg_sha256": "7aa1c98a399fe4378f6e8759c073fbf5706cb85b203e3653d40698e32cf15682",
+      "svg_sha256": "87390ee2f4c3c45f00a8dcddfae9b3b0f4733ee21a65b6749d3810b6dc3a5f07",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_sequence_font_size_precedence_090": {
@@ -393,17 +393,17 @@
     },
     "stress_unicode_punct_012": {
       "input_sha256": "ccb0e9c929f00b2352ba4396d6d463f495240f3d5a7467d1b9dd9671b5bc0982",
-      "svg_sha256": "9f0f1a8dd71aab6e723386f9bd7c6b2b015d410f21fa6601eeaf6ce554b8f495",
+      "svg_sha256": "4580449d8a1f8edc717e2bfd6ebde2ec3972a6d55c33fb7bebba328c68da4f48",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "stress_wrap_directive_and_prefixes_028": {
       "input_sha256": "8db84e1aa7d2fd9af5eaa300e94df833f42a3a360283fa0df7fab3a16c9142f3",
-      "svg_sha256": "87526dde6c729bb977d256c2654edc85ac6395493be8b5f4f7e537f04917510a",
+      "svg_sha256": "57989de8b6a3e4e09879005c5c4f55cac3e6ed8fcd75183558f724eebe883d73",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "title_and_accdescr_multiline": {
       "input_sha256": "e9f225f813138a2881a12ce8d5f8750574d153a43ad1fce57953f5f90f71bd73",
-      "svg_sha256": "6920c257e992deefae4b60925f7830b69bed73a8a2cd77d144fd40cf936765e7",
+      "svg_sha256": "c599eb06ca6a6a8bee3fefcfa7e038291bc70b0219ea0aebe066bc9b11cec011",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "trailing_colon_empty_message": {
@@ -413,7 +413,7 @@
     },
     "upstream_accessibility_single_line_spec": {
       "input_sha256": "ba16217a05efbfd940027b1db6e470c04959f6923676b85649382dea79fbf8c1",
-      "svg_sha256": "b591de651ad971bdd36b9da6c02dab01501af660e42a858cff01546a8e5bde56",
+      "svg_sha256": "4cd1400747a25d4083abeed9311f4873a21e53d05c8b10d059165c6ac30c3e94",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_alias_mixed_actor_participant_spec": {
@@ -423,12 +423,12 @@
     },
     "upstream_alias_participants_spec": {
       "input_sha256": "7425add5ff2bc7069075e5cbd63554b2ab857ac69a1b257fb6ee6ba55d19eadb",
-      "svg_sha256": "ef998ee244c7f74b2c6d240c14a43351cc2b0efecad6a299f351245e081fdf23",
+      "svg_sha256": "26e44a15fb4c681c9c093f729d44784280e2a6c46765e76d3d256fba292e627d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_alt_multiple_elses_spec": {
       "input_sha256": "400da6941d8d0c981adc32b9dc6b68b7eac6c7adb98bbe9ab7e00591d63c6fb7",
-      "svg_sha256": "0eee29766c25a44879388bb4fbdbf871e96d38d95dcb955b0b2f92fd8da52ab9",
+      "svg_sha256": "3d675f9bd7fe5d102e79bec0b819fca765aef8be3ac0a3c514ee35034849daa0",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_break_spec": {
@@ -448,7 +448,7 @@
     },
     "upstream_cypress_sequencediagram_spec_example_001": {
       "input_sha256": "4509ee431d7a04d5a57630ab9000b7bb8bc873f166de975ff2657be0df929038",
-      "svg_sha256": "a2de8d443eabf88e5437f4ef31a48ebce7b8b22d9346c1fb06b85a0fba68bdf9",
+      "svg_sha256": "083a04f8b2123c76ae9da75bebb13176c3c7f91caac6cb6914e0a16a9c561f37",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_be_possible_to_use_actor_symbols_instead_of_boxes_023": {
@@ -463,7 +463,7 @@
     },
     "upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004": {
       "input_sha256": "6579c50cc8f483180d03105707dda79694bfe1c4412c35cdb6ddbc9c869f6d39",
-      "svg_sha256": "f91b2bbd7c57255bda02d7efd273dc47b33e84ab81c59fc3ab33775a9d3cecf0",
+      "svg_sha256": "67a78a8c669bcb018f93d3f51fc23432f2b1fd29d5268f3989408e21c97ddff3",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_handle_empty_lines_005": {
@@ -473,7 +473,7 @@
     },
     "upstream_cypress_sequencediagram_spec_should_handle_line_breaks_and_wrap_annotations_006": {
       "input_sha256": "80463b7c6e92c620082f5f793d7bafba919980d1037e4b4b631cf6ab15434c46",
-      "svg_sha256": "3c3bc852b878eb50a8ab7b3be0d88218295ab62d02405e43034924ab06fbccb2",
+      "svg_sha256": "8dc7da4e77891b4f0dd34063efb0fa3786b5963e662e39000d7bb654a4ca9d1a",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_have_actor_top_and_actor_bottom_classes_on_top_and_bottom_024": {
@@ -493,17 +493,17 @@
     },
     "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059": {
       "input_sha256": "6b375d83a2137c538cb516b1dacfc88aab40a545b5f2c4109cb7cdc2c10390b9",
-      "svg_sha256": "4f1db4c97e0ad021102011f94afa048f6698c7d15fd5531de19b2c159466f17a",
+      "svg_sha256": "1aa09ac3026ea2c034525f6492fe19bd4ca7a6b98317d5ece92addbedbfb398d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010": {
       "input_sha256": "497091b33d552075bae534efc0ecedd43ab2c4b816d0a495cb8b9443dd1714b4",
-      "svg_sha256": "81383100cb66272ad08c13790f859bd4648d7a1aa545c0367e2dd95c9d3e7b49",
+      "svg_sha256": "03fade1121e732fd9e54ecf31fef2efd31aeed81dddd6376cd05647e38449b03",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_basic_actor_creation_and_d_009": {
       "input_sha256": "19d4d2ca2209c2b35503d759bcc1c28ef6ca02cde1aef98ceb54aa651a369a94",
-      "svg_sha256": "cecdacf8c6246c45ffbbc396bd8d112c3eda847f96aee58fc79ee2d681d8fd4d",
+      "svg_sha256": "847ee1cc9d353a67695956ebf77e90ced8688bc6ac8f0011d23990895b9db293",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_par_over_008": {
@@ -513,7 +513,7 @@
     },
     "upstream_cypress_sequencediagram_spec_should_render_a_simple_sequence_diagram_001": {
       "input_sha256": "16c3ca7dcfd8cfc171684c1b34664601d369c32f655578d69dcb99c580a74eaf",
-      "svg_sha256": "fceda2527426cda1436fd40c5c0e4da5d6b214bb20ee48c19737267de2f952e8",
+      "svg_sha256": "2ce4a13fc92b31dbdb1fcc53050f7a34123d9521e7593336ab42d9ac8949aa6c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037": {
@@ -533,12 +533,12 @@
     },
     "upstream_cypress_sequencediagram_spec_should_render_autonumber_when_autonumber_keyword_is_used_045": {
       "input_sha256": "e5301e8b1cffe995ef6bd04a206e354cda9b581789199af830aba263dcfbc5e5",
-      "svg_sha256": "5483269c628ef14526eaea84bc35256656cf39e2b41fb400fcc1c2ae9098a38a",
+      "svg_sha256": "76cf0dd4fd0c6eecad01283af113bff7ce3683d4f8270e70bad43a285a6c84b8",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_autonumber_when_configured_with_such_044": {
       "input_sha256": "9e9a9c0e26f643b803315ac30fa06db007acfcc1552dc6138b11ca5ead8ca1df",
-      "svg_sha256": "8c3915a46010586593d05896500242c0d1548f87766771f9eadb019f35443f91",
+      "svg_sha256": "15e30906fdba49801dbb833331bc7008c7abb59930c1687b4cdddb4c65f6d2d2",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_autonumber_with_different_line_breaks_046": {
@@ -548,12 +548,12 @@
     },
     "upstream_cypress_sequencediagram_spec_should_render_bidirectional_arrows_003": {
       "input_sha256": "aeff446a225813cc8f97dd823754d3c93aca22843314895199f7a2c0e445e273",
-      "svg_sha256": "2963c1f2df4695662333a1470b582c32b0fd5b3606555001ec7070de765fd96e",
+      "svg_sha256": "140aaf492f66894a15746470790784459f978abe5c9cedfbe116c8fa39fcfe0e",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_dark_theme_from_init_directive_and_configure_font_047": {
       "input_sha256": "defd25313f7860633147575daa3e5818f9a03117b83d849690847738b37e7f07",
-      "svg_sha256": "ef3752a45bd00cadc15b5dfec771d935f979db0f400c66c559f6d964d1b2ed46",
+      "svg_sha256": "5599c28a6c84eb40b61e6864d78354b2365ff289ffb1f9db7a051c15cdc021c2",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_different_actor_fonts_when_configured_013": {
@@ -573,62 +573,62 @@
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_actor_descriptions_020": {
       "input_sha256": "92838c81eadbb2ce6a6053554d5cfff90ae6a94741c6fe7ba3f9e7e274fe668a",
-      "svg_sha256": "e9b65f7912f145c25352429d88b32da673a38098dfcbeecc2b14a5fbb93ee1b9",
+      "svg_sha256": "11474c040bf98cd77331d39aa5c8132a6c037a7ab64de2accbbc2be87f1a132c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_messages_from_an_actor_to_the_left_to_one_to_032": {
       "input_sha256": "f58e04be0d379efd42f19699d98b830898717964fb5e8ebe4d54efa13737010e",
-      "svg_sha256": "7ac96421c8abd07b6641f51b913892a20c74df29a495b2ba360e2e504755e76f",
+      "svg_sha256": "b724321e69e34bf37f6b256703520e1b1053f457aad692b21bd27703661ba1bd",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_messages_from_an_actor_to_the_right_to_one_to_034": {
       "input_sha256": "6563d2bed70f767d3190cc21ad52d0201922bd989f489a0ca9c35f81b1c0e231",
-      "svg_sha256": "7ead68c50d8e8b4596ff63039ba4675e481f4aed053e2bf8d74b2d8a08eacd0f",
+      "svg_sha256": "1579ada65a7e23ac2959fc8ed79a8ebe224f272150579eeb4f82b4066ed4bfff",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_messages_wrapped_inline_from_an_actor_to_the_033": {
       "input_sha256": "4179ccaa504cf4ce0f7b9e37aca452d2864fc2fea4d52601eeb144d10099f010",
-      "svg_sha256": "118a7d85e6ff5f7f14b2463415930ec63d196154e6209cc685a08d2a48d28619",
+      "svg_sha256": "df6b563f2e82c018a2907a8eee673bcf65467cc60e2ea065c56b34ac1285b00e",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_messages_wrapped_inline_from_an_actor_to_the_035": {
       "input_sha256": "d0e78dad116bbeec38aa59f8d1285c12c1f85d5337387f8d6b90dc40f7012abd",
-      "svg_sha256": "b0450f96420c2b1acec5eb8113ce28b37d29da7268913bfabbb10e4a97ea6bd4",
+      "svg_sha256": "6003597abc96cc63004e8050053eae39057b3cf8649c3d8ed7732855c97839f7",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_notes_left_of_actor_025": {
       "input_sha256": "5ef4a204fba51dd405d82841adf141105f05e1689343525e08ddc1612d8eff77",
-      "svg_sha256": "938f85e870ae50fdf003c882103492c28d3efc348688dd620d8ec15d54049682",
+      "svg_sha256": "08d84bbcdfd9159842a770001fb68e3f0f74c54dc6626820970c19bc7e038f4c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_notes_over_actor_029": {
       "input_sha256": "3c387b03f3d9b56e957bd1b42e9dca76bc2161e621a16ddc17bec227d05a382d",
-      "svg_sha256": "34bda17741be2ee2d5b02e85718bb5597e0be740f92427b4f82cbe52812c1322",
+      "svg_sha256": "6d7f468155cbd1204be9865196269c43f2281ae57723803262f907844e1fdda6",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_notes_right_of_actor_027": {
       "input_sha256": "46a3ea4606c7dd3780c79e85d43bfdda83891bc2e16200d0e58f5999cb98e7cb",
-      "svg_sha256": "40e5806deb50b5b95e07e1d64761cae46c3a0b339e661370d79083ff1424d187",
+      "svg_sha256": "7b736cf47ca54d3418f191407bfd1509b3eb2a4e05e891c94032a602705b7413",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026": {
       "input_sha256": "fced5e62758e43deb492eafe449dfbe663a7401e0134b918a6b1a9701f6059fa",
-      "svg_sha256": "30728a82cbd8f05f151dfc043ac4087663a3d395fc3361d6b1ca2a91c2db0146",
+      "svg_sha256": "726bf0c8e6e2572752b8b5ccfeeebec8b6d1af802879e10b02673ec993a1e138",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_over_actor_030": {
       "input_sha256": "4c06bea4c7126f7c44f7aae28b89c41e59cc98b8ad2d386029e3da68c6302fa8",
-      "svg_sha256": "ba104f46a7d69e4b0ae39799b73c4e0d6da715741181f1d4ff06dd20a7f6baa0",
+      "svg_sha256": "7c6ead7507e5c20adc10e342a2fb4a0609a0def00b6d22ec6930734a58cacbdb",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_right_of_actor_028": {
       "input_sha256": "dbfac1e82d5777ba58a4e101d1f71f3f661deec5a3ad99318d754ab3e1d1ccfc",
-      "svg_sha256": "9b69be0c0a48e972c75432bfde4217dcbdefcc63999a77c5297ebaf8b634b340",
+      "svg_sha256": "6f304c713e3082650340ab7898f0f2f91e0cb1f80444e95acdf663ddbdf7a87d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_loops_with_a_slight_margin_007": {
       "input_sha256": "2cb275dd00e8ae72b05a4a517fdecd0297816990c21a544a860ec64f2853c1a7",
-      "svg_sha256": "ceec6c4468546a2a76b331e6c57c115b5ab917423d22aa052efb86f9d3f7115f",
+      "svg_sha256": "48078853cd576c5625ea124b29ac1717de71d5b30d93ec3e6d9d7e816ce74407",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_render_multi_line_messages_aligned_to_the_left_when_confi_018": {
@@ -698,12 +698,12 @@
     },
     "upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048": {
       "input_sha256": "f93593ed1f90823b3a2c7b0d8e1d9a48d07ca7e670528b40fbab1f26ed288a65",
-      "svg_sha256": "857ef32b62d5fe05f776ddbf8a037ce766c313dff5e8e772769f029b6be61f24",
+      "svg_sha256": "4e4b336a04b2f20bf5362272f3eb426f15aa455c3a01e9b6663d57011dd0dc5b",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_experimental_use_with_052": {
       "input_sha256": "372cb8a87a7a3218fa46939707d03fc77c517ffa69e7af66a58ceb686a89c665",
-      "svg_sha256": "b467a0ca09ecbb5bde9dc9138fff5461151a7b15d6322352a6495085e179bccd",
+      "svg_sha256": "088f3b7c7354c3cbab174dbf866f599b9164d659be5e8cb83f413f52b8136f95",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_when_not_mirrored_expe_054": {
@@ -738,17 +738,17 @@
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030": {
       "input_sha256": "2629c5cd989eb0d360ef5f09aea81c8fc6811a381806895275c193c69e34fe90",
-      "svg_sha256": "a78f4a92f7cf948bc7834d4eefd92ec37aac5e0426eb7e9aa8325d572ef5f272",
+      "svg_sha256": "956d72ca30129505f0d758175d9e846e2cf84a9fa01f9c3c933c2138e6a6a55f",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_bidirectional_arrows_with_autonumbering_030": {
       "input_sha256": "227e572bc5505c3eedd352a47f51f43763c04a8bbca666e76b931cdbb5eaf2bb",
-      "svg_sha256": "3fed59b036f622949ed7e59413e11b9636643afef3c0ff1e968c5368f723c8e4",
+      "svg_sha256": "087ddb6ae1834cd3a2d68b20cfceada49f0fffa10271419af264203ae4ba6e1c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_reverse_normal_ltr_036": {
       "input_sha256": "271fbfeefc5c684af250603b288ada243fd6244957bdcb7056c93e32b9396a6d",
-      "svg_sha256": "39eb20fbe48e03cfd02d0d333edea289f6b27f5157a93767e96cb1548cc81442",
+      "svg_sha256": "2a5c6723c78ab65bb6163847abd6d8868c6b5cf83555d34db55717ddd5944d4b",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_reverse_normal_rtl_037": {
@@ -758,27 +758,27 @@
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_left_to_righ_032": {
       "input_sha256": "cd5a63b1348d6b82996a3ebe7e87f7c9c67bc8e47d4acc427049f44b660373dd",
-      "svg_sha256": "f305c8468879cfb0f925a14edb1c6548a9790584a4986263c5291005d7912a3d",
+      "svg_sha256": "4ef66bb68374b862482f0f03d0eef6df4895020c7f519359a48c8e517976fcbd",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033": {
       "input_sha256": "bca2a8faa24d247d2df2388928c30acc199caec4ec64f222d672b3d991acd8b7",
-      "svg_sha256": "11add6f3c3056ef4b248e4cd9a5710e72e2614c1ed8ff5b5d198be63fd218f57",
+      "svg_sha256": "97f1e4208ada14c78167a5bf730dac9547acbd50aed1cad04223b183e8c0e56a",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_central_connections_with_autonumbering_029": {
       "input_sha256": "ae9d1171253c9221e8e17d16af2469963109d11fbbc8e37087097979990f79b5",
-      "svg_sha256": "ba89f69d113e57a875c936f5987abc81ab195a859119c39640cfb8d73d9295ce",
+      "svg_sha256": "8cc9a00344f8eec1d9733c076f7ca95443b5a8e30ea0645abb8a87199e036205",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_central_connections_with_bidirectional_arrows_and_045": {
       "input_sha256": "23b1aead3f671f79bc55174cce50edcf0ea51b3ec0893e559b588d136aa19c07",
-      "svg_sha256": "df3025c79a52d8bca331b2fdfe7591e70c95c089f2f01ef275d76de4000b37e2",
+      "svg_sha256": "6be9d25e88124af5afcc6ac40cb9f97eeae2cfef1e86e1d8bb9cfc67319a2788",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010": {
       "input_sha256": "d1ff8d6f2e12e4752a80b1bc8751405c01238ef7a31677b14d265f5dfe891b6a",
-      "svg_sha256": "5ed641060ee887d730ce253fe7a5ea9bb9d0fe19c276cd7e1b2e93caff5e083a",
+      "svg_sha256": "0f908385454140729ada88c1ef8c7d336fc47e40e992035ace78ec0555696be3",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016": {
@@ -788,12 +788,12 @@
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015": {
       "input_sha256": "81a3572b4d5826560cc4dada3f99785c18731cc69c312933d808627ca077fbd5",
-      "svg_sha256": "363a5201a18e769bfe66084d7e29136e7f550d4f970e0ab187c037c52beec6d2",
+      "svg_sha256": "8f983d6f25c1a244fea73fffaa67afc48202779093b18bb82ffc8988cc46fa46",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_wrapping_text_017": {
       "input_sha256": "5df74fa987a579c2e2d86655b68509c6c9fdd8611828785205ee31f879a92345",
-      "svg_sha256": "2dcd68413cc9afe6d8754d34173264edbd743f2686d465a717a476c23f7b46d3",
+      "svg_sha256": "a54cffe1d8febd02c45f227f34c6e13ff184b63eaf0786b8800804e3094e83c5",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_inline_alias_with_only_alias_field_no_type_064": {
@@ -803,27 +803,27 @@
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_long_messages_from_database_to_collections_025": {
       "input_sha256": "0815be1db7f4206d22053ec99b0e4f57bed0c6090259660523d82fdf2f845ae9",
-      "svg_sha256": "4ee8cf64e80a34c7234b2b5b728d92aa2a94abeb4e5d14560353853f6a2bf9f3",
+      "svg_sha256": "a8c91458cc5fe94ee76832be67dda0ab851de4691cf77223667e5604bed3570a",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_long_messages_from_queue_to_boundary_027": {
       "input_sha256": "951f960a3c2806dc10b05f84f7102a316a29a44ebd17d8cfa9384145cc36dd24",
-      "svg_sha256": "8507545c54951d35f97f41e9fadddc89c6fa7c266a6fe68e34205bf6956129ea",
+      "svg_sha256": "60a66c32171d8ec543a17ee6b48204c4f7bb82e29ffd320bc27d2d0050449104",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_long_notes_left_of_boundary_018": {
       "input_sha256": "0a89d28c9f97aaae9ef207415e81912d6ead6f46f54591b3d753a4fe9a137b10",
-      "svg_sha256": "b17226833664c3eeae8b3acb9d3f97bc48b1dcf7b8e603b53973b677423c92ef",
+      "svg_sha256": "2f88e448263256991998fe29831b0bcca5cc2a3442c74c6bea95e8abc2503baf",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_long_notes_over_collections_022": {
       "input_sha256": "735c7d5cf0849a3f2dae6e56f4696cf79d63a81f367bbb90cabb5415a6515d85",
-      "svg_sha256": "28c000cb53aeecf9f4bda5afbd107b4cbcdfc5de6bfb6cf63388a56ba4bfac06",
+      "svg_sha256": "0bf391215c0f55cad2637ce03f52ceb646f44ceea119f5e1e0757f6b597f54bb",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_long_notes_right_of_entity_020": {
       "input_sha256": "dcb2a6b482264da8bb69e58b5465237cb58b9289254a1beba3f6ffb7c198c450",
-      "svg_sha256": "65992b96773c55c1403d5b57420ff9007c832a3890b132d60a019d507a7a48e5",
+      "svg_sha256": "14581219af4ae7f3e7aacccd815b405089e8ea69e1aa90eacd4b409d528169ec",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_notes_over_actor_and_boundary_024": {
@@ -838,7 +838,7 @@
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012": {
       "input_sha256": "5551646c6e0ff53ac1a78f3716e010f7c251b10b264c38b0afb0bc3f534560e0",
-      "svg_sha256": "3c95ba6abf1a76f519ad8f6ce44a77835dea0d7b1230695b974bdf2b389d9be5",
+      "svg_sha256": "db06f6cc4823f81cdc359230e2d76b1cc4763dcf470eb6d26a72600cfbe76a6c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_participants_with_inline_alias_in_config_object_060": {
@@ -848,22 +848,22 @@
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_self_reference_with_bidirectional_arrows_with_auto_051": {
       "input_sha256": "2d90a0848568d33c752568cc8a05ce39d86d94440ec47956032cad158c0ff532",
-      "svg_sha256": "85da5080ccbe879d4f8f40c0c2df11a65db8ff171bc45d7b67719310029372ff",
+      "svg_sha256": "9ceccdba45297063d49dc33726da830944182c062678983a23fafcba8c85f522",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_self_reference_with_bidirectional_arrows_without_a_050": {
       "input_sha256": "b72a70800800e6854400a8042f90520b9724751b824e2117cbb268480abbfb72",
-      "svg_sha256": "7a4fec524cbcfccfa7850b75914048e231c78540037a5d8da9a638bfde7e6107",
+      "svg_sha256": "217fc91e6478ee3b26a2a59ac36d84533f98af6ad47c8bb346300ff4d3807aa9",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_self_reference_with_normal_arrows_with_autonumber_047": {
       "input_sha256": "d58bb66277f68ef7f5b92d43ab2d8dfcdedee0fa1923644a5c0dadfb9c50048d",
-      "svg_sha256": "c86c96f5672900cc3a92a8fb3d9e7ba5575608f133822dce761ab76cab37f68f",
+      "svg_sha256": "50aaf1c786cec02faa572133e3e615f0c0bf96be2765bacd56be6e344dcd9b03",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_self_reference_with_normal_arrows_without_autonumb_046": {
       "input_sha256": "ff8e628f9ecfa2cef3600611c3a24be8017aea07f50f9722cf991b05633d1d22",
-      "svg_sha256": "a287f24b04e2c25be7d86173ae67533cc82ca1481c388b837643da7156ee0990",
+      "svg_sha256": "0cbf3835f81303195cd053b7b2e1e6ef0431318dccff9e1ac926b824a91bdf09",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_with_different_font_settings_009": {
@@ -873,37 +873,37 @@
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011": {
       "input_sha256": "0cbd0585b3e7d581b031488a440f7cd5fc5bcec39b3d64dbf256743a88d4b879",
-      "svg_sha256": "3a08ebfbd53f0760e463a257f46a6ea5dd83128befcb94ce7e628a558503627a",
+      "svg_sha256": "8dc2ff3ff6a5e76ef6ef1c335618a75005866b27a944911bf674aa7a4f78625c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_messages_from_actor_to_database_028": {
       "input_sha256": "1d17f11b01d43af7dde262e4090b4072ab9bc66b485f1a41c0c2580183667719",
-      "svg_sha256": "fc91d6815da3dae162429d0294f8dc585800acabbb8588069b135c7b2edf55ce",
+      "svg_sha256": "0a3546038c50584b763060caf68796f2319ec1fc77ccd69fbb2766cf702060d3",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_messages_from_control_to_entity_026": {
       "input_sha256": "83aca2a33b848ec5526133c9ef53ece8e16abbae84896841c9a862fc4e679026",
-      "svg_sha256": "7122d26e1a6cb0d21c427533bbbc5c485dcfa019143224d5f0d10d319f444ff1",
+      "svg_sha256": "270eccf855807e1ceab7ba18ffcb910649d935fd44c410eb3b8ef6373a844e77",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019": {
       "input_sha256": "2b3609a9efefe473a7f78932a6346cd2fa4ddba7d1aa0d4a7ce55c77e408d202",
-      "svg_sha256": "650878c48321450ae2ed3de6f1d51cd5c50e373233e6528ee8476974c3750da8",
+      "svg_sha256": "faa58322f0de2f695be7bab83441c7d65eeb6872965d8e9da98807fb7325955b",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_over_queue_023": {
       "input_sha256": "4ca2cb651b3914b4968172def0f4dd933affbfaef17a9af183e1eb1da10c653a",
-      "svg_sha256": "58bc0889f5871d7958a3b3668999f9b6d9c6a4f2a6c3d059168e076607c79655",
+      "svg_sha256": "b0e506fc0eb6864091407b0e7726161a02762d0aedd6d84eec7876ad3a39676c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_right_of_database_021": {
       "input_sha256": "ae76484070eab54712fbbca877233ed9fbe5a4b7cc2a59018dd00b261f10ebe9",
-      "svg_sha256": "4179717eb4618de83c87128ab43205151b32dcb6671c616c3581dac0c4fb4b30",
+      "svg_sha256": "771a56ed6995aa793561e8b781872c926a585c6c952128cf1d76943d4fc146b8",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_accessibility_sequence_diagram_014": {
       "input_sha256": "6016a9815cce3a241d2fdc04d036376f579c6370016e6045042202bf3f749978",
-      "svg_sha256": "b5d786967c4c30af5acc3247b4ec8d7c52e8c41aeec62d119efe3a73c8830d3c",
+      "svg_sha256": "f323345b8906b26b58a61ff232a7379b050111c8038e7e773cc743b03d3089ef",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_configuration_starting_mermaid_003": {
@@ -913,22 +913,22 @@
     },
     "upstream_docs_diagrams_mermaid_api_sequence": {
       "input_sha256": "388aa7ef29e064094a8560c8afd1b3750e065e07a895ac1373a804922199556f",
-      "svg_sha256": "63b17ddbaf684ead7912924bd787bd87064d77d3d1d1fda704d01a92a76a8019",
+      "svg_sha256": "0a6e9eed4950db01234af3b792882abfe39a7ce07da751af124ea107d02caeb9",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_directives_changing_sequence_diagram_config_via_directive_013": {
       "input_sha256": "7b23e3773f0cd45a5fc99aa1ed2cb457e1aa071ae5b7698be6d430e1447da1d7",
-      "svg_sha256": "31826b9aaa1f50c9c42add1f864ff87b0b3f2ce8831e1482bec2034d64a84fdc",
+      "svg_sha256": "d0e47012b4d96572983aece966ce295fbb399aa538aef9784cfe21a7be2b7d26",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_directives_changing_sequence_diagram_config_via_directive_016": {
       "input_sha256": "a481990f0eeb8f537d6e23f8c69ac6130d7d5c182cf175a028a060732669d3a5",
-      "svg_sha256": "ce7f629447be695f3c349d3f8c39565ddedcda7cd39c018648de5c7d55a038c6",
+      "svg_sha256": "5da0cf5fe81120a7f55760a15e2ef4155b70224d6295de1964c74d9dd711b9a4",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_examples_basic_sequence_diagram_005": {
       "input_sha256": "b8e52ce7d792978000b1909b6aa84cf3ba5943bdaf7769d8cfef92c09aa390a4",
-      "svg_sha256": "acdfbe412029c15b05b7283e480d3e11e001e6fabbaadd26e4e779d3fd348508",
+      "svg_sha256": "c6d3f359a3a118dfd6069485814237af9e1d6c37b88bfb87f4983fbfffd9358a",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015": {
@@ -938,32 +938,32 @@
     },
     "upstream_docs_examples_sequence_diagram_syntax_sequencediagram_md_002": {
       "input_sha256": "e75eb01d9afac8b2206c59bbba2470b48d42a1532216db08fda96d13b65801b2",
-      "svg_sha256": "4d54b7de403993ef46751cd9392ed14d43a293e2aca7085b2cffd617b5a45819",
+      "svg_sha256": "34e8238d0b12d8467ec2ee8a704b19f91bbba7c411bbde6b579640e609854185",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_examples_sequencediagram_loops_alt_and_opt_011": {
       "input_sha256": "c6681aebec310400ed7c61ecc1869b7957a6eb8e8526bdb09b765fcf0a30e21d",
-      "svg_sha256": "7685cca27a48b623cdf9375e6b2a9a454089c8bdd679fdb69fe98bbcdf6d68c8",
+      "svg_sha256": "85df555a4859f6d176ecb98eb966ef899667f8e1a47dc9e55047c6e873ab7497",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_examples_sequencediagram_message_to_self_in_loop_013": {
       "input_sha256": "e31e84a14d63985055ce1cdd577df24ef5b9f713079ade3701277b0015f86ce0",
-      "svg_sha256": "2958aa20b2b9c651562dd201629751bec424b0feb37cd646fbe00b444bb9308d",
+      "svg_sha256": "e441d60b9e626c0e36805c8493895031f12c470893bc36af4820de405ea198fd",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_math_sequence_002": {
       "input_sha256": "45bf7dcfa15d56f2b33d1371b4ae42e475937ede30c8f85c6a9bb9694a3d5128",
-      "svg_sha256": "575994cc861ad02a87099d2380b8e526d563607b5f6c2f04a4b12fa207e40750",
+      "svg_sha256": "993600242e0030825a7c52601993d48d722ee941618b7b25693879fa43e08135",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_readme_how_does_a_langium_based_parser_work_002": {
       "input_sha256": "15c98da3c0b2ebf984cdf18f35207f3167587c80e2d36d9e3da70a7afb004092",
-      "svg_sha256": "cf829dcf8d88db439b3ae82560d24a01cb883b11486f4b654e4a9353940c186a",
+      "svg_sha256": "d20dcbda70b376b66b3e9476b2b8779ac0d758a14f854f0974711c06e412a6cd",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_readme_sequence_diagram_a_href_https_mermaid_js_org_syntax_sequencediag_003": {
       "input_sha256": "4e691ad6290b48fb289c8a5aa0341e52ed2e13742941eeb55e130ed58c304090",
-      "svg_sha256": "e23d5599eef0bdd50e27fca03b6e5b140e2bce1d22d2533782d8106bc129c0ce",
+      "svg_sha256": "fb47e4156806a51abd11073fb2b08124ee70a7e575d86e1fc40f75276a8cfe30",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_actor_label_with_br": {
@@ -978,32 +978,32 @@
     },
     "upstream_docs_sequence_aliases_basic": {
       "input_sha256": "b833048175d5418f3346650eac414112d00518cbef48e0aaa9ebfd0c874fa89d",
-      "svg_sha256": "4703bbc545264ea57a75a0ede38437989f0423709995ec9052a31922743afb1d",
+      "svg_sha256": "1b97d6343f409d778d45a40573bb5ddfc831c99c9566f4e365349b0570ac8636",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_alt_and_opt_example": {
       "input_sha256": "5ba07f36cdf08b28445a16fd8f24d05afbf5cd349679847aab70f7fddf476084",
-      "svg_sha256": "239cb2d4dadab20806ce7fd7104755232f271f23be31f4960c83b6107c897de0",
+      "svg_sha256": "8c899ce72091ff794256747af4ec6b5c30499d83f5a402001a4cf82265f303b2",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_autonumber_example": {
       "input_sha256": "df13c1b9dfa701372a204f3e95e6e5a009848159943bfe7f348bea98d25ecf3e",
-      "svg_sha256": "aadb0d2baaac87f1bfbbf478fb46c847ca8370232d4a5454efc42c7f3ba7ceb9",
+      "svg_sha256": "c41b11b5004af9abf9209d24c9ba3e8e49a1d5f01feffbf4eeb2294fc114eafd",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_basic_example": {
       "input_sha256": "b2066a62d878a2b2b1ad49be0674b68d0fb78deed9c5def176cfcb2340403d25",
-      "svg_sha256": "d7793a6f90fdfcd297714b4dd3d7f541e2523c93637d213fd68a812707e6abd8",
+      "svg_sha256": "7092a5ec9c1ef9655eb72c58f734b15764d53bf3b577b8d03f553e43a0f656c6",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_box_groups_example": {
       "input_sha256": "93d3c0ff3d5d384a0044c0882501febf51d0ba59c26ca2c237eae58d27ad53aa",
-      "svg_sha256": "aa540703191620b6664abdeaa1d587253166e0023427d2b24cf4eef6576b6900",
+      "svg_sha256": "e6e8a01ccacfe0a3b667d59e773a81a9a655962a44c91a1505382663f27d5023",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_create_destroy_example": {
       "input_sha256": "5fa9f1e6f236b76b71424993a30eac3e12fa3c6b6f336ee7bc9d028c44914ccb",
-      "svg_sha256": "53853eb61f8d0b9ecd83fe8b91b5b2eeb4affbe7a301d0d0c2ca3b16397695b0",
+      "svg_sha256": "817b983d5c6c2eba3cef3624877f2751beeee2da0c62a1003ffd690107f8d256",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_entity_codes_example": {
@@ -1013,7 +1013,7 @@
     },
     "upstream_docs_sequence_loop_every_minute": {
       "input_sha256": "d042768225fc2a2c6aed87e913d293db64cb8da27b430259f3161a3f684888b3",
-      "svg_sha256": "2a758fb5871f213586a6ff54108fdf9d33e1f7419e8756ff3642029b78c6bdb4",
+      "svg_sha256": "fb02a358691bff3d554aaaaf0c2a7aaa8087fe52ee1551107e9628b1dba738be",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequence_note_with_br": {
@@ -1028,32 +1028,32 @@
     },
     "upstream_docs_sequence_rect_nested_example": {
       "input_sha256": "14a8499e6a6067332344a42b252e162c5bee97971999dbd1e58239c3f8f39732",
-      "svg_sha256": "9db9c9635a88315533e91545497e728c2f9f8f9f021d873f542cc8367a926c7e",
+      "svg_sha256": "1f390c9f8056b5433d16698ccae600aaf4e54ecc85770255f4bcbf68b61d8452",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_activations_030": {
       "input_sha256": "4a26f3e25a18453906201f05c271691d7c53a3fcb2d1b81bd47077b3f9e131c0",
-      "svg_sha256": "d7972ed2565cb6a43faa21c37086e1969f3b24b19e30546682f605cfa05e10c3",
+      "svg_sha256": "134aba9c6f4a0ff77d9b8f9e3e523b4bd50db250bfe2a879fd523976ade554b4",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_activations_032": {
       "input_sha256": "028189a67587cce218844ff2f7e9ef4b97b49fb756b844a090ec5de9440469be",
-      "svg_sha256": "b1505f1565aa189817622c94bf89e348f29e9d61ee636252c526e5da3e0f8a75",
+      "svg_sha256": "1dd16a94f414ec3355f5686a4ad716f1bff6fe418410765e131fe565d204c237",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_activations_034": {
       "input_sha256": "8a0283b4e38a5069c52d99c3d48bd613e409c3817082ee2687720d22fc765660",
-      "svg_sha256": "e486d2adf7cc1497ba281caafd6e802e649e1704e9fb77db1ea50dbf12d1d870",
+      "svg_sha256": "79b211921c5d1c609c9ad8aa9a485575b2087abfb8ceb704ee6b2b1a6bdb1f8e",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_actor_menus_077": {
       "input_sha256": "a6b0082ad10a3227348a86637c56ff2f6ef95659a1321854edcade6a11affad9",
-      "svg_sha256": "5612be0d6fa1b98e2d7dfe038fd07326cf0f4a989659b6e93a2a8b2adf78ca86",
+      "svg_sha256": "e649adb29b3608a709fe7e59db6b8f7c5489c085305785f6cb63f0590a222674",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_advanced_menu_syntax_080": {
       "input_sha256": "0f2f5747cfd486445e228641ccb9f7dbcb26dbfd5f5ef0ef4379c9d8a80a7e3d",
-      "svg_sha256": "8df3c8e7fca5a4bb2edd931c589ba6a356467ce81df3d4f4c8503eddb57e81cd",
+      "svg_sha256": "f40441f4373887551b08c797ebfbee33d32d05f69530127fddbeec8deea2e267",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_basic_syntax_035": {
@@ -1063,7 +1063,7 @@
     },
     "upstream_docs_sequencediagram_boundary_008": {
       "input_sha256": "09a6b5bea4819db49acb43677db21085fda3a95b65528d60efb0b9f9b0919e6c",
-      "svg_sha256": "fc261c1c008c83fa1c1fb44aeeb3aad04b3699dac7c81ffa3b1b620cecdcc264",
+      "svg_sha256": "f2c360688630a509a6e96f724fd8e8f5eb7df867ce4f116f76bc28316cb6a653",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_break_062": {
@@ -1078,7 +1078,7 @@
     },
     "upstream_docs_sequencediagram_comments_069": {
       "input_sha256": "c404e4ed538f9b3bae43c673dd0b698b15eace1eeaed6b1fb60622f621514e5a",
-      "svg_sha256": "22b8eb1d7bf9126f83bc12845b38cc6537f57d9c022e6a2f0ebf18b7f160275f",
+      "svg_sha256": "fe4774ca5192dc277e6dfe4c6558b8a22296ad6fe83a080b66a68ea8c56c2958",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_control_010": {
@@ -1118,7 +1118,7 @@
     },
     "upstream_docs_sequencediagram_notes_038": {
       "input_sha256": "a9915542fa20e2bf5e76e2b294d59ad13565386a70e63d5faf10c7f033a81874",
-      "svg_sha256": "0f1a849eb869df3d512403770a1a0680a628fbd5ad50598d525494603a6e05a8",
+      "svg_sha256": "0951308af2700ecf75211fc8f0e59897f1cfda90f8ffb56ce803c45ecc0e9dc5",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_docs_sequencediagram_parallel_052": {
@@ -1143,7 +1143,7 @@
     },
     "upstream_examples_sequence_basic_sequence_001": {
       "input_sha256": "3791f740e6b8b579afbe2dc8c75fa6f23f9ff5bce840353b288eff80fc7d8ddc",
-      "svg_sha256": "4e59036c9d2c6e1ca72fc9936d76fd6083f85eb4f3549547c55502e228bb9616",
+      "svg_sha256": "17041d9d2e35c68263b504903a85d110e76dbfb17d32ce85c6a824a641bf1ed4",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_extended_participant_mixed_types_spec": {
@@ -1158,17 +1158,17 @@
     },
     "upstream_html_demos_sequence_sequence_diagram_demos_001": {
       "input_sha256": "52e260a3b23e4d9c3f93b41ffa99eba1a37c8a6ac9cb2934b29028ba97645073",
-      "svg_sha256": "b2754683ab76d60a42c63dc04312d03dc4d761bf06e44f1cb1a8673788bb52c2",
+      "svg_sha256": "b0d6b2710bd2f68461f95ccba72b472e6d810ced6223df0aef2564a6a5e4cb19",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_html_demos_sequence_sequence_diagram_demos_002": {
       "input_sha256": "f07586df44a4e5658a88c3e48554e141802337e81798ab02a3c1ea1283ebc3ed",
-      "svg_sha256": "3db00d74d904bf53b1ba4a2324585cc9626868b9bc261fe60efbbf3e45ed8767",
+      "svg_sha256": "247f2093de7eab3decc6cb41482cdd07c9c8847b701836dfbee8ca756ac8b5a7",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_html_demos_sequence_sequence_diagram_demos_003": {
       "input_sha256": "d12515ef8b36ea7be7cf200ae67e33bc38ca05e59532cc629ffeac9d46768ad8",
-      "svg_sha256": "a4b623d6564d2eb83915f0a6c8ab3dcaaa10442c54c34e0f85568875725f1b2a",
+      "svg_sha256": "505191dec86264e7c4206ffad52351597844d6013dfe1ba52a2b7eecaf93e2ca",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_html_demos_sequence_sequence_diagram_demos_004": {
@@ -1178,7 +1178,7 @@
     },
     "upstream_html_demos_sequence_sequence_diagram_demos_006": {
       "input_sha256": "62ba871eed6a4e0f62b9e657244c6b141d29c7e6aec1d67d2048c33928156a71",
-      "svg_sha256": "cc3d7da8e8ca0a9c9ffdb6be65a9d7a4c73bc983541264b5fbb5cb49e3b04652",
+      "svg_sha256": "6b93d4c11a53e7d079d0d91d9897157f84856ce97c62fc0a50a7e347689883fa",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_html_demos_sequence_sequence_diagram_demos_007": {
@@ -1193,22 +1193,22 @@
     },
     "upstream_html_demos_sequence_sequence_diagram_demos_011": {
       "input_sha256": "5f628c431fa704984f3b8bbd84bd7306bec1a073a35d1238b27550b9d96b8bdb",
-      "svg_sha256": "67a49adadd443166b1bd79e38d30239aa629c39ae1a08722e5247e80756da44a",
+      "svg_sha256": "dc41527c143df4ed7ebfa0b3794ac55951a6e89e024101317368ec93f82c4ebc",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_indented_loop_block_spec": {
       "input_sha256": "bc30b1a6955bc2a1626b75384bdc5e3dab4cba21e1f5e4c36ada6c494a2a7dc5",
-      "svg_sha256": "462f8cd38bce28b03695bab8ad645dd9a1b73dd5c61a2eefff7f07a954153fa2",
+      "svg_sha256": "539daf15b27eec36ba3e39cc3dd4235aa8b1328fa26aa7e8c1a2870ffc5ccb34",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_leading_spaces_spec": {
       "input_sha256": "664fdce7f51dfa9fedd9eceeef8afdbdc7e06e7ee8d1d8ff2048517b07c47f9d",
-      "svg_sha256": "8e5fb7a443df1e66ccd636505e985a0c70c382ace9e640d4aa30fbc513f058be",
+      "svg_sha256": "290acf77bd70a8971f1e153972c77693d0b7c3e5efcb56b9468d670f63891309",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_nested_rect_blocks_spec": {
       "input_sha256": "d80285502bb37993e944041cc734700929db942fc169cb8670138de6f5f7b6fe",
-      "svg_sha256": "db22889076eb4e15b282ccfeec9ddafd948d27a414cdc3ecfa80e24c131bf234",
+      "svg_sha256": "19aaaa756237b8f6d0d65a0ffc2e64ce6df22945336790808941dd3176ab4422",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_par_multiple_ands_spec": {
@@ -1223,87 +1223,87 @@
     },
     "upstream_pkgtests_diagram_spec_014": {
       "input_sha256": "4f9ddb5a176e18c60d457f437d8a4d228f1900528b740926dcecd2e38d4148f7",
-      "svg_sha256": "c50ee1c612c6a3c4e224ceec4440ea50faf0a4675db020fc1c3a17273465f70e",
+      "svg_sha256": "f13f71a29b63a2e967183ecf8c3c57c1b44abb8994a586c7adc104057bfd097f",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_mermaidapi_spec_034": {
       "input_sha256": "0568f5fea73b1b065019b99053be574a410bd364d0845402e6b4af7d342ba09f",
-      "svg_sha256": "dff394f5f25c4483fdfa563463615b5258beef207e075705620dfe45cae7da07",
+      "svg_sha256": "bfd3906117bae9696a48d77914429b8c18faaf2a5cff0e6ba0133b7795458d36",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_001": {
       "input_sha256": "f3f31a6bc4864ab49a56a6b2c13128d742ffd232d72f5d62349f8f8e33ce33e3",
-      "svg_sha256": "667267ba18201f442808d94b1d8856154dc3b222113f8c33dfd9b58c4d3aff35",
+      "svg_sha256": "f2d087eb629a493cae817516d72dcc00f0a520fde39886c367dfe1854869ab6f",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_005": {
       "input_sha256": "eff1a0e6c654e1cd93652aab133a6d42c452759b951365ac2627925f48eac718",
-      "svg_sha256": "880d2ca4d1375f8ca15ae78f0ddc878fa1a01d54aa3fef5a08b1db649736b9a8",
+      "svg_sha256": "ec88dc1a415d20b56197135f19398c317f2462ce60889e8dbcfd7163cb75dc44",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_007": {
       "input_sha256": "a61ec4fcc07c5b97ae9821705e0c26517e7b38ad26cf8573d71cd8fd5d8c0b4f",
-      "svg_sha256": "734b2945b1d06725edb863db1516de70c816139efacf02cfb1170f0932a3fd22",
+      "svg_sha256": "1890e067c15e54c17aeef94342271b3724a1131a523ff54dc9618daf06c32ef4",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_009": {
       "input_sha256": "f3965b4b5b295355b3fe8c9d9be2c108ac3e8bc2c67870b82da90c99af508de1",
-      "svg_sha256": "86262fe63808c7a1d776609516b0fe95e8a6749b7f02ef88966c88d26d31ae86",
+      "svg_sha256": "21b3a72b782ecc67c052debc1a85774cc3043bef16f501a008886ae3d4594a4c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_014": {
       "input_sha256": "dea08d6c786a738a675a4a6c28feaef537ff76ffd861805f40025c4b714461b5",
-      "svg_sha256": "b17a4c458f67bb55b7f17c154ddd2283294301540b7cd95a47c0b41261029f04",
+      "svg_sha256": "c22924f9e113c6cc15d0864c89d1144d6db6fd8db856117704db911a01a9c300",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_015": {
       "input_sha256": "21751cdb9e7e68bbf46935afa2093ab91152c06f84905e0dbb98096279ed03ed",
-      "svg_sha256": "ad9805f0e2e36b66f2a226e72928d4ac08d022187ffd25d2de391ab489742b56",
+      "svg_sha256": "0318b0ec35b8a9132b6db584a3118dcd4cb738a7ef395312c0af2bcd5d75bb3a",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_016": {
       "input_sha256": "8e370f7ae29698bcabd5f2322974fb2e5e7ff45872810a19584db12a66bb89a9",
-      "svg_sha256": "4501814fe7e5895cd9ab750dce086cb2fe2881116c1d2f04086ec24a9b1b6b20",
+      "svg_sha256": "a7a84b49cd2a009b795f99404e167d743f776798d29f2bfcf8fa7831c8d279b4",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_020": {
       "input_sha256": "8174d5812caa868a5c56ca0a065f738ed79f59ce1aa8b8ce0ccf1af22d96fd31",
-      "svg_sha256": "99fe14821d5abde4761e3792ed4a33779d1ace8e102d76399545f77a67df34b6",
+      "svg_sha256": "091a5e7a076389a3f869a6aab73d85ec7f6d703eb146f1f7f30ba9381747a5a8",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_021": {
       "input_sha256": "8893dc9c5068ad736463f8c580f148071ccb2aead0f546e81f4a42d872b627d5",
-      "svg_sha256": "3a7db77775ce51ef96e0d4e3ff7fb4e56274847b1c79a6fe64482f9fcb9d8934",
+      "svg_sha256": "2db6c3bc688c345577185d21e855c43d21857a78b32779b35dd700bd91fac5c4",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_022": {
       "input_sha256": "2297b2a34540684122aab36b10d3e3cdf6b88b6ce11cb1a277d13ff17c17517a",
-      "svg_sha256": "62826edaf3a657dbb9381de1c8764c65f49d66b611f78c45a73e727cbaf5e3c9",
+      "svg_sha256": "9d518a58ec2f65791202c0d9bddf6980aad491fac010d5eede89aa303926f88c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_023": {
       "input_sha256": "3aa150e3c73cbe00c5a30ec537e14f3fb72514d809bfb9b1c788b541e27c546f",
-      "svg_sha256": "5ebf7a8215022f1c69b3ee03331276547e9c98139e6cdb531cbf7fe19bc52abb",
+      "svg_sha256": "a45bc78c188b4fb3d457ccc911c71f40ce2c780bb2837b01749cea57d9fabe6d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_024": {
       "input_sha256": "95079c0b8f6623f5f457fcc4c1402e1a284ab488e60f58663b764f41fe9639f5",
-      "svg_sha256": "b8d7093eeb0d2a9ea3959bbec1b64a0a460492da08e5bf8db742eef6bf3375cb",
+      "svg_sha256": "4bbf0b5355c09aa100419cc4c5c83b87290d8eb1f0bd6def8b793f9707905b19",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_025": {
       "input_sha256": "e5a72aecfe787d5e85bedf4681449c017d311e02d108979c1138fd0d55d452d8",
-      "svg_sha256": "d6c2ae0682375a3668e6a0ca0f6fbb97b8aa4e89c65e9ee988846910c34dfb6a",
+      "svg_sha256": "1f82c2cf654169704de35ee86c9b44bbc3b869026314a00b8e7f22701b9bd514",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_026": {
       "input_sha256": "13e1bdeba7fb95ffc53695c4b064704d289f34fc2f8e088de735e805d6f72a85",
-      "svg_sha256": "ac63415e78b1b01f4f1157fdb3a32f60c8302d3bdde0cbd5d06a4ded4e391a98",
+      "svg_sha256": "3c7461c93e84c8e128d11ef3a23073c70bd4f3cd3b5bc8dbf3e8b3aaff1c7f83",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_027": {
       "input_sha256": "15228f9c326b1ce3ce7e43e2ebea1a109d0d3d12c07d70d2e430c1edbc11fe7a",
-      "svg_sha256": "dc34b7b910e17246319653449d599f551d2e6d171a6b2e04664748d1a2b52a6e",
+      "svg_sha256": "7a4f6f3a395e96b9511cab7baba00c92f7d748dad6183395e7c8c6e216d0b882",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_029": {
@@ -1313,12 +1313,12 @@
     },
     "upstream_pkgtests_sequencediagram_spec_038": {
       "input_sha256": "e77953d294f14fc4216fa5d78ff7900e4bb758f94842e2e80dc579032aa4c7c1",
-      "svg_sha256": "8dedea0e5638ec34d82c1881b75155ed6bd4e17cee1e66e396ba10eef3fcf7e5",
+      "svg_sha256": "7cbe2ce7138ea41e10cdee6b7cae09263fb6389d2bb97fa10abad9c4731b0a03",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_040": {
       "input_sha256": "8e78a611be4edee5dc6d28f7fdf6d6a6cee714c4ea88f433fee8122c53a1b86a",
-      "svg_sha256": "27ab86ef1000aa6dc4f950919136353081bacfe7ffb9f7968f4275799b6e30e5",
+      "svg_sha256": "20fe11c5c69ad104d08e6f8bf21ebfb35c953bc44b6c07baa55e729d36ac0885",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_041": {
@@ -1328,22 +1328,22 @@
     },
     "upstream_pkgtests_sequencediagram_spec_042": {
       "input_sha256": "889eb4733068c11d98c7dc62d180bd2b16cf672ebbaa8492778b6f1ed8a12313",
-      "svg_sha256": "abcc8447acc4530decff59597d8bdb80053ab70e365bc211d0b768438eed8678",
+      "svg_sha256": "b28c35e7880c60573e4d487ca3820836d9bec8a134c6430febf98441416ab3d6",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_043": {
       "input_sha256": "88747c0115120dda2746163a8c1f7ab4b3780f021c99d6f7cf33ac891d2f96ac",
-      "svg_sha256": "97ac3b05952c1215c7f85f5e16f5f1300b4b8932f89b7102eefc7375bfd3907e",
+      "svg_sha256": "22423947259b8af8ca567db53f665d20e3531911ccb397bc4d969242d1a00f7f",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_045": {
       "input_sha256": "3e85f7cb42a73da6999db618d38baaa6f834f5f1a756b82365d5bd2bb2063d37",
-      "svg_sha256": "2cf192e265bcd73df4f47186647d83eca7dc71fad119a6a1f9a6805f84409ba0",
+      "svg_sha256": "26b5bc4ac4c89ffe7634a6c2b37252d476fed099f7d64f658233e51e31fa1bd3",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_046": {
       "input_sha256": "56ebbf38e8d306309c445c4d1e531f79b0bbc9fee61af5b76c86b5f9aff109be",
-      "svg_sha256": "e6bcfa2829a4f9643023cca9c16565009211374553f48c1670cf6a374d298bcc",
+      "svg_sha256": "da5e2f68a26d4c0fd6d71f89ad4b5e720ccb7a4c197635dc6cb5c33934381bfd",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_048": {
@@ -1363,42 +1363,42 @@
     },
     "upstream_pkgtests_sequencediagram_spec_054": {
       "input_sha256": "e7e76a21ef43df559a1543dbd62bbbe6dcd43b27970c6168ccb1a4e59a916f6a",
-      "svg_sha256": "b6293916422a863b0b20629da626c0d9967b7b41c76650dff4efc85d3fdc7068",
+      "svg_sha256": "be098f288204cfd6463ef32c19b7f75707ea1db9a691c946b2d9653496aaa459",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_055": {
       "input_sha256": "11e513d1ea059eba0d8ae756560e621f284b1e00e31ed3c6a41495584eb0a878",
-      "svg_sha256": "d9dd56b7be6931894c3325e1aebe45b8f2e67d89383bafbf37c9041578819101",
+      "svg_sha256": "9be2f5a560c0bd096c5bc69edb61ad736bf4b8716473652de144dbda2ce25a40",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_056": {
       "input_sha256": "cc1cf8f629727bb8d5d77570cb943f77656d71d48228a7714ee03c8243f9e80e",
-      "svg_sha256": "4d186ecb219059263d6d952be54abd6ba767c2c78eef75bba39c02776f67758e",
+      "svg_sha256": "e06711734ccf8137d25c60f1f0b683c1175079d41bed4e9d59cfb7cba48c5448",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_057": {
       "input_sha256": "91cdfe3d82bd04bbc68dbf7b25fca8ffdf48f8f8d826e73be4ec35cdfe6d152d",
-      "svg_sha256": "62ec3505ebb9d5480e9f2f38863e7dbc2b709f71692add84081980027ba1f48d",
+      "svg_sha256": "f236a167f79c141fe8500aab45b128eef881c070bd3cb570104909e52f4e0370",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_058": {
       "input_sha256": "5cfde766f3f14c7bcd75f1da3bbac52d97bd680072cbc851c1ec291a85052670",
-      "svg_sha256": "644dccbbfedeb3645e72fd2a89da6c086a47ff1d56357bf4d36adbc457dbe4c3",
+      "svg_sha256": "9c58f0170702691c7b6ba747f14e576382ed40b48ee8ab55f5d327ecc044db8d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_059": {
       "input_sha256": "ca4ab40c0e697688c7e5f97475f7a7a9885481bcb1856ce8c83e2447c367704f",
-      "svg_sha256": "e74b0d19216ad91953ed954b378b526d2a7029298a8a5057fc3961c5926a1c38",
+      "svg_sha256": "64f7521b51636116985c4f485498fc9a1582d140bfb4f89f6aa570bde28c854d",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_060": {
       "input_sha256": "c9a0d52778a8283a7caa7fa353a46f133064f8ef693705ab201727aaa3520bf1",
-      "svg_sha256": "3286e7a2a9a70cdea532750bc864f5c7ee1d9163085aa07713c94a6237aa2264",
+      "svg_sha256": "1bdb065094d83a7715326c97ea340e7f8daf6de4fc2b53995f6117d52c34563e",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_061": {
       "input_sha256": "7628d8f91820e8a674ae754799ec289500d751dd006d9d5af4f283e145c7b108",
-      "svg_sha256": "0b43f3091d1c7a75f3b5885d765298c24256ec2efc551a4378befcb939f59168",
+      "svg_sha256": "388df08dc8db2c858cdb873c1370cf6af1e669730055e7ccfdcb667413cb6e74",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_063": {
@@ -1413,22 +1413,22 @@
     },
     "upstream_pkgtests_sequencediagram_spec_068": {
       "input_sha256": "9af5cd838dae8a91ebc9f67337b2f7f138a0889388f625491d19fd346500842f",
-      "svg_sha256": "33af942457012eddb17139c610c5ba5f20d75dca0270422658ba3162f9e3fae9",
+      "svg_sha256": "29cf17c7e347699eefc588637b21bd48d06f6c6c1b4b5c8ff086c2d1490949d4",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_069": {
       "input_sha256": "082472b4bacc95003c550e425844b3631bedc508f2b4cefa48e8dea97f632562",
-      "svg_sha256": "1efc54e3751aced60383fac757a61ec438532be0bdab27e23288e59024b729ba",
+      "svg_sha256": "f914f6952c98fcfeeccf7008a57acca81c25507147adb4dad435c05d3d2ce18b",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_072": {
       "input_sha256": "e89d24913102125eaea9715c282ddd4501973c9ffc1dd3610afd96db30d17bec",
-      "svg_sha256": "4d849aeb889b9aad90fff0bd55c3d2080a95a15ddfa507ccc27cdaa876cce775",
+      "svg_sha256": "144b886262c967ff1ab523fcb920c2dffac33d63448a30cdf9b5a8c3209f37d9",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_073": {
       "input_sha256": "8eba174bbc1e9be0e37d4fddd3a6c5f05386165618a175517f968c470c8e8f94",
-      "svg_sha256": "973006dd9d4b42bc639fdaa88e35cf493b87431da89ac6b3307e19617e5c5aea",
+      "svg_sha256": "e70e5c88bf0c3c7c06ececc6b18f17836115e7375a535fec74b36eff6fb0b881",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_074": {
@@ -1478,42 +1478,42 @@
     },
     "upstream_pkgtests_sequencediagram_spec_083": {
       "input_sha256": "8a46b720d34ba309efa6e80f4cca0040dc126a4aa62b5dfa86829efbaae8429c",
-      "svg_sha256": "983275c913b51625f0f56c1204babaeed66cd75b438137fd039d722157679d7c",
+      "svg_sha256": "7316343a56eb7de176c5d486c53f93b3f81bcb6d4ce36640651f788e22bd1396",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_084": {
       "input_sha256": "add8410ccd10edf74f2c21eb8f8f9a7d7e3a815e7101ecef700f417bb55de70f",
-      "svg_sha256": "bc5fe500f3c969307fdb5e7d359c172726a8251399a6d1c6b9e10d23f4356d6d",
+      "svg_sha256": "e97001e5f77cac809c2144ee4786ecdaa5ab15bd22ceea83acfa75e3a6e480d0",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_085": {
       "input_sha256": "98df59d90cef6060e760687a2e89c7855ae6812f18bcead17279b1ee2f98c866",
-      "svg_sha256": "13e70d20daa97f00aecd52c22109f09bfd23d1cdfd989bebe822d03bf1187386",
+      "svg_sha256": "63ff873db1b5da72406ef60ccb8abe1a8be6d87481827b510fdedc818d9ea475",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_086": {
       "input_sha256": "54de1afeeefae57596bdd5b7169336857f98efcc93cd933d56b28ef984bff785",
-      "svg_sha256": "7287a37632c01ed2d78f3d93f985d752ee696c2ebd428346abb67ddd93ccd835",
+      "svg_sha256": "8a22b323bf00f15bc645ea224203456f3cb6024250aa320258baa3303c7739a5",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_087": {
       "input_sha256": "1c0d2c8359e4fcf35227839c8127197dab6c6caaa51747926bd2c9a5e765cfd6",
-      "svg_sha256": "14b0f190212ed2849543b73d4efc82d7c2bd83cf17caf996ed5add5f2669af0a",
+      "svg_sha256": "0167eedbe57ac6d7324c3d60e09388678bafc8b841e53b81e090ec00afde95db",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_090": {
       "input_sha256": "9e38763af5c7e9f59ded90635cbd14f299bfb3e08552f928a8583bb952d14aa2",
-      "svg_sha256": "0d01285e9637675bf887491cd5f445561e5331a56239eb20fa28149220bdf804",
+      "svg_sha256": "b34735df2ba346636df7b434000d1f1cbe258cd66ad1d4923f2fe75e7dc79583",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_091": {
       "input_sha256": "374a0831a7a2a79fa5481fc38ee9f56046a95d632893bc718bb66a90473f1d61",
-      "svg_sha256": "c02e14c4706cf9a00be1c5d9348cf95686b2f7bbe8d342f32e1a91b18445dfda",
+      "svg_sha256": "7a94417a8d01cf5bf888291e135624465e10a12770dd2871b8b9bd28e0510df0",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_093": {
       "input_sha256": "fd0b604fed6b34d108fdc45810b6e6832a85b1fa1834217ffea01462962c573d",
-      "svg_sha256": "1b9d8ee4590aee602f0d403f5cffbe3fe1473e3db178ae04916e9fb05d0f2b42",
+      "svg_sha256": "312924ee9d0c638235ffe30a0c8dc12bf23ea9d096b59e92c3f1b4912c848e53",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_094": {
@@ -1523,7 +1523,7 @@
     },
     "upstream_pkgtests_sequencediagram_spec_095": {
       "input_sha256": "f07acef1d9eec209345fa57cc214a10ad2e096f3f3432081c70397e45ab1654a",
-      "svg_sha256": "a9bbd7dd26746fffa8e5b8c9335931cdf9b285fcf22c29a7d00faf993e0565d7",
+      "svg_sha256": "32e705cb221ddd443aea8b9a2a2a1b25b345cb0e71e32c2ea965ef83b4624ae9",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_096": {
@@ -1598,7 +1598,7 @@
     },
     "upstream_pkgtests_sequencediagram_spec_122": {
       "input_sha256": "159bcfb1559fa71ca4e0999b33bcfa65936918e4964a0bbb747f06e328bfca67",
-      "svg_sha256": "224cd62a7c44f2e877d1813a1bcb868ec12424941b5a2bcff48a1f78aa870952",
+      "svg_sha256": "456abaebea2a35f522bcb0db7b226006157c7932cd35a04f106ca67a7adad0f1",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_pkgtests_sequencediagram_spec_129": {
@@ -1628,7 +1628,7 @@
     },
     "upstream_rect_block_spec": {
       "input_sha256": "5e55936d7e51e0dad047f31fa0266550d85f52904d0fa7d16b13f7274850b6d7",
-      "svg_sha256": "268d6872700866f460059bd58e14e2b951227a0df2f8f21972df7715fcd0f374",
+      "svg_sha256": "ea6d94480bc31ac0d35ca16a623158eee9ae3331e276e37c217f869c3799c3ed",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "upstream_sequence_init_config_wrap_spec": {
@@ -1638,7 +1638,7 @@
     },
     "upstream_title_without_colon_spec": {
       "input_sha256": "d0b9e9451edd0dd25f5affaac76169716c7a504bcf4bcce2716de5b39e4b6373",
-      "svg_sha256": "2e07a476ca7f24b5f9e48c743e521febd7013181e7ad0c622a62506ea7ba1f2c",
+      "svg_sha256": "c29e0ad2addee26c72bce38fcdeebc3157a4c0a6198afc61020135fb6f4d25fd",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
     "wrap_directive_default": {
@@ -1653,7 +1653,7 @@
     },
     "zed_pr_57644_sequence": {
       "input_sha256": "573781387ea2c6fe12afab752e73d96d2d5aea2af8e823a27ff308b1b9a17406",
-      "svg_sha256": "d96d19e992de0a0ac2d22e83f648452d182f0abd0b7e820015345d01daffaf8d",
+      "svg_sha256": "ca58e46e73b2caed2166560be759d1f910fb4d83cab8e90797600c2878d83b6f",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     }
   },

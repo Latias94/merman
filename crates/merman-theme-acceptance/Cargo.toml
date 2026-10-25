@@ -12,7 +12,8 @@ description = "Private runtime acceptance harness for Merman theme evidence."
 
 [features]
 default = ["png", "jpeg", "pdf", "layout-cytoscape"]
-png = ["dep:image", "dep:png", "merman/png", "merman-export/png"]
+# PNG qualification uses the declared host-system-font profiles, not a font-free SDK artifact.
+png = ["dep:image", "dep:png", "merman/png", "merman-export/png", "merman/system-fonts"]
 jpeg = ["merman/jpeg", "merman-export/jpeg"]
 pdf = ["merman/pdf", "merman-export/pdf"]
 layout-cytoscape = ["merman/layout-cytoscape", "merman-render/layout-cytoscape"]

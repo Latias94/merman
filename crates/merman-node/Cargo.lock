@@ -652,6 +652,7 @@ dependencies = [
  "merman",
  "merman-analysis",
  "merman-theme-contract",
+ "quick-xml",
  "serde",
  "serde_json",
 ]

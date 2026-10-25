@@ -5,8 +5,8 @@
     "mermaid_cli_version": "12.0.0",
     "mermaid_source_tag": "mermaid@12.2.0",
     "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "c345557163f1af788848d68282840272cffcc31e11b5fed8ea37677b10270980",
-    "package_lock_sha256": "77fc2de952489e23378910bbc5942e92eecc0532d645b2f9ec0b932d5fc55c2a",
+    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
+    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -15,18 +15,18 @@
     "render_environment": {
       "browser": {
         "product": "HeadlessChrome",
-        "version": "156.0.8078.47",
-        "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
-        "locale": "zh-CN",
+        "version": "151.0.7922.77",
+        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
+        "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.16.0"
       },
       "operating_system": {
-        "platform": "win32",
-        "arch": "x64",
-        "release": "10.0.26300"
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "27.0.0"
       },
       "mermaid_runtime": {
         "mermaid_version": "12.2.0",
@@ -40,7 +40,7 @@
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
       }
     }
   },
@@ -53,7 +53,7 @@
     },
     "local_elk_boundary_label_guard": {
       "input_sha256": "96656c9924749c489f812607c204c81aa12020a9667d44b967a3ddf69d58fa87",
-      "svg_sha256": "66d62dd845074ba68e92de3b5e8cb49dae9f0e4e1c1925c5d35ddc6714502783",
+      "svg_sha256": "7e5a90aa22e999645955e61590b3ef9611e42e11399426dd6d9ac72ea1c48841",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "shapes-and-notes": {

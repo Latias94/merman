@@ -61,6 +61,24 @@ fn transport_candidate_services_require_explicit_artifact_selection() {
     );
 }
 
+#[cfg(feature = "native-fonts")]
+#[test]
+fn native_font_capability_follows_the_selected_constructor_not_ambient_features() {
+    let spec = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+        .with_operations(&[OperationKey::Svg]);
+    let absent = spec.materialize();
+    assert!(!absent.exposes_capability(CapabilityKey::NativeFonts));
+    let present = spec
+        .with_constructor_services(&[ConstructorServiceKey::NativeFontContext])
+        .materialize();
+    assert!(present.exposes_capability(CapabilityKey::NativeFonts));
+    assert!(
+        present
+            .runtime_capabilities()
+            .has_capability("native-fonts")
+    );
+}
+
 #[test]
 fn semantic_snapshot_is_exact_and_does_not_inherit_compiled_features() {
     assert_eq!(STATIC_SEMANTIC_CONTRACT.target(), TargetKey::Native);

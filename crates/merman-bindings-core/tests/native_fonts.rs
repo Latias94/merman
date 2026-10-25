@@ -339,7 +339,7 @@ fn native_font_sources_and_discovery_are_not_binding_json_options() {
 }
 
 #[test]
-fn native_font_service_and_provider_metadata_are_rust_only() {
+fn native_font_service_and_provider_metadata_follow_installable_transports() {
     let contract = ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::Rust)
         .with_operations(&[OperationKey::Svg])
         .with_constructor_services(&[ConstructorServiceKey::NativeFontContext])
@@ -360,9 +360,33 @@ fn native_font_service_and_provider_metadata_are_rust_only() {
                 .spec()
                 .constructor_service_candidates()
                 .contains(&ConstructorServiceKey::NativeFontContext),
-            *transport == BindingTransportKey::Rust,
+            matches!(
+                transport,
+                BindingTransportKey::Rust
+                    | BindingTransportKey::NativeC
+                    | BindingTransportKey::Wasi
+            ),
             "{transport:?} must report only installable services"
         );
+    }
+    for transport in [BindingTransportKey::NativeC, BindingTransportKey::Wasi] {
+        let selected = ArtifactContractSpec::new(TargetKey::Native, transport)
+            .with_operations(&[OperationKey::Svg])
+            .with_supplemental_capabilities(&[merman_bindings_core::CapabilityKey::LayoutCytoscape])
+            .with_constructor_services(&[ConstructorServiceKey::NativeFontContext])
+            .materialize();
+        assert!(
+            selected
+                .runtime_capabilities()
+                .has_capability("native-fonts")
+        );
+        let engine = selected
+            .create_engine_with_services(
+                OPTIONS,
+                services(context(Default::default(), &OperationControl::new())),
+            )
+            .expect("selected native transports can install the already admitted context");
+        assert!(!engine.render_svg(SOURCE.as_bytes()).unwrap().is_empty());
     }
     let context = context(Default::default(), &OperationControl::new());
     for transport in [
@@ -376,7 +400,7 @@ fn native_font_service_and_provider_metadata_are_rust_only() {
         let error = foreign
             .create_engine_with_services(b"", services(context.clone()))
             .err()
-            .expect("foreign artifacts cannot install the Rust-only context");
+            .expect("unadvertised artifacts cannot install the native font context");
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("not exposed"));
     }

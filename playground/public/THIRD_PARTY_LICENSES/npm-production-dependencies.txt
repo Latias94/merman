@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: npm ls --omit=dev --parseable --all / Merman license report
-package-lock.json SHA-256: 1ff075a4f6e7ed7eb80536612a5813a38d300cbd7432b80fafe0a3c3483c9a2c
+package-lock.json SHA-256: 36551c5470e6a6195e5e0450dfbdf220895a12b1a6408b3346a4c0aa5c522990
 
 The following npm package may be included in this product:
 

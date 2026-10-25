@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "abi_version": 1,
+  "descriptor_bytes": 40,
+  "memory_limit_bytes": 536870912,
+  "timeout_seconds": 120,
+  "fuel": 5000000000,
+  "import_module": "wasi_snapshot_preview1",
+  "allowed_imports": [
+    "args_get", "args_sizes_get", "environ_get", "environ_sizes_get",
+    "fd_close", "fd_fdstat_get", "fd_fdstat_set_flags", "fd_filestat_get",
+    "fd_prestat_get", "fd_prestat_dir_name", "fd_read", "fd_seek", "fd_tell",
+    "fd_write", "path_filestat_get", "path_open", "proc_exit", "sched_yield",
+    "random_get", "clock_time_get"
+  ],
+  "function_exports": {
+    "_initialize": 0,
+    "merman_wasi_abi_version": 0,
+    "merman_wasi_alloc": 1,
+    "merman_wasi_free": 1,
+    "merman_wasi_engine_new": 4,
+    "merman_wasi_engine_close": 1,
+    "merman_wasi_execute": 5,
+    "merman_wasi_runtime_catalog": 0,
+    "merman_wasi_result_info": 1,
+    "merman_wasi_result_free": 1
+  },
+  "optional_dependency_exports": {
+    "__wbg_jspi_task_poll": [1, 0],
+    "__externref_drop_slice": [2, 0],
+    "__externref_table_dealloc": [1, 0],
+    "__externref_table_alloc": [0, 1],
+    "__wbindgen_destroy_closure": [2, 0],
+    "__wbindgen_exn_store": [1, 0],
+    "__wbindgen_free": [3, 0],
+    "__wbindgen_jspi_set_rejected": [1, 0],
+    "__wbindgen_malloc": [2, 1],
+    "__wbindgen_realloc": [4, 1],
+    "__wbindgen_skip_interpret_calls": [0, 0]
+  },
+  "allowed_global_exports": ["__data_end", "__heap_base", "__abort_handler", "__instance_terminated"],
+  "required_capabilities": ["svg", "png", "native-fonts", "layout-cytoscape"],
+  "required_operations": ["svg", "png", "svg-plan-json"],
+  "checks": [
+    "actual-import-export-audit", "reactor-initialized", "catalog-actual-capabilities",
+    "metadata-dispatch", "input-fonts-released", "parse-error-reuse",
+    "svg-and-2x-png-metadata", "independent-results", "elk-family-fallback",
+    "math-flavor-admission", "constrained-math-rejection", "result-lifetime"
+  ]
+}

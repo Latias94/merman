@@ -97,12 +97,14 @@ final class MermanBindingConstructorServiceSpec {
   const MermanBindingConstructorServiceSpec({
     required this.id,
     required this.requiresSvgPipeline,
+    required this.requiredCapabilityId,
     required this.providedTextMeasurementProviderIds,
     required this.resourceLimits,
   });
 
   final String id;
   final bool requiresSvgPipeline;
+  final String? requiredCapabilityId;
   final Set<String> providedTextMeasurementProviderIds;
   final List<MermanBindingConstructorResourceLimitSpec> resourceLimits;
 }
@@ -265,6 +267,7 @@ const Map<String, MermanBindingConstructorServiceSpec>
   "host-text-measurement": MermanBindingConstructorServiceSpec(
     id: "host-text-measurement",
     requiresSvgPipeline: true,
+    requiredCapabilityId: null,
     providedTextMeasurementProviderIds: <String>{
       "host-callback",
     },
@@ -273,6 +276,7 @@ const Map<String, MermanBindingConstructorServiceSpec>
   "icon-registry": MermanBindingConstructorServiceSpec(
     id: "icon-registry",
     requiresSvgPipeline: true,
+    requiredCapabilityId: null,
     providedTextMeasurementProviderIds: <String>{},
     resourceLimits: <MermanBindingConstructorResourceLimitSpec>[
       MermanBindingConstructorResourceLimitSpec(
@@ -446,6 +450,7 @@ const Map<String, MermanBindingConstructorServiceSpec>
   "native-font-context": MermanBindingConstructorServiceSpec(
     id: "native-font-context",
     requiresSvgPipeline: true,
+    requiredCapabilityId: "native-fonts",
     providedTextMeasurementProviderIds: <String>{
       "native-fonts",
     },
@@ -587,6 +592,7 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+      "native-font-context",
     },
   ),
   "node": MermanBindingTransportExposureSpec(
@@ -623,6 +629,16 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+    },
+  ),
+  "wasi": MermanBindingTransportExposureSpec(
+    id: "wasi",
+    payloadSchemaIds: <String>{
+      "binding-result",
+      "operation-metadata",
+    },
+    constructorServiceCandidateIds: <String>{
+      "native-font-context",
     },
   ),
   "web": MermanBindingTransportExposureSpec(

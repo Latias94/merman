@@ -3,7 +3,7 @@
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "89a87b90ad5b5fc89fa49502f64b37f4f930bbc6b40c521f961a99ca9ad96ba9"
+    "sha256": "34578989e50c2fc2980770a4c9aa44da63a74deb02b026ba0444820ea4ea296d"
   },
   "release": {
     "id": "mermaid",
@@ -255,8 +255,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "c345557163f1af788848d68282840272cffcc31e11b5fed8ea37677b10270980",
-    "packageLockSha256": "77fc2de952489e23378910bbc5942e92eecc0532d645b2f9ec0b932d5fc55c2a",
+    "packageJsonSha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
+    "packageLockSha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "rendererTools": [

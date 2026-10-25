@@ -36,6 +36,34 @@ WEB_PROFILE_FEATURES = {
 
 
 class RustLicenseReportTests(unittest.TestCase):
+    def test_single_artifact_cli_requires_an_output_and_explicit_profile(self) -> None:
+        with self.assertRaises(SystemExit):
+            report.parse_args(["--write", "--artifact-profile", "sdk-wasi-standard"])
+        with self.assertRaises(SystemExit):
+            report.parse_args(["--write", "--output", "report.json"])
+        args = report.parse_args([
+            "--write", "--artifact-profile", "sdk-wasi-standard",
+            "--target", "wasm32-wasip1", "--output", "report.json",
+        ])
+        self.assertEqual(args.artifact_profile, "sdk-wasi-standard")
+        self.assertEqual(args.output, Path("report.json"))
+
+    def test_single_artifact_cli_generates_only_the_selected_recipe(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "license.json"
+            recipe = {"id": "sdk-wasi-standard"}
+            with mock.patch.object(report, "verify_cargo_about_version"), \
+                 mock.patch.object(report, "load_profile_recipes", return_value={"sdk-wasi-standard": recipe}) as load, \
+                 mock.patch.object(report, "generate_report_for_profile", return_value=b"{}\n") as generate, \
+                 mock.patch.object(report, "load_web_profile_recipes", side_effect=AssertionError("unrelated reports")):
+                self.assertEqual(report.main([
+                    "--write", "--artifact-profile", "sdk-wasi-standard",
+                    "--target", "wasm32-wasip1", "--output", str(output),
+                ]), 0)
+                self.assertEqual(output.read_bytes(), b"{}\n")
+                load.assert_called_once_with(report.ROOT, ("sdk-wasi-standard",), semantic_target="native")
+                generate.assert_called_once_with(report.ROOT, recipe, target="wasm32-wasip1")
+
     def test_strict_json_rejects_duplicate_keys_with_report_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "duplicate.json"

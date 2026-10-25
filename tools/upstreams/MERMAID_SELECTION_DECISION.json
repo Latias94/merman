@@ -632,14 +632,14 @@
     },
     "packages": [
       {
-        "package": "dompurify",
-        "version": "3.4.17",
-        "integrity": "sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w=="
-      },
-      {
         "package": "@puppeteer/browsers",
         "version": "3.2.6",
         "integrity": "sha512-MJP29gVoHznmqmwhH1tlZqzfeQ3aylTpSSa6WKZXtkwYUH02i9imBmWGTyZrbnAou5paX78SE4jMAUqnEPf8ug=="
+      },
+      {
+        "package": "dompurify",
+        "version": "3.4.17",
+        "integrity": "sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w=="
       },
       {
         "package": "puppeteer",
@@ -655,7 +655,7 @@
     "behaviorResult": "pass",
     "rawOutput": {
       "kind": "official-tool-output",
-      "sha256": "4bd1e63bbbe3a679567b7be4ce6debb172c000409b0f60482396403d2beb1674",
+      "sha256": "88048a8bd4e1ab5d3db58802cb394512a9ae4d911362818055c78139923bac7e",
       "officialToolStdoutArchived": true
     }
   }

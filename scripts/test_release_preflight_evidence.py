@@ -21,6 +21,7 @@ import zipfile
 
 from scripts import release_attempt_history as history
 from scripts import release_preflight_evidence as evidence
+from scripts.artifact_profile_recipe import load_artifact_profiles
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -115,6 +116,18 @@ class PreflightEvidenceTests(unittest.TestCase):
             evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
         with self.assertRaises(evidence.EvidenceError):
             evidence.create_receipt(self.identity, "d" * 40, self.needs, 100, 2)
+
+    def test_sdk_archive_owner_is_required_and_cannot_fail_or_be_skipped(self):
+        self.assertIn("sdk-archives", evidence.REQUIRED_JOBS)
+        for result in ("failure", "cancelled", "skipped", None):
+            needs = copy.deepcopy(self.needs)
+            needs["sdk-archives"] = {"result": result}
+            with self.subTest(result=result), self.assertRaises(evidence.EvidenceError):
+                evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
+        needs = copy.deepcopy(self.needs)
+        del needs["sdk-archives"]
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
 
     def test_finds_source_input_independently_of_workflow_head(self):
         self.assertNotEqual(self.identity.source_sha, self.run["head_sha"])
@@ -314,6 +327,105 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertNotIn("always()", issuer)
         self.assertIn("timeout-minutes: 10", workflow)
         self.assertIn("Acquire::Retries=3", workflow)
+        versions = self.job(workflow, "versions-and-packages")
+        self.assertIn("python3 scripts/verify_artifact_dependency_closures.py", versions)
+
+    def test_sdk_archives_calls_read_only_owner_with_same_run_immutable_inputs(self):
+        workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
+        sdk = self.job(workflow, "sdk-archives")
+        self.assertIn("uses: ./.github/workflows/release-sdk.yml", sdk)
+        self.assertIn("source_ref: ${{ needs.validate-inputs.outputs.source_sha }}", sdk)
+        self.assertIn("release_tag: ${{ needs.validate-inputs.outputs.release_tag }}", sdk)
+        self.assertNotIn("input_run_id", sdk)
+        self.assertNotIn("publish:", sdk)
+        self.assertIn("actions: read", sdk)
+        self.assertNotIn("secrets: inherit", sdk)
+        self.assertNotIn("continue-on-error", sdk)
+        self.assertNotIn("\n    if:", sdk)
+        self.assertIn("      - sdk-archives\n", self.job(workflow, "release-preflight-evidence"))
+
+    def test_sdk_reusable_owner_has_no_publication_or_write_permissions(self):
+        owner = (ROOT / ".github/workflows/release-sdk.yml").read_text()
+        self.assertIn("workflow_call:", owner)
+        self.assertIn("source_ref:", owner)
+        self.assertIn("release_tag:", owner)
+        self.assertIn("source_sha:", owner)
+        self.assertIn("version:", owner)
+        self.assertNotIn("publish:", owner)
+        self.assertNotRegex(owner, r"(?m)^\s+[a-z-]+:\s*write\s*$")
+        self.assertNotRegex(owner, r"(?m)^\s+environment:")
+        self.assertNotIn("secrets: inherit", owner)
+        self.assertNotIn("gh release upload", owner)
+        parity = self.job(owner, "native-wasi-parity")
+        self.assertIn("needs: [validate-inputs, package, cli-reference]", parity)
+        self.assertIn("platforms/wasi/cli_compare.py", parity)
+        self.assertIn("verified_archive_contents", parity)
+        reference = self.job(owner, "cli-reference")
+        self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}", reference)
+        self.assertIn("cli-release --build-host --locked", reference)
+        self.assertIn("cp -R THIRD_PARTY_LICENSES", reference)
+        self.assertIn("SOURCE_AVAILABILITY.txt", reference)
+        self.assertIn("path: target/sdk-cli-reference/", reference)
+        self.assertNotIn("continue-on-error", reference)
+        self.assertNotIn("continue-on-error", parity)
+
+    def test_sdk_publication_is_a_separate_manual_workflow(self):
+        publisher = (ROOT / ".github/workflows/release-sdk-publish.yml").read_text()
+        self.assertIn("workflow_dispatch:", publisher)
+        self.assertIn("build_run_id:", publisher)
+        self.assertIn("release_tag:", publisher)
+        self.assertNotIn("workflow_call:", publisher)
+        self.assertNotIn("uses: ./.github/workflows/release-sdk.yml", publisher)
+        self.assertNotIn("--build --locked", publisher)
+        validate = self.job(publisher, "validate-inputs")
+        self.assertIn("actions: read", validate)
+        self.assertIn("run['conclusion'] == 'success'", validate)
+        self.assertIn("run['head_sha'] == os.environ['SOURCE_SHA']", validate)
+        publish = self.job(publisher, "publish")
+        self.assertIn("needs: validate-inputs", publish)
+        self.assertIn("run-id: ${{ needs.validate-inputs.outputs.build_run_id }}", publish)
+        stages = ("actions/download-artifact", "verify_sdk_archive(", "uses: actions/attest@",
+                  "gh release upload")
+        positions = [publish.index(stage) for stage in stages]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("verified_output_dir=verified", publish)
+        self.assertIn("target/sdk-release-verified/*", publish)
+        self.assertIn("environment: github-release", publisher)
+        self.assertNotIn("secrets: inherit", publisher)
+        self.assertNotIn("continue-on-error", publisher)
+        preflight = (ROOT / ".github/workflows/release-preflight.yml").read_text()
+        self.assertNotIn("release-sdk-publish.yml", preflight)
+
+    def test_sdk_owner_builds_and_qualifies_its_own_inputs_before_archiving(self):
+        owner = (ROOT / ".github/workflows/release-sdk.yml").read_text()
+        package = self.job(owner, "package")
+        self.assertNotIn("input_run_id", owner)
+        self.assertNotIn("actions/download-artifact", package)
+        self.assertNotIn("continue-on-error", package)
+        self.assertIn("flavor: [standard, math, full]", package)
+        stages = ("cargo fetch --locked", "python scripts/sdk_qualify.py", "actions/upload-artifact")
+        positions = [package.index(stage) for stage in stages]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('--profile "$SDK_PROFILE" --target "$SDK_TARGET"', package)
+        self.assertIn('--work-dir "target/sdk-input/$SDK_PROFILE/$SDK_TARGET"', package)
+        self.assertIn('--source-commit "$SOURCE_SHA"', package)
+        self.assertIn("target/sdk-input/${{ env.SDK_PROFILE }}/${{ env.SDK_TARGET }}/evidence", package)
+
+    def test_sdk_producer_matrix_covers_every_descriptor_target_exactly_once(self):
+        owner = (ROOT / ".github/workflows/release-sdk.yml").read_text()
+        package = self.job(owner, "package")
+        platforms = re.findall(
+            r"(?m)^\s+- \{kind: (native|wasi), target: ([a-z0-9_-]+), runner: [^}]+\}$",
+            package,
+        )
+        produced = [(f"sdk-{kind}-{flavor}", target)
+                    for kind, target in platforms for flavor in ("standard", "math", "full")]
+        expected = {(profile.profile_id, target)
+                    for profile in load_artifact_profiles()
+                    if profile.profile_id.startswith("sdk-") for target in profile.cargo.build_targets}
+        self.assertEqual(len(produced), 18)
+        self.assertEqual(len(set(produced)), len(produced))
+        self.assertEqual(set(produced), expected)
 
     def test_only_expensive_checks_are_conditional(self):
         workflow = (ROOT / ".github/workflows/release-crates.yml").read_text()

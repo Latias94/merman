@@ -230,7 +230,7 @@ jobs:
 
       - name: Test native theme consumers
         run: |
-          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart,png,pdf,layout-cytoscape,compat-json \
+          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart,png,pdf,layout-cytoscape,system-fonts,compat-json \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
             --test theme_composed_effects
 
@@ -1415,6 +1415,18 @@ jobs:
             --package-root . \
             --max-compressed-mb 99
 
+  sdk-archives:
+    needs:
+      - validate-inputs
+      - versions-and-packages
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/release-sdk.yml
+    with:
+      source_ref: ${{ needs.validate-inputs.outputs.source_sha }}
+      release_tag: ${{ needs.validate-inputs.outputs.release_tag }}
+
   release-preflight-evidence:
     needs:
       - validate-inputs
@@ -1431,6 +1443,7 @@ jobs:
       - node-npm-dry-run
       - vscode-extension-dry-run
       - flutter-dry-run
+      - sdk-archives
     runs-on: ubuntu-24.04
     steps:
       - name: Check out trusted preflight evidence tooling

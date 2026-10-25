@@ -15,8 +15,31 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseSurfaceContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        packages = [
+            {
+                "id": name,
+                "name": name,
+                "manifest_path": str(ROOT / "crates" / name / "Cargo.toml"),
+                "dependencies": [],
+            }
+            for name in (
+                "merman-bindings-core", "merman-ffi", "merman-uniffi",
+                "merman-wasm", "merman-wasi",
+            )
+        ]
+        self.metadata = {
+            "packages": packages,
+            "workspace_members": [package["id"] for package in packages],
+        }
+        cargo = mock.patch.object(
+            contract, "cargo_metadata", side_effect=AssertionError("unit tests must not run Cargo"),
+        )
+        cargo.start()
+        self.addCleanup(cargo.stop)
+
     def test_repository_contract_matches_current_workflows_and_profiles(self) -> None:
-        surfaces = contract.validate_repository(ROOT)
+        surfaces = contract.validate_repository(ROOT, metadata=self.metadata)
 
         self.assertEqual(
             {surface.surface_id for surface in surfaces},
@@ -26,6 +49,7 @@ class ReleaseSurfaceContractTests(unittest.TestCase):
                 "apple-xcframework",
                 "python-wheel",
                 "flutter-pub",
+                "headless-sdk-archives",
             },
         )
         rust_surface = next(
@@ -38,7 +62,7 @@ class ReleaseSurfaceContractTests(unittest.TestCase):
         report = json.loads(contract.render_report(contract.SURFACES, as_json=True))
 
         self.assertEqual(report["scope"], "ffi-native")
-        self.assertEqual(len(report["surfaces"]), 5)
+        self.assertEqual(len(report["surfaces"]), 6)
         self.assertNotIn("status", report["surfaces"][0])
         self.assertEqual(
             report["surfaces"][1]["artifact_profiles"],
@@ -56,7 +80,53 @@ class ReleaseSurfaceContractTests(unittest.TestCase):
 
         with mock.patch.object(contract, "_read", side_effect=read_without_android_upload):
             with self.assertRaisesRegex(contract.SurfaceContractError, "android-aar"):
-                contract.validate_repository(ROOT)
+                contract.validate_repository(ROOT, metadata=self.metadata)
+
+    def test_sdk_owner_governs_all_six_exact_profile_packages(self) -> None:
+        sdk = next(surface for surface in contract.SURFACES
+                   if surface.surface_id == "headless-sdk-archives")
+        self.assertEqual(sdk.workflow, Path(".github/workflows/release-sdk.yml"))
+        self.assertEqual(sdk.preflight_job, "sdk-archives")
+        self.assertEqual(sdk.publication_mode, "manual-dispatch-via-release-sdk-publish")
+        self.assertEqual(dict(sdk.profile_packages), {
+            f"sdk-{kind}-{variant}": package
+            for kind, package in (("native", "merman-ffi"), ("wasi", "merman-wasi"))
+            for variant in ("standard", "math", "full")
+        })
+
+    def test_missing_sdk_recipe_or_wrong_package_fails_closed(self) -> None:
+        original_read = contract._read
+        for mutation in ("missing", "wrong-package"):
+            def changed_descriptor(root: Path, path: Path) -> str:
+                text = original_read(root, path)
+                if path == contract.ARTIFACT_DESCRIPTOR:
+                    descriptor = json.loads(text)
+                    if mutation == "missing":
+                        descriptor["profiles"] = [p for p in descriptor["profiles"]
+                                                  if p["id"] != "sdk-wasi-standard"]
+                    else:
+                        for profile in descriptor["profiles"]:
+                            if profile["id"] == "sdk-wasi-standard":
+                                profile["cargo"]["package"] = "merman-ffi"
+                    return json.dumps(descriptor)
+                return text
+            with self.subTest(mutation=mutation), mock.patch.object(
+                contract, "_read", side_effect=changed_descriptor,
+            ), self.assertRaisesRegex(contract.SurfaceContractError, "sdk-wasi-standard"):
+                contract.validate_repository(ROOT, metadata=self.metadata)
+
+    def test_missing_sdk_build_or_qualification_owner_fails_closed(self) -> None:
+        original_read = contract._read
+        for marker in ("scripts/sdk_qualify.py", '--profile "$SDK_PROFILE"',
+                       '--target "$SDK_TARGET"', "--work-dir", "--output-dir",
+                       '--source-commit "$SOURCE_SHA"'):
+            def missing_owner(root: Path, path: Path) -> str:
+                text = original_read(root, path)
+                return text.replace(marker, "missing-owner") if path.name == "release-sdk.yml" else text
+            with self.subTest(marker=marker), mock.patch.object(
+                contract, "_read", side_effect=missing_owner,
+            ), self.assertRaisesRegex(contract.SurfaceContractError, "headless-sdk-archives"):
+                contract.validate_repository(ROOT, metadata=self.metadata)
 
 
 if __name__ == "__main__":

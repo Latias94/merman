@@ -5,8 +5,8 @@
     "mermaid_cli_version": "12.0.0",
     "mermaid_source_tag": "mermaid@12.2.0",
     "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "c345557163f1af788848d68282840272cffcc31e11b5fed8ea37677b10270980",
-    "package_lock_sha256": "77fc2de952489e23378910bbc5942e92eecc0532d645b2f9ec0b932d5fc55c2a",
+    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
+    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -15,18 +15,18 @@
     "render_environment": {
       "browser": {
         "product": "HeadlessChrome",
-        "version": "156.0.8078.47",
-        "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
-        "locale": "zh-CN",
+        "version": "151.0.7922.77",
+        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
+        "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.16.0"
       },
       "operating_system": {
-        "platform": "win32",
-        "arch": "x64",
-        "release": "10.0.26300"
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "27.0.0"
       },
       "mermaid_runtime": {
         "mermaid_version": "12.2.0",
@@ -40,7 +40,7 @@
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
       }
     }
   },
@@ -123,7 +123,7 @@
     },
     "stress_mindmap_html_sanitization_013": {
       "input_sha256": "3b0a694108d4e750ed9128f5fb8727e277bf52824c964aa51ecb589dd6594d7c",
-      "svg_sha256": "83ff2aea2540c0931713498d82ccd1859bc15b356df8fbba567a3c5a1a4aa939",
+      "svg_sha256": "c31849b0fcf747505a7fd15ef60340c23887e2f576294d6ce5b3eec715d86bb4",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_mindmap_html_sanitization_links_034": {
@@ -158,7 +158,7 @@
     },
     "stress_mindmap_markdown_emphasis_icons_014": {
       "input_sha256": "76fccbab937bebe79d8a80da164f9e979e691367ccc97fd03a0fc8e246db094f",
-      "svg_sha256": "c2aef9703b4fda2a566a8a14d9e7d714e6998a9fe89db6923a69a62527cabd0c",
+      "svg_sha256": "8ed57a7cd4ecbbc04149c85625d629f8c98b32f9e395aedc33b93403e2c01544",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_mindmap_markdown_mixed_raw_blocks_038": {
@@ -173,7 +173,7 @@
     },
     "stress_mindmap_multiline_markdown_021": {
       "input_sha256": "47312ace24699e3f22cd4d81bb647ed88a48c9de97b7c8c18ef85e3e8184f460",
-      "svg_sha256": "560df6ce1f74313eaa9f67415632e1873a508b9bc47437bc64d892407491d22b",
+      "svg_sha256": "917a6340e3dd9775653e9f1f018f61383b1e82cced9a6be578b7335e3f127b1e",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_mindmap_proto_constructor_ids_033": {
@@ -488,7 +488,7 @@
     },
     "upstream_mermaid_12_2_svg_label_centering": {
       "input_sha256": "34b3d1f5e3a8612dc23ce55e6b14b086f2dff877ae9b8163951ab0c58c5439a9",
-      "svg_sha256": "dc3dc22c914b0e7d5f9da2e610f64876e1a5fcae1ea8463af6a229590a6ff63e",
+      "svg_sha256": "79845721beb493964f5b8e2badfc5c16aad1e08a8464b5afce852b0334c61226",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_node_types": {

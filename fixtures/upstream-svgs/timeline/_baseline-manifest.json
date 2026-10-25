@@ -5,8 +5,8 @@
     "mermaid_cli_version": "12.0.0",
     "mermaid_source_tag": "mermaid@12.2.0",
     "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "c345557163f1af788848d68282840272cffcc31e11b5fed8ea37677b10270980",
-    "package_lock_sha256": "77fc2de952489e23378910bbc5942e92eecc0532d645b2f9ec0b932d5fc55c2a",
+    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
+    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -15,18 +15,18 @@
     "render_environment": {
       "browser": {
         "product": "HeadlessChrome",
-        "version": "156.0.8078.47",
-        "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
-        "locale": "zh-CN",
+        "version": "151.0.7922.77",
+        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
+        "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.16.0"
       },
       "operating_system": {
-        "platform": "win32",
-        "arch": "x64",
-        "release": "10.0.26300"
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "27.0.0"
       },
       "mermaid_runtime": {
         "mermaid_version": "12.2.0",
@@ -40,7 +40,7 @@
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "b74cb52f625a46ef61df9467965af3dac4a01564ba6a1d67812ff77ad4becc14"
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
       }
     }
   },
@@ -48,7 +48,7 @@
   "fixtures": {
     "timeline_stress_accdescr_block_multiline": {
       "input_sha256": "464eb88f068b17b3c8253dd68b8260685f4c8574bd9ae16911c8260257041291",
-      "svg_sha256": "7f9d78833bcb40265071326058ab4f0f982915f0328f372dfb15c2628a23fe0b",
+      "svg_sha256": "0ee2dda8ecfa92e85cc18cd30663f7e4a26d080487c7baf8b575cc22ff1f333e",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "timeline_stress_acctitle_accdescr_and_title": {
@@ -98,7 +98,7 @@
     },
     "timeline_stress_common_long_unbroken_words": {
       "input_sha256": "b037fc3ac6fd6a899deb763e40d45008b7cb865f16bfdbcd83a92c9e09100254",
-      "svg_sha256": "9663130b4ac411b5594025f0e46ce4efc1eacf51e9db897785604078f3a4b7a0",
+      "svg_sha256": "1acfff15c9c5b12c3808e103c25ad0e4d5a348b064a6bdad38508460edd35944",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "timeline_stress_common_many_events_with_br": {
@@ -143,7 +143,7 @@
     },
     "timeline_stress_events_with_entities_and_ampersands": {
       "input_sha256": "f4cfc5fbdd073df0179bd0b5d64436a5e567419950568f57704429ed96a8d963",
-      "svg_sha256": "189e4782bf44274fa40e31a76749855bd494b3101f27b3f9e35003bed115ced1",
+      "svg_sha256": "648096fc199b59f7f240ab535ad3288792d9f0af0248ef5f23dfa69bd818b9ae",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "timeline_stress_font_size_precedence": {
@@ -253,7 +253,7 @@
     },
     "timeline_stress_unicode_cjk_and_emoji": {
       "input_sha256": "1b817aaaae186b79b61b132b0fc8a99711b17fc81a0eaba5b4af56d9e0fe4511",
-      "svg_sha256": "71ea948d20447f94fe8f72d65cba95e61b8bd67740f3dd2cc7a01db117ddd95e",
+      "svg_sha256": "71c4aa0261aaa7ee207d037c0009bb03fe0866397b43c7e941dc509e51033d58",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "timeline_stress_unknown_xml_entity": {
@@ -263,12 +263,12 @@
     },
     "timeline_stress_very_long_unbroken_word": {
       "input_sha256": "33a593614560a6899a388fd9214efb4e1b1f54f1f5d7dcf30622aa970cc8eb54",
-      "svg_sha256": "ebfbe5e96a183bfa54a5d6c66562adad2c9d2322cc2c9214ef1a6c0e816baf23",
+      "svg_sha256": "a90b831e73fba5615ca678fe033b7c1ce90e233b417f3eca19677e4920a87f0c",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "timeline_stress_width_large_and_long_labels": {
       "input_sha256": "6ca8667b42c48613df0607e7d5cb0b93b2570b3131590d7acabfacc7b3ed93b5",
-      "svg_sha256": "424b772017235a460611439190ae21137404bd0ec9580c71a1e9127eda624a57",
+      "svg_sha256": "5dc54d2e5b1260a51a4226f7d8885e03cea4c31b8af63932e852964b19179f8c",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_br_wrapping": {
@@ -438,7 +438,7 @@
     },
     "upstream_long_word_wrap": {
       "input_sha256": "48288d0d195d64d0f544aaee5ea0059446f7456a9dde8690037a81f530d74b37",
-      "svg_sha256": "fc2a7411b739f059bc57b2b96bd2bfcf2c63ccc25215a621375802cf1299a6df",
+      "svg_sha256": "ef048e5272e76b924d167fb0b2a58207fd47cee3c42d39ba43c13bdf2cb69031",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_no_sections": {

@@ -820,14 +820,11 @@ fn is_literal_html_tag(tag: &str) -> bool {
 fn unsafe_literal_html<S: SanitizeOutputSink>(
     nodes: &[Node],
     index: usize,
-    tag: &str,
     sink: &S,
 ) -> Result<bool, SanitizeFailure<S::Error>> {
-    // Pinned DOMPurify SAFE_FOR_XML rejects element children and text that could
-    // close a literal-text container after serialization. Match across text nodes
-    // without concatenating attacker-controlled text or recursing into the tree.
+    // DOMPurify SAFE_FOR_XML rejects element children or markup-like literal text,
+    // including noscript. Match across text nodes without concatenation or recursion.
     let mut child = nodes[index].first;
-    let mut matched = 0;
     let mut markup_start = false;
     while child != NONE {
         sink.checkpoint().map_err(SanitizeFailure::Output)?;
@@ -838,31 +835,12 @@ fn unsafe_literal_html<S: SanitizeOutputSink>(
                     if offset % CHUNK_BYTES == 0 {
                         sink.checkpoint().map_err(SanitizeFailure::Output)?;
                     }
-                    if tag != "noscript"
-                        && markup_start
+                    if markup_start
                         && (byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'/' | b'!'))
                     {
                         return Ok(true);
                     }
                     markup_start = byte == b'<';
-                    if matched == tag.len() + 2 {
-                        if matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'/' | b'>') {
-                            return Ok(true);
-                        }
-                        matched = 0;
-                    }
-                    let expected = match matched {
-                        0 => b'<',
-                        1 => b'/',
-                        n => tag.as_bytes()[n - 2],
-                    };
-                    matched = if byte.eq_ignore_ascii_case(&expected) {
-                        matched + 1
-                    } else if byte == b'<' {
-                        1
-                    } else {
-                        0
-                    };
                 }
             }
             _ => {}
@@ -961,7 +939,7 @@ fn serialize<S: SanitizeOutputSink>(
             && let Kind::Element { name, .. } = &nodes[index].kind
             && name.ns == ns!(html)
             && is_literal_html_tag(&name.local)
-            && unsafe_literal_html(nodes, index, &name.local, sink)?
+            && unsafe_literal_html(nodes, index, sink)?
         {
             continue;
         }

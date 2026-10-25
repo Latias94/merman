@@ -32,6 +32,47 @@ timing and installed-product receipts retain their original measured sources: th
 does not relabel them as `0.9.2` measurements or close performance acceptance.
 The PR remains a draft; no PR merge, publication or release is authorized by this integration.
 
+## Main integration on 2026-10-26
+
+The maintainer authorized merging `origin/main` at `93034e207` into the feature branch at
+`3d2ee4c75`. This brings in main's native C/WASI SDKs, bounded memory-font constructors,
+explicit system-font policy, Swimlane label fix and reviewed Mermaid security/baseline refresh.
+The semantic/presentation API split and the math-free `complete-svg` conveniences remain intact.
+The reference manifests, npm locks, selection receipt and bundle retain main's admitted graph;
+this integration does not invent a new selection receipt or claim unchanged upstream SVG bytes.
+Rust license reports and release projections are regenerated for the combined dependency graph.
+Only the current native-memory contracts' lockfile fingerprints change; their workloads,
+thresholds and semantic identities do not. Historical measurements retain their original sources.
+
+Integration fixes align the bindings dependency contract with its explicit `compat-json` edge
+without allowing font-feature leakage, and accept both LF and CRLF when reading generated SDK
+header versions. A real workspace dependency-contract test and an LF/CRLF regression cover these
+seams. The latter reproduced main's Windows fixture failure before the narrow parser correction.
+Main's new Swimlane fallback regression now calls the existing `MermaidEngine` constructor;
+the retired `Engine` alias is not restored.
+
+Local evidence is retained under `target/ci-triage/merge-main-20261026/`. Generated source,
+native ABI, binding contract and Mermaid reference checks pass. Feature-matrix unit tests pass
+33/33, and the representative owner matrix passes all 49 builds and 16 isolated consumers.
+The initial workflow/closure/legal Python suites pass 160 tests with three platform skips;
+the SDK/archive/symbol/profile/legal suites pass 109 tests with one platform skip after the CRLF
+fix. Performance-harness contract suites pass 20, 51, 33 and 157 tests respectively. These are
+functional and contract checks, not new latency, allocation or artifact-size observations.
+All 42 representative runtime dependency closures pass. Under the exact standard SDK recipes,
+the native C library/header/consumer tests pass 67/67 and WASI host unit tests pass 17/17;
+the standard reactor also passes `cargo check` for `wasm32-wasip1`. Native font regressions
+pass 40/40 and the CI theme-consumer recipe, retaining both `system-fonts` and `compat-json`,
+passes 84/84. `cargo deny check advisories bans licenses sources` passes. These local checks
+do not qualify published archives, other native targets or real WASI hosts; those retain their
+existing platform and release owners.
+The sanitizer selection passes 55/55 tests. The two changed Swimlane/SVG-fallback integration
+targets pass 27/27 after the constructor-name correction. The full 37-family release comparison
+passes `structure,parity,parity-root` at three decimals with root diagnostics and the existing
+exact browser-text-layout/parser-diagnostic receipts. No comparator policy or residual receipt
+is loosened or added. Formatting, workflow syntax and diff/path checks also pass.
+The open timing acceptance, platform-runtime evidence boundaries and independent npm audit
+policy are unchanged; no risk exception, PR merge, publication or release is implied.
+
 ## Evidence ownership
 
 The maintainer amended the SVG aggregate decision on 2026-10-25: `merman` and

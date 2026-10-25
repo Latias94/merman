@@ -580,7 +580,7 @@ jobs:
         if: matrix.parity
         run: |
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
-            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,compat-json --test theme_authoring \
+            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,system-fonts,compat-json --test theme_authoring \
             --test theme_flowchart_markers --test theme_flowchart_geometry \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
             --test render_operation --test theme_composed_effects --cargo-quiet

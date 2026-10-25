@@ -79,6 +79,21 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_sdk_native_qualification_uses_native_errors_and_relocatable_libraries(self) -> None:
+        package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
+        self.assertIn("python scripts/sdk_qualify.py", package)
+        self.assertNotIn("shell: python", package)
+        qualifier = read(ROOT / "scripts/sdk_qualify.py")
+        self.assertIn('repo_root / "platforms/wasi/native_smoke.py"', qualifier)
+        self.assertIn('DYLD_PRINT_LIBRARIES="1"', qualifier)
+        self.assertIn("consumer did not load the extracted SDK", qualifier)
+        native_smoke = read(ROOT / "platforms/wasi/native_smoke.py")
+        self.assertIn("validate_native_error(", native_smoke)
+        self.assertNotIn("validate_error(", native_smoke)
+        consumers = read(ROOT / "distribution/sdk/CMakeLists.txt")
+        self.assertIn("target_link_libraries(merman-render-static PRIVATE Merman::Static)", consumers)
+        self.assertIn("add_test(NAME sdk-render-static COMMAND merman-render-static)", consumers)
+
     def test_pull_request_orchestrator_and_reusable_owners_are_read_only(self) -> None:
         for path in [*PR_REACHABLE_WORKFLOWS, WORKFLOW_ROOT / "performance.yml"]:
             text = read(path)
@@ -417,6 +432,17 @@ jobs:
                     "-p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape "
                     "--lib preset_qualification::", command,
                 )
+
+    def test_host_theme_profiles_explicitly_request_system_fonts(self) -> None:
+        harness = tomllib.loads(read(ROOT / "crates/merman-theme-acceptance/Cargo.toml"))
+        with self.subTest(consumer="private qualification harness"):
+            self.assertIn("merman/system-fonts", harness["features"]["png"])
+        step = read(CI_WORKFLOW).split(
+            "      - name: Test theme authoring and Flowchart paint across SVG and PNG\n", 1,
+        )[1].split("\n      - name:", 1)[0]
+        features = step.split("--features ", 1)[1].split()[0].split(",")
+        with self.subTest(consumer="public facade pixel tests"):
+            self.assertIn("system-fonts", features)
 
     def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner in (("ci.yml", "cargo nextest run"),

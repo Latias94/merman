@@ -28,7 +28,7 @@ static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 /// The protocol version belongs to the independently versioned text-measurement contract. Provider
 /// IDs describe actual installation routes, not Cargo features: `deterministic` is the built-in
 /// renderer measurer and `host-callback` means this transport accepts a host callback.
-/// `native-fonts` means the Rust transport accepts an already loaded native font context.
+/// `native-fonts` means the transport accepts an owned native font context or font bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct TextMeasurementCapabilities {
@@ -1140,6 +1140,10 @@ mod tests {
         let capabilities = full_native_contract().runtime_capabilities();
 
         assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
+        assert_eq!(
+            capabilities.has_capability("native-fonts"),
+            cfg!(feature = "native-fonts")
+        );
         assert!(!capabilities.has_capability("embedded-fonts"));
         assert_eq!(
             capabilities.has_capability("analysis"),
@@ -1286,14 +1290,20 @@ mod tests {
                     assert!(output.system_fonts.is_none());
                     assert!(output.embedded_images.is_none());
                 }
+                #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
                 "jpeg" | "pdf" | "png" => {
-                    let fonts = output.system_fonts.as_ref().expect("system font contract");
-                    assert_eq!(fonts.source_id, "host-system");
-                    assert_eq!(fonts.discovery, "first-use");
-                    assert_eq!(fonts.cache_scope, "process-global");
-                    assert!(fonts.host_dependent);
-                    assert!(!fonts.caller_configurable);
-                    assert!(!fonts.resource_bounded);
+                    assert_eq!(
+                        output.system_fonts.is_some(),
+                        merman::svg::export::system_font_discovery_available()
+                    );
+                    if let Some(fonts) = &output.system_fonts {
+                        assert_eq!(fonts.source_id, "host-system");
+                        assert_eq!(fonts.discovery, "first-use");
+                        assert_eq!(fonts.cache_scope, "process-global");
+                        assert!(fonts.host_dependent);
+                        assert!(!fonts.caller_configurable);
+                        assert!(!fonts.resource_bounded);
+                    }
                     let images = output
                         .embedded_images
                         .as_ref()

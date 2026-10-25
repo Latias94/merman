@@ -346,6 +346,20 @@
         { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
       ],
       "description": "Execute one generic operation with a live caller-owned control token. The request record remains byte-for-byte compatible with the original ABI 3 layout; zero selects the ordinary uncontrolled execution semantics."
+    },
+    {
+      "id": "engine_new_with_fonts",
+      "c_name": "MermanNativeEngineNewWithFontsFn",
+      "rust_name": "MermanNativeEngineNewWithFontsFn",
+      "code": 11,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "config", "c_type": "const MermanNativeFontEngineConfig *", "rust_type": "*const MermanNativeFontEngineConfig" },
+        { "name": "out_engine", "c_type": "MermanNativeEngineToken *", "rust_type": "*mut MermanNativeEngineToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create a callback-free reusable engine with one owned font context for measurement and painting. Caller font bytes are copied before return and precede optional bundled fallback fonts. The caller initializes out_engine to zero; failures publish no engine and every written result must be released with result_free. An artifact without native-fonts returns missing-capability without reading the font array."
     }
   ],
   "records": [
@@ -503,6 +517,19 @@
         { "name": "icon_packs", "c_type": "const MermanNativeIconPack *", "rust_type": "*const MermanNativeIconPack", "ownership": "borrowed contiguous record array for the call; null only when icon_pack_count is zero" },
         { "name": "icon_pack_count", "c_type": "size_t", "rust_type": "usize", "ownership": "number of logical pack records; zero installs no icon-registry service" }
       ]
+    },
+    {
+      "id": "font_engine_config",
+      "c_name": "MermanNativeFontEngineConfig",
+      "rust_name": "MermanNativeFontEngineConfig",
+      "description": "An independent size-tagged memory-font engine configuration with no host callback. Caller buffers precede optional bundled fallback and the engine retains its own immutable font context.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeFontEngineConfig)" },
+        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the constructor call; explicit text measurement selectors conflict with the native font service" },
+        { "name": "fonts", "c_type": "const MermanNativeSlice *", "rust_type": "*const MermanNativeSlice", "ownership": "borrowed contiguous array of borrowed font buffers, copied before the constructor returns; null only when font_count is zero" },
+        { "name": "font_count", "c_type": "size_t", "rust_type": "usize", "ownership": "number of caller font buffers, including duplicates; bounded before array access" },
+        { "name": "use_bundled_fonts", "c_type": "uint8_t", "rust_type": "u8", "ownership": "boolean, exactly zero or one; one appends compiled bundled fallback fonts after caller buffers" }
+      ]
     }
   ],
   "ownership_rules": [
@@ -511,6 +538,7 @@
     { "id": "engine_tokens", "description": "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close." },
     { "id": "host_callbacks", "description": "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions." },
     { "id": "disabled_capabilities", "description": "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free." },
-    { "id": "engine_services", "description": "engine_new_with_services borrows the outer configuration, embedded options, pack records, IconifyJSON bytes, and registration names only until return and never invokes the host callback during construction. A successful engine owns the fully validated immutable registry without retaining pack pointers; callback and user_data follow the existing quiescent-close lifetime. Any validation, registry, service-conflict, engine, token, result-allocation, or panic failure publishes no caller-visible engine. If publication must be rolled back, the token is retired under lock and the complete engine and service graph are destroyed only after all registry and admission locks are released." }
+    { "id": "engine_services", "description": "engine_new_with_services borrows the outer configuration, embedded options, pack records, IconifyJSON bytes, and registration names only until return and never invokes the host callback during construction. A successful engine owns the fully validated immutable registry without retaining pack pointers; callback and user_data follow the existing quiescent-close lifetime. Any validation, registry, service-conflict, engine, token, result-allocation, or panic failure publishes no caller-visible engine. If publication must be rolled back, the token is retired under lock and the complete engine and service graph are destroyed only after all registry and admission locks are released." },
+    { "id": "engine_fonts", "description": "engine_new_with_fonts borrows its configuration, options, font slice array and font bytes only until return, copies caller bytes, and installs one immutable native font context for measurement and painting without a host callback or ambient font discovery. Caller fonts precede bundled fallback. Structural records must not overlap payload bytes; outputs must be disjoint from each other and every input. Read-only payload slices may overlap each other and duplicate buffers are charged independently. Detectable overlap failures leave outputs untouched. The constructor bounds font count and cumulative byte lengths before copying and delegates font validation, deduplication, face limits and option conflicts to their existing owners. Without native-fonts, the constructor returns missing-capability without dereferencing the font array; requesting unavailable bundled fonts also returns missing-capability. Failed construction publishes no engine, and a successful engine remains usable after all input storage is released." }
   ]
 }

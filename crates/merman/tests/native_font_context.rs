@@ -543,7 +543,16 @@ mod binary_context_contract {
     fn absent_context_keeps_compatibility_typography_admission() {
         for target in targets(SvgRequest::default(), None) {
             let output = render("flowchart LR\nA[Hello]\nstyle A word-spacing:4px", target);
-            assert!(output.is_ok(), "{:?}", output.err());
+            if merman::svg::export::system_font_discovery_available() {
+                assert!(output.is_ok(), "{:?}", output.err());
+            } else {
+                assert!(matches!(
+                    output.map_err(|error| *error),
+                    Err(merman::RenderError::Export(
+                        merman::svg::export::ExportError::FontSourceUnavailable
+                    ))
+                ));
+            }
         }
     }
 }
@@ -826,36 +835,32 @@ mod document_context_contract {
                     "{error}"
                 );
             }
-            #[cfg(feature = "png")]
-            assert_ne!(
+            let exports = [
+                #[cfg(feature = "png")]
                 document
                     .prepare_png_export(&Default::default(), OperationControl::new())
-                    .unwrap()
-                    .export_report()
-                    .fonts()
-                    .source_mode(),
-                ExportFontMode::NativeContext,
-            );
-            #[cfg(feature = "jpeg")]
-            assert_ne!(
+                    .map(|export| export.export_report().fonts().source_mode()),
+                #[cfg(feature = "jpeg")]
                 document
                     .prepare_jpeg_export(&Default::default(), OperationControl::new())
-                    .unwrap()
-                    .export_report()
-                    .fonts()
-                    .source_mode(),
-                ExportFontMode::NativeContext,
-            );
-            #[cfg(feature = "pdf")]
-            assert_ne!(
+                    .map(|export| export.export_report().fonts().source_mode()),
+                #[cfg(feature = "pdf")]
                 document
                     .prepare_pdf_export(&Default::default(), OperationControl::new())
-                    .unwrap()
-                    .export_report()
-                    .fonts()
-                    .source_mode(),
-                ExportFontMode::NativeContext,
-            );
+                    .map(|export| export.export_report().fonts().source_mode()),
+            ];
+            for export in exports {
+                if merman::svg::export::system_font_discovery_available() {
+                    assert_ne!(export.unwrap(), ExportFontMode::NativeContext);
+                } else {
+                    assert!(matches!(
+                        export,
+                        Err(merman::RenderError::Export(
+                            merman::svg::export::ExportError::FontSourceUnavailable
+                        ))
+                    ));
+                }
+            }
         }
     }
 
