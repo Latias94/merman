@@ -54,6 +54,14 @@ recovery, warnings and source-config evidence but no longer validate visual them
 Request full presentation when the host needs preview/theme validation. Core's `terminal-text`
 leaf is selected by terminal and diagnostic owners, independently of diagram selection.
 
+The `complete-svg` and `complete-svg-elk` convenience features remain available on `merman`
+and `merman-rustdoc`. They now select `svg,layout-cytoscape` and
+`svg,layout-cytoscape,layout-elk`, respectively, without `math`. This is a behavior change from
+their published math-enabled definitions: add `math` explicitly to preserve mathematical-label
+rendering, for example `features = ["complete-svg-elk", "math"]`. Neither aggregate selects
+diagram families; with defaults disabled, also select `all-diagrams` or the required `diagram-*`
+features. Source defaults and exact artifact recipes continue to select direct capability leaves.
+
 The snapshot freezes canonical semantics, effective configuration, parse options, the existing
 compiled theme binding, source size/model complexity, and the actual parse-time runtime context.
 Implicit Gantt dates and generated GitGraph IDs therefore remain fixed across redraws. Prepare

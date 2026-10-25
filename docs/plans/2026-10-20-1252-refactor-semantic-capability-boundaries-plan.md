@@ -9,6 +9,11 @@ execution: code
 
 # Semantic Parsing and Capability Boundaries - Plan
 
+Maintainer amendment, 2026-10-25: retain `complete-svg` and `complete-svg-elk` as math-free
+output/layout conveniences on the Rust facade and Rustdoc integration. This replaces the
+original aggregate-retirement decision, not the explicit-math requirement. Record their changed
+behavior in Unreleased and migration guidance; historical verification keeps its measured source.
+
 ## Goal Capsule
 
 - **Objective:** Rust hosts can inspect Mermaid diagrams with a smaller verified executable and select rendering capabilities explicitly.
@@ -62,7 +67,7 @@ Current math-bearing defaults and browser recipes also require consumers to unde
 
 **Math and delivery**
 
-- R11. Math remains an explicit positive leaf. Library defaults, generic SVG/layout/diagram aggregates, CLI source defaults and CLI's rustdoc leaf must not reach it. Retire complete-svg and complete-svg-elk rather than silently redefine them.
+- R11. Math remains an explicit positive leaf. Library defaults, generic SVG/layout/diagram aggregates, CLI source defaults and CLI's rustdoc leaf must not reach it. Retain complete-svg and complete-svg-elk as math-free output/layout conveniences; document their changed behavior and explicit-math migration.
 - R12. Preserve explicit math rendering, formula syntax and typed missing-capability behavior. A math-free build must not silently emit literal fallback for a math-required label, load JS/network fallback or choose another backend. Preserve family-specific literal behavior.
 - R13. The official cli-release recipe selects math explicitly. Keep audited full reference/SDK/exhaustive recipes explicit; preserve math-free default native, Node and Typst products. Generic web full/render packages omit math; custom source opt-in is documented without a new published SKU.
 
@@ -118,7 +123,7 @@ Source API/default narrowing is intentionally breaking; it does not imply gratui
 - KTD3. **Positive capabilities inside existing owners.** Add presentation, editor-facts and compat-json, with compat-json -> presentation and empty core defaults. Gate definitions/fields/includes/callbacks as well as calls; keep one family catalog (R1, R4, R10).
 - KTD4. **One construction, requested projections.** A private closed demand selects semantic/editor/presentation/JSON observations; migrate actual analysis/ASCII callers. Retain token buffering where grammar/diagnostics need it; no public plugin/optimization switch (R2, R4, R8).
 - KTD5. **State ownership transfer.** Consume records into canonical types while retaining document ids, graph nodes/edges, validation/getData and hidden notes. Remove proved intermediates, not output-required work (R5, R9).
-- KTD6. **Source defaults differ from exact delivery recipes.** Retire complete aliases and implicit math, keep the existing positive backend/error vocabulary and explicit CLI/reference math selections (R11–R13).
+- KTD6. **Source defaults differ from exact delivery recipes.** Remove implicit math while retaining math-free complete aggregates, keep the existing positive backend/error vocabulary and explicit CLI/reference math selections (R11–R13).
 - KTD7. **Adjacent causal evidence.** Freeze harness, editor-demand and State-transfer changes separately. Full-operation A/B rows retain their contract; new semantic/package rows declare phase/capability differences (R14).
 - KTD8. **Pinned comment observations before local assertions.** Fix both unconditional inline swallowing and valid percent tokens using public upstream outcomes (R3, R15).
 
@@ -234,7 +239,7 @@ Direct geometry continues to share family route/label decisions without serializ
 | theme_color/ryu-js | presentation-only module/dependency | Remove unconditional base error/type edges |
 | terminal_text/Unicode width helpers | Positive terminal-text leaf | ASCII/diagnostic owners forward explicitly |
 | Legacy mutable detectors and JSON/render overlays | Explicit full adapter | Preserve precedence/provenance; reject lean lookup |
-| complete-svg and complete-svg-elk | Retired in facade/Rustdoc | Explicit output/layout leaves plus math when needed |
+| complete-svg and complete-svg-elk | Retained in facade/Rustdoc without math or diagram selection | Add explicit math to preserve mathematical-label support; direct leaves remain available |
 
 Core default remains empty; diagram selectors select grammar/canonical meaning only.
 Presentation selects theme/color/paint/render preparation, not layouts, SVG, math or host adapters.
@@ -268,7 +273,7 @@ Default Analyzer goes lean; custom analysis remains explicit full compatibility,
 
 | Recipe group | Planned selection |
 |---|---|
-| Facade default | Direct all-diagrams,svg,layout-cytoscape,layout-elk; no math/complete alias |
+| Facade default | Direct all-diagrams,svg,layout-cytoscape,layout-elk; no math; convenience aggregates remain separate |
 | Rustdoc default and generic native/static SVG profiles | Existing direct nonmath defaults; remove generic profile math |
 | CLI source default and rustdoc leaf | No math; independent positive math leaf remains |
 | Official cli-release/cargo-dist | Explicit math retained with matching dist metadata |
@@ -395,13 +400,13 @@ No implementation or benchmark outcome is asserted by this plan.
 - **Verification:** Affected core/analysis/editor/LSP/ASCII/render/facade nextest; binding/native ABI contracts where touched; owned transport build/package tests.
 - **Done:** Ordinary semantic/diagnostics/ASCII calls no longer route through presentation/legacy JSON; full-only host operations are explicit and compatible.
 
-### U7. Remove implicit math and complete aggregates
+### U7. Remove implicit math and retain SVG convenience aggregates
 
 - **Goal:** Make math explicit without changing formula syntax or positive backend behavior.
 - **Requirements:** R10–R13, R16; AE8–AE10; KTD6.
 - **Dependencies:** U1. Existing math leaves and output/layout selectors suffice; this unit does not depend on the new parser API or presentation capability.
 - **Existing files:** Facade/Rustdoc/CLI/renderer/bindings transport Cargo manifests; crates/xtask/src/cmd/{feature_matrix,artifact_profiles}.rs; capabilities/feature-surface-v1.json and capabilities/artifact-profiles-v2.json; existing closure verifier/tests.
-- **Approach:** Retire complete aliases, use direct generic output/layout defaults, and remove math from CLI default and rustdoc leaf. Preserve positive backend and exact official CLI/reference/SDK/exhaustive recipes.
+- **Approach:** Keep complete aggregates as math-free output/layout conveniences, use direct generic output/layout defaults, and remove math from CLI default and rustdoc leaf. Preserve positive backend and exact official CLI/reference/SDK/exhaustive recipes.
 - **Recipes:** Remove generic native/static/Rustdoc SVG and web full/render math; retain default native/Node/Typst exclusions. Do not globally forbid packages legitimately used elsewhere or assert Cargo.lock absence.
 - **Runtime:** Preserve label-sensitive math admission, MissingCapability id/schema and explicit RaTeX installation; no silent fallback or blanket dollar rejection.
 - **Test files:** crates/merman-rustdoc/tests/regressions.rs; crates/merman-cli/tests/ratex_math.rs; scripts/test_verify_artifact_dependency_closures.py; in-module tests in crates/xtask/src/cmd/feature_matrix.rs.
@@ -415,7 +420,7 @@ No implementation or benchmark outcome is asserted by this plan.
 - **Requirements:** R10–R13, R16; AE1, AE7–AE10; KTD3, KTD6.
 - **Dependencies:** U6, U7.
 - **Existing files:** README.md, docs/FEATURES.md, Rust embedding/Rustdoc/CLI/web docs, affected ADRs/new successor ADR, package build descriptors/descriptions, CI lanes, generated declarations, dependency/license reports and generators.
-- **Migration:** Explain new semantic/full phase and late-graphics APIs, updating the existing render-reuse guide for renamed full snapshot/handoff types rather than introducing another lifecycle. Replace aliases with output/layout leaves and optional math. Supersede only changed policy clauses and preserve historical performance evidence.
+- **Migration:** Explain new semantic/full phase and late-graphics APIs, updating the existing render-reuse guide for renamed full snapshot/handoff types rather than introducing another lifecycle. Retain output/layout aggregates and require explicit math, or select direct leaves. Supersede only changed policy clauses and preserve historical performance evidence.
 - **Distribution:** Keep cargo-dist/cli-release explicit math; document cargo install source-default difference and opt-in. Inspect Homebrew/Nix/container/binstall fallback recipes instead of assuming archive/source capability identity.
 - **Web/Node/Typst:** Update web full/render no-math expectations and installed one-shot/prepared/mount smoke; preserve standalone Node math-free ownership and Typst rejection/import boundary. Keep transport API 8, options schema 3, geometry schema 1, native ABI 3 and their current resource/metadata projections unless an independent change requires otherwise. Custom WASM math stays a source build, not a new SKU.
 - **Generated:** Update authoritative descriptors first, regenerate changed declaration/capability/legal projections/package copies, inspect diffs. Keep positive math notices; never hand-delete ratex notices globally.

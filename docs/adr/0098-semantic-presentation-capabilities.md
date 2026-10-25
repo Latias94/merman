@@ -46,7 +46,9 @@ explicitly full-only; semantic requests never silently use them.
 The source-breaking migration removes `Engine`, `ParseMetadata`, `with_engine`, and
 `prepare_semantic`; callers select the corresponding explicit parser, metadata, configuration,
 and artifact APIs in the [migration guide](../migrations/render-reuse-host-integration.md).
-`complete-svg` and `complete-svg-elk` are retired; select output/layout leaves and optional `math`.
+`complete-svg` and `complete-svg-elk` remain math-free output/layout conveniences under the
+2026-10-25 amendment to [ADR-0097](0097-explicit-math-capability.md); add `math` explicitly to
+preserve their previous mathematical-label support.
 
 Host transport envelopes, schemas, and capability IDs retain the synchronized baseline: Web
 transport API 8, options schema 3, geometry schema 1, and native ABI 3.

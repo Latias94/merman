@@ -34,6 +34,26 @@ The PR remains a draft; no PR merge, publication or release is authorized by thi
 
 ## Evidence ownership
 
+The maintainer amended the SVG aggregate decision on 2026-10-25: `merman` and
+`merman-rustdoc` retain `complete-svg` and `complete-svg-elk` as output/layout conveniences
+without math or diagram selection. Mathematical-label consumers add `math` explicitly.
+Source defaults, exact artifact recipes, capability IDs and transport contracts are unchanged.
+The changelog, migration guide, ADR-0097 and implementation plan record this behavior change.
+Earlier feature-matrix and artifact receipts below still describe their original sources,
+including aggregate retirement; they are not relabeled as checks of this amendment. This
+does not resume timing experiments or close the open performance acceptance criterion.
+
+Focused amendment verification passes: 26 feature-matrix unit tests, the owner matrix's 49
+build cases (including all four aggregate selections) and 16 isolated consumers, and both
+existing Rustdoc math/family regressions under four feature selections (eight test executions).
+Eight normal dependency graphs confirm that each aggregate omits RaTeX and diagram selectors
+unless explicitly selected, with positive math graphs retaining RaTeX. All 36 exact artifact
+profiles and 36 representative dependency-closure cases pass. The 13 Rust license reports and
+424 release legal projections remain current; third-party licenses, 61 Python contracts,
+formatting, and diff checks pass. Local logs are under
+`target/ci-triage/pr241-svg-aggregates/`. These are scoped functional and dependency checks,
+not full platform-runtime coverage or new artifact-size, allocation or timing measurements.
+
 Final corrected artifacts are retained outside Cargo targets at
 `F:/codex-builds/merman-semantic-capability-boundaries/evidence/final-f0365e6a4-20261023/`
 (the **final root** below). Fresh historical U3/U4 allocation batches and the original strict

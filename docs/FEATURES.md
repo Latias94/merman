@@ -61,8 +61,11 @@ transport capability IDs. Defaults-off family selections and ASCII use canonical
 Core's `terminal-text` leaf owns shared terminal normalization and Unicode width helpers.
 ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not.
 
-The current development branch retires `complete-svg` and `complete-svg-elk`. Select output and
-layout leaves directly and add `math` only when needed. The facade defaults to
+The current development branch retains `complete-svg = ["svg", "layout-cytoscape"]` and
+`complete-svg-elk = ["complete-svg", "layout-elk"]` on `merman` and `merman-rustdoc`.
+Neither aggregate selects diagram families or math. This changes their previously math-enabled
+behavior: add `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, when
+upgrading a mathematical-label consumer. Direct output/layout leaves remain available. The facade defaults to
 `all-diagrams + svg + layout-cytoscape + layout-elk`; generic SVG recipes and Web full/render
 packages omit math. Official CLI archives select math explicitly, while CLI source defaults and
 the `rustdoc` leaf omit it. Installed `0.9.1` artifacts retain their published recipes.
@@ -452,7 +455,7 @@ in its normal/build Cargo graph, supports crate-level docs, and makes diagram up
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
 features compile all diagram families, SVG, Cytoscape, and ELK into the proc-macro host. Math is
 optional: add `math` for mathematical labels. The facade also defaults to direct SVG and layout
-leaves without math. The retired complete aggregates have direct-leaf migration recipes above.
+leaves without math. Both packages retain the math-free convenience aggregates described above.
 
 The macro default includes the EPL-2.0 ELK closure. Optional dependency gating keeps the renderer
 out of ordinary builds while the dependency is disabled. To exclude ELK from documentation builds,

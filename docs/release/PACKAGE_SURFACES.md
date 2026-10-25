@@ -69,8 +69,10 @@ is published in the workspace dependency order before both consumers.
 
 The macro and current-source facade default to `all-diagrams`, `svg`,
 `layout-cytoscape`, and `layout-elk`; mathematical labels require explicit `math`.
-The current development branch retires the complete SVG aggregates; installed older products
-retain their original feature definitions.
+The current development branch retains `complete-svg` (SVG and Cytoscape) and `complete-svg-elk`
+(also ELK) on both packages, without math or implicit diagram selection. Add `math` explicitly
+when upgrading a previously math-enabled aggregate selection; installed older products retain
+their original feature definitions.
 Both source defaults include the EPL-2.0 ELK implementation and its notice/source obligations.
 To omit ELK, disable default features and select the required diagram families plus `svg`
 and required layout leaves. Keep the macro dependency optional when ordinary builds should

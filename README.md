@@ -141,7 +141,9 @@ silently choosing a different result.
 
 The current-source `merman` dependency defaults to `all-diagrams`, `svg`, `layout-cytoscape` and
 `layout-elk`: all built-in families and SVG rendering with both layouts. Math labels require the
-explicit `math` feature. The former `complete-svg` and `complete-svg-elk` features are retired. Distributed artifacts
+explicit `math` feature. The convenience features `complete-svg` (SVG and Cytoscape) and
+`complete-svg-elk` (also ELK) remain available but no longer enable math; add `math` explicitly
+when migrating a math-enabled aggregate selection. Neither aggregate selects diagram families. Distributed artifacts
 include the ELK implementation's EPL-2.0 notices and source provenance. Analysis, editor APIs,
 terminal output, binary export, and ambient system adapters remain opt-in.
 

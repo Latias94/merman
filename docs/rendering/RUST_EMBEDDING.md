@@ -23,7 +23,7 @@ For an SVG host that needs all built-in diagram families and Cytoscape support:
 merman = { path = "../merman/crates/merman", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
 ```
 
-Default facade builds include all languages, SVG, Cytoscape and ELK. Math is opt-in through `math`; `complete-svg` and `complete-svg-elk` are retired. Disable defaults and select the required family/output/layout leaves when the default exceeds the host's requirements. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
+Default facade builds include all languages, SVG, Cytoscape and ELK. Math is opt-in through `math`; `complete-svg` selects SVG and Cytoscape, and `complete-svg-elk` adds ELK. Neither aggregate selects math or diagram families. Add `math` explicitly when upgrading a previously math-enabled aggregate selection. Disable defaults and select the required families plus an aggregate or individual output/layout leaves when the default exceeds the host's requirements. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
 
 For a host accepting only Flowchart and Sequence, replace `all-diagrams` with `diagram-flowchart, diagram-sequence`. Forward selectors from a reusable library rather than assuming another dependency will enable them. Cargo features are additive: inspect the final application with `cargo tree -e features`, and verify a narrow selection in an independent consumer workspace.
 

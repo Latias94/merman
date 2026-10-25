@@ -16,6 +16,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Playground comparison keeps fallback fonts consistent across its rendering panes, including C4 on Windows. [#196](https://github.com/Latias94/merman/pull/196)
 - The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds no syntax family, Cargo feature, FFI version, or editor-facts schema version. [#196](https://github.com/Latias94/merman/pull/196)
 
+### Lightweight embedding and Rust migration
+
+- Separate canonical semantic parsing from full presentation so library consumers can select lighter parser, ASCII, analysis, or editor configurations and avoid unrequested theme evaluation, editor facts, and compatibility JSON. Required security normalization, validation, cancellation, and resource accounting remain in place. These boundaries reduce unnecessary work for each use case; they do not guarantee that every artifact is smaller or every operation is faster. [#241](https://github.com/Latias94/merman/pull/241)
+- **Breaking Rust API changes:** use `SemanticParser` and `SemanticMetadata` for canonical meaning, or `MermaidEngine` and `PresentationMetadata` for full processing. Select `editor-facts`, `presentation`, and `compat-json` as needed; `compat-json` implies presentation. Update removed engine/model aliases and render handoffs using the [migration guide](docs/migrations/render-reuse-host-integration.md). [#241](https://github.com/Latias94/merman/pull/241)
+- **Breaking feature behavior:** `complete-svg` and `complete-svg-elk` remain available on `merman` and `merman-rustdoc`, but no longer enable `math`. They select SVG with Cytoscape, and SVG with Cytoscape plus ELK, respectively; diagram families remain independent. Enable `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, to retain mathematical-label rendering. The facade and CLI source defaults and generic Web full/render packages also omit math; official CLI release archives still include it. Source-built CLI users add `--features math`. [#241](https://github.com/Latias94/merman/pull/241)
+
 ### Theme integration
 
 - Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract. [#178](https://github.com/Latias94/merman/pull/178)

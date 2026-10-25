@@ -41,6 +41,8 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     (
         "merman",
         &[
+            "complete-svg",
+            "complete-svg-elk",
             "system-fonts",
             "experimental-system-font-query",
             "presentation",
@@ -75,7 +77,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-ffi", &["native-runtime"]),
     ("merman-lsp", &["stdio"]),
     ("merman-render", &[]),
-    ("merman-rustdoc", &[]),
+    ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
     ("merman-uniffi", &["binding-generation", "native-runtime"]),
     ("merman-wasm", &[]),
@@ -806,6 +808,23 @@ impl FeatureGraph {
     }
 
     fn validate_product_feature_contracts(&self) -> Result<usize, XtaskError> {
+        for package_name in ["merman", "merman-rustdoc"] {
+            let package = self.package(package_name)?;
+            for (feature, members) in [
+                ("complete-svg", &["svg", "layout-cytoscape"][..]),
+                ("complete-svg-elk", &["complete-svg", "layout-elk"][..]),
+            ] {
+                let actual = direct_feature_members(package, feature)?;
+                let expected = members.iter().map(|member| (*member).to_string()).collect();
+                if actual != expected {
+                    return Err(matrix_error(format!(
+                        "{}: `{feature}` must contain only {expected:?}; math and diagram families remain explicit; found {actual:?}",
+                        package.manifest_path.display()
+                    )));
+                }
+            }
+        }
+
         let facade = self.package("merman")?;
         let facade_defaults = direct_feature_members(facade, "default")?;
         let expected_defaults = BTreeSet::from([
@@ -1055,6 +1074,16 @@ impl FeatureGraph {
             None,
             "rustdoc-default",
         ));
+        for package in ["merman", "merman-rustdoc"] {
+            for feature in ["complete-svg", "complete-svg-elk"] {
+                cases.insert(BuildCase::new(
+                    package,
+                    vec![feature.to_string()],
+                    None,
+                    "svg-aggregate",
+                ));
+            }
+        }
         let transport_package_names = if strict {
             transport_packages().collect::<Vec<_>>()
         } else {
@@ -1658,17 +1687,25 @@ mod tests {
         graph(vec![
             package(
                 "merman",
-                &[(
-                    "default",
-                    &["all-diagrams", "svg", "layout-cytoscape", "layout-elk"],
-                )],
+                &[
+                    (
+                        "default",
+                        &["all-diagrams", "svg", "layout-cytoscape", "layout-elk"],
+                    ),
+                    ("complete-svg", &["svg", "layout-cytoscape"]),
+                    ("complete-svg-elk", &["complete-svg", "layout-elk"]),
+                ],
             ),
             package(
                 "merman-rustdoc",
-                &[(
-                    "default",
-                    &["all-diagrams", "svg", "layout-cytoscape", "layout-elk"],
-                )],
+                &[
+                    (
+                        "default",
+                        &["all-diagrams", "svg", "layout-cytoscape", "layout-elk"],
+                    ),
+                    ("complete-svg", &["svg", "layout-cytoscape"]),
+                    ("complete-svg-elk", &["complete-svg", "layout-elk"]),
+                ],
             ),
             package_with_metadata(
                 "merman-cli",
@@ -1827,6 +1864,58 @@ mod tests {
             graph.validate_product_feature_contracts().unwrap(),
             PRODUCT_FEATURE_CONTRACTS
         );
+    }
+
+    #[test]
+    fn svg_aggregates_reject_implicit_math_and_diagram_families() {
+        for package_name in ["merman", "merman-rustdoc"] {
+            for feature in ["complete-svg", "complete-svg-elk"] {
+                for extra in ["math", "all-diagrams"] {
+                    let mut graph = product_contract_graph();
+                    graph
+                        .packages
+                        .get_mut(package_name)
+                        .unwrap()
+                        .features
+                        .get_mut(feature)
+                        .unwrap()
+                        .push(extra.to_string());
+
+                    let error = graph.validate_product_feature_contracts().unwrap_err();
+                    assert!(
+                        error
+                            .to_string()
+                            .contains("math and diagram families remain explicit"),
+                        "{error}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn svg_aggregates_retain_their_output_and_layout_members() {
+        for package_name in ["merman", "merman-rustdoc"] {
+            for feature in ["complete-svg", "complete-svg-elk"] {
+                let mut graph = product_contract_graph();
+                graph
+                    .packages
+                    .get_mut(package_name)
+                    .unwrap()
+                    .features
+                    .get_mut(feature)
+                    .unwrap()
+                    .pop();
+
+                let error = graph.validate_product_feature_contracts().unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("`{feature}` must contain only")),
+                    "{error}"
+                );
+            }
+        }
     }
 
     #[test]

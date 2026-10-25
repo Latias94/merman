@@ -105,6 +105,9 @@ svg = [
 layout-cytoscape = ["svg", "merman/layout-cytoscape"]
 layout-elk = ["svg", "merman/layout-elk"]
 math = ["svg", "merman/math"]
+# Convenience output/layout bundles; mathematical labels require explicit `math`.
+complete-svg = ["svg", "layout-cytoscape"]
+complete-svg-elk = ["complete-svg", "layout-elk"]
 
 [dependencies]
 merman = { workspace = true, default-features = false, optional = true }

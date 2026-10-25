@@ -134,8 +134,9 @@ inclusion, Git rollback, and migration from this attribute form.
 The `0.9.2` release defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
 `layout-elk`: all built-in families and deterministic SVG rendering with both layout engines.
 Math is opt-in; add `math` when diagrams contain mathematical labels. The current development
-branch retires `complete-svg` and `complete-svg-elk`; select their output/layout leaves directly. Users of alpha.6's math-enabled default must enable
-math explicitly when upgrading.
+branch retains `complete-svg` (SVG and Cytoscape) and `complete-svg-elk` (also ELK), but neither
+aggregate enables math or selects diagram families. Users of the previously math-enabled
+aggregates or alpha.6's math-enabled default must enable `math` explicitly when upgrading.
 
 The default includes the EPL-2.0 ELK implementation; distributed artifacts must retain the
 corresponding notices and source provenance. It does not enable host clock, time-zone, random,
