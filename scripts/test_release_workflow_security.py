@@ -433,6 +433,17 @@ jobs:
                     "--lib preset_qualification::", command,
                 )
 
+    def test_host_theme_profiles_explicitly_request_system_fonts(self) -> None:
+        harness = tomllib.loads(read(ROOT / "crates/merman-theme-acceptance/Cargo.toml"))
+        with self.subTest(consumer="private qualification harness"):
+            self.assertIn("merman/system-fonts", harness["features"]["png"])
+        step = read(CI_WORKFLOW).split(
+            "      - name: Test theme authoring and Flowchart paint across SVG and PNG\n", 1,
+        )[1].split("\n      - name:", 1)[0]
+        features = step.split("--features ", 1)[1].split()[0].split(",")
+        with self.subTest(consumer="public facade pixel tests"):
+            self.assertIn("system-fonts", features)
+
     def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner in (("ci.yml", "cargo nextest run"),
                              ("release-preflight.yml", "cargo test")):
