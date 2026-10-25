@@ -36,6 +36,12 @@ Playground selects js-yaml 4.3.2, the current `v4-legacy` release. Version 5.4.3
 
 These version observations describe the 0.9.0 preparation audit, not an evergreen claim about registry latest. Store the complete Cargo/npm candidate audit and compatibility evidence in release artifacts or the release record. Revisit each exception when its blocking public API or companion dependency changes. The policy records selection reasons; it does not assert that a new `cargo deny`, package build, or publication has passed.
 
+For a transitive security advisory, prefer a patched version admitted by the released parent's
+dependency range, or a compatible released parent update. When the parent does not yet support
+the patched major, retain the supported graph and document the affected path and upstream
+removal condition. An advisory alone does not justify forcing an incompatible override. Keep
+the unresolved audit result visible; this compatibility policy does not waive an audit gate.
+
 ## Node build compatibility
 
 The native GNU builder retains Node 24.13.1 on Bullseye because that container defines the selected Linux compatibility baseline; a newer host tool does not by itself admit a newer glibc requirement. The musl candidate uses Node 24.21.0 on Alpine 3.23. Keep each container identity and its package-tool provenance with the owner artifact evidence, and verify native loading/package smoke after a builder change. These are distinct preparation choices, not proof that the final package has passed its native owner gates.
