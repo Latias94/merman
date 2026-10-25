@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "font_files": [
+    "crates/merman-export/assets/fonts/Cousine-Regular.ttf",
+    "crates/merman-export/assets/fonts/Cousine-Bold.ttf",
+    "crates/merman-export/assets/fonts/Cousine-Italic.ttf"
+  ],
+  "engine_options": {
+    "resources": {"profile": "interactive"},
+    "svg": {"pipeline": "resvg-safe", "diagram_id": "wasi-host-smoke"}
+  },
+  "png_options": {"raster": {"scale": 2.0}},
+  "constrained_options": {"resources": {"profile": "constrained"}},
+  "sources": {
+    "basic": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n",
+    "parse_error": "flowchart ???",
+    "math": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
+    "elk": "---\nconfig:\n  fontFamily: Cousine\n  layout: elk\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n",
+    "dagre": "---\nconfig:\n  fontFamily: Cousine\n  layout: dagre\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n"
+  }
+}

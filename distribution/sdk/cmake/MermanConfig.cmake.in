@@ -1,0 +1,16 @@
+get_filename_component(_merman_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+if(NOT TARGET Merman::Merman)
+  add_library(Merman::Merman SHARED IMPORTED)
+  set_target_properties(Merman::Merman PROPERTIES
+    IMPORTED_LOCATION "${_merman_prefix}/@DYNAMIC_PATH@"
+    INTERFACE_INCLUDE_DIRECTORIES "${_merman_prefix}/include")
+@IMPORT_LIBRARY@
+endif()
+if(NOT TARGET Merman::Static)
+  add_library(Merman::Static STATIC IMPORTED)
+  set_target_properties(Merman::Static PROPERTIES
+    IMPORTED_LOCATION "${_merman_prefix}/lib/@STATIC_NAME@"
+    INTERFACE_INCLUDE_DIRECTORIES "${_merman_prefix}/include"
+    INTERFACE_LINK_LIBRARIES "@SYSTEM_LIBRARIES@")
+endif()
+unset(_merman_prefix)

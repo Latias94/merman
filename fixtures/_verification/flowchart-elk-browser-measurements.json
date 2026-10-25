@@ -3,7 +3,7 @@
   "mermaid_version": "12.2.0",
   "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
   "browser": "HeadlessChrome/151.0.7922.77",
-  "measurement_source": "Actual instrumented Mermaid ELK invocation input and raw provider output; global points translated only by the recorded ELK container origin, before clipping and terminal straightening.",
+  "measurement_source": "Actual instrumented Mermaid ELK invocation input and raw provider output; global points translated only by the recorded ELK container origin, before clipping and terminal straightening. The browser field records the original collection; the four fixtures documented in ADR 0024 were recaptured with HeadlessChrome/151.0.7922.77 on 2026-10-25, while other entries retain their original measurements.",
   "entries": [
     {
       "fixture": "stress_flowchart_edge_labels_far_from_arrows_066",
@@ -1783,7 +1783,7 @@
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh27_set_text_color_of_nodes_and_links_according_to_styles_when_027",
       "input_sha256": "e37d2bc5cfa26cefde0177a1c617384e8a8e6bf4de30269c5b35d9e1277ba8d1",
-      "upstream_svg_sha256": "9af8bf52048b3cb969bc39f0fd231763abed382375bb781121c69f978edbe639",
+      "upstream_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
       "nodes": [
         {
           "id": "A",
@@ -2754,7 +2754,7 @@
     {
       "fixture": "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020",
       "input_sha256": "89d1f6cdd6662da4eefc4f4023587c64545f50df14d3690946354d7aa58a92e9",
-      "upstream_svg_sha256": "4997b1b4041978a66144f28a1c904d580f2efefd3dbb1a275f2c6cc8228cff1f",
+      "upstream_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
       "nodes": [
         {
           "id": "A",
@@ -2782,7 +2782,7 @@
           ],
           "center": [
             88,
-            179.5
+            179.49999809265137
           ],
           "label_box": {
             "text": "test",
@@ -2800,7 +2800,7 @@
           ],
           "center": [
             280,
-            179.5
+            179.49999809265137
           ],
           "label_box": {
             "text": "C",
@@ -2818,7 +2818,7 @@
           ],
           "center": [
             184,
-            264.5
+            264.49999809265137
           ],
           "label_box": {
             "text": "D",
@@ -2849,12 +2849,12 @@
             ],
             [
               88,
-              157
+              156.99999809265137
             ]
           ],
           "label_size": [
             46.015625,
-            20
+            19.999998092651367
           ]
         },
         {
@@ -2876,12 +2876,12 @@
             ],
             [
               280,
-              157
+              156.99999809265137
             ]
           ],
           "label_size": [
             46.015625,
-            20
+            19.999998092651367
           ]
         },
         {
@@ -2891,19 +2891,19 @@
           "points": [
             [
               88,
-              202
+              201.99999809265137
             ],
             [
               88,
-              222
+              221.99999809265137
             ],
             [
               162,
-              222
+              221.99999809265137
             ],
             [
               162,
-              242
+              241.99999809265137
             ]
           ]
         },
@@ -2914,19 +2914,19 @@
           "points": [
             [
               280,
-              202
+              201.99999809265137
             ],
             [
               280,
-              222
+              221.99999809265137
             ],
             [
               206,
-              222
+              221.99999809265137
             ],
             [
               206,
-              242
+              241.99999809265137
             ]
           ]
         }
@@ -2935,7 +2935,7 @@
     {
       "fixture": "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024",
       "input_sha256": "9d416eaedbeda364326ad0d96ad075d2d12a96eda9278d763eba79cf1c939918",
-      "upstream_svg_sha256": "af2668d8eb2910c653a974ef6d7868a33b6a71d432fddadfc3bcb44140831349",
+      "upstream_svg_sha256": "3d296ceab9ed3a364d2e6069c3430ea3ed94e35dfbcba70afd699cb5e302a09d",
       "nodes": [
         {
           "id": "A",
@@ -3027,7 +3027,7 @@
           ],
           "label_size": [
             54.421875,
-            20
+            19.999998092651367
           ]
         },
         {
@@ -3046,7 +3046,7 @@
           ],
           "label_size": [
             54.421875,
-            20
+            19.999998092651367
           ]
         },
         {
@@ -3065,7 +3065,7 @@
           ],
           "label_size": [
             54.421875,
-            20
+            19.999998092651367
           ]
         }
       ]
@@ -7956,7 +7956,7 @@
     {
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_false_094",
       "input_sha256": "fcc1647a03d968d09a49f5be57be869fa34639476d4c06065e49c686a9b69380",
-      "upstream_svg_sha256": "286f80c578be31b571bfae4c63c21a7cc7aa09b56302bd5b9fe9f230bbca129a",
+      "upstream_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
       "nodes": [
         {
           "id": "n0",
@@ -10918,7 +10918,7 @@
             563.5
           ],
           "label_box": {
-            "text": ",.?!+-*\u592d",
+            "text": ",.?!+-*夭",
             "size": [
               120,
               21
@@ -10954,7 +10954,7 @@
             617.5688629150391
           ],
           "label_box": {
-            "text": "Circle shape \u88a7\u90aa\u8914\u90aa\u8c22\u82af",
+            "text": "Circle shape 袧邪褔邪谢芯",
             "size": [
               120,
               42
@@ -11654,7 +11654,7 @@
             145.63772583007812
           ],
           "label_box": {
-            "text": "\u8305\u732b\u951a\u813f\u83bd\u4e48",
+            "text": "茅猫锚脿莽么",
             "size": [
               120,
               21

@@ -122,6 +122,7 @@ const RUST_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::IconRegistry,
     ConstructorServiceKey::NativeFontContext,
 ];
+const WASI_SERVICES: &[ConstructorServiceKey] = &[ConstructorServiceKey::NativeFontContext];
 
 define_binding_transports! {
     AndroidJni => {
@@ -134,7 +135,7 @@ define_binding_transports! {
         id: "native-c",
         targets: NATIVE_TARGET,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
-        constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
+        constructor_service_candidates: RUST_SERVICES,
     },
     Node => {
         id: "node",
@@ -159,6 +160,12 @@ define_binding_transports! {
         targets: NATIVE_TARGET,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
         constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
+    },
+    Wasi => {
+        id: "wasi",
+        targets: NATIVE_TARGET,
+        payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
+        constructor_service_candidates: WASI_SERVICES,
     },
     Web => {
         id: "web",
@@ -213,6 +220,29 @@ mod tests {
                     .map(|service| service.id()),
             );
         }
+    }
+
+    #[test]
+    fn wasi_is_native_semantics_with_only_the_memory_font_constructor() {
+        assert_eq!(BindingTransportKey::Wasi.spec().targets(), NATIVE_TARGET);
+        assert_eq!(
+            BindingTransportKey::Wasi
+                .spec()
+                .constructor_service_candidates(),
+            &[ConstructorServiceKey::NativeFontContext],
+        );
+        assert_eq!(
+            BindingTransportKey::NativeC
+                .spec()
+                .constructor_service_candidates(),
+            RUST_SERVICES,
+        );
+        assert_eq!(
+            BindingTransportKey::UniFfi
+                .spec()
+                .constructor_service_candidates(),
+            FULL_NATIVE_SDK_SERVICES,
+        );
     }
 
     fn assert_sorted_unique<'a>(ids: impl Iterator<Item = &'a str>) {

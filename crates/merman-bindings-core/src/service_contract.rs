@@ -1,3 +1,5 @@
+use crate::CapabilityKey;
+
 /// One renderer text-measurement route advertised by a transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -112,10 +114,19 @@ impl ConstructorServiceKey {
         }
     }
 
+    /// Additional public capability required beyond the SVG pipeline.
+    #[must_use]
+    pub const fn required_capability(self) -> Option<CapabilityKey> {
+        match self.spec().availability {
+            ConstructorServiceAvailability::SvgPipeline => None,
+            ConstructorServiceAvailability::NativeFonts => Some(CapabilityKey::NativeFonts),
+        }
+    }
+
     /// Whether this crate compiled the service implementation.
     ///
     /// A transport must still select an installable service explicitly; compiled dependency
-    /// features never add the Rust-only native font context to a foreign transport.
+    /// features never add a native font context constructor to another transport.
     #[must_use]
     pub const fn is_compiled(self) -> bool {
         self.spec().is_available(cfg!(feature = "svg"))
