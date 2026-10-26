@@ -32,14 +32,20 @@ fn render_config(
     source: &str,
     config: serde_json::Value,
 ) -> (merman_core::ManagedSemanticJson, String) {
+    render_config_with_environment(source, config, RenderEnvironment::deterministic())
+}
+
+fn render_config_with_environment(
+    source: &str,
+    config: serde_json::Value,
+    environment: RenderEnvironment,
+) -> (merman_core::ManagedSemanticJson, String) {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Usecase")
         .expect("detect Usecase");
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("render session");
+    let session = environment.begin_session().expect("render session");
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Usecase");
     let projection = artifact.layout_json().expect("layout JSON");
@@ -55,6 +61,85 @@ fn render_config(
         .svg()
         .to_owned();
     (projection, svg)
+}
+
+#[test]
+fn usecase_html_markdown_measures_visible_inline_literals_without_added_spaces() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct LiteralMeasurer(Mutex<Vec<String>>);
+    impl TextMeasurer for LiteralMeasurer {
+        fn measure(&self, text: &str, _: &TextStyle) -> TextMetrics {
+            self.0.lock().unwrap().push(text.to_owned());
+            TextMetrics {
+                width: text.chars().count() as f64 * 2.0,
+                height: 20.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    for text in [
+        "x `c` [visible label](u)",
+        "pre`code`post",
+        "pre[visible label](u)`code`post",
+        "x `c` ~~visible label~~",
+        "pre~~visible~~`code`post",
+        "pre`code`[]()post",
+    ] {
+        let measurer = Arc::new(LiteralMeasurer::default());
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.usecase-inline-literals").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            measurer.clone(),
+        );
+        let (_, svg) = render_config_with_environment(
+            &format!("usecase-beta\nA(\"`{text}`\")\n"),
+            json!({"layout":"dagre", "htmlLabels":true,
+                "usecase":{"wrappingWidth":1000,"minNodeWidth":0}}),
+            RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let paragraph = document
+            .descendants()
+            .find(|node| node.has_tag_name("p"))
+            .unwrap();
+        let visible: String = paragraph
+            .descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect();
+        assert_eq!(visible, text);
+        let requests = measurer.0.lock().unwrap();
+        assert!(
+            requests.iter().any(|request| request == &visible),
+            "{text:?}: {requests:?}"
+        );
+        let foreign_object = paragraph
+            .ancestors()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            foreign_object
+                .attribute("width")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap(),
+            visible.chars().count() as f64 * 2.0,
+            "{text:?}"
+        );
+        assert_eq!(foreign_object.attribute("height"), Some("20"), "{text:?}");
+    }
 }
 
 #[test]
