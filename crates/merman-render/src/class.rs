@@ -4660,7 +4660,7 @@ mod tests {
                 self.measure(text, style)
             }
         }
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nclass Vehicle {\n+owner\n+drive()\n}",
                 ParseOptions::default(),
@@ -4670,10 +4670,10 @@ mod tests {
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
-        let mut node = model.classes["Vehicle"].clone();
+        let mut node = model.class("Vehicle").expect("Vehicle class").node.clone();
         node.members[0].css_style = "font-size:2em".to_owned();
         node.methods[0].css_style = "font-size:150%".to_owned();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = TextStyle {
             font_size: 24.0,
             ..default_style()
