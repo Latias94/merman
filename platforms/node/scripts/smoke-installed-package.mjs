@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolveNodeTarget } from "../src/native-loader.mjs";
 import { parseSvg, runThemeAuthoringSmoke } from "./theme-authoring-smoke.mjs";
+import { runIconRegistrySmoke } from "./icon-registry-smoke.mjs";
 import { customizeNodeColors } from "../../web/examples/custom-theme.mjs";
 
 if (isMainModule()) {
@@ -48,6 +49,7 @@ async function main() {
     assert.match(svg, /<svg\b/);
     assert.match(svg, /<\/svg>/);
     const themeAuthoring = await runThemeAuthoringSmoke(module, engine);
+    const iconRegistry = await runIconRegistrySmoke(module);
     const recipeExchange = await verifyCustomizedRecipeExchange(engine, entrypoint);
     console.log(
       JSON.stringify({
@@ -56,6 +58,7 @@ async function main() {
         target: expectedTarget,
         svg_bytes: Buffer.byteLength(svg),
         theme_authoring: themeAuthoring,
+        icon_registry: iconRegistry,
         recipe_exchange: recipeExchange,
       }),
     );

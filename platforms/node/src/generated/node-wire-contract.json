@@ -50,7 +50,9 @@
       "theme",
       "version"
     ],
-    "constructor_service_ids": [],
+    "constructor_service_ids": [
+      "icon-registry"
+    ],
     "text_measurement_provider_ids": [
       "deterministic"
     ]

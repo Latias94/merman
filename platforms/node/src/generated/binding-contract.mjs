@@ -1207,7 +1207,9 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
       "binding-result",
       "operation-metadata"
     ],
-    "constructor_service_candidate_ids": []
+    "constructor_service_candidate_ids": [
+      "icon-registry"
+    ]
   },
   {
     "id": "rust",
@@ -1253,7 +1255,8 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
       "binding-result"
     ],
     "constructor_service_candidate_ids": [
-      "host-text-measurement"
+      "host-text-measurement",
+      "icon-registry"
     ]
   }
 ];

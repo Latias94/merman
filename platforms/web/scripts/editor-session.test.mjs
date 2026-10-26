@@ -631,14 +631,14 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
         },
         metadataIds: SVG_METADATA_IDS,
         optionGroupIds: SVG_OPTION_GROUP_IDS,
-        constructorServiceIds: ["icon-registry"],
+        constructorServiceIds: ["native-font-context"],
         constructorServiceContracts: [{
-          id: "icon-registry",
+          id: "native-font-context",
           provided_text_measurement_provider_ids: [],
           resource_limits: [],
         }],
       }),
-      /constructor service icon-registry, which this Web facade cannot provide/,
+      /constructor service native-font-context, which this Web facade cannot provide/,
     ],
     [
       () => runtimeCatalogFixture({

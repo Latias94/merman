@@ -16,11 +16,11 @@ export { MermanEngine };
 
 export function createNodeEngine(options) {
   return createEngineWithTransport(options, {
-    loadTransport: (optionsJson) =>
+    loadTransport: (optionsJson, iconPacksJson) =>
       loadNodeWasmTransport(optionsJson, {
         modulePath: wasmBindingPath,
         loadModule: () => Promise.resolve(requireFromPackage(wasmBindingPath)),
-      }),
+      }, iconPacksJson),
   });
 }
 

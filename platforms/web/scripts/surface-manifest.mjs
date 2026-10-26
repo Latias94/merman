@@ -55,6 +55,7 @@ const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 const mountRuntimeExportNames = ["mountDiagram"];
 
 const renderRuntimeExportNames = [
+  "createRenderSession",
   "prepareSource",
   "materializeTheme",
   "describeThemeSupport",
@@ -77,6 +78,7 @@ const renderRuntimeExportNames = [
 ];
 
 const renderWasmExportNames = [
+  "RenderSession",
   "PreparedSource",
   "materializeTheme",
   "describeThemeSupport",
@@ -214,8 +216,15 @@ export const surfaceModules = defineSurfaceModules([
     id: "render",
     specifier: "../runtime-render.js",
     owner: "render",
-    runtimeExportNames: renderRuntimeExportNames,
+    runtimeExportNames: renderRuntimeExportNames.filter(name => name !== "createRenderSession"),
     valueExportNames: ["createBrowserTextMeasurementSession"],
+  },
+  {
+    id: "render-session",
+    specifier: "../runtime-render-session.js",
+    owner: "render",
+    runtimeExportNames: ["createRenderSession"],
+    exactValueExports: true,
   },
   {
     id: "mount",

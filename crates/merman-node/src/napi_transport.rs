@@ -23,8 +23,8 @@ impl NativeEngine {
 #[napi]
 impl NativeEngine {
     #[napi(constructor)]
-    pub fn new(options_json: String) -> napi::Result<Self> {
-        wire::create_engine(&options_json)
+    pub fn new(options_json: String, icon_packs_json: Option<String>) -> napi::Result<Self> {
+        wire::create_engine_with_icon_packs(&options_json, icon_packs_json.as_deref())
             .map(|engine| Self {
                 engine: Some(engine),
             })
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn dispose_is_idempotent_and_removes_the_engine() {
-        let mut engine = NativeEngine::new(String::new()).expect("construct NativeEngine");
+        let mut engine = NativeEngine::new(String::new(), None).expect("construct NativeEngine");
         engine.dispose();
         engine.dispose();
         assert!(engine.engine.is_none());
