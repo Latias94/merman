@@ -1,9 +1,49 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::model::SequenceSvgModel;
 
-pub(super) struct SequenceRootMetrics {
-    pub(super) viewbox_width: f64,
-    pub(super) document: root_svg::RootDocument,
+pub(super) struct SequenceTitleGeometry {
+    pub(super) x: f64,
+    pub(super) bounds: Bounds,
+}
+
+pub(super) fn sequence_title_geometry(
+    title: &str,
+    layout: &SequenceDiagramLayout,
+    config: &serde_json::Value,
+    diagram_margin_x: f64,
+    measurer: &dyn TextMeasurer,
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<SequenceTitleGeometry> {
+    let content_width = layout
+        .bounds
+        .as_ref()
+        .map_or(100.0, |bounds| bounds.max_x - bounds.min_x);
+    // Keep Mermaid's start-anchored title position independent of the expanded viewport.
+    let x = (content_width - 2.0 * diagram_margin_x) / 2.0 - 2.0 * diagram_margin_x;
+    let style = crate::sequence::config::SequenceConfigView::new(config).root_text_style();
+    checkpoints.checkpoint()?;
+    let (left, right) = measurer.measure_svg_title_bbox_x(title, &style);
+    checkpoints.checkpoint()?;
+    let advance = measurer.measure_svg_text_computed_length_px(title, &style);
+    checkpoints.checkpoint()?;
+    let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+        measurer,
+        title,
+        &style,
+        crate::text::svg_title_bbox_vertical_extents_px(&style),
+    );
+    checkpoints.checkpoint()?;
+    Ok(SequenceTitleGeometry {
+        x,
+        bounds: Bounds {
+            // TitleBBoxX is middle-anchored; the emitted raw text is start-anchored.
+            min_x: x + advance / 2.0 - left,
+            max_x: x + advance / 2.0 + right,
+            min_y: -25.0 - ascent,
+            max_y: -25.0 + descent,
+        },
+    })
 }
 
 pub(super) fn write_sequence_svg_root_open(
@@ -11,13 +51,20 @@ pub(super) fn write_sequence_svg_root_open(
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     diagram_id: SvgDiagramId<'_>,
-) -> Result<SequenceRootMetrics> {
-    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+    title_bounds: Option<&Bounds>,
+) -> Result<root_svg::RootDocument> {
+    let mut bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
         max_x: 100.0,
         max_y: 100.0,
     });
+    if let Some(title) = title_bounds {
+        bounds.min_x = bounds.min_x.min(title.min_x);
+        bounds.min_y = bounds.min_y.min(title.min_y);
+        bounds.max_x = bounds.max_x.max(title.max_x);
+        bounds.max_y = bounds.max_y.max(title.max_y);
+    }
     let root_bounds = root_svg::DiagramBounds::from_extents(
         bounds.min_x,
         bounds.min_y,
@@ -60,8 +107,5 @@ pub(super) fn write_sequence_svg_root_open(
         );
     }
 
-    Ok(SequenceRootMetrics {
-        viewbox_width: root_bounds.width,
-        document,
-    })
+    Ok(document)
 }

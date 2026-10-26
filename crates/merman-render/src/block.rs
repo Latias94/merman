@@ -51,6 +51,32 @@ fn block_html_label_metrics_px(
     (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
 }
 
+fn block_source_label_text_style(node: &BlockNode, inherited: &TextStyle) -> TextStyle {
+    let mut winners = BTreeMap::new();
+    for raw in &node.styles {
+        let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(raw) else {
+            continue;
+        };
+        if matches!(
+            key,
+            "font-family" | "font-size" | "font-weight" | "font-style"
+        ) {
+            // The Block writer replaces duplicate properties before CSSOM validates values.
+            winners.insert(key, value);
+        }
+    }
+    let css = winners
+        .into_iter()
+        .map(|(key, value)| format!("{key}:{value};"))
+        .collect::<String>();
+    let mut style = inherited.clone();
+    // The pinned HTML writer repeats source longhands on g, div, and span.
+    for _ in 0..3 {
+        style = crate::text::apply_css_font_declarations(&style, &css);
+    }
+    style
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BlockArrowPoint {
     pub(crate) x: f64,
@@ -519,7 +545,8 @@ fn to_sized_block_shallow(
     let (label_width, label_height) = if label_effectively_empty {
         (0.0, 0.0)
     } else {
-        block_html_label_metrics_px(&label_decoded, measurer, text_style)
+        let label_style = block_source_label_text_style(node, text_style);
+        block_html_label_metrics_px(&label_decoded, measurer, &label_style)
     };
     let shape_label_height = label_height;
 

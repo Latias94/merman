@@ -2834,6 +2834,184 @@ fn sequence_long_leftof_notes_keep_mermaid_11_16_root_width() {
 }
 
 #[test]
+fn sequence_large_root_font_title_is_contained_without_changing_role_fonts() {
+    let source = r#"---
+config:
+  fontSize: ''
+  fontFamily: ''
+  themeVariables:
+    fontSize: 40px
+    fontFamily: serif
+  sequence:
+    actorFontSize: 19
+    actorFontFamily: monospace
+    messageFontSize: 16
+    messageFontFamily: monospace
+---
+sequenceDiagram
+title Large Diagram Title
+participant A as probe-actor
+A->>A: probe-message
+"#;
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::Missing,
+        "sequence-large-root-title",
+        RenderEnvironment::deterministic(),
+    );
+    let document = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+    let root_id = document.root_element().attribute("id").expect("root id");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Sequence stylesheet");
+    let root_rule = stylesheet
+        .strip_prefix(&format!("#{root_id}{{"))
+        .and_then(|rule| rule.split_once('}'))
+        .expect("Sequence root typography rule")
+        .0;
+    assert!(root_rule.contains("font-size:40px;"), "{root_rule}");
+    assert!(root_rule.contains("font-family:serif;"), "{root_rule}");
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Large Diagram Title"))
+        .expect("visible Sequence title");
+    assert_eq!(title.attribute("class"), None);
+    assert_eq!(title.attribute("style"), None);
+    assert_eq!(title.attribute("font-size"), None);
+    let title_y = title.attribute("y").unwrap().parse::<f64>().unwrap();
+    let (view_box, _) = root_view_box_and_max_width(&observation.render.svg);
+    assert!(
+        view_box[1] <= title_y - 32.0,
+        "the root must contain at least the 40px title's 0.8em ascent: {view_box:?}"
+    );
+    let title_requests = observation
+        .requests
+        .iter()
+        .filter(|request| {
+            request.text == "Large Diagram Title" && request.phase == TextMeasurementPhase::SvgBBox
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !title_requests.is_empty(),
+        "the final title bbox must be measured"
+    );
+    assert!(title_requests.iter().all(|request| {
+        request.font_size_bits == 40.0_f64.to_bits()
+            && request.font_family.as_deref() == Some("serif")
+    }));
+    for (probe, size) in [("probe-actor", 19.0_f64), ("probe-message", 16.0_f64)] {
+        let requests = observation
+            .requests
+            .iter()
+            .filter(|request| request.text == probe)
+            .collect::<Vec<_>>();
+        assert!(!requests.is_empty(), "{probe} must remain reachable");
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.font_size_bits == size.to_bits())
+        );
+    }
+}
+
+#[test]
+fn sequence_title_bounds_translate_middle_bbox_to_start_anchor() {
+    struct TitleGeometryMeasurer;
+
+    impl TextMeasurer for TitleGeometryMeasurer {
+        fn measure(&self, text: &str, style: &merman_render::text::TextStyle) -> TextMetrics {
+            DeterministicTextMeasurer::default().measure(text, style)
+        }
+
+        fn measure_svg_title_bbox_x(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+        ) -> (f64, f64) {
+            if text == "Start anchored title" {
+                (1800.0, 2200.0)
+            } else {
+                DeterministicTextMeasurer::default().measure_svg_title_bbox_x(text, style)
+            }
+        }
+
+        fn measure_svg_text_computed_length_px(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+        ) -> f64 {
+            if text == "Start anchored title" {
+                3600.0
+            } else {
+                DeterministicTextMeasurer::default()
+                    .measure_svg_text_computed_length_px(text, style)
+            }
+        }
+
+        fn measure_svg_raw_text_bbox_y_offset_px(
+            &self,
+            text: &str,
+            _style: &merman_render::text::TextStyle,
+        ) -> Option<f64> {
+            (text == "Start anchored title").then_some(-60.0)
+        }
+
+        fn measure_svg_raw_text_bbox_height_px(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+        ) -> f64 {
+            if text == "Start anchored title" {
+                80.0
+            } else {
+                DeterministicTextMeasurer::default()
+                    .measure_svg_raw_text_bbox_height_px(text, style)
+            }
+        }
+    }
+
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("sequence-title-start-anchor").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        Arc::new(TitleGeometryMeasurer),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let source = "sequenceDiagram\nA->>B: hello\n";
+    let control = render_sequence_with_environment(source, &environment);
+    let observation = render_sequence_with_environment(
+        &source.replace(
+            "sequenceDiagram\n",
+            "sequenceDiagram\ntitle Start anchored title\n",
+        ),
+        &environment,
+    );
+    let document = roxmltree::Document::parse(&observation.svg).expect("Sequence SVG");
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Start anchored title"))
+        .expect("visible title");
+    assert_eq!(title.attribute("text-anchor"), None);
+    let x = title.attribute("x").unwrap().parse::<f64>().unwrap();
+    let y = title.attribute("y").unwrap().parse::<f64>().unwrap();
+    let (control_box, _) = root_view_box_and_max_width(&control.svg);
+    assert_eq!(x, (control_box[2] - 100.0) / 2.0 - 100.0);
+    let (view_box, _) = root_view_box_and_max_width(&observation.svg);
+    // Middle extents (-1800, 2200), translated by half the 3600px advance, become (0, 4000).
+    assert_eq!(view_box[0] + view_box[2], x + 4000.0);
+    assert_eq!(
+        view_box[1],
+        y - 60.0,
+        "use raw baseline facts, not compatibility ascent"
+    );
+}
+
+#[test]
 fn sequence_frontmatter_title_expands_layout_root_y() {
     let path = workspace_root()
         .join("fixtures")

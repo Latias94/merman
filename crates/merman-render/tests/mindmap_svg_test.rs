@@ -53,6 +53,35 @@ fn deep_mindmap_chain(depth: usize) -> String {
 }
 
 #[test]
+fn mindmap_html_label_box_uses_inherited_root_font_size() {
+    let svg = render_mindmap_svg_from_text(
+        "---\nconfig:\n  themeVariables:\n    fontSize: 32px\n---\nmindmap\n  root[Root]\n",
+        "mindmap-root-font",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Mindmap SVG");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Mindmap stylesheet");
+    assert!(css.contains("font-size:32px"), "{css}");
+    let label = document
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .expect("HTML Mindmap label");
+    let span = label
+        .descendants()
+        .find(|node| node.has_tag_name("span"))
+        .expect("terminal label span");
+    assert_eq!(span.attribute("style"), None, "root font must be inherited");
+    assert_eq!(
+        label.attribute("height"),
+        Some("48"),
+        "32px at line-height 1.5"
+    );
+}
+
+#[test]
 fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
     let svg = render_mindmap_svg_from_text(
         r#"mindmap

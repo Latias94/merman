@@ -107,6 +107,59 @@ fn deep_block_chain(depth: usize) -> String {
 }
 
 #[test]
+fn block_html_absolute_source_font_size_reaches_label_measurement() {
+    let svg = render_block_svg_from_text("block\n  A[\"Label\"]\n  style A font-size:48px\n");
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let label = document
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .expect("Block HTML label");
+    let span = label
+        .descendants()
+        .find(|node| node.has_tag_name("span"))
+        .expect("terminal label span");
+    assert_eq!(span.attribute("style"), Some("font-size:48px;"));
+    assert_eq!(
+        label.attribute("height"),
+        Some("72"),
+        "48px at line-height 1.5"
+    );
+}
+
+#[test]
+fn block_html_relative_source_font_size_repeats_across_label_ancestors() {
+    for size in ["1.5em", "150%"] {
+        let source = format!("block\n  A[\"Label\"]\n  style A font-size:{size}\n");
+        let svg = render_block_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+        let label = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .expect("Block HTML label");
+        let group_style = label.parent().unwrap().attribute("style").unwrap();
+        let div_style = label
+            .descendants()
+            .find(|node| node.has_tag_name("div"))
+            .and_then(|node| node.attribute("style"))
+            .expect("label div style");
+        let span_style = label
+            .descendants()
+            .find(|node| node.has_tag_name("span"))
+            .and_then(|node| node.attribute("style"))
+            .expect("terminal span style");
+        for style in [group_style, div_style, span_style] {
+            assert!(style.contains(&format!("font-size:{size}")), "{style}");
+        }
+        // The pinned DOM applies the relative declaration at g, div, and span.
+        assert_eq!(
+            label.attribute("height"),
+            Some("81"),
+            "16 * 1.5^3 * 1.5: {size}"
+        );
+    }
+}
+
+#[test]
 fn block_svg_scopes_text_and_edge_colors_for_html_labels() {
     let svg = render_block_svg_from_text(
         r#"block

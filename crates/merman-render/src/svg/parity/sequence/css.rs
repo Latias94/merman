@@ -11,11 +11,8 @@ pub(super) fn sequence_css(
     let font = theme.common.font_family_css.as_str();
     // Mermaid's shared stylesheet reads resolved theme variables, independently
     // of the runtime Sequence actor/message font sizes.
-    let font_size_css = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "fontSize"],
-    )
-    .unwrap_or_else(|| "16px".to_string());
+    let font_size_css =
+        crate::sequence::config::SequenceConfigView::new(effective_config).root_font_size_css();
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();

@@ -100,10 +100,10 @@ fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     let font_family = config_string(effective_config, &["fontFamily"])
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    // Mermaid mindmap uses HTML `<foreignObject>` labels. Mermaid CLI baselines show that the
-    // HTML label contents do not reliably inherit SVG-root `font-size` rules; measurement matches
-    // a 16px default even when users override `themeVariables.fontSize`.
-    let font_size = 16.0;
+    // The foreignObject's div/span do not override the root stylesheet's font size.
+    let font_size =
+        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+            .max(1.0);
     TextStyle {
         font_family,
         font_size,
