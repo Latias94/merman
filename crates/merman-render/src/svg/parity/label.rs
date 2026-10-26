@@ -6,7 +6,7 @@ use crate::svg::parity::util::escape_xml_serialized_text_into;
 use crate::text::{MermaidMarkdownWordType, SvgTextEntityMode};
 
 #[derive(Clone, Copy)]
-pub(in crate::svg::parity) struct SvgTextRowStyle<'a> {
+pub(in crate::svg::parity) struct SvgTextFirstRowStyle<'a> {
     pub style: &'a str,
     pub first_row_start: bool,
 }
@@ -323,7 +323,7 @@ fn write_svg_text_markdown_lines_with_style<'a>(
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
-    row_style: Option<SvgTextRowStyle<'_>>,
+    row_style: Option<SvgTextFirstRowStyle<'_>>,
 ) -> Option<&'a str> {
     let emitted_style = open_svg_text(out, style, center_text);
 
@@ -335,7 +335,7 @@ fn write_svg_text_markdown_lines_with_style<'a>(
 
     for (index, words) in lines.iter().enumerate() {
         let start = index == 0 && row_style.is_some_and(|style| style.first_row_start);
-        let word_style = row_style.map(|style| style.style);
+        let word_style = row_style.filter(|_| index == 0).map(|style| style.style);
         open_tspan(out, index, center_text, include_row_class, 1.1, start);
 
         for (word_index, (word, kind)) in words.iter().enumerate() {
@@ -449,11 +449,11 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source_wi
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_row_style(
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_first_row_style(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     style: &str,
-    row_style: SvgTextRowStyle<'_>,
+    row_style: SvgTextFirstRowStyle<'_>,
     measurer: &dyn crate::text::TextMeasurer,
     text_style: &crate::text::TextStyle,
     max_width_px: Option<f64>,

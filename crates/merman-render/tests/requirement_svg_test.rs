@@ -1005,16 +1005,30 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
 #[test]
 fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() {
     #[derive(Debug)]
-    struct FaceProbe(Arc<Mutex<Vec<TextStyle>>>);
+    struct FaceProbe {
+        calls: Arc<Mutex<Vec<TextStyle>>>,
+        row_calls: Arc<Mutex<Vec<TextStyle>>>,
+    }
 
     impl TextMeasurer for FaceProbe {
         fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            self.0.lock().unwrap().push(style.clone());
+            self.calls.lock().unwrap().push(style.clone());
             TextMetrics {
                 width: text.len() as f64 * style.font_size,
                 height: style.font_size,
                 line_count: 1,
             }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.row_calls.lock().unwrap().push(style.clone());
+            self.measure(text, style)
         }
     }
 
@@ -1045,13 +1059,17 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
                 ),
             ] {
                 let calls = Arc::new(Mutex::new(Vec::new()));
+                let row_calls = Arc::new(Mutex::new(Vec::new()));
                 let profile = TextMeasurementProfile::new(
                     TextMeasurementProfileIdentity::new(
                         MeasurementProfileId::new("test.requirement-source-faces").unwrap(),
                         "test",
                     )
                     .unwrap(),
-                    Arc::new(FaceProbe(Arc::clone(&calls))),
+                    Arc::new(FaceProbe {
+                        calls: Arc::clone(&calls),
+                        row_calls: Arc::clone(&row_calls),
+                    }),
                 );
                 let rendered = render_requirement_with_theme_requirement_and_environment(
                     &format!("{}\n{source_style}\n", requirement_source()),
@@ -1064,12 +1082,20 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
                         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
                 );
                 let calls = calls.lock().unwrap();
-                let node_calls = calls.iter().filter(|style| style.font_size == 32.0);
+                let row_calls = row_calls.lock().unwrap();
+                let node_calls = row_calls.iter().filter(|style| style.font_size == 32.0);
                 assert!(node_calls.clone().count() > 0);
+                let matches_source = |style: &&TextStyle| {
+                    style.font_weight.as_deref() == Some(weight)
+                        && style.font_style.as_deref() == Some(face)
+                };
+                assert!(node_calls.clone().any(|style| matches_source(&style)));
                 assert!(
                     node_calls.clone().all(|style| {
-                        style.font_weight.as_deref() == Some(weight)
-                            && style.font_style.as_deref() == Some(face)
+                        matches_source(&style)
+                            || (!html_labels
+                                && matches!(style.font_weight.as_deref(), None | Some("normal"))
+                                && matches!(style.font_style.as_deref(), None | Some("normal")))
                     }),
                     "{html_labels}/{source_style}: {calls:?}"
                 );
@@ -1096,11 +1122,23 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
                             .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
                         {
                             let style = word.attribute("style").unwrap_or("").to_ascii_lowercase();
-                            assert!(
-                                style.contains(&format!("font-weight:{weight} !important"))
-                                    && style.contains(&format!("font-style:{face} !important")),
-                                "every wrapped word must retain the source face: {source_style}/{word:?}"
-                            );
+                            let first_row = word
+                                .parent_element()
+                                .unwrap()
+                                .prev_sibling_element()
+                                .is_none();
+                            if first_row {
+                                assert!(
+                                    style.contains(&format!("font-weight:{weight} !important"))
+                                        && style.contains(&format!("font-style:{face} !important")),
+                                    "the first row receives the source face: {source_style}/{word:?}"
+                                );
+                            } else {
+                                assert!(
+                                    style.is_empty(),
+                                    "later rows keep Markdown faces: {word:?}"
+                                );
+                            }
                         }
                     }
                 }
@@ -1117,16 +1155,30 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
 #[test]
 fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
     #[derive(Debug)]
-    struct FaceProbe(Arc<Mutex<Vec<TextStyle>>>);
+    struct FaceProbe {
+        calls: Arc<Mutex<Vec<TextStyle>>>,
+        row_calls: Arc<Mutex<Vec<TextStyle>>>,
+    }
 
     impl TextMeasurer for FaceProbe {
         fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            self.0.lock().unwrap().push(style.clone());
+            self.calls.lock().unwrap().push(style.clone());
             TextMetrics {
                 width: text.len() as f64 * style.font_size,
                 height: style.font_size,
                 line_count: 1,
             }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.row_calls.lock().unwrap().push(style.clone());
+            self.measure(text, style)
         }
     }
 
@@ -1135,13 +1187,17 @@ fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
     );
     for html_labels in [false, true] {
         let calls = Arc::new(Mutex::new(Vec::new()));
+        let row_calls = Arc::new(Mutex::new(Vec::new()));
         let profile = TextMeasurementProfile::new(
             TextMeasurementProfileIdentity::new(
                 MeasurementProfileId::new("test.requirement-markdown-source-faces").unwrap(),
                 "test",
             )
             .unwrap(),
-            Arc::new(FaceProbe(Arc::clone(&calls))),
+            Arc::new(FaceProbe {
+                calls: Arc::clone(&calls),
+                row_calls: Arc::clone(&row_calls),
+            }),
         );
         let source = format!(
             "{}\nstyle req1 font-size:32px,font-weight:500,font-style:normal\n",
@@ -1179,9 +1235,17 @@ fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
             );
             assert!(document.descendants().any(|node| node.has_tag_name("em")));
         } else {
+            let row_calls = row_calls.lock().unwrap();
+            let node_rows = row_calls.iter().filter(|style| style.font_size == 32.0);
+            assert!(node_rows.clone().count() > 0);
             assert!(
-                node_calls.clone().all(|style| {
-                    style.font_weight.as_deref() == Some("500")
+                node_rows
+                    .clone()
+                    .any(|style| style.font_weight.as_deref() == Some("500"))
+            );
+            assert!(
+                node_rows.clone().all(|style| {
+                    matches!(style.font_weight.as_deref(), Some("500" | "normal"))
                         && style.font_style.as_deref() == Some("normal")
                 }),
                 "{calls:?}"
@@ -1200,14 +1264,21 @@ fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
                     .iter()
                     .any(|word| word.attribute("font-style") == Some("italic"))
             );
-            assert!(
-                words
-                    .iter()
-                    .all(|word| word.attribute("style").is_some_and(|style| {
+            assert!(words.iter().all(|word| {
+                let first_row = word
+                    .parent_element()
+                    .unwrap()
+                    .prev_sibling_element()
+                    .is_none();
+                if first_row {
+                    word.attribute("style").is_some_and(|style| {
                         style.contains("font-weight:500 !important")
                             && style.contains("font-style:normal !important")
-                    }))
-            );
+                    })
+                } else {
+                    word.attribute("style").is_none()
+                }
+            }));
         }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -3137,4 +3208,60 @@ fn requirement_browser_text_cascade() {
         String::from_utf8_lossy(&output.stderr)
     );
     println!("{}", String::from_utf8_lossy(&output.stdout));
+}
+
+#[test]
+fn requirement_svg_multiline_name_applies_role_to_the_first_row_only() {
+    let theme = requirement_typography_theme(ThemeTextStyle::default());
+    let rendered = render_requirement_with_theme(
+        r#"%%{init: {"htmlLabels": false}}%%
+requirementDiagram
+requirement "W<br/>WW WW" {
+  text: ok
+}
+"#,
+        &theme,
+    );
+    let svg = rendered.svg().to_owned();
+    let document = roxmltree::Document::parse(&svg).expect("valid Requirement SVG");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node
+                    .children()
+                    .filter(|row| row.has_tag_name("tspan"))
+                    .count()
+                    == 2
+                && node
+                    .descendants()
+                    .filter(|child| child.is_text())
+                    .filter_map(|child| child.text())
+                    .collect::<String>()
+                    == "WWW WW"
+        })
+        .expect("two-row requirement name");
+    let rows = label
+        .children()
+        .filter(|row| row.has_tag_name("tspan"))
+        .collect::<Vec<_>>();
+    let first_word = rows[0]
+        .children()
+        .find(|word| word.has_tag_name("tspan"))
+        .unwrap();
+    assert!(
+        first_word.attribute("font-weight") == Some("bold")
+            || first_word
+                .attribute("style")
+                .is_some_and(|style| style.contains("font-weight: bold"))
+    );
+    let later_words = rows[1]
+        .children()
+        .filter(|word| word.has_tag_name("tspan"))
+        .collect::<Vec<_>>();
+    assert_eq!(later_words.len(), 2);
+    for word in later_words {
+        assert_eq!(word.attribute("font-weight"), Some("normal"));
+        assert_eq!(word.attribute("style"), None);
+    }
 }
