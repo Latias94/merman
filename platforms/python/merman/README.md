@@ -112,6 +112,11 @@ records the selected projection, encoding, emitted dimensions, and viewport fall
 
 ## Local Development
 
+The Python package build backend supports Python 3.9 or newer. Its isolated environment
+selects `setuptools>=82.0.1,<83` on Python 3.9 and `setuptools>=84.2.1` on Python
+3.10 or newer; Setuptools 83 dropped Python 3.9 support. These build-only
+requirements do not change the wheel's Python `>=3.9` runtime requirement.
+
 Build the descriptor-owned native library, regenerate bindings, assemble a wheel, install it into an isolated environment, and run the smoke test with:
 
 ```sh
