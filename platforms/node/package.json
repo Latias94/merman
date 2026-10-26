@@ -13,7 +13,7 @@
     "benchmark": "node scripts/benchmark/run.mjs"
   },
   "devDependencies": {
-    "@napi-rs/cli": "3.10.8",
+    "@napi-rs/cli": "3.10.9",
     "@xmldom/xmldom": "0.9.12"
   }
 }

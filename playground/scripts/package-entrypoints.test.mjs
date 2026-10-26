@@ -24,9 +24,9 @@ const webPackageJson = JSON.parse(
 
 test("dev, build, and test fail closed on the selected full browser artifact", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
-  assert.equal(packageJson.packageManager, "npm@12.0.2");
+  assert.equal(packageJson.packageManager, "npm@12.2.1");
   assert.equal(packageJson.engines.node, "^22.22.2 || ^24.15.0 || >=26.0.0");
-  assert.equal(packageJson.engines.npm, ">=12.0.2");
+  assert.equal(packageJson.engines.npm, ">=12.2.1");
   assert.equal(packageJson.scripts.predev, undefined);
   assert.equal(packageJson.scripts.prebuild, undefined);
   assert.equal(packageJson.scripts.pretest, undefined);
@@ -95,13 +95,13 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   assert.deepEqual(browserTestsPackageJson.engines, packageJson.engines);
   assert.equal(
     browserTestsPackageJson.devDependencies["@axe-core/playwright"],
-    "4.13.0"
+    "4.14.0"
   );
   assert.equal(
     browserTestsPackageJson.devDependencies["@playwright/test"],
-    "1.64.0"
+    "1.64.1"
   );
-  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.64.0");
+  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.64.1");
   assert.equal(browserTestsPackageJson.dependencies?.["@zenuml/core"], undefined);
   assert.equal(
     browserTestsPackageJson.dependencies?.["@mermaid-js/mermaid-zenuml"],
@@ -131,15 +131,15 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   }
   assert.equal(
     browserTestsLock.packages["node_modules/@playwright/test"].version,
-    "1.64.0"
+    "1.64.1"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright"].version,
-    "1.64.0"
+    "1.64.1"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright-core"].version,
-    "1.64.0"
+    "1.64.1"
   );
   for (const packagePath of [
     "node_modules/@mermaid-js/mermaid-zenuml",
