@@ -1077,6 +1077,7 @@ mod tests {
                 "700",
             ),
             ("font-weight:lighter,font-weight:lighter", 16.0, "400"),
+            ("font-weight:900,font-weight:invalid", 16.0, "700"),
         ] {
             let style = flowchart_effective_text_style_for_classes(
                 &base,

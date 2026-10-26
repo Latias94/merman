@@ -90,6 +90,24 @@ impl FlowchartLabelWeights {
         }
     }
 
+    pub(crate) fn parent_style<'a>(
+        self,
+        target: ThemeTarget,
+        parent: &'a TextStyle,
+    ) -> Cow<'a, TextStyle> {
+        let Some(weight) = self.get(target) else {
+            return Cow::Borrowed(parent);
+        };
+        let weight = weight.to_string();
+        if parent.font_weight.as_deref() == Some(weight.as_str()) {
+            return Cow::Borrowed(parent);
+        }
+        // Resolve source winners only after installing their terminal's inherited weight.
+        let mut parent = parent.clone();
+        parent.font_weight = Some(weight);
+        Cow::Owned(parent)
+    }
+
     pub(crate) fn apply_cow<'a>(
         self,
         target: ThemeTarget,

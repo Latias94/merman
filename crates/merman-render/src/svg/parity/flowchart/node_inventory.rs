@@ -269,6 +269,9 @@ impl FlowchartPreparedNodes {
         } else {
             &typography.text_style
         };
+        let source_base = svg_labels
+            .label_weights()
+            .parent_style(crate::diagram_theme::ThemeTarget::NodeLabel, source_base);
         let (owners, uses_elk) = match layout {
             FlowchartNodeLayoutView::Flowchart(layout) => {
                 (&layout.edge_owners, layout.uses_elk_adapter_dom)
@@ -323,7 +326,7 @@ impl FlowchartPreparedNodes {
                 Some(style) => style,
                 None => {
                     let style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                        source_base,
+                        source_base.as_ref(),
                         &model.class_defs,
                         source_styles.0,
                         source_styles.1,

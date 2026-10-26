@@ -1176,6 +1176,15 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     } else {
         &text_style
     };
+    let node_label_base_style = svg_label_sidecar
+        .map_or_else(
+            super::FlowchartLabelWeights::default,
+            FlowchartSvgLabelSidecarBuilder::label_weights,
+        )
+        .parent_style(
+            crate::diagram_theme::ThemeTarget::NodeLabel,
+            node_label_base_style,
+        );
     let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1248,7 +1257,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         effective_config,
         measurer,
         math_renderer,
-        node_label_base_style,
+        node_label_base_style: node_label_base_style.as_ref(),
         wrapping_width,
         node_direction: diagram_direction,
         node_padding,

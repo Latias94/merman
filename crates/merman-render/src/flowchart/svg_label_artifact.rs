@@ -809,6 +809,10 @@ impl FlowchartSvgLabelSidecarBuilder {
         self
     }
 
+    pub(crate) fn label_weights(&self) -> super::FlowchartLabelWeights {
+        self.label_weights
+    }
+
     pub(crate) fn layout_settings(
         &self,
         effective_config: &serde_json::Value,
