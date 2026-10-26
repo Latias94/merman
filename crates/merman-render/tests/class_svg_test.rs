@@ -871,12 +871,73 @@ Animal <|-- Duck
 #[test]
 fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
     use base64::Engine as _;
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    };
+
+    // Keep this routing fixture independent of displayed-font and XHTML measurement changes.
+    // Its single-letter titles use 16px text metrics, snapped like the original Markdown path.
+    struct RoutingMeasurer;
+    impl TextMeasurer for RoutingMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.measure_wrapped(text, style, None, WrapMode::SvgLike)
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            _style: &TextStyle,
+            max_width: Option<f64>,
+            wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            let mut metrics = DeterministicTextMeasurer::default().measure_wrapped(
+                text,
+                &TextStyle {
+                    font_size: 16.0,
+                    ..TextStyle::default()
+                },
+                max_width,
+                wrap_mode,
+            );
+            if matches!(text, "A" | "B" | "C" | "D" | "E") {
+                // 0.6em at 16px, rounded to the 1/64px Markdown measurement lattice.
+                metrics.width = 9.59375;
+            }
+            metrics
+        }
+    }
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("class-elk-terminal-routing").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        std::sync::Arc::new(RoutingMeasurer),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let render = |source: &str, straighten: bool| {
+        render_class_svg_from_text_with_session(
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "layout": "elk",
+                "fontSize": 16,
+                "themeVariables": { "fontSize": "16px" },
+                "elk": { "straightenEdges": straighten },
+            }))),
+            source,
+            &LayoutOptions::headless_svg_defaults(),
+            &SvgRenderOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+    };
 
     let source = include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
-    let straight = render_class_svg_from_text(source);
-    let original = render_class_svg_from_text(&format!(
-        "---\nconfig:\n  elk:\n    straightenEdges: false\n---\n{source}"
-    ));
+    let straight = render(source, true);
+    let original = render(source, false);
     let edge_points = |svg: &str, edge_id: &str| {
         let document = roxmltree::Document::parse(svg).unwrap();
         let edge = document
@@ -898,12 +959,33 @@ fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
         let mut after = edge_points(&straight, edge_id);
         assert_eq!(after.first(), before.first());
         assert_eq!(after.last(), before.last());
-        assert_eq!(after.len() + 2, before.len(), "{edge_id}");
         if !source_terminal {
             before.reverse();
             after.reverse();
         }
-        assert!((before[0].1 - before[2].1).abs() > 0.01);
+        assert!(before.len() >= 5, "{edge_id}: terminal staircase");
+        assert_eq!(before[0].1, before[1].1, "{edge_id}: port run");
+        assert_eq!(before[1].0, before[2].0, "{edge_id}: terminal jog");
+        assert_eq!(before[2].1, before[3].1, "{edge_id}: channel run");
+        let jog = (before[0].1 - before[2].1).abs();
+        assert!((0.01..=16.0).contains(&jog), "{edge_id}: eligible jog");
+        let port_run = before[1].0 - before[0].0;
+        assert!(
+            port_run.abs() > 0.01 && port_run.abs() <= 30.0,
+            "{edge_id}: short port run"
+        );
+        assert_eq!(
+            port_run.signum(),
+            (before[3].0 - before[2].0).signum(),
+            "{edge_id}: forward terminal channel"
+        );
+        assert_eq!(
+            after.len() + 2,
+            before.len(),
+            "{edge_id}: before={before:?}, after={after:?}"
+        );
+        assert_eq!(after[1].0, before[3].0, "{edge_id}: channel x preserved");
+        assert_eq!(after[2].0, before[4].0, "{edge_id}: channel x preserved");
         assert_eq!(after[0].1, after[1].1);
         assert_eq!(after[0].1, after[2].1);
     }

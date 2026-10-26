@@ -1261,8 +1261,19 @@ fn class_box_dimensions(
     // `rendering-elements/shapes/classBox.ts` + `diagrams/class/shapeUtil.ts`).
     //
     // Emulate that sizing logic deterministically using the same text measurer.
-    let use_html_labels = matches!(wrap_mode, WrapMode::HtmlLike);
+    let use_html_labels = matches!(wrap_mode, WrapMode::HtmlLike) || class_node_requires_math(node);
+    let writer_uses_html_labels = use_html_labels;
     let prepare_html_labels = use_html_labels && !class_node_requires_math(node);
+    let node_label_style = if writer_uses_html_labels {
+        node.styles
+            .iter()
+            .map(|style| style.trim().trim_end_matches(';').trim())
+            .filter(|style| !style.is_empty())
+            .collect::<Vec<_>>()
+            .join(";")
+    } else {
+        String::new()
+    };
     let padding = padding.max(0.0);
     let gap = padding;
     let text_padding = if use_html_labels { 0.0 } else { 3.0 };
@@ -1294,12 +1305,16 @@ fn class_box_dimensions(
         text: &str,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
+        probe_style: &TextStyle,
         wrap_probe_font_size: f64,
         bold: bool,
     ) -> String {
-        let Some(wrap_width_px) =
-            mermaid_class_svg_create_text_width_px(measurer, text, style, wrap_probe_font_size)
-        else {
+        let Some(wrap_width_px) = mermaid_class_svg_create_text_width_px(
+            measurer,
+            text,
+            probe_style,
+            wrap_probe_font_size,
+        ) else {
             return text.to_string();
         };
         let mut lines: Vec<String> = Vec::new();
@@ -1387,7 +1402,11 @@ fn class_box_dimensions(
     let measure_label = |text: &str,
                          css_style: &str|
      -> (crate::text::TextMetrics, Option<ClassPreparedHtmlLabel>) {
-        let effective_style = crate::class::class_effective_text_style(text_style, css_style);
+        let effective_style = if writer_uses_html_labels {
+            class_html_node_text_style(text_style, css_style, &node_label_style)
+        } else {
+            class_effective_text_style(text_style, css_style)
+        };
         let style = effective_style.as_ref();
         let max_width_px = class_html_create_text_width_px(text, measurer, html_calc_text_style);
         if let Some(metrics) = class_math_label_metrics(
@@ -1400,14 +1419,9 @@ fn class_box_dimensions(
         ) {
             return (metrics, None);
         }
-        if matches!(wrap_mode, WrapMode::HtmlLike) {
-            let prepared = crate::class::class_prepare_html_label(
-                measurer,
-                style,
-                text,
-                max_width_px,
-                css_style,
-            );
+        if use_html_labels {
+            let prepared =
+                crate::class::class_prepare_html_label(measurer, style, text, max_width_px, "");
             let metrics = prepared.metrics;
             (metrics, prepare_html_labels.then_some(prepared))
         } else if analyze_class_svg_markdown(text).has_styled_runs {
@@ -1419,7 +1433,14 @@ fn class_box_dimensions(
             )
         } else {
             let wrapped = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
-                wrap_class_svg_text_like_mermaid(text, measurer, style, wrap_probe_font_size, false)
+                wrap_class_svg_text_like_mermaid(
+                    text,
+                    measurer,
+                    style,
+                    html_calc_text_style,
+                    wrap_probe_font_size,
+                    false,
+                )
             } else {
                 text.to_string()
             };
@@ -1491,6 +1512,7 @@ fn class_box_dimensions(
             &title_text,
             measurer,
             text_style,
+            html_calc_text_style,
             wrap_probe_font_size,
             false,
         )
@@ -1499,7 +1521,7 @@ fn class_box_dimensions(
     };
     let title_lines =
         crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
-    let title_max_width_px = matches!(wrap_mode, WrapMode::HtmlLike).then(|| {
+    let title_max_width_px = use_html_labels.then(|| {
         class_html_create_text_width_px(title_text.as_str(), measurer, html_calc_text_style).max(1)
     });
     let title_max_width = title_max_width_px.map(|width| width as f64);
@@ -1507,11 +1529,15 @@ fn class_box_dimensions(
     let title_has_styled_runs = title_markdown_analysis
         .as_ref()
         .is_some_and(|analysis| analysis.has_styled_runs);
-    let bold_title_style = TextStyle {
-        font_family: text_style.font_family.clone(),
-        font_size: text_style.font_size,
-        font_weight: Some("bolder".to_string()),
-        font_style: text_style.font_style.clone(),
+    let bold_title_style = if writer_uses_html_labels {
+        class_html_node_text_style(text_style, "font-weight:bolder", &node_label_style).into_owned()
+    } else {
+        TextStyle {
+            font_family: text_style.font_family.clone(),
+            font_size: text_style.font_size,
+            font_weight: Some("bolder".to_string()),
+            font_style: text_style.font_style.clone(),
+        }
     };
     let math_title_metrics = crate::math::contains_delimited_math(&title_text).then(|| {
         let max_width = title_max_width.unwrap_or_else(|| {
@@ -1529,8 +1555,19 @@ fn class_box_dimensions(
     });
     let math_title_metrics = math_title_metrics.flatten();
     let has_math_title_metrics = math_title_metrics.is_some();
+    let title_prepared = (use_html_labels && !has_math_title_metrics).then(|| {
+        class_prepare_html_label(
+            measurer,
+            &bold_title_style,
+            &title_text,
+            title_max_width_px.unwrap_or(1),
+            "",
+        )
+    });
     let mut title_metrics = math_title_metrics.unwrap_or_else(|| {
-        if matches!(wrap_mode, WrapMode::HtmlLike) || title_has_styled_runs {
+        if let Some(prepared) = &title_prepared {
+            prepared.metrics
+        } else if title_has_styled_runs {
             crate::text::measure_markdown_with_inline_styles(
                 measurer,
                 &wrapped_title_text,
@@ -1544,6 +1581,7 @@ fn class_box_dimensions(
     });
 
     if !has_math_title_metrics
+        && !use_html_labels
         && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
         && !title_has_styled_runs
     {
@@ -1691,11 +1729,7 @@ fn class_box_dimensions(
     let label_plan = if prepare_html_labels {
         Some(ClassNodeLabelPlan::PreparedHtml(
             ClassPreparedHtmlNodeLabels {
-                title: ClassPreparedHtmlLabel {
-                    metrics: title_metrics,
-                    max_width_px: title_max_width_px.unwrap_or(1),
-                    xhtml: crate::text::mermaid_markdown_to_xhtml_label_fragment(&title_text, true),
-                },
+                title: title_prepared.expect("prepared Class title XHTML"),
                 annotation: annotation_prepared,
                 members: members_prepared_out.unwrap_or_default(),
                 methods: methods_prepared_out.unwrap_or_default(),
@@ -1729,32 +1763,29 @@ pub(crate) fn class_html_create_text_width_px(
     class_calculate_text_width_like_mermaid_px(text, measurer, calc_text_style) + 50
 }
 
-fn class_effective_text_style<'a>(
+pub(crate) fn class_effective_text_style<'a>(
     base: &'a TextStyle,
     css_style: &str,
 ) -> std::borrow::Cow<'a, TextStyle> {
-    let mut style = std::borrow::Cow::Borrowed(base);
-    for declaration in css_style.split(';') {
-        let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(declaration) else {
-            continue;
-        };
-        match key {
-            "font-weight" => style.to_mut().font_weight = Some(value.trim().to_string()),
-            "font-style" => style.to_mut().font_style = Some(value.trim().to_string()),
-            "font-size" => {
-                if let Some(font_size) =
-                    crate::mermaid_style::parse_css_font_size_px(value, style.font_size)
-                {
-                    style.to_mut().font_size = font_size;
-                }
-            }
-            "font-family" => {
-                style.to_mut().font_family = Some(value.trim().to_string());
-            }
-            _ => {}
-        }
+    if css_style.trim().is_empty() {
+        std::borrow::Cow::Borrowed(base)
+    } else {
+        std::borrow::Cow::Owned(crate::text::apply_css_font_declarations(base, css_style))
     }
-    style
+}
+
+pub(crate) fn class_html_node_text_style<'a>(
+    base: &'a TextStyle,
+    group_style: &str,
+    span_style: &str,
+) -> std::borrow::Cow<'a, TextStyle> {
+    // The nodeLabel span inherits the row/title group before applying its own declarations.
+    let group = class_effective_text_style(base, group_style);
+    if span_style.is_empty() {
+        group
+    } else {
+        std::borrow::Cow::Owned(class_effective_text_style(&group, span_style).into_owned())
+    }
 }
 
 pub(crate) fn class_html_measure_label_metrics(
@@ -3951,6 +3982,67 @@ mod tests {
             super::class_html_create_text_width_px("unseen label", &ClassProbeMeasurer, &style),
             130
         );
+    }
+
+    #[test]
+    fn class_html_row_relative_fonts_are_applied_once() {
+        struct FontSizeMeasurer;
+        impl TextMeasurer for FontSizeMeasurer {
+            fn measure(&self, _text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: style.font_size,
+                    height: style.font_size * 1.5,
+                    line_count: 1,
+                }
+            }
+            fn measure_wrapped(
+                &self,
+                text: &str,
+                style: &TextStyle,
+                _max_width: Option<f64>,
+                _wrap: WrapMode,
+            ) -> crate::text::TextMetrics {
+                self.measure(text, style)
+            }
+        }
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass Vehicle {\n+owner\n+drive()\n}",
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let mut node = model.classes["Vehicle"].clone();
+        node.members[0].css_style = "font-size:2em".to_owned();
+        node.methods[0].css_style = "font-size:150%".to_owned();
+        let config = merman_core::MermaidConfig::default();
+        let style = TextStyle {
+            font_size: 24.0,
+            ..default_style()
+        };
+        let context = super::ClassBoxMeasureCtx {
+            measurer: &FontSizeMeasurer,
+            mermaid_config: &config,
+            math_renderer: None,
+            text_style: &style,
+            html_calc_text_style: &style,
+            wrap_probe_font_size: 16.0,
+            wrap_mode: WrapMode::HtmlLike,
+            padding: 12.0,
+            hide_empty_members_box: false,
+            capture_row_metrics: true,
+        };
+        let (_, _, plan) = super::class_box_dimensions(&node, &context);
+        let Some(super::ClassNodeLabelPlan::PreparedHtml(labels)) = plan else {
+            panic!("expected prepared HTML labels");
+        };
+        assert_eq!(labels.members[0].metrics.width, 48.0);
+        assert_eq!(labels.members[0].metrics.height, 72.0);
+        assert_eq!(labels.methods[0].metrics.width, 36.0);
+        assert_eq!(labels.methods[0].metrics.height, 54.0);
     }
 
     #[test]

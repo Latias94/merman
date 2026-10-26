@@ -1,4 +1,5 @@
 mod create_text;
+mod css_font;
 mod deterministic;
 mod flowchart_parity;
 mod heuristic;
@@ -15,6 +16,7 @@ mod whitespace;
 mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
+pub(crate) use css_font::{apply_css_font_declarations, is_static_css_font_family_list};
 pub use deterministic::{
     DeterministicTextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
     try_measure_wrapped_text_with_line_metrics,
