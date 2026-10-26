@@ -47,6 +47,20 @@ pub(crate) fn mermaid_markdown_to_lines(
     markdown: &str,
     markdown_auto_wrap: bool,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    markdown_to_lines(markdown, markdown_auto_wrap, false)
+}
+
+pub(super) fn html_markdown_measurement_lines(
+    markdown: &str,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    markdown_to_lines(markdown, true, true)
+}
+
+fn markdown_to_lines(
+    markdown: &str,
+    markdown_auto_wrap: bool,
+    preserve_code_literals: bool,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
     fn preprocess_mermaid_markdown(markdown: &str, markdown_auto_wrap: bool) -> String {
         let markdown = markdown.replace("\r\n", "\n");
 
@@ -167,7 +181,6 @@ pub(crate) fn mermaid_markdown_to_lines(
         delimiter: char,
         run_len: usize,
     ) -> bool {
-        let mut in_code_span = false;
         while i < chars.len() {
             if chars[i] == '<'
                 && let Some(end) = chars[i..].iter().position(|ch| *ch == '>')
@@ -175,12 +188,7 @@ pub(crate) fn mermaid_markdown_to_lines(
                 i += end + 1;
                 continue;
             }
-            if chars[i] == '`' {
-                in_code_span = !in_code_span;
-                i += 1;
-                continue;
-            }
-            if !in_code_span && chars[i] == delimiter {
+            if chars[i] == delimiter {
                 let candidate_len = if i + 1 < chars.len() && chars[i + 1] == delimiter {
                     2
                 } else {
@@ -202,7 +210,8 @@ pub(crate) fn mermaid_markdown_to_lines(
 
     // Mermaid wraps SVG-label Markdown strings in single backticks; strip to avoid inline-code
     // suppressing `**`/`_` formatting.
-    let markdown = if markdown.len() >= 2
+    let markdown = if !preserve_code_literals
+        && markdown.len() >= 2
         && markdown.starts_with('`')
         && markdown.ends_with('`')
         && !markdown.starts_with("``")
@@ -216,6 +225,11 @@ pub(crate) fn mermaid_markdown_to_lines(
     let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
 
     fn needs_full_delimiter_resolution(markdown: &str) -> bool {
+        // The pinned SVG token allowlist omits code spans. Let the full parser own their
+        // delimiter handling instead of retaining a second partial code-span scanner.
+        if markdown.contains('`') {
+            return true;
+        }
         let chars: Vec<char> = markdown.chars().collect();
         if chars
             .windows(2)
@@ -251,7 +265,10 @@ pub(crate) fn mermaid_markdown_to_lines(
         })
     }
 
-    fn resolve_full_delimiter_runs(markdown: &str) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    fn resolve_full_delimiter_runs(
+        markdown: &str,
+        preserve_code_literals: bool,
+    ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
         fn line_mut(
             out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
             line_idx: usize,
@@ -408,6 +425,15 @@ pub(crate) fn mermaid_markdown_to_lines(
                     ));
                 }
                 pulldown_cmark::Event::Code(_) if in_paragraph && skipped_inline_depth == 0 => {
+                    if preserve_code_literals && let Some(raw) = markdown.get(range) {
+                        append_text(
+                            &mut out,
+                            &mut line_idx,
+                            raw,
+                            MermaidMarkdownWordType::Normal,
+                            false,
+                        );
+                    }
                     previous_text = None;
                 }
                 pulldown_cmark::Event::Html(html) | pulldown_cmark::Event::InlineHtml(html)
@@ -443,7 +469,7 @@ pub(crate) fn mermaid_markdown_to_lines(
     }
 
     if needs_full_delimiter_resolution(&pre) {
-        return resolve_full_delimiter_runs(&pre);
+        return resolve_full_delimiter_runs(&pre, preserve_code_literals);
     }
 
     let chars: Vec<char> = pre.chars().collect();
@@ -454,7 +480,6 @@ pub(crate) fn mermaid_markdown_to_lines(
     let mut stack: Vec<MermaidMarkdownWordType> = vec![MermaidMarkdownWordType::Normal];
     let mut word = String::new();
     let mut word_ty = MermaidMarkdownWordType::Normal;
-    let mut in_code_span = false;
 
     fn line_mut(
         out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
@@ -524,26 +549,7 @@ pub(crate) fn mermaid_markdown_to_lines(
             continue;
         }
 
-        if ch == '`' {
-            if word.is_empty() {
-                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-            }
-            word.push(ch);
-            in_code_span = !in_code_span;
-            i += 1;
-            continue;
-        }
-
         if ch == '*' || ch == '_' {
-            if in_code_span {
-                if word.is_empty() {
-                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-                }
-                word.push(ch);
-                i += 1;
-                continue;
-            }
-
             let prev = i.checked_sub(1).map(|index| chars[index]);
             let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
                 2
@@ -764,17 +770,23 @@ mod tests {
     }
 
     #[test]
-    fn inline_code_suppresses_emphasis_delimiters() {
+    fn svg_markdown_code_spans_are_omitted_in_both_parser_routes() {
         use MermaidMarkdownWordType::*;
 
-        // Mermaid CLI baselines (class diagram HTML labels) preserve backticks and do not
-        // interpret `**...**` inside them as strong/emphasis.
+        // Mermaid 12.1's SVG token allowlist omits code spans, unlike its HTML projection.
         assert_eq!(
-            mermaid_markdown_to_lines("inline: `**not bold**`", true),
+            mermaid_markdown_to_lines("inline: `code` tail", true),
             vec![vec![
                 ("inline:".to_string(), Normal),
-                ("`**not".to_string(), Normal),
-                ("bold**`".to_string(), Normal),
+                ("tail".to_string(), Normal),
+            ]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***head*** inline: `code` tail", true),
+            vec![vec![
+                ("head".to_string(), Strong),
+                ("inline:".to_string(), Normal),
+                ("tail".to_string(), Normal),
             ]]
         );
     }

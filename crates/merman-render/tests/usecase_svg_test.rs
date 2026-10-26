@@ -58,6 +58,107 @@ fn render_config(
 }
 
 #[test]
+fn usecase_plain_svg_word_measurement_resets_weight_without_changing_role_fonts() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::sync::Arc;
+
+    struct WeightSensitiveMeasurer;
+
+    impl TextMeasurer for WeightSensitiveMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            let weight_scale = if matches!(style.font_weight.as_deref(), Some("bold" | "700")) {
+                2.0
+            } else {
+                1.0
+            };
+            TextMetrics {
+                width: text.chars().count() as f64 * style.font_size / 2.0 * weight_scale,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    for html in [false, true] {
+        let config = MermaidConfig::from_value(json!({
+            "layout": "dagre", "look": "classic", "htmlLabels": html,
+            "themeVariables": {"fontSize": "40px", "fontFamily": "Root Probe"},
+            "usecase": {
+                "usecaseFontFamily": "Role Probe", "usecaseFontSize": 20,
+                "usecaseFontWeight": "bold", "minNodeWidth": 0, "wrappingWidth": 1000
+            }
+        }));
+        let parsed = Engine::new()
+            .with_site_config(config)
+            .parse_diagram_for_render_model_sync("usecase-beta\nA(Probe)\n", ParseOptions::strict())
+            .expect("parse Usecase")
+            .expect("detect Usecase");
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("usecase-terminal-weight").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(WeightSensitiveMeasurer),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+            .begin_session()
+            .expect("render session");
+        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .expect("prepare Usecase");
+        let projection = artifact.layout_json().expect("Usecase layout");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Usecase");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Usecase SVG");
+        let word = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name(if html { "p" } else { "tspan" })
+                    && node.text() == Some("Probe")
+                    && (html || node.attribute("class") == Some("text-inner-tspan"))
+            })
+            .expect("visible terminal word");
+        let group = word
+            .ancestors()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "label")
+                    })
+            })
+            .expect("role label group");
+        let style = group
+            .attribute("style")
+            .expect("maintenance role font style");
+        assert!(style.contains("font-family:Role Probe"), "{style}");
+        assert!(style.contains("font-size:20px"), "{style}");
+        assert!(style.contains("font-weight:bold"), "{style}");
+        if !html {
+            assert_eq!(word.attribute("font-weight"), Some("normal"));
+            assert_eq!(word.attribute("font-style"), Some("normal"));
+        }
+        let node = projection["layout"]["UsecaseDiagram"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "A")
+            .expect("Usecase node");
+        // Five 10px glyphs plus the ellipse's 40px; HTML inherits the doubled bold advance.
+        assert_eq!(
+            node["width"],
+            json!(if html { 140.0 } else { 90.0 }),
+            "html={html}"
+        );
+    }
+}
+
+#[test]
 fn usecase_dagre_preserves_shapes_source_ids_and_accessibility() {
     let (_, svg) = render(SOURCE, "dagre");
     let document = roxmltree::Document::parse(&svg).expect("valid SVG");

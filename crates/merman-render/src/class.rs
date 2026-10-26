@@ -9,8 +9,8 @@ use crate::model::{
     ClassRenderTree, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 use crate::text::{
-    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownAnalysis, TextMeasurer, TextStyle,
-    WrapMode, analyze_mermaid_markdown, measure_mermaid_text_dimensions,
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownAnalysis, MermaidMarkdownWordType,
+    TextMeasurer, TextStyle, WrapMode, analyze_mermaid_markdown, measure_mermaid_text_dimensions,
 };
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
@@ -1916,6 +1916,63 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
     (width.is_finite() && width > 0.0).then_some(width)
 }
 
+pub(crate) struct ClassSvgNoteLabel {
+    analysis: MermaidMarkdownAnalysis,
+}
+
+impl ClassSvgNoteLabel {
+    pub(crate) fn new(decoded_text: &str) -> Self {
+        Self {
+            analysis: analyze_class_svg_markdown(decoded_text),
+        }
+    }
+
+    pub(crate) fn lines(&self) -> &[Vec<(String, MermaidMarkdownWordType)>] {
+        &self.analysis.lines
+    }
+
+    pub(crate) fn metrics(
+        &self,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> crate::text::TextMetrics {
+        let mut metrics = crate::text::measure_svg_markdown_word_lines(
+            measurer,
+            self.lines(),
+            style,
+            crate::text::SvgTextEntityMode::DecodedModel,
+        );
+        if self.analysis.line_count == 1 && self.analysis.all_runs_normal() {
+            let text = self.lines()[0]
+                .iter()
+                .map(|(word, _)| word.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let style =
+                crate::text::svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
+            let (left, right) = measurer.measure_svg_text_bbox_x(&text, &style);
+            let width = left + right;
+            if width.is_finite() && width > 0.0 {
+                metrics.width = width;
+            }
+        }
+        metrics
+    }
+
+    pub(crate) fn bbox_y_offset(&self, measurer: &dyn TextMeasurer, style: &TextStyle) -> f64 {
+        self.lines()
+            .first()
+            .into_iter()
+            .flatten()
+            .map(|(word, kind)| {
+                let style = crate::text::svg_markdown_word_style(style, *kind);
+                measurer.measure_svg_create_text_bbox_y_offset_px(word, &style)
+            })
+            .reduce(f64::min)
+            .unwrap_or(0.0)
+    }
+}
+
 fn note_dimensions(
     text: &str,
     measurer: &dyn TextMeasurer,
@@ -1930,23 +1987,15 @@ fn note_dimensions(
     let math_metrics = mermaid_config.and_then(|config| {
         class_math_label_metrics(&label, measurer, text_style, None, config, math_renderer)
     });
-    let has_math_metrics = math_metrics.is_some();
-    let mut m = if let Some(metrics) = math_metrics {
+    let m = if let Some(metrics) = math_metrics {
         metrics
     } else if matches!(wrap_mode, WrapMode::HtmlLike) {
         mermaid_config
             .map(|config| class_html_measure_note_metrics(measurer, text_style, text, config))
             .unwrap_or_else(|| measurer.measure_wrapped(&label, text_style, None, wrap_mode))
     } else {
-        measurer.measure_wrapped(&label, text_style, None, wrap_mode)
+        ClassSvgNoteLabel::new(&label).metrics(measurer, text_style)
     };
-    if !has_math_metrics
-        && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-        && let Some(width) =
-            class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
-    {
-        m.width = width;
-    }
     (m.width + p, m.height + p, m)
 }
 

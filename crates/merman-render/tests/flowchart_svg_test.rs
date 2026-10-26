@@ -63,6 +63,66 @@ fn render_flowchart_artifact(
     Ok(rendered.svg().to_owned())
 }
 
+#[test]
+fn flowchart_html_text_measurement_uses_compiled_invalid_font_size_winner() {
+    let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = requests.clone();
+    let measurer = DeterministicTextMeasurer::default().with_width_callback(move |text, style| {
+        observed
+            .lock()
+            .unwrap()
+            .push((text.to_owned(), style.font_size));
+        text.chars().count() as f64 * style.font_size
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("flowchart-compiled-font-winner").unwrap(),
+        "test",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer)),
+    );
+    let parsed = Engine::new()
+        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "themeVariables": { "fontSize": "16px" }
+        })))
+        .parse_diagram_for_render_model_sync(
+            "flowchart LR\nA[\"MMMM\"]\nstyle A font-size:32px,font-size:invalid\n",
+            ParseOptions::default(),
+        )
+        .unwrap()
+        .unwrap();
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        environment.begin_session().unwrap(),
+        &SvgRenderOptions::default(),
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let terminal = document
+        .descendants()
+        .find(|node| node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel"))
+        .unwrap();
+    let css = terminal.attribute("style").unwrap();
+    assert!(css.contains("font-size:invalid"), "{css}");
+    assert!(!css.contains("32px"), "{css}");
+
+    let requests = requests.lock().unwrap();
+    assert!(
+        requests.iter().any(|(text, _)| text == "MMMM"),
+        "{requests:?}"
+    );
+    assert!(
+        requests
+            .iter()
+            .filter(|(text, _)| text == "MMMM")
+            .all(|(_, font_size)| *font_size == 16.0),
+        "the discarded 32px declaration must not affect measurement: {requests:?}"
+    );
+}
+
 fn render_flowchart_svg_from_text(text: &str) -> String {
     render_flowchart_svg_from_text_with_engine(Engine::new(), text)
 }

@@ -131,6 +131,12 @@ fn label(
     } else {
         WrapMode::SvgLike
     };
+    let measurement_style = if !html && label_type == UsecaseLabelType::Text {
+        // Plain createText words reset weight/style, but keep the enclosing role size/family.
+        crate::text::svg_markdown_word_style(style, crate::text::MermaidMarkdownWordType::Normal)
+    } else {
+        std::borrow::Cow::Borrowed(style)
+    };
     let source = create_text_source(text, label_type);
     let source = source.as_ref();
     let math_renderer = context
@@ -145,7 +151,7 @@ fn label(
         crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
             measurer: context.measurer,
             raw_label: source,
-            style,
+            style: &measurement_style,
             max_width_px: max_width,
             wrap_mode: mode,
             config: context.config,
@@ -156,14 +162,14 @@ fn label(
                 measure_wrapped_markdown_with_inline_styles(
                     context.measurer,
                     text,
-                    style,
+                    &measurement_style,
                     max_width,
                     mode,
                 )
             } else {
                 context
                     .measurer
-                    .measure_wrapped(source, style, max_width, mode)
+                    .measure_wrapped(source, &measurement_style, max_width, mode)
             }
         });
     // labelHelper.withMinWidth also widens the measured box for SVG labels.

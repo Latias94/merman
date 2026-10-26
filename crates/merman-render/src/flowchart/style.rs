@@ -48,20 +48,28 @@ fn flowchart_effective_text_style_for_class_names<'a, 'b>(
         .into_iter()
         .filter_map(|class| class_defs.get(class))
         .flatten();
-    let mut css = String::new();
+    let mut winners = [None; 4];
     for declaration in class_declarations.chain(inline_styles) {
         for declaration in flowchart_split_mermaid_style_decls(declaration) {
             let Some((key, _)) = parse_style_decl(declaration) else {
                 continue;
             };
-            if matches!(
-                key.to_ascii_lowercase().as_str(),
-                "font-family" | "font-size" | "font-weight" | "font-style"
-            ) {
-                css.push_str(declaration);
-                css.push(';');
-            }
+            let index = match key {
+                "font-family" => 0,
+                "font-size" => 1,
+                "font-weight" => 2,
+                "font-style" => 3,
+                _ => continue,
+            };
+            // Mermaid 12.1 compileStyles and the SVG writer keep the last raw declaration,
+            // before CSS value validation and regardless of an earlier !important.
+            winners[index] = Some(declaration);
         }
+    }
+    let mut css = String::new();
+    for declaration in winners.into_iter().flatten() {
+        css.push_str(declaration);
+        css.push(';');
     }
 
     if css.is_empty() {
@@ -634,10 +642,10 @@ mod tests {
             ("font-size:32px,font-size:inherit", 16.0, "700"),
             (
                 "font-size:32px,font-size:unset !important,font-size:48px",
-                16.0,
+                48.0,
                 "700",
             ),
-            ("font-size:2em !IMPORTANT,font-size:150%", 32.0, "700"),
+            ("font-size:2em !IMPORTANT,font-size:150%", 24.0, "700"),
             (
                 "font-size:2em !important,font-size:150% !important",
                 24.0,
@@ -648,6 +656,9 @@ mod tests {
                 30.0,
                 "700",
             ),
+            ("font-size:32px,font-size:invalid", 16.0, "700"),
+            ("font-size:32px !important,font-size:invalid", 16.0, "700"),
+            ("font-size:32px,font-size:invalid !important", 16.0, "700"),
             ("font-weight:lighter,font-weight:lighter", 16.0, "400"),
         ] {
             let style = flowchart_effective_text_style_for_classes(
@@ -679,7 +690,7 @@ mod tests {
         let inline = vec!["font-size:48px".to_owned()];
         let node =
             flowchart_effective_text_style_for_node_classes(&base, &class_defs, &classes, &inline);
-        assert_eq!(node.font_size, 24.0);
+        assert_eq!(node.font_size, 48.0);
         let edge = flowchart_effective_edge_label_text_style(
             &base,
             &class_defs,

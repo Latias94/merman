@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Default)]
 struct SvgFontMeasurer {
     requests: Mutex<Vec<(String, TextStyle)>>,
+    bbox_y_requests: Mutex<Vec<String>>,
 }
 
 impl TextMeasurer for SvgFontMeasurer {
@@ -29,8 +30,15 @@ impl TextMeasurer for SvgFontMeasurer {
         } else {
             1.0
         };
+        let weight_scale = if matches!(style.font_weight.as_deref(), Some("700" | "bold")) {
+            1.5
+        } else {
+            1.0
+        };
         TextMetrics {
-            width: text.chars().count() as f64 * style.font_size / 2.0 * italic_scale,
+            width: text.chars().count() as f64 * style.font_size / 2.0
+                * italic_scale
+                * weight_scale,
             height: style.font_size * italic_scale * line_count as f64,
             line_count,
         }
@@ -56,6 +64,12 @@ impl TextMeasurer for SvgFontMeasurer {
             height: style.font_size,
             line_count: 1,
         }
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.bbox_y_requests.lock().unwrap().push(text.to_owned());
+        self.measure(text, style);
+        0.0
     }
 }
 
@@ -162,5 +176,155 @@ fn class_svg_abstract_method_measurement_matches_the_terminal_tspan_reset() {
             assert_eq!(word.attribute("font-style"), Some(font_style));
             assert_eq!(word.attribute("font-weight"), Some("normal"));
         }
+    }
+}
+
+#[test]
+fn class_svg_note_measures_visible_markdown_in_layout_and_emission() {
+    let measurer = Arc::new(SvgFontMeasurer::default());
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("class-svg-note-contract").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        measurer.clone(),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let parsed = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "layout": "dagre",
+            "htmlLabels": false,
+            "themeVariables": { "fontSize": "16px" }
+        })))
+        .parse_diagram_for_render_model_sync(
+            "classDiagram\nnote \"**MMMM**\"\n",
+            ParseOptions::default(),
+        )
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(
+        parsed,
+        &LayoutOptions::default(),
+        environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    {
+        let requests = measurer.requests.lock().unwrap();
+        assert!(
+            requests.iter().any(|(text, style)| {
+                text == "MMMM" && style.font_weight.as_deref() == Some("700")
+            }),
+            "layout must measure the visible bold note: {requests:?}"
+        );
+        assert!(
+            !requests.iter().any(|(text, _)| text.contains("**")),
+            "{requests:?}"
+        );
+    }
+    measurer.requests.lock().unwrap().clear();
+
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let label = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("label noteLabel"))
+        .unwrap();
+    let word = label
+        .descendants()
+        .find(|node| node.attribute("class") == Some("text-inner-tspan"))
+        .unwrap();
+    assert_eq!(word.text(), Some("MMMM"));
+    assert_eq!(word.attribute("font-weight"), Some("bold"));
+    assert_eq!(word.attribute("font-style"), Some("normal"));
+    assert_eq!(label.attribute("transform"), Some("translate(-24, -8)"));
+    let requests = measurer.requests.lock().unwrap();
+    assert!(
+        requests
+            .iter()
+            .any(|(text, style)| { text == "MMMM" && style.font_weight.as_deref() == Some("700") }),
+        "emission must measure the visible bold note: {requests:?}"
+    );
+    assert!(
+        !requests.iter().any(|(text, _)| text.contains("**")),
+        "{requests:?}"
+    );
+}
+
+#[test]
+fn class_svg_note_preserves_entity_depth_and_measures_visible_baseline_words() {
+    for (source, visible, transform) in [
+        ("ASCII `omitted`", "ASCII", "translate(-20, -8)"),
+        ("**A &amp;amp; B**", "A &amp; B", "translate(-54, -8)"),
+    ] {
+        let measurer = Arc::new(SvgFontMeasurer::default());
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("class-svg-note-projection").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            measurer.clone(),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "layout": "dagre",
+                "htmlLabels": false,
+                "themeVariables": { "fontSize": "16px" }
+            })))
+            .parse_diagram_for_render_model_sync(
+                &format!("classDiagram\nnote \"{source}\"\n"),
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("label noteLabel"))
+            .unwrap();
+        let terminal = label
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .filter_map(|node| node.text())
+            .collect::<String>();
+        assert_eq!(terminal, visible, "{source}");
+        assert_eq!(label.attribute("transform"), Some(transform), "{source}");
+        let requests = measurer.requests.lock().unwrap();
+        assert!(
+            requests.iter().any(|(text, _)| text == visible),
+            "{requests:?}"
+        );
+        assert!(
+            !requests.iter().any(|(text, _)| {
+                text.contains("omitted") || text.contains("**") || text == "A & B"
+            }),
+            "{requests:?}"
+        );
+        let bbox_y_requests = measurer.bbox_y_requests.lock().unwrap();
+        let mut measured_words = bbox_y_requests
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        measured_words.sort_unstable();
+        measured_words.dedup();
+        let mut visible_words = visible.split(' ').collect::<Vec<_>>();
+        visible_words.sort_unstable();
+        visible_words.dedup();
+        assert_eq!(measured_words, visible_words, "{source}");
     }
 }
