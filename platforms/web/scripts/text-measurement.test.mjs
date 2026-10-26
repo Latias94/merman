@@ -187,17 +187,53 @@ class FakeMeasureElement {
   }
 }
 
+class FakeCanvasContext {
+  _font = "10px sans-serif";
+  canonicalFonts = new Map();
+  rejectedFonts = new Set();
+  savedFonts = [];
+  calls = [];
+  saveCalls = 0;
+  restoreCalls = 0;
+
+  get font() {
+    return this._font;
+  }
+
+  set font(value) {
+    if (value === this.throwOnFont) {
+      throw new Error("synthetic font assignment failure");
+    }
+    if (!this.rejectedFonts.has(value)) {
+      this._font = this.canonicalFonts.get(value) ?? value;
+    }
+  }
+
+  save() {
+    this.saveCalls += 1;
+    this.savedFonts.push(this.font);
+  }
+
+  restore() {
+    this.restoreCalls += 1;
+    assert.ok(this.savedFonts.length > 0);
+    this._font = this.savedFonts.pop();
+  }
+
+  measureText(text) {
+    this.calls.push({ font: this.font, text });
+    if (this.throwOnMeasure) {
+      throw new Error("synthetic measureText failure");
+    }
+    return { width: this.width ?? text.length * 7.25 };
+  }
+}
+
 test("browser text measurement session routes exact operations to their DOM primitives", () => {
   const originalDocument = globalThis.document;
   let canvasCreates = 0;
-  const canvasCalls = [];
-  const canvasContext = {
-    font: "",
-    measureText(text) {
-      canvasCalls.push({ font: this.font, text });
-      return { width: text.length * 7.25 };
-    },
-  };
+  const canvasContext = new FakeCanvasContext();
+  const canvasCalls = canvasContext.calls;
   const body = {
     tagName: "body",
     children: [],
@@ -486,6 +522,146 @@ test("browser text measurement session routes exact operations to their DOM prim
     }
   }
 });
+
+test("canvas accepts canonicalized weights and preserves quoted family punctuation", () => {
+  const context = new FakeCanvasContext();
+  const cases = [
+    ["bolder", 16, "sans-serif", "bold 16px sans-serif"],
+    ["lighter", 16, "sans-serif", "100 16px sans-serif"],
+    ["normal", 18, '"A; B, C", sans-serif', '18px "A; B, C", sans-serif'],
+    ["normal", 18, '"A\\"; B", serif', '18px "A\\"; B", serif'],
+    ["normal", 10, "sans-serif", "10px sans-serif"],
+    ["normal", 12, "serif", "12px serif"],
+  ];
+  for (const [weight, size, family, canonical] of cases) {
+    context.canonicalFonts.set(`normal ${weight} ${size}px ${family}`, canonical);
+  }
+  context.font = "italic 700 31px serif";
+  const originalFont = context.font;
+
+  withCanvasSession(context, (session) => {
+    for (const [weight, size, family, canonical] of cases) {
+      assert.deepEqual(session.measure({
+        ...request("Vehicle", null, "canvas-measure-text-width", "svg-like"),
+        font_weight: weight,
+        font_size: size,
+        font_family: family,
+      }), { kind: "length", length: "Vehicle".length * 7.25 });
+      assert.equal(context.calls.at(-1).font, canonical);
+      assert.equal(context.font, originalFont);
+      assert.equal(context.savedFonts.length, 0);
+    }
+    assert.equal(context.saveCalls, cases.length);
+    assert.equal(context.restoreCalls, cases.length);
+  });
+});
+
+test("canvas rejects malformed assignment without measuring default or previous fonts", () => {
+  const context = new FakeCanvasContext();
+  const invalidFamilies = ["sans-serif;", "sans-serif; font-size: 1px", ""];
+  for (const family of invalidFamilies) {
+    context.rejectedFonts.add(`normal normal 16px ${family}`);
+  }
+
+  withCanvasSession(context, (session) => {
+    for (const family of invalidFamilies) {
+      const invalid = {
+        ...request("Vehicle", null, "canvas-measure-text-width", "svg-like"),
+        font_family: family,
+      };
+      for (const previousFont of ["10px sans-serif", "italic 700 31px serif"]) {
+        context.font = previousFont;
+        const callsBefore = context.calls.length;
+        assert.equal(session.measure(invalid), undefined);
+        assert.equal(context.calls.length, callsBefore, "rejected fonts must not be measured");
+        assert.equal(context.font, previousFont);
+        assert.equal(context.savedFonts.length, 0);
+      }
+      const valid = {
+        ...invalid,
+        font_size: 24,
+        font_family: "monospace",
+      };
+      assert.ok(session.measure(valid));
+      assert.equal(context.calls.at(-1).font, "normal normal 24px monospace");
+      const callsBefore = context.calls.length;
+      assert.equal(session.measure(invalid), undefined);
+      assert.equal(context.calls.length, callsBefore);
+      assert.equal(context.font, "italic 700 31px serif");
+    }
+    assert.equal(context.saveCalls, context.restoreCalls);
+  });
+});
+
+test("canvas restores saved state on invalid metrics and throwing browser primitives", () => {
+  const context = new FakeCanvasContext();
+  context.font = "italic 700 31px serif";
+  const originalFont = context.font;
+  const canvasRequest = request("Vehicle", null, "canvas-measure-text-width", "svg-like");
+
+  withCanvasSession(context, (session) => {
+    for (const width of [NaN, Infinity, -Infinity]) {
+      context.width = width;
+      assert.equal(session.measure(canvasRequest), undefined);
+      assert.equal(context.font, originalFont);
+      assert.equal(context.savedFonts.length, 0);
+    }
+    delete context.width;
+
+    context.throwOnMeasure = true;
+    assert.equal(session.measure(canvasRequest), undefined);
+    assert.equal(context.font, originalFont);
+    assert.equal(context.savedFonts.length, 0);
+    context.throwOnMeasure = false;
+
+    context.throwOnFont = "normal normal 16px Trebuchet MS, sans-serif";
+    assert.equal(session.measure(canvasRequest), undefined);
+    assert.equal(context.font, originalFont);
+    assert.equal(context.savedFonts.length, 0);
+    delete context.throwOnFont;
+
+    assert.deepEqual(session.measure(canvasRequest), {
+      kind: "length",
+      length: "Vehicle".length * 7.25,
+    });
+    assert.equal(context.font, originalFont);
+    assert.equal(context.saveCalls, 6);
+    assert.equal(context.restoreCalls, 6);
+  });
+});
+
+function withCanvasSession(context, run) {
+  const originalDocument = globalThis.document;
+  const body = {
+    children: [],
+    appendChild(child) {
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    },
+  };
+  globalThis.document = {
+    body,
+    createElement(tagName) {
+      return new FakeMeasureElement(tagName, tagName === "canvas" ? context : null);
+    },
+    createElementNS(namespace, tagName) {
+      assert.equal(namespace, "http://www.w3.org/2000/svg");
+      return new FakeMeasureElement(tagName);
+    },
+  };
+  const session = createBrowserTextMeasurementSession();
+  try {
+    run(session);
+  } finally {
+    session.dispose();
+    if (originalDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+  }
+}
 
 test("browser text measurement session can be disposed before first use", () => {
   const originalDocument = globalThis.document;
