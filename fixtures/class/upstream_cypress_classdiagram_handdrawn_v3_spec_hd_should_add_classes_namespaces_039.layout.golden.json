@@ -5,41 +5,41 @@
       "nodes": [
         {
           "id": "Namespace1",
-          "x": 56.117,
+          "x": 56.12,
           "y": 142.0,
-          "width": 88.234,
+          "width": 88.24,
           "height": 260.0,
           "is_cluster": true
         },
         {
           "id": "C3",
-          "x": 160.352,
+          "x": 160.36,
           "y": 142.0,
-          "width": 40.234,
+          "width": 40.24,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C4",
-          "x": 240.586,
+          "x": 240.6,
           "y": 142.0,
-          "width": 40.234,
+          "width": 40.24,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C1",
-          "x": 56.117,
+          "x": 56.12,
           "y": 102.5,
-          "width": 40.234,
+          "width": 40.24,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C2",
-          "x": 56.117,
+          "x": 56.12,
           "y": 207.5,
-          "width": 40.234,
+          "width": 40.24,
           "height": 81.0,
           "is_cluster": false
         }
@@ -53,11 +53,11 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 56.117,
+              "x": 56.12,
               "y": 143.0
             },
             {
-              "x": 56.117,
+              "x": 56.12,
               "y": 167.0
             }
           ],
@@ -74,15 +74,15 @@
       "clusters": [
         {
           "id": "Namespace1",
-          "x": 56.117,
+          "x": 56.12,
           "y": 142.0,
-          "width": 88.234,
+          "width": 88.24,
           "height": 260.0,
           "diff": -12.0,
           "offset_y": 15.0,
           "title": "Namespace1",
           "title_label": {
-            "x": 56.117,
+            "x": 56.12,
             "y": 22.5,
             "width": 69.3,
             "height": 21.0
@@ -97,7 +97,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 260.703,
+        "max_x": 260.72,
         "max_y": 272.0
       }
     }

@@ -5,15 +5,6 @@ fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
     crate::mermaid_style::parse_safe_style_decl(s)
 }
 
-fn normalize_css_font_family(font_family: &str) -> String {
-    let font_family = font_family.trim().trim_end_matches(';').trim();
-    if crate::mermaid_style::is_safe_css_font_family_value(font_family) {
-        font_family.to_string()
-    } else {
-        String::new()
-    }
-}
-
 pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
     fn looks_like_key_start(s: &str) -> bool {
         let s = s.trim_start();
@@ -47,59 +38,39 @@ pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item
     parts.into_iter()
 }
 
-fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str, value: &str) {
-    match key.trim().to_ascii_lowercase().as_str() {
-        "font-size" => {
-            let inherited_px = style.as_ref().font_size;
-            if let Some(px) = crate::mermaid_style::parse_css_font_size_px(value, inherited_px) {
-                style.to_mut().font_size = px;
-            }
-        }
-        "font-family" => {
-            style.to_mut().font_family = Some(normalize_css_font_family(value));
-        }
-        "font-weight" => {
-            style.to_mut().font_weight = Some(value.trim().to_string());
-        }
-        "font-style" => {
-            style.to_mut().font_style = Some(value.trim().to_string());
-        }
-        _ => {}
-    }
-}
-
-fn flowchart_effective_text_style_for_class_names<'a>(
+fn flowchart_effective_text_style_for_class_names<'a, 'b>(
     base: &'a TextStyle,
-    class_defs: &IndexMap<String, Vec<String>>,
+    class_defs: &'b IndexMap<String, Vec<String>>,
     class_names: impl IntoIterator<Item = &'a str>,
-    inline_styles: &[String],
+    inline_styles: impl IntoIterator<Item = &'b String>,
 ) -> std::borrow::Cow<'a, TextStyle> {
-    let mut style = std::borrow::Cow::Borrowed(base);
-
-    for class in class_names {
-        let Some(decls) = class_defs.get(class) else {
-            continue;
-        };
-        for d in decls {
-            for d in flowchart_split_mermaid_style_decls(d) {
-                let Some((k, v)) = parse_style_decl(d) else {
-                    continue;
-                };
-                apply_text_style_decl(&mut style, k, v);
-            }
-        }
-    }
-
-    for d in inline_styles {
-        for d in flowchart_split_mermaid_style_decls(d) {
-            let Some((k, v)) = parse_style_decl(d) else {
+    let class_declarations = class_names
+        .into_iter()
+        .filter_map(|class| class_defs.get(class))
+        .flatten();
+    let mut css = String::new();
+    for declaration in class_declarations.chain(inline_styles) {
+        for declaration in flowchart_split_mermaid_style_decls(declaration) {
+            let Some((key, _)) = parse_style_decl(declaration) else {
                 continue;
             };
-            apply_text_style_decl(&mut style, k, v);
+            if matches!(
+                key.to_ascii_lowercase().as_str(),
+                "font-family" | "font-size" | "font-weight" | "font-style"
+            ) {
+                css.push_str(declaration);
+                css.push(';');
+            }
         }
     }
 
-    style
+    if css.is_empty() {
+        std::borrow::Cow::Borrowed(base)
+    } else {
+        // Resolve the winning declarations once against the inherited font. Earlier relative
+        // declarations must not become the base of a later declaration on the same element.
+        std::borrow::Cow::Owned(crate::text::apply_css_font_declarations(base, &css))
+    }
 }
 
 pub(crate) fn flowchart_effective_node_class_names<'a>(
@@ -167,21 +138,12 @@ pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
         return std::borrow::Cow::Borrowed(base);
     }
 
-    let mut style = flowchart_effective_text_style_for_class_names(
+    flowchart_effective_text_style_for_class_names(
         base,
         class_defs,
         classes.iter().map(|class| class.as_str()),
-        &[],
-    );
-    for declaration in default_edge_styles.iter().chain(edge_styles) {
-        for declaration in flowchart_split_mermaid_style_decls(declaration) {
-            let Some((key, value)) = parse_style_decl(declaration) else {
-                continue;
-            };
-            apply_text_style_decl(&mut style, key, value);
-        }
-    }
-    style
+        default_edge_styles.iter().chain(edge_styles),
+    )
 }
 
 /// Mermaid's Swimlane adapter moves an edge label onto a fresh `labelRect` node and copies only
@@ -196,14 +158,12 @@ pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
         return std::borrow::Cow::Borrowed(base);
     };
 
-    let mut style = std::borrow::Cow::Borrowed(base);
-    for declaration in flowchart_split_mermaid_style_decls(first_style) {
-        let Some((key, value)) = parse_style_decl(declaration) else {
-            continue;
-        };
-        apply_text_style_decl(&mut style, key, value);
-    }
-    style
+    flowchart_effective_text_style_for_class_names(
+        base,
+        &IndexMap::new(),
+        std::iter::empty(),
+        std::iter::once(first_style),
+    )
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -659,7 +619,117 @@ mod tests {
         );
 
         assert_eq!(style.font_size, 12.0);
-        assert_eq!(style.font_weight.as_deref(), Some("bold"));
+        assert_eq!(style.font_weight.as_deref(), Some("700"));
         assert_eq!(style.font_style.as_deref(), Some("normal"));
+    }
+
+    #[test]
+    fn text_style_resolution_resolves_winners_against_the_inherited_font() {
+        let base = TextStyle {
+            font_weight: Some("700".to_owned()),
+            ..TextStyle::default()
+        };
+        for (declarations, expected_size, expected_weight) in [
+            ("font-size:2em,font-size:150%", 24.0, "700"),
+            ("font-size:32px,font-size:inherit", 16.0, "700"),
+            (
+                "font-size:32px,font-size:unset !important,font-size:48px",
+                16.0,
+                "700",
+            ),
+            ("font-size:2em !IMPORTANT,font-size:150%", 32.0, "700"),
+            (
+                "font-size:2em !important,font-size:150% !important",
+                24.0,
+                "700",
+            ),
+            (
+                "font-size:24px,font-size:invalid !important,font-size:30px",
+                30.0,
+                "700",
+            ),
+            ("font-weight:lighter,font-weight:lighter", 16.0, "400"),
+        ] {
+            let style = flowchart_effective_text_style_for_classes(
+                &base,
+                &IndexMap::new(),
+                &[],
+                &[declarations.to_owned()],
+            );
+            assert_eq!(style.font_size, expected_size, "{declarations}");
+            assert_eq!(
+                style.font_weight.as_deref(),
+                Some(expected_weight),
+                "{declarations}"
+            );
+        }
+    }
+
+    #[test]
+    fn node_and_edge_font_winners_share_one_cascade_across_style_sources() {
+        let base = TextStyle::default();
+        let class_defs = IndexMap::from([
+            ("default".to_owned(), vec!["font-size:2em".to_owned()]),
+            (
+                "accent".to_owned(),
+                vec!["font-size:150% !important".to_owned()],
+            ),
+        ]);
+        let classes = vec!["accent".to_owned()];
+        let inline = vec!["font-size:48px".to_owned()];
+        let node =
+            flowchart_effective_text_style_for_node_classes(&base, &class_defs, &classes, &inline);
+        assert_eq!(node.font_size, 24.0);
+        let edge = flowchart_effective_edge_label_text_style(
+            &base,
+            &class_defs,
+            &classes,
+            &["font-size:32px".to_owned()],
+            &["font-size:inherit !important".to_owned()],
+        );
+        assert_eq!(edge.font_size, 16.0);
+        let relative_edge = flowchart_effective_edge_label_text_style(
+            &base,
+            &IndexMap::new(),
+            &[],
+            &["font-size:2em".to_owned()],
+            &["font-size:150%".to_owned()],
+        );
+        assert_eq!(relative_edge.font_size, 24.0);
+        let swimlane = flowchart_swimlane_label_rect_text_style(
+            &base,
+            &["font-size:2em,font-size:150%".to_owned()],
+            &["font-size:48px !important".to_owned()],
+        );
+        assert_eq!(swimlane.font_size, 24.0);
+    }
+
+    #[test]
+    fn font_resolution_preserves_static_family_validation() {
+        let base = TextStyle {
+            font_family: Some("monospace".to_owned()),
+            ..TextStyle::default()
+        };
+        for declarations in [
+            "font-family:var(--face)",
+            "font-family:url(face)",
+            "font-family:inherit junk",
+            "font-family:serif,font-family:inherit",
+        ] {
+            let style = flowchart_effective_text_style_for_classes(
+                &base,
+                &IndexMap::new(),
+                &[],
+                &[declarations.to_owned()],
+            );
+            assert_eq!(style.font_family, base.font_family, "{declarations}");
+        }
+        let style = flowchart_effective_text_style_for_classes(
+            &base,
+            &IndexMap::new(),
+            &[],
+            &[r#"font-family:"Comma, Face", serif"#.to_owned()],
+        );
+        assert_eq!(style.font_family.as_deref(), Some(r#""Comma, Face",serif"#));
     }
 }

@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Namespace1",
-          "x": 146.284,
+          "x": 146.285,
           "y": 137.5,
-          "width": 268.568,
+          "width": 268.57,
           "height": 251.0,
           "is_cluster": true
         },
@@ -15,15 +15,15 @@
           "id": "Class1",
           "x": 90.175,
           "y": 150.5,
-          "width": 108.349,
+          "width": 108.35,
           "height": 177.0,
           "is_cluster": false
         },
         {
           "id": "Class2",
-          "x": 225.459,
+          "x": 225.46,
           "y": 150.5,
-          "width": 62.219,
+          "width": 62.22,
           "height": 81.0,
           "is_cluster": false
         }
@@ -32,15 +32,15 @@
       "clusters": [
         {
           "id": "Namespace1",
-          "x": 146.284,
+          "x": 146.285,
           "y": 137.5,
-          "width": 268.568,
+          "width": 268.57,
           "height": 251.0,
           "diff": -12.0,
           "offset_y": 15.0,
           "title": "Namespace1",
           "title_label": {
-            "x": 146.284,
+            "x": 146.285,
             "y": 22.5,
             "width": 69.3,
             "height": 21.0
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 280.568,
+        "max_x": 280.57,
         "max_y": 263.0
       }
     }

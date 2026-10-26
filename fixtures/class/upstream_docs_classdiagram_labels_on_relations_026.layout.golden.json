@@ -7,7 +7,7 @@
           "id": "classA",
           "x": 45.0,
           "y": 52.5,
-          "width": 60.406,
+          "width": 60.4,
           "height": 81.0,
           "is_cluster": false
         },
@@ -15,39 +15,39 @@
           "id": "classB",
           "x": 45.0,
           "y": 234.5,
-          "width": 60.406,
+          "width": 60.4,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "classC",
-          "x": 145.406,
+          "x": 145.4,
           "y": 52.5,
-          "width": 60.406,
+          "width": 60.4,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "classD",
-          "x": 145.406,
+          "x": 145.4,
           "y": 234.5,
-          "width": 60.406,
+          "width": 60.4,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "classE",
-          "x": 245.813,
+          "x": 245.8,
           "y": 52.5,
-          "width": 60.406,
+          "width": 60.4,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "classF",
-          "x": 245.813,
+          "x": 245.8,
           "y": 234.5,
-          "width": 60.406,
+          "width": 60.4,
           "height": 81.0,
           "is_cluster": false
         }
@@ -91,16 +91,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 145.406,
+              "x": 145.4,
               "y": 93.0
             },
             {
-              "x": 145.406,
+              "x": 145.4,
               "y": 194.0
             }
           ],
           "label": {
-            "x": 145.366,
+            "x": 145.36,
             "y": 143.5,
             "width": 66.92,
             "height": 21.0
@@ -121,16 +121,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 245.813,
+              "x": 245.8,
               "y": 93.0
             },
             {
-              "x": 245.813,
+              "x": 245.8,
               "y": 194.0
             }
           ],
           "label": {
-            "x": 245.373,
+            "x": 245.36,
             "y": 143.5,
             "width": 64.12,
             "height": 21.0
@@ -148,7 +148,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 277.433,
+        "max_x": 277.42,
         "max_y": 275.0
       }
     }

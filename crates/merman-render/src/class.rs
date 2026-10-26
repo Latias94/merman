@@ -1405,7 +1405,7 @@ fn class_box_dimensions(
         let effective_style = if writer_uses_html_labels {
             class_html_node_text_style(text_style, css_style, &node_label_style)
         } else {
-            class_effective_text_style(text_style, css_style)
+            class_svg_row_text_style(text_style, css_style)
         };
         let style = effective_style.as_ref();
         let max_width_px = class_html_create_text_width_px(text, measurer, html_calc_text_style);
@@ -1772,6 +1772,30 @@ pub(crate) fn class_effective_text_style<'a>(
     } else {
         std::borrow::Cow::Owned(crate::text::apply_css_font_declarations(base, css_style))
     }
+}
+
+pub(crate) fn class_svg_row_text_style<'a>(
+    base: &'a TextStyle,
+    css_style: &str,
+) -> std::borrow::Cow<'a, TextStyle> {
+    let mut style = class_effective_text_style(base, css_style);
+    // Mermaid's inner tspans explicitly reset these inherited row properties. Markdown
+    // strong/emphasis is applied afterward by both measurement and the unchanged SVG writer.
+    if style
+        .font_weight
+        .as_deref()
+        .is_some_and(|value| value != "normal")
+    {
+        style.to_mut().font_weight = Some("normal".to_owned());
+    }
+    if style
+        .font_style
+        .as_deref()
+        .is_some_and(|value| value != "normal")
+    {
+        style.to_mut().font_style = Some("normal".to_owned());
+    }
+    style
 }
 
 pub(crate) fn class_html_node_text_style<'a>(
@@ -3982,6 +4006,85 @@ mod tests {
             super::class_html_create_text_width_px("unseen label", &ClassProbeMeasurer, &style),
             130
         );
+    }
+
+    #[test]
+    fn class_svg_row_layout_keeps_family_and_size_but_resets_inherited_emphasis() {
+        struct RowFontMeasurer(std::sync::Mutex<Vec<(String, TextStyle)>>);
+        impl TextMeasurer for RowFontMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((text.to_owned(), style.clone()));
+                crate::text::TextMetrics {
+                    width: style.font_size,
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+            fn measure_wrapped(
+                &self,
+                text: &str,
+                style: &TextStyle,
+                _max_width: Option<f64>,
+                _wrap: WrapMode,
+            ) -> crate::text::TextMetrics {
+                self.measure(text, style)
+            }
+        }
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass Vehicle {\n+owner\n+drive()\n}",
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let mut node = model.classes["Vehicle"].clone();
+        node.members[0].css_style =
+            "font-family:serif;font-size:2em;font-weight:900;font-style:italic".to_owned();
+        node.methods[0].css_style =
+            "font-family:monospace;font-size:150%;font-weight:700;font-style:oblique".to_owned();
+        let config = merman_core::MermaidConfig::default();
+        let style = TextStyle {
+            font_size: 24.0,
+            ..default_style()
+        };
+        let measurer = RowFontMeasurer(std::sync::Mutex::default());
+        let context = super::ClassBoxMeasureCtx {
+            measurer: &measurer,
+            mermaid_config: &config,
+            math_renderer: None,
+            text_style: &style,
+            html_calc_text_style: &style,
+            wrap_probe_font_size: 16.0,
+            wrap_mode: WrapMode::SvgLike,
+            padding: 12.0,
+            hide_empty_members_box: false,
+            capture_row_metrics: true,
+        };
+        let (_, _, plan) = super::class_box_dimensions(&node, &context);
+        let Some(super::ClassNodeLabelPlan::RowMetrics(rows)) = plan else {
+            panic!("expected SVG row metrics");
+        };
+        assert_eq!(rows.members[0].height, 48.0);
+        assert_eq!(rows.methods[0].height, 36.0);
+        let measured = measurer.0.lock().unwrap();
+        for (text, family, size) in [("+owner", "serif", 48.0), ("+drive()", "monospace", 36.0)] {
+            assert!(
+                measured.iter().any(|(actual, style)| {
+                    actual == text
+                        && style.font_family.as_deref() == Some(family)
+                        && style.font_size == size
+                        && style.font_weight.as_deref() == Some("normal")
+                        && style.font_style.as_deref() == Some("normal")
+                }),
+                "{text}: {measured:?}"
+            );
+        }
     }
 
     #[test]
