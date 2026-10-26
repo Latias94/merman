@@ -1,19 +1,33 @@
+#[cfg(feature = "presentation")]
+use crate::PresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
-use crate::diagram::{
-    DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, legacy_warning_messages,
-};
+#[cfg(feature = "compat-json")]
+use crate::diagram::legacy_warning_messages;
+use crate::diagram::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
+#[cfg(feature = "editor-facts")]
+use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
-    push_langium_common_editor_fact, strip_langium_inline_comment,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
 };
+#[cfg(feature = "compat-json")]
+use crate::family;
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
 use crate::sanitize::sanitize_text;
-use crate::{
-    EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseMetadata, Result, SourceSpan, family,
-};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
+use crate::{Error, MermaidConfig, Result, SemanticMetadata, SourceSpan};
+#[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
+#[cfg(test)]
+thread_local! {
+    static GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_reference(candidate: &str) -> bool {
     is_gitgraph_reference(candidate)
 }
@@ -38,12 +52,12 @@ struct Commit {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GitGraphBranchRenderModel {
+pub struct GitGraphBranch {
     pub name: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GitGraphCommitRenderModel {
+pub struct GitGraphCommit {
     pub id: String,
     pub message: String,
     pub seq: i64,
@@ -59,11 +73,12 @@ pub struct GitGraphCommitRenderModel {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GitGraphRenderModel {
+/// Canonical commits and branches of a GitGraph diagram.
+pub struct GitGraphDiagramModel {
     #[serde(rename = "type")]
     pub diagram_type: String,
-    pub commits: Vec<GitGraphCommitRenderModel>,
-    pub branches: Vec<GitGraphBranchRenderModel>,
+    pub commits: Vec<GitGraphCommit>,
+    pub branches: Vec<GitGraphBranch>,
     #[serde(rename = "currentBranch")]
     pub current_branch: String,
     pub direction: String,
@@ -80,7 +95,7 @@ pub struct GitGraphRenderModel {
     pub warning_facts: Vec<DiagramWarningFact>,
 }
 
-impl GitGraphRenderModel {
+impl GitGraphDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -126,7 +141,6 @@ struct CherryPickDb {
 #[derive(Debug)]
 struct GitGraphDb {
     commits: HashMap<String, Commit>,
-    commit_order: Vec<String>,
     branches: HashMap<String, Option<String>>,
     branch_config: HashMap<String, BranchConfig>,
     branch_config_order: Vec<String>,
@@ -148,6 +162,7 @@ struct SpannedValue {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum GitGraphEditorFactRole {
     Entity,
     Reference,
@@ -155,6 +170,7 @@ enum GitGraphEditorFactRole {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "editor-facts")]
 struct GitGraphEditorFact {
     value: SpannedValue,
     detail: &'static str,
@@ -174,13 +190,15 @@ enum GitGraphOperation {
 #[derive(Debug, Clone)]
 struct GitGraphCommand {
     operation: GitGraphOperation,
-    editor_facts: Vec<GitGraphEditorFact>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<Vec<GitGraphEditorFact>>,
     statement_span: SourceSpan,
 }
 
 struct GitGraphCommandParseError {
     error: Box<Error>,
-    editor_facts: Vec<GitGraphEditorFact>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<Vec<GitGraphEditorFact>>,
     recovery_span: SourceSpan,
 }
 
@@ -202,13 +220,15 @@ impl From<GitGraphCommandParseError> for GitGraphCommandParseAbort {
 }
 
 struct GitGraphSemanticSource {
-    model: GitGraphRenderModel,
-    editor_facts: EditorSemanticFacts,
+    model: GitGraphDiagramModel,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct GitGraphParseFailure {
     error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<Box<EditorSemanticFacts>>,
 }
 
 struct GitGraphHeader {
@@ -219,7 +239,8 @@ struct GitGraphHeader {
 struct GitGraphSyntaxOutcome {
     commands: Vec<GitGraphCommand>,
     common: LangiumCommonFacts,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
     first_error: Option<Error>,
 }
 
@@ -267,9 +288,8 @@ impl XorShift64Star {
 }
 
 impl GitGraphDb {
-    fn clear(&mut self, config: &MermaidConfig, prng_override: Option<XorShift64Star>) {
+    fn clear(&mut self, config: &MermaidConfig) {
         self.commits.clear();
-        self.commit_order.clear();
         self.branches.clear();
         self.branch_config.clear();
         self.branch_config_order.clear();
@@ -286,18 +306,7 @@ impl GitGraphDb {
         // SVG baselines), we allow injecting a seed.
         //
         // When unset, we keep Mermaid's non-deterministic behavior (random per run).
-        self.prng = match prng_override {
-            Some(prng) => Some(prng),
-            None => {
-                let mut prng = seeded_gitgraph_prng(config);
-                if let Some(prng) = prng.as_mut() {
-                    // The seeded upstream SVG renderer consumes one `Math.random()` value before
-                    // the first gitGraph auto-id is minted.
-                    let _ = prng.next_u64();
-                }
-                prng
-            }
-        };
+        self.prng = seeded_gitgraph_prng(config);
 
         let main = config
             .get_str("gitGraph.mainBranchName")
@@ -324,7 +333,12 @@ impl GitGraphDb {
         }
     }
 
-    fn commit(&mut self, mut commit_db: CommitDb, config: &MermaidConfig) {
+    fn commit(
+        &mut self,
+        mut commit_db: CommitDb,
+        config: &MermaidConfig,
+        statement_span: SourceSpan,
+    ) {
         let id_raw = std::mem::take(&mut commit_db.id);
         let msg_raw = std::mem::take(&mut commit_db.msg);
         let tags_raw = std::mem::take(&mut commit_db.tags);
@@ -364,17 +378,16 @@ impl GitGraphDb {
 
         self.head = Some(new_commit.id.clone());
         if self.commits.contains_key(&new_commit.id) {
-            self.warning_facts.push(DiagramWarningFact::new(
-                GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
-                format!("Commit ID {} already exists", new_commit.id),
-            ));
+            self.warning_facts.push(
+                DiagramWarningFact::new(
+                    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+                    format!("Commit ID {} already exists", new_commit.id),
+                )
+                .with_span(statement_span),
+            );
         }
 
-        let existed = self.commits.contains_key(&new_commit.id);
         self.commits.insert(new_commit.id.clone(), new_commit);
-        if !existed {
-            self.commit_order.push(commit_id.clone());
-        }
 
         self.branches
             .insert(self.curr_branch.clone(), Some(commit_id));
@@ -551,7 +564,6 @@ impl GitGraphDb {
 
         self.head = Some(new_commit.id.clone());
         self.commits.insert(new_commit.id.clone(), new_commit);
-        self.commit_order.push(merge_commit_id.clone());
         self.branches
             .insert(current_branch.clone(), Some(merge_commit_id));
         Ok(())
@@ -649,32 +661,43 @@ impl GitGraphDb {
 
             self.head = Some(commit.id.clone());
             self.commits.insert(commit.id.clone(), commit);
-            self.commit_order.push(new_id.clone());
             self.branches.insert(self.curr_branch.clone(), Some(new_id));
         }
 
         Ok(())
     }
 
-    fn commits_in_seq_order_controlled(
-        &self,
+    fn into_model_controlled(
+        self,
+        diagram_type: &str,
         control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<Vec<Commit>> {
-        let mut out = Vec::with_capacity(self.commits.len());
-        for commit in self.commits.values() {
+    ) -> crate::OperationControlResult<GitGraphDiagramModel> {
+        let branches = self.branches_in_order_controlled(control)?;
+        let mut commits = Vec::with_capacity(self.commits.len());
+        for commit in self.commits.into_values() {
             control.checkpoint()?;
-            out.push(commit.clone());
+            commits.push(commit_to_model(commit));
         }
         control.checkpoint()?;
-        out.sort_by_key(|c| c.seq);
+        commits.sort_by_key(|commit| commit.seq);
         control.checkpoint()?;
-        Ok(out)
+        Ok(GitGraphDiagramModel {
+            diagram_type: diagram_type.to_string(),
+            commits,
+            branches,
+            current_branch: self.curr_branch,
+            direction: self.direction,
+            title: (!self.title.is_empty()).then_some(self.title),
+            acc_title: (!self.acc_title.is_empty()).then_some(self.acc_title),
+            acc_descr: (!self.acc_descr.is_empty()).then_some(self.acc_descr),
+            warning_facts: self.warning_facts,
+        })
     }
 
     fn branches_in_order_controlled(
         &self,
         control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<Vec<GitGraphBranchRenderModel>> {
+    ) -> crate::OperationControlResult<Vec<GitGraphBranch>> {
         let mut entries: Vec<(String, f64)> = Vec::new();
         for (i, name) in self.branch_config_order.iter().enumerate() {
             control.checkpoint()?;
@@ -692,7 +715,7 @@ impl GitGraphDb {
         let mut branches = Vec::with_capacity(entries.len());
         for (name, _) in entries {
             control.checkpoint()?;
-            branches.push(GitGraphBranchRenderModel { name });
+            branches.push(GitGraphBranch { name });
         }
         Ok(branches)
     }
@@ -713,8 +736,8 @@ fn seeded_gitgraph_prng(config: &MermaidConfig) -> Option<XorShift64Star> {
         .map(XorShift64Star::new)
 }
 
-fn commit_to_render_model(c: Commit) -> GitGraphCommitRenderModel {
-    GitGraphCommitRenderModel {
+fn commit_to_model(c: Commit) -> GitGraphCommit {
+    GitGraphCommit {
         id: c.id,
         message: c.message,
         seq: c.seq,
@@ -939,6 +962,7 @@ impl<'a> LineParser<'a> {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn is_gitgraph_reference(value: &str) -> bool {
     fn is_word(byte: u8) -> bool {
         byte.is_ascii_alphanumeric() || byte == b'_'
@@ -1001,28 +1025,32 @@ fn parse_gitgraph_int(value: &SpannedValue) -> Result<i64> {
 }
 
 impl GitGraphCommand {
-    fn apply(&self, db: &mut GitGraphDb, effective_config: &MermaidConfig) -> Result<()> {
-        let result = match &self.operation {
+    fn apply(self, db: &mut GitGraphDb, effective_config: &MermaidConfig) -> Result<()> {
+        let result = match self.operation {
             GitGraphOperation::Commit(commit) => {
-                db.commit(commit.clone(), effective_config);
+                db.commit(commit, effective_config, self.statement_span);
                 Ok(())
             }
-            GitGraphOperation::Branch(branch) => db.branch(branch.clone(), effective_config),
-            GitGraphOperation::Checkout(name) => db.checkout(name, effective_config),
-            GitGraphOperation::Merge(merge) => db.merge(merge.clone(), effective_config),
+            GitGraphOperation::Branch(branch) => db.branch(branch, effective_config),
+            GitGraphOperation::Checkout(name) => db.checkout(&name, effective_config),
+            GitGraphOperation::Merge(merge) => db.merge(merge, effective_config),
             GitGraphOperation::CherryPick(cherry_pick) => {
-                db.cherry_pick(cherry_pick.clone(), effective_config)
+                db.cherry_pick(cherry_pick, effective_config)
             }
         };
         result.map_err(|error| error.with_exact_span_if_missing(self.statement_span))
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_editor_facts_controlled(
         &self,
         facts: &mut EditorSemanticFacts,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<()> {
-        for fact in &self.editor_facts {
+        let Some(command_facts) = self.editor_facts.as_ref() else {
+            return Ok(());
+        };
+        for fact in command_facts {
             control.checkpoint()?;
             fact.push_to(facts);
         }
@@ -1030,6 +1058,7 @@ impl GitGraphCommand {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 impl GitGraphEditorFact {
     fn push_to(&self, facts: &mut EditorSemanticFacts) {
         match self.role {
@@ -1046,28 +1075,34 @@ impl GitGraphEditorFact {
     }
 }
 
-fn gitgraph_editor_fact(
-    value: SpannedValue,
+#[cfg(feature = "editor-facts")]
+fn push_gitgraph_editor_fact(
+    facts: &mut Option<Vec<GitGraphEditorFact>>,
+    value: &SpannedValue,
     detail: &'static str,
     kind: EditorSemanticKind,
     role: GitGraphEditorFactRole,
-) -> GitGraphEditorFact {
-    GitGraphEditorFact {
-        value,
+) {
+    let Some(facts) = facts.as_mut() else {
+        return;
+    };
+    facts.push(GitGraphEditorFact {
+        value: value.clone(),
         detail,
         kind,
         role,
-    }
+    });
 }
 
 fn command_parse_result<T>(
     result: Result<T>,
-    editor_facts: &[GitGraphEditorFact],
+    #[cfg(feature = "editor-facts")] editor_facts: &Option<Vec<GitGraphEditorFact>>,
     recovery_span: SourceSpan,
 ) -> std::result::Result<T, GitGraphCommandParseError> {
     result.map_err(|error| GitGraphCommandParseError {
         error: Box::new(error),
-        editor_facts: editor_facts.to_vec(),
+        #[cfg(feature = "editor-facts")]
+        editor_facts: editor_facts.clone(),
         recovery_span,
     })
 }
@@ -1075,7 +1110,7 @@ fn command_parse_result<T>(
 fn unexpected_gitgraph_argument(
     command: &str,
     parser: &LineParser<'_>,
-    editor_facts: Vec<GitGraphEditorFact>,
+    #[cfg(feature = "editor-facts")] editor_facts: Option<Vec<GitGraphEditorFact>>,
     statement_span: SourceSpan,
 ) -> GitGraphCommandParseError {
     GitGraphCommandParseError {
@@ -1084,6 +1119,7 @@ fn unexpected_gitgraph_argument(
             format!("unexpected {command} argument: {}", parser.remaining()),
             statement_span,
         )),
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         recovery_span: statement_span,
     }
@@ -1092,6 +1128,7 @@ fn unexpected_gitgraph_argument(
 fn parse_git_graph_command(
     raw: &str,
     line_start: usize,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> std::result::Result<Option<GitGraphCommand>, GitGraphCommandParseAbort> {
     control.checkpoint()?;
@@ -1111,7 +1148,8 @@ fn parse_git_graph_command(
     let Some(command) = parser.parse_word_until_ws_or_colon_spanned(control)? else {
         return Ok(None);
     };
-    let mut editor_facts = Vec::new();
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = (editor_demand == EditorFactsDemand::Capture).then(Vec::new);
 
     let operation = match command.text.as_str() {
         "commit" => {
@@ -1131,77 +1169,93 @@ fn parse_git_graph_command(
                 if matches!(parser.peek_char(), Some('"' | '\'')) {
                     let message = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    commit.msg = message.text.clone();
-                    editor_facts.push(gitgraph_editor_fact(
-                        message,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &message,
                         "gitGraph commit message",
                         EditorSemanticKind::String,
                         GitGraphEditorFactRole::Payload,
-                    ));
+                    );
+                    commit.msg = message.text;
                     continue;
                 }
                 if parser.consume_argument_name("id", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    commit.id = value.text.clone();
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph commit id",
                         EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Entity,
-                    ));
+                    );
+                    commit.id = value.text;
                     continue;
                 }
                 if parser.consume_argument_name("msg", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    commit.msg = value.text.clone();
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph commit message",
                         EditorSemanticKind::String,
                         GitGraphEditorFactRole::Payload,
-                    ));
+                    );
+                    commit.msg = value.text;
                     continue;
                 }
                 if parser.consume_argument_name("tag", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    commit.tags.push(value.text.clone());
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph commit tag",
                         EditorSemanticKind::String,
                         GitGraphEditorFactRole::Payload,
-                    ));
+                    );
+                    commit.tags.push(value.text);
                     continue;
                 }
                 if parser.consume_argument_name("type", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_bare_token_spanned("commit type", control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    editor_facts.push(gitgraph_editor_fact(
-                        value.clone(),
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph commit type",
                         EditorSemanticKind::String,
                         GitGraphEditorFactRole::Payload,
-                    ));
+                    );
                     commit.commit_type = command_parse_result(
                         parse_commit_type(&value.text),
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
@@ -1210,6 +1264,7 @@ fn parse_git_graph_command(
                 return Err(unexpected_gitgraph_argument(
                     "commit",
                     &parser,
+                    #[cfg(feature = "editor-facts")]
                     editor_facts,
                     statement_span,
                 )
@@ -1220,15 +1275,18 @@ fn parse_git_graph_command(
         "branch" => {
             let name = command_parse_result(
                 parser.parse_name_token_spanned(control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
-            editor_facts.push(gitgraph_editor_fact(
-                name.clone(),
+            #[cfg(feature = "editor-facts")]
+            push_gitgraph_editor_fact(
+                &mut editor_facts,
+                &name,
                 "gitGraph branch",
                 EditorSemanticKind::Variable,
                 GitGraphEditorFactRole::Entity,
-            ));
+            );
             let mut order = 0i64;
             parser.skip_ws(control)?;
             if !parser.is_eof() {
@@ -1236,6 +1294,7 @@ fn parse_git_graph_command(
                     return Err(unexpected_gitgraph_argument(
                         "branch",
                         &parser,
+                        #[cfg(feature = "editor-facts")]
                         editor_facts,
                         statement_span,
                     )
@@ -1243,23 +1302,28 @@ fn parse_git_graph_command(
                 };
                 let value = command_parse_result(
                     parser.parse_bare_token_spanned("branch order", control)?,
+                    #[cfg(feature = "editor-facts")]
                     &editor_facts,
                     statement_span,
                 )?;
-                editor_facts.push(gitgraph_editor_fact(
-                    value.clone(),
+                #[cfg(feature = "editor-facts")]
+                push_gitgraph_editor_fact(
+                    &mut editor_facts,
+                    &value,
                     "gitGraph branch order",
                     EditorSemanticKind::String,
                     GitGraphEditorFactRole::Payload,
-                ));
+                );
                 order = command_parse_result(
                     parse_gitgraph_int(&value),
+                    #[cfg(feature = "editor-facts")]
                     &editor_facts,
                     statement_span,
                 )?;
             }
             command_parse_result(
                 parser.expect_eof("branch", control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
@@ -1271,17 +1335,21 @@ fn parse_git_graph_command(
         "checkout" | "switch" => {
             let name = command_parse_result(
                 parser.parse_name_token_spanned(control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
-            editor_facts.push(gitgraph_editor_fact(
-                name.clone(),
+            #[cfg(feature = "editor-facts")]
+            push_gitgraph_editor_fact(
+                &mut editor_facts,
+                &name,
                 "gitGraph branch",
                 EditorSemanticKind::Variable,
                 GitGraphEditorFactRole::Reference,
-            ));
+            );
             command_parse_result(
                 parser.expect_eof(command.text.as_str(), control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
@@ -1290,15 +1358,18 @@ fn parse_git_graph_command(
         "merge" => {
             let branch = command_parse_result(
                 parser.parse_name_token_spanned(control)?,
+                #[cfg(feature = "editor-facts")]
                 &editor_facts,
                 statement_span,
             )?;
-            editor_facts.push(gitgraph_editor_fact(
-                branch.clone(),
+            #[cfg(feature = "editor-facts")]
+            push_gitgraph_editor_fact(
+                &mut editor_facts,
+                &branch,
                 "gitGraph merge branch",
                 EditorSemanticKind::Variable,
                 GitGraphEditorFactRole::Reference,
-            ));
+            );
             let mut merge = MergeDb {
                 branch: branch.text,
                 id: None,
@@ -1314,47 +1385,57 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("id", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    merge.id = Some(value.text.clone());
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph merge id",
                         EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Entity,
-                    ));
+                    );
+                    merge.id = Some(value.text);
                     continue;
                 }
                 if parser.consume_argument_name("tag", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    merge.tags.push(value.text.clone());
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph merge tag",
                         EditorSemanticKind::String,
                         GitGraphEditorFactRole::Payload,
-                    ));
+                    );
+                    merge.tags.push(value.text);
                     continue;
                 }
                 if parser.consume_argument_name("type", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_bare_token_spanned("merge type", control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    editor_facts.push(gitgraph_editor_fact(
-                        value.clone(),
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph merge type",
                         EditorSemanticKind::String,
                         GitGraphEditorFactRole::Payload,
-                    ));
+                    );
                     merge.commit_type = Some(command_parse_result(
                         parse_commit_type(&value.text),
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?);
@@ -1363,6 +1444,7 @@ fn parse_git_graph_command(
                 return Err(unexpected_gitgraph_argument(
                     "merge",
                     &parser,
+                    #[cfg(feature = "editor-facts")]
                     editor_facts,
                     statement_span,
                 )
@@ -1386,54 +1468,64 @@ fn parse_git_graph_command(
                 if parser.consume_argument_name("id", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    cherry_pick.id = value.text.clone();
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph cherry-pick id",
                         EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Reference,
-                    ));
+                    );
+                    cherry_pick.id = value.text;
                     continue;
                 }
                 if parser.consume_argument_name("parent", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    cherry_pick.parent = value.text.clone();
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph cherry-pick parent",
                         EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Reference,
-                    ));
+                    );
+                    cherry_pick.parent = value.text;
                     continue;
                 }
                 if parser.consume_argument_name("tag", control)?.is_some() {
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(control)?,
+                        #[cfg(feature = "editor-facts")]
                         &editor_facts,
                         statement_span,
                     )?;
-                    cherry_pick
-                        .tags
-                        .get_or_insert_with(Vec::new)
-                        .push(value.text.clone());
-                    editor_facts.push(gitgraph_editor_fact(
-                        value,
+                    #[cfg(feature = "editor-facts")]
+                    push_gitgraph_editor_fact(
+                        &mut editor_facts,
+                        &value,
                         "gitGraph cherry-pick tag",
                         EditorSemanticKind::String,
                         GitGraphEditorFactRole::Payload,
-                    ));
+                    );
+                    cherry_pick
+                        .tags
+                        .get_or_insert_with(Vec::new)
+                        .push(value.text);
                     continue;
                 }
                 return Err(unexpected_gitgraph_argument(
                     "cherry-pick",
                     &parser,
+                    #[cfg(feature = "editor-facts")]
                     editor_facts,
                     statement_span,
                 )
@@ -1448,6 +1540,7 @@ fn parse_git_graph_command(
                     format!("Unknown statement: {}", command.text),
                     command.span,
                 )),
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
                 recovery_span: statement_span,
             }
@@ -1458,18 +1551,21 @@ fn parse_git_graph_command(
     control.checkpoint()?;
     Ok(Some(GitGraphCommand {
         operation,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         statement_span,
     }))
 }
 
-pub(crate) fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_git_graph(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_git_graph_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_git_graph_with_warning_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<family::WarningSemanticParse> {
     let model = parse_git_graph_semantic_source(code, meta)?.model;
     let compatibility = render_model_to_compat_json(&model, meta)?;
@@ -1479,31 +1575,44 @@ pub(crate) fn parse_git_graph_with_warning_facts(
     ))
 }
 
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_git_graph_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = family::CombinedSemanticParse::from_construction_with_warning_facts(
-        construct_git_graph_semantic_source_controlled(code, meta, control)?,
+        construct_git_graph_semantic_source_controlled(
+            code,
+            &meta.diagram_type,
+            meta.effective_config.as_config(),
+            EditorFactsDemand::Capture,
+            control,
+        )?,
         |source| {
             let compatibility = render_model_to_compat_json(&source.model, meta);
             (
                 compatibility,
-                source.editor_facts,
+                source.editor_facts.unwrap_or_default(),
                 source.model.warning_facts,
             )
         },
-        |failure| (*failure.error, *failure.editor_facts),
+        |failure| {
+            (
+                *failure.error,
+                failure.editor_facts.map(|facts| *facts).unwrap_or_default(),
+            )
+        },
     );
     control.checkpoint()?;
     Ok(parsed)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &GitGraphRenderModel,
-    meta: &ParseMetadata,
+    model: &GitGraphDiagramModel,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let warnings = legacy_warning_messages(&model.warning_facts);
     let mut out = Map::with_capacity(11);
@@ -1524,31 +1633,40 @@ pub(crate) fn render_model_to_compat_json(
     out.insert("warnings".to_string(), json!(warnings));
     out.insert(
         "config".to_string(),
-        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
+        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_git_graph_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
-) -> Result<GitGraphRenderModel> {
+    meta: &PresentationMetadata,
+) -> Result<GitGraphDiagramModel> {
     Ok(parse_git_graph_semantic_source(code, meta)?.model)
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_git_graph_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<GitGraphRenderModel>> {
-    let source = construct_git_graph_semantic_source_controlled(code, meta, control)?;
+) -> crate::OperationControlResult<Result<GitGraphDiagramModel>> {
+    let source = construct_git_graph_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     control.checkpoint()?;
     Ok(source
         .map(|source| source.model)
         .map_err(|failure| *failure.error))
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gitgraph_entity_fact(
     facts: &mut EditorSemanticFacts,
     value: SpannedValue,
@@ -1570,6 +1688,7 @@ fn push_gitgraph_entity_fact(
     );
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gitgraph_payload_fact(
     facts: &mut EditorSemanticFacts,
     value: SpannedValue,
@@ -1588,6 +1707,7 @@ fn push_gitgraph_payload_fact(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_gitgraph_reference_fact(
     facts: &mut EditorSemanticFacts,
     value: SpannedValue,
@@ -1609,24 +1729,62 @@ fn push_gitgraph_reference_fact(
     );
 }
 
-fn parse_git_graph_semantic_source(
+pub(crate) fn parse_git_graph_semantic_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
-) -> Result<GitGraphSemanticSource> {
-    construct_git_graph_semantic_source(code, meta).map_err(|failure| *failure.error)
+    metadata: &SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<SemanticConstruction<GitGraphDiagramModel>> {
+    let construction = construct_git_graph_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    control.checkpoint()?;
+    Ok(match construction {
+        Ok(mut source) => {
+            source
+                .model
+                .sanitize_common_db_fields(&metadata.semantic_config);
+            SemanticConstruction {
+                model: Ok(source.model),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: source.editor_facts,
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err(*failure.error),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: failure.editor_facts.map(|facts| *facts),
+        },
+    })
 }
 
-fn construct_git_graph_semantic_source(
+#[cfg(feature = "compat-json")]
+fn parse_git_graph_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<GitGraphSemanticSource, GitGraphParseFailure> {
-    construct_git_graph_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    meta: &PresentationMetadata,
+) -> Result<GitGraphSemanticSource> {
+    construct_git_graph_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &crate::OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| *failure.error)
 }
 
 fn construct_git_graph_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    effective_config: &MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<GitGraphSemanticSource, GitGraphParseFailure>>
 {
@@ -1639,7 +1797,9 @@ fn construct_git_graph_semantic_source_controlled(
         Err(error) => {
             return Ok(Err(gitgraph_parse_failure(
                 error,
-                EditorSemanticFacts::new(),
+                #[cfg(feature = "editor-facts")]
+                new_gitgraph_editor_facts(editor_demand),
+                #[cfg(feature = "editor-facts")]
                 SourceSpan::new(0, code.len()),
             )));
         }
@@ -1647,113 +1807,82 @@ fn construct_git_graph_semantic_source_controlled(
     let GitGraphSyntaxOutcome {
         commands,
         common,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         first_error,
-    } = collect_gitgraph_commands(code, header.body_start, meta, control)?;
+    } = collect_gitgraph_commands(
+        code,
+        header.body_start,
+        diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     if let Some(error) = first_error {
         return Ok(Err(gitgraph_parse_failure(
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
+            #[cfg(feature = "editor-facts")]
             SourceSpan::new(0, code.len()),
         )));
     }
     let common = LangiumCommonDbFields::from_facts(&common);
-    let direction = header.direction;
-
-    let effective_config = &meta.effective_config;
-    let prng_override = if seeded_gitgraph_prng(effective_config).is_some() {
-        // Upstream committed SVG fixtures are generated after a successful `mermaid.parse(code)`
-        // followed by `mermaid.render(...)`. Seeded gitGraph auto ids consume the global
-        // `Math.random()` stream during that warm-up parse, so mirror that state before building
-        // the render model used for SVG parity.
-        let mut warmup = new_gitgraph_db();
-        warmup.clear(effective_config, None);
-        apply_gitgraph_common_fields(&mut warmup, &common);
-        if let Some(d) = direction.as_deref() {
-            warmup.set_direction(d);
-        }
-        if let Err(error) =
-            apply_git_graph_commands_controlled(&commands, &mut warmup, effective_config, control)?
-        {
-            return Ok(Err(gitgraph_parse_failure(
-                error,
-                editor_facts,
-                SourceSpan::new(0, code.len()),
-            )));
-        }
-        warmup.prng
-    } else {
-        None
-    };
-
     let mut db = new_gitgraph_db();
-    db.clear(effective_config, prng_override);
+    db.clear(effective_config);
     apply_gitgraph_common_fields(&mut db, &common);
-    if let Some(d) = direction {
-        db.set_direction(&d);
+    if let Some(direction) = header.direction {
+        db.set_direction(&direction);
     }
     if let Err(error) =
-        apply_git_graph_commands_controlled(&commands, &mut db, effective_config, control)?
+        apply_git_graph_commands_controlled(commands, &mut db, effective_config, control)?
     {
         return Ok(Err(gitgraph_parse_failure(
             error,
+            #[cfg(feature = "editor-facts")]
             editor_facts,
+            #[cfg(feature = "editor-facts")]
             SourceSpan::new(0, code.len()),
         )));
     }
 
-    let ordered_commits = db.commits_in_seq_order_controlled(control)?;
-    let mut commits = Vec::with_capacity(ordered_commits.len());
-    for commit in ordered_commits {
-        control.checkpoint()?;
-        commits.push(commit_to_render_model(commit));
-    }
-    let branches = db.branches_in_order_controlled(control)?;
-
+    let model = db.into_model_controlled(diagram_type, control)?;
     Ok(Ok(GitGraphSemanticSource {
-        model: GitGraphRenderModel {
-            diagram_type: meta.diagram_type.clone(),
-            commits,
-            branches,
-            current_branch: db.curr_branch,
-            direction: db.direction,
-            title: if db.title.is_empty() {
-                None
-            } else {
-                Some(db.title)
-            },
-            acc_title: if db.acc_title.is_empty() {
-                None
-            } else {
-                Some(db.acc_title)
-            },
-            acc_descr: if db.acc_descr.is_empty() {
-                None
-            } else {
-                Some(db.acc_descr)
-            },
-            warning_facts: db.warning_facts.clone(),
-        },
+        model,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
 }
 
+#[cfg(feature = "editor-facts")]
+fn new_gitgraph_editor_facts(demand: EditorFactsDemand) -> Option<EditorSemanticFacts> {
+    demand.needs_recovery().then(|| {
+        #[cfg(test)]
+        crate::editor::test_work::record_collection();
+        EditorSemanticFacts::new()
+    })
+}
+
 fn gitgraph_parse_failure(
     error: Error,
-    mut editor_facts: EditorSemanticFacts,
-    fallback_span: SourceSpan,
+    #[cfg(feature = "editor-facts")] mut editor_facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")] fallback_span: SourceSpan,
 ) -> GitGraphParseFailure {
-    let (message, span) = match &error {
-        Error::DiagramParse { diagnostic, .. } => (
-            diagnostic.message().to_string(),
-            diagnostic.span().or(Some(fallback_span)),
-        ),
-        other => (other.to_string(), Some(fallback_span)),
-    };
-    editor_facts.mark_recovered_from_parse_error(message, span);
+    #[cfg(feature = "editor-facts")]
+    if let Some(facts) = editor_facts.as_mut() {
+        let (message, span) = match &error {
+            Error::DiagramParse { diagnostic, .. } => (
+                diagnostic.message().to_string(),
+                diagnostic.span().or(Some(fallback_span)),
+            ),
+            other => (other.to_string(), Some(fallback_span)),
+        };
+        facts.mark_recovered_from_parse_error(message, span);
+    }
     GitGraphParseFailure {
         error: Box::new(error),
-        editor_facts: Box::new(editor_facts),
+        #[cfg(feature = "editor-facts")]
+        editor_facts: editor_facts.map(Box::new),
     }
 }
 
@@ -1848,21 +1977,29 @@ fn parse_gitgraph_header(
 fn collect_gitgraph_commands(
     code: &str,
     mut offset: usize,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<GitGraphSyntaxOutcome> {
     let mut commands = Vec::new();
     let mut common = LangiumCommonFacts::default();
-    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = new_gitgraph_editor_facts(editor_demand);
     let mut first_error = None;
     while offset < code.len() {
         control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
-            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "gitGraph");
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
+                push_langium_common_editor_fact(facts, &parsed.fact, "gitGraph");
+            }
             if let Some(diagnostic) = parsed.diagnostic {
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_insertion_point(
-                        meta.diagram_type.clone(),
+                        diagram_type.to_string(),
                         diagnostic.message,
                         diagnostic.span.start,
                     )
@@ -1875,17 +2012,33 @@ fn collect_gitgraph_commands(
         let line_start = offset;
         let (line, next_offset) = physical_line(code, offset);
         offset = next_offset;
-        match parse_git_graph_command(line, line_start, control) {
+        match parse_git_graph_command(
+            line,
+            line_start,
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
+            control,
+        ) {
             Ok(Some(command)) => {
-                command.push_editor_facts_controlled(&mut editor_facts, control)?;
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
+                    command.push_editor_facts_controlled(facts, control)?;
+                }
                 commands.push(command);
             }
             Ok(None) => {}
             Err(GitGraphCommandParseAbort::Cancelled(cancelled)) => return Err(cancelled),
             Err(GitGraphCommandParseAbort::Invalid(error)) => {
-                for fact in error.editor_facts {
-                    control.checkpoint()?;
-                    fact.push_to(&mut editor_facts);
+                #[cfg(feature = "editor-facts")]
+                if let (Some(recovered), Some(facts)) = (error.editor_facts, editor_facts.as_mut())
+                {
+                    for fact in recovered {
+                        control.checkpoint()?;
+                        fact.push_to(facts);
+                    }
                 }
                 first_error.get_or_insert_with(|| {
                     (*error.error).with_exact_span_if_missing(error.recovery_span)
@@ -1896,6 +2049,7 @@ fn collect_gitgraph_commands(
     Ok(GitGraphSyntaxOutcome {
         commands,
         common,
+        #[cfg(feature = "editor-facts")]
         editor_facts,
         first_error,
     })
@@ -1920,9 +2074,10 @@ fn physical_line(source: &str, offset: usize) -> (&str, usize) {
 }
 
 fn new_gitgraph_db() -> GitGraphDb {
+    #[cfg(test)]
+    GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.set(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get() + 1);
     GitGraphDb {
         commits: HashMap::new(),
-        commit_order: Vec::new(),
         branches: HashMap::new(),
         branch_config: HashMap::new(),
         branch_config_order: Vec::new(),
@@ -1939,7 +2094,7 @@ fn new_gitgraph_db() -> GitGraphDb {
 }
 
 fn apply_git_graph_commands_controlled(
-    commands: &[GitGraphCommand],
+    commands: Vec<GitGraphCommand>,
     db: &mut GitGraphDb,
     effective_config: &MermaidConfig,
     control: &crate::OperationControl,
@@ -1954,31 +2109,31 @@ fn apply_git_graph_commands_controlled(
     Ok(Ok(()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel};
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
             .model
     }
 
-    fn test_meta() -> ParseMetadata {
-        ParseMetadata {
+    fn test_meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "gitGraph".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }
 
     fn parse_err(text: &str) -> String {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
@@ -1986,9 +2141,11 @@ mod tests {
     }
 
     fn parse_with_seed(text: &str, seed: i64) -> crate::ManagedSemanticJson {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
-            json!({ "gitGraph": { "seed": seed } }),
-        ));
+        let engine = MermaidEngine::new().with_site_config(
+            crate::presentation::PresentationConfig::from_value(
+                json!({ "gitGraph": { "seed": seed } }),
+            ),
+        );
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -2016,7 +2173,14 @@ mod tests {
         control.cancel_after_checkpoints(20);
 
         assert!(matches!(
-            construct_git_graph_semantic_source_controlled(&text, &test_meta(), &control),
+            construct_git_graph_semantic_source_controlled(
+                &text,
+                &test_meta().diagram_type,
+                test_meta().effective_config.as_config(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            ),
             Err(crate::OperationCancelled { .. })
         ));
     }
@@ -2032,9 +2196,11 @@ mod tests {
 
     #[test]
     fn parse_gitgraph_render_model_uses_typed_variant_without_changing_json_parse() {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-            "gitGraph": { "seed": 1 }
-        })));
+        let engine = MermaidEngine::new().with_site_config(
+            crate::presentation::PresentationConfig::from_value(json!({
+                "gitGraph": { "seed": 1 }
+            })),
+        );
         let input = r#"
 gitGraph TB:
 title <script>alert(1)</script><b>Git title</b>
@@ -2088,8 +2254,9 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn parse_gitgraph_editor_facts_expose_parser_backed_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "gitGraph TB\n",
             "accTitle: Git title\n",
@@ -2120,6 +2287,7 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn gitgraph_usage_occurrences_are_typed_references_without_polluting_entities() {
         let text = concat!(
             "gitGraph\n",
@@ -2133,7 +2301,7 @@ merge feature id:"M1"
             "branch release\n",
             "cherry-pick id:\"M1\" parent:\"M0\"\n",
         );
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
             .unwrap()
             .expect("gitGraph editor facts");
@@ -2206,6 +2374,7 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn gitgraph_parser_recovery_keeps_later_semantic_facts_without_rescanning() {
         let text = concat!(
             "gitGraph\r\n",
@@ -2235,7 +2404,7 @@ merge feature id:"M1"
 
     #[test]
     fn gitgraph_unknown_command_reports_exact_command_span() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = "gitGraph\n  frobnicate branch\n";
         let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = err else {
@@ -2255,10 +2424,10 @@ merge feature id:"M1"
     }
 
     #[test]
-    fn seeded_auto_commit_ids_match_upstream_seeded_svg_pipeline() {
+    fn seeded_auto_commit_ids_use_one_semantic_construction() {
         let model = parse_with_seed("gitGraph:\ncommit\n", 1);
         let ids = commit_ids(&model);
-        assert_eq!(ids, vec!["0-5b722bd".to_string()]);
+        assert_eq!(ids, vec!["0-4ab40cd".to_string()]);
     }
 
     #[test]
@@ -2268,7 +2437,7 @@ merge feature id:"M1"
         let bt = commit_ids(&parse_with_seed("gitGraph BT:\ncommit\n", 1));
         assert_eq!(base, tb);
         assert_eq!(base, bt);
-        assert_eq!(base, vec!["0-5b722bd".to_string()]);
+        assert_eq!(base, vec!["0-4ab40cd".to_string()]);
     }
 
     #[test]
@@ -2418,6 +2587,7 @@ merge feature id:"M1"
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn gitgraph_recovery_reports_parser_diagnostic_with_exact_crlf_span() {
         let text = concat!(
             "gitGraph\r\n",
@@ -2428,10 +2598,10 @@ merge feature id:"M1"
         let facts = crate::family::test_support::editor_facts(
             parse_git_graph_json_and_editor_facts,
             text,
-            &ParseMetadata {
+            &PresentationMetadata {
                 diagram_type: "gitGraph".to_string(),
                 config: MermaidConfig::default(),
-                effective_config: MermaidConfig::default(),
+                effective_config: crate::presentation::PresentationConfig::default(),
                 title: None,
             },
         );
@@ -2457,7 +2627,7 @@ merge feature id:"M1"
         let invalid = "checkout missing";
         let start = text.find(invalid).unwrap();
         let expected_span = SourceSpan::new(start, start + invalid.len());
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
 
         let error = engine
             .parse_diagram_sync(text, ParseOptions::strict())
@@ -2467,21 +2637,24 @@ merge feature id:"M1"
         };
         assert_eq!(diagnostic.span(), Some(expected_span));
 
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
-            .unwrap()
-            .expect("gitGraph editor recovery facts");
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Recovered
-        );
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "C1"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "missing"));
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
-                && diagnostic.span == Some(expected_span)
-                && diagnostic.message.contains("not yet created")
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
+                .unwrap()
+                .expect("gitGraph editor recovery facts");
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "C1"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "missing"));
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(expected_span)
+                    && diagnostic.message.contains("not yet created")
+            }));
+        }
     }
 
     #[test]
@@ -2740,7 +2913,7 @@ merge feature id:"M1"
     #[test]
     fn should_log_warning_when_two_commits_have_same_id() {
         let text = "gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let parsed = engine
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("gitGraph compatibility parse succeeds")
@@ -2766,5 +2939,355 @@ merge feature id:"M1"
             model["warnings"],
             json!(["Commit ID working on MDR already exists"])
         );
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn canonical(source: &str) -> Result<GitGraphDiagramModel> {
+        crate::SemanticParser::new()
+            .with_site_config(MermaidConfig::from_value(
+                json!({ "gitGraph": { "seed": 1 } }),
+            ))
+            .parse_diagram_sync(source)
+            .map(|parsed| match parsed.model {
+                crate::SemanticDiagramModel::GitGraph(model) => model,
+                #[allow(unreachable_patterns)]
+                _ => panic!("expected GitGraph semantics"),
+            })
+    }
+
+    fn reset_construction_counts() {
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("gitGraph");
+        GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.set(0);
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+    }
+
+    fn assert_one_construction_without_editor() {
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
+            1
+        );
+        assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_capture_keeps_database_failure_without_command_facts() {
+        for source in [
+            "gitGraph\ncommit id:\"root\"\n",
+            "gitGraph\ncommit id:\"root\"\ncheckout missing\n",
+        ] {
+            let metadata = SemanticMetadata {
+                diagram_type: "gitGraph".to_string(),
+                config: MermaidConfig::empty_object(),
+                semantic_config: MermaidConfig::from_value(json!({"gitGraph": {"seed": 1}})),
+                title: None,
+            };
+            let capture = |demand| {
+                parse_git_graph_semantic_model_controlled(
+                    source,
+                    &metadata,
+                    demand,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+            };
+            let full = capture(EditorFactsDemand::Capture);
+            let full_facts = full.editor_facts.unwrap();
+            assert!(!full_facts.symbols.is_empty());
+            reset_construction_counts();
+            let recovery = capture(EditorFactsDemand::Recovery);
+            assert_eq!(recovery.model.is_ok(), full.model.is_ok());
+            let facts = recovery.editor_facts.unwrap();
+            assert_eq!(facts.completeness, full_facts.completeness);
+            assert_eq!(facts.diagnostics, full_facts.diagnostics);
+            assert!(facts.symbols.is_empty());
+            assert!(facts.directive_prefixes.is_empty());
+            assert!(facts.expected_syntax.is_empty());
+            let work = crate::editor::test_work::read();
+            assert_eq!(
+                (work.symbols, work.directives, work.expected_syntax),
+                (0, 0, 0)
+            );
+            assert_eq!(
+                crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
+                1
+            );
+            assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn canonical_gitgraph_capture_retains_facts_on_success_and_database_failure() {
+        for (source, valid) in [
+            ("gitGraph\ncommit id:\"root\"\n", true),
+            ("gitGraph\ncommit id:\"root\"\ncheckout missing\n", false),
+        ] {
+            let metadata = SemanticMetadata {
+                diagram_type: "gitGraph".to_string(),
+                config: MermaidConfig::empty_object(),
+                semantic_config: MermaidConfig::from_value(json!({"gitGraph": {"seed": 1}})),
+                title: None,
+            };
+            reset_construction_counts();
+            let parsed = parse_git_graph_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Capture,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass GitGraph facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+            assert_eq!(
+                crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
+                1
+            );
+            assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    fn canonical_gitgraph_keeps_authored_semantics_and_normalizes_common_fields() {
+        reset_construction_counts();
+        let source = concat!(
+            "gitGraph TB:\n",
+            "title <script>alert(1)</script><b>Canonical title</b>\n",
+            "accTitle: Git history\n",
+            "accDescr: A feature merge\n",
+            "commit id:\"C0\" msg:\"Root\" tag:\"v1\"\n",
+            "branch feature order:2\n",
+            "commit id:\"F1\" type:HIGHLIGHT\n",
+            "checkout main\n",
+            "merge feature id:\"M1\" type:REVERSE tag:\"merged\"\n",
+        );
+        let model = canonical(source).unwrap();
+        assert_eq!(model.diagram_type, "gitGraph");
+        assert_eq!(model.direction, "TB");
+        assert_eq!(model.title.as_deref(), Some("<b>Canonical title</b>"));
+        assert_eq!(model.acc_title.as_deref(), Some("Git history"));
+        assert_eq!(model.acc_descr.as_deref(), Some("A feature merge"));
+        assert_eq!(
+            model
+                .branches
+                .iter()
+                .map(|b| b.name.as_str())
+                .collect::<Vec<_>>(),
+            ["main", "feature"]
+        );
+        assert_eq!(model.current_branch, "main");
+        assert_eq!(model.commits.len(), 3);
+        assert_eq!(model.commits[0].tags, ["v1"]);
+        assert_eq!(model.commits[1].commit_type, COMMIT_TYPE_HIGHLIGHT);
+        assert_eq!(model.commits[2].parents, ["C0", "F1"]);
+        assert_eq!(model.commits[2].custom_type, Some(COMMIT_TYPE_REVERSE));
+        assert_eq!(model.commits[2].custom_id, Some(true));
+        assert_one_construction_without_editor();
+
+        #[cfg(feature = "presentation")]
+        {
+            let parsed = crate::MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let crate::RenderSemanticModel::GitGraph(full) = parsed.model() else {
+                panic!("expected GitGraph render model");
+            };
+            assert_eq!(
+                serde_json::to_value(&model).unwrap(),
+                serde_json::to_value(full).unwrap()
+            );
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+    }
+
+    #[test]
+    fn seeded_canonical_gitgraph_constructs_once_and_can_reference_its_generated_id() {
+        reset_construction_counts();
+        let source = concat!(
+            "gitGraph\n",
+            "commit id:\"ROOT\"\n",
+            "branch feature\n",
+            "commit\n",
+            "checkout main\n",
+            "cherry-pick id:\"1-4ab40cd\"\n",
+        );
+        let model = canonical(source).unwrap();
+        assert_eq!(
+            model
+                .commits
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect::<Vec<_>>(),
+            ["ROOT", "1-4ab40cd", "2-a5b722b"]
+        );
+        assert_eq!(model.commits[2].parents, ["ROOT", "1-4ab40cd"]);
+        assert_eq!(model.commits[2].tags, ["cherry-pick:1-4ab40cd"]);
+        assert_one_construction_without_editor();
+    }
+
+    #[test]
+    fn seeded_canonical_gitgraph_uses_one_identity_domain_for_custom_merge_validation() {
+        reset_construction_counts();
+        let source = concat!(
+            "gitGraph\n",
+            "commit\n",
+            "branch feature\n",
+            "commit id:\"F1\"\n",
+            "checkout main\n",
+            "merge feature id:\"0-5b722bd\"\n",
+        );
+        let model = canonical(source).unwrap();
+        assert_eq!(
+            model
+                .commits
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect::<Vec<_>>(),
+            ["0-4ab40cd", "F1", "0-5b722bd"]
+        );
+        assert_eq!(model.commits[2].parents, ["0-4ab40cd", "F1"]);
+        assert_one_construction_without_editor();
+    }
+
+    #[test]
+    fn seeded_canonical_gitgraph_rejects_its_actual_generated_id_as_custom_merge_id() {
+        reset_construction_counts();
+        let source = concat!(
+            "gitGraph\n",
+            "commit\n",
+            "branch feature\n",
+            "commit id:\"F1\"\n",
+            "checkout main\n",
+            "merge feature id:\"0-4ab40cd\"\n",
+        );
+        let error = canonical(source).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Commit with id:0-4ab40cd already exists")
+        );
+        assert_one_construction_without_editor();
+    }
+
+    #[test]
+    fn seeded_canonical_gitgraph_preserves_generated_id_collision_warnings() {
+        reset_construction_counts();
+        let source = concat!(
+            "\u{feff}---\r\ntitle: History\r\n---\r\ngitGraph\r\ncommit\r\n",
+            "commit id:\"0-4ab40cd\" msg:\"Replacement\"\r\n",
+        );
+        let model = canonical(source).unwrap();
+        assert_eq!(model.commits.len(), 1);
+        assert_eq!(model.commits[0].id, "0-4ab40cd");
+        assert_eq!(model.commits[0].seq, 1);
+        assert_eq!(model.commits[0].message, "Replacement");
+        assert_eq!(model.commits[0].parents, ["0-4ab40cd"]);
+        assert_eq!(model.warning_facts.len(), 1);
+        let span = model.warning_facts[0].span.expect("original warning span");
+        assert_eq!(
+            &source[span.start..span.end],
+            "commit id:\"0-4ab40cd\" msg:\"Replacement\""
+        );
+        assert_one_construction_without_editor();
+    }
+
+    #[test]
+    fn canonical_gitgraph_preserves_exact_errors_and_cooperative_cancellation() {
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let source = "gitGraph\r\ncommit id:\"C0\"\r\n  checkout missing  \r\n";
+        let error = canonical(source).unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = &error else {
+            panic!("expected diagram diagnostic");
+        };
+        let start = source.find("checkout missing").unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + "checkout missing".len()))
+        );
+        assert!(diagnostic.message().contains("Trying to checkout branch"));
+        #[cfg(feature = "compat-json")]
+        {
+            let full = crate::MermaidEngine::new()
+                .parse_diagram_sync(source, crate::ParseOptions::strict())
+                .unwrap_err();
+            assert_eq!(error.to_string(), full.to_string());
+        }
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        let mut source = String::from("gitGraph\ncommit id:\"root\"");
+        for index in 0..512 {
+            source.push_str(&format!(" tag:\"tag-{index}\""));
+        }
+        source.push('\n');
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(20);
+        assert!(matches!(
+            crate::SemanticParser::new().parse_diagram_controlled_sync(&source, &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn combined_gitgraph_capture_uses_one_seeded_construction_and_keeps_parser_spans() {
+        reset_construction_counts();
+        let source = "gitGraph\r\ncommit id:\"ROOT\"\r\nbranch feature\r\ncommit id:\"F1\"\r\ncheckout main\r\nmerge feature id:\"M1\"\r\n";
+        let meta = PresentationMetadata {
+            diagram_type: "gitGraph".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::from_value(
+                json!({ "gitGraph": { "seed": 1 } }),
+            ),
+            title: None,
+        };
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_git_graph_json_and_editor_facts(source, &meta, &crate::OperationControl::new()),
+        )
+        .unwrap();
+        assert_eq!(json["commits"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+        let start = source.find("F1").unwrap();
+        assert!(
+            facts.symbols.iter().any(|symbol| symbol.name == "F1"
+                && symbol.selection == SourceSpan::new(start, start + 2))
+        );
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
+            1
+        );
+        assert_eq!(GITGRAPH_SEMANTIC_CONSTRUCTION_COUNT.get(), 1);
+        let counts = crate::editor::test_work::read();
+        assert_eq!(counts.collections, 1);
+        assert!(counts.symbols > 0);
     }
 }

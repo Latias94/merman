@@ -1,6 +1,6 @@
 use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
+use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessage};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct SequenceMessageBoundMetrics {
@@ -80,7 +80,7 @@ pub(super) struct SequenceMessageMetricSidecar {
 
 impl SequenceMessageMetricSidecar {
     pub(super) fn new(
-        model: &SequenceDiagramRenderModel,
+        model: &SequenceDiagramModel,
         style: &TextStyle,
         measurer: &dyn TextMeasurer,
     ) -> Self {
@@ -113,7 +113,7 @@ impl SequenceMessageMetricSidecar {
 
     pub(super) fn view<'a>(
         &'a self,
-        model: &'a SequenceDiagramRenderModel,
+        model: &'a SequenceDiagramModel,
         style: &TextStyle,
         measurer: &dyn TextMeasurer,
     ) -> SequenceMessageMetricView<'a> {
@@ -167,12 +167,12 @@ mod tests {
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::text::{DeterministicTextMeasurer, TextStyle};
     use merman_core::diagrams::sequence::{
-        SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload,
+        SequenceDiagramModel, SequenceMessage, SequenceMessagePayload,
     };
     use std::collections::BTreeMap;
 
-    fn metric_test_model(text: &str) -> SequenceDiagramRenderModel {
-        SequenceDiagramRenderModel {
+    fn metric_test_model(text: &str) -> SequenceDiagramModel {
+        SequenceDiagramModel {
             acc_title: None,
             acc_descr: None,
             title: None,

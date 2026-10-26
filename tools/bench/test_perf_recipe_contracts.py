@@ -869,6 +869,30 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     recipes=recipes,
                 )
 
+    def test_cli_keeps_historical_base_features_independent_of_current_head(self) -> None:
+        for overrides, expected_base, expected_head in (
+            ([], "svg", "all-diagrams,svg,compat-json,editor-facts"),
+            (
+                ["--base-features", "render", "--head-features", "svg,compat-json"],
+                "render",
+                "svg,compat-json",
+            ),
+        ):
+            with (
+                self.subTest(overrides=overrides),
+                tempfile.TemporaryDirectory() as temp_dir,
+                mock.patch.object(
+                    compare_self, "_empty_report", side_effect=SystemExit(99)
+                ) as report,
+                self.assertRaises(SystemExit),
+            ):
+                compare_self.main(
+                    ["--base-dir", temp_dir, "--head-dir", temp_dir, *overrides]
+                )
+            args = report.call_args.args[0]
+            self.assertEqual(args.base_features, expected_base)
+            self.assertEqual(args.head_features, expected_head)
+
     def test_runner_recipes_build_each_side_with_its_own_cargo_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1764,10 +1788,19 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "dirty_entries_truncated": False,
                 }
 
-            with mock.patch.object(
-                compare_self,
-                "_git_provenance",
-                side_effect=capture_clean_tree,
+            with (
+                mock.patch.object(
+                    compare_self,
+                    "_git_provenance",
+                    side_effect=capture_clean_tree,
+                ),
+                mock.patch.object(
+                    compare_self,
+                    "_describe_cargo_bench_target",
+                    side_effect=compare_self.ContractViolation(
+                        "test checkout has no benchmark target"
+                    ),
+                ),
             ):
                 prepared, _provenance, errors = compare_self._prepare_runner(
                     recipe,

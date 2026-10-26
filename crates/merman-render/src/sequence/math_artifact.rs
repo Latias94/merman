@@ -231,7 +231,7 @@ impl SequenceMathArtifactStore for SequenceMathSidecar {
 
 pub(crate) struct SequenceMathSidecarBuilder<'a> {
     backend: Option<ConfiguredMathBackend>,
-    config: merman_core::MermaidConfig,
+    config: merman_core::presentation::PresentationConfig,
     text_measurer: &'a dyn TextMeasurer,
     work_meter: Arc<OperationWorkMeter>,
     actor_terminal_emissions: usize,
@@ -242,7 +242,7 @@ pub(crate) struct SequenceMathSidecarBuilder<'a> {
 impl<'a> SequenceMathSidecarBuilder<'a> {
     pub(crate) fn new(
         backend: Option<&ConfiguredMathBackend>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         text_measurer: &'a dyn TextMeasurer,
         work_meter: Arc<OperationWorkMeter>,
     ) -> Self {
@@ -430,7 +430,7 @@ mod tests {
         fn render_html_label(
             &self,
             text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
         ) -> Option<String> {
             Some(format!("<span>{text}</span>"))
         }
@@ -438,7 +438,7 @@ mod tests {
         fn measure_sequence_html_label_with_style(
             &self,
             _text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
             _style: &TextStyle,
         ) -> Option<TextMetrics> {
             self.prepare_calls.fetch_add(1, Ordering::SeqCst);
@@ -455,7 +455,7 @@ mod tests {
             text_style: style,
             foreground: "#67e8f9",
             foreground_provenance:
-                super::super::SequenceTerminalForegroundProvenance::MermaidConfig,
+                super::super::SequenceTerminalForegroundProvenance::PresentationConfig,
         }
     }
 
@@ -471,7 +471,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         );
@@ -497,7 +497,7 @@ mod tests {
                 .get(&occurrence)
                 .expect("prepared occurrence")
                 .foreground_provenance,
-            super::super::SequenceTerminalForegroundProvenance::MermaidConfig
+            super::super::SequenceTerminalForegroundProvenance::PresentationConfig
         );
         assert!(layout.browser_xhtml().contains("font-size:27px"));
         assert!(layout.browser_xhtml().contains("color:#67e8f9"));
@@ -520,7 +520,7 @@ mod tests {
         assert!(Arc::ptr_eq(&layout, writer));
         assert_eq!(
             sidecar.foreground_provenance(&occurrence),
-            Some(super::super::SequenceTerminalForegroundProvenance::MermaidConfig)
+            Some(super::super::SequenceTerminalForegroundProvenance::PresentationConfig)
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         drop(sidecar);
@@ -533,7 +533,7 @@ mod tests {
         let backend = ConfiguredMathBackend::external(Arc::new(CountingSequenceMathRenderer {
             prepare_calls: calls,
         }));
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = TextStyle::default();
         let text_measurer = DeterministicTextMeasurer::default();
         let measuring_meter = Arc::new(OperationWorkMeter::new(
@@ -612,7 +612,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         );
@@ -644,7 +644,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         );
@@ -688,7 +688,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         )

@@ -7,7 +7,8 @@ type FamilyFixture = (
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
@@ -51,13 +52,13 @@ fn edge_labels_group(svg: &str) -> &str {
 }
 
 fn render_er_svg_from_text(text: &str, options: &SvgRenderOptions) -> String {
-    render_er_svg_from_text_with_engine(text, options, Engine::new())
+    render_er_svg_from_text_with_engine(text, options, MermaidEngine::new())
 }
 
 fn render_er_svg_from_text_with_engine(
     text: &str,
     options: &SvgRenderOptions,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> String {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -83,7 +84,7 @@ fn try_render_er_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin ER resource-bound session");
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ER resource-bound fixture")
         .expect("detect ER resource-bound fixture");
@@ -242,7 +243,7 @@ fn marker_opening_tag<'a>(svg: &'a str, marker_id: &str) -> &'a str {
 fn prepare_er_family_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> FamilyFixture {
     try_prepare_er_family_with_theme_and_engine(text, theme, engine)
 }
@@ -250,7 +251,7 @@ fn prepare_er_family_with_theme_and_engine(
 fn try_prepare_er_family_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> FamilyFixture {
     try_prepare_er_family_with_theme_and_engine_requirement(
         text,
@@ -263,7 +264,7 @@ fn try_prepare_er_family_with_theme_and_engine(
 fn try_prepare_er_family_with_theme_and_engine_requirement(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     requirement: ThemePortabilityRequirement,
 ) -> FamilyFixture {
     try_prepare_er_family_with_theme_and_engine_requirement_and_environment(
@@ -278,7 +279,7 @@ fn try_prepare_er_family_with_theme_and_engine_requirement(
 fn try_prepare_er_family_with_theme_and_engine_requirement_and_environment(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     requirement: ThemePortabilityRequirement,
     environment: RenderEnvironment,
 ) -> FamilyFixture {
@@ -295,7 +296,7 @@ fn try_prepare_er_family_with_theme_and_engine_requirement_and_environment(
 
 fn render_er_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
     let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
-        prepare_er_family_with_theme_and_engine(text, theme, Engine::new());
+        prepare_er_family_with_theme_and_engine(text, theme, MermaidEngine::new());
     family::prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1)
         .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -307,7 +308,7 @@ fn render_er_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> Strin
 fn render_er_svg_from_text_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> String {
     let (fixture_parsed_2, fixture_layout_2, fixture_session_2) =
         prepare_er_family_with_theme_and_engine(text, theme, engine);
@@ -432,14 +433,14 @@ impl TextMeasurer for ErTypedFontSizeProbeMeasurer {
 }
 
 fn render_er_typed_font_size_probe(
-    engine: Engine,
+    engine: MermaidEngine,
     profile_id: &'static str,
 ) -> family::RenderedFamilySvg {
     render_er_typed_font_size_probe_with_size(engine, profile_id, 24.0)
 }
 
 fn render_er_typed_font_size_probe_with_size(
-    engine: Engine,
+    engine: MermaidEngine,
     profile_id: &'static str,
     typed_size_px: f32,
 ) -> family::RenderedFamilySvg {
@@ -958,7 +959,7 @@ fn er_svg_flowchart_htmllabels_only_changes_relationship_labels() {
     let svg = render_er_svg_from_text_with_engine(
         &text,
         &SvgRenderOptions::default(),
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             json!({"theme":"default", "look":"classic", "layout":"dagre"}),
         )),
     );
@@ -1041,14 +1042,14 @@ CUSTOMER ||--|| ORDER : owns
     let svg = render_er_svg_from_text_with_engine(
         text,
         &SvgRenderOptions::default(),
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             json!({"theme":"default", "look":"classic", "layout":"dagre"}),
         )),
     );
     let html_svg = render_er_svg_from_text_with_engine(
         html_text,
         &SvgRenderOptions::default(),
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             json!({"theme":"default", "look":"classic", "layout":"dagre"}),
         )),
     );
@@ -1159,7 +1160,7 @@ fn er_subgraph_text_fill_yields_only_to_explicit_label_color_owners() {
             let (parsed, layout, session) = prepare_er_family_with_theme_and_engine(
                 &source,
                 theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                     "theme": "default", "look": "classic", "layout": "dagre", "htmlLabels": false
                 }))),
             );
@@ -1309,13 +1310,14 @@ fn er_referenced_design_reaches_the_model_owned_entity_surface() {
         .compile_spec_wire(materialized)
         .expect("compile editable ER theme");
 
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(
-            "---\nconfig:\n  look: classic\n  layout: dagre\n---\nerDiagram\n  CUSTOMER\n",
-            ParseOptions::strict(),
-        )
-        .expect("parse tokens-only ER diagram")
-        .expect("detect tokens-only ER diagram");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  look: classic\n  layout: dagre\n---\nerDiagram\n  CUSTOMER\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse tokens-only ER diagram")
+            .expect("detect tokens-only ER diagram");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
         .begin_session_with_theme(&theme)
@@ -1356,7 +1358,7 @@ fn er_visible_text_and_relation_label_have_direct_terminal_receipts() {
 "#;
     let theme = er_visible_text_theme();
     let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
-        prepare_er_family_with_theme_and_engine(source, &theme, Engine::new());
+        prepare_er_family_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let artifact = family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
         .expect("prepare family fixture");
     let rendered = artifact
@@ -1384,9 +1386,11 @@ fn er_visible_text_and_relation_label_have_direct_terminal_receipts() {
         prepare_er_family_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "htmlLabels": false
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "htmlLabels": false
+                }),
+            )),
         );
     let native_artifact = family::prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4)
         .expect("prepare family fixture");
@@ -1406,7 +1410,7 @@ fn er_visible_text_and_relation_label_have_direct_terminal_receipts() {
     assert_eq!(native_evidence.theme_residual_count(), 0);
 
     let (fixture_parsed_5, fixture_layout_5, fixture_session_5) =
-        prepare_er_family_with_theme_and_engine(source, &theme, Engine::new());
+        prepare_er_family_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let resvg = family::prepare(&fixture_parsed_5, &fixture_layout_5, fixture_session_5)
         .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1443,7 +1447,7 @@ fn er_font_stack_is_measured_and_emitted_by_the_typed_family_plan() {
         .expect("compile ER typed FontStack theme");
     let source = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
     let (fixture_parsed_6, fixture_layout_6, fixture_session_6) =
-        prepare_er_family_with_theme_and_engine(source, &theme, Engine::new());
+        prepare_er_family_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let artifact = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
         .expect("prepare family fixture");
     let rendered = artifact
@@ -1484,7 +1488,7 @@ erDiagram
         try_prepare_er_family_with_theme_and_engine_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
     let artifact = family::prepare(&fixture_parsed_28, &fixture_layout_28, fixture_session_28)
@@ -1535,7 +1539,7 @@ fn er_without_visible_text_keeps_typed_font_stack_not_applicable() {
         try_prepare_er_family_with_theme_and_engine_requirement(
             "erDiagram\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
     let artifact = family::prepare(&fixture_parsed_29, &fixture_layout_29, fixture_session_29)
@@ -1559,7 +1563,7 @@ fn er_without_visible_text_keeps_typed_font_stack_not_applicable() {
 #[test]
 fn er_typed_font_size_reaches_dagre_measurement_layout_css_and_evidence() {
     let rendered = render_er_typed_font_size_probe(
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "fontSize": 10
         }))),
         "test.er-typed-font-size-dagre",
@@ -1570,12 +1574,12 @@ fn er_typed_font_size_reaches_dagre_measurement_layout_css_and_evidence() {
 #[test]
 fn er_typed_font_size_changes_dagre_entity_geometry() {
     let small = render_er_typed_font_size_probe_with_size(
-        Engine::new(),
+        MermaidEngine::new(),
         "test.er-typed-font-size-dagre-small",
         12.0,
     );
     let large = render_er_typed_font_size_probe_with_size(
-        Engine::new(),
+        MermaidEngine::new(),
         "test.er-typed-font-size-dagre-large",
         24.0,
     );
@@ -1596,7 +1600,7 @@ fn er_typed_font_size_changes_dagre_entity_geometry() {
 #[test]
 fn er_typed_font_size_reaches_elk_measurement_layout_css_and_evidence() {
     let rendered = render_er_typed_font_size_probe(
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "fontSize": 10,
             "layout": "elk"
         }))),
@@ -1609,7 +1613,7 @@ fn er_typed_font_size_reaches_elk_measurement_layout_css_and_evidence() {
 #[test]
 fn er_typed_font_size_changes_elk_entity_geometry() {
     let elk_engine = || {
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "layout": "elk"
         })))
     };
@@ -1696,7 +1700,7 @@ erDiagram
         try_prepare_er_family_with_theme_and_engine_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
     let artifact = family::prepare(&fixture_parsed_31, &fixture_layout_31, fixture_session_31)
@@ -1720,7 +1724,7 @@ fn er_without_visible_base_text_keeps_typed_font_size_not_applicable() {
         try_prepare_er_family_with_theme_and_engine_requirement(
             "erDiagram\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
     let artifact = family::prepare(&fixture_parsed_32, &fixture_layout_32, fixture_session_32)
@@ -1748,7 +1752,7 @@ fn er_entity_source_font_size_remains_a_fail_closed_layout_residual() {
         try_prepare_er_family_with_theme_and_engine_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         );
     let artifact = family::prepare(&fixture_parsed_33, &fixture_layout_33, fixture_session_33)
@@ -1774,7 +1778,7 @@ fn er_entity_source_font_size_remains_a_fail_closed_layout_residual() {
         try_prepare_er_family_with_theme_and_engine_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
     let strict = family::prepare(&fixture_parsed_34, &fixture_layout_34, fixture_session_34)
@@ -1806,7 +1810,7 @@ fn er_inherited_entity_font_size_keeps_the_typed_owner() {
             try_prepare_er_family_with_theme_and_engine_requirement(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable,
             );
         let artifact = family::prepare(&fixture_parsed_35, &fixture_layout_35, fixture_session_35)
@@ -1848,7 +1852,7 @@ fn er_descendant_font_size_is_an_unverified_layout_owner() {
             try_prepare_er_family_with_theme_and_engine_requirement(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::BestEffort,
             );
         let artifact = family::prepare(&fixture_parsed_36, &fixture_layout_36, fixture_session_36)
@@ -1865,7 +1869,7 @@ fn er_descendant_font_size_is_an_unverified_layout_owner() {
             try_prepare_er_family_with_theme_and_engine_requirement(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable,
             );
         let strict = family::prepare(&fixture_parsed_37, &fixture_layout_37, fixture_session_37)
@@ -1901,7 +1905,7 @@ fn er_descendant_inheritance_and_invalid_css_keep_the_typed_font_size_owner() {
             try_prepare_er_family_with_theme_and_engine_requirement(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::RequirePortable,
             );
         let artifact = family::prepare(&fixture_parsed_38, &fixture_layout_38, fixture_session_38)
@@ -1920,7 +1924,11 @@ fn er_descendant_inheritance_and_invalid_css_keep_the_typed_font_size_owner() {
 fn er_typed_font_size_uses_canonical_f32_css_spelling() {
     let theme = er_font_size_theme(14.4);
     let (fixture_parsed_7, fixture_layout_7, fixture_session_7) =
-        prepare_er_family_with_theme_and_engine("erDiagram\n  CUSTOMER\n", &theme, Engine::new());
+        prepare_er_family_with_theme_and_engine(
+            "erDiagram\n  CUSTOMER\n",
+            &theme,
+            MermaidEngine::new(),
+        );
     let rendered = family::prepare(&fixture_parsed_7, &fixture_layout_7, fixture_session_7)
         .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1953,7 +1961,7 @@ fn er_base_typography_is_typed_for_font_stack_and_font_size() {
         try_prepare_er_family_with_theme_and_engine_requirement(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         );
     let artifact = family::prepare(&fixture_parsed_39, &fixture_layout_39, fixture_session_39)
@@ -1984,7 +1992,7 @@ fn er_configured_font_family_owns_the_font_stack_route() {
             ),
         ))
         .expect("compile ER configured-owner theme");
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": {"fontFamily": "ConfigFont, sans-serif"}
     })));
     let source = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
@@ -2025,7 +2033,7 @@ fn er_configured_font_family_is_not_applicable_with_a_typed_font_size_sibling() 
             ),
         )
         .expect("compile ER configured mixed typography theme");
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": {"fontFamily": "ConfigFont, sans-serif"}
     })));
     let source = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
@@ -2065,7 +2073,7 @@ fn er_native_relation_text_uses_text_color_owner_not_node_text_color() {
         prepare_er_family_with_theme_and_engine(
             "erDiagram\n  CUSTOMER ||--o{ ORDER : owns\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "htmlLabels": false,
                 "themeVariables": {
                     "nodeTextColor": "#dc2626"
@@ -2107,7 +2115,7 @@ fn er_mixed_html_color_owners_cannot_prove_portable_typed_text_fill() {
             try_prepare_er_family_with_theme_and_engine_requirement(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::BestEffort,
             );
         let artifact = family::prepare(&fixture_parsed_41, &fixture_layout_41, fixture_session_41)
@@ -2132,7 +2140,7 @@ fn er_mixed_html_color_owners_cannot_prove_portable_typed_text_fill() {
         assert_eq!(evidence.applied_count(), 0);
 
         let (fixture_parsed_10, fixture_layout_10, fixture_session_10) =
-            prepare_er_family_with_theme_and_engine(&source, &theme, Engine::new());
+            prepare_er_family_with_theme_and_engine(&source, &theme, MermaidEngine::new());
         let strict = family::prepare(&fixture_parsed_10, &fixture_layout_10, fixture_session_10)
             .expect("prepare family fixture");
         let error =
@@ -2199,7 +2207,7 @@ fn er_table_odd_even_fill_reaches_each_matching_row() {
                         try_prepare_er_family_with_theme_and_engine_requirement(
                             source,
                             &theme,
-                            Engine::new().with_site_config(MermaidConfig::from_value(
+                            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                                 json!({"look": look, "htmlLabels": html}),
                             )),
                             // The raw Default compatibility selector is intentionally
@@ -2262,12 +2270,13 @@ fn er_table_row_config_ownership_is_property_local() {
                 } else {
                     source.to_owned()
                 };
-                let engine =
-                    Engine::new().with_site_config(MermaidConfig::from_value(if authored_source {
+                let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    if authored_source {
                         json!({"secure": []})
                     } else {
                         config
-                    }));
+                    },
+                ));
                 let (fixture_parsed_12, fixture_layout_12, fixture_session_12) =
                     prepare_er_family_with_theme_and_engine(&text, &theme, engine);
                 let rendered =
@@ -2334,7 +2343,7 @@ fn er_table_source_fill_owns_only_even_row_paths() {
             try_prepare_er_family_with_theme_and_engine_requirement(
                 &source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 ThemePortabilityRequirement::BestEffort,
             );
         let rendered = family::prepare(&fixture_parsed_13, &fixture_layout_13, fixture_session_13)
@@ -2368,7 +2377,7 @@ fn er_table_unqualified_fill_reaches_both_row_writers() {
         try_prepare_er_family_with_theme_and_engine(
             "erDiagram\n CUSTOMER {\n string id\n string name\n }\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
         );
     let rendered = family::prepare(&fixture_parsed_47, &fixture_layout_47, fixture_session_47)
         .unwrap()
@@ -2393,7 +2402,7 @@ fn er_table_fill_does_not_certify_unsupported_sibling_typography() {
     ]);
     let source = "erDiagram\n CUSTOMER {\n string id\n }\n";
     let (fixture_parsed_48, fixture_layout_48, fixture_session_48) =
-        try_prepare_er_family_with_theme_and_engine(source, &theme, Engine::new());
+        try_prepare_er_family_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let result = family::prepare(&fixture_parsed_48, &fixture_layout_48, fixture_session_48)
         .and_then(|artifact| {
             artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2415,7 +2424,11 @@ fn er_table_row_fill_requires_a_matching_visible_row() {
         ("erDiagram\n CUSTOMER {\n string id\n }\n", 1),
     ] {
         let (fixture_parsed_14, fixture_layout_14, fixture_session_14) =
-            prepare_er_family_with_theme_and_engine(source, &er_table_row_theme(), Engine::new());
+            prepare_er_family_with_theme_and_engine(
+                source,
+                &er_table_row_theme(),
+                MermaidEngine::new(),
+            );
         let rendered = family::prepare(&fixture_parsed_14, &fixture_layout_14, fixture_session_14)
             .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2487,7 +2500,7 @@ fn er_site_theme_variable_ownership_controls_typed_entity_paint() {
         CanvasPaint::solid("#123456").expect("valid entity fill"),
         Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": {
             "mainBkg": "#112233",
             "nodeBorder": "#445566"
@@ -2509,7 +2522,7 @@ fn er_site_theme_variable_ownership_controls_typed_entity_paint() {
     let default_primary_border_svg = render_er_svg_from_text_with_theme_and_engine(
         source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "default",
             "themeVariables": {
                 "primaryBorderColor": "#abcdef"
@@ -2526,7 +2539,7 @@ fn er_site_theme_variable_ownership_controls_typed_entity_paint() {
     let base_primary_svg = render_er_svg_from_text_with_theme_and_engine(
         source,
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": {
                 "primaryColor": "#fff4dd"
@@ -2579,7 +2592,7 @@ fn er_redux_fallback_palettes_yield_to_typed_entity_paint() {
         let (parsed, layout, session) = try_prepare_er_family_with_theme_and_engine_requirement(
             &source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
             ThemePortabilityRequirement::BestEffort,
         );
         assert_eq!(
@@ -2680,7 +2693,7 @@ fn er_source_palette_and_raw_colors_retain_property_local_entity_paint() {
         let (parsed, layout, session) = prepare_er_family_with_theme_and_engine(
             &source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
                 "theme": "base", "look": "classic", "layout": "dagre"
             }))),
         );
@@ -2733,7 +2746,11 @@ fn er_entity_ordinal_paint_fails_closed() {
         )
         .expect("compile ordinal ER entity theme");
     let (fixture_parsed_15, fixture_layout_15, fixture_session_15) =
-        prepare_er_family_with_theme_and_engine("erDiagram\n  PLAIN\n", &theme, Engine::new());
+        prepare_er_family_with_theme_and_engine(
+            "erDiagram\n  PLAIN\n",
+            &theme,
+            MermaidEngine::new(),
+        );
     let error = match family::prepare(&fixture_parsed_15, &fixture_layout_15, fixture_session_15)
         .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2771,7 +2788,7 @@ fn er_entity_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
         prepare_er_family_with_theme_and_engine(
             "---\nconfig:\n  look: classic\n  layout: dagre\n---\nerDiagram\n  PLAIN\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
         );
     let rendered = family::prepare(&fixture_parsed_16, &fixture_layout_16, fixture_session_16)
         .expect("prepare family fixture")
@@ -2798,7 +2815,7 @@ fn er_entity_paint_is_not_applicable_without_entities() {
         Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
     );
     let (fixture_parsed_17, fixture_layout_17, fixture_session_17) =
-        prepare_er_family_with_theme_and_engine("erDiagram\n", &theme, Engine::new());
+        prepare_er_family_with_theme_and_engine("erDiagram\n", &theme, MermaidEngine::new());
     let rendered = family::prepare(&fixture_parsed_17, &fixture_layout_17, fixture_session_17)
         .expect("prepare family fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2824,7 +2841,7 @@ fn er_static_relation_stroke_reaches_path_referenced_markers_and_evidence() {
             prepare_er_family_with_theme_and_engine(
                 "erDiagram\n  A ||--o{ B : owns\n",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             );
         let artifact = family::prepare(&fixture_parsed_18, &fixture_layout_18, fixture_session_18)
             .expect("prepare family fixture");
@@ -2874,7 +2891,7 @@ fn er_explicit_default_relation_stroke_reaches_path_referenced_markers_and_evide
             prepare_er_family_with_theme_and_engine(
                 "erDiagram\n  A ||--o{ B : owns\n",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             );
         let artifact = family::prepare(&fixture_parsed_19, &fixture_layout_19, fixture_session_19)
             .expect("prepare family fixture");
@@ -2939,7 +2956,7 @@ fn er_static_relation_stroke_binds_all_recursive_segments_and_terminal_markers()
 fn er_explicit_line_color_owns_relation_paths_and_markers() {
     let theme =
         er_relation_stroke_theme(CanvasPaint::solid("#123456").expect("valid ER relation stroke"));
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "themeVariables": { "lineColor": "#fedcba" }
     })));
     let (fixture_parsed_20, fixture_layout_20, fixture_session_20) =
@@ -2973,7 +2990,7 @@ fn er_relation_stroke_is_not_applicable_without_relationships() {
     let theme =
         er_relation_stroke_theme(CanvasPaint::solid("#123456").expect("valid ER relation stroke"));
     let (fixture_parsed_21, fixture_layout_21, fixture_session_21) =
-        prepare_er_family_with_theme_and_engine("erDiagram\n  A\n", &theme, Engine::new());
+        prepare_er_family_with_theme_and_engine("erDiagram\n  A\n", &theme, MermaidEngine::new());
     let artifact = family::prepare(&fixture_parsed_21, &fixture_layout_21, fixture_session_21)
         .expect("prepare family fixture");
     let rendered = artifact
@@ -3037,7 +3054,7 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
             try_prepare_er_family_with_theme_and_engine(
                 "erDiagram\n  A ||--o{ B : owns\n",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             );
         let result = family::prepare(&fixture_parsed_49, &fixture_layout_49, fixture_session_49)
             .and_then(|artifact| {
@@ -3072,7 +3089,7 @@ erDiagram
         try_prepare_er_family_with_theme_and_engine_requirement(
             titled_source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::BestEffort,
         );
     let best_effort = family::prepare(&fixture_parsed_42, &fixture_layout_42, fixture_session_42)
@@ -3092,7 +3109,7 @@ erDiagram
         try_prepare_er_family_with_theme_and_engine_requirement(
             titled_source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
     let strict_result = family::prepare(&fixture_parsed_43, &fixture_layout_43, fixture_session_43)
@@ -3113,7 +3130,7 @@ erDiagram
         try_prepare_er_family_with_theme_and_engine_requirement(
             untitled_source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             ThemePortabilityRequirement::RequirePortable,
         );
     let untitled = family::prepare(&fixture_parsed_44, &fixture_layout_44, fixture_session_44)
@@ -3147,7 +3164,7 @@ fn er_shadowed_unsupported_relation_selector_is_not_applicable() {
         prepare_er_family_with_theme_and_engine(
             "erDiagram\n  A ||--o{ B : owns\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
         );
     let rendered = family::prepare(&fixture_parsed_22, &fixture_layout_22, fixture_session_22)
         .expect("prepare family fixture")
@@ -3187,8 +3204,9 @@ fn er_relation_fill_fallback_reaches_visible_paths_and_referenced_markers() {
                     prepare_er_family_with_theme_and_engine(
                         "erDiagram\n A ||--o{ B : owns\n A ||--o{ A : refers\n",
                         &theme,
-                        Engine::new()
-                            .with_site_config(MermaidConfig::from_value(json!({"look": look}))),
+                        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                            json!({"look": look}),
+                        )),
                     );
                 let rendered =
                     family::prepare(&fixture_parsed_23, &fixture_layout_23, fixture_session_23)
@@ -3259,7 +3277,7 @@ fn er_relation_stroke_shadows_fill_independently_of_rule_order() {
                 try_prepare_er_family_with_theme_and_engine_requirement(
                     "erDiagram\n A ||--o{ B : owns\n",
                     &theme,
-                    Engine::new(),
+                    MermaidEngine::new(),
                     if unsupported {
                         ThemePortabilityRequirement::BestEffort
                     } else {
@@ -3307,7 +3325,7 @@ fn er_text_fill_tracks_the_visible_title_and_its_own_configuration() {
                 prepare_er_family_with_theme_and_engine(
                     "---\ntitle: ER overview\n---\nerDiagram\n",
                     &theme,
-                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
                 );
             let rendered =
                 family::prepare(&fixture_parsed_24, &fixture_layout_24, fixture_session_24)
@@ -3341,8 +3359,8 @@ fn er_selected_forest_palette_owns_html_fallback_text_under_editor_presets() {
             let (parsed, layout, session) = try_prepare_er_family_with_theme_and_engine_requirement(
                 source,
                 &theme,
-                Engine::new()
-                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels": html}))),
+                MermaidEngine::new()
+                    .with_site_config(PresentationConfig::from_value(json!({"htmlLabels": html}))),
                 ThemePortabilityRequirement::BestEffort,
             );
             let rendered = family::prepare(&parsed, &layout, session)
@@ -3404,13 +3422,15 @@ fn er_text_fill_ownership_follows_each_html_or_svg_consumer() {
                 let (text, engine) = if from_source {
                     (
                         format!("---\nconfig: {config}\n---\n{source}"),
-                        Engine::new()
-                            .with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+                        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                            json!({"secure": []}),
+                        )),
                     )
                 } else {
                     (
                         source.to_owned(),
-                        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                        MermaidEngine::new()
+                            .with_site_config(PresentationConfig::from_value(config)),
                     )
                 };
                 let (fixture_parsed_25, fixture_layout_25, fixture_session_25) =
@@ -3521,7 +3541,7 @@ fn er_source_theme_owns_derived_paint_defaults() {
         prepare_er_family_with_theme_and_engine(
             "---\ntitle: Raw owners\nconfig:\n  theme: base\n---\nerDiagram\n A {\n string id\n string name\n }\n A ||--o{ B : owns\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 json!({"themeVariables": {"primaryColor": "#fedcba"}}),
             )),
         );
@@ -4065,7 +4085,11 @@ fn er_redux_source_fill_owns_odd_and_even_table_rows() {
             "---\nconfig:\n  theme: {theme_name}\n  layout: dagre\n---\nerDiagram\n CUSTOMER {{\n string id\n string name\n }}\n style CUSTOMER fill:#112233\n"
         );
         let (fixture_parsed_27, fixture_layout_27, fixture_session_27) =
-            prepare_er_family_with_theme_and_engine(&source, &er_table_row_theme(), Engine::new());
+            prepare_er_family_with_theme_and_engine(
+                &source,
+                &er_table_row_theme(),
+                MermaidEngine::new(),
+            );
         let rendered = family::prepare(&fixture_parsed_27, &fixture_layout_27, fixture_session_27)
             .expect("prepare family fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -4141,7 +4165,7 @@ fn er_hidden_entity_terminals_preserve_visible_source_ordinals() {
             try_prepare_er_family_with_theme_and_engine_requirement(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 requirement,
             );
         let rendered = family::prepare(&fixture_parsed_46, &fixture_layout_46, fixture_session_46)

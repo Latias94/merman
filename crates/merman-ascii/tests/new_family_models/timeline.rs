@@ -9,7 +9,7 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
     model.direction = TimelineDirection::TopDown;
     model.sections = vec!["Planning".to_string()];
     model.tasks = vec![
-        TimelineRenderTask {
+        TimelineTask {
             id: 0,
             section: "Planning".to_string(),
             section_index: Some(0),
@@ -18,7 +18,7 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
             score: 0,
             events: vec!["Kickoff".to_string()],
         },
-        TimelineRenderTask {
+        TimelineTask {
             id: 1,
             section: "Planning".to_string(),
             section_index: Some(0),
@@ -51,7 +51,7 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
 fn timeline_render_model_wraps_long_task_and_event_text() {
     let mut model = TimelineDiagramRenderModel::default();
     model.sections = vec!["Planning".to_string()];
-    model.tasks = vec![TimelineRenderTask {
+    model.tasks = vec![TimelineTask {
             id: 0,
             section: "Planning".to_string(),
             section_index: Some(0),
@@ -81,7 +81,7 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
 #[test]
 fn timeline_structured_text_framing_distinguishes_task_text_from_events() {
     let mut embedded_event = TimelineDiagramRenderModel::default();
-    embedded_event.tasks = vec![TimelineRenderTask {
+    embedded_event.tasks = vec![TimelineTask {
         id: 1,
         section: String::new(),
         section_index: None,

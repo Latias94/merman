@@ -36,7 +36,9 @@ fn fixture_render_context_catalog() -> &'static RenderContextCatalog {
     })
 }
 
-pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
+pub(crate) fn fixture_site_config_for_path(
+    path: &Path,
+) -> Option<merman::presentation::PresentationConfig> {
     let fixtures_root = crate::cmd::fixtures_root();
     let is_committed_fixture = path.starts_with(&fixtures_root)
         || fs::canonicalize(path)
@@ -55,13 +57,15 @@ pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::Mermai
                 path.display()
             )
         })
-        .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
+        .map(|context| {
+            merman::presentation::PresentationConfig::from_value(context.site_config_value())
+        })
 }
 
-fn layout_snapshot_site_config() -> merman::MermaidConfig {
+fn layout_snapshot_site_config() -> merman::presentation::PresentationConfig {
     // Keep this aligned with `crates/merman-render/tests/common/mod.rs` so
     // regenerated layout goldens match the test harness exactly.
-    merman::MermaidConfig::from_value(serde_json::json!({
+    merman::presentation::PresentationConfig::from_value(serde_json::json!({
         "secure": [
             "secure",
             "securityLevel",
@@ -220,7 +224,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let environment = layout_snapshot_environment().with_runtime_policy(runtime_policy.clone());
-    let engine = merman::Engine::new()
+    let engine = merman::MermaidEngine::new()
         .with_site_config(layout_snapshot_site_config())
         .with_runtime_policy(runtime_policy);
     let layout_opts = merman_render::LayoutOptions::default();
@@ -742,8 +746,8 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         .with_fixed_today(Some(
             merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
-    let engine = merman::Engine::new()
-        .with_site_config(merman::MermaidConfig::from_value(
+    let engine = merman::MermaidEngine::new()
+        .with_site_config(merman::presentation::PresentationConfig::from_value(
             serde_json::json!({ "handDrawnSeed": 1 }),
         ))
         .with_runtime_policy(runtime_policy);

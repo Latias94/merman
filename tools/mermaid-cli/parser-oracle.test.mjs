@@ -71,6 +71,108 @@ test("public parse lane observes actual frontmatter and init configuration separ
   assert.equal(response.outcomes[2].status, "rejected");
 });
 
+test("Flowchart preprocessing removes whole-line comments while grammar retains percent punctuation", async () => {
+  const cases = [
+    ["comment", "A-->B\n%% comment\nC-->D", ["A", "B", "C", "D"]],
+    ["indented", " \t%% comment\nA-->B", ["A", "B"]],
+    ["eof", "A-->B\n%% comment", ["A", "B"]],
+    ["blank-body", "%% \nA-->B", ["A", "B"]],
+    ["bare-eof", "%%", ["%%"]],
+    ["bare-line", "%%\nA-->B", ["%%", "A", "B"]],
+    ["bare-indent", "  %%\n", ["%%"]],
+    ["percent-start", "%-->B", ["%", "B"]],
+    ["percent-end", "A%-->B", ["A%", "B"]],
+    ["percent-middle", "A%%B-->C", ["A%%B", "C"]],
+    ["inline-target", "A-->B%%tail", ["A", "B%%tail"]],
+    ["direction-prefix", "direction%-->B", ["direction%", "B"]],
+    ["click-prefix", "click%%tail-->B", ["click%%tail", "B"]],
+    ["reserved-end", "end%-->B", null],
+    ["reserved-style", "style%-->B", null],
+    ["reserved-interpolation", "interpolate%-->B", null],
+    ["reserved-self-target", "_self%-->B", null],
+    ["reserved-blank-target", "_blank%-->B", null],
+    ["reserved-parent-target", "_parent%-->B", null],
+    ["reserved-top-target", "_top%-->B", null],
+    ["inline-statement", "A-->B; %%tail", ["A", "B", "%%tail"]],
+    ["inline-bare-statement", "A-->B; %%", ["A", "B", "%%"]],
+    ["inline-spaced", "A-->B %% comment", null],
+    ["inline-continued", "A-->B %% comment\nC-->D", null],
+    ["inline-bare", "A-->B %%", null],
+    ["inline-comment-statement", "A-->B; %% comment", null],
+    ["crlf", "%% 雪😀\r\n雪%-->B%%tail\r\n", ["雪%", "B%%tail"]],
+  ];
+  const requests = cases.flatMap(([id, body]) => ["grammar", "public"].map(lane =>
+    row(`${id}-${lane}`, "flowchart", `flowchart TD\n${body}`, lane)));
+  requests.push(row("inline-header", "flowchart", "flowchart TD %% comment\nA-->B"));
+  requests.push(row("percent-header-direction", "flowchart", "flowchart LR%\nA-->B"));
+  const response = await observe(requests);
+  for (const [index, [id, , ids]] of cases.entries()) {
+    for (const lane of [0, 1]) {
+      const outcome = response.outcomes[index * 2 + lane];
+      assert.equal(outcome.status, ids === null ? "rejected" : "accepted", `${id} lane ${lane}`);
+      if (ids !== null && lane === 0) {
+        assert.deepEqual(outcome.observation.nodes.map(node => node.id), ids, id);
+      }
+    }
+  }
+  assert.equal(response.outcomes.at(-1).status, "rejected");
+  assert.equal(response.outcomes.at(-2).status, "rejected");
+});
+
+test("Flowchart percent labels survive except whole-line comment text inside multiline labels", async () => {
+  const response = await observe([
+    row("text", "flowchart", 'flowchart TD\nA[100%% done]'),
+    row("quoted", "flowchart", 'flowchart TD\nA["100%% done"]'),
+    row("markdown", "flowchart", 'flowchart TD\nA["`100%% done`"]'),
+    row("quoted-line", "flowchart", 'flowchart TD\nA["first\n%% comment\nlast"]'),
+    row("markdown-line", "flowchart", 'flowchart TD\nA["`first\n%% comment\nlast`"]'),
+    row("quoted-edge", "flowchart", 'flowchart TD\nA-->|"100%% done"|B'),
+    row("markdown-edge", "flowchart", 'flowchart TD\nA-->|"`100%% done`"|B'),
+  ]);
+  assert.ok(response.outcomes.every(outcome => outcome.status === "accepted"));
+  for (const [index, type] of ["text", "string", "markdown"].entries()) {
+    const node = response.outcomes[index].observation.nodes[0];
+    assert.equal(node.label, "100%% done");
+    assert.equal(node.labelType, type);
+  }
+  for (const index of [3, 4]) {
+    assert.equal(response.outcomes[index].observation.nodes[0].label, "first\nlast");
+  }
+  for (const [index, type] of [[5, "string"], [6, "markdown"]]) {
+    const edge = response.outcomes[index].observation.edges[0];
+    assert.equal(edge.label, "100%% done");
+    assert.equal(edge.labelType, type);
+  }
+});
+
+test("Flowchart headers require the selected grammar's first statement separator", async () => {
+  const cases = [
+    ["inline-node", "flowchart LR A-->B", null],
+    ["space-semicolon", "flowchart LR ;A-->B", null],
+    ["absent-direction-semicolon", "flowchart ;A-->B", null],
+    ["inline-direction-statement", "flowchart direction LR\nA-->B", null],
+    ["inline-style-statement", "flowchart style A fill:red", null],
+    ["unicode-separator", "flowchart TD開始 --> B", null],
+    ["direct-semicolon", "flowchart LR;A-->B", "LR"],
+    ["newline", "flowchart LR\nA-->B", "LR"],
+    ["space-newline", "flowchart LR \t\nA-->B", "LR"],
+    ["no-direction", "flowchart\nA-->B", "TB"],
+    ["br-direction", "flowchart BR\nA-->B", "BR"],
+  ];
+  const response = await observe(cases.flatMap(([id, source]) => ["grammar", "public"].map(lane =>
+    row(`${id}-${lane}`, "flowchart", source, lane))));
+  for (const [index, [id, , direction]] of cases.entries()) {
+    for (const lane of [0, 1]) {
+      const outcome = response.outcomes[index * 2 + lane];
+      assert.equal(outcome.status, direction === null ? "rejected" : "accepted", id);
+      if (direction !== null && lane === 0) {
+        assert.equal(outcome.observation.direction, direction, id);
+        assert.deepEqual(outcome.observation.nodes.map(node => node.id), ["A", "B"], id);
+      }
+    }
+  }
+});
+
 test("wrong family and changed runtime digest are tooling failures, never parse rejection", async () => {
   await assert.rejects(observe([row("wrong", "sequence", "flowchart TD\n A-->B")]), /family/);
   const input = await request([row("a", "flowchart", "flowchart TD\n A-->B")]);

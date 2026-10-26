@@ -56,7 +56,7 @@ fn er_redux_color_id(border_colors: &[String], color_index: usize) -> Option<Str
 }
 
 fn er_color_indices(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
 ) -> std::collections::HashMap<String, usize> {
     fn insertion_index(id: &str) -> Option<usize> {
         id.rsplit_once('-')?.1.parse().ok()
@@ -292,7 +292,7 @@ fn render_er_subgraph_cluster(
 fn render_er_subgraph_clusters(
     out: &mut impl SvgOutput,
     clusters: &[crate::model::LayoutCluster],
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     context: ErSubgraphRenderContext<'_>,
     receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
 ) -> Result<()> {
@@ -383,9 +383,9 @@ fn write_er_marker_definition(
 
 pub(crate) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     entity_theme: &crate::er::ErEntityThemePlan,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
@@ -2104,8 +2104,8 @@ mod tests {
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use indexmap::IndexMap;
-    use merman_core::MermaidConfig;
-    use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
+    use merman_core::diagrams::er::{ErDiagramModel, ErEntity};
+    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
     use std::fmt;
     use std::ops::Range;
@@ -2203,11 +2203,11 @@ mod tests {
         });
         let fonts = crate::family::InheritedFontStackPlan::resolve_property_local(
             None,
-            &merman_core::MermaidConfig::from_value(config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
         );
         let size = crate::er::ErBaseFontSizePlan::resolve(
             None,
-            &merman_core::MermaidConfig::from_value(config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
         );
         let theme = crate::er::ErCssBinding::resolve(&config, &fonts, &size);
         let borders = &theme.redux_border_colors;
@@ -2269,34 +2269,34 @@ mod tests {
                 "THEME_COLOR_LIMIT": 2
             }
         });
-        let zeta = ErEntityRenderModel {
+        let zeta = ErEntity {
             id: "entity-ZETA-0".to_string(),
             label: "ZETA".to_string(),
             shape: "erBox".to_string(),
             css_classes: "default".to_string(),
-            ..ErEntityRenderModel::default()
+            ..ErEntity::default()
         };
-        let alpha = ErEntityRenderModel {
+        let alpha = ErEntity {
             id: "entity-ALPHA-1".to_string(),
             label: "ALPHA".to_string(),
             shape: "erBox".to_string(),
             css_classes: "default".to_string(),
-            ..ErEntityRenderModel::default()
+            ..ErEntity::default()
         };
-        let model = ErDiagramRenderModel {
+        let model = ErDiagramModel {
             direction: "TB".to_string(),
             entities: IndexMap::from([
                 ("ALPHA".to_string(), alpha.clone()),
                 ("ZETA".to_string(), zeta.clone()),
             ]),
-            ..ErDiagramRenderModel::default()
+            ..ErDiagramModel::default()
         };
         let color_indices = super::er_color_indices(&model);
         assert_eq!(color_indices.get(&zeta.id), Some(&0));
         assert_eq!(color_indices.get(&alpha.id), Some(&1));
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let settings = crate::er::ErConfigView::new(&config).render_settings_with_font_family(None);
-        let measure = |entity: &ErEntityRenderModel| {
+        let measure = |entity: &ErEntity| {
             crate::er::measure_entity_box(
                 entity,
                 &measurer,
@@ -2347,7 +2347,7 @@ mod tests {
             diagram_id: Some("er-colors".to_string()),
             ..SvgRenderOptions::default()
         };
-        let effective_config = MermaidConfig::from_value(config.clone());
+        let effective_config = PresentationConfig::from_value(config.clone());
         let svg = with_test_svg_execution(DiagramFamilyId::ER, &options, |options| {
             let entity_theme = crate::er::ErEntityThemePlan::resolve(
                 None,

@@ -2,7 +2,7 @@ mod support;
 
 use merman_ascii::AsciiRenderOptions;
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use support::render_model;
@@ -419,7 +419,7 @@ const GRAPH_FIXTURE_CORRECTIONS: &[GraphFixture] = &[
 ];
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("flowchart should parse")
         .expect("flowchart should be detected");
@@ -578,7 +578,7 @@ fn unique_ascii_label_position(rows: &[Vec<char>], label: &str) -> (usize, usize
 }
 
 fn assert_corrected_compound_geometry(input: &str, rendered: &str) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("corrected fixture parses")
         .expect("corrected fixture is detected");

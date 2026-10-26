@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
@@ -75,7 +75,7 @@ struct CynefinUnsupportedRoute {
 impl CynefinTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let text_fill = theme.and_then(|theme| {
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn binding_preserves_scoped_roles_and_shared_measurement_values() {
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "fontFamily": "Config Sans", "textColor": "root-text",
                 "lineColor": "root-line", "primaryTextColor": "root-label",

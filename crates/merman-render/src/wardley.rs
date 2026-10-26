@@ -8,7 +8,7 @@ use crate::config::{config_bool, config_f64_or};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::wardley::{
-    WardleyDiagramRenderModel, WardleyFlowDirection, WardleySourceStrategy,
+    WardleyDiagramModel, WardleyFlowDirection, WardleySourceStrategy,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -359,7 +359,7 @@ fn project(
 }
 
 fn build_axes(
-    model: &WardleyDiagramRenderModel,
+    model: &WardleyDiagramModel,
     settings: WardleySettings,
     width: f64,
     height: f64,
@@ -412,7 +412,7 @@ fn build_axes(
 }
 
 fn build_stages(
-    model: &WardleyDiagramRenderModel,
+    model: &WardleyDiagramModel,
     settings: WardleySettings,
     height: f64,
     chart_width: f64,
@@ -655,12 +655,13 @@ fn build_arrow(
 
 #[cfg(test)]
 pub(crate) fn layout_wardley_diagram_typed(
-    model: &WardleyDiagramRenderModel,
+    model: &WardleyDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
-    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let config =
+        merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
     let typography_theme = WardleyTypographyThemePlan::resolve(
         None,
         &config,
@@ -678,7 +679,7 @@ pub(crate) fn layout_wardley_diagram_typed(
 }
 
 pub(crate) fn layout_wardley_diagram_typed_with_theme(
-    model: &WardleyDiagramRenderModel,
+    model: &WardleyDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     typography_theme: &WardleyTypographyThemePlan,
@@ -694,7 +695,7 @@ pub(crate) fn layout_wardley_diagram_typed_with_theme(
 }
 
 fn layout_wardley_diagram_with_font_family(
-    model: &WardleyDiagramRenderModel,
+    model: &WardleyDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     font_family_css: &str,

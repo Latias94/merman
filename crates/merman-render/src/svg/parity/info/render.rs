@@ -98,7 +98,7 @@ mod tests {
             .expect("render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let effective_config = merman_core::MermaidConfig::default();
+        let effective_config = merman_core::presentation::PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
             None,

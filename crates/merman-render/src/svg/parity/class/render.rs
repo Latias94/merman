@@ -21,7 +21,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     node_visual_plan: &crate::class::ClassNodeVisualPlan,
     render_config: &crate::class::ClassRenderConfig,
     theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
@@ -36,7 +36,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let diagram_id = options.diagram_id_or("merman");
     let checkpoint_emit = || options.checkpoint_emit();
     let emit = ClassEmitCheckpoint::new(&checkpoint_emit);
-    let aria_roledescription = model.diagram_type.as_str();
+    let aria_roledescription = model.model().diagram_type.as_str();
 
     let build_ctx_guard = timing.section(&mut timings.build_ctx);
     let hand_drawn_seed = options.rough_randomness(
@@ -52,11 +52,11 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             receipt,
             node_visual_plan.label_paints(),
             relation_theme.namespace_title_terminal(),
-            model.notes.iter().map(|note| note.id.as_str()),
+            model.notes().map(|note| note.id),
         );
     }
     let marker_expectations = if relation_theme.typed_stroke().is_some() {
-        class_marker_paint_bindings(&model.relations, settings.look == "neo")
+        class_marker_paint_bindings(model.relations(), settings.look == "neo")
     } else {
         Vec::new()
     };

@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-merman = { path = "../crates/merman", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk", "math"] }
+merman = { path = "../crates/merman", default-features = false, features = ["all-diagrams", "compat-json", "svg", "layout-cytoscape", "layout-elk", "math"] }
 merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["all-diagrams", "analysis", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime"] }
 merman-render = { path = "../crates/merman-render", default-features = false, features = ["all-diagrams"] }
 roxmltree = "0.21.1"

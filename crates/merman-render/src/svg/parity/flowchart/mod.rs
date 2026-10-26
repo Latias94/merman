@@ -64,7 +64,7 @@ fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<&str> {
 }
 
 pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
 ) -> crate::config::DiagramLook<'_> {
     crate::config::mermaid_config_diagram_look(config)
 }

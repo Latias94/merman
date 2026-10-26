@@ -1,12 +1,12 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::{LayoutOptions, environment::RenderEnvironment, family};
 use std::hint::black_box;
 
 const MINDMAP_BALANCED_TREE: &str = include_str!("fixtures/stress_balanced_tree_009.mmd");
 
 fn bench_mindmap_layout_stress(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let environment = RenderEnvironment::deterministic();
 

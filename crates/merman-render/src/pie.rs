@@ -1,7 +1,7 @@
 use crate::Result;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::TextMeasurer;
-use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
+use merman_core::diagrams::pie::{PieDiagramRenderModel, PieSection};
 
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
@@ -108,7 +108,7 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
         // - preserve input order before D3 pie() computes angles (`sort(null)`)
         // - angles are normalized over the filtered set (so drawn slices fill the whole circle)
         // - percentage labels are still computed using the original total
-        let pie_sections: Vec<&PieRenderSection> = model
+        let pie_sections: Vec<&PieSection> = model
             .sections
             .iter()
             .filter(|s| s.value.is_finite() && s.value > 0.0)
@@ -277,7 +277,7 @@ fn pie_fill_for(paint_plan: &PieThemePlan, label: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
+    use merman_core::diagrams::pie::{PieDiagramRenderModel, PieSection};
     use std::sync::Mutex;
 
     #[derive(Default)]
@@ -328,7 +328,7 @@ mod tests {
     fn pie_legend_and_title_use_exact_bounding_client_rect_results() {
         let measurer = RecordingBoundingClientRectMeasurer::default();
         let mut legend_model = PieDiagramRenderModel::default();
-        legend_model.sections = vec![PieRenderSection {
+        legend_model.sections = vec![PieSection {
             label: "Legend".to_string(),
             value: 1.0,
         }];
@@ -407,14 +407,14 @@ mod tests {
             DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
         };
         use crate::resources::RenderResourcePolicy;
-        use merman_core::MermaidConfig;
-        use merman_core::diagrams::pie::PieRenderSection;
+        use merman_core::diagrams::pie::PieSection;
+        use merman_core::presentation::PresentationConfig;
 
         let mut model = PieDiagramRenderModel::default();
         model.title = Some("Title".to_string());
         model.sections = ["Legend"]
             .into_iter()
-            .map(|label| PieRenderSection {
+            .map(|label| PieSection {
                 label: label.to_string(),
                 value: 1.0,
             })
@@ -430,7 +430,7 @@ mod tests {
             ))
             .expect("compile Pie typography theme")
             .resolve(DiagramFamilyId::PIE);
-        let config = MermaidConfig::empty_object();
+        let config = PresentationConfig::empty_object();
         let work_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         );

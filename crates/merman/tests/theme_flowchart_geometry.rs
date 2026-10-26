@@ -162,9 +162,13 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
     ] {
         let render = |theme| {
             // The complete recipe includes effects whose native support is classic-only.
-            let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
-                merman::MermaidConfig::from_value(serde_json::json!({ "look": "classic" })),
-            ));
+            let renderer = Renderer::new().with_presentation_engine(
+                merman::MermaidEngine::new().with_site_config(
+                    merman::presentation::PresentationConfig::from_value(
+                        serde_json::json!({ "look": "classic" }),
+                    ),
+                ),
+            );
             let RenderOutput::Document(Some(document)) = renderer
                 .render(
                     RenderRequest::document(source, OperationControl::new(), Default::default())

@@ -1,6 +1,6 @@
 use super::build_flowchart_elk_graph;
 use crate::text::DeterministicTextMeasurer;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_layout_elk as elk;
 use serde::Deserialize;
 use std::path::Path;
@@ -51,7 +51,7 @@ fn flowchart_elk_routes_with_captured_browser_dimensions() {
     for fixture in measurements.entries {
         let name = &fixture.fixture;
         let source = std::fs::read_to_string(fixtures.join(format!("{name}.mmd"))).unwrap();
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .unwrap()
             .unwrap();

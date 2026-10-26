@@ -127,7 +127,7 @@ pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) note_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) sanitize_config: &'a merman_core::presentation::PresentationConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
@@ -335,7 +335,7 @@ mod tests {
                 let mut out = String::new();
                 let meter =
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-                let config = merman_core::MermaidConfig::default();
+                let config = merman_core::presentation::PresentationConfig::default();
                 let typography =
                     crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
                         .unwrap();
@@ -365,7 +365,7 @@ mod tests {
                         note_margin: 10.0,
                         wrap_padding: 10.0,
                         note_text_style: &crate::text::TextStyle::default(),
-                        sanitize_config: &merman_core::MermaidConfig::default(),
+                        sanitize_config: &merman_core::presentation::PresentationConfig::default(),
                         checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
                     },
                 )
@@ -407,7 +407,7 @@ mod tests {
                 }
                 let meter =
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-                let config = merman_core::MermaidConfig::default();
+                let config = merman_core::presentation::PresentationConfig::default();
                 let typography =
                     crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
                         .unwrap();
@@ -444,7 +444,8 @@ mod tests {
                             note_margin: margin,
                             wrap_padding: 10.0,
                             note_text_style: &settings.note_text_style,
-                            sanitize_config: &merman_core::MermaidConfig::default(),
+                            sanitize_config:
+                                &merman_core::presentation::PresentationConfig::default(),
                             checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
                         },
                     )

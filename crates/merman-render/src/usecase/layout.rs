@@ -5,7 +5,7 @@ use crate::model::{LayoutLabel, LayoutPoint};
 use std::collections::HashMap;
 
 pub(super) fn layout(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     config: &Value,
     plans: &[UsecaseNodePlan],
     edge_plans: &mut [UsecaseEdgePlan],
@@ -60,7 +60,7 @@ pub(super) fn edge(
 
 #[cfg(feature = "layout-elk")]
 fn elk_layout(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     config: &Value,
     plans: &[UsecaseNodePlan],
     edge_plans: &[UsecaseEdgePlan],

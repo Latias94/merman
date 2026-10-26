@@ -275,9 +275,9 @@ class ReleaseProjectionTests(unittest.TestCase):
                 Path("crates/merman-bindings-core/Cargo.toml"),
                 lambda text: replace_once(
                     text,
-                    "merman.workspace = true",
+                    'merman = { workspace = true, features = ["compat-json"] }',
                     'merman = { path = "../merman", version = "9.9.9", '
-                    "default-features = false }",
+                    'default-features = false, features = ["compat-json"] }',
                 ),
             ),
             (

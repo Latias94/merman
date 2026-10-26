@@ -15,7 +15,7 @@ use crate::text::display_width_with_profile;
 use crate::{AsciiCharset, AsciiError, AsciiRenderOptions, Result};
 use merman_core::OperationPhase;
 use merman_core::diagrams::xychart::{
-    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
+    XyChartAxisModel, XyChartDiagramModel, XyChartPlotModel, XyChartPlotType,
 };
 use std::borrow::Cow;
 
@@ -607,7 +607,7 @@ pub(super) struct TerminalChartCardinality {
 
 impl TerminalChartCardinality {
     pub(super) fn measure(
-        model: &XyChartDiagramRenderModel,
+        model: &XyChartDiagramModel,
         resources: &mut ResourceContext,
     ) -> Result<Self> {
         let mut max_data_count = 0;
@@ -626,8 +626,8 @@ impl TerminalChartCardinality {
             }
         }
         let category_count = match &model.x_axis {
-            XyChartAxisRenderModel::Band { categories, .. } => categories.len(),
-            XyChartAxisRenderModel::Linear { .. } => 0,
+            XyChartAxisModel::Band { categories, .. } => categories.len(),
+            XyChartAxisModel::Linear { .. } => 0,
         };
         Ok(Self {
             max_data_count,
@@ -663,7 +663,7 @@ fn horizontal_rows_per_slot(bar_series_count: usize, line_series_count: usize) -
 
 impl<'a> TerminalChartPlan<'a> {
     pub(super) fn build(
-        model: &'a XyChartDiagramRenderModel,
+        model: &'a XyChartDiagramModel,
         cardinality: TerminalChartCardinality,
         horizontal: bool,
         resources: &mut ResourceContext,
@@ -675,7 +675,7 @@ impl<'a> TerminalChartPlan<'a> {
             resources,
         )?;
         let x_linear_domain = match (&model.x_axis, &x_axis) {
-            (XyChartAxisRenderModel::Linear { min, max, .. }, AxisPlan::Linear { range }) => {
+            (XyChartAxisModel::Linear { min, max, .. }, AxisPlan::Linear { range }) => {
                 Some(LinearDomainPlan {
                     authored_min: *min,
                     authored_max: *max,
@@ -686,8 +686,8 @@ impl<'a> TerminalChartPlan<'a> {
         };
         let slot_count = cardinality.slot_count;
         let authored_band_categories: &[String] = match &model.x_axis {
-            XyChartAxisRenderModel::Band { categories, .. } => categories,
-            XyChartAxisRenderModel::Linear { .. } => &[],
+            XyChartAxisModel::Band { categories, .. } => categories,
+            XyChartAxisModel::Linear { .. } => &[],
         };
         let category_labels =
             axis_labels(&x_axis, authored_band_categories, slot_count, resources)?;
@@ -732,7 +732,7 @@ impl<'a> TerminalChartPlan<'a> {
         };
 
         let y_range = build_value_range(&model.y_axis, &series, resources)?;
-        let XyChartAxisRenderModel::Linear {
+        let XyChartAxisModel::Linear {
             min: y_min,
             max: y_max,
             ..
@@ -1228,16 +1228,16 @@ fn band_label_projection_loses_identity(
 }
 
 fn build_axis_plan(
-    axis: &XyChartAxisRenderModel,
+    axis: &XyChartAxisModel,
     data_count: usize,
-    plots: &[XyChartPlotRenderModel],
+    plots: &[XyChartPlotModel],
     resources: &mut ResourceContext,
 ) -> Result<AxisPlan> {
     match axis {
-        XyChartAxisRenderModel::Band { categories, .. } => Ok(AxisPlan::Band {
+        XyChartAxisModel::Band { categories, .. } => Ok(AxisPlan::Band {
             authored_category_count: categories.len(),
         }),
-        XyChartAxisRenderModel::Linear { min, max, .. } => {
+        XyChartAxisModel::Linear { min, max, .. } => {
             let mut data_min = f64::INFINITY;
             let mut data_max = f64::NEG_INFINITY;
             for plot in plots {
@@ -1446,7 +1446,7 @@ fn build_horizontal_axis_labels<'a>(
 }
 
 fn build_series_plan<'a>(
-    plot: &'a XyChartPlotRenderModel,
+    plot: &'a XyChartPlotModel,
     series_index: usize,
     bar_lane: Option<usize>,
     x_axis: &AxisPlan,
@@ -1511,7 +1511,7 @@ fn build_series_plan<'a>(
     })
 }
 
-pub(super) const fn effective_sample_count(plot: &XyChartPlotRenderModel) -> usize {
+pub(super) const fn effective_sample_count(plot: &XyChartPlotModel) -> usize {
     if plot.data.is_empty() {
         plot.values.len()
     } else {
@@ -1594,7 +1594,7 @@ fn fallback_x_label(
 }
 
 fn build_value_range(
-    axis: &XyChartAxisRenderModel,
+    axis: &XyChartAxisModel,
     series: &[SeriesPlan<'_>],
     resources: &mut ResourceContext,
 ) -> Result<ValueRange> {
@@ -1612,8 +1612,8 @@ fn build_value_range(
     }
 
     let (axis_min, axis_max) = match axis {
-        XyChartAxisRenderModel::Linear { min, max, .. } => (*min, *max),
-        XyChartAxisRenderModel::Band { .. } => (None, None),
+        XyChartAxisModel::Linear { min, max, .. } => (*min, *max),
+        XyChartAxisModel::Band { .. } => (None, None),
     };
     let fallback_min = if data_min.is_finite() { data_min } else { 0.0 };
     let fallback_max = if data_max.is_finite() { data_max } else { 1.0 };

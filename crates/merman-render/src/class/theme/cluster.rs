@@ -26,7 +26,7 @@ pub(super) struct ClassClusterThemePlan {
 impl ClassClusterThemePlan {
     pub(super) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         cluster_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -175,7 +175,7 @@ mod tests {
             .resolve(DiagramFamilyId::CLASS);
         ClassClusterThemePlan::resolve(
             Some(&theme),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             count,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )

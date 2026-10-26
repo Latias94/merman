@@ -39,7 +39,7 @@ During `initialize`, the server advertises:
           {
             "diagramType": "flowchart-v2",
             "semanticParser": true,
-            "renderParser": true
+            "renderParser": false
           }
         ]
       },
@@ -62,6 +62,9 @@ Each `families` entry reports the canonical `diagramType` plus separate semantic
 render-parser availability. Every parser-capable Merman build reports the same complete pinned
 Mermaid language catalog; layout and output backends remain separate product capabilities. The
 family list describes that language catalog, not files currently open in the workspace.
+
+Standalone LSP packages select canonical semantics and editor facts, so `renderParser` is false.
+An embedding that also selects core presentation can report true for the same language.
 
 ## `merman/ruleCatalog`
 

@@ -1,6 +1,7 @@
 #![cfg(feature = "diagram-packet")]
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     LinearGradient, MermaidThemeCompatibility, OrdinalSelector, PatternKind, PatternSpec,
@@ -189,7 +190,7 @@ title Packet Typography
 
 fn render_packet_with_theme_and_engine(
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     diagram_id: &str,
 ) -> family::RenderedFamilySvg {
     try_render_packet_with_theme_and_engine(theme, engine, diagram_id)
@@ -198,7 +199,7 @@ fn render_packet_with_theme_and_engine(
 
 fn try_render_packet_with_theme_and_engine(
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     try_render_packet_source_with_theme_and_engine(packet_source(), theme, engine, diagram_id)
@@ -207,7 +208,7 @@ fn try_render_packet_with_theme_and_engine(
 fn try_render_packet_source_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -242,8 +243,11 @@ fn packet_byte_label_and_title_fill_reach_only_their_terminal_roles() {
         CanvasPaint::solid("#e5e7eb").expect("valid Packet byte-label fill"),
         CanvasPaint::solid("#fef3c7").expect("valid Packet title fill"),
     );
-    let rendered =
-        render_packet_with_theme_and_engine(&theme, Engine::new(), "packet-terminal-text-fill");
+    let rendered = render_packet_with_theme_and_engine(
+        &theme,
+        MermaidEngine::new(),
+        "packet-terminal-text-fill",
+    );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Packet SVG");
     let css = packet_stylesheet(&document);
 
@@ -268,13 +272,14 @@ fn packet_explicit_role_colors_outrank_only_their_typed_fill_roles() {
         CanvasPaint::solid("#e5e7eb").expect("valid Packet byte-label fill"),
         CanvasPaint::solid("#fef3c7").expect("valid Packet title fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "packet": {
-            "startByteColor": "#111111",
-            "labelColor": "#222222",
-            "titleColor": "#333333"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "packet": {
+                "startByteColor": "#111111",
+                "labelColor": "#222222",
+                "titleColor": "#333333"
+            }
+        })));
     let rendered =
         render_packet_with_theme_and_engine(&theme, engine, "packet-explicit-role-colors");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid configured Packet SVG");
@@ -312,9 +317,10 @@ fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(preset)
             .expect("compile dark Packet preset");
-        let metadata = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_metadata_sync(packet_source())
-            .expect("parse dark Packet preset metadata");
+        let metadata =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_metadata_sync(packet_source())
+                .expect("parse dark Packet preset metadata");
         let parse_evidence = merman_core::__private::theme_parse_evidence(&metadata);
         // Retained dark presets expose Mermaid's compatibility theme name. Their typed palette
         // owns the derived colors, so they intentionally do not claim Mermaid darkMode paths.
@@ -327,7 +333,8 @@ fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
         assert!(!parse_evidence.mermaid_residual_path_survives("themeVariables.primaryColor"));
 
         let diagram_id = format!("packet-{}", preset.id());
-        let rendered = render_packet_with_theme_and_engine(&theme, Engine::new(), &diagram_id);
+        let rendered =
+            render_packet_with_theme_and_engine(&theme, MermaidEngine::new(), &diagram_id);
         let document = roxmltree::Document::parse(rendered.svg()).expect("valid preset Packet SVG");
         let css = packet_stylesheet(&document);
 
@@ -392,7 +399,8 @@ fn packet_consumes_one_canonical_dark_mode_concept_when_only_one_path_survives()
     ];
 
     for (case, site_config, root_survives, variable_survives) in cases {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
+        let engine =
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
         let metadata =
             merman_render::__private::install_parse_compatibility(&theme, engine.clone())
                 .parse_metadata_sync(packet_source())
@@ -429,7 +437,7 @@ fn packet_custom_recipe_reconciles_fields_by_terminal_consumption_not_preset_sha
     let theme = packet_direct_text_theme_with_mermaid(compatibility);
     let rendered = try_render_packet_with_theme_and_engine(
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-custom-compatibility-reconciliation",
     )
     .expect("custom Packet recipes use the same conceptual-field reconciliation as presets");
@@ -448,9 +456,10 @@ fn packet_direct_compatibility_deferral_fails_closed_without_terminal_font_cover
         .with_dark_mode(true)
         .expect("valid Packet compatibility dark mode");
     let theme = packet_direct_text_theme_with_mermaid(compatibility);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "fontFamily": "Courier, monospace"
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "fontFamily": "Courier, monospace"
+        })));
     let error = try_render_packet_with_theme_and_engine(
         &theme,
         engine,
@@ -480,7 +489,7 @@ fn packet_does_not_retire_unrelated_mermaid_compatibility_fields() {
     let theme = packet_direct_text_theme_with_mermaid(compatibility);
     let error = try_render_packet_with_theme_and_engine(
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-unrelated-mermaid-compatibility",
     )
     .err()
@@ -503,9 +512,10 @@ fn packet_keeps_dark_mode_residual_when_one_sided_values_are_not_canonical() {
         .with_dark_mode(true)
         .expect("valid Packet compatibility dark mode");
     let theme = packet_direct_text_theme_with_mermaid(compatibility);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "darkMode": false
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "darkMode": false
+        })));
     let error =
         try_render_packet_with_theme_and_engine(&theme, engine, "packet-noncanonical-dark-mode")
             .err()
@@ -525,7 +535,7 @@ fn packet_visible_text_rejects_unsupported_base_font_size() {
     let theme = packet_font_size_theme(18.0);
     let error = try_render_packet_with_theme_and_engine(
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-unsupported-font-size",
     )
     .err()
@@ -546,7 +556,7 @@ fn packet_generic_text_fill_reaches_visible_field_labels() {
     let rendered = try_render_packet_source_with_theme_and_engine(
         "packet\n0-7: \"Header\"\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-generic-text-fill",
     )
     .expect("generic Text must inherit into the Packet field-label role");
@@ -577,7 +587,7 @@ packet
 0-7: "Header"
 "##,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-source-label-color",
     )
     .expect("source-owned Packet labelColor must suppress the typed field-label fill");
@@ -602,11 +612,12 @@ fn packet_site_label_color_outranks_generic_text_fill_in_styles_and_report() {
     let theme = packet_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Packet generic text fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "packet": {
-            "labelColor": "#abcdef"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "packet": {
+                "labelColor": "#abcdef"
+            }
+        })));
     let rendered = try_render_packet_source_with_theme_and_engine(
         "packet\n0-7: \"Header\"\n",
         &theme,
@@ -634,7 +645,7 @@ fn packet_byte_label_ordinal_counts_each_visible_byte_occurrence() {
     let theme = packet_ordinal_fill_theme(ThemeTarget::PacketByteLabel, 2);
     let error = try_render_packet_with_theme_and_engine(
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-byte-label-exact-two",
     )
     .err()
@@ -653,7 +664,7 @@ fn packet_title_ordinal_is_not_applicable_when_only_body_text_is_emitted() {
     let rendered = try_render_packet_source_with_theme_and_engine(
         "packet\n0-7: \"Header\"\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-title-absent",
     )
     .expect("body text must not manufacture a Packet title occurrence");
@@ -674,7 +685,7 @@ fn packet_non_default_variant_is_not_applicable_even_when_ordinal_matches() {
     let rendered = try_render_packet_source_with_theme_and_engine(
         "packet\n0-7: \"Header\"\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         "packet-active-field-label",
     )
     .expect("Packet exposes only the Default field-label variant domain");
@@ -761,14 +772,16 @@ fn packet_owned_field_label_fill_makes_unsupported_fill_kinds_not_applicable() {
 packet
 0-7: "Header"
 "##,
-                    Engine::new(),
+                    MermaidEngine::new(),
                 )
             } else {
                 (
                     "packet\n0-7: \"Header\"\n",
-                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                        "packet": { "labelColor": "#abcdef" }
-                    }))),
+                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                        serde_json::json!({
+                            "packet": { "labelColor": "#abcdef" }
+                        }),
+                    )),
                 )
             };
             let rendered = try_render_packet_source_with_theme_and_engine(
@@ -830,9 +843,10 @@ fn packet_owned_field_label_fill_does_not_hide_an_unrelated_winning_facet() {
             ),
         )
         .expect("compile mixed-facet Packet field-label theme");
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "packet": { "labelColor": "#abcdef" }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "packet": { "labelColor": "#abcdef" }
+        })));
     let error = try_render_packet_source_with_theme_and_engine(
         "packet\n0-7: \"Header\"\n",
         &theme,
@@ -891,7 +905,7 @@ fn packet_late_static_fill_shadows_earlier_ordinal_across_text_inheritance() {
         let rendered = try_render_packet_source_with_theme_and_engine(
             "packet\n0-7: \"Header\"\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &diagram_id,
         )
         .expect("a later static field-label fill must retire the shadowed ordinal residual");
@@ -920,7 +934,8 @@ fn packet_late_static_fill_shadows_earlier_ordinal_across_text_inheritance() {
 #[test]
 fn packet_typed_font_stack_reaches_root_css_and_visible_text_inherits_it() {
     let theme = packet_font_theme("monospace");
-    let rendered = render_packet_with_theme_and_engine(&theme, Engine::new(), "packet-theme");
+    let rendered =
+        render_packet_with_theme_and_engine(&theme, MermaidEngine::new(), "packet-theme");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Packet SVG");
     let css = packet_stylesheet(&document);
 
@@ -992,7 +1007,8 @@ fn packet_explicit_mermaid_font_paths_outrank_typed_font_stack() {
     ];
 
     for (diagram_id, site_config, expected_font) in cases {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
+        let engine =
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
         let rendered = render_packet_with_theme_and_engine(&theme, engine, diagram_id);
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid configured Packet SVG");
@@ -1026,11 +1042,12 @@ fn packet_explicit_mermaid_font_paths_outrank_typed_font_stack() {
 #[test]
 fn packet_role_style_values_cannot_override_the_typed_font_stack() {
     let theme = packet_font_theme("monospace");
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "packet": {
-            "labelColor": "red;font-family:serif"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "packet": {
+                "labelColor": "red;font-family:serif"
+            }
+        })));
     let rendered = render_packet_with_theme_and_engine(&theme, engine, "packet-safe-role-style");
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid safely configured Packet SVG");
@@ -1056,8 +1073,11 @@ fn packet_large_direct_font_stack_reaches_styles_and_report() {
     assert!(expected_css.len() > 4 * 1024);
 
     let theme = packet_font_stack_theme(font_stack);
-    let rendered =
-        render_packet_with_theme_and_engine(&theme, Engine::new(), "packet-large-font-stack");
+    let rendered = render_packet_with_theme_and_engine(
+        &theme,
+        MermaidEngine::new(),
+        "packet-large-font-stack",
+    );
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid large-stack Packet SVG");
     let css = packet_stylesheet(&document);
@@ -1077,7 +1097,7 @@ fn packet_large_direct_font_stack_reaches_styles_and_report() {
 const DESCENDING_PACKET: &str = include_str!("../../../fixtures/packet/bit_order_descending.mmd");
 
 fn render_packet(source: &str) -> (PacketDiagramLayout, String) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse packet")
         .expect("packet diagram");

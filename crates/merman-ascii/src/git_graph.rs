@@ -7,10 +7,10 @@ use crate::safe_text::{
     BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
     push_optional_document_field,
 };
-use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
+use merman_core::diagrams::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 
 pub(super) fn render_git_graph_diagram(
-    model: &GitGraphRenderModel,
+    model: &GitGraphDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -63,10 +63,7 @@ pub(super) fn render_git_graph_diagram(
     document.finish_with_execution(execution)
 }
 
-fn validate_commit_types(
-    commits: &[GitGraphCommitRenderModel],
-    resources: &ResourceContext,
-) -> Result<()> {
+fn validate_commit_types(commits: &[GitGraphCommit], resources: &ResourceContext) -> Result<()> {
     resources.transaction(|resources| {
         resources.charge_layout_work(commits.len())?;
         for commit in commits {
@@ -82,10 +79,7 @@ fn validate_commit_types(
     })
 }
 
-fn push_commit_text(
-    line: &mut BudgetedTextLine<'_>,
-    commit: &GitGraphCommitRenderModel,
-) -> Result<()> {
+fn push_commit_text(line: &mut BudgetedTextLine<'_>, commit: &GitGraphCommit) -> Result<()> {
     line.write_fmt(format_args!("seq={}", commit.seq))?;
     push_line_field(line, " ", "branch", &commit.branch)?;
     push_line_field(line, " ", "id", &commit.id)?;
@@ -134,12 +128,12 @@ mod tests {
     use super::*;
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
-    use merman_core::diagrams::git_graph::GitGraphBranchRenderModel;
+    use merman_core::diagrams::git_graph::GitGraphBranch;
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
 
-    fn commit(commit_type: i64) -> GitGraphCommitRenderModel {
-        GitGraphCommitRenderModel {
+    fn commit(commit_type: i64) -> GitGraphCommit {
+        GitGraphCommit {
             id: "c0".to_string(),
             message: String::new(),
             seq: 0,
@@ -152,8 +146,8 @@ mod tests {
         }
     }
 
-    fn model_with_commits(commits: Vec<GitGraphCommitRenderModel>) -> GitGraphRenderModel {
-        GitGraphRenderModel {
+    fn model_with_commits(commits: Vec<GitGraphCommit>) -> GitGraphDiagramModel {
+        GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
             commits,
             branches: Vec::new(),
@@ -267,10 +261,10 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_prefix)
             .expect("positive document limit");
         let options = AsciiRenderOptions::ascii();
-        let model = GitGraphRenderModel {
+        let model = GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
             commits: Vec::new(),
-            branches: vec![GitGraphBranchRenderModel { name: branch_name }],
+            branches: vec![GitGraphBranch { name: branch_name }],
             current_branch: String::new(),
             direction: String::new(),
             title: None,

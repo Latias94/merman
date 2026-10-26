@@ -1,5 +1,5 @@
 use futures::executor::block_on;
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
+use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
@@ -108,7 +108,7 @@ config:
 flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -176,7 +176,7 @@ config:
 flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -246,7 +246,7 @@ fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");

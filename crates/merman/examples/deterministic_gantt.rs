@@ -1,4 +1,4 @@
-use merman::{Engine, ParseOptions, runtime::RuntimePolicy, time::CivilDate};
+use merman::{MermaidEngine, ParseOptions, runtime::RuntimePolicy, time::CivilDate};
 use serde_json::json;
 
 const SOURCE: &str = r#"gantt
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime_policy = RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)?
         .with_fixed_today(Some(CivilDate::new(2026, 2, 15).expect("valid fixed date")));
-    let engine = Engine::new().with_runtime_policy(runtime_policy);
+    let engine = MermaidEngine::new().with_runtime_policy(runtime_policy);
     let Some(parsed) = engine.parse_diagram_sync(SOURCE, ParseOptions::strict())? else {
         return Err("no Mermaid diagram detected".into());
     };

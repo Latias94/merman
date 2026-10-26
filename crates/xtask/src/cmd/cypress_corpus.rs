@@ -894,7 +894,7 @@ fn collected_new_family_fixture(
                     call.ordinal
                 ))
             })?;
-    let mut config = merman::MermaidConfig::default();
+    let mut config = merman::presentation::PresentationConfig::default();
     let detected = merman::detect::DetectorRegistry::pinned_mermaid_baseline()
         .detect_type(detector_input(&fixture), &mut config)
         .map_err(|error| {

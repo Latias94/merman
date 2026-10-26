@@ -367,6 +367,18 @@ class SdkArchiveTests(unittest.TestCase):
                 output=self.artifacts / "sidecar.json",
             )
 
+    def test_header_version_accepts_lf_and_crlf(self):
+        for newline in (b"\n", b"\r\n"):
+            with self.subTest(newline=newline):
+                header = newline.join((
+                    b"/* Generated header */",
+                    b"#define MERMAN_NATIVE_ABI_VERSION 3u",
+                    b"",
+                ))
+                self.assertEqual(
+                    sdk_archive._header_version(header, "MERMAN_NATIVE_ABI_VERSION"), 3,
+                )
+
     def test_header_version_mismatch_is_rejected(self):
         self.write("crates/merman-ffi/include/merman.h", "#define MERMAN_NATIVE_ABI_VERSION 99u\n")
         with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "header ABI"):

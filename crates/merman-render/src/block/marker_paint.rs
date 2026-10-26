@@ -106,7 +106,7 @@ struct RuleObservation {
 impl BlockMarkerPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -137,7 +137,7 @@ impl BlockMarkerPaintPlan {
 
     fn resolve_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         _layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn unthemed_reference_binding_preserves_unknown_arrow_asymmetry() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "block-beta\nA --> B\n",
                 merman_core::ParseOptions::strict(),

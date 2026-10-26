@@ -1,5 +1,9 @@
-use crate::{OperationControl, OperationControlResult, preprocess::SourceConfigPath};
-use granit_parser::{Event, Parser, ScalarStyle, Span, Tag};
+#[cfg(feature = "editor-facts")]
+use crate::preprocess::SourceConfigPath;
+use crate::{OperationControl, OperationControlResult};
+#[cfg(feature = "editor-facts")]
+use granit_parser::Span;
+use granit_parser::{Event, Parser, ScalarStyle, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
@@ -33,6 +37,7 @@ pub(crate) fn parse_yaml_value_controlled(
     )
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug)]
 pub(crate) struct YamlConfigKeyEvidence {
     pub(crate) path: SourceConfigPath,
@@ -42,10 +47,13 @@ pub(crate) struct YamlConfigKeyEvidence {
 
 pub(crate) struct YamlValueCapture {
     pub(crate) value: Result<Value, String>,
+    #[cfg(feature = "editor-facts")]
     pub(crate) keys: Vec<YamlConfigKeyEvidence>,
+    #[cfg(feature = "editor-facts")]
     pub(crate) rewrite_safe: bool,
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_yaml_value_capture_controlled(
     input: &str,
     max_nesting_depth: usize,
@@ -76,12 +84,14 @@ pub(crate) fn parse_yaml_value_with_limits_controlled(
         max_input_bytes,
         max_nesting_depth,
         materialization_budget,
+        #[cfg(feature = "editor-facts")]
         false,
         control,
     )?
     .value)
 }
 
+#[cfg(feature = "editor-facts")]
 fn parse_yaml_value_with_limits_capture_controlled(
     input: &str,
     max_input_bytes: usize,
@@ -94,6 +104,7 @@ fn parse_yaml_value_with_limits_capture_controlled(
         max_input_bytes,
         max_nesting_depth,
         materialization_budget,
+        #[cfg(feature = "editor-facts")]
         true,
         control,
     )
@@ -104,7 +115,7 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
     max_input_bytes: usize,
     max_nesting_depth: usize,
     materialization_budget: usize,
-    capture_keys: bool,
+    #[cfg(feature = "editor-facts")] capture_keys: bool,
     control: &OperationControl,
 ) -> OperationControlResult<YamlValueCapture> {
     control.checkpoint()?;
@@ -113,48 +124,70 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
             value: Err(format!(
                 "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
             )),
+            #[cfg(feature = "editor-facts")]
             keys: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: false,
         });
     }
-    let mut builder =
-        YamlValueBuilder::new(max_nesting_depth, materialization_budget, capture_keys);
+    let mut builder = YamlValueBuilder::new(
+        max_nesting_depth,
+        materialization_budget,
+        #[cfg(feature = "editor-facts")]
+        capture_keys,
+    );
 
     for (index, event) in Parser::new_from_str(input).enumerate() {
         if index % 64 == 0 {
             control.checkpoint()?;
         }
-        let (event, span) = match event {
+        let (event, _span) = match event {
             Ok(event) => event,
             Err(error) => {
+                #[cfg(feature = "editor-facts")]
                 let (keys, _) = builder.take_capture();
                 return Ok(YamlValueCapture {
                     value: Err(error.to_string()),
+                    #[cfg(feature = "editor-facts")]
                     keys,
+                    #[cfg(feature = "editor-facts")]
                     rewrite_safe: false,
                 });
             }
         };
-        if let Err(error) = builder.on_event(input, event, span) {
+        if let Err(error) = builder.on_event(
+            #[cfg(feature = "editor-facts")]
+            input,
+            event,
+            #[cfg(feature = "editor-facts")]
+            _span,
+        ) {
+            #[cfg(feature = "editor-facts")]
             let (keys, _) = builder.take_capture();
             return Ok(YamlValueCapture {
                 value: Err(error),
+                #[cfg(feature = "editor-facts")]
                 keys,
+                #[cfg(feature = "editor-facts")]
                 rewrite_safe: false,
             });
         }
     }
 
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
     let (keys, rewrite_safe) = builder.take_capture();
     let value = builder.finish_controlled(control)?;
     Ok(YamlValueCapture {
         value,
+        #[cfg(feature = "editor-facts")]
         keys,
+        #[cfg(feature = "editor-facts")]
         rewrite_safe,
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn yaml_key_span(input: &str, span: Span, style: ScalarStyle) -> Option<std::ops::Range<usize>> {
     let mut range = span.byte_range()?;
     if matches!(style, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted) {
@@ -173,6 +206,7 @@ fn yaml_key_span(input: &str, span: Span, style: ScalarStyle) -> Option<std::ops
     input.get(range.clone()).map(|_| range)
 }
 
+#[cfg(feature = "editor-facts")]
 fn yaml_key_span_is_rewrite_safe(
     input: &str,
     span: Span,
@@ -191,13 +225,20 @@ struct YamlValueBuilder {
     anchors: HashMap<usize, NodeId>,
     max_nesting_depth: usize,
     materialization_budget: usize,
+    #[cfg(feature = "editor-facts")]
     capture_keys: bool,
+    #[cfg(feature = "editor-facts")]
     key_evidence: Vec<YamlConfigKeyEvidence>,
+    #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
 }
 
 impl YamlValueBuilder {
-    fn new(max_nesting_depth: usize, materialization_budget: usize, capture_keys: bool) -> Self {
+    fn new(
+        max_nesting_depth: usize,
+        materialization_budget: usize,
+        #[cfg(feature = "editor-facts")] capture_keys: bool,
+    ) -> Self {
         Self {
             stack: Vec::new(),
             arena: Vec::new(),
@@ -205,33 +246,54 @@ impl YamlValueBuilder {
             anchors: HashMap::new(),
             max_nesting_depth,
             materialization_budget,
+            #[cfg(feature = "editor-facts")]
             capture_keys,
+            #[cfg(feature = "editor-facts")]
             key_evidence: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: true,
         }
     }
 
-    fn on_event(&mut self, input: &str, event: Event<'_>, span: Span) -> Result<(), String> {
+    fn on_event(
+        &mut self,
+        #[cfg(feature = "editor-facts")] input: &str,
+        event: Event<'_>,
+        #[cfg(feature = "editor-facts")] span: Span,
+    ) -> Result<(), String> {
         match event {
             Event::StreamStart
             | Event::StreamEnd
             | Event::DocumentStart(..)
             | Event::DocumentEnd => Ok(()),
             Event::Comment(_, _) => {
-                self.rewrite_safe = false;
+                #[cfg(feature = "editor-facts")]
+                {
+                    self.rewrite_safe = false;
+                }
                 Ok(())
             }
             Event::Alias(anchor_id) => {
-                self.rewrite_safe = false;
+                #[cfg(feature = "editor-facts")]
+                {
+                    self.rewrite_safe = false;
+                }
                 let role = self.reserve_role()?;
                 let node = self
                     .anchors
                     .get(&anchor_id)
                     .copied()
                     .ok_or_else(|| "unsupported forward YAML alias".to_string())?;
-                self.complete_node(node, role, 0, false)
+                self.complete_node(
+                    node,
+                    role,
+                    0,
+                    #[cfg(feature = "editor-facts")]
+                    false,
+                )
             }
             Event::Scalar(raw, style, anchor_id, tag) => {
+                #[cfg(feature = "editor-facts")]
                 if anchor_id != 0
                     || tag.is_some()
                     || matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
@@ -240,31 +302,47 @@ impl YamlValueBuilder {
                 }
                 let role = self.reserve_role()?;
                 let value = scalar_to_value(raw.as_ref(), style, tag.as_deref())?;
+                #[cfg(feature = "editor-facts")]
                 let key_source = self.capture_keys.then(|| YamlKeySource {
                     span: yaml_key_span(input, span, style),
                     rewrite_safe: yaml_key_span_is_rewrite_safe(input, span, style, raw.as_ref()),
                 });
-                let node = self.push_node(YamlNode::Scalar { value, key_source });
-                self.complete_node(node, role, anchor_id, true)
+                let node = self.push_node(YamlNode::Scalar {
+                    value,
+                    #[cfg(feature = "editor-facts")]
+                    key_source,
+                });
+                self.complete_node(
+                    node,
+                    role,
+                    anchor_id,
+                    #[cfg(feature = "editor-facts")]
+                    true,
+                )
             }
-            Event::SequenceStart(_, anchor_id, tag) => {
-                if anchor_id != 0 || tag.is_some() {
+            Event::SequenceStart(_, anchor_id, _tag) => {
+                #[cfg(feature = "editor-facts")]
+                if anchor_id != 0 || _tag.is_some() {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
+                #[cfg(feature = "editor-facts")]
                 let path = self.path_for_role(&role);
                 self.push_frame(Frame {
                     container: Container::Sequence(Vec::new()),
                     role,
                     anchor_id,
+                    #[cfg(feature = "editor-facts")]
                     path,
                 })
             }
-            Event::MappingStart(_, anchor_id, tag) => {
-                if anchor_id != 0 || tag.is_some() {
+            Event::MappingStart(_, anchor_id, _tag) => {
+                #[cfg(feature = "editor-facts")]
+                if anchor_id != 0 || _tag.is_some() {
                     self.rewrite_safe = false;
                 }
                 let role = self.reserve_role()?;
+                #[cfg(feature = "editor-facts")]
                 let path = self.path_for_role(&role);
                 self.push_frame(Frame {
                     container: Container::Mapping {
@@ -274,6 +352,7 @@ impl YamlValueBuilder {
                     },
                     role,
                     anchor_id,
+                    #[cfg(feature = "editor-facts")]
                     path,
                 })
             }
@@ -299,16 +378,24 @@ impl YamlValueBuilder {
                     }
                     _ => unreachable!(),
                 };
-                self.complete_node(node, frame.role, frame.anchor_id, true)
+                self.complete_node(
+                    node,
+                    frame.role,
+                    frame.anchor_id,
+                    #[cfg(feature = "editor-facts")]
+                    true,
+                )
             }
             _ => Err("unsupported YAML parser event".to_string()),
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn take_capture(&mut self) -> (Vec<YamlConfigKeyEvidence>, bool) {
         (std::mem::take(&mut self.key_evidence), self.rewrite_safe)
     }
 
+    #[cfg(feature = "editor-facts")]
     fn path_for_role(&self, role: &Role) -> Option<SourceConfigPath> {
         if !self.capture_keys {
             return None;
@@ -362,7 +449,7 @@ impl YamlValueBuilder {
         node: NodeId,
         role: Role,
         anchor_id: usize,
-        source_addressable: bool,
+        #[cfg(feature = "editor-facts")] source_addressable: bool,
     ) -> Result<(), String> {
         if anchor_id != 0 {
             self.anchors.insert(anchor_id, node);
@@ -385,7 +472,10 @@ impl YamlValueBuilder {
                 Ok(())
             }
             Role::MappingKey => {
-                let mut key = node_to_mapping_key(&self.arena, node);
+                let key = node_to_mapping_key(&self.arena, node);
+                #[cfg(feature = "editor-facts")]
+                let mut key = key;
+                #[cfg(feature = "editor-facts")]
                 if self.capture_keys {
                     let parent_path = self.stack.last().and_then(|frame| frame.path.clone());
                     match (&mut key, source_addressable, parent_path) {
@@ -475,6 +565,7 @@ struct NodeId(usize);
 enum YamlNode {
     Scalar {
         value: Value,
+        #[cfg(feature = "editor-facts")]
         key_source: Option<YamlKeySource>,
     },
     Sequence(Vec<NodeId>),
@@ -485,9 +576,11 @@ struct Frame {
     container: Container,
     role: Role,
     anchor_id: usize,
+    #[cfg(feature = "editor-facts")]
     path: Option<SourceConfigPath>,
 }
 
+#[cfg(feature = "editor-facts")]
 struct YamlKeySource {
     span: Option<std::ops::Range<usize>>,
     rewrite_safe: bool,
@@ -512,8 +605,11 @@ enum Role {
 enum MappingKey {
     String {
         name: String,
+        #[cfg(feature = "editor-facts")]
         span: Option<std::ops::Range<usize>>,
+        #[cfg(feature = "editor-facts")]
         rewrite_safe: bool,
+        #[cfg(feature = "editor-facts")]
         path: Option<SourceConfigPath>,
     },
     Ignored,
@@ -523,47 +619,67 @@ fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
     match &arena[node.0] {
         YamlNode::Scalar {
             value: Value::String(key),
+            #[cfg(feature = "editor-facts")]
             key_source,
         } => MappingKey::String {
             name: key.clone(),
+            #[cfg(feature = "editor-facts")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: key_source.as_ref().is_none_or(|source| source.rewrite_safe),
+            #[cfg(feature = "editor-facts")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Number(key),
+            #[cfg(feature = "editor-facts")]
             key_source,
         } => MappingKey::String {
             name: key.to_string(),
+            #[cfg(feature = "editor-facts")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: false,
+            #[cfg(feature = "editor-facts")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Bool(true),
+            #[cfg(feature = "editor-facts")]
             key_source,
         } => MappingKey::String {
             name: "true".to_string(),
+            #[cfg(feature = "editor-facts")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: false,
+            #[cfg(feature = "editor-facts")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Bool(false),
+            #[cfg(feature = "editor-facts")]
             key_source,
         } => MappingKey::String {
             name: "false".to_string(),
+            #[cfg(feature = "editor-facts")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: false,
+            #[cfg(feature = "editor-facts")]
             path: None,
         },
         YamlNode::Scalar {
             value: Value::Null,
+            #[cfg(feature = "editor-facts")]
             key_source,
         } => MappingKey::String {
             name: "null".to_string(),
+            #[cfg(feature = "editor-facts")]
             span: key_source.as_ref().and_then(|source| source.span.clone()),
+            #[cfg(feature = "editor-facts")]
             rewrite_safe: false,
+            #[cfg(feature = "editor-facts")]
             path: None,
         },
         YamlNode::Scalar {
@@ -626,7 +742,7 @@ fn materialize_yaml_controlled(
 
                 match yaml_node {
                     YamlNode::Scalar { value, .. } => {
-                        values.push(crate::compatibility_json::clone_value_nonrecursive(value));
+                        values.push(crate::json_value::clone_value_nonrecursive(value));
                     }
                     YamlNode::Sequence(items) => {
                         tasks.push(MaterializeTask::CompleteSequence { len: items.len() });
@@ -684,13 +800,13 @@ fn materialize_yaml_controlled(
                     {
                         drop_materialized_values(values);
                         drop_materialized_values(children.collect());
-                        crate::compatibility_json::drop_value_nonrecursive(Value::Object(map));
+                        crate::json_value::drop_value_nonrecursive(Value::Object(map));
                         return Err(cancelled);
                     }
                     let Some(value) = children.next() else {
                         drop_materialized_values(values);
                         drop_materialized_values(children.collect());
-                        crate::compatibility_json::drop_value_nonrecursive(Value::Object(map));
+                        crate::json_value::drop_value_nonrecursive(Value::Object(map));
                         return Ok(Err("invalid YAML materialization state".to_string()));
                     };
                     map.insert(key.clone(), value);
@@ -742,7 +858,7 @@ fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
 
 fn drop_materialized_values(values: Vec<Value>) {
     for value in values {
-        crate::compatibility_json::drop_value_nonrecursive(value);
+        crate::json_value::drop_value_nonrecursive(value);
     }
 }
 
@@ -945,6 +1061,7 @@ mod tests {
     use crate::OperationCancelled;
     use serde_json::json;
 
+    #[cfg(feature = "editor-facts")]
     fn capture_yaml(input: &str) -> YamlValueCapture {
         parse_yaml_value_capture_controlled(input, 16, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
@@ -1022,6 +1139,7 @@ second: *base
         assert_eq!(value["second"], value["base"]);
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn key_evidence_does_not_flatten_mapping_paths_through_sequences() {
         let captured = capture_yaml(
@@ -1046,6 +1164,7 @@ plain:
         }));
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn complex_mapping_keys_do_not_publish_descendant_config_paths() {
         let captured = capture_yaml(
@@ -1072,6 +1191,7 @@ plain:
         assert!(!captured.rewrite_safe);
     }
 
+    #[cfg(feature = "editor-facts")]
     #[test]
     fn alias_keys_and_values_do_not_publish_anchor_provenance_at_the_use_site() {
         let captured = capture_yaml(

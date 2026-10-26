@@ -2972,7 +2972,7 @@ where
 }
 
 fn render_family_fixture_svg(
-    engine: &merman_core::Engine,
+    engine: &merman_core::MermaidEngine,
     mmd_path: &Path,
     text: &str,
     parse_options: merman_core::ParseOptions,
@@ -3107,11 +3107,13 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let fixtures_dir = crate::cmd::fixtures_root().join(profile.fixture_dir);
         let out_dir = out_root.join(profile.fixture_dir);
         let engine = if profile.seeded_site_config {
-            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-                serde_json::json!({ "handDrawnSeed": 1 }),
-            ))
+            merman::MermaidEngine::new().with_site_config(
+                merman::presentation::PresentationConfig::from_value(
+                    serde_json::json!({ "handDrawnSeed": 1 }),
+                ),
+            )
         } else {
-            merman::Engine::new()
+            merman::MermaidEngine::new()
         };
         let parse_options = merman::ParseOptions {
             suppress_errors: profile.suppress_errors,
@@ -3440,7 +3442,7 @@ mod tests {
     #[test]
     fn family_fixture_renderer_uses_the_typed_artifact_pipeline() {
         let svg = render_family_fixture_svg(
-            &merman_core::Engine::new(),
+            &merman_core::MermaidEngine::new(),
             Path::new("info.mmd"),
             "info\n",
             merman_core::ParseOptions::default(),
@@ -3457,7 +3459,7 @@ mod tests {
     #[test]
     fn family_fixture_renderer_rejects_a_mismatched_family() {
         let error = render_family_fixture_svg(
-            &merman_core::Engine::new(),
+            &merman_core::MermaidEngine::new(),
             Path::new("info.mmd"),
             "info\n",
             merman_core::ParseOptions::default(),

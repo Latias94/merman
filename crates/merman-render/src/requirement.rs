@@ -11,7 +11,7 @@ use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_core::diagrams::requirement::{
-    RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
+    RequirementDiagramModel, RequirementElement, RequirementNode,
 };
 use serde_json::Value;
 use std::borrow::Cow;
@@ -37,7 +37,7 @@ pub(crate) use text_paint::{
 };
 pub(crate) use theme::{RequirementDividerEmission, RequirementPaintThemePlan};
 
-fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
+fn requirement_layout_work_units(model: &RequirementDiagramModel) -> usize {
     let source_node_count = model
         .requirements
         .len()
@@ -605,7 +605,7 @@ fn node_label_spec(
     }
 }
 
-fn requirement_node_label_specs(node: &RequirementRenderNode) -> Vec<RequirementLabelSpec> {
+fn requirement_node_label_specs(node: &RequirementNode) -> Vec<RequirementLabelSpec> {
     vec![
         node_label_spec(
             format!("&lt;&lt;{}&gt;&gt;", node.node_type),
@@ -641,7 +641,7 @@ fn requirement_node_label_specs(node: &RequirementRenderNode) -> Vec<Requirement
     ]
 }
 
-fn element_node_label_specs(node: &RequirementRenderElement) -> Vec<RequirementLabelSpec> {
+fn element_node_label_specs(node: &RequirementElement) -> Vec<RequirementLabelSpec> {
     vec![
         node_label_spec("&lt;&lt;Element&gt;&gt;".to_string(), false, false, true),
         node_label_spec(node.name.clone(), true, true, true),
@@ -708,7 +708,7 @@ fn requirement_measurement_styles(
 /// Lays out a Requirement model under the resource policy owned by the render operation.
 #[cfg(test)]
 pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
-    model: &RequirementDiagramRenderModel,
+    model: &RequirementDiagramModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
@@ -728,7 +728,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
 
 /// Lays out a Requirement model with renderer-owned inherited typography.
 pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
-    model: &RequirementDiagramRenderModel,
+    model: &RequirementDiagramModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     css_binding: &RequirementCssBinding,
@@ -1205,15 +1205,14 @@ mod tests {
         for (requirement_name, element_name) in
             [("__proto__", "constructor"), ("constructor", "__proto__")]
         {
-            let mut model: RequirementDiagramRenderModel =
-                serde_json::from_value(serde_json::json!({
-                    "requirements": [{ "name": requirement_name, "type": "Requirement" }],
-                    "elements": [{ "name": element_name, "type": "System" }],
-                }))
-                .expect("valid Requirement model");
+            let mut model: RequirementDiagramModel = serde_json::from_value(serde_json::json!({
+                "requirements": [{ "name": requirement_name, "type": "Requirement" }],
+                "elements": [{ "name": element_name, "type": "System" }],
+            }))
+            .expect("valid Requirement model");
             assert_eq!(requirement_layout_work_units(&model), 2);
             model.relationships.push(
-                merman_core::diagrams::requirement::RequirementRenderRelationship {
+                merman_core::diagrams::requirement::RequirementRelationship {
                     rel_type: "satisfies".to_string(),
                     src: element_name.to_string(),
                     dst: requirement_name.to_string(),

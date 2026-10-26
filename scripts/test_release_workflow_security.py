@@ -479,6 +479,25 @@ jobs:
                     self.assertNotIn(f"--test {retired}", text)
                 self.assertIn("--test preset_qualification", text)
 
+    def test_render_operation_recipes_enable_required_features_explicitly(self) -> None:
+        manifest = tomllib.loads(read(ROOT / "crates/merman/Cargo.toml"))
+        required_features = next(
+            set(target["required-features"])
+            for target in manifest["test"]
+            if target["name"] == "render_operation"
+        )
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                commands = read(WORKFLOW_ROOT / name).replace("\\\n", " ").splitlines()
+                selected = [command for command in commands
+                            if "--test render_operation" in command]
+                self.assertTrue(selected, "render_operation must be selected explicitly")
+                for command in selected:
+                    self.assertIn("-p merman ", command)
+                    self.assertIn("--no-default-features", command)
+                    features = set(command.split("--features ", 1)[1].split()[0].split(","))
+                    self.assertLessEqual(required_features, features)
+
     def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
         for name in ("ci.yml", "release-preflight.yml"):
             commands = read(WORKFLOW_ROOT / name).replace("\\\n", " ").splitlines()

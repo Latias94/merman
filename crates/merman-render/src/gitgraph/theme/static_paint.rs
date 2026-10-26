@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -90,7 +90,7 @@ impl GitGraphStaticPaintPlan {
 
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         layout: &GitGraphDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -487,7 +487,7 @@ mod tests {
             ("base", "var(--label)", "var(--primary)", "var(--tag)"),
             ("redux-color", "transparent", "var(--main)", "var(--main)"),
         ] {
-            let config = MermaidConfig::from_value(serde_json::json!({
+            let config = PresentationConfig::from_value(serde_json::json!({
                 "theme": theme,
                 "themeVariables": {
                     "useGradient": " YES ",
@@ -544,7 +544,7 @@ mod tests {
         let theme = static_paint_theme();
         GitGraphStaticPaintPlan::resolve(
             Some(&theme),
-            &MermaidConfig::default(),
+            &PresentationConfig::default(),
             layout,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )

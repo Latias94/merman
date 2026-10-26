@@ -10,14 +10,17 @@
 use std::process::Command;
 
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderSemanticModel,
-    Renderer, SvgEnvironment, SvgRequest, runtime::RuntimePolicy, time::CivilDate,
+    MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest,
+    RenderSemanticModel, Renderer, SvgEnvironment, SvgRequest, runtime::RuntimePolicy,
+    time::CivilDate,
 };
 #[cfg(feature = "ascii")]
 use merman::{
     ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy},
-    diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask},
+    diagrams::gantt::{GanttDiagramModel, GanttTask, GanttTerminalView},
 };
+#[cfg(feature = "ascii")]
+use merman_ascii::AsciiDiagram;
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";
 const PROVENANCE_CHILD: &str = "MERMAN_TZ_PROVENANCE_CHILD";
@@ -70,7 +73,7 @@ fn assert_new_york_winter_semantics() {
         .with_runtime_policy(runtime_policy.clone())
         .with_parse_options(ParseOptions::strict());
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .with_runtime_policy(runtime_policy.clone())
         .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
         .expect("parse Gantt")
@@ -80,7 +83,7 @@ fn assert_new_york_winter_semantics() {
     };
     assert_eq!(model.tasks[0].start_ms, 1_768_453_200_000);
 
-    let gap = Engine::new()
+    let gap = MermaidEngine::new()
         .with_runtime_policy(runtime_policy)
         .parse_diagram_for_render_model_sync(GAP_SOURCE, ParseOptions::strict())
         .expect("parse DST gap Gantt")
@@ -117,36 +120,38 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
     const EARLIER_MS: i64 = 1_793_511_000_000;
     const LATER_MS: i64 = 1_793_514_600_000;
 
-    let mut model = GanttDiagramRenderModel::default();
+    let mut model = GanttDiagramModel::default();
     model.sections.push("Fold".to_string());
     model.tasks = vec![
-        GanttRenderTask {
+        GanttTask {
             id: "earlier".to_string(),
             task: "Earlier instant".to_string(),
             section: "Fold".to_string(),
             order: 0,
             start_ms: EARLIER_MS,
             end_ms: EARLIER_MS,
-            ..GanttRenderTask::default()
+            ..GanttTask::default()
         },
-        GanttRenderTask {
+        GanttTask {
             id: "later".to_string(),
             task: "Later instant".to_string(),
             section: "Fold".to_string(),
             order: 1,
             start_ms: LATER_MS,
             end_ms: LATER_MS,
-            ..GanttRenderTask::default()
+            ..GanttTask::default()
         },
     ];
 
     let context = runtime_policy
         .begin_operation()
         .expect("capture New York operation context");
+    let config = merman::MermaidConfig::default();
+    let ascii_model = AsciiDiagram::Gantt(GanttTerminalView::from_model(&model, &config));
     let rendered = AsciiRenderer::new(AsciiRenderOptions::ascii())
         .expect("ASCII options should validate")
         .render_model(
-            &RenderSemanticModel::Gantt(model),
+            &ascii_model,
             &OperationControl::new(),
             &context,
             AsciiResourcePolicy::default(),

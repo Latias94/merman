@@ -794,7 +794,10 @@ fn prepare_rustdoc_renderer(
             measurement: Some(crate::cli::FontMeasurementKind::Deterministic),
             ..Default::default()
         },
+        #[cfg(feature = "math")]
         math_renderer: Some(crate::cli::MathRendererKind::Ratex),
+        #[cfg(not(feature = "math"))]
+        math_renderer: Some(crate::cli::MathRendererKind::None),
         container_width: None,
         container_height: None,
         svg_id: Some("merman-rustdoc".to_string()),

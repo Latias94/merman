@@ -316,7 +316,6 @@ default = [
     "layout-cytoscape",
     "layout-elk",
     "markdown",
-    "math",
     "native-fonts",
     "network-icons",
     "parallel-markdown",
@@ -380,7 +379,6 @@ rustdoc = [
     "dep:merman-doc",
     "markdown",
     "layout-cytoscape",
-    "math",
     "dep:merman-render",
     "dep:sha2",
     "dep:toml",
@@ -395,7 +393,7 @@ clap.workspace = true
 clap_complete = { workspace = true, optional = true }
 ctrlc = { workspace = true, optional = true }
 hickory-resolver = { workspace = true, optional = true }
-merman = { workspace = true, default-features = false }
+merman = { workspace = true, default-features = false, features = ["compat-json"] }
 merman-analysis = { workspace = true, optional = true, default-features = false }
 merman-render = { workspace = true, optional = true }
 merman-doc = { workspace = true, optional = true }
@@ -510,7 +508,6 @@ required-features = [
     "pdf",
     "layout-cytoscape",
     "layout-elk",
-    "math",
     "icons",
     "markdown",
     "network-icons",
@@ -529,7 +526,6 @@ required-features = [
     "pdf",
     "layout-cytoscape",
     "layout-elk",
-    "math",
     "icons",
     "markdown",
     "network-icons",

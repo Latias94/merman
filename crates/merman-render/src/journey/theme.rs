@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -95,7 +95,7 @@ struct JourneySectionTerminalExpectation {
 impl JourneyTaskTheme {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         tasks: &[JourneyTaskLayout],
         sections: &[JourneySectionLayout],
         work_meter: &OperationWorkMeter,
@@ -591,12 +591,12 @@ fn typed_radius(
     }
 }
 
-fn journey_fill_source_owned(config: &MermaidConfig, task_num: i64) -> bool {
+fn journey_fill_source_owned(config: &PresentationConfig, task_num: i64) -> bool {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
     merman_core::__private::config_paint_overrides_typed_default(config, &path)
 }
 
-fn journey_palette_source_owned(config: &MermaidConfig, task_num: i64) -> Option<Box<str>> {
+fn journey_palette_source_owned(config: &PresentationConfig, task_num: i64) -> Option<Box<str>> {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
     merman_core::__private::config_paint_overrides_typed_default(config, &path)
         .then(|| {
@@ -610,7 +610,7 @@ fn journey_palette_source_owned(config: &MermaidConfig, task_num: i64) -> Option
 
 fn journey_section_expectations(
     theme: &ResolvedDiagramTheme,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     layout_sections: &[JourneySectionLayout],
 ) -> (Vec<JourneySectionTerminalExpectation>, bool) {
     let mut sections = Vec::new();
@@ -819,7 +819,7 @@ mod tests {
     };
     use crate::model::{JourneyMouthKind, JourneyTaskLayout};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
 
     fn one_task() -> JourneyTaskLayout {
         JourneyTaskLayout {
@@ -852,7 +852,7 @@ mod tests {
             let tasks = vec![one_task(); count];
             let plan = JourneyTaskTheme::resolve(
                 None,
-                &MermaidConfig::empty_object(),
+                &PresentationConfig::empty_object(),
                 &tasks,
                 &[],
                 &OperationWorkMeter::new(RenderResourcePolicy::default()),
@@ -961,7 +961,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::JOURNEY);
         let task_theme = JourneyTaskTheme::resolve(
             Some(&theme),
-            &MermaidConfig::empty_object(),
+            &PresentationConfig::empty_object(),
             &[one_task()],
             &[],
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),

@@ -13,9 +13,7 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceCon
 use crate::safe_text::{
     NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_trimmed_text,
 };
-use merman_core::diagrams::state::{
-    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
-};
+use merman_core::diagrams::state::{StateTerminalEdge, StateTerminalNode, StateTerminalView};
 use std::collections::HashMap;
 
 const STATE_DIAGRAM_TYPE: &str = "state";
@@ -49,27 +47,27 @@ struct StateStylePlan {
 
 impl StateStylePlan {
     fn try_new(
-        model: &StateDiagramRenderModel,
+        model: StateTerminalView<'_>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         let mut node_by_index = Vec::new();
         node_by_index
-            .try_reserve_exact(model.nodes.len())
+            .try_reserve_exact(model.nodes().len())
             .map_err(|_| projection_allocation_failed())?;
         let mut group_by_index = Vec::new();
         group_by_index
-            .try_reserve_exact(model.nodes.len())
+            .try_reserve_exact(model.nodes().len())
             .map_err(|_| projection_allocation_failed())?;
 
-        for (index, node) in model.nodes.iter().enumerate() {
+        for (index, node) in model.nodes().iter().enumerate() {
             checkpoint_projection(execution, index)?;
             let prepared = prepare_state_style(
                 node.css_compiled_styles
                     .iter()
-                    .chain(&node.css_styles)
+                    .chain(node.css_styles)
                     .map(String::as_str)
-                    .chain(std::iter::once(node.label_style.as_str())),
+                    .chain(std::iter::once(node.label_style)),
                 resources,
                 execution,
             )?;
@@ -88,10 +86,9 @@ impl StateStylePlan {
     }
 }
 
-struct StateGroupOrderEntry<'a> {
+struct StateGroupOrderEntry {
     node_index: usize,
     depth: usize,
-    node: &'a StateDiagramRenderNode,
 }
 
 type StateGroupMembers<'a> = HashMap<&'a str, Vec<&'a str>>;
@@ -111,12 +108,12 @@ struct StateProjectionTextPlan<'a> {
 }
 
 #[cfg(test)]
-pub(crate) fn from_state_model_with_resources(
-    model: &StateDiagramRenderModel,
+fn from_state_view_with_resources(
+    model: StateTerminalView<'_>,
     policy: AsciiResourcePolicy,
 ) -> Result<AsciiGraph> {
     let mut resources = ResourceContext::new(policy);
-    from_state_model_with_context_and_execution(
+    from_state_view_with_context_and_execution(
         model,
         TerminalWidthProfile::Unicode,
         &mut resources,
@@ -124,20 +121,35 @@ pub(crate) fn from_state_model_with_resources(
     )
 }
 
-pub(crate) fn from_state_model_with_context_and_execution(
-    model: &StateDiagramRenderModel,
+#[cfg(test)]
+fn from_state_model_with_context_and_execution(
+    model: &merman_core::diagrams::state::StateDiagramRenderModel,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<AsciiGraph> {
+    from_state_view_with_context_and_execution(
+        StateTerminalView::from_render(model),
+        width_profile,
+        resources,
+        execution,
+    )
+}
+
+pub(crate) fn from_state_view_with_context_and_execution(
+    model: StateTerminalView<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
     resources.transaction(|resources| {
-        from_state_model_transactional(model, width_profile, resources, execution)
+        from_state_view_transactional(model, width_profile, resources, execution)
     })
 }
 
-fn from_state_model_transactional(
-    model: &StateDiagramRenderModel,
+fn from_state_view_transactional(
+    model: StateTerminalView<'_>,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
@@ -148,7 +160,7 @@ fn from_state_model_transactional(
     let style_plan = StateStylePlan::try_new(model, resources, execution)?;
     let parent_projection = validate_supported_state_model(model, resources, execution)?;
 
-    let direction = parse_state_direction(&model.direction)?;
+    let direction = parse_state_direction(model.direction())?;
     let group_members = group_members_by_id(model, execution)?;
     let note_node_parent_by_id = note_node_parent_by_id(model, execution)?;
     let note_side_constraints = note_side_constraints(model, &note_node_parent_by_id, execution)?;
@@ -168,10 +180,14 @@ fn from_state_model_transactional(
     let state_directions =
         state_direction_projection(model, direction, &parent_projection, resources, execution)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
-    graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.nodes.len())?;
+    graph.try_reserve_projection(
+        model.nodes().len(),
+        model.edges().len(),
+        model.nodes().len(),
+    )?;
     graph.use_incoming_edge_roots();
 
-    for (index, (node, text_plan)) in model.nodes.iter().zip(node_text_plans).enumerate() {
+    for (index, (node, text_plan)) in model.nodes().iter().zip(node_text_plans).enumerate() {
         checkpoint_projection(execution, index)?;
         if is_group_container(node, &group_members) {
             continue;
@@ -182,12 +198,10 @@ fn from_state_model_transactional(
         let text = text_plan
             .ok_or_else(|| unsupported("missing state node label plan"))?
             .materialize_after_admission(resources)?;
-        let side_constraint = materialize_note_side_constraint(
-            note_side_constraints.get(node.id.as_str()),
-            resources,
-        )?;
+        let side_constraint =
+            materialize_note_side_constraint(note_side_constraints.get(node.id), resources)?;
         graph.add_node_with_prepared_text(
-            materialize_state_text(&node.id, resources)?,
+            materialize_state_text(node.id, resources)?,
             text,
             state_node_shape(
                 node,
@@ -217,11 +231,13 @@ fn from_state_model_transactional(
     .enumerate()
     {
         checkpoint_projection(execution, index)?;
-        let StateGroupOrderEntry {
-            node_index, node, ..
-        } = group;
+        let node_index = group.node_index;
+        let node = model
+            .nodes()
+            .get(node_index)
+            .ok_or_else(|| unsupported("state group index"))?;
         let members = materialize_group_members(
-            group_members.get(node.id.as_str()).map(Vec::as_slice),
+            group_members.get(node.id).map(Vec::as_slice),
             resources,
             execution,
         )?;
@@ -229,12 +245,12 @@ fn from_state_model_transactional(
             String::new()
         } else {
             group_titles
-                .remove(node.id.as_str())
+                .remove(node.id)
                 .ok_or_else(|| unsupported("missing state group title plan"))?
                 .materialize_normalized_after_admission(resources)?
         };
         graph.add_group_with_kind_and_style(
-            materialize_state_text(&node.id, resources)?,
+            materialize_state_text(node.id, resources)?,
             title,
             state_directions
                 .group_by_index
@@ -251,10 +267,10 @@ fn from_state_model_transactional(
         );
     }
 
-    for (index, (edge, label_plan)) in model.edges.iter().zip(edge_labels).enumerate() {
+    for (index, (edge, label_plan)) in model.edges().iter().zip(edge_labels).enumerate() {
         checkpoint_projection(execution, index)?;
-        let mut from = remap_note_endpoint(&edge.start, &note_node_parent_by_id);
-        let mut to = remap_note_endpoint(&edge.end, &note_node_parent_by_id);
+        let mut from = remap_note_endpoint(edge.start, &note_node_parent_by_id);
+        let mut to = remap_note_endpoint(edge.end, &note_node_parent_by_id);
         if is_note_edge(edge) {
             (from, to) =
                 canonical_note_edge_endpoints(from, to, &note_side_constraints, direction)?;
@@ -284,31 +300,31 @@ fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: usize) -> Res
 }
 
 fn preflight_state_projection_text(
-    model: &StateDiagramRenderModel,
+    model: StateTerminalView<'_>,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
-    charge_text_layout(resources, &model.direction)?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    charge_text_layout(resources, model.direction())?;
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        charge_text_layout(resources, &node.id)?;
-        if let Some(parent_id) = node.parent_id.as_deref() {
+        charge_text_layout(resources, node.id)?;
+        if let Some(parent_id) = node.parent_id {
             charge_text_layout(resources, parent_id)?;
         }
-        if let Some(position) = node.position.as_deref() {
+        if let Some(position) = node.position {
             charge_text_layout(resources, position)?;
         }
     }
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        charge_text_layout(resources, &edge.start)?;
-        charge_text_layout(resources, &edge.end)?;
+        charge_text_layout(resources, edge.start)?;
+        charge_text_layout(resources, edge.end)?;
     }
     Ok(())
 }
 
 fn plan_state_texts<'a>(
-    model: &'a StateDiagramRenderModel,
+    model: StateTerminalView<'a>,
     group_members: &StateGroupMembers<'a>,
     note_node_parent_by_id: &StateNoteParentIndex<'a>,
     note_side_constraints: &StateNoteSideConstraints<'a>,
@@ -318,24 +334,24 @@ fn plan_state_texts<'a>(
 ) -> Result<StateProjectionTextPlan<'a>> {
     let mut nodes = Vec::new();
     nodes
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     let mut group_titles = HashMap::new();
     group_titles
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     let mut work_units = 0usize;
     let mut retained_document_cells = 0usize;
     let mut planned_document_cells = 0usize;
     let mut output_bytes = 0usize;
 
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if is_group_container(node, group_members) {
             nodes.push(None);
-            work_units = include_state_copy_work(work_units, &node.id, resources)?;
+            work_units = include_state_copy_work(work_units, node.id, resources)?;
             for (member_index, member) in group_members
-                .get(node.id.as_str())
+                .get(node.id)
                 .into_iter()
                 .flat_map(|members| members.iter().copied())
                 .enumerate()
@@ -348,7 +364,7 @@ fn plan_state_texts<'a>(
             }
             let title = DeferredGraphLabelSectionPlan::try_joined(
                 state_label_fragments(node).chain(state_description_fragments(node)),
-                Some(node.id.as_str()),
+                Some(node.id),
                 STATE_DIAGRAM_TYPE,
                 width_profile,
                 resources,
@@ -370,15 +386,15 @@ fn plan_state_texts<'a>(
                 output_bytes,
                 title.normalized_joined_bytes(resources)?,
             )?;
-            group_titles.insert(node.id.as_str(), title);
+            group_titles.insert(node.id, title);
             continue;
         }
         if is_state_note_node(node) {
             nodes.push(None);
             continue;
         }
-        work_units = include_state_copy_work(work_units, &node.id, resources)?;
-        if let Some(constraint) = note_side_constraints.get(node.id.as_str()) {
+        work_units = include_state_copy_work(work_units, node.id, resources)?;
+        if let Some(constraint) = note_side_constraints.get(node.id) {
             work_units = include_state_copy_work(work_units, constraint.anchor_id, resources)?;
         }
         let plan = state_node_text_plan(node, width_profile, resources)?;
@@ -401,15 +417,15 @@ fn plan_state_texts<'a>(
 
     let mut edge_labels = Vec::new();
     edge_labels
-        .try_reserve_exact(model.edges.len())
+        .try_reserve_exact(model.edges().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        let from = remap_note_endpoint(&edge.start, note_node_parent_by_id);
-        let to = remap_note_endpoint(&edge.end, note_node_parent_by_id);
+        let from = remap_note_endpoint(edge.start, note_node_parent_by_id);
+        let to = remap_note_endpoint(edge.end, note_node_parent_by_id);
         work_units = include_state_copy_work(work_units, from, resources)?;
         work_units = include_state_copy_work(work_units, to, resources)?;
-        let label = try_plan_normalized_trimmed_text(&edge.label, width_profile, resources)?;
+        let label = try_plan_normalized_trimmed_text(edge.label, width_profile, resources)?;
         if let Some(label) = label {
             work_units =
                 resources.checked_work_add(work_units, label.materialization_work_units())?;
@@ -455,11 +471,11 @@ fn include_state_copy_work(
 }
 
 fn state_node_text_plan<'a>(
-    node: &'a StateDiagramRenderNode,
+    node: StateTerminalNode<'a>,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<DeferredGraphNodeLabelPlan<'a>> {
-    if is_state_pseudo_shape(node.shape.as_str()) {
+    if is_state_pseudo_shape(node.shape) {
         return DeferredGraphNodeLabelPlan::single(
             DeferredGraphLabelSectionPlan::try_single(
                 "",
@@ -478,7 +494,7 @@ fn state_node_text_plan<'a>(
     if node.shape == "rectWithTitle" {
         let title = DeferredGraphLabelSectionPlan::try_joined(
             state_label_fragments(node),
-            Some(node.id.as_str()),
+            Some(node.id),
             STATE_DIAGRAM_TYPE,
             width_profile,
             resources,
@@ -503,7 +519,7 @@ fn state_node_text_plan<'a>(
 
     let label = DeferredGraphLabelSectionPlan::try_joined(
         state_label_fragments(node).chain(state_description_fragments(node)),
-        Some(node.id.as_str()),
+        Some(node.id),
         STATE_DIAGRAM_TYPE,
         width_profile,
         resources,
@@ -512,8 +528,8 @@ fn state_node_text_plan<'a>(
     DeferredGraphNodeLabelPlan::single(label, None, STATE_DIAGRAM_TYPE, width_profile, resources)
 }
 
-fn state_label_fragments(node: &StateDiagramRenderNode) -> impl Iterator<Item = &str> {
-    node.label.iter().flat_map(|label| {
+fn state_label_fragments<'a>(node: StateTerminalNode<'a>) -> impl Iterator<Item = &'a str> {
+    node.label.into_iter().flat_map(|label| {
         label.as_str().into_iter().chain(
             label
                 .as_array()
@@ -524,8 +540,8 @@ fn state_label_fragments(node: &StateDiagramRenderNode) -> impl Iterator<Item = 
     })
 }
 
-fn state_description_fragments(node: &StateDiagramRenderNode) -> impl Iterator<Item = &str> {
-    node.description.iter().flatten().map(String::as_str)
+fn state_description_fragments<'a>(node: StateTerminalNode<'a>) -> impl Iterator<Item = &'a str> {
+    node.description.into_iter().flatten().map(String::as_str)
 }
 
 fn checked_state_projection_metric_add(
@@ -539,20 +555,19 @@ fn checked_state_projection_metric_add(
 }
 
 fn state_projection_work(
-    model: &StateDiagramRenderModel,
+    model: StateTerminalView<'_>,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<usize> {
     let mut authored_items = 0usize;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         let label_items = node
             .label
-            .as_ref()
             .map(|label| label.as_array().map_or(1, |items| items.len()))
             .unwrap_or_default();
         let node_items = label_items
-            .checked_add(node.description.as_ref().map_or(0, |items| items.len()))
+            .checked_add(node.description.map_or(0, |items| items.len()))
             .and_then(|items| items.checked_add(usize::from(node.position.is_some())))
             .ok_or_else(|| {
                 resources
@@ -566,7 +581,7 @@ fn state_projection_work(
         })?;
     }
     let node_containers = model
-        .nodes
+        .nodes()
         .len()
         .checked_mul(STATE_NODE_PROJECTION_WORK_UNITS)
         .ok_or_else(|| {
@@ -575,7 +590,7 @@ fn state_projection_work(
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
     let edge_containers = model
-        .edges
+        .edges()
         .len()
         .checked_mul(STATE_EDGE_PROJECTION_WORK_UNITS)
         .ok_or_else(|| {
@@ -600,17 +615,17 @@ fn projection_allocation_failed() -> AsciiError {
 }
 
 fn validate_supported_state_model(
-    model: &StateDiagramRenderModel,
+    model: StateTerminalView<'_>,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<StateParentProjection> {
     let mut node_index_by_id = HashMap::new();
     node_index_by_id
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        if node_index_by_id.insert(node.id.as_str(), index).is_some() {
+        if node_index_by_id.insert(node.id, index).is_some() {
             return Err(unsupported("duplicate node ids"));
         }
         validate_supported_state_node(node, execution)?;
@@ -618,18 +633,13 @@ fn validate_supported_state_model(
     let parent_projection =
         StateParentProjection::try_new(model, &node_index_by_id, resources, execution)?;
 
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        if !node_index_by_id.contains_key(edge.start.as_str())
-            || !node_index_by_id.contains_key(edge.end.as_str())
-        {
+        if !node_index_by_id.contains_key(edge.start) || !node_index_by_id.contains_key(edge.end) {
             return Err(unsupported("edges with missing endpoint nodes"));
         }
         if !edge.arrow_type_end.is_empty()
-            && !matches!(
-                edge.arrow_type_end.as_str(),
-                "arrow_barb" | "arrow_barb_neo"
-            )
+            && !matches!(edge.arrow_type_end, "arrow_barb" | "arrow_barb_neo")
         {
             return Err(unsupported("state arrow types"));
         }
@@ -640,20 +650,19 @@ fn validate_supported_state_model(
 
 impl StateParentProjection {
     fn try_new(
-        model: &StateDiagramRenderModel,
+        model: StateTerminalView<'_>,
         node_index_by_id: &HashMap<&str, usize>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         let mut parent_by_index = Vec::new();
         parent_by_index
-            .try_reserve_exact(model.nodes.len())
+            .try_reserve_exact(model.nodes().len())
             .map_err(|_| projection_allocation_failed())?;
-        for (node_index, node) in model.nodes.iter().enumerate() {
+        for (node_index, node) in model.nodes().iter().enumerate() {
             checkpoint_projection(execution, node_index)?;
             let parent_index = node
                 .parent_id
-                .as_deref()
                 .map(|parent_id| {
                     node_index_by_id
                         .get(parent_id)
@@ -663,7 +672,7 @@ impl StateParentProjection {
                 .transpose()?;
             if let Some(parent_index) = parent_index {
                 let parent = model
-                    .nodes
+                    .nodes()
                     .get(parent_index)
                     .ok_or_else(|| unsupported("state parent index"))?;
                 if !parent.is_group {
@@ -782,10 +791,10 @@ fn cache_state_parent_depths(
 }
 
 fn validate_supported_state_node(
-    node: &StateDiagramRenderNode,
+    node: StateTerminalNode<'_>,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
-    if let Some(label) = node.label.as_ref()
+    if let Some(label) = node.label
         && !label.is_string()
     {
         if let Some(items) = label.as_array()
@@ -802,7 +811,7 @@ fn validate_supported_state_node(
         }
     }
     if is_state_note_group(node) {
-        if !matches!(node.position.as_deref(), Some("left of" | "right of")) {
+        if !matches!(node.position, Some("left of" | "right of")) {
             return Err(unsupported("state note positions"));
         }
         return Ok(());
@@ -810,7 +819,6 @@ fn validate_supported_state_node(
     if is_state_note_node(node) {
         if node
             .position
-            .as_deref()
             .is_some_and(|position| !matches!(position, "left of" | "right of"))
         {
             return Err(unsupported("state note positions"));
@@ -835,23 +843,23 @@ fn unsupported(feature: &'static str) -> AsciiError {
 }
 
 fn group_members_by_id<'a>(
-    model: &'a StateDiagramRenderModel,
+    model: StateTerminalView<'a>,
     execution: AsciiExecution<'_>,
 ) -> Result<StateGroupMembers<'a>> {
     let mut members = StateGroupMembers::new();
     members
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        let Some(parent_id) = node.parent_id.as_ref() else {
+        let Some(parent_id) = node.parent_id else {
             continue;
         };
-        let group_members = members.entry(parent_id.as_str()).or_default();
+        let group_members = members.entry(parent_id).or_default();
         group_members
             .try_reserve(1)
             .map_err(|_| projection_allocation_failed())?;
-        group_members.push(node.id.as_str());
+        group_members.push(node.id);
     }
     Ok(members)
 }
@@ -908,39 +916,39 @@ fn materialize_note_side_constraint(
 }
 
 fn note_node_parent_by_id<'a>(
-    model: &'a StateDiagramRenderModel,
+    model: StateTerminalView<'a>,
     execution: AsciiExecution<'_>,
 ) -> Result<StateNoteParentIndex<'a>> {
     let mut parents = HashMap::new();
     parents
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if !is_state_note_node(node) {
             continue;
         }
-        let Some(parent_id) = node.parent_id.as_ref() else {
+        let Some(parent_id) = node.parent_id else {
             continue;
         };
-        parents.insert(node.id.as_str(), parent_id.as_str());
+        parents.insert(node.id, parent_id);
     }
     Ok(parents)
 }
 
 fn note_side_constraints<'a>(
-    model: &'a StateDiagramRenderModel,
+    model: StateTerminalView<'a>,
     note_node_parent_by_id: &StateNoteParentIndex<'a>,
     execution: AsciiExecution<'_>,
 ) -> Result<StateNoteSideConstraints<'a>> {
-    let mut note_group_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
+    let mut note_group_by_id = HashMap::<&str, Option<&str>>::new();
     note_group_by_id
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if is_state_note_group(node) {
-            note_group_by_id.insert(node.id.as_str(), node);
+            note_group_by_id.insert(node.id, node.position);
         }
     }
 
@@ -948,31 +956,28 @@ fn note_side_constraints<'a>(
     constraints
         .try_reserve(note_group_by_id.len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, edge) in model.edges().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         if !is_note_edge(edge) {
             continue;
         }
-        let from = remap_note_endpoint(&edge.start, note_node_parent_by_id);
-        let to = remap_note_endpoint(&edge.end, note_node_parent_by_id);
-        let (note_group, anchor_id) = match (
+        let from = remap_note_endpoint(edge.start, note_node_parent_by_id);
+        let to = remap_note_endpoint(edge.end, note_node_parent_by_id);
+        let (note_id, position, anchor_id) = match (
             note_group_by_id.get(from).copied(),
             note_group_by_id.get(to).copied(),
         ) {
-            (Some(note_group), None) => (note_group, to),
-            (None, Some(note_group)) => (note_group, from),
+            (Some(position), None) => (from, position, to),
+            (None, Some(position)) => (to, position, from),
             _ => return Err(unsupported("state note edge ownership")),
         };
-        let side = match note_group.position.as_deref() {
+        let side = match position {
             Some("left of") => GraphNodeSide::Left,
             Some("right of") => GraphNodeSide::Right,
             _ => return Err(unsupported("state note positions")),
         };
         if constraints
-            .insert(
-                note_group.id.as_str(),
-                StateNoteSideConstraint { anchor_id, side },
-            )
+            .insert(note_id, StateNoteSideConstraint { anchor_id, side })
             .is_some()
         {
             return Err(unsupported("state note groups with multiple owners"));
@@ -1009,18 +1014,18 @@ fn canonical_note_edge_endpoints<'a>(
     })
 }
 
-fn sorted_group_nodes<'a>(
-    model: &'a StateDiagramRenderModel,
-    group_members: &StateGroupMembers<'a>,
+fn sorted_group_nodes(
+    model: StateTerminalView<'_>,
+    group_members: &StateGroupMembers<'_>,
     parent_projection: &StateParentProjection,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<Vec<StateGroupOrderEntry<'a>>> {
+) -> Result<Vec<StateGroupOrderEntry>> {
     let mut groups = Vec::new();
     groups
-        .try_reserve(model.nodes.len())
+        .try_reserve(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (node_index, node) in model.nodes.iter().enumerate() {
+    for (node_index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, node_index)?;
         if !is_group_container(node, group_members) {
             continue;
@@ -1030,11 +1035,7 @@ fn sorted_group_nodes<'a>(
             .get(node_index)
             .copied()
             .ok_or_else(|| unsupported("state parent index"))?;
-        groups.push(StateGroupOrderEntry {
-            node_index,
-            depth,
-            node,
-        });
+        groups.push(StateGroupOrderEntry { node_index, depth });
     }
     charge_state_group_sort_work(groups.len(), resources, execution)?;
     groups.sort_by_key(|group| std::cmp::Reverse(group.depth));
@@ -1058,7 +1059,7 @@ fn charge_state_group_sort_work(
 }
 
 fn state_direction_projection(
-    model: &StateDiagramRenderModel,
+    model: StateTerminalView<'_>,
     root_direction: GraphDirection,
     parent_projection: &StateParentProjection,
     resources: &ResourceContext,
@@ -1066,14 +1067,14 @@ fn state_direction_projection(
 ) -> Result<StateDirectionProjection> {
     let mut explicit_by_index = Vec::new();
     explicit_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, node) in model.nodes().iter().enumerate() {
         checkpoint_projection(execution, index)?;
         let explicit = if node.explicit_dir == Some(true) {
-            Some(parse_state_direction(node.dir.as_deref().ok_or_else(
-                || unsupported("state explicit direction without value"),
-            )?)?)
+            Some(parse_state_direction(node.dir.ok_or_else(|| {
+                unsupported("state explicit direction without value")
+            })?)?)
         } else {
             None
         };
@@ -1082,9 +1083,9 @@ fn state_direction_projection(
 
     let mut inherited_by_index = Vec::new();
     inherited_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
-    inherited_by_index.resize(model.nodes.len(), None);
+    inherited_by_index.resize(model.nodes().len(), None);
     // Validation cached a parent-first order, so every inherited value is already available here.
     for (iteration, node_index) in parent_projection
         .parent_first_indices
@@ -1117,11 +1118,11 @@ fn state_direction_projection(
 
     let mut node_by_index = Vec::new();
     node_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     let mut group_by_index = Vec::new();
     group_by_index
-        .try_reserve_exact(model.nodes.len())
+        .try_reserve_exact(model.nodes().len())
         .map_err(|_| projection_allocation_failed())?;
     for (index, (explicit, inherited)) in explicit_by_index
         .into_iter()
@@ -1142,24 +1143,21 @@ fn checkpoint_projection_before_charge(execution: AsciiExecution<'_>) -> Result<
     execution.checkpoint(merman_core::OperationPhase::Semantic)
 }
 
-fn is_group_container(
-    node: &StateDiagramRenderNode,
-    group_members: &StateGroupMembers<'_>,
-) -> bool {
+fn is_group_container(node: StateTerminalNode<'_>, group_members: &StateGroupMembers<'_>) -> bool {
     if is_state_note_group(node) {
         return false;
     }
     node.is_group
         && group_members
-            .get(node.id.as_str())
+            .get(node.id)
             .is_some_and(|members| !members.is_empty())
 }
 
 fn state_node_shape(
-    node: &StateDiagramRenderNode,
+    node: StateTerminalNode<'_>,
     direction: GraphDirection,
 ) -> Result<GraphNodeShape> {
-    match node.shape.as_str() {
+    match node.shape {
         "rect" => Ok(GraphNodeShape::Rect),
         "rectWithTitle" => Ok(GraphNodeShape::StateWithTitle),
         "roundedWithTitle" | "noteGroup" => Ok(GraphNodeShape::Rounded),
@@ -1175,7 +1173,7 @@ fn state_node_shape(
     }
 }
 
-fn state_group_kind(node: &StateDiagramRenderNode) -> GraphGroupKind {
+fn state_group_kind(node: StateTerminalNode<'_>) -> GraphGroupKind {
     if is_state_divider_group(node) {
         GraphGroupKind::Divider
     } else {
@@ -1183,20 +1181,20 @@ fn state_group_kind(node: &StateDiagramRenderNode) -> GraphGroupKind {
     }
 }
 
-fn is_state_note_group(node: &StateDiagramRenderNode) -> bool {
+fn is_state_note_group(node: StateTerminalNode<'_>) -> bool {
     node.shape == "noteGroup"
 }
 
-fn is_state_note_node(node: &StateDiagramRenderNode) -> bool {
+fn is_state_note_node(node: StateTerminalNode<'_>) -> bool {
     node.shape == "note"
 }
 
-fn is_state_divider_group(node: &StateDiagramRenderNode) -> bool {
+fn is_state_divider_group(node: StateTerminalNode<'_>) -> bool {
     node.shape == "divider"
 }
 
-fn state_group_title_is_empty(node: &StateDiagramRenderNode) -> bool {
-    is_state_divider_group(node) || is_state_pseudo_shape(node.shape.as_str())
+fn state_group_title_is_empty(node: StateTerminalNode<'_>) -> bool {
+    is_state_divider_group(node) || is_state_pseudo_shape(node.shape)
 }
 
 fn is_state_pseudo_shape(shape: &str) -> bool {
@@ -1206,7 +1204,7 @@ fn is_state_pseudo_shape(shape: &str) -> bool {
     )
 }
 
-fn edge_marker(edge: &StateDiagramRenderEdge) -> GraphEdgeMarker {
+fn edge_marker(edge: StateTerminalEdge<'_>) -> GraphEdgeMarker {
     if is_note_edge(edge) {
         GraphEdgeMarker::Open
     } else {
@@ -1214,7 +1212,7 @@ fn edge_marker(edge: &StateDiagramRenderEdge) -> GraphEdgeMarker {
     }
 }
 
-fn is_note_edge(edge: &StateDiagramRenderEdge) -> bool {
+fn is_note_edge(edge: StateTerminalEdge<'_>) -> bool {
     edge.classes
         .split_whitespace()
         .any(|class| class == "note-edge")
@@ -1243,8 +1241,115 @@ fn parse_state_direction(direction: &str) -> Result<GraphDirection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::diagrams::state::{
+        StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
+    };
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn canonical_state_projection_matches_full_graph_output_and_work() {
+        let sources = [
+            "stateDiagram-v2\n[*] --> A: ready\nA --> [*]: done\n",
+            "stateDiagram-v2\ndirection LR\nstate Outer {\ndirection RL\nstate Inner {\n[*] --> A\nA --> [*]\n}\n}\nOuter --> Done\n",
+            "stateDiagram-v2\nstate \"Power mode\" as Power: Running\nnote right of Power : remember\n",
+            "stateDiagram-v2\nstate Active {\nA\n--\nB\n}\n",
+            "stateDiagram-v2\nstate fork_state <<fork>>\nstate join_state <<join>>\nstate choice_state <<choice>>\nfork_state --> choice_state\nchoice_state --> join_state: selected\n",
+            "%%{init: {\"look\":\"neo\"}}%%\nstateDiagram-v2\nclassDef warm color:#112233\nA:::warm --> B\nstyle B color:#445566\n",
+        ];
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        for source in sources {
+            let semantic = merman_core::SemanticParser::new()
+                .parse_diagram_sync(source)
+                .expect("canonical state source should parse");
+            let merman_core::SemanticDiagramModel::State(semantic) = &semantic.model else {
+                panic!("expected canonical State");
+            };
+            let full = merman_core::MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .expect("full state source should parse")
+                .expect("state source should be detected");
+            let merman_core::RenderSemanticModel::State(full) = full.model() else {
+                panic!("expected full State");
+            };
+            let mut canonical_resources = ResourceContext::new(policy);
+            let canonical_graph = from_state_view_with_context_and_execution(
+                StateTerminalView::from_semantic(semantic),
+                TerminalWidthProfile::Unicode,
+                &mut canonical_resources,
+                AsciiExecution::for_test(&policy),
+            )
+            .expect("canonical state graph should project");
+            let mut full_resources = ResourceContext::new(policy);
+            let full_graph = from_state_model_with_context_and_execution(
+                full,
+                TerminalWidthProfile::Unicode,
+                &mut full_resources,
+                AsciiExecution::for_test(&policy),
+            )
+            .expect("full state graph should project");
+            assert_eq!(canonical_graph, full_graph, "source: {source}");
+            assert_eq!(
+                canonical_resources.layout_work_used(),
+                full_resources.layout_work_used()
+            );
+            assert_eq!(
+                canonical_resources.document_cells_used(),
+                full_resources.document_cells_used()
+            );
+            for options in [
+                crate::AsciiRenderOptions::ascii(),
+                crate::AsciiRenderOptions::unicode()
+                    .with_color_mode(crate::AsciiColorMode::TrueColor),
+            ] {
+                let canonical_output = crate::graph::render_graph_with_execution(
+                    &canonical_graph,
+                    &options,
+                    AsciiExecution::for_test(&policy),
+                )
+                .expect("canonical graph should render");
+                let full_output = crate::graph::render_graph_with_execution(
+                    &full_graph,
+                    &options,
+                    AsciiExecution::for_test(&policy),
+                )
+                .expect("full graph should render");
+                assert_eq!(canonical_output, full_output, "source: {source}");
+            }
+            assert_view_projection_accepts_exact_work(StateTerminalView::from_semantic(semantic));
+        }
+    }
+
+    #[test]
+    fn canonical_state_projection_cancellation_precedes_resource_debit() {
+        let parsed = merman_core::SemanticParser::new()
+            .parse_diagram_sync("stateDiagram-v2\nA --> B\n")
+            .expect("canonical state source should parse");
+        let merman_core::SemanticDiagramModel::State(model) = &parsed.model else {
+            panic!("expected canonical State");
+        };
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("one work unit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+        let error = from_state_view_with_context_and_execution(
+            StateTerminalView::from_semantic(model),
+            TerminalWidthProfile::Unicode,
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("canonical projection should observe cancellation before debit");
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Semantic
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
 
     #[test]
     fn state_projection_cancellation_precedes_the_first_resource_debit() {
@@ -1379,9 +1484,12 @@ mod tests {
 
         let validation_resources = ResourceContext::new(unbounded);
         let execution = AsciiExecution::for_test(&unbounded);
-        let parent_projection =
-            validate_supported_state_model(&model, &validation_resources, execution)
-                .expect("large flat state model should pass parent projection");
+        let parent_projection = validate_supported_state_model(
+            StateTerminalView::from_render(&model),
+            &validation_resources,
+            execution,
+        )
+        .expect("large flat state model should pass parent projection");
         assert_eq!(parent_projection.parent_by_index.len(), NODE_COUNT);
         assert!(
             parent_projection
@@ -1397,11 +1505,11 @@ mod tests {
         );
         assert_eq!(validation_resources.layout_work_used(), 0);
 
-        let group_members = group_members_by_id(&model, execution)
+        let group_members = group_members_by_id(StateTerminalView::from_render(&model), execution)
             .expect("large flat state model should project group members");
         let sorting_resources = ResourceContext::new(unbounded);
         let groups = sorted_group_nodes(
-            &model,
+            StateTerminalView::from_render(&model),
             &group_members,
             &parent_projection,
             &sorting_resources,
@@ -1413,7 +1521,7 @@ mod tests {
 
         let direction_resources = ResourceContext::new(unbounded);
         let projection = state_direction_projection(
-            &model,
+            StateTerminalView::from_render(&model),
             GraphDirection::TopDown,
             &parent_projection,
             &direction_resources,
@@ -1424,8 +1532,12 @@ mod tests {
         assert!(projection.group_by_index.iter().all(Option::is_none));
         assert_eq!(direction_resources.layout_work_used(), 0);
         assert_eq!(
-            state_projection_work(&model, &direction_resources, execution)
-                .expect("large flat state projection work should fit"),
+            state_projection_work(
+                StateTerminalView::from_render(&model),
+                &direction_resources,
+                execution
+            )
+            .expect("large flat state projection work should fit"),
             NODE_COUNT * STATE_NODE_PROJECTION_WORK_UNITS
         );
     }
@@ -1457,8 +1569,12 @@ mod tests {
         let resources = ResourceContext::new(policy);
         let execution = AsciiExecution::for_test(&policy);
 
-        let error = validate_supported_state_model(&model, &resources, execution)
-            .expect_err("the parent projection should reject the first over-depth node");
+        let error = validate_supported_state_model(
+            StateTerminalView::from_render(&model),
+            &resources,
+            execution,
+        )
+        .expect_err("the parent projection should reject the first over-depth node");
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
@@ -1495,9 +1611,12 @@ mod tests {
 
         let validation_resources = ResourceContext::new(unbounded);
         let execution = AsciiExecution::for_test(&unbounded);
-        let parent_projection =
-            validate_supported_state_model(&model, &validation_resources, execution)
-                .expect("deep valid state parent chain should cache its parents");
+        let parent_projection = validate_supported_state_model(
+            StateTerminalView::from_render(&model),
+            &validation_resources,
+            execution,
+        )
+        .expect("deep valid state parent chain should cache its parents");
         let leaf_index = model
             .nodes
             .iter()
@@ -1510,11 +1629,11 @@ mod tests {
         assert_eq!(parent_projection.parent_first_indices.len(), NODE_COUNT);
         assert!(validation_resources.layout_work_used() < NODE_COUNT);
 
-        let group_members = group_members_by_id(&model, execution)
+        let group_members = group_members_by_id(StateTerminalView::from_render(&model), execution)
             .expect("deep valid state parent chain should project group members");
         let sorting_resources = ResourceContext::new(unbounded);
         let groups = sorted_group_nodes(
-            &model,
+            StateTerminalView::from_render(&model),
             &group_members,
             &parent_projection,
             &sorting_resources,
@@ -1523,11 +1642,17 @@ mod tests {
         .expect("deep valid state parent chain should sort groups");
         assert_eq!(groups.len(), NODE_COUNT - 1);
         assert_eq!(
-            groups.first().map(|group| group.node.id.as_str()),
+            groups
+                .first()
+                .and_then(|group| model.nodes.get(group.node_index))
+                .map(|node| node.id.as_str()),
             Some("state-62")
         );
         assert_eq!(
-            groups.last().map(|group| group.node.id.as_str()),
+            groups
+                .last()
+                .and_then(|group| model.nodes.get(group.node_index))
+                .map(|node| node.id.as_str()),
             Some("state-0")
         );
         let group_count = NODE_COUNT - 1;
@@ -1537,7 +1662,7 @@ mod tests {
 
         let direction_resources = ResourceContext::new(unbounded);
         let projection = state_direction_projection(
-            &model,
+            StateTerminalView::from_render(&model),
             GraphDirection::TopDown,
             &parent_projection,
             &direction_resources,
@@ -1563,9 +1688,13 @@ mod tests {
     }
 
     fn assert_projection_accepts_exact_work(model: &StateDiagramRenderModel) {
+        assert_view_projection_accepts_exact_work(StateTerminalView::from_render(model));
+    }
+
+    fn assert_view_projection_accepts_exact_work(model: StateTerminalView<'_>) {
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut measured = ResourceContext::new(unbounded);
-        from_state_model_with_context_and_execution(
+        from_state_view_with_context_and_execution(
             model,
             TerminalWidthProfile::Unicode,
             &mut measured,
@@ -1578,13 +1707,13 @@ mod tests {
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
             .expect("exact state projection work limit should be valid");
-        from_state_model_with_resources(model, exact_policy)
+        from_state_view_with_resources(model, exact_policy)
             .expect("exact state projection work limit should pass");
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
             .expect("max-minus-one state projection work limit should be valid");
-        let error = from_state_model_with_resources(model, below_policy)
+        let error = from_state_view_with_resources(model, below_policy)
             .expect_err("max-minus-one state projection work limit should fail");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");

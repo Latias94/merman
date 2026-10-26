@@ -172,7 +172,7 @@ fn spacing(config: &Value, top: &str, local: &str, flowchart: &str) -> f64 {
 }
 
 pub(super) fn layout(
-    model: &UsecaseDiagramRenderModel,
+    model: &UsecaseDiagramModel,
     config: &Value,
     plans: &[UsecaseNodePlan],
     edge_plans: &mut [UsecaseEdgePlan],

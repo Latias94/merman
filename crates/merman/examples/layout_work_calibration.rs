@@ -1,9 +1,9 @@
 use merman::render::{ResourceLimitCause, ResourceLimitExceeded};
 use merman::svg::{RenderResourcePolicy, RenderResourceProfile, ResourceLimitId};
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderError, RenderOutput, RenderRequest,
-    RenderTarget, Renderer, SemanticArtifact, SvgEnvironment, SvgLayoutOutput, SvgOutput,
-    SvgRequest,
+    MermaidEngine, OperationControl, PresentationArtifact, RenderError, RenderOutput,
+    RenderRequest, RenderTarget, Renderer, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+    presentation::PresentationConfig,
 };
 use merman_core::ParseOptions;
 use serde::{Deserialize, Serialize};
@@ -25,14 +25,7 @@ const MINIMUM_HEADROOM_UNITS: usize = 100_000;
 const MINIMUM_HEADROOM_PERCENT: f64 = 10.0;
 const INTERACTIVE_CEILING_QUANTUM: usize = 100_000;
 const TRUSTED_NATIVE_CEILING_QUANTUM: usize = 1_000_000;
-const EXPECTED_CALIBRATION_FEATURES: [&str; 6] = [
-    "svg",
-    "layout-cytoscape",
-    "layout-elk",
-    "math",
-    "complete-svg",
-    "complete-svg-elk",
-];
+const EXPECTED_CALIBRATION_FEATURES: [&str; 4] = ["svg", "layout-cytoscape", "layout-elk", "math"];
 
 #[derive(Debug)]
 struct Arguments {
@@ -374,11 +367,11 @@ struct CalibrationRenderer {
 
 impl CalibrationRenderer {
     fn new(policy: RenderResourcePolicy, theme: &str) -> Self {
-        let mut config = MermaidConfig::empty_object();
+        let mut config = PresentationConfig::empty_object();
         config.set_value("theme", serde_json::Value::String(theme.to_string()));
         Self {
             renderer: Renderer::new()
-                .with_engine(Engine::new().with_site_config(config))
+                .with_presentation_engine(MermaidEngine::new().with_site_config(config))
                 .with_parse_options(ParseOptions::strict())
                 .with_resource_policy(*policy.input_policy()),
             policy,
@@ -389,9 +382,12 @@ impl CalibrationRenderer {
         }
     }
 
-    fn prepare_semantic(&self, source: &str) -> Result<Option<SemanticArtifact>, Box<RenderError>> {
+    fn prepare_presentation(
+        &self,
+        source: &str,
+    ) -> Result<Option<PresentationArtifact>, Box<RenderError>> {
         self.renderer
-            .prepare_semantic(source, OperationControl::new())
+            .prepare_presentation(source, OperationControl::new())
             .map_err(Box::new)
     }
 
@@ -409,7 +405,7 @@ impl CalibrationRenderer {
 
     fn render_svg_from_semantic(
         &self,
-        semantic: SemanticArtifact,
+        semantic: PresentationArtifact,
     ) -> Result<Option<SvgOutput>, Box<RenderError>> {
         let output =
             self.render_semantic_target(semantic, RenderTarget::Svg(self.svg_request.clone()))?;
@@ -421,7 +417,7 @@ impl CalibrationRenderer {
 
     fn render_layout_from_semantic(
         &self,
-        semantic: SemanticArtifact,
+        semantic: PresentationArtifact,
     ) -> Result<Option<SvgLayoutOutput>, Box<RenderError>> {
         let output = self
             .render_semantic_target(semantic, RenderTarget::LayoutJson(self.svg_request.clone()))?;
@@ -433,7 +429,7 @@ impl CalibrationRenderer {
 
     fn render_semantic_target(
         &self,
-        semantic: SemanticArtifact,
+        semantic: PresentationArtifact,
         target: RenderTarget,
     ) -> Result<RenderOutput, Box<RenderError>> {
         semantic.render(target).map_err(Box::new)
@@ -540,7 +536,7 @@ fn run_single_probe(
         ProbeStage::Semantic => {
             let started = Instant::now();
             let semantic = renderer
-                .prepare_semantic(&source)?
+                .prepare_presentation(&source)?
                 .ok_or("probe source was not recognized")?;
             SingleProbeOutcome::AcceptedSemantic {
                 elapsed_ns: elapsed_ns(started),
@@ -550,7 +546,7 @@ fn run_single_probe(
         }
         ProbeStage::Layout => {
             let semantic = renderer
-                .prepare_semantic(&source)?
+                .prepare_presentation(&source)?
                 .ok_or("probe source was not recognized")?;
             let started = Instant::now();
             match renderer.render_layout_from_semantic(semantic) {
@@ -577,7 +573,7 @@ fn run_single_probe(
         }
         ProbeStage::Svg => {
             let semantic = renderer
-                .prepare_semantic(&source)?
+                .prepare_presentation(&source)?
                 .ok_or("probe source was not recognized")?;
             let started = Instant::now();
             match renderer.render_svg_from_semantic(semantic) {
@@ -1134,7 +1130,7 @@ fn calibrate_fixture_corpus(
         .ok_or("maximum corpus fixture disappeared")?;
     let maximum_source = fs::read_to_string(&maximum_input.path)?;
     let maximum_semantic = bounded
-        .prepare_semantic(&maximum_source)?
+        .prepare_presentation(&maximum_source)?
         .ok_or("maximum fixture was not recognized during semantic inspection")?;
     let exact_limit_check = verify_exact_work_limit(&maximum_source, maximum, policy, theme)?;
 
@@ -1676,12 +1672,6 @@ fn enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "pdf") {
         features.push("pdf");
     }
-    if cfg!(feature = "complete-svg") {
-        features.push("complete-svg");
-    }
-    if cfg!(feature = "complete-svg-elk") {
-        features.push("complete-svg-elk");
-    }
     features
 }
 
@@ -1689,7 +1679,7 @@ fn validate_calibration_features() -> Result<(), Box<dyn Error>> {
     let enabled = enabled_features();
     if enabled != EXPECTED_CALIBRATION_FEATURES {
         return Err(format!(
-            "layout calibration requires exactly the complete-svg-elk feature closure; enabled={enabled:?}"
+            "layout calibration requires exactly `svg`, `layout-cytoscape`, `layout-elk`, and `math`; enabled={enabled:?}"
         )
         .into());
     }

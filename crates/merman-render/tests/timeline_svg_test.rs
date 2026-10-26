@@ -1,7 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
@@ -24,7 +25,7 @@ fn render_timeline_svg_from_text(text: &str) -> String {
     render_timeline_svg_from_text_with_engine(text, legacy_init_theme_compat_engine())
 }
 
-fn render_timeline_svg_from_text_with_engine(text: &str, engine: Engine) -> String {
+fn render_timeline_svg_from_text_with_engine(text: &str, engine: MermaidEngine) -> String {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -170,7 +171,7 @@ fn timeline_typography_theme_with_font_size(
 fn try_render_timeline_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     try_render_timeline_with_theme_engine_requirement(
         source,
@@ -183,7 +184,7 @@ fn try_render_timeline_with_theme_and_engine(
 fn try_render_timeline_with_compatibility_baseline(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     try_render_timeline_with_theme_engine_requirement(
         source,
@@ -196,7 +197,7 @@ fn try_render_timeline_with_compatibility_baseline(
 fn try_render_timeline_with_theme_engine_requirement(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
@@ -227,7 +228,7 @@ fn try_render_timeline_with_theme_requirement(
     theme: &DiagramTheme,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Timeline")
         .expect("detect themed Timeline");
@@ -299,7 +300,7 @@ fn timeline_text_fill_uses_typed_root_paint_across_looks_and_directions() {
                         let rendered = render(
                             &source,
                             &theme,
-                            Engine::new().with_site_config(MermaidConfig::from_value(
+                            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                                 serde_json::json!({ "look": look }),
                             )),
                         )
@@ -348,9 +349,10 @@ fn timeline_text_fill_preserves_config_and_independent_label_colors() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
     )]);
     let source = "timeline\n    title Owned\n    section Release\n    Plan : Ship\n";
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "textColor": "#abcdef", "cScaleLabel0": "#fedcba" }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "textColor": "#abcdef", "cScaleLabel0": "#fedcba" }
+        })));
     let rendered = try_render_timeline_with_theme_and_engine(source, &theme, engine)
         .expect("source-owned Text.fill");
     assert!(rendered.svg().contains("fill:#abcdef;"));
@@ -390,11 +392,15 @@ fn timeline_source_palette_wins_while_site_palette_yields_to_typed_roles() {
                 );
                 let (engine, source) = if origin == "site" {
                     (
-                        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                        MermaidEngine::new()
+                            .with_site_config(PresentationConfig::from_value(config)),
                         body,
                     )
                 } else {
-                    (Engine::new(), format!("%%{{init: {config}}}%%\n{body}"))
+                    (
+                        MermaidEngine::new(),
+                        format!("%%{{init: {config}}}%%\n{body}"),
+                    )
                 };
                 let baseline = render_timeline_svg_from_text_with_engine(&source, engine.clone());
                 let rendered = try_render_timeline_with_theme_and_engine(&source, &theme, engine)
@@ -484,9 +490,11 @@ fn timeline_text_fill_handles_titleless_and_zero_palette_consumers() {
             let rendered = try_render_timeline_with_theme_and_engine(
                 &source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                    "themeVariables": { "THEME_COLOR_LIMIT": limit }
-                }))),
+                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "THEME_COLOR_LIMIT": limit }
+                    }),
+                )),
             )
             .expect("titleless Timeline root paint");
             assert!(rendered.svg().contains("fill:#123456;"));
@@ -786,7 +794,8 @@ fn timeline_neo_event_fill_uses_the_active_stylesheet_owner() {
             let rendered = render(
                 &format!("timeline{direction}\nsection Release\nPlan : Build\n"),
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                MermaidEngine::new()
+                    .with_site_config(PresentationConfig::from_value(config.clone())),
             )
             .unwrap();
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -854,7 +863,7 @@ fn timeline_neo_gradient_does_not_consume_classic_palette() {
         let rendered = try_render_timeline_with_theme_and_engine(
             &format!("timeline{direction}\nsection Release\nPlan : Build\n"),
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         )
         .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -884,11 +893,12 @@ fn timeline_site_owned_color_scale_suppresses_typed_event_fill() {
     let theme = timeline_event_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Timeline event fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "cScale0": "#abcdef"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "cScale0": "#abcdef"
+            }
+        })));
     let source = r##"timeline
     section Release
         Plan : Build
@@ -929,11 +939,12 @@ fn timeline_source_owned_color_scale_only_suppresses_its_event_fill_slot() {
     let theme = timeline_event_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Timeline event fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "cScale0": "#abcdef"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "cScale0": "#abcdef"
+            }
+        })));
     let rendered = try_render_timeline_with_theme_and_engine(
         "timeline\n    section Release\n        Plan : Build\n    section Verify\n        Ship : Done\n",
         &theme,
@@ -965,11 +976,12 @@ fn timeline_classic_main_background_does_not_claim_event_fill() {
     let theme = timeline_event_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Timeline event fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "mainBkg": "#abcdef"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "mainBkg": "#abcdef"
+            }
+        })));
     let rendered = try_render_timeline_with_theme_and_engine(
         "timeline\n    section Release\n        Plan : Build\n",
         &theme,
@@ -1005,11 +1017,12 @@ fn timeline_redux_main_background_suppresses_typed_event_fill() {
                 .with_fill(CanvasPaint::solid("#123456").expect("valid Timeline event fill")),
         )],
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "mainBkg": "#abcdef"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "mainBkg": "#abcdef"
+            }
+        })));
     let rendered = try_render_timeline_with_compatibility_baseline(
         "timeline\n    section Release\n        Plan : Build\n",
         &theme,
@@ -1053,11 +1066,12 @@ fn timeline_redux_color_node_border_does_not_own_fill_when_array_slot_exists() {
                 .with_fill(CanvasPaint::solid("#123456").expect("valid Timeline event fill")),
         )],
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "nodeBorder": "#abcdef"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "nodeBorder": "#abcdef"
+            }
+        })));
     let rendered = try_render_timeline_with_compatibility_baseline(
         "timeline\n    section Release\n        Plan : Build\n",
         &theme,
@@ -1094,11 +1108,12 @@ fn timeline_redux_color_border_array_owns_event_fill() {
                 .with_fill(CanvasPaint::solid("#123456").expect("valid Timeline event fill")),
         )],
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "borderColorArray": ["#abcdef"]
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "borderColorArray": ["#abcdef"]
+            }
+        })));
     let rendered = try_render_timeline_with_compatibility_baseline(
         "timeline\n    section Release\n        Plan : Build\n",
         &theme,
@@ -1142,12 +1157,13 @@ fn timeline_redux_color_missing_border_array_slot_does_not_claim_node_border_as_
                 .with_fill(CanvasPaint::solid("#123456").expect("valid Timeline event fill")),
         )],
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "borderColorArray": [],
-            "nodeBorder": "#abcdef"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "borderColorArray": [],
+                "nodeBorder": "#abcdef"
+            }
+        })));
     let rendered = try_render_timeline_with_compatibility_baseline(
         "timeline\n    section Release\n        Plan : Build\n",
         &theme,
@@ -1338,10 +1354,11 @@ fn timeline_typed_typography_reaches_layout_css_and_terminal_receipt() {
         let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
             TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
         );
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap_or_else(|error| panic!("parse typed {direction} Timeline: {error}"))
-            .unwrap_or_else(|| panic!("detect typed {direction} Timeline"));
+        let parsed =
+            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap_or_else(|error| panic!("parse typed {direction} Timeline: {error}"))
+                .unwrap_or_else(|| panic!("detect typed {direction} Timeline"));
         let session = environment
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -1474,9 +1491,10 @@ fn timeline_source_owned_theme_font_size_is_not_claimed_as_typed() {
     let font_stack =
         FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
     let theme = timeline_typography_theme_with_font_size(font_stack, Some(24.0));
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "secure": []
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "secure": []
+        })));
     let rendered = try_render_timeline_with_theme_and_engine(
         r##"%%{init: {"themeVariables": {"fontSize": "30px"}}}%%
 timeline
@@ -1563,9 +1581,10 @@ fn timeline_typed_font_size_uses_canonical_f32_css_spelling() {
 #[test]
 fn timeline_event_palette_preserves_source_owned_color_scale_slots() {
     let theme = timeline_event_palette_theme(&["#123456", "#654321"]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "secure": []
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "secure": []
+        })));
     let rendered = try_render_timeline_with_theme_and_engine(
         r##"%%{init: {"themeVariables": {"cScale0": "#f59e0b", "cScaleInv0": "#010203"}}}%%
 timeline
@@ -1631,10 +1650,11 @@ timeline
 #[test]
 fn timeline_event_palette_wraps_at_a_reduced_theme_color_limit() {
     let theme = timeline_event_palette_theme(&["#123456", "#654321", "#abcdef"]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "secure": [],
-        "themeVariables": { "THEME_COLOR_LIMIT": 2 }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "secure": [],
+            "themeVariables": { "THEME_COLOR_LIMIT": 2 }
+        })));
     let rendered = try_render_timeline_with_theme_engine_requirement(
         "timeline\n    section Release\n        Plan : Build\n    section Verify\n        Ship : Done\n    section Archive\n        Store : Done\n",
         &theme,
@@ -2401,8 +2421,8 @@ fn timeline_event_stroke_theme(mermaid_theme: &str, paint: CanvasPaint) -> Diagr
     )
 }
 
-fn timeline_stroke_engine(config: serde_json::Value) -> Engine {
-    Engine::new().with_site_config(MermaidConfig::from_value(config))
+fn timeline_stroke_engine(config: serde_json::Value) -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config))
 }
 
 #[test]
@@ -2858,7 +2878,7 @@ fn repair_u7_timeline_filtered_border_slots_share_the_terminal_index() {
         )],
     );
     let rendered = try_render_timeline_with_compatibility_baseline("timeline\nsection First\nPlan : Build\nsection Second\nShip : Done", &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"darkMode":false,"themeVariables":{"borderColorArray":[null,"#abcdef"]}})))).unwrap();
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"darkMode":false,"themeVariables":{"borderColorArray":[null,"#abcdef"]}})))).unwrap();
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     let styles = document
         .descendants()
@@ -2899,7 +2919,7 @@ fn repair_u7_timeline_effective_dark_mode_selects_the_source_fill_owner() {
         let rendered = try_render_timeline_with_compatibility_baseline(
             "timeline\nsection Release\nPlan : Build",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         )
         .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();

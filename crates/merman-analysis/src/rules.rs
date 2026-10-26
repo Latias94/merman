@@ -924,10 +924,8 @@ pub(crate) fn source_lint_diagnostics(
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
-    let captured_config = merman_core::Engine::new()
-        .parse_metadata_sync(source)
-        .ok()
-        .map(|metadata| metadata.config);
+    let captured_config =
+        crate::test_support::capture_source_metadata(source).map(|metadata| metadata.config);
     let source_config = crate::test_support::capture_source_config_evidence(source);
     let candidates = source_lint_candidates_cancellable(
         source,

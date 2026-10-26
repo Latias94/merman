@@ -4,10 +4,10 @@
 //! is shared by `diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow`;
 //! `error_diagram` is always available.
 //!
-//! Built-in family constructors are intentionally crate-private. External callers must parse
-//! through [`crate::Engine`], which owns preprocessing, detection, configuration, and the closed
-//! [`crate::DiagramParseSnapshot`] contract. This prevents callers from constructing metadata by
-//! hand and invoking a semantic, render-model, or editor-facts parser independently.
+//! Built-in family constructors are intentionally crate-private. External callers parse through
+//! [`crate::SemanticParser`] for canonical meaning or `MermaidEngine` with `presentation` for full
+//! processing. These facades own preprocessing, detection, configuration, and the requested
+//! projections. Callers cannot invoke built-in constructors with hand-built metadata.
 //!
 //! ```compile_fail,E0603
 //! use merman_core::diagrams::flowchart::parse_flowchart;

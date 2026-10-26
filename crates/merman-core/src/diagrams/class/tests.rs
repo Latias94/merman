@@ -1,15 +1,16 @@
 use super::*;
-use crate::{MermaidConfig, ParseMetadata};
+use crate::{MermaidConfig, PresentationMetadata};
 
-fn meta() -> ParseMetadata {
-    ParseMetadata {
+fn meta() -> PresentationMetadata {
+    PresentationMetadata {
         diagram_type: "classDiagram".to_string(),
         config: MermaidConfig::default(),
-        effective_config: MermaidConfig::default(),
+        effective_config: crate::presentation::PresentationConfig::default(),
         title: None,
     }
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn authoritative_parser_preserves_the_former_fast_subset() {
     let code = r#"classDiagram
@@ -27,6 +28,7 @@ C1 <|-- C2 : inherits
     assert_eq!(compat, render_model_to_compat_json(&typed, &meta).unwrap());
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn typed_relations_distinguish_authored_none_from_the_compatibility_sentinel() {
     let code = r#"classDiagram
@@ -41,9 +43,25 @@ A "" --> B
         .expect("class diagram should parse")
         .0;
 
-    assert_eq!(model.relations[0].relation_title_1, None);
-    assert_eq!(model.relations[1].relation_title_1.as_deref(), Some("none"));
-    assert_eq!(model.relations[2].relation_title_1.as_deref(), Some(""));
+    assert_eq!(model.relations().next().unwrap().relation_title_1, None);
+    assert_eq!(
+        model
+            .relations()
+            .nth(1)
+            .unwrap()
+            .relation_title_1
+            .as_deref(),
+        Some("none")
+    );
+    assert_eq!(
+        model
+            .relations()
+            .nth(2)
+            .unwrap()
+            .relation_title_1
+            .as_deref(),
+        Some("")
+    );
 
     let typed_json = serde_json::to_value(&model).unwrap();
     assert!(typed_json["relations"][0]["relationTitle1"].is_null());
@@ -71,14 +89,20 @@ IService ()-- Service
         .expect("class diagram should parse")
         .0;
 
-    assert!(model.classes.contains_key("note0"));
-    assert!(model.classes.contains_key("interface0"));
-    assert_ne!(model.notes[0].id, "note0");
-    assert_ne!(model.interfaces[0].id, "interface0");
-    assert_eq!(model.relations[0].id1, model.interfaces[0].id);
-    assert_eq!(model.relations[0].id2, "Service");
+    assert!(model.class("note0").is_some());
+    assert!(model.class("interface0").is_some());
+    let note = model.notes().next().unwrap();
+    let interface = model.interfaces().next().unwrap();
+    let relation = model.relations().next().unwrap();
+    assert_ne!(note.id, "note0");
+    assert_ne!(interface.id, "interface0");
+    assert_eq!(relation.id1, interface.id);
+    assert_eq!(model.model().notes[0].id, "note0");
+    assert_eq!(model.model().interfaces[0].id, "interface0");
+    assert_eq!(model.relations().next().unwrap().id2, "Service");
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn namespace_qualified_relation_endpoints_create_facade_classes_like_mermaid() {
     let code = r#"classDiagram
@@ -100,7 +124,10 @@ Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
         .0;
 
     assert_eq!(
-        model.classes.keys().cloned().collect::<Vec<_>>(),
+        model
+            .classes()
+            .map(|(id, _)| id.to_owned())
+            .collect::<Vec<_>>(),
         vec![
             "DartBinding",
             "PythonBinding",
@@ -110,20 +137,32 @@ Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
             "Platform.FFI.PythonBinding"
         ]
     );
-    assert_eq!(model.relations[0].id1, "Platform.FFI.DartBinding");
-    assert_eq!(model.relations[0].id2, "Platform.Core.Renderer");
-    assert_eq!(model.relations[1].id1, "Platform.FFI.PythonBinding");
-    assert_eq!(model.relations[1].id2, "Platform.Core.Renderer");
     assert_eq!(
-        model.namespaces["Platform.FFI"].class_ids,
+        model.relations().next().unwrap().id1,
+        "Platform.FFI.DartBinding"
+    );
+    assert_eq!(
+        model.relations().next().unwrap().id2,
+        "Platform.Core.Renderer"
+    );
+    assert_eq!(
+        model.relations().nth(1).unwrap().id1,
+        "Platform.FFI.PythonBinding"
+    );
+    assert_eq!(
+        model.relations().nth(1).unwrap().id2,
+        "Platform.Core.Renderer"
+    );
+    assert_eq!(
+        model.namespace("Platform.FFI").unwrap().class_ids,
         vec!["DartBinding", "PythonBinding"]
     );
     assert_eq!(
-        model.namespaces["Platform.Core"].class_ids,
+        model.namespace("Platform.Core").unwrap().class_ids,
         vec!["Renderer"]
     );
     assert_eq!(
-        model.namespace_facade_aliases,
+        model.model().namespace_facade_aliases,
         std::collections::BTreeMap::from([
             ("Platform.Core.Renderer".to_string(), "Renderer".to_string(),),
             (
@@ -166,7 +205,7 @@ N.C --> D
         .expect("class diagram should parse")
         .0;
 
-    assert!(model.namespace_facade_aliases.is_empty());
-    assert_eq!(model.classes["N.C"].text, "Distinct");
-    assert_eq!(model.relations[0].id1, "N.C");
+    assert!(model.model().namespace_facade_aliases.is_empty());
+    assert_eq!(model.class("N.C").unwrap().text, "Distinct");
+    assert_eq!(model.relations().next().unwrap().id1, "N.C");
 }

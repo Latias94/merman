@@ -2496,7 +2496,6 @@ name = "merman-core"
 version = "0.9.2"
 dependencies = [
  "cssparser",
- "euclid",
  "futures",
  "getrandom 0.4.3",
  "granit-parser",
@@ -2640,6 +2639,7 @@ dependencies = [
  "data-encoding",
  "data-url",
  "dugong",
+ "euclid",
  "futures",
  "indexmap",
  "kurbo 0.13.1",

@@ -5,16 +5,13 @@ use merman_ascii::{
     AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::er::{
-    ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelSpecRenderModel,
-    ErRelationshipRenderModel,
-};
-use merman_core::{Engine, OperationControl, ParseOptions};
+use merman_core::diagrams::er::{ErAttribute, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship};
+use merman_core::{MermaidEngine, OperationControl, ParseOptions};
 use std::path::Path;
 use support::{render_controlled_model, render_model, render_model_with_resources};
 
 fn parse_er_render_model(input: &str) -> RenderSemanticModel {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("ER diagram should parse")
         .expect("ER diagram should be detected")
@@ -22,7 +19,7 @@ fn parse_er_render_model(input: &str) -> RenderSemanticModel {
         .1
 }
 
-fn parse_er_model(input: &str) -> ErDiagramRenderModel {
+fn parse_er_model(input: &str) -> ErDiagramModel {
     match parse_er_render_model(input) {
         RenderSemanticModel::Er(model) => model,
         other => panic!("expected ER render model, got {}", other.kind()),
@@ -46,7 +43,7 @@ fn render_er_with_resources(
 }
 
 fn render_er_model(
-    model: &ErDiagramRenderModel,
+    model: &ErDiagramModel,
     options: &AsciiRenderOptions,
 ) -> merman_ascii::Result<String> {
     render_model(&RenderSemanticModel::Er(model.clone()), options)
@@ -59,7 +56,7 @@ fn render_er_with_grid_limit(
 ) -> merman_ascii::Result<String> {
     let model = parse_er_render_model(input);
     let control = OperationControl::new();
-    let context = Engine::new()
+    let context = MermaidEngine::new()
         .begin_operation()
         .expect("deterministic operation context should be available");
     let resources = AsciiResourcePolicy::default()
@@ -159,7 +156,7 @@ fn framed_er_summary_relation(source: &str, connector: &str, target: &str, label
     )
 }
 
-fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
+fn assert_unsupported_er_model(model: &ErDiagramModel, feature: &'static str) {
     let err = render_er_model(model, &AsciiRenderOptions::ascii())
         .expect_err("ER model should be rejected as unsupported");
 
@@ -498,7 +495,7 @@ fn er_attribute_keys_and_comments_have_distinct_terminal_roles() {
 
 #[test]
 fn er_direct_attribute_fields_cannot_forge_renderer_owned_delimiters() {
-    let render = |attribute: ErAttributeRenderModel| {
+    let render = |attribute: ErAttribute| {
         let mut model = parse_er_model("erDiagram\nA");
         model
             .entities
@@ -509,13 +506,13 @@ fn er_direct_attribute_fields_cannot_forge_renderer_owned_delimiters() {
             .expect("direct ER attribute should render")
     };
 
-    let authored_key_syntax = render(ErAttributeRenderModel {
+    let authored_key_syntax = render(ErAttribute {
         ty: "string".to_string(),
         name: "owner [keys: PK]".to_string(),
         keys: Vec::new(),
         comment: String::new(),
     });
-    let typed_key = render(ErAttributeRenderModel {
+    let typed_key = render(ErAttribute {
         ty: "string".to_string(),
         name: "owner".to_string(),
         keys: vec!["PK".to_string()],
@@ -531,13 +528,13 @@ fn er_direct_attribute_fields_cannot_forge_renderer_owned_delimiters() {
         "{typed_key}"
     );
 
-    let authored_type_separator = render(ErAttributeRenderModel {
+    let authored_type_separator = render(ErAttribute {
         ty: "string owner".to_string(),
         name: "id".to_string(),
         keys: Vec::new(),
         comment: String::new(),
     });
-    let typed_name_separator = render(ErAttributeRenderModel {
+    let typed_name_separator = render(ErAttribute {
         ty: "string".to_string(),
         name: "owner id".to_string(),
         keys: Vec::new(),
@@ -553,13 +550,13 @@ fn er_direct_attribute_fields_cannot_forge_renderer_owned_delimiters() {
         "{typed_name_separator}"
     );
 
-    let authored_comment_syntax = render(ErAttributeRenderModel {
+    let authored_comment_syntax = render(ErAttribute {
         ty: "string".to_string(),
         name: "owner [comment: note]".to_string(),
         keys: Vec::new(),
         comment: String::new(),
     });
-    let typed_comment = render(ErAttributeRenderModel {
+    let typed_comment = render(ErAttribute {
         ty: "string".to_string(),
         name: "owner".to_string(),
         keys: Vec::new(),
@@ -580,13 +577,13 @@ fn er_direct_attribute_fields_cannot_forge_renderer_owned_delimiters() {
         "{typed_comment}"
     );
 
-    let authored_key_separator = render(ErAttributeRenderModel {
+    let authored_key_separator = render(ErAttribute {
         ty: "string".to_string(),
         name: "owner".to_string(),
         keys: vec!["PK,FK".to_string()],
         comment: String::new(),
     });
-    let two_typed_keys = render(ErAttributeRenderModel {
+    let two_typed_keys = render(ErAttribute {
         ty: "string".to_string(),
         name: "owner".to_string(),
         keys: vec!["PK".to_string(), "FK".to_string()],
@@ -901,9 +898,9 @@ fn er_bottom_up_summary_preserves_semantic_endpoint_roles() {
 
 #[test]
 fn empty_er_model_validates_direction_before_returning_empty() {
-    let mut model = ErDiagramRenderModel {
+    let mut model = ErDiagramModel {
         direction: "lr".to_string(),
-        ..ErDiagramRenderModel::default()
+        ..ErDiagramModel::default()
     };
     assert_eq!(
         render_er_model(&model, &AsciiRenderOptions::ascii())
@@ -924,9 +921,9 @@ fn empty_er_model_validates_direction_before_returning_empty() {
 
 #[test]
 fn empty_er_direction_bytes_are_admitted_before_parsing() {
-    let model = ErDiagramRenderModel {
+    let model = ErDiagramModel {
         direction: format!("{}sideways", " ".repeat(1_024)),
-        ..ErDiagramRenderModel::default()
+        ..ErDiagramModel::default()
     };
     let direction_bytes = model.direction.len();
     let model = RenderSemanticModel::Er(model);
@@ -1498,57 +1495,57 @@ fn er_summary_frames_direct_authored_identities_that_share_one_display_label() {
     let control_rendered_id = "entity-control-0".to_string();
     let escape_rendered_id = "entity-escape-1".to_string();
     let bridge_rendered_id = "entity-bridge-2".to_string();
-    let mut model = ErDiagramRenderModel::default();
+    let mut model = ErDiagramModel::default();
     model.entities.insert(
         control_identity.clone(),
-        ErEntityRenderModel {
+        ErEntity {
             id: control_rendered_id.clone(),
             label: "Same".to_string(),
-            ..ErEntityRenderModel::default()
+            ..ErEntity::default()
         },
     );
     model.entities.insert(
         authored_escape_identity.clone(),
-        ErEntityRenderModel {
+        ErEntity {
             id: escape_rendered_id.clone(),
             label: "Same".to_string(),
-            ..ErEntityRenderModel::default()
+            ..ErEntity::default()
         },
     );
     model.entities.insert(
         "bridge".to_string(),
-        ErEntityRenderModel {
+        ErEntity {
             id: bridge_rendered_id.clone(),
             label: "Bridge".to_string(),
-            ..ErEntityRenderModel::default()
+            ..ErEntity::default()
         },
     );
     model.relationships = vec![
-        ErRelationshipRenderModel {
+        ErRelationship {
             entity_a: control_rendered_id.clone(),
             role_a: "first".to_string(),
             entity_b: bridge_rendered_id.clone(),
-            rel_spec: ErRelSpecRenderModel {
+            rel_spec: ErRelSpec {
                 card_a: "ONLY_ONE".to_string(),
                 card_b: "ONLY_ONE".to_string(),
                 rel_type: "IDENTIFYING".to_string(),
             },
         },
-        ErRelationshipRenderModel {
+        ErRelationship {
             entity_a: bridge_rendered_id.clone(),
             role_a: "second".to_string(),
             entity_b: escape_rendered_id.clone(),
-            rel_spec: ErRelSpecRenderModel {
+            rel_spec: ErRelSpec {
                 card_a: "ONLY_ONE".to_string(),
                 card_b: "ONLY_ONE".to_string(),
                 rel_type: "IDENTIFYING".to_string(),
             },
         },
-        ErRelationshipRenderModel {
+        ErRelationship {
             entity_a: control_rendered_id.clone(),
             role_a: "spanning".to_string(),
             entity_b: escape_rendered_id.clone(),
-            rel_spec: ErRelSpecRenderModel {
+            rel_spec: ErRelSpec {
                 card_a: "ONLY_ONE".to_string(),
                 card_b: "ONLY_ONE".to_string(),
                 rel_type: "IDENTIFYING".to_string(),
@@ -1587,13 +1584,13 @@ fn er_summary_frames_direct_authored_identities_that_share_one_display_label() {
 #[test]
 fn er_terminal_normalization_discloses_the_authored_box_identity() {
     let render_identity = |identity: &str| {
-        let mut model = ErDiagramRenderModel::default();
+        let mut model = ErDiagramModel::default();
         model.entities.insert(
             identity.to_string(),
-            ErEntityRenderModel {
+            ErEntity {
                 id: "entity-0".to_string(),
                 label: identity.to_string(),
-                ..ErEntityRenderModel::default()
+                ..ErEntity::default()
             },
         );
         render_er_model(&model, &AsciiRenderOptions::ascii())
@@ -1610,10 +1607,10 @@ fn er_terminal_normalization_discloses_the_authored_box_identity() {
 #[test]
 fn er_single_line_display_projection_discloses_the_authored_owner() {
     let render_display = |display: &str, as_alias: bool| {
-        let mut model = ErDiagramRenderModel::default();
+        let mut model = ErDiagramModel::default();
         model.entities.insert(
             "AUTHORED_ID".to_string(),
-            ErEntityRenderModel {
+            ErEntity {
                 id: "entity-0".to_string(),
                 label: if as_alias {
                     "fallback".to_string()
@@ -1625,7 +1622,7 @@ fn er_single_line_display_projection_discloses_the_authored_owner() {
                 } else {
                     String::new()
                 },
-                ..ErEntityRenderModel::default()
+                ..ErEntity::default()
             },
         );
         render_er_model(&model, &AsciiRenderOptions::ascii())

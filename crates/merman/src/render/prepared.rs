@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use super::{OperationControl, RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer};
-use crate::operation_runner::{Operation, SemanticArtifact};
+use crate::operation_runner::{Operation, PresentationArtifact};
 use merman_core::resources::{InputResourcePolicy, ModelComplexity};
 use merman_core::runtime::OperationContext;
-use merman_core::{ParseMetadata, ParseOptions, ParsedDiagramRender};
+use merman_core::{ParseOptions, ParsedDiagramRender, PresentationMetadata};
 #[cfg(feature = "svg")]
 use merman_render::diagram_theme::DiagramTheme;
 
@@ -54,7 +54,7 @@ impl PreparedSource {
         }
     }
 
-    pub fn metadata(&self) -> &ParseMetadata {
+    pub fn metadata(&self) -> &PresentationMetadata {
         self.state.parsed.metadata()
     }
     pub fn semantic_kind(&self) -> &'static str {
@@ -130,15 +130,15 @@ impl Renderer {
     ) -> Result<Option<PreparedSource>, RenderError> {
         let request = RenderRequest {
             source: request.source,
-            target: RenderTarget::Semantic,
+            target: RenderTarget::Presentation,
             control: request.control,
             parse_options: request.parse_options,
             resources: request.resources,
             #[cfg(feature = "svg")]
             theme: request.theme,
         };
-        let (semantic, _) = self.parse_request(request)?;
-        Ok(semantic.map(SemanticArtifact::into_prepared_source))
+        let (semantic, _) = self.parse_presentation_request(request)?;
+        Ok(semantic.map(PresentationArtifact::into_prepared_source))
     }
 
     /// Renders frozen semantics under a fresh operation, using this renderer's current policy.
@@ -173,7 +173,12 @@ impl Renderer {
         } else {
             target.svg_input_resource_policy().unwrap_or(self.resources)
         };
-        let semantic = Operation::resume_prepared(&self.engine, prepared, control, resources)?;
+        let semantic = Operation::resume_prepared(
+            self.presentation_engine().runtime_policy(),
+            prepared,
+            control,
+            resources,
+        )?;
         let RenderTarget::Svg(request) = semantic.admit_target(target)? else {
             unreachable!("prepared SVG retains its admitted target");
         };
@@ -188,6 +193,12 @@ impl Renderer {
         control: OperationControl,
         resources: InputResourcePolicy,
     ) -> Result<RenderOutput, RenderError> {
-        Operation::resume_prepared(&self.engine, prepared, control, resources)?.render(target)
+        Operation::resume_prepared(
+            self.presentation_engine().runtime_policy(),
+            prepared,
+            control,
+            resources,
+        )?
+        .render(target)
     }
 }

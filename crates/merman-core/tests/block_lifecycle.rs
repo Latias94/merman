@@ -1,6 +1,7 @@
 #![cfg(feature = "diagram-block")]
+#![cfg(feature = "presentation")]
 
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::process::{Command, Stdio};
@@ -22,7 +23,7 @@ fn source(depth: usize, closers: usize) -> String {
 }
 
 fn run_worker(case: &str) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let (depth, closers) = match case {
         "valid" => (3_000, 3_000),
         "missing-outer" => (10_000, 9_999),

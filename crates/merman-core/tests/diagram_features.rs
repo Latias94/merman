@@ -1,9 +1,12 @@
 //! Consumer-level contracts for selected parser implementations.
-use merman_core::{Engine, Error, ParseOptions, RenderSemanticModel};
+use merman_core::{Error, SemanticParser};
+#[cfg(feature = "compat-json")]
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn unknown_input_retains_detection_and_suppression_semantics() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "not-a-mermaid-diagram\n";
     assert!(matches!(
         engine.parse_diagram_sync(source, ParseOptions::strict()),
@@ -18,9 +21,10 @@ fn unknown_input_retains_detection_and_suppression_semantics() {
 }
 
 #[cfg(not(feature = "diagram-sequence"))]
+#[cfg(feature = "compat-json")]
 #[test]
 fn disabled_sequence_retains_identity_errors_and_editor_diagnostics() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
     assert_eq!(
         engine.parse_metadata_sync(source).unwrap().diagram_type,
@@ -53,20 +57,24 @@ fn disabled_sequence_retains_identity_errors_and_editor_diagnostics() {
         .unwrap()
         .unwrap();
     assert!(matches!(suppressed.model(), RenderSemanticModel::Error(_)));
-    let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
-    assert!(
-        matches!(snapshot.outcome(), merman_core::DiagramParseOutcome::Failed(Error::UnsupportedDiagram { diagram_type }) if diagram_type == "sequence")
-    );
-    assert!(matches!(
-        snapshot.editor_facts(),
-        merman_core::ParsedEditorFacts::Unavailable
-    ));
+    #[cfg(feature = "editor-facts")]
+    {
+        let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+        assert!(
+            matches!(snapshot.outcome(), merman_core::DiagramParseOutcome::Failed(Error::UnsupportedDiagram { diagram_type }) if diagram_type == "sequence")
+        );
+        assert!(matches!(
+            snapshot.editor_facts(),
+            merman_core::ParsedEditorFacts::Unavailable
+        ));
+    }
 }
 
 #[cfg(not(feature = "diagram-sequence"))]
+#[cfg(feature = "compat-json")]
 #[test]
 fn disabled_builtin_accepts_custom_overlays_without_claiming_builtin_provenance() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("sequence", |_, _, control| {
@@ -103,9 +111,10 @@ fn disabled_builtin_accepts_custom_overlays_without_claiming_builtin_provenance(
     assert!(!parsed.model().supports_diagram_type("sequence"));
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn cancellation_is_not_suppressed_for_unavailable_or_unknown_input() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let control = merman_core::OperationControl::new();
     control.cancel();
     for source in [
@@ -123,9 +132,10 @@ fn cancellation_is_not_suppressed_for_unavailable_or_unknown_input() {
     }
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn custom_semantic_and_render_overlays_have_independent_ownership_even_for_enabled_builtins() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("sequence", |_, _, control| {
@@ -183,9 +193,10 @@ fn custom_semantic_and_render_overlays_have_independent_ownership_even_for_enabl
     );
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn custom_parser_cancellation_keeps_the_outer_channel_instead_of_a_lenient_error_diagram() {
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .diagram_registry_mut()
         .insert("sequence", |_, _, control| {
@@ -205,18 +216,22 @@ fn custom_parser_cancellation_keeps_the_outer_channel_instead_of_a_lenient_error
             merman_core::CancelReason::Requested
         );
     }
-    let result = engine
-        .parse_diagram_snapshot_controlled_sync(source, &merman_core::OperationControl::new());
-    assert_eq!(
-        result.unwrap_err().reason,
-        merman_core::CancelReason::Requested
-    );
+    #[cfg(feature = "editor-facts")]
+    {
+        let result = engine
+            .parse_diagram_snapshot_controlled_sync(source, &merman_core::OperationControl::new());
+        assert_eq!(
+            result.unwrap_err().reason,
+            merman_core::CancelReason::Requested
+        );
+    }
 }
 
 #[cfg(feature = "diagram-gantt")]
+#[cfg(feature = "compat-json")]
 #[test]
 fn selected_gantt_preserves_typed_and_json_projections() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let source = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n";
     let json = engine
         .parse_diagram_sync(source, ParseOptions::strict())
@@ -238,9 +253,10 @@ fn selected_gantt_preserves_typed_and_json_projections() {
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
+#[cfg(feature = "compat-json")]
 #[test]
 fn shared_flowchart_model_does_not_enable_the_other_language() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (source, enabled) in [
         ("flowchart TD\nA-->B\n", cfg!(feature = "diagram-flowchart")),
         ("graph TD\nA-->B\n", cfg!(feature = "diagram-flowchart")),
@@ -259,9 +275,10 @@ fn shared_flowchart_model_does_not_enable_the_other_language() {
     }
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn mermaid_12_families_preserve_identity_and_select_only_their_implementation() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (family, source, enabled) in [
         (
             "agentflow",
@@ -285,7 +302,10 @@ fn mermaid_12_families_preserve_identity_and_select_only_their_implementation() 
         assert!(capability.has_detector && capability.has_header);
         assert_eq!(capability.has_semantic_parser, enabled);
         assert_eq!(capability.has_render_parser, enabled);
-        assert_eq!(capability.has_editor_parser, enabled);
+        assert_eq!(
+            capability.has_editor_parser,
+            enabled && cfg!(feature = "editor-facts")
+        );
         let semantic = engine.parse_diagram_sync(source, ParseOptions::strict());
         let typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
         if enabled {
@@ -304,5 +324,92 @@ fn mermaid_12_families_preserve_identity_and_select_only_their_implementation() 
                 matches!(typed, Err(Error::UnsupportedDiagram { diagram_type }) if diagram_type == family)
             );
         }
+    }
+}
+
+#[test]
+fn canonical_parsing_and_catalog_follow_selected_families_without_presentation() {
+    let parser = SemanticParser::new();
+    for (family, source, enabled) in [
+        (
+            "flowchart",
+            "flowchart TD\nA-->B",
+            cfg!(feature = "diagram-flowchart"),
+        ),
+        (
+            "flowchart",
+            "graph TD\nA-->B",
+            cfg!(feature = "diagram-flowchart"),
+        ),
+        (
+            "swimlane",
+            "swimlane-beta LR\nA-->B",
+            cfg!(feature = "diagram-swimlane"),
+        ),
+        (
+            "sequence",
+            "sequenceDiagram\nAlice->>Bob: Hello",
+            cfg!(feature = "diagram-sequence"),
+        ),
+        (
+            "gantt",
+            "gantt\ndateFormat YYYY-MM-DD\nTask :a, 2024-01-01, 1d",
+            cfg!(feature = "diagram-gantt"),
+        ),
+        (
+            "agentflow",
+            "agentflow-beta\nA-->B",
+            cfg!(feature = "diagram-agentflow"),
+        ),
+        (
+            "usecase",
+            "usecase-beta\nactor User\nUser --> Login",
+            cfg!(feature = "diagram-usecase"),
+        ),
+    ] {
+        let capability = merman_core::diagram_family_capabilities()
+            .iter()
+            .find(|fact| fact.logical_family_kind == family)
+            .unwrap();
+        assert!(capability.has_detector && capability.has_header);
+        assert_eq!(capability.has_semantic_parser, enabled, "{family}");
+        assert_eq!(
+            capability.has_render_parser,
+            enabled && cfg!(feature = "presentation"),
+            "{family}"
+        );
+        let result = parser.parse_diagram_sync(source);
+        if enabled {
+            let parsed = result.unwrap();
+            assert_eq!(
+                merman_core::diagram_type_family_kind(&parsed.metadata.diagram_type),
+                Some(family)
+            );
+        } else {
+            assert!(
+                matches!(result, Err(Error::UnsupportedDiagram { .. })),
+                "{family}"
+            );
+        }
+    }
+}
+
+#[test]
+fn canonical_unavailable_and_unknown_input_preserve_outer_cancellation() {
+    let parser = SemanticParser::new();
+    assert!(matches!(
+        parser.parse_diagram_sync("not-a-mermaid-diagram"),
+        Err(Error::DetectType(_))
+    ));
+    let control = merman_core::OperationControl::new();
+    control.cancel();
+    for source in [
+        "sequenceDiagram\nAlice->>Bob: Hello",
+        "not-a-mermaid-diagram",
+    ] {
+        let cancelled = parser
+            .parse_diagram_controlled_sync(source, &control)
+            .unwrap_err();
+        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
     }
 }

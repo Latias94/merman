@@ -3,7 +3,7 @@ use serde_json::json;
 
 #[test]
 fn parse_cynefin_domains_transitions_and_editor_facts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"cynefin-beta
   title Team Practices
   accTitle: Cynefin for team practices
@@ -88,7 +88,7 @@ fn parse_cynefin_domains_transitions_and_editor_facts() {
 
 #[test]
 fn parse_cynefin_accepts_colon_header_comments_single_quotes_and_escapes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "cynefin-beta:\n  %% comment\n  clear\n    'Known \\'good\\' practice %% kept'\n  clear --> chaotic %% transition comment\n";
     let parsed = engine
         .parse_diagram_sync(text, ParseOptions::strict())
@@ -112,7 +112,7 @@ fn parse_cynefin_accepts_colon_header_comments_single_quotes_and_escapes() {
 
 #[test]
 fn parse_cynefin_accepts_header_domains_and_items_on_the_same_line() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"cynefin-beta complex "A" "B" complicated "C"
 complicated --> clear : "Standardize""#;
     let parsed = engine
@@ -161,7 +161,7 @@ complicated --> clear : "Standardize""#;
 
 #[test]
 fn parse_cynefin_accepts_multiline_accessibility_directive_after_inline_header() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"cynefin-beta accDescr {
   Inline header description
 }
@@ -178,7 +178,7 @@ complex "A""#;
 
 #[test]
 fn parse_cynefin_unescapes_common_strings_like_langium() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_sync(
             r#"cynefin-beta
@@ -203,7 +203,7 @@ fn parse_cynefin_unescapes_common_strings_like_langium() {
 
 #[test]
 fn parse_cynefin_transition_labels_follow_javascript_truthiness() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_sync(
             "cynefin-beta\n  complex\n  complicated\n  clear\n  complex --> complicated : \"\"\n  complicated --> clear : \"   \"\n",
@@ -218,7 +218,7 @@ fn parse_cynefin_transition_labels_follow_javascript_truthiness() {
 
 #[test]
 fn parse_cynefin_normalizes_common_fields_and_multiline_acc_descr() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_snapshot_sync(
             "cynefin-beta\n  title    Team\t\tPractices   Map  \n  accTitle:   Team\t\tMap  \n  accDescr {\n    First    line\n\n      Second\t\tline   \n  }\n  clear\n",
@@ -259,7 +259,7 @@ fn parse_cynefin_normalizes_common_fields_and_multiline_acc_descr() {
 
 #[test]
 fn parse_cynefin_duplicate_domain_replaces_prior_items_like_upstream_map_set() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_sync(
             "cynefin-beta\n  complex\n    \"Old\"\n  complex\n    \"New\"\n",
@@ -283,7 +283,7 @@ fn parse_cynefin_duplicate_domain_replaces_prior_items_like_upstream_map_set() {
 
 #[test]
 fn parse_cynefin_render_model_uses_typed_model() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync("cynefin-beta\n  complex\n", ParseOptions::strict())
         .unwrap()

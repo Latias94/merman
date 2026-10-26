@@ -8,8 +8,8 @@ use super::metrics::{
 use crate::Result;
 use crate::model::LayoutNode;
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceMessage;
+use merman_core::presentation::PresentationConfig;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,7 +30,7 @@ pub(super) struct SequenceNoteHorizontalContext<'a> {
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) note_text_style: &'a TextStyle,
-    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_config: &'a PresentationConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_index: usize,
@@ -249,7 +249,7 @@ pub(super) struct SequenceNoteLayoutContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) note_text_style: &'a TextStyle,
     pub(super) note_terminal_text_style: &'a TextStyle,
-    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_config: &'a PresentationConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_index: usize,
@@ -360,8 +360,8 @@ mod tests {
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::MermaidConfig;
     use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
+    use merman_core::presentation::PresentationConfig;
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -452,12 +452,12 @@ mod tests {
                 wrap_padding: 10.0,
                 measurer: &FontSizeMeasurer,
                 note_text_style: &note_style,
-                math_config: &MermaidConfig::default(),
+                math_config: &PresentationConfig::default(),
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &note_style,
                     foreground: "#333",
                     foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &math_sidecar,
                 message_index: 0,
@@ -553,12 +553,12 @@ mod tests {
                 wrap_padding: 10.0,
                 measurer: &CharacterWidthMeasurer,
                 note_text_style: &style,
-                math_config: &MermaidConfig::default(),
+                math_config: &PresentationConfig::default(),
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &style,
                     foreground: "#333",
                     foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &store,
                 message_index: 3,
@@ -602,12 +602,12 @@ mod tests {
                 wrap_padding: 10.0,
                 measurer: &CharacterWidthMeasurer,
                 note_text_style: &style,
-                math_config: &MermaidConfig::default(),
+                math_config: &PresentationConfig::default(),
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &style,
                     foreground: "#333",
                     foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &store,
                 message_index: 7,

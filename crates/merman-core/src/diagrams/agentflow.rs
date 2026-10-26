@@ -4,17 +4,29 @@
 //! syntax borrows Flowchart's node and edge spelling, while the meaning of shapes, containers,
 //! metadata, and the three edge operators is domain specific.
 
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorFamilySemantics, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan, family,
+    EditorSemanticSymbol,
 };
+use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
+#[cfg(feature = "presentation")]
+use crate::{PresentationMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 mod presentation;
-pub use presentation::AgentflowPresentation;
+pub use presentation::{AgentflowAuthoredStyles, AgentflowEdgeAttributes, AgentflowNodeAttributes};
+#[cfg(feature = "presentation")]
+mod render_model;
+#[cfg(feature = "presentation")]
+pub use render_model::{
+    AgentflowDiagramRenderModel, AgentflowRenderLabelSources, AgentflowVisuals,
+};
 
 /// Semantic kind derived from the authored shape or declaration keyword.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +42,7 @@ pub enum AgentflowVertexKind {
 }
 
 impl AgentflowVertexKind {
+    #[cfg(feature = "presentation")]
     fn css_class(self) -> &'static str {
         match self {
             Self::Tool => "af-kind-tool",
@@ -136,13 +149,13 @@ pub struct AgentflowDiagnosticPosition {
     pub end_index: usize,
 }
 
-/// Typed data consumed by the Agentflow renderer and projected to Mermaid-compatible JSON.
+/// Authored Agentflow graph, including CSS, links, and label interpretation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AgentflowDiagramRenderModel {
-    /// Presentation state is retained for rendering and omitted by the semantic JSON projection.
+pub struct AgentflowDiagramModel {
+    /// Source-ordered style, interaction, and label facts; no computed DOM identifiers.
     #[serde(default)]
-    pub presentation: AgentflowPresentation,
+    pub authored: AgentflowAuthoredStyles,
     pub direction: String,
     #[serde(default)]
     pub diagnostics: Vec<AgentflowDiagnostic>,
@@ -164,185 +177,15 @@ pub struct AgentflowDiagramRenderModel {
     pub acc_descr: Option<String>,
 }
 
-impl AgentflowDiagramRenderModel {
+impl AgentflowDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
+}
 
-    /// Projects the domain graph into the shared flow layout model.
-    ///
-    /// Agentflow owns its semantic JSON and diagnostics, while Mermaid 12 uses the unified
-    /// flow renderer for node geometry and ELK/Dagre routing. Keeping this adapter explicit
-    /// prevents the compatibility model from silently acquiring Flowchart-only fields.
-    pub fn to_flowchart_model(
-        &self,
-    ) -> (
-        crate::diagrams::flowchart::FlowchartModel,
-        crate::diagrams::flowchart::FlowchartRenderContext,
-    ) {
-        use crate::diagrams::flowchart::{
-            FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowSubgraph,
-            FlowchartModel, FlowchartRenderContext,
-        };
-        let nodes = self
-            .vertices
-            .iter()
-            .map(|node| {
-                flow_node(
-                    &node.id,
-                    node.label.clone(),
-                    normalized_render_shape(node.shape.as_deref()),
-                    node.vertex_kind,
-                )
-            })
-            .chain(self.connectors.iter().map(|connector| {
-                flow_node(
-                    &connector.id,
-                    Some(
-                        connector
-                            .title
-                            .clone()
-                            .unwrap_or_else(|| connector.id.clone()),
-                    ),
-                    "roundedRect",
-                    AgentflowVertexKind::Connector,
-                )
-            }))
-            .collect();
-        let edges = self
-            .edges
-            .iter()
-            .enumerate()
-            .map(|(index, edge)| {
-                let (arrow, end_marker, stroke_kind) = match edge.edge_semantic {
-                    AgentflowEdgeSemantic::Sequence => {
-                        ("-->", FlowEdgeMarker::Point, FlowEdgeStroke::Normal)
-                    }
-                    AgentflowEdgeSemantic::Reference => {
-                        ("-.-", FlowEdgeMarker::None, FlowEdgeStroke::Dotted)
-                    }
-                    AgentflowEdgeSemantic::Failure => {
-                        ("--x", FlowEdgeMarker::Cross, FlowEdgeStroke::Normal)
-                    }
-                };
-                FlowEdge {
-                    id: edge.id.clone().unwrap_or_else(|| format!("edge-{index}")),
-                    from: edge.start.clone(),
-                    to: edge.end.clone(),
-                    label: edge.label.clone(),
-                    label_type: None,
-                    edge_type: Some(edge.edge_type.clone()),
-                    arrow: arrow.into(),
-                    start_marker: FlowEdgeMarker::None,
-                    end_marker,
-                    is_user_defined_id: edge.is_user_defined_id,
-                    stroke: Some(edge.stroke.clone()),
-                    stroke_kind,
-                    visibility: FlowEdgeVisibility::Visible,
-                    interpolate: None,
-                    classes: Vec::new(),
-                    style: Vec::new(),
-                    animate: None,
-                    animation: None,
-                    length: edge.length.max(1),
-                }
-            })
-            .collect();
-        let containment = self.containment();
-        let subgraphs = self
-            .sub_graphs
-            .iter()
-            .map(|graph| FlowSubgraph {
-                id: graph.id.clone(),
-                title: graph.title.clone().unwrap_or_default(),
-                dir: graph.direction.clone(),
-                has_explicit_dir: graph.direction.is_some(),
-                label_type: None,
-                classes: Vec::new(),
-                styles: Vec::new(),
-                nodes: graph
-                    .nodes
-                    .iter()
-                    .filter(|child| {
-                        // Hidden containers never enter Agentflow's parent database. Project only
-                        // admitted parent assignments so a backend cannot recreate a hidden parent.
-                        containment.parents.get(child.as_str()).copied() == Some(graph.id.as_str())
-                    })
-                    .cloned()
-                    .collect(),
-                metadata: (!graph.metadata.is_empty())
-                    .then(|| Value::Object(graph.metadata.clone())),
-            })
-            .collect();
-        let mut model = FlowchartModel {
-            keyword: "agentflow-beta".into(),
-            direction: Some(self.direction.clone()),
-            acc_title: self.acc_title.clone(),
-            acc_descr: self.acc_descr.clone(),
-            class_defs: Default::default(),
-            edge_defaults: None,
-            vertex_calls: Vec::new(),
-            nodes,
-            edges,
-            subgraphs,
-            tooltips: Default::default(),
-            warning_facts: Vec::new(),
-        };
-        self.presentation.apply_to_flowchart(&mut model);
-        let collapsed = self
-            .sub_graphs
-            .iter()
-            .filter(|graph| graph.metadata.get("view").and_then(Value::as_str) == Some("collapsed"))
-            .map(|graph| graph.id.clone())
-            .collect();
-        let mut context = FlowchartRenderContext::new(
-            Default::default(),
-            Default::default(),
-            collapsed,
-            &model.subgraphs,
-        );
-        context.set_node_dom_indices(
-            self.presentation
-                .nodes
-                .iter()
-                .filter_map(|(id, node)| node.dom_index.map(|index| (id.clone(), index))),
-        );
-        context.set_collapsed_replacements(
-            containment
-                .collapsed_replacements
-                .iter()
-                .map(|(id, ancestor)| ((*id).to_string(), (*ancestor).to_string())),
-        );
-        context.set_subgraph_color_ordinals(containment.color_ordinals(&self.sub_graphs));
-        model.edges = self
-            .edges
-            .iter()
-            .zip(model.edges)
-            .filter_map(|(source, mut edge)| {
-                let (from, to) = containment.rendered_edge_endpoints(source)?;
-                if edge.from != from {
-                    from.clone_into(&mut edge.from);
-                }
-                if edge.to != to {
-                    to.clone_into(&mut edge.to);
-                }
-                Some(edge)
-            })
-            .collect();
-        (model, context)
-    }
-
-    /// Borrows the exact labels and kinds selected by the concrete Flowchart adapter.
-    #[doc(hidden)]
-    pub fn render_label_sources(&self) -> AgentflowRenderLabelSources<'_> {
-        AgentflowRenderLabelSources {
-            model: self,
-            containment: self.containment(),
-        }
-    }
-
+impl AgentflowDiagramModel {
     // Mirror agentflowDb.getData: resolve collapse first, then admit parents in reverse
     // completion order. Keep the authored membership in the semantic model unchanged.
     fn containment(&self) -> AgentflowContainment<'_> {
@@ -410,63 +253,8 @@ struct AgentflowContainment<'a> {
     diagnostics: Vec<AgentflowDiagnostic>,
 }
 
-/// Operation-local label view; canonical labels are never copied for typography admission.
-#[doc(hidden)]
-pub struct AgentflowRenderLabelSources<'a> {
-    model: &'a AgentflowDiagramRenderModel,
-    containment: AgentflowContainment<'a>,
-}
-
-impl AgentflowRenderLabelSources<'_> {
-    pub fn node_labels(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
-        self.model
-            .vertices
-            .iter()
-            .map(|node| {
-                (
-                    node.label.as_deref().unwrap_or(&node.id),
-                    self.model.presentation.node_label_type(&node.id),
-                )
-            })
-            .chain(self.model.connectors.iter().map(|node| {
-                (
-                    node.title.as_deref().unwrap_or(&node.id),
-                    self.model.presentation.node_label_type(&node.id),
-                )
-            }))
-    }
-
-    pub fn edge_labels(&self) -> impl Iterator<Item = Option<(&str, Option<&str>)>> {
-        self.model.edges.iter().enumerate().map(|(index, edge)| {
-            self.containment.rendered_edge_endpoints(edge)?;
-            let label = edge.label.as_deref()?;
-            let generated;
-            let id = match edge.id.as_deref() {
-                Some(id) => id,
-                None => {
-                    generated = format!("edge-{index}");
-                    &generated
-                }
-            };
-            Some((label, self.model.presentation.edge_label_type(id)))
-        })
-    }
-
-    pub fn subgraph_labels(&self) -> impl Iterator<Item = (&str, Option<&str>)> {
-        self.model.sub_graphs.iter().map(|graph| {
-            (
-                graph.title.as_deref().unwrap_or_default(),
-                self.model
-                    .presentation
-                    .subgraph_label_types
-                    .get(&graph.id)
-                    .map(String::as_str),
-            )
-        })
-    }
-}
-
 impl<'a> AgentflowContainment<'a> {
+    #[cfg(feature = "presentation")]
     fn rendered_edge_endpoints(&self, edge: &'a AgentflowEdge) -> Option<(&'a str, &'a str)> {
         let from = self
             .collapsed_replacements
@@ -481,6 +269,7 @@ impl<'a> AgentflowContainment<'a> {
         (edge.start == edge.end || from != to).then_some((from, to))
     }
 
+    #[cfg(feature = "presentation")]
     fn color_ordinals(&self, graphs: &[AgentflowSubGraph]) -> Vec<(String, usize)> {
         let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
         for graph in graphs {
@@ -515,34 +304,6 @@ impl<'a> AgentflowContainment<'a> {
     }
 }
 
-fn flow_node(
-    id: &str,
-    label: Option<String>,
-    shape: &str,
-    kind: AgentflowVertexKind,
-) -> crate::diagrams::flowchart::FlowNode {
-    crate::diagrams::flowchart::FlowNode {
-        id: id.to_string(),
-        provenance: Default::default(),
-        label,
-        label_type: None,
-        layout_shape: Some(shape.to_string()),
-        shape: Some(shape.to_string()),
-        icon: None,
-        form: None,
-        pos: None,
-        img: None,
-        constraint: None,
-        asset_width: None,
-        asset_height: None,
-        classes: vec![kind.css_class().into()],
-        styles: Vec::new(),
-        link: None,
-        link_target: None,
-        have_callback: false,
-    }
-}
-
 #[derive(Debug)]
 enum ParseFailure {
     Syntax { message: String, span: SourceSpan },
@@ -550,8 +311,16 @@ enum ParseFailure {
 }
 
 struct Construction {
-    model: AgentflowDiagramRenderModel,
-    editor_facts: EditorSemanticFacts,
+    model: AgentflowDiagramModel,
+    #[cfg(feature = "presentation")]
+    visuals: Option<AgentflowVisuals>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[derive(Debug, Clone, Default)]
@@ -567,47 +336,128 @@ struct Context {
 }
 
 /// Parse the compatibility JSON path used by the public Mermaid facade.
-pub(crate) fn parse_agentflow(code: &str, meta: &ParseMetadata) -> Result<Value> {
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_agentflow(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_agentflow_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_agentflow_with_warning_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<family::WarningSemanticParse> {
     let control = OperationControl::new();
-    let construction = construct(code, meta, &control)
-        .expect("a private operation control cannot be cancelled")
-        .map_err(family::CombinedSemanticFailure::into_error)?;
+    let construction = construct_source(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        false,
+        &control,
+    )
+    .expect("a private operation control cannot be cancelled")
+    .map_err(family::CombinedSemanticFailure::into_error)?;
     Ok(family::WarningSemanticParse::new(
-        render_model_to_compat_json(&construction.model, meta)?,
+        semantic_model_to_compat_json(&construction.model, &meta.diagram_type)?,
         construction.model.warning_facts,
     ))
 }
 
-pub(crate) fn parse_agentflow_model_for_render_controlled(
+pub(crate) fn parse_agentflow_semantic_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<AgentflowDiagramRenderModel>> {
-    Ok(construct(code, meta, control)?
-        .map(|construction| construction.model)
-        .map_err(family::CombinedSemanticFailure::into_error))
+) -> OperationControlResult<SemanticConstruction<AgentflowDiagramModel>> {
+    let construction = construct_source(
+        code,
+        &meta.diagram_type,
+        &meta.semantic_config,
+        meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        #[cfg(feature = "presentation")]
+        false,
+        control,
+    )?;
+    Ok(match construction {
+        Ok(construction) => {
+            let mut model = construction.model;
+            model.sanitize_common_db_fields(&meta.semantic_config);
+            SemanticConstruction {
+                model: Ok(model),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: construction.editor_facts,
+            }
+        }
+        #[cfg(feature = "editor-facts")]
+        Err(failure) if editor_demand.needs_recovery() => {
+            let (error, editor_facts) = failure.into_parts();
+            SemanticConstruction {
+                model: Err(error),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: Some(editor_facts),
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err(failure.into_error()),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: None,
+        },
+    })
 }
 
+#[cfg(feature = "presentation")]
+pub(crate) fn parse_agentflow_model_for_render_controlled(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<AgentflowDiagramRenderModel>> {
+    Ok(construct_source(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        true,
+        control,
+    )?
+    .map(|construction| AgentflowDiagramRenderModel {
+        model: construction.model,
+        visuals: construction
+            .visuals
+            .expect("full rendering requests DOM indices"),
+    })
+    .map_err(family::CombinedSemanticFailure::into_error))
+}
+
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_agentflow_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<family::CombinedSemanticParse> {
-    let construction = construct(code, meta, control)?;
+    let construction = construct_source(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        meta.title.as_deref(),
+        EditorFactsDemand::Capture,
+        false,
+        control,
+    )?;
     Ok(
         family::CombinedSemanticParse::from_construction_with_warning_facts(
             construction,
             |construction| {
                 (
-                    render_model_to_compat_json(&construction.model, meta),
-                    construction.editor_facts,
+                    semantic_model_to_compat_json(&construction.model, &meta.diagram_type),
+                    construction
+                        .editor_facts
+                        .expect("Agentflow combined parse requests editor facts"),
                     construction.model.warning_facts,
                 )
             },
@@ -616,17 +466,56 @@ pub(crate) fn parse_agentflow_json_and_editor_facts(
     )
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &AgentflowDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
-    let mut value = serde_json::to_value(model).map_err(|error| {
-        Error::diagram_parse_fallback(meta.diagram_type.clone(), error.to_string())
-    })?;
+    semantic_model_to_compat_json(&model.model, &meta.diagram_type)
+}
+
+#[cfg(feature = "compat-json")]
+fn semantic_model_to_compat_json(
+    model: &AgentflowDiagramModel,
+    diagram_type: &str,
+) -> Result<Value> {
+    // Keep the established preserve_order removals without serializing discarded facts.
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Compatibility<'a> {
+        presentation: (),
+        direction: &'a str,
+        diagnostics: &'a [AgentflowDiagnostic],
+        warning_facts: (),
+        vertices: &'a [AgentflowNode],
+        edges: &'a [AgentflowEdge],
+        sub_graphs: &'a [AgentflowSubGraph],
+        connectors: &'a [AgentflowConnector],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<&'a str>,
+        #[serde(rename = "accTitle", skip_serializing_if = "Option::is_none")]
+        acc_title: Option<&'a str>,
+        #[serde(rename = "accDescr", skip_serializing_if = "Option::is_none")]
+        acc_descr: Option<&'a str>,
+    }
+    let mut value = serde_json::to_value(Compatibility {
+        presentation: (),
+        direction: &model.direction,
+        diagnostics: &model.diagnostics,
+        warning_facts: (),
+        vertices: &model.vertices,
+        edges: &model.edges,
+        sub_graphs: &model.sub_graphs,
+        connectors: &model.connectors,
+        title: model.title.as_deref(),
+        acc_title: model.acc_title.as_deref(),
+        acc_descr: model.acc_descr.as_deref(),
+    })
+    .map_err(|error| Error::diagram_parse_fallback(diagram_type.to_string(), error.to_string()))?;
     if let Some(root) = value.as_object_mut() {
         root.remove("presentation");
         root.remove("warningFacts");
-        root.insert("type".into(), Value::String(meta.diagram_type.clone()));
+        root.insert("type".into(), Value::String(diagram_type.to_string()));
         for collection in ["vertices", "subGraphs", "connectors"] {
             if let Some(items) = root.get_mut(collection).and_then(Value::as_array_mut) {
                 for item in items {
@@ -663,39 +552,88 @@ pub(crate) fn render_model_to_compat_json(
     Ok(value)
 }
 
-fn construct(
+fn construct_source(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    config: &crate::MermaidConfig,
+    title: Option<&str>,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    #[cfg(feature = "presentation")] capture_visuals: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     control.checkpoint()?;
-    let mut parser = Parser::new(code, meta, control);
+    #[cfg(test)]
+    AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+    let mut parser = Parser::new(
+        code,
+        config,
+        title,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        #[cfg(feature = "presentation")]
+        capture_visuals,
+        control,
+    );
     let result = parser.parse()?;
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
+    {
+        parser.facts = editor_demand.finish_facts(parser.facts);
+    }
     match result {
         Ok(model) => Ok(Ok(Construction {
             model,
+            #[cfg(feature = "presentation")]
+            visuals: parser.visuals,
+            #[cfg(feature = "editor-facts")]
             editor_facts: parser.facts,
         })),
         Err(ParseFailure::Cancelled(cancelled)) => Err(cancelled),
         Err(ParseFailure::Syntax { message, span }) => {
-            let mut facts = parser.facts;
-            facts.mark_recovered_from_parse_error(message.clone(), Some(span));
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = &mut parser.facts {
+                facts.mark_recovered_from_parse_error(message.clone(), Some(span));
+            }
             Ok(Err(family::CombinedSemanticFailure::new(
-                Error::diagram_parse_exact(meta.diagram_type.clone(), message, span),
-                facts,
+                Error::diagram_parse_exact(diagram_type.to_string(), message, span),
+                #[cfg(feature = "editor-facts")]
+                parser.facts,
             )))
         }
     }
 }
 
+#[cfg(all(test, feature = "compat-json"))]
+fn construct(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
+    construct_source(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        meta.title.as_deref(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Capture,
+        false,
+        control,
+    )
+}
+
 struct Parser<'a> {
     source: &'a str,
-    meta: &'a ParseMetadata,
+    config: &'a crate::MermaidConfig,
+    title: Option<&'a str>,
     control: &'a OperationControl,
-    facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    facts: Option<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
     declared_entities: HashSet<String>,
-    presentation: AgentflowPresentation,
+    authored: AgentflowAuthoredStyles,
+    #[cfg(feature = "presentation")]
+    visuals: Option<AgentflowVisuals>,
+    #[cfg(feature = "presentation")]
     vertex_counter: usize,
     diagnostic_spans: HashMap<String, SourceSpan>,
     direction: String,
@@ -716,16 +654,35 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(source: &'a str, meta: &'a ParseMetadata, control: &'a OperationControl) -> Self {
-        let mut facts = EditorSemanticFacts::new();
-        facts.family_semantics = EditorFamilySemantics::new(EditorSemanticKind::Object);
+    fn new(
+        source: &'a str,
+        config: &'a crate::MermaidConfig,
+        title: Option<&'a str>,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+        #[cfg(feature = "presentation")] capture_visuals: bool,
+        control: &'a OperationControl,
+    ) -> Self {
+        #[cfg(feature = "editor-facts")]
+        let facts = (editor_demand == EditorFactsDemand::Capture).then(|| {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            let mut facts = EditorSemanticFacts::new();
+            facts.family_semantics = EditorFamilySemantics::new(EditorSemanticKind::Object);
+            facts
+        });
         Self {
             source,
-            meta,
+            config,
+            title,
             control,
+            #[cfg(feature = "editor-facts")]
             facts,
+            #[cfg(feature = "editor-facts")]
             declared_entities: HashSet::new(),
-            presentation: AgentflowPresentation::default(),
+            authored: AgentflowAuthoredStyles::default(),
+            #[cfg(feature = "presentation")]
+            visuals: capture_visuals.then(AgentflowVisuals::default),
+            #[cfg(feature = "presentation")]
             vertex_counter: 0,
             diagnostic_spans: HashMap::new(),
             direction: "TB".to_string(),
@@ -748,8 +705,7 @@ impl<'a> Parser<'a> {
 
     fn parse(
         &mut self,
-    ) -> OperationControlResult<std::result::Result<AgentflowDiagramRenderModel, ParseFailure>>
-    {
+    ) -> OperationControlResult<std::result::Result<AgentflowDiagramModel, ParseFailure>> {
         let Some((header_start, header)) = first_content_line(self.source) else {
             return Ok(Err(self.failure(
                 "expected agentflow-beta header",
@@ -791,11 +747,13 @@ impl<'a> Parser<'a> {
                 SourceSpan::new(header_start, header_start + header.len()),
             )));
         }
-        self.facts
-            .push_expected_syntax(crate::EditorExpectedSyntax::new(
+        #[cfg(feature = "editor-facts")]
+        if let Some(facts) = &mut self.facts {
+            facts.push_expected_syntax(crate::EditorExpectedSyntax::new(
                 crate::EditorExpectedSyntaxKind::NodeIdentifier,
                 SourceSpan::new(header_start, header_start + header.len()),
             ));
+        }
 
         for (line_start, line) in split_top_level(self.source, b";\n") {
             self.control.checkpoint()?;
@@ -892,12 +850,14 @@ impl<'a> Parser<'a> {
                     ) {
                         Ok(Declaration {
                             id,
+                            #[cfg(feature = "editor-facts")]
                             id_span,
                             label: title,
                             label_type,
                             metadata,
                             ..
                         }) => {
+                            #[cfg(feature = "editor-facts")]
                             self.push_symbol(&id, EditorSemanticKind::Namespace, id_span, false);
                             (Some(id), title, label_type.or(Some("text")), metadata)
                         }
@@ -942,9 +902,11 @@ impl<'a> Parser<'a> {
                             parent_id: None,
                         };
                     }
-                    self.presentation
-                        .nodes
-                        .insert(id.clone(), Default::default());
+                    self.authored.nodes.insert(id.clone(), Default::default());
+                    #[cfg(feature = "presentation")]
+                    if let Some(visuals) = &mut self.visuals {
+                        visuals.node_dom_indices.remove(&id);
+                    }
                     self.record_vertex_call(&id);
                 }
                 let title = declaration.label.filter(|title| !title.is_empty());
@@ -972,6 +934,7 @@ impl<'a> Parser<'a> {
                 self.diagnostic_spans
                     .entry(id.clone())
                     .or_insert_with(|| span_of(line_start, line, trimmed));
+                #[cfg(feature = "editor-facts")]
                 self.push_symbol(&id, EditorSemanticKind::Object, id_span, false);
                 continue;
             }
@@ -1004,31 +967,30 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let mut model = AgentflowDiagramRenderModel {
-            presentation: self.presentation.clone(),
+        let diagnostics = self
+            .nodes
+            .iter()
+            .filter(|node| !self.sub_graph_index.contains_key(&node.id))
+            .filter_map(shape_diagnostic)
+            .collect();
+        let mut model = AgentflowDiagramModel {
+            authored: std::mem::take(&mut self.authored),
             warning_facts: Vec::new(),
-            direction: self.direction.clone(),
-            diagnostics: self
-                .nodes
-                .iter()
-                .filter(|node| !self.sub_graph_index.contains_key(&node.id))
-                .filter_map(shape_diagnostic)
-                .collect(),
-            vertices: self
-                .nodes
-                .iter()
+            direction: std::mem::take(&mut self.direction),
+            diagnostics,
+            vertices: std::mem::take(&mut self.nodes)
+                .into_iter()
                 .filter(|node| {
                     !self.sub_graph_index.contains_key(&node.id)
                         && !self.connector_index.contains_key(&node.id)
                 })
-                .cloned()
                 .collect(),
-            edges: self.edges.clone(),
-            sub_graphs: self.sub_graphs.clone(),
-            connectors: self.connectors.clone(),
-            title: self.meta.title.clone(),
-            acc_title: self.acc_title.clone(),
-            acc_descr: self.acc_descr.clone(),
+            edges: std::mem::take(&mut self.edges),
+            sub_graphs: std::mem::take(&mut self.sub_graphs),
+            connectors: std::mem::take(&mut self.connectors),
+            title: self.title.map(str::to_string),
+            acc_title: self.acc_title.take(),
+            acc_descr: self.acc_descr.take(),
         };
         model.diagnostics.extend(model.containment().diagnostics);
         for diagnostic in &mut model.diagnostics {
@@ -1069,7 +1031,7 @@ impl<'a> Parser<'a> {
         statement: &str,
         line_start: usize,
         line: &str,
-        reference: bool,
+        #[cfg(feature = "editor-facts")] reference: bool,
     ) -> std::result::Result<(String, bool), ParseFailure> {
         let declaration = parse_declaration(statement, line_start, line, self.control)?;
         let id = declaration.id.clone();
@@ -1120,25 +1082,30 @@ impl<'a> Parser<'a> {
             && let Some(&index) = self.sub_graph_index.get(&id)
         {
             self.sub_graphs[index].metadata.extend(declaration.metadata);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Namespace, id_span, true);
         } else if declaration.metadata_span.is_some()
             && let Some(&index) = self.connector_index.get(&id)
         {
             self.connectors[index].metadata.extend(declaration.metadata);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Object, id_span, true);
         } else if let Some(edge) = self
             .edges
             .iter_mut()
             .find(|edge| edge.id.as_deref() == Some(&id))
         {
-            self.presentation
+            self.authored
                 .attach_edge_metadata(&id, &declaration.metadata);
             edge.metadata.extend(declaration.metadata);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Object, id_span, true);
         } else {
             declaration.validate_shape()?;
+            #[cfg(feature = "editor-facts")]
             let reference = reference && self.declared_entities.contains(&id);
             self.upsert_node(declaration);
+            #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Object, id_span, reference);
         }
         if let Some(class) = class {
@@ -1218,7 +1185,13 @@ impl<'a> Parser<'a> {
                 self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
             }
             let start = source_start + offset;
-            let (id, metadata_call) = self.parse_node(endpoint, start, endpoint, reference)?;
+            let (id, metadata_call) = self.parse_node(
+                endpoint,
+                start,
+                endpoint,
+                #[cfg(feature = "editor-facts")]
+                reference,
+            )?;
             if let Some(previous) = pending_metadata.take() {
                 self.record_vertex_call(&previous);
             }
@@ -1251,8 +1224,7 @@ impl<'a> Parser<'a> {
             self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
         }
         let limit = self
-            .meta
-            .effective_config
+            .config
             .as_value()
             .get("maxEdges")
             .and_then(Value::as_f64)
@@ -1281,7 +1253,7 @@ impl<'a> Parser<'a> {
             let counter = if count == 0 { 0 } else { count + 1 };
             edge.id = Some(format!("L_{}_{}_{counter}", edge.start, edge.end));
         }
-        self.presentation.add_edge(
+        self.authored.add_edge(
             edge.id.as_deref().expect("edge id is assigned above"),
             label_type,
         );
@@ -1289,14 +1261,15 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn record_vertex_call(&mut self, id: &str) {
-        self.presentation
-            .nodes
-            .entry(id.to_string())
-            .or_default()
-            .dom_index
-            .get_or_insert(self.vertex_counter);
-        self.vertex_counter += 1;
+    fn record_vertex_call(&mut self, _id: &str) {
+        #[cfg(feature = "presentation")]
+        if let Some(visuals) = &mut self.visuals {
+            visuals
+                .node_dom_indices
+                .entry(_id.to_string())
+                .or_insert(self.vertex_counter);
+            self.vertex_counter += 1;
+        }
     }
 
     fn upsert_node(&mut self, declaration: Declaration) -> usize {
@@ -1308,7 +1281,7 @@ impl<'a> Parser<'a> {
             metadata,
             ..
         } = declaration;
-        let presentation = self.presentation.nodes.entry(id.clone()).or_default();
+        let presentation = self.authored.nodes.entry(id.clone()).or_default();
         if label.is_some() {
             presentation.label_type = label_type.map(str::to_owned);
         }
@@ -1404,8 +1377,7 @@ impl<'a> Parser<'a> {
             .collect();
         self.owned_nodes.extend(nodes.iter().cloned());
         let direction = context.direction.or_else(|| {
-            self.meta
-                .effective_config
+            self.config
                 .as_value()
                 .pointer("/flowchart/inheritDir")
                 .and_then(Value::as_bool)
@@ -1414,7 +1386,7 @@ impl<'a> Parser<'a> {
         });
         let title = context.title.unwrap_or_default();
         // Duplicate containers retain the label type from their first declaration.
-        self.presentation
+        self.authored
             .subgraph_label_types
             .entry(id.clone())
             .or_insert_with(|| context.label_type.unwrap_or("text").to_string());
@@ -1467,6 +1439,7 @@ impl<'a> Parser<'a> {
         index
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_symbol(
         &mut self,
         id: &str,
@@ -1474,6 +1447,9 @@ impl<'a> Parser<'a> {
         span: SourceSpan,
         reference: bool,
     ) {
+        let Some(facts) = &mut self.facts else {
+            return;
+        };
         if !reference {
             self.declared_entities.insert(id.to_string());
         }
@@ -1482,8 +1458,7 @@ impl<'a> Parser<'a> {
         } else {
             EditorSemanticSymbol::new(id, None, kind, span, span)
         };
-        self.facts
-            .push_symbol(symbol.with_rename_policy(EditorRenamePolicy::AgentflowNodeId));
+        facts.push_symbol(symbol.with_rename_policy(EditorRenamePolicy::AgentflowNodeId));
     }
 
     fn failure(&self, message: impl Into<String>, span: SourceSpan) -> ParseFailure {
@@ -1593,6 +1568,7 @@ const ALLOWED_SHAPES: &[&str] = &[
     "collapsedGroup",
 ];
 
+#[cfg(feature = "presentation")]
 fn normalized_render_shape(shape: Option<&str>) -> &str {
     match shape {
         Some(shape) if ALLOWED_SHAPES.contains(&shape) => shape,
@@ -1651,7 +1627,7 @@ fn diagnostic_position(source: &str, span: SourceSpan) -> AgentflowDiagnosticPos
     }
 }
 
-impl AgentflowDiagramRenderModel {
+impl AgentflowDiagramModel {
     pub(crate) fn offset_diagnostic_positions(&mut self, line_offset: usize, column_offset: usize) {
         for diagnostic in &mut self.diagnostics {
             if let Some(position) = &mut diagnostic.position {
@@ -1674,6 +1650,7 @@ impl AgentflowDiagnosticPosition {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn offset_compatibility_diagnostic_positions(
     model: &mut Value,
     line_offset: usize,
@@ -2314,6 +2291,7 @@ fn direction_has_prior_token(value: &str) -> bool {
             .any(|keyword| keyword_with_whitespace(value, keyword))
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
     crate::diagrams::flowchart::is_valid_editor_node_id(candidate)
         && !starts_reserved_identifier(candidate)
@@ -2563,16 +2541,276 @@ fn unquote(value: &str) -> String {
 }
 
 #[cfg(test)]
+mod semantic_tests {
+    use super::*;
+    use serde_json::json;
+
+    const SOURCE: &str = concat!(
+        "agentflow-beta LR\n",
+        "flow team[\"`**Team**`\"]\n",
+        " A[\"`**Task**`\"]@{shape: task, instruction: run} -->|\"`**Call**`\"| B\n",
+        "end\n",
+        "connector api[API]\n",
+        "B -.- api\n",
+        "classDef hot fill:red\n",
+        "class A hot\n",
+        "style A stroke:blue\n",
+        "click A href \"https://example.com\" \"Open\" _blank\n",
+    );
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn canonical_agentflow_capture_retains_success_and_failure_facts() {
+        for (source, valid) in [
+            ("agentflow-beta\nA --> B\n", true),
+            ("agentflow-beta\nA --> B\nC ==> D\n", false),
+        ] {
+            let metadata = crate::SemanticMetadata {
+                diagram_type: "agentflow".to_string(),
+                config: crate::MermaidConfig::empty_object(),
+                semantic_config: crate::MermaidConfig::empty_object(),
+                title: None,
+            };
+            AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            let parsed = parse_agentflow_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass Agentflow facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    fn canonical_agentflow_keeps_authored_facts_without_dom_or_editor_work() {
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(SOURCE)
+            .unwrap();
+        let model = match parsed.model {
+            crate::SemanticDiagramModel::Agentflow(model) => model,
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected Agentflow semantics"),
+        };
+        assert_eq!(model.direction, "LR");
+        assert_eq!(model.vertices[0].id, "A");
+        assert_eq!(model.vertices[0].vertex_kind, AgentflowVertexKind::Task);
+        assert_eq!(model.vertices[0].shape.as_deref(), Some("roundedRect"));
+        assert_eq!(model.vertices[0].metadata["instruction"], "run");
+        assert_eq!(model.vertices[0].parent_id.as_deref(), Some("team"));
+        assert_eq!(
+            model.edges[1].edge_semantic,
+            AgentflowEdgeSemantic::Reference
+        );
+        assert_eq!(model.connectors[0].id, "api");
+        assert_eq!(model.sub_graphs[0].nodes, ["B", "A"]);
+        let authored = serde_json::to_value(&model.authored).unwrap();
+        assert_eq!(authored["nodes"]["A"]["label_type"], "markdown");
+        assert_eq!(
+            authored["nodes"]["A"]["classes"],
+            json!(["hot", "clickable"])
+        );
+        assert_eq!(authored["nodes"]["A"]["styles"], json!(["stroke:blue"]));
+        assert_eq!(authored["nodes"]["A"]["link"], "https://example.com/");
+        assert_eq!(authored["nodes"]["A"]["link_target"], "_blank");
+        assert_eq!(authored["subgraph_label_types"]["team"], "markdown");
+        assert!(
+            authored["nodes"]
+                .as_object()
+                .unwrap()
+                .values()
+                .all(|node| node.get("dom_index").is_none())
+        );
+        assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        #[cfg(feature = "presentation")]
+        {
+            AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
+            let full = crate::MermaidEngine::new()
+                .parse_diagram_for_render_model_with_type_sync(
+                    "agentflow",
+                    SOURCE,
+                    crate::ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let crate::RenderSemanticModel::Agentflow(full) = full.model() else {
+                panic!("expected full Agentflow model");
+            };
+            assert_eq!(
+                serde_json::to_value(&model).unwrap(),
+                serde_json::to_value(&full.model).unwrap()
+            );
+            assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+    }
+
+    #[test]
+    fn canonical_agentflow_preserves_security_limits_diagnostics_and_cancellation() {
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let source = "agentflow-beta\nA((Circle))\nclick A call test(\"one\", two) \"Run\"\n";
+        for (security, expected_callback) in [("strict", false), ("loose", true)] {
+            let parser = crate::SemanticParser::new().with_site_config(
+                crate::MermaidConfig::from_value(json!({"securityLevel": security})),
+            );
+            let parsed = parser.parse_diagram_sync(source).unwrap();
+            let model = match parsed.model {
+                crate::SemanticDiagramModel::Agentflow(model) => model,
+                #[allow(unreachable_patterns)]
+                _ => panic!("expected Agentflow semantics"),
+            };
+            assert_eq!(model.diagnostics[0].id, "SHAPE_REMOVED");
+            assert!(model.diagnostics[0].position.is_some());
+            assert!(model.warning_facts[0].span.is_some());
+            assert_eq!(model.authored.nodes["A"].have_callback, expected_callback);
+        }
+        let source_override = format!("%%{{init: {{securityLevel: 'loose'}}}}%%\n{source}");
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(&source_override)
+            .unwrap();
+        let model = match parsed.model {
+            crate::SemanticDiagramModel::Agentflow(model) => model,
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected Agentflow semantics"),
+        };
+        assert!(!model.authored.nodes["A"].have_callback);
+
+        for source in [
+            "agentflow-beta\nA ==> B\n",
+            "agentflow-beta\nA@{shape: unknown}\n",
+        ] {
+            let error = crate::SemanticParser::new()
+                .parse_diagram_sync(source)
+                .unwrap_err();
+            assert!(matches!(error, Error::DiagramParse { .. }));
+            #[cfg(feature = "compat-json")]
+            assert_eq!(
+                error.to_string(),
+                crate::MermaidEngine::new()
+                    .parse_diagram_sync(source, crate::ParseOptions::strict())
+                    .unwrap_err()
+                    .to_string()
+            );
+        }
+        let error = crate::SemanticParser::new()
+            .with_site_config(crate::MermaidConfig::from_value(json!({"maxEdges": 1})))
+            .parse_diagram_sync("agentflow-beta\nA --> B --> C\n")
+            .unwrap_err();
+        assert!(error.to_string().contains("Edge limit exceeded"));
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let control = OperationControl::new();
+        control.cancel();
+        let error = crate::SemanticParser::new()
+            .parse_diagram_controlled_sync(SOURCE, &control)
+            .unwrap_err();
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn full_agentflow_serialization_keeps_presentation_shape_and_dom_ordinals() {
+        let parsed = crate::MermaidEngine::new()
+            .parse_diagram_for_render_model_with_type_sync(
+                "agentflow",
+                SOURCE,
+                crate::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let crate::RenderSemanticModel::Agentflow(model) = parsed.model() else {
+            panic!("expected full Agentflow model");
+        };
+        let value = serde_json::to_value(model).unwrap();
+        assert!(value.get("authored").is_none());
+        assert!(value.get("model").is_none());
+        assert!(value.get("visuals").is_none());
+        assert_eq!(value["presentation"]["nodes"]["A"]["dom_index"], 0);
+        assert_eq!(
+            value["presentation"]["nodes"]["A"]["label_type"],
+            "markdown"
+        );
+        let roundtrip: AgentflowDiagramRenderModel = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&roundtrip).unwrap(), value);
+        let (flow, context) = roundtrip.to_flowchart_model();
+        let node = flow.nodes.iter().find(|node| node.id == "A").unwrap();
+        assert_eq!(node.classes, ["af-kind-task", "hot", "clickable"]);
+        assert_eq!(node.styles, ["stroke:blue"]);
+        assert_eq!(context.node_dom_index("A"), Some(0));
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn agentflow_observes_editor_facts_only_for_combined_request() {
+        let meta = PresentationMetadata {
+            diagram_type: "agentflow".into(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
+        let json = parse_agentflow(SOURCE, &meta).unwrap();
+        assert!(json.get("authored").is_none());
+        assert!(json.get("presentation").is_none());
+        assert!(json["vertices"][0].get("parentId").is_none());
+        assert_eq!(
+            json["vertices"][0]["metadata"],
+            json!({"instruction": "run"})
+        );
+        assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
+        let combined =
+            parse_agentflow_json_and_editor_facts(SOURCE, &meta, &OperationControl::new()).unwrap();
+        let (combined_model, editor_facts, _) = combined.into_parts();
+        assert_eq!(combined_model.unwrap().as_value(), &json);
+        assert!(editor_facts.symbols.iter().any(|symbol| symbol.name == "A"));
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+        assert_eq!(AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.get(), 1);
+    }
+}
+
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
     use crate::{MermaidConfig, OperationControl};
     use serde_json::json;
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "agentflow".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -2947,15 +3185,23 @@ Group@{labelType: text}
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_edge_endpoints_declare_entities_once_and_preserve_occurrence_spans() {
         use crate::EditorSemanticRole::{Entity, Reference};
 
         let source = "agentflow-beta\nflow Team\nA[Worker]-->B-->A-->A\nend\n";
         let metadata = meta();
         let control = OperationControl::new();
-        let mut parser = Parser::new(source, &metadata, &control);
+        let mut parser = Parser::new(
+            source,
+            metadata.effective_config.as_config(),
+            metadata.title.as_deref(),
+            EditorFactsDemand::Capture,
+            false,
+            &control,
+        );
         parser.parse().unwrap().unwrap();
-        let symbols = &parser.facts.symbols;
+        let symbols = &parser.facts.as_ref().unwrap().symbols;
         assert_eq!(
             symbols
                 .iter()
@@ -2987,15 +3233,23 @@ Group@{labelType: text}
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_container_identifiers_do_not_select_keyword_prefixes_or_duplicate_symbols() {
         use crate::EditorSemanticRole::{Entity, Reference};
 
         let source = "agentflow-beta\nflow f[f]\nconnector c[c]\nc-->f\nend\nf@{view: collapsed}\n";
         let metadata = meta();
         let control = OperationControl::new();
-        let mut parser = Parser::new(source, &metadata, &control);
+        let mut parser = Parser::new(
+            source,
+            metadata.effective_config.as_config(),
+            metadata.title.as_deref(),
+            EditorFactsDemand::Capture,
+            false,
+            &control,
+        );
         parser.parse().unwrap().unwrap();
-        let symbols = &parser.facts.symbols;
+        let symbols = &parser.facts.as_ref().unwrap().symbols;
         assert_eq!(
             symbols
                 .iter()
@@ -3021,15 +3275,23 @@ Group@{labelType: text}
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn editor_presentation_symbols_use_lexer_spans_and_separate_class_definitions() {
         use crate::EditorSemanticRole::{ClassDefinition, Entity, Reference};
 
         let source = "agentflow-beta\nclassDef c fill:red\nstyle s fill:blue\nc-->s\nclass c,c c\nclick c,c \"https://example.com\"\n";
         let metadata = meta();
         let control = OperationControl::new();
-        let mut parser = Parser::new(source, &metadata, &control);
+        let mut parser = Parser::new(
+            source,
+            metadata.effective_config.as_config(),
+            metadata.title.as_deref(),
+            EditorFactsDemand::Capture,
+            false,
+            &control,
+        );
         parser.parse().unwrap().unwrap();
-        let symbols = &parser.facts.symbols;
+        let symbols = &parser.facts.as_ref().unwrap().symbols;
         assert_eq!(
             symbols
                 .iter()
@@ -3245,7 +3507,8 @@ Group@{labelType: text}
     #[test]
     fn endpoint_expansion_obeys_the_secure_edge_limit() {
         let mut meta = meta();
-        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 3}));
+        meta.effective_config =
+            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 3}));
         let result = parse_agentflow_model_for_render_controlled(
             "agentflow-beta\na & b --> c & d",
             &meta,
@@ -3428,7 +3691,7 @@ a --> b
                 .unwrap()
                 .err()
                 .unwrap();
-            let (error, _) = failure.into_parts();
+            let error = failure.into_error();
             assert!(
                 error.to_string().contains("No such shape:"),
                 "{shape}: {error}"
@@ -3437,7 +3700,15 @@ a --> b
         let source = "agentflow-beta\n甲@{ shape: unknown }\n";
         let metadata = meta();
         let control = OperationControl::new();
-        let mut parser = Parser::new(source, &metadata, &control);
+        let mut parser = Parser::new(
+            source,
+            metadata.effective_config.as_config(),
+            metadata.title.as_deref(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            false,
+            &control,
+        );
         let Err(ParseFailure::Syntax { span, .. }) = parser.parse().unwrap() else {
             panic!("unknown shape must fail with a source span");
         };
@@ -3710,8 +3981,9 @@ a --> b
     fn click_callbacks_respect_security_and_directives_reject_unconsumed_content() {
         for (security, callback) in [("strict", false), ("loose", true)] {
             let mut metadata = meta();
-            metadata.effective_config =
-                MermaidConfig::from_value(json!({"securityLevel":security}));
+            metadata.effective_config = crate::presentation::PresentationConfig::from_value(
+                json!({"securityLevel":security}),
+            );
             let model = parse_agentflow_model_for_render_controlled(
                 "agentflow-beta\na\nclick a call test(\"one\", two) \"Run\"\nclick unknown \"https://example.com\"\n",
                 &metadata, &OperationControl::new(),

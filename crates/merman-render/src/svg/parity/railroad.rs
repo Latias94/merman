@@ -1,10 +1,10 @@
 use super::*;
 use crate::model::RailroadElementLayout;
-use merman_core::diagrams::railroad::RailroadDiagramRenderModel;
+use merman_core::diagrams::railroad::RailroadDiagramModel;
 
 pub(crate) fn render_railroad_diagram_svg_model(
     layout: &RailroadDiagramLayout,
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     typography_theme: &crate::railroad::RailroadTypographyThemePlan,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,

@@ -185,7 +185,7 @@ pub(super) fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
 impl ErEntityThemePlan {
     pub(super) fn prepare_visuals(
         mut self,
-        model: &merman_core::diagrams::er::ErDiagramRenderModel,
+        model: &merman_core::diagrams::er::ErDiagramModel,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         for terminal in self.text_terminals.values_mut() {
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn er_source_important_declarations_are_serialized_once() {
-        let entity = merman_core::diagrams::er::ErEntityRenderModel {
+        let entity = merman_core::diagrams::er::ErEntity {
             css_styles: vec![
                 "fill:#123456 !important".into(),
                 "stroke:#654321 !important".into(),

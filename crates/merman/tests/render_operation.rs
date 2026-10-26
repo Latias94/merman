@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use merman::{
-    OperationControl, OperationPhase, ParseOptions, RenderError, RenderOutput, RenderRequest,
-    Renderer, SemanticArtifact, ThemeEvidenceStatus,
+    OperationControl, OperationPhase, ParseOptions, PresentationArtifact, RenderError,
+    RenderOutput, RenderRequest, Renderer, ThemeEvidenceStatus,
     resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
@@ -283,9 +283,9 @@ fn expired_deadline_is_reported_as_deadline_cancellation() {
 }
 
 #[test]
-fn prepare_semantic_delegates_to_the_same_runner() {
-    let artifact: Option<SemanticArtifact> = Renderer::new()
-        .prepare_semantic("info", OperationControl::new())
+fn prepare_presentation_delegates_to_the_same_runner() {
+    let artifact: Option<PresentationArtifact> = Renderer::new()
+        .prepare_presentation("info", OperationControl::new())
         .expect("prepare should succeed");
     assert_eq!(
         artifact.expect("info should be detected").semantic_kind(),
@@ -453,7 +453,7 @@ fn graphical_targets_use_svg_input_limits_without_duplicate_configuration() {
     }
 
     let error = renderer
-        .prepare_semantic(&source, OperationControl::new())
+        .prepare_presentation(&source, OperationControl::new())
         .expect_err("format-neutral preparation must retain the renderer's input policy");
     assert!(
         matches!(error, RenderError::ResourceLimitExceeded(limit) if limit.id == "max_source_bytes")
@@ -724,7 +724,7 @@ fn layout_json_rejects_require_portable_without_target_admission() {
     ));
 
     let semantic = renderer
-        .prepare_semantic(
+        .prepare_presentation(
             "flowchart TD\nA[Start] --> B[Done]",
             OperationControl::new(),
         )
@@ -746,7 +746,7 @@ fn layout_json_rejects_require_portable_without_target_admission() {
 fn layout_json_cancellation_precedes_require_portable_rejection() {
     let control = OperationControl::new();
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .prepare_presentation("flowchart TD\nA --> B", control.clone())
         .expect("semantic preparation should succeed")
         .expect("flowchart should be detected");
     control.cancel();
@@ -774,7 +774,7 @@ fn layout_json_cancellation_precedes_require_portable_rejection() {
 fn layout_json_deadline_precedes_require_portable_rejection() {
     let control = OperationControl::new();
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .prepare_presentation("flowchart TD\nA --> B", control.clone())
         .expect("semantic preparation should succeed")
         .expect("flowchart should be detected");
     assert!(control.set_deadline(Duration::ZERO));
@@ -938,11 +938,12 @@ fn pie_ordinal_palette_drives_terminal_slice_fills_and_verified_evidence() {
 #[cfg(feature = "svg")]
 #[test]
 fn pie_site_palette_slot_outranks_the_typed_default() {
-    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
-        merman::MermaidConfig::from_value(serde_json::json!({
-            "themeVariables": {"pie1": "#111827"}
-        })),
-    ));
+    let renderer =
+        Renderer::new().with_presentation_engine(merman::MermaidEngine::new().with_site_config(
+            merman::presentation::PresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"pie1": "#111827"}
+            })),
+        ));
     let output = renderer
         .render(
             RenderRequest::svg(
@@ -1022,11 +1023,12 @@ fn architecture_group_paint_reaches_the_terminal_rect_and_verified_evidence() {
 #[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 #[test]
 fn architecture_site_group_border_outranks_typed_stroke_without_shadowing_typed_fill() {
-    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
-        merman::MermaidConfig::from_value(serde_json::json!({
-            "themeVariables": {"primaryBorderColor": "#f97316"}
-        })),
-    ));
+    let renderer =
+        Renderer::new().with_presentation_engine(merman::MermaidEngine::new().with_site_config(
+            merman::presentation::PresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"primaryBorderColor": "#f97316"}
+            })),
+        ));
     let output = renderer
         .render(
             RenderRequest::svg(
@@ -1994,11 +1996,11 @@ fn svg_evidence_carries_preparation_owned_capability_requirements() {
     );
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "svg", feature = "compat-json"))]
 #[test]
 fn semantic_artifact_exposes_compatibility_json_without_family_types() {
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", OperationControl::new())
+        .prepare_presentation("flowchart TD\nA --> B", OperationControl::new())
         .expect("parse should succeed")
         .expect("diagram should be detected");
     let json = artifact
@@ -2008,10 +2010,11 @@ fn semantic_artifact_exposes_compatibility_json_without_family_types() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn compatibility_json_observes_the_artifact_operation_control() {
     let control = OperationControl::new();
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .prepare_presentation("flowchart TD\nA --> B", control.clone())
         .expect("parse should succeed")
         .expect("diagram should be detected");
     control.cancel();
@@ -2318,7 +2321,7 @@ fn ascii_request_uses_common_cancellation() {
 fn ascii_target_cancellation_precedes_option_validation() {
     let control = OperationControl::new();
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .prepare_presentation("flowchart TD\nA --> B", control.clone())
         .expect("semantic preparation should succeed")
         .expect("flowchart should produce a semantic artifact");
     control.cancel();
@@ -2342,7 +2345,7 @@ fn ascii_target_cancellation_precedes_option_validation() {
 fn ascii_target_deadline_precedes_option_validation() {
     let control = OperationControl::new();
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .prepare_presentation("flowchart TD\nA --> B", control.clone())
         .expect("semantic preparation should succeed")
         .expect("flowchart should produce a semantic artifact");
     assert!(control.set_deadline(Duration::ZERO));
@@ -2366,7 +2369,7 @@ fn ascii_target_deadline_precedes_option_validation() {
 fn ascii_target_resource_terminal_precedes_option_validation_without_rewriting_provenance() {
     let control = OperationControl::new();
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .prepare_presentation("flowchart TD\nA --> B", control.clone())
         .expect("semantic preparation should succeed")
         .expect("flowchart should produce a semantic artifact");
     let provenance = OperationResourceProvenance::new(

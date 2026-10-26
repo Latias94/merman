@@ -1,6 +1,7 @@
 # ADR 0079: Default Native Prebuilt Capability SKU
 
 - Status: accepted
+- Web math selection is superseded by [ADR-0097](0097-explicit-math-capability.md); native SKU choices remain unchanged.
 - Supersedes: the native prebuilt SKU decision in ADR-0076
 - Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`
 

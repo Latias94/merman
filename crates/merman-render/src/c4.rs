@@ -1,6 +1,6 @@
 use crate::model::{C4TextRenderPlan, C4TextRowLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode, measure_mermaid_text_dimensions};
-use merman_core::diagrams::c4::{C4DiagramRenderModel, C4ShapeRenderModel};
+use merman_core::diagrams::c4::{C4DiagramModel, C4Shape};
 use serde_json::Value;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -13,7 +13,7 @@ pub(crate) use config::{
 };
 pub(crate) use theme::C4ClusterThemePlan;
 
-type C4Model = C4DiagramRenderModel;
+type C4Model = C4DiagramModel;
 type C4Conf = C4LayoutSettings;
 
 // Mermaid's unified `fr-rect` handler reserves an eight-pixel frame on each side. Neo changes
@@ -52,7 +52,7 @@ fn keyword_shape(value: Option<&str>) -> Option<C4NodeShape> {
 
 /// Resolves `$shape`, `$sprite`, `$tags`, and the legacy C4 element type in the
 /// same order as Mermaid's `c4ShapeAdapter`.
-pub(crate) fn c4_node_shape(shape: &C4ShapeRenderModel) -> C4NodeShape {
+pub(crate) fn c4_node_shape(shape: &C4Shape) -> C4NodeShape {
     keyword_shape(value_string(shape.shape.as_ref()))
         .or_else(|| keyword_shape(value_string(shape.sprite.as_ref())))
         .or_else(|| {
@@ -87,7 +87,7 @@ fn c4_stereotype_name(type_c4_shape: &str) -> String {
 }
 
 /// Returns the structured stereotype line used by the unified C4 label helper.
-pub(crate) fn c4_stereotype_text(shape: &C4ShapeRenderModel) -> String {
+pub(crate) fn c4_stereotype_text(shape: &C4Shape) -> String {
     let stereotype = c4_stereotype_name(shape.type_c4_shape.as_str());
     match shape
         .techn

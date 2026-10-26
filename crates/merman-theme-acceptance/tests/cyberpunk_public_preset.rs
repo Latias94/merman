@@ -2,7 +2,7 @@
 
 use merman::svg::{DiagramThemeCompiler, ThemePreset};
 use merman::{
-    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, TargetAdmissionReason,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, TargetAdmissionReason,
     TargetAdmissionStatus,
 };
 
@@ -15,8 +15,9 @@ fn assert_recipe_round_trip(source: &str, effects: u32) {
         .compile_recipe(serde_json::from_slice(&saved).unwrap())
         .unwrap();
     assert_eq!(original.recipe_fingerprint(), imported.recipe_fingerprint());
-    let renderer = Renderer::new().with_engine(
-        Engine::new().with_site_config(merman_theme_acceptance::preset_qualification_config()),
+    let renderer = Renderer::new().with_presentation_engine(
+        MermaidEngine::new()
+            .with_site_config(merman_theme_acceptance::preset_qualification_config()),
     );
     let mut outputs = Vec::new();
     for theme in [original, imported] {

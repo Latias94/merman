@@ -1672,7 +1672,6 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         "layout-cytoscape",
         "layout-elk",
         "markdown",
-        "math",
         "network-icons",
         "parallel-markdown",
         "pdf",
@@ -1689,6 +1688,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     }
 
     for (id, enabled) in [
+        ("math", cfg!(feature = "math")),
         ("system-clock", cfg!(feature = "system-clock")),
         ("system-random", cfg!(feature = "system-random")),
         ("system-timezone", cfg!(feature = "system-timezone")),

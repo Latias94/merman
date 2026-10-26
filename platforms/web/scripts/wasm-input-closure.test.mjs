@@ -91,16 +91,15 @@ describe("WASM artifact Cargo closure", () => {
     });
   }
 
-  it("admits math only in complete browser renderers", () => {
+  it("keeps math outside every published browser artifact", () => {
     for (const descriptor of webPackageDescriptors) {
       const profile = wasmArtifactProfile(descriptor);
-      const expectsMath = descriptor.id === "full" || descriptor.id === "render";
-      assert.equal(profile.features.includes("math"), expectsMath, descriptor.id);
-      assert.equal(profile.runtime_capability_ids.includes("math"), expectsMath, descriptor.id);
+      assert.equal(profile.features.includes("math"), false, descriptor.id);
+      assert.equal(profile.runtime_capability_ids.includes("math"), false, descriptor.id);
     }
   });
 
-  it("owns every renderer asset embedded into the complete SVG build", () => {
+  it("owns every renderer asset embedded into the SVG build", () => {
     const descriptor = webPackageDescriptors.find((item) => item.id === "render");
     const metadata = cargoMetadataForPreset({
       preset: wasmArtifactProfile(descriptor),

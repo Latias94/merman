@@ -2666,7 +2666,7 @@ mod inline_planning_tests {
 pub fn unsupported_html_label_style(
     label: &str,
     label_type: &str,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     unsupported_properties: &[&str],
     control: &merman_core::OperationControl,
 ) -> Result<Option<String>, merman_core::OperationCancelled> {
@@ -2687,15 +2687,16 @@ pub fn unsupported_html_label_style(
         &parse_work,
         merman_core::OperationPhase::Layout,
     );
-    let html = match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config, &sink) {
-        Ok(html) => html,
-        Err(merman_core::sanitize::SanitizeFailure::Output(
-            crate::html::HtmlOutputError::Operation(
-                crate::resources::OperationWorkError::Cancelled(error),
-            ),
-        )) => return Err(error),
-        Err(_) => String::new(),
-    };
+    let html =
+        match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink) {
+            Ok(html) => html,
+            Err(merman_core::sanitize::SanitizeFailure::Output(
+                crate::html::HtmlOutputError::Operation(
+                    crate::resources::OperationWorkError::Cancelled(error),
+                ),
+            )) => return Err(error),
+            Err(_) => String::new(),
+        };
     let mut tags = Reader::from_str(&html);
     tags.config_mut().check_end_names = false;
     tags.config_mut().allow_unmatched_ends = true;
@@ -2775,7 +2776,7 @@ fn unsupported_html_style_checks_cancellation_during_fragment_recovery() {
     let error = unsupported_html_label_style(
         &label,
         "text",
-        &merman_core::MermaidConfig::default(),
+        &merman_core::presentation::PresentationConfig::default(),
         &[],
         &control,
     )

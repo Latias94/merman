@@ -12,7 +12,7 @@ use crate::resource::ResourceContext;
 use crate::style_color::{parse_border_color, parse_css_color};
 use merman_core::OperationPhase;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
+use merman_core::diagrams::flowchart::FlowchartModel;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use rustc_hash::FxHashMap as HashMap;
 
@@ -119,7 +119,6 @@ pub(super) struct FlowchartStylePlan {
 impl FlowchartStylePlan {
     pub(super) fn try_new(
         model: &FlowchartModel,
-        render_context: Option<&FlowchartRenderContext>,
         is_group_id: impl Fn(&str) -> bool,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
@@ -157,18 +156,18 @@ impl FlowchartStylePlan {
             .try_reserve_exact(model.nodes.len())
             .map_err(|_| style_allocation_failed())?;
         let mut direct_group_overlays = HashMap::default();
-        if render_context.is_none() {
-            let overlay_capacity = model.nodes.len().min(model.subgraphs.len());
-            resources.charge_layout_work(overlay_capacity)?;
-            direct_group_overlays
-                .try_reserve(overlay_capacity)
-                .map_err(|_| style_allocation_failed())?;
-        }
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_style(execution, index)?;
             let mut style = GraphNodeStyle::default();
             if is_group_id(&node.id) {
-                if render_context.is_none() && !node.is_subgraph_anchor() {
+                if !model.contains_subgraph_vertex(&node.id) && !node.is_subgraph_anchor() {
+                    if direct_group_overlays.is_empty() {
+                        let overlay_capacity = model.nodes.len().min(model.subgraphs.len());
+                        resources.charge_layout_work(overlay_capacity)?;
+                        direct_group_overlays
+                            .try_reserve(overlay_capacity)
+                            .map_err(|_| style_allocation_failed())?;
+                    }
                     let mut group_overlay = GraphGroupStyle::default();
                     for (class_index, class_name) in node.classes.iter().enumerate() {
                         checkpoint_style(execution, class_index)?;
@@ -236,10 +235,7 @@ impl FlowchartStylePlan {
         for (index, group) in model.subgraphs.iter().enumerate() {
             checkpoint_style(execution, index)?;
             let mut style = GraphGroupStyle::default();
-            let (classes, declarations) = render_context.map_or_else(
-                || (group.classes.as_slice(), group.styles.as_slice()),
-                |context| context.effective_subgraph_css(index, group),
-            );
+            let (classes, declarations) = model.effective_subgraph_css(index, group);
             for (class_index, class_name) in classes.iter().enumerate() {
                 checkpoint_style(execution, class_index)?;
                 if let Some(class_index) = model.class_defs.get_index_of(class_name) {
@@ -253,7 +249,7 @@ impl FlowchartStylePlan {
                 execution,
             )?
             .apply_group(&mut style);
-            if render_context.is_none() {
+            if !direct_group_overlays.is_empty() && !model.contains_subgraph_vertex(&group.id) {
                 charge_style_index_access(resources, &group.id)?;
                 if let Some(overlay) = direct_group_overlays.get(group.id.as_str()) {
                     if overlay.title.is_some() {

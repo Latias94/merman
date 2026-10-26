@@ -2,9 +2,15 @@
 //! Terminal-friendly ASCII and Unicode rendering for Mermaid typed models.
 //!
 //! `merman-ascii` is deliberately model-driven: callers parse Mermaid text with `merman-core`, then
-//! pass the resulting typed render model into this crate. The renderer does not own Mermaid syntax
+//! pass the resulting canonical model into this crate. The renderer does not own Mermaid syntax
 //! parsing. Rendering requires the caller's operation control, runtime context, and resource
 //! policy so this backend cannot create a second source-to-output operation.
+
+#[cfg(test)]
+extern crate self as merman_ascii;
+#[cfg(test)]
+#[path = "../tests/support/full_model.rs"]
+mod full_test_support;
 
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -38,6 +44,7 @@ mod kanban;
 mod layout_selection;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
+mod model;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -126,6 +133,7 @@ pub use capability::{
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
+pub use model::{AsciiDiagram, AsciiSourceContext};
 pub use options::{
     AsciiCharset, AsciiDirection, AsciiLayoutProfile, AsciiRenderOptions, TerminalWidthProfile,
 };
@@ -146,37 +154,36 @@ pub use resource::{
 };
 pub use safe_text::{normalize_terminal_diagnostic, normalize_terminal_text};
 
-use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
 #[cfg(feature = "diagram-er")]
-use merman_core::diagrams::er::ErDiagramRenderModel;
+use merman_core::diagrams::er::ErDiagramModel;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
+use merman_core::diagrams::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-gantt")]
-use merman_core::diagrams::gantt::GanttDiagramRenderModel;
+use merman_core::diagrams::gantt::GanttTerminalView;
 #[cfg(feature = "diagram-git-graph")]
-use merman_core::diagrams::git_graph::GitGraphRenderModel;
+use merman_core::diagrams::git_graph::GitGraphDiagramModel;
 #[cfg(feature = "diagram-journey")]
-use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+use merman_core::diagrams::journey::JourneyDiagramModel;
 #[cfg(feature = "diagram-kanban")]
-use merman_core::diagrams::kanban::KanbanDiagramRenderModel;
+use merman_core::diagrams::kanban::KanbanTerminalView;
 #[cfg(feature = "diagram-mindmap")]
-use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
+use merman_core::diagrams::mindmap::MindmapTerminalView;
 #[cfg(feature = "diagram-packet")]
-use merman_core::diagrams::packet::PacketDiagramRenderModel;
+use merman_core::diagrams::packet::PacketDiagramModel;
 #[cfg(feature = "diagram-sequence")]
-use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::sequence::SequenceDiagramModel;
 #[cfg(feature = "diagram-state")]
-use merman_core::diagrams::state::StateDiagramRenderModel;
+use merman_core::diagrams::state::StateTerminalView;
 #[cfg(feature = "diagram-timeline")]
-use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
+use merman_core::diagrams::timeline::TimelineDiagramModel;
 #[cfg(feature = "diagram-tree-view")]
-use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
+use merman_core::diagrams::tree_view::TreeViewDiagramModel;
 #[cfg(feature = "diagram-xychart")]
-use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
+use merman_core::diagrams::xychart::{XyChartDiagramModel, XyChartDisplayPolicy};
 #[cfg(feature = "diagram-class")]
-use merman_core::models::class_diagram::ClassDiagram;
+use merman_core::models::class_diagram::ClassTopologyView;
 use merman_core::runtime::OperationContext;
-use merman_core::{MermaidConfig, ParseMetadata};
+use merman_core::{ParsedSemanticDiagram, SemanticDiagramModel};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use options::FlowchartLayoutPolicy;
 #[cfg(feature = "diagram-state")]
@@ -197,6 +204,11 @@ struct AsciiRenderRequest<'a> {
     control: &'a merman_core::OperationControl,
     context: &'a OperationContext,
     resources: AsciiResourcePolicy,
+}
+
+enum AsciiInput<'a> {
+    Canonical(&'a SemanticDiagramModel),
+    Borrowed(&'a AsciiDiagram<'a>),
 }
 
 impl<'a> AsciiRenderRequest<'a> {
@@ -235,7 +247,7 @@ impl AsciiRenderer {
     /// to preserve Swimlane's distinct language identity.
     pub fn render_model(
         &self,
-        model: &RenderSemanticModel,
+        model: &AsciiDiagram<'_>,
         control: &merman_core::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
@@ -249,7 +261,7 @@ impl AsciiRenderer {
         let policies = self.options.resolve_policies();
         render_model_with_execution(
             model,
-            None,
+            model.kind(),
             &policies.options,
             &policies,
             execution,
@@ -260,31 +272,24 @@ impl AsciiRenderer {
     /// Renders a typed model and returns logical extent/projection/overflow metadata.
     pub fn render_model_report(
         &self,
-        model: &RenderSemanticModel,
+        model: &AsciiDiagram<'_>,
+        source: AsciiSourceContext<'_>,
         viewport: AsciiViewportPolicy,
         control: &merman_core::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<AsciiOutput> {
-        let metadata = ParseMetadata {
-            diagram_type: model.kind().to_string(),
-            config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
-            title: None,
-        };
         self.render_report(
-            model,
-            None,
-            &metadata,
+            AsciiInput::Borrowed(model),
+            source,
             AsciiRenderRequest::new(viewport, control, context, resources),
         )
     }
 
     fn render_report(
         &self,
-        model: &RenderSemanticModel,
-        parsed: Option<&ParsedDiagramRender>,
-        metadata: &ParseMetadata,
+        input: AsciiInput<'_>,
+        metadata: AsciiSourceContext<'_>,
         request: AsciiRenderRequest<'_>,
     ) -> Result<AsciiOutput> {
         let AsciiRenderRequest {
@@ -299,12 +304,23 @@ impl AsciiRenderer {
             .with_viewport(viewport)
             .with_render_ledger(&render_ledger);
         let requested_policies = self.options.resolve_policies();
-        let capability = capability::capability_for_diagram_type(&metadata.diagram_type);
+        let capability = capability::capability_for_diagram_type(metadata.diagram_type);
         execution.checkpoint(merman_core::OperationPhase::Admission)?;
-        validate_local_handler(&metadata.diagram_type)?;
+        validate_local_handler(metadata.diagram_type)?;
         layout_selection::validate_viewport(self.options.layout_profile, viewport)?;
         validate_primary_request(capability, &requested_policies)?;
         validate_fallback_request(capability, &requested_policies, viewport)?;
+        let prepared;
+        let model = match input {
+            AsciiInput::Canonical(model) => {
+                prepared = AsciiDiagram::from_semantic(model, metadata, execution)?;
+                &prepared
+            }
+            AsciiInput::Borrowed(model) => model,
+        };
+        if !matches!(model, AsciiDiagram::Unsupported(_)) {
+            validate_model_identity(model.kind(), metadata.diagram_type)?;
+        }
         let selected = layout_selection::select(
             self.options,
             viewport,
@@ -313,7 +329,7 @@ impl AsciiRenderer {
                 let policies = options.resolve_policies();
                 render_model_with_execution(
                     model,
-                    parsed,
+                    metadata.diagram_type,
                     &options,
                     &policies,
                     candidate_execution,
@@ -326,13 +342,13 @@ impl AsciiRenderer {
 
     fn finish_report(
         &self,
-        model: &RenderSemanticModel,
-        metadata: &ParseMetadata,
+        model: &AsciiDiagram<'_>,
+        metadata: AsciiSourceContext<'_>,
         viewport: AsciiViewportPolicy,
         execution: operation::AsciiExecution<'_>,
         selected: layout_selection::SelectedLayout,
     ) -> Result<AsciiOutput> {
-        let capability = capability::capability_for_diagram_type(&metadata.diagram_type);
+        let capability = capability::capability_for_diagram_type(metadata.diagram_type);
         let policies = self
             .options
             .with_layout_profile(selected.profile)
@@ -365,7 +381,8 @@ impl AsciiRenderer {
                         profile: policies.output.terminal_width_profile,
                     });
                 }
-                return output::build_semantic_fallback(
+                return output::build_semantic_fallback_for_family(
+                    metadata.diagram_type,
                     model,
                     metadata,
                     primary_extent,
@@ -381,17 +398,22 @@ impl AsciiRenderer {
         if overflowed && viewport.overflow == output::OverflowPolicy::Fallback {
             if !fallback_capability {
                 return Err(AsciiError::FallbackUnavailable {
-                    diagram_type: model.kind().to_string(),
+                    diagram_type: metadata.diagram_type.to_string(),
                     max_width: viewport.max_width.expect("fallback requires a width bound"),
                     actual_width: primary_extent.width,
                 });
             }
             if projection == AsciiProjection::StructuredText {
-                return output::build_structured_fallback(model.kind(), primary, output_context)
-                    .map(annotate);
+                return output::build_structured_fallback(
+                    metadata.diagram_type,
+                    primary,
+                    output_context,
+                )
+                .map(annotate);
             }
             drop(primary);
-            return output::build_semantic_fallback(
+            return output::build_semantic_fallback_for_family(
+                metadata.diagram_type,
                 model,
                 metadata,
                 primary_extent,
@@ -399,7 +421,8 @@ impl AsciiRenderer {
             )
             .map(annotate);
         }
-        let mut output = output::build_output(model.kind(), primary, projection, output_context)?;
+        let mut output =
+            output::build_output(metadata.diagram_type, primary, projection, output_context)?;
         output.fallback.capability = if fallback_capability {
             output::AsciiFallbackCapability::Available
         } else {
@@ -408,28 +431,32 @@ impl AsciiRenderer {
         Ok(annotate(output))
     }
 
-    /// Renders one parser-owned model together with its render-only semantic context.
+    /// Renders canonical semantics without graphical or compatibility-JSON preparation.
     ///
     /// Admission uses the parsed logical family, so enabling the shared Flowchart implementation
     /// for Swimlane does not admit Flowchart source, or vice versa.
-    #[doc(hidden)]
     pub fn render_parsed(
         &self,
-        parsed: &ParsedDiagramRender,
+        parsed: &ParsedSemanticDiagram,
         control: &merman_core::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
-        let execution = operation::AsciiExecution::new(control, &resources);
+        let render_ledger = resource::ResourceContext::new(resources);
+        let execution =
+            operation::AsciiExecution::new(control, &resources).with_render_ledger(&render_ledger);
         execution.checkpoint(merman_core::OperationPhase::Admission)?;
         layout_selection::validate_viewport(
             self.options.layout_profile,
             AsciiViewportPolicy::unrestricted(),
         )?;
         let policies = self.options.resolve_policies();
+        let source = AsciiSourceContext::from(&parsed.metadata);
+        validate_local_handler(source.diagram_type)?;
+        let model = AsciiDiagram::from_semantic(&parsed.model, source, execution)?;
         render_model_with_execution(
-            parsed.model(),
-            Some(parsed),
+            &model,
+            source.diagram_type,
             &policies.options,
             &policies,
             execution,
@@ -438,27 +465,25 @@ impl AsciiRenderer {
     }
 
     /// Renders a parser-owned model and returns logical extent/projection/overflow metadata.
-    #[doc(hidden)]
     pub fn render_parsed_report(
         &self,
-        parsed: &ParsedDiagramRender,
+        parsed: &ParsedSemanticDiagram,
         viewport: AsciiViewportPolicy,
         control: &merman_core::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<AsciiOutput> {
         self.render_report(
-            parsed.model(),
-            Some(parsed),
-            parsed.metadata(),
+            AsciiInput::Canonical(&parsed.model),
+            AsciiSourceContext::from(&parsed.metadata),
             AsciiRenderRequest::new(viewport, control, context, resources),
         )
     }
 }
 
 fn render_model_with_execution(
-    model: &RenderSemanticModel,
-    parsed: Option<&ParsedDiagramRender>,
+    model: &AsciiDiagram<'_>,
+    diagram_type: &str,
     options: &AsciiRenderOptions,
     policies: &ResolvedAsciiPolicies,
     execution: operation::AsciiExecution<'_>,
@@ -466,11 +491,10 @@ fn render_model_with_execution(
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Admission)?;
     options.validate()?;
-    let diagram_type = parsed.map_or_else(
-        || model.kind(),
-        |parsed| parsed.metadata().diagram_type.as_str(),
-    );
     validate_local_handler(diagram_type)?;
+    if !matches!(model, AsciiDiagram::Unsupported(_)) {
+        validate_model_identity(model.kind(), diagram_type)?;
+    }
     validate_primary_request(
         capability::capability_for_diagram_type(diagram_type),
         policies,
@@ -478,47 +502,47 @@ fn render_model_with_execution(
 
     let rendered = match model {
         #[cfg(feature = "diagram-class")]
-        RenderSemanticModel::Class(model) => render_class_model(model, options, &execution),
+        AsciiDiagram::Class(model) => render_class_model(model, options, &execution),
         #[cfg(feature = "diagram-er")]
-        RenderSemanticModel::Er(model) => render_er_model(model, options, &execution),
+        AsciiDiagram::Er(model) => render_er_model(model, options, &execution),
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        RenderSemanticModel::Flowchart(model) => render_flowchart_model(
-            model,
-            parsed.and_then(ParsedDiagramRender::flowchart_render_context),
-            options,
-            policies.layout.flowchart,
-            &execution,
-        ),
+        AsciiDiagram::Flowchart(model) => {
+            render_flowchart_model(model, options, policies.layout.flowchart, &execution)
+        }
         #[cfg(feature = "diagram-gantt")]
-        RenderSemanticModel::Gantt(model) => {
-            render_gantt_model(model, options, _local_time_zone, &execution)
+        AsciiDiagram::Gantt(model) => {
+            render_gantt_model(*model, options, _local_time_zone, &execution)
         }
         #[cfg(feature = "diagram-git-graph")]
-        RenderSemanticModel::GitGraph(model) => render_git_graph_model(model, options, &execution),
+        AsciiDiagram::GitGraph(model) => render_git_graph_model(model, options, &execution),
         #[cfg(feature = "diagram-journey")]
-        RenderSemanticModel::Journey(model) => render_journey_model(model, options, &execution),
+        AsciiDiagram::Journey(model) => render_journey_model(model, options, &execution),
         #[cfg(feature = "diagram-kanban")]
-        RenderSemanticModel::Kanban(model) => render_kanban_model(model, options, &execution),
+        AsciiDiagram::Kanban(model) => render_kanban_model(*model, options, &execution),
         #[cfg(feature = "diagram-mindmap")]
-        RenderSemanticModel::Mindmap(model) => render_mindmap_model(model, options, &execution),
+        AsciiDiagram::Mindmap(model) => render_mindmap_model(*model, options, &execution),
         #[cfg(feature = "diagram-packet")]
-        RenderSemanticModel::Packet(model) => render_packet_model(model, options, &execution),
+        AsciiDiagram::Packet(model) => render_packet_model(model, options, &execution),
         #[cfg(feature = "diagram-sequence")]
-        RenderSemanticModel::Sequence(model) => {
+        AsciiDiagram::Sequence(model) => {
             render_sequence_model(model, options, policies.layout.sequence, &execution)
         }
         #[cfg(feature = "diagram-state")]
-        RenderSemanticModel::State(model) => {
-            render_state_model(model, options, policies.layout.state, &execution)
+        AsciiDiagram::State(model) => {
+            render_state_model(*model, options, policies.layout.state, &execution)
         }
         #[cfg(feature = "diagram-timeline")]
-        RenderSemanticModel::Timeline(model) => render_timeline_model(model, options, &execution),
+        AsciiDiagram::Timeline(model) => render_timeline_model(model, options, &execution),
         #[cfg(feature = "diagram-xychart")]
-        RenderSemanticModel::XyChart(model) => {
-            render_xychart_model(model, options, policies.layout.xychart, &execution)
-        }
+        AsciiDiagram::XyChart { model, display } => render_xychart_model(
+            model,
+            *display,
+            options,
+            policies.layout.xychart,
+            &execution,
+        ),
         #[cfg(feature = "diagram-tree-view")]
-        RenderSemanticModel::TreeView(model) => render_tree_view_model(model, options, &execution),
+        AsciiDiagram::TreeView(model) => render_tree_view_model(model, options, &execution),
         _ => Err(AsciiError::UnsupportedDiagram {
             diagram_type: model.kind().to_string(),
         }),
@@ -535,6 +559,20 @@ fn validate_local_handler(diagram_type: &str) -> Result<()> {
             diagram_type: diagram_type.to_string(),
         })
     }
+}
+
+fn validate_model_identity(kind: &str, diagram_type: &str) -> Result<()> {
+    let actual =
+        capability::capability_for_diagram_type(kind).map(|capability| capability.diagram_type);
+    let requested = capability::capability_for_diagram_type(diagram_type)
+        .map(|capability| capability.diagram_type);
+    if actual == requested || (kind == "flowchart" && requested == Some("swimlane")) {
+        return Ok(());
+    }
+    Err(AsciiError::InvalidOption {
+        field: "diagram_type",
+        message: "does not match the borrowed terminal model family",
+    })
 }
 
 fn validate_primary_request(
@@ -587,7 +625,7 @@ fn validate_fallback_request(
 
 #[cfg(feature = "diagram-class")]
 fn render_class_model(
-    model: &ClassDiagram,
+    model: &ClassTopologyView<'_>,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -596,7 +634,7 @@ fn render_class_model(
 
 #[cfg(feature = "diagram-er")]
 fn render_er_model(
-    model: &ErDiagramRenderModel,
+    model: &ErDiagramModel,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -606,7 +644,6 @@ fn render_er_model(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn render_flowchart_model(
     model: &FlowchartModel,
-    render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     layout: FlowchartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
@@ -615,7 +652,7 @@ fn render_flowchart_model(
     let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
     transaction.transaction(|_| {
         let result = transaction.transaction_preserving_layout_work(|_| {
-            render_flowchart_model_inner(model, render_context, options, layout, *execution)
+            render_flowchart_model_inner(model, options, layout, *execution)
         });
         match result {
             // A viewport fallback reuses the render-wide ledger. Preserve the work spent proving
@@ -635,7 +672,6 @@ fn render_flowchart_model(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn render_flowchart_model_inner(
     model: &FlowchartModel,
-    render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     layout: FlowchartLayoutPolicy,
     execution: operation::AsciiExecution<'_>,
@@ -644,7 +680,6 @@ fn render_flowchart_model_inner(
         execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = graph::from_flowchart_model_with_execution(
         model,
-        render_context,
         layout,
         &mut semantic_resources,
         execution,
@@ -663,7 +698,7 @@ fn render_flowchart_model_inner(
 
 #[cfg(feature = "diagram-gantt")]
 fn render_gantt_model(
-    model: &GanttDiagramRenderModel,
+    model: GanttTerminalView<'_>,
     options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,
     execution: &operation::AsciiExecution<'_>,
@@ -674,7 +709,7 @@ fn render_gantt_model(
 
 #[cfg(feature = "diagram-git-graph")]
 fn render_git_graph_model(
-    model: &GitGraphRenderModel,
+    model: &GitGraphDiagramModel,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -684,7 +719,7 @@ fn render_git_graph_model(
 
 #[cfg(feature = "diagram-journey")]
 fn render_journey_model(
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -694,7 +729,7 @@ fn render_journey_model(
 
 #[cfg(feature = "diagram-kanban")]
 fn render_kanban_model(
-    model: &KanbanDiagramRenderModel,
+    model: KanbanTerminalView<'_>,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -704,7 +739,7 @@ fn render_kanban_model(
 
 #[cfg(feature = "diagram-mindmap")]
 fn render_mindmap_model(
-    model: &MindmapDiagramRenderModel,
+    model: MindmapTerminalView<'_>,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -714,7 +749,7 @@ fn render_mindmap_model(
 
 #[cfg(feature = "diagram-packet")]
 fn render_packet_model(
-    model: &PacketDiagramRenderModel,
+    model: &PacketDiagramModel,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -724,7 +759,7 @@ fn render_packet_model(
 
 #[cfg(feature = "diagram-sequence")]
 fn render_sequence_model(
-    model: &SequenceDiagramRenderModel,
+    model: &SequenceDiagramModel,
     options: &AsciiRenderOptions,
     layout: SequenceLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
@@ -744,7 +779,7 @@ fn render_sequence_model(
 
 #[cfg(feature = "diagram-state")]
 fn render_state_model(
-    model: &StateDiagramRenderModel,
+    model: StateTerminalView<'_>,
     options: &AsciiRenderOptions,
     layout: GraphLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
@@ -771,14 +806,14 @@ fn render_state_model(
 
 #[cfg(feature = "diagram-state")]
 fn render_state_model_inner(
-    model: &StateDiagramRenderModel,
+    model: StateTerminalView<'_>,
     options: &AsciiRenderOptions,
     layout: GraphLayoutPolicy,
     execution: operation::AsciiExecution<'_>,
 ) -> Result<String> {
     let mut semantic_resources =
         execution.new_resource_context(merman_core::OperationPhase::Semantic);
-    let graph = state::from_state_model_with_context_and_execution(
+    let graph = state::from_state_view_with_context_and_execution(
         model,
         options.terminal_width_profile,
         &mut semantic_resources,
@@ -798,7 +833,7 @@ fn render_state_model_inner(
 
 #[cfg(feature = "diagram-timeline")]
 fn render_timeline_model(
-    model: &TimelineDiagramRenderModel,
+    model: &TimelineDiagramModel,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -808,18 +843,24 @@ fn render_timeline_model(
 
 #[cfg(feature = "diagram-xychart")]
 fn render_xychart_model(
-    model: &XyChartDiagramRenderModel,
+    model: &XyChartDiagramModel,
+    display: XyChartDisplayPolicy,
     options: &AsciiRenderOptions,
     layout: XyChartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    xychart::render_xychart_diagram_with_resolved_policy(model, options, layout, *execution)
+    xychart::render_xychart_diagram_with_resolved_policy(
+        &xychart::XyChartView::new(model, display),
+        options,
+        layout,
+        *execution,
+    )
 }
 
 #[cfg(feature = "diagram-tree-view")]
 fn render_tree_view_model(
-    model: &TreeViewDiagramRenderModel,
+    model: &TreeViewDiagramModel,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -830,6 +871,7 @@ fn render_tree_view_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::RenderSemanticModel;
     #[cfg(feature = "diagram-flowchart")]
     use merman_core::diagrams::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
@@ -838,7 +880,7 @@ mod tests {
     #[cfg(feature = "diagram-mindmap")]
     use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     #[cfg(feature = "diagram-tree-view")]
-    use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
+    use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
 
     #[cfg(any(
         feature = "diagram-flowchart",
@@ -863,7 +905,7 @@ mod tests {
             .begin_operation()
             .expect("deterministic test operation context");
         AsciiRenderer::new(*options)?.render_model(
-            model,
+            &full_test_support::view(model),
             &merman_core::OperationControl::new(),
             &context,
             resources,
@@ -901,6 +943,7 @@ mod tests {
             nodes: Vec::new(),
             edges: Vec::new(),
             subgraphs: Vec::new(),
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }
@@ -1137,28 +1180,28 @@ mod tests {
     }
 
     #[cfg(feature = "diagram-tree-view")]
-    fn tree_view_model() -> TreeViewDiagramRenderModel {
-        TreeViewDiagramRenderModel {
+    fn tree_view_model() -> TreeViewDiagramModel {
+        TreeViewDiagramModel {
             acc_title: None,
             acc_descr: None,
             title: None,
-            root: TreeViewNodeRenderModel {
+            root: TreeViewNode {
                 id: 0,
                 level: -1,
                 name: "/".to_string(),
-                children: vec![TreeViewNodeRenderModel {
+                children: vec![TreeViewNode {
                     id: 1,
                     level: 0,
                     name: "Root".to_string(),
                     children: vec![
-                        TreeViewNodeRenderModel {
+                        TreeViewNode {
                             id: 2,
                             level: 1,
                             name: "Child1".to_string(),
                             children: Vec::new(),
                             ..Default::default()
                         },
-                        TreeViewNodeRenderModel {
+                        TreeViewNode {
                             id: 3,
                             level: 1,
                             name: "Child2".to_string(),

@@ -1,16 +1,19 @@
+#[cfg(feature = "editor-facts")]
+use super::ast::{FlowchartClickEditorEvidence, FlowchartDirectiveEditorEvidence};
 use super::{
-    ArrowToken, ClickAction, ClickStmt, DirectionStatementToken, LabeledText, LexError, LinkToken,
-    NodeLabelToken, SubgraphHeader, TitleKind, Tok,
-    ast::{FlowchartClickEditorEvidence, FlowchartDirectiveEditorEvidence},
-    destruct_end_link, destruct_labeled_end_link, destruct_start_link, is_ecmascript_trim_char,
-    lex, parse_label_text,
+    ArrowToken, DirectionStatementToken, LabeledText, LexError, LinkToken, NodeLabelToken,
+    SubgraphHeader, TitleKind, Tok, destruct_end_link, destruct_labeled_end_link,
+    destruct_start_link, is_ecmascript_trim_char, lex, parse_label_text,
 };
+#[cfg(feature = "editor-facts")]
+use super::{ClickAction, ClickStmt};
 use crate::diagrams::jison_unicode::is_mermaid_unicode_text;
-use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, SourceSpan, editor::source_value_span,
-};
+#[cfg(feature = "editor-facts")]
+use crate::{EditorExpectedSyntax, EditorExpectedSyntaxKind};
+use crate::{SourceSpan, source_span::source_value_span};
 use std::collections::VecDeque;
 
+#[cfg(feature = "editor-facts")]
 fn directive_argument_spans(
     rest: &str,
     rest_start: usize,
@@ -49,6 +52,7 @@ fn directive_argument_spans(
     (Some(first), Some(SourceSpan::new(value_start, value_end)))
 }
 
+#[cfg(feature = "editor-facts")]
 fn directive_error<I>(
     mut error: LexError,
     prefix: &'static str,
@@ -64,6 +68,7 @@ where
     error.in_directive(prefix, statement_span)
 }
 
+#[cfg(feature = "editor-facts")]
 fn active_following_span(
     rest: &str,
     rest_start: usize,
@@ -85,6 +90,7 @@ fn active_following_span(
     Some(following)
 }
 
+#[cfg(feature = "editor-facts")]
 fn trailing_value_slot(
     rest: &str,
     rest_start: usize,
@@ -94,6 +100,7 @@ fn trailing_value_slot(
     (active.start == active.end).then_some(active)
 }
 
+#[cfg(feature = "editor-facts")]
 fn directive_editor_evidence(
     statement_span: SourceSpan,
     first: Option<(EditorExpectedSyntaxKind, SourceSpan)>,
@@ -205,6 +212,7 @@ impl<'input> Lexer<'input> {
     }
 
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[cfg(feature = "editor-facts")]
     pub(super) fn recovering(input: &'input str) -> Self {
         Self {
             recover_partial_node_labels: true,
@@ -216,27 +224,58 @@ impl<'input> Lexer<'input> {
         self.input.as_bytes().get(self.pos).copied()
     }
 
-    pub(super) fn peek2(&self) -> Option<[u8; 2]> {
-        if self.pos + 1 >= self.input.len() {
-            return None;
-        }
-        Some([
-            self.input.as_bytes()[self.pos],
-            self.input.as_bytes()[self.pos + 1],
-        ])
+    pub(super) fn starts_with_kw(&self, kw: &str) -> bool {
+        // Jison compiles literal keywords with JavaScript's ASCII word boundary.
+        self.input[self.pos..]
+            .strip_prefix(kw)
+            .is_some_and(|suffix| {
+                !suffix
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+            })
     }
 
-    pub(super) fn starts_with_kw(&self, kw: &str) -> bool {
+    pub(super) fn lex_reserved_token_error(&mut self) -> Option<LexError> {
         let rest = &self.input[self.pos..];
-        if !rest.starts_with(kw) {
-            return false;
+        // Jison compiles these INITIAL keyword rules with an ASCII word boundary before
+        // NODE_STRING. Presentation statements are scanned as a whole below, but their keyword
+        // still requires a SPACE token before args.
+        // INTERPOLATE and LINK_TARGET have no standalone identifier use; their valid argument
+        // positions are consumed inside the click/linkStyle scanners instead.
+        let keyword = [
+            "style",
+            "linkStyle",
+            "classDef",
+            "class",
+            "subgraph",
+            "interpolate",
+            "_self",
+            "_blank",
+            "_parent",
+            "_top",
+        ]
+        .into_iter()
+        .find(|keyword| self.starts_with_kw(keyword))?;
+        if matches!(
+            keyword,
+            "style" | "linkStyle" | "classDef" | "class" | "subgraph"
+        ) {
+            let suffix = &rest[keyword.len()..];
+            if suffix.is_empty()
+                || suffix.chars().next().is_some_and(is_ecmascript_trim_char)
+                || (keyword == "subgraph" && suffix.starts_with(';'))
+            {
+                return None;
+            }
         }
-        let after = self.pos + kw.len();
-        if after >= self.input.len() {
-            return true;
-        }
-        let b = self.input.as_bytes()[after];
-        !b.is_ascii_alphanumeric() && b != b'_' && b != b'-'
+
+        let start = self.pos;
+        self.pos += keyword.len();
+        Some(LexError::with_span(
+            format!("Unexpected flowchart keyword {keyword}"),
+            SourceSpan::new(start, self.pos),
+        ))
     }
 
     pub(super) fn skip_ws(&mut self) {
@@ -289,29 +328,12 @@ impl<'input> Lexer<'input> {
                 self.pos += 1;
                 Some((start, Tok::Sep, self.pos))
             }
-            b';' => {
+            b';' if !self.allow_header_direction => {
                 self.pos += 1;
                 Some((start, Tok::Sep, self.pos))
             }
             _ => None,
         }
-    }
-
-    pub(super) fn lex_comment(&mut self) -> Option<(usize, Tok, usize)> {
-        let start = self.pos;
-        let Some([b'%', b'%']) = self.peek2() else {
-            return None;
-        };
-        // Consume until newline or EOF. If newline exists, emit Sep to keep statement boundaries.
-        self.pos += 2;
-        while let Some(b) = self.peek() {
-            if b == b'\n' {
-                self.pos += 1;
-                return Some((start, Tok::Sep, self.pos));
-            }
-            self.pos += 1;
-        }
-        None
     }
 
     pub(super) fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
@@ -320,14 +342,11 @@ impl<'input> Lexer<'input> {
         }
         let start = self.pos;
         let rest = &self.input[self.pos..];
-        for d in ["TB", "TD", "BT", "LR", "RL"] {
+        for d in ["TB", "TD", "BT", "LR", "RL", "BR"] {
             if rest.starts_with(d) {
                 let after = self.pos + d.len();
-                if after < self.input.len() {
-                    let b = self.input.as_bytes()[after];
-                    if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' {
-                        continue;
-                    }
+                if !self.header_direction_has_separator(after) {
+                    return None;
                 }
                 self.pos = after;
                 self.allow_header_direction = false;
@@ -346,11 +365,8 @@ impl<'input> Lexer<'input> {
             };
             if let Some(d) = mapped {
                 let after = self.pos + 1;
-                if after < self.input.len() {
-                    let next = self.input.as_bytes()[after];
-                    if next.is_ascii_alphanumeric() || next == b'_' || next == b'-' {
-                        return None;
-                    }
+                if !self.header_direction_has_separator(after) {
+                    return None;
                 }
                 self.pos = after;
                 self.allow_header_direction = false;
@@ -361,11 +377,23 @@ impl<'input> Lexer<'input> {
         None
     }
 
+    fn header_direction_has_separator(&self, after: usize) -> bool {
+        let rest = &self.input[after..];
+        let after_space = rest.trim_start_matches(|ch| ch != '\n' && is_ecmascript_trim_char(ch));
+        // flow.jison FirstStmtSeparator permits a direct semicolon or whitespace plus newline.
+        // Diagram.fromText appends a newline, so the public EOF spelling is equivalent.
+        rest.starts_with(';') || after_space.is_empty() || after_space.starts_with('\n')
+    }
+
     pub(super) fn lex_direction_stmt(
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
-        if !self.starts_with_kw("direction") {
+        if !self.input[self.pos..]
+            .strip_prefix("direction")
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(is_ecmascript_trim_char)
+        {
             return None;
         }
         self.pos += "direction".len();
@@ -393,16 +421,23 @@ impl<'input> Lexer<'input> {
             .into_iter()
             .find(|candidate| *candidate == direction)
         else {
-            let error = LexError::with_span("invalid flowchart direction", selection).expecting(
-                crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
-                selection,
-            );
+            let error = {
+                let error = LexError::with_span("invalid flowchart direction", selection);
+                #[cfg(feature = "editor-facts")]
+                let error = error.expecting(
+                    crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
+                    selection,
+                );
+                error
+            };
             if self.recover_partial_node_labels {
                 return Some(Ok((
                     start,
                     Tok::DirectionStmt(DirectionStatementToken {
                         direction: String::new(),
+                        #[cfg(any(test, feature = "editor-facts"))]
                         selection,
+                        #[cfg(any(test, feature = "editor-facts"))]
                         recovery_error: Some(error),
                     }),
                     statement_end,
@@ -415,7 +450,9 @@ impl<'input> Lexer<'input> {
             start,
             Tok::DirectionStmt(DirectionStatementToken {
                 direction: dir.to_string(),
+                #[cfg(any(test, feature = "editor-facts"))]
                 selection,
+                #[cfg(any(test, feature = "editor-facts"))]
                 recovery_error: None,
             }),
             statement_end,
@@ -564,16 +601,15 @@ impl<'input> Lexer<'input> {
 
         out.push_str(&self.input[segment_start..self.pos]);
         let span = SourceSpan::new(start, self.pos);
+        #[cfg(feature = "editor-facts")]
         let expected = super::shape_value_expected_span(self.input, start, self.pos)
             .unwrap_or(SourceSpan::new(self.pos, self.pos));
-        Some(Err(LexError::with_span(
-            "Unterminated shape data (missing `}`)",
-            span,
-        )
-        .expecting(
-            crate::EditorExpectedSyntaxKind::ShapeValue,
-            expected,
-        )))
+        Some(Err({
+            let error = LexError::with_span("Unterminated shape data (missing `}`)", span);
+            #[cfg(feature = "editor-facts")]
+            let error = error.expecting(crate::EditorExpectedSyntaxKind::ShapeValue, expected);
+            error
+        }))
     }
 
     pub(super) fn lex_edge_id(&mut self) -> Option<(usize, Tok, usize)> {
@@ -622,31 +658,46 @@ impl<'input> Lexer<'input> {
         self.pos += "style".len();
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
+        #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
+        #[cfg(feature = "editor-facts")]
         let (target, style) = directive_argument_spans(&rest, rest_start);
+        #[cfg(feature = "editor-facts")]
         let style_slot = trailing_value_slot(&rest, rest_start, style);
         match lex::parse_style_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_style_stmt_spans(&mut stmt, &rest, rest_start);
-                stmt.editor_evidence = directive_editor_evidence(
-                    statement_span,
-                    target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
-                    style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
-                );
+                #[cfg(feature = "editor-facts")]
+                {
+                    stmt.editor_evidence = directive_editor_evidence(
+                        statement_span,
+                        target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
+                        style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
+                    );
+                }
                 Some(Ok((start, Tok::StyleStmt(stmt), end)))
             }
-            Err(error) => Some(Err(directive_error(
-                error,
-                "style",
-                statement_span,
-                target
-                    .map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span))
-                    .into_iter()
-                    .chain((target.is_none()).then_some((
-                        EditorExpectedSyntaxKind::NodeIdentifier,
-                        SourceSpan::new(end, end),
-                    ))),
-            ))),
+            Err(error) => Some(Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    directive_error(
+                        error,
+                        "style",
+                        statement_span,
+                        target
+                            .map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span))
+                            .into_iter()
+                            .chain((target.is_none()).then_some((
+                                EditorExpectedSyntaxKind::NodeIdentifier,
+                                SourceSpan::new(end, end),
+                            ))),
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    error
+                }
+            })),
         }
     }
 
@@ -659,26 +710,45 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "classDef".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        #[cfg(feature = "editor-facts")]
+        let rest_start = _rest_start;
+        #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
+        #[cfg(feature = "editor-facts")]
         let (class_name, style) = directive_argument_spans(&rest, rest_start);
+        #[cfg(feature = "editor-facts")]
         let style_slot = trailing_value_slot(&rest, rest_start, style);
         match lex::parse_classdef_stmt(&rest) {
-            Ok(mut stmt) => {
-                lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
-                stmt.editor_evidence = directive_editor_evidence(
-                    statement_span,
-                    class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
-                    style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
-                );
+            Ok(stmt) => {
+                #[cfg(feature = "editor-facts")]
+                let mut stmt = stmt;
+                #[cfg(feature = "editor-facts")]
+                {
+                    lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
+                    stmt.editor_evidence = directive_editor_evidence(
+                        statement_span,
+                        class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                        style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
+                    );
+                }
                 Some(Ok((start, Tok::ClassDefStmt(stmt), end)))
             }
-            Err(error) => Some(Err(directive_error(
-                error,
-                "classDef",
-                statement_span,
-                class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
-            ))),
+            Err(error) => Some(Err({
+                #[cfg(feature = "editor-facts")]
+                {
+                    directive_error(
+                        error,
+                        "classDef",
+                        statement_span,
+                        class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                    )
+                }
+                #[cfg(not(feature = "editor-facts"))]
+                {
+                    error
+                }
+            })),
         }
     }
 
@@ -691,30 +761,53 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "class".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        #[cfg(feature = "editor-facts")]
+        let rest_start = _rest_start;
+        #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
+        #[cfg(feature = "editor-facts")]
         let (targets, class_name) = directive_argument_spans(&rest, rest_start);
+        #[cfg(feature = "editor-facts")]
         let class_name = active_following_span(&rest, rest_start, class_name);
         match lex::parse_class_assign_stmt(&rest) {
-            Ok(mut stmt) => {
-                lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
-                stmt.editor_evidence = directive_editor_evidence(
-                    statement_span,
-                    targets.map(|span| (EditorExpectedSyntaxKind::IdList, span)),
-                    class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
-                );
+            Ok(stmt) => {
+                #[cfg(feature = "editor-facts")]
+                let mut stmt = stmt;
+                #[cfg(feature = "editor-facts")]
+                {
+                    lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
+                    stmt.editor_evidence = directive_editor_evidence(
+                        statement_span,
+                        targets.map(|span| (EditorExpectedSyntaxKind::IdList, span)),
+                        class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                    );
+                }
                 Some(Ok((start, Tok::ClassAssignStmt(stmt), end)))
             }
             Err(error) => {
+                #[cfg(feature = "editor-facts")]
                 let target = targets.unwrap_or_else(|| SourceSpan::new(end, end));
-                Some(Err(directive_error(
-                    error,
-                    "class",
-                    statement_span,
-                    [(EditorExpectedSyntaxKind::IdList, target)]
-                        .into_iter()
-                        .chain(class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span))),
-                )))
+                Some(Err({
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        directive_error(
+                            error,
+                            "class",
+                            statement_span,
+                            [(EditorExpectedSyntaxKind::IdList, target)]
+                                .into_iter()
+                                .chain(
+                                    class_name
+                                        .map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                                ),
+                        )
+                    }
+                    #[cfg(not(feature = "editor-facts"))]
+                    {
+                        error
+                    }
+                }))
             }
         }
     }
@@ -723,52 +816,76 @@ impl<'input> Lexer<'input> {
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
-        if !self.starts_with_kw("click") {
+        if !self.input[self.pos..]
+            .strip_prefix("click")
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(is_ecmascript_trim_char)
+        {
             return None;
         }
         self.pos += "click".len();
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
+        #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
+        #[cfg(feature = "editor-facts")]
         let (target, _) = directive_argument_spans(&rest, rest_start);
         match lex::parse_click_stmt(&rest, rest_start) {
-            Ok(mut stmt) => {
-                stmt.editor_evidence = directive_editor_evidence(
-                    statement_span,
-                    target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
-                    None,
-                );
+            Ok(stmt) => {
+                #[cfg(feature = "editor-facts")]
+                let mut stmt = stmt;
+                #[cfg(feature = "editor-facts")]
+                {
+                    stmt.editor_evidence = directive_editor_evidence(
+                        statement_span,
+                        target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
+                        None,
+                    );
+                }
                 Some(Ok((start, Tok::ClickStmt(stmt), end)))
             }
             Err(error) => {
+                #[cfg(feature = "editor-facts")]
                 let target = target.unwrap_or_else(|| SourceSpan::new(end, end));
-                let error = directive_error(
-                    error,
-                    "click",
-                    statement_span,
-                    [(EditorExpectedSyntaxKind::NodeIdentifier, target)],
-                );
+                let error = {
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        directive_error(
+                            error,
+                            "click",
+                            statement_span,
+                            [(EditorExpectedSyntaxKind::NodeIdentifier, target)],
+                        )
+                    }
+                    #[cfg(not(feature = "editor-facts"))]
+                    {
+                        error
+                    }
+                };
+                #[cfg(feature = "editor-facts")]
                 if self.recover_partial_node_labels && target.start < target.end {
-                    Some(Ok((
+                    return Some(Ok((
                         start,
                         Tok::ClickStmt(ClickStmt {
                             ids: vec![self.input[target.start..target.end].to_string()],
                             id_spans: vec![target],
                             tooltip: None,
                             action: ClickAction::Callback,
+                            #[cfg(feature = "editor-facts")]
                             editor_evidence: directive_editor_evidence(
                                 statement_span,
                                 Some((EditorExpectedSyntaxKind::NodeIdentifier, target)),
                                 None,
                             ),
+                            #[cfg(feature = "editor-facts")]
                             interaction_evidence: FlowchartClickEditorEvidence::default(),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             recovery_error: Some(error),
                         }),
                         end,
-                    )))
-                } else {
-                    Some(Err(error))
+                    )));
                 }
+                Some(Err(error))
             }
         }
     }
@@ -926,7 +1043,9 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let first = bytes[start];
-        if first.is_ascii_alphanumeric() || first == b'_' {
+        // Ordinary comments are removed by preprocessing. Mermaid's NODE_STRING includes `%`,
+        // so remaining markers belong to identifiers and must reach the grammar unchanged.
+        if first.is_ascii_alphanumeric() || matches!(first, b'_' | b'%') {
             self.pos += 1;
         } else if let Some(len) = non_ascii_id_char_len(self.input, start) {
             self.pos += len;
@@ -942,7 +1061,7 @@ impl<'input> Lexer<'input> {
                 break;
             }
             let b = bytes[self.pos];
-            if b.is_ascii_alphanumeric() || b == b'_' {
+            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'%') {
                 self.pos += 1;
                 continue;
             }
@@ -1007,6 +1126,7 @@ impl<'input> Lexer<'input> {
         struct StartLinkMatch {
             family: LinkFamily,
             operator: String,
+            #[cfg(feature = "editor-facts")]
             operator_span: SourceSpan,
             match_end: usize,
         }
@@ -1205,14 +1325,18 @@ impl<'input> Lexer<'input> {
                             .push_back(Ok((pipe_pos, Tok::EdgeLabel(label), self.pos)));
                     } else {
                         self.pos = self.input.len();
-                        let error = LexError::with_span(
-                            "Unterminated flowchart pipe edge label",
-                            SourceSpan::new(pipe_pos, self.pos),
-                        )
-                        .expecting(
-                            crate::EditorExpectedSyntaxKind::Payload,
-                            SourceSpan::new(self.pos, self.pos),
-                        );
+                        let error = {
+                            let error = LexError::with_span(
+                                "Unterminated flowchart pipe edge label",
+                                SourceSpan::new(pipe_pos, self.pos),
+                            );
+                            #[cfg(feature = "editor-facts")]
+                            let error = error.expecting(
+                                crate::EditorExpectedSyntaxKind::Payload,
+                                SourceSpan::new(self.pos, self.pos),
+                            );
+                            error
+                        };
                         if self.recover_partial_node_labels {
                             let mut arrow = arrow;
                             arrow.recovery_error = Some(error);
@@ -1246,6 +1370,7 @@ impl<'input> Lexer<'input> {
                 return Some(StartLinkMatch {
                     family: LinkFamily::Normal,
                     operator: self.input[operator_start..cur].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     operator_span: SourceSpan::new(operator_start, cur),
                     match_end: skip_ecmascript_whitespace(self.input, cur),
                 });
@@ -1255,6 +1380,7 @@ impl<'input> Lexer<'input> {
                 return Some(StartLinkMatch {
                     family: LinkFamily::Thick,
                     operator: self.input[operator_start..cur].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     operator_span: SourceSpan::new(operator_start, cur),
                     match_end: skip_ecmascript_whitespace(self.input, cur),
                 });
@@ -1264,6 +1390,7 @@ impl<'input> Lexer<'input> {
                 return Some(StartLinkMatch {
                     family: LinkFamily::Dotted,
                     operator: self.input[operator_start..cur].to_string(),
+                    #[cfg(feature = "editor-facts")]
                     operator_span: SourceSpan::new(operator_start, cur),
                     match_end: skip_ecmascript_whitespace(self.input, cur),
                 });
@@ -1276,14 +1403,16 @@ impl<'input> Lexer<'input> {
             if self.input[operator_start..].starts_with("->") {
                 self.pos = operator_start + 2;
                 let selection = SourceSpan::new(operator_start, self.pos);
-                return Some(Err(LexError::with_span(
-                    "incomplete flowchart edge operator",
-                    selection,
-                )
-                .expecting(
-                    crate::EditorExpectedSyntaxKind::FlowchartOperator,
-                    selection,
-                )));
+                return Some(Err({
+                    let error =
+                        LexError::with_span("incomplete flowchart edge operator", selection);
+                    #[cfg(feature = "editor-facts")]
+                    let error = error.expecting(
+                        crate::EditorExpectedSyntaxKind::FlowchartOperator,
+                        selection,
+                    );
+                    error
+                }));
             }
             return None;
         };
@@ -1331,8 +1460,15 @@ impl<'input> Lexer<'input> {
                         let parsed = match lex::parse_edge_text(raw_text) {
                             Ok(parsed) => parsed,
                             Err(error) => {
-                                let error = LexError::with_span(error.message, raw_span)
-                                    .expecting(crate::EditorExpectedSyntaxKind::Payload, raw_span);
+                                let error = {
+                                    let error = LexError::with_span(error.message, raw_span);
+                                    #[cfg(feature = "editor-facts")]
+                                    let error = error.expecting(
+                                        crate::EditorExpectedSyntaxKind::Payload,
+                                        raw_span,
+                                    );
+                                    error
+                                };
                                 if self.recover_partial_node_labels
                                     && let Ok(link) = compute_link(
                                         link_match.operator,
@@ -1436,14 +1572,18 @@ impl<'input> Lexer<'input> {
         }
 
         self.pos = self.input.len();
-        Some(Err(LexError::with_span(
-            "Unterminated edge label (missing link terminator)",
-            SourceSpan::new(edge_text_start, self.pos),
-        )
-        .expecting(
-            crate::EditorExpectedSyntaxKind::FlowchartOperator,
-            SourceSpan::new(start_match.operator_span.start, after_start),
-        )))
+        Some(Err({
+            let error = LexError::with_span(
+                "Unterminated edge label (missing link terminator)",
+                SourceSpan::new(edge_text_start, self.pos),
+            );
+            #[cfg(feature = "editor-facts")]
+            let error = error.expecting(
+                crate::EditorExpectedSyntaxKind::FlowchartOperator,
+                SourceSpan::new(start_match.operator_span.start, after_start),
+            );
+            error
+        }))
     }
 
     pub(super) fn lex_node_label(
@@ -1471,7 +1611,9 @@ impl<'input> Lexer<'input> {
                             &raw,
                             SourceSpan::new(raw_start, token_end),
                             PartialNodeLabelRecovery {
+                                #[cfg(feature = "editor-facts")]
                                 trigger_span: Some(SourceSpan::new(start, content_start)),
+                                #[cfg(any(test, feature = "editor-facts"))]
                                 error: LexError::with_span(
                                     "Unterminated node label (missing `/]` or `\\]`)",
                                     SourceSpan::new(start, token_end),
@@ -1505,6 +1647,7 @@ impl<'input> Lexer<'input> {
                 shape,
                 SourceSpan::new(start, token_end),
                 SourceSpan::new(content_start, end_start),
+                #[cfg(feature = "editor-facts")]
                 None,
             ) {
                 Ok(v) => v,
@@ -1536,7 +1679,9 @@ impl<'input> Lexer<'input> {
                             &raw,
                             SourceSpan::new(raw_start, token_end),
                             PartialNodeLabelRecovery {
+                                #[cfg(feature = "editor-facts")]
                                 trigger_span: Some(SourceSpan::new(start, content_start)),
+                                #[cfg(any(test, feature = "editor-facts"))]
                                 error: LexError::with_span(
                                     "Unterminated node label (missing `/]` or `\\]`)",
                                     SourceSpan::new(start, token_end),
@@ -1570,6 +1715,7 @@ impl<'input> Lexer<'input> {
                 shape,
                 SourceSpan::new(start, token_end),
                 SourceSpan::new(content_start, end_start),
+                #[cfg(feature = "editor-facts")]
                 None,
             ) {
                 Ok(v) => v,
@@ -1607,6 +1753,7 @@ impl<'input> Lexer<'input> {
                     shape,
                     SourceSpan::new(start, token_end),
                     SourceSpan::new(content_start, end_start),
+                    #[cfg(feature = "editor-facts")]
                     None,
                 ) {
                     Ok(v) => v,
@@ -1636,7 +1783,9 @@ impl<'input> Lexer<'input> {
                     &raw,
                     SourceSpan::new(raw_start, token_end),
                     PartialNodeLabelRecovery {
+                        #[cfg(feature = "editor-facts")]
                         trigger_span: Some(SourceSpan::new(start, content_start)),
+                        #[cfg(any(test, feature = "editor-facts"))]
                         error: LexError::with_span(
                             format!("Unterminated node label (missing `{close}`)"),
                             SourceSpan::new(start, token_end),
@@ -1668,6 +1817,7 @@ impl<'input> Lexer<'input> {
                         SourceSpan::new(content_start, end_start),
                         label_raw,
                         label_span,
+                        #[cfg(feature = "editor-facts")]
                         None,
                     ) {
                         Ok(v) => v,
@@ -1702,7 +1852,9 @@ impl<'input> Lexer<'input> {
                         label_raw,
                         label_span,
                         PartialNodeLabelRecovery {
+                            #[cfg(feature = "editor-facts")]
                             trigger_span: Some(SourceSpan::new(start, content_start)),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             error: LexError::with_span(
                                 "Unterminated node label (missing `]`)",
                                 SourceSpan::new(start, token_end),
@@ -1725,6 +1877,7 @@ impl<'input> Lexer<'input> {
                         "diamond",
                         SourceSpan::new(start, token_end),
                         SourceSpan::new(content_start, end_start),
+                        #[cfg(feature = "editor-facts")]
                         None,
                     ) {
                         Ok(v) => v,
@@ -1754,7 +1907,9 @@ impl<'input> Lexer<'input> {
                         &raw,
                         SourceSpan::new(raw_start, token_end),
                         PartialNodeLabelRecovery {
+                            #[cfg(feature = "editor-facts")]
                             trigger_span: Some(SourceSpan::new(start, content_start)),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             error: LexError::with_span(
                                 "Unterminated node label (missing `}`)",
                                 SourceSpan::new(start, token_end),
@@ -1777,6 +1932,7 @@ impl<'input> Lexer<'input> {
                         "round",
                         SourceSpan::new(start, token_end),
                         SourceSpan::new(content_start, end_start),
+                        #[cfg(feature = "editor-facts")]
                         None,
                     ) {
                         Ok(v) => v,
@@ -1806,7 +1962,9 @@ impl<'input> Lexer<'input> {
                         &raw,
                         SourceSpan::new(raw_start, token_end),
                         PartialNodeLabelRecovery {
+                            #[cfg(feature = "editor-facts")]
                             trigger_span: Some(SourceSpan::new(start, content_start)),
+                            #[cfg(any(test, feature = "editor-facts"))]
                             error: LexError::with_span(
                                 "Unterminated node label (missing `)`)",
                                 SourceSpan::new(start, token_end),
@@ -1828,7 +1986,7 @@ fn build_node_label_token(
     shape: &str,
     token_span: SourceSpan,
     content_span: SourceSpan,
-    trigger_span: Option<SourceSpan>,
+    #[cfg(feature = "editor-facts")] trigger_span: Option<SourceSpan>,
 ) -> std::result::Result<Tok, LexError> {
     let raw = &input[content_span.start..content_span.end];
     let raw_span = content_span;
@@ -1839,6 +1997,7 @@ fn build_node_label_token(
         content_span,
         raw,
         raw_span,
+        #[cfg(feature = "editor-facts")]
         trigger_span,
     )
 }
@@ -1850,19 +2009,23 @@ fn build_node_label_token_from_raw(
     _content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
-    trigger_span: Option<SourceSpan>,
+    #[cfg(feature = "editor-facts")] trigger_span: Option<SourceSpan>,
 ) -> std::result::Result<Tok, LexError> {
     let text = lex::parse_node_label_text(raw)?;
     Ok(Tok::NodeLabel(NodeLabelToken {
         shape: shape.to_string(),
         text: labeled_text_with_spans(input, text, token_span, raw_span),
+        #[cfg(feature = "editor-facts")]
         trigger_span,
+        #[cfg(any(test, feature = "editor-facts"))]
         recovery_error: None,
     }))
 }
 
 struct PartialNodeLabelRecovery {
+    #[cfg(feature = "editor-facts")]
     trigger_span: Option<SourceSpan>,
+    #[cfg(any(test, feature = "editor-facts"))]
     error: LexError,
 }
 
@@ -1873,7 +2036,7 @@ fn build_partial_node_label_token_from_raw(
     _content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
-    recovery: PartialNodeLabelRecovery,
+    _recovery: PartialNodeLabelRecovery,
 ) -> Tok {
     let (text, kind) = parse_label_text(raw);
     Tok::NodeLabel(NodeLabelToken {
@@ -1889,8 +2052,10 @@ fn build_partial_node_label_token_from_raw(
             token_span,
             raw_span,
         ),
-        trigger_span: recovery.trigger_span,
-        recovery_error: Some(recovery.error),
+        #[cfg(feature = "editor-facts")]
+        trigger_span: _recovery.trigger_span,
+        #[cfg(any(test, feature = "editor-facts"))]
+        recovery_error: Some(_recovery.error),
     })
 }
 

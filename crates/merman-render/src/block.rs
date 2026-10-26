@@ -30,7 +30,7 @@ pub use geometry::{
     BlockAllocatedBounds, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
 };
 
-pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
+pub(crate) type BlockNode = merman_core::diagrams::block::BlockNode;
 
 // Mermaid createFormattedText pads the SVG edge label's background on all four sides.
 pub(crate) const SVG_EDGE_LABEL_BACKGROUND_PADDING: f64 = 2.0;

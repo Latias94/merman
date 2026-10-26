@@ -38,7 +38,7 @@ struct BackgroundReceipt {
 impl EdgeLabelBackgroundPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let theme = theme.filter(|theme| {

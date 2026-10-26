@@ -44,7 +44,7 @@ pub(crate) use theme::{
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
-type ClassNote = merman_core::models::class_diagram::ClassNote;
+type ClassNote<'a> = merman_core::models::class_diagram::ClassNoteRenderView<'a>;
 type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
 
@@ -82,8 +82,10 @@ pub(crate) fn class_node_requires_math(node: &ClassNode) -> bool {
 }
 
 pub(crate) fn class_requires_math(model: &ClassDiagramModel) -> bool {
-    model.classes.values().any(class_node_requires_math)
-        || model.relations.iter().any(|relation| {
+    model
+        .classes()
+        .any(|(_, class)| class_node_requires_math(class.node))
+        || model.relations().any(|relation| {
             crate::math::contains_delimited_math(&relation.title)
                 || relation
                     .relation_title_1
@@ -95,16 +97,19 @@ pub(crate) fn class_requires_math(model: &ClassDiagramModel) -> bool {
                     .is_some_and(crate::math::contains_delimited_math)
         })
         || model
-            .notes
-            .iter()
-            .map(|note| note.text.as_str())
-            .chain(model.interfaces.iter().map(|iface| iface.label.as_str()))
+            .notes()
+            .map(|note| note.note.text.as_str())
             .chain(
                 model
-                    .namespaces
-                    .values()
-                    .flat_map(|namespace| [namespace.label.as_str(), namespace.id.as_str()]),
+                    .interfaces()
+                    .map(|iface| iface.interface.label.as_str()),
             )
+            .chain(model.namespaces().flat_map(|(_, namespace)| {
+                [
+                    namespace.namespace.label.as_str(),
+                    namespace.namespace.id.as_str(),
+                ]
+            }))
             .any(crate::math::contains_delimited_math)
 }
 
@@ -189,27 +194,29 @@ fn class_dom_decl_order_index(dom_id: &str) -> usize {
 }
 
 pub(crate) fn class_namespace_ids_in_decl_order(model: &ClassDiagramModel) -> Vec<&str> {
-    let mut namespaces: Vec<_> = model.namespaces.values().collect();
+    let mut namespaces: Vec<_> = model.namespaces().map(|(_, namespace)| namespace).collect();
     namespaces.sort_by(|lhs, rhs| {
-        class_dom_decl_order_index(&lhs.dom_id)
-            .cmp(&class_dom_decl_order_index(&rhs.dom_id))
+        class_dom_decl_order_index(lhs.dom_id)
+            .cmp(&class_dom_decl_order_index(rhs.dom_id))
             .then_with(|| lhs.id.cmp(&rhs.id))
     });
-    namespaces.into_iter().map(|ns| ns.id.as_str()).collect()
+    namespaces
+        .into_iter()
+        .map(|ns| ns.namespace.id.as_str())
+        .collect()
 }
 
 pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a str) -> &'a str {
     model
-        .namespaces
-        .get(id)
+        .namespace(id)
         .and_then(|ns| {
-            let label = ns.label.trim();
+            let label = ns.namespace.label.trim();
             (!label.is_empty()).then_some(label)
         })
         .unwrap_or(id)
 }
 
-type Rect = merman_core::geom::Box2;
+type Rect = crate::geom::Box2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PreparedGraphId(usize);
@@ -1235,7 +1242,7 @@ fn layout_prepared_node(
 
 struct ClassBoxMeasureCtx<'a> {
     measurer: &'a dyn TextMeasurer,
-    mermaid_config: &'a merman_core::MermaidConfig,
+    mermaid_config: &'a merman_core::presentation::PresentationConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     text_style: &'a TextStyle,
     html_calc_text_style: &'a TextStyle,
@@ -1252,7 +1259,7 @@ pub(crate) fn class_math_label_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_width_px: Option<f64>,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Option<crate::text::TextMetrics> {
     if !crate::math::contains_delimited_math(text) {
@@ -2124,10 +2131,10 @@ pub(crate) fn class_normalize_xhtml_br_tags(html: &str) -> String {
 
 pub(crate) fn class_note_html_fragment(
     note_src: &str,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
 ) -> String {
     let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-    let note_html = merman_core::sanitize::sanitize_text(&note_html, mermaid_config);
+    let note_html = merman_core::sanitize::sanitize_text(&note_html, mermaid_config.as_config());
     class_normalize_xhtml_br_tags(&note_html)
 }
 
@@ -2135,7 +2142,7 @@ pub(crate) fn class_html_measure_note_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     note_src: &str,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
 ) -> crate::text::TextMetrics {
     let html = class_note_html_fragment(note_src, mermaid_config);
     crate::text::measure_html_with_inline_styles(measurer, &html, style, None, WrapMode::HtmlLike)
@@ -2177,7 +2184,7 @@ fn note_dimensions(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
     padding: f64,
-    mermaid_config: Option<&merman_core::MermaidConfig>,
+    mermaid_config: Option<&merman_core::presentation::PresentationConfig>,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64, crate::text::TextMetrics) {
     let p = padding.max(0.0);
@@ -2210,7 +2217,7 @@ fn label_metrics(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64) {
     if text.trim().is_empty() {
@@ -2234,7 +2241,7 @@ fn edge_title_metrics(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64) {
     let trimmed = text.trim();
@@ -2287,7 +2294,7 @@ fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: 
 
 pub(crate) fn layout_class_diagram_typed_with_config(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     typography_theme: &ClassTextThemePlan,
@@ -2318,7 +2325,7 @@ pub(crate) fn layout_class_diagram_typed_with_config(
 )]
 pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
@@ -2354,7 +2361,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
 
 fn measure_class_diagram(
     model: &ClassDiagramModel,
-    mermaid_config: &merman_core::MermaidConfig,
+    mermaid_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     render_config: &ClassRenderConfig,
@@ -2383,7 +2390,7 @@ fn measure_class_diagram(
     let namespace_ids = class_namespace_ids_in_decl_order(model);
 
     let mut g = MeasuredGraph {
-        direction: normalize_dir(&model.direction),
+        direction: normalize_dir(&model.model().direction),
         nodesep: settings.nodesep,
         ranksep: settings.ranksep,
         nodes: IndexMap::new(),
@@ -2430,7 +2437,7 @@ fn measure_class_diagram(
 
     let insert_note_node =
         |g: &mut MeasuredGraph,
-         n: &ClassNote,
+         n: ClassNote<'_>,
          node_label_metrics_by_id: &mut HashMap<String, (f64, f64)>| {
             let (w, h, metrics) = note_dimensions(
                 &n.text,
@@ -2443,12 +2450,12 @@ fn measure_class_diagram(
             );
             if capture_note_label_metrics {
                 node_label_metrics_by_id.insert(
-                    n.id.clone(),
+                    n.id.to_string(),
                     (metrics.width.max(0.0), metrics.height.max(0.0)),
                 );
             }
             g.set_node(
-                n.id.clone(),
+                n.id.to_string(),
                 MeasuredNode {
                     width: w.max(1.0),
                     height: h.max(1.0),
@@ -2484,30 +2491,25 @@ fn measure_class_diagram(
         );
 
         if let Some(parent) = model
-            .namespaces
-            .get(id)
-            .and_then(|ns| ns.parent.as_deref())
+            .namespace(id)
+            .and_then(|ns| ns.namespace.parent.as_deref())
             .map(str::trim)
             .filter(|parent| !parent.is_empty())
-            && model.namespaces.contains_key(parent)
+            && model.namespace(parent).is_some()
         {
             g.set_parent(id.to_string(), parent.to_string());
         }
     }
 
-    for c in model.classes.values() {
+    for (_, c) in model.classes() {
         insert_class_node(
             &mut g,
-            c,
+            c.node,
             &mut class_label_plans_by_id,
             &mut class_node_style_facts_by_id,
         );
-        if let Some(parent) = c
-            .parent
-            .as_ref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            && model.namespaces.contains_key(parent)
+        if let Some(parent) = c.parent.map(str::trim).filter(|s| !s.is_empty())
+            && model.namespace(parent).is_some()
         {
             g.set_parent(c.id.clone(), parent.to_string());
         }
@@ -2520,16 +2522,12 @@ fn measure_class_diagram(
         });
     }
 
-    for n in &model.notes {
+    for n in model.notes() {
         insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
-        if let Some(parent) = n
-            .parent
-            .as_ref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            && model.namespaces.contains_key(parent)
+        if let Some(parent) = n.parent.map(str::trim).filter(|s| !s.is_empty())
+            && model.namespace(parent).is_some()
         {
-            g.set_parent(n.id.clone(), parent.to_string());
+            g.set_parent(n.id.to_string(), parent.to_string());
         }
     }
 
@@ -2541,7 +2539,7 @@ fn measure_class_diagram(
     } else {
         (0.0, 0.0)
     };
-    for iface in &model.interfaces {
+    for iface in model.interfaces() {
         let label = decode_entities_minimal(iface.label.trim());
         let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
             crate::graph_label::FlowchartLabelMetricsRequest {
@@ -2556,9 +2554,9 @@ fn measure_class_diagram(
             },
         );
         let (tw, th) = (metrics.width.max(0.0), metrics.height.max(0.0));
-        node_label_metrics_by_id.insert(iface.id.clone(), (tw, th));
+        node_label_metrics_by_id.insert(iface.id.to_string(), (tw, th));
         g.set_node(
-            iface.id.clone(),
+            iface.id.to_string(),
             MeasuredNode {
                 width: (tw + interface_padding_x).max(1.0),
                 height: (th + interface_padding_y).max(1.0),
@@ -2569,15 +2567,15 @@ fn measure_class_diagram(
 
     // Note attachments precede class relations in Mermaid's layout edge array. Their IDs use the
     // note declaration index, including unattached notes, rather than the relation count.
-    for (i, note) in model.notes.iter().enumerate() {
+    for (i, note) in model.notes().enumerate() {
         let Some(class_id) = note.class_id.as_ref() else {
             continue;
         };
-        if !model.classes.contains_key(class_id) {
+        if model.class(class_id).is_none() {
             continue;
         }
         g.set_edge(
-            note.id.clone(),
+            note.id.to_string(),
             class_id.clone(),
             format!("edgeNote{i}"),
             MeasuredEdge {
@@ -2588,7 +2586,7 @@ fn measure_class_diagram(
         );
     }
 
-    for rel in &model.relations {
+    for rel in model.relations() {
         let title = if uses_elk_adapter {
             crate::text::mermaid_html_breaks_to_newlines(&rel.title)
         } else {
@@ -2638,8 +2636,8 @@ fn measure_class_diagram(
         };
 
         g.set_edge(
-            rel.id1.clone(),
-            rel.id2.clone(),
+            rel.id1.to_string(),
+            rel.id2.to_string(),
             rel.id.clone(),
             MeasuredEdge {
                 width: lw,
@@ -2759,7 +2757,7 @@ fn layout_class_diagram_dagre(
             title: title.clone(),
             title_label,
             requested_dir: None,
-            effective_dir: normalize_dir(&model.direction),
+            effective_dir: normalize_dir(&model.model().direction),
             padding: namespace_padding,
             title_margin_top,
             title_margin_bottom,
@@ -2813,7 +2811,7 @@ fn layout_class_diagram_dagre(
 #[doc(hidden)]
 pub fn debug_build_class_diagram_dagre_graph(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
     let typography_theme = ClassTextThemePlan::resolve(None, effective_config);
@@ -2835,11 +2833,7 @@ fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
     const VISITING: u8 = 1;
     const COMPLETE: u8 = 2;
 
-    let ids = model
-        .namespaces
-        .keys()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let ids = model.namespaces().map(|(id, _)| id).collect::<Vec<_>>();
     let index_by_id = ids
         .iter()
         .copied()
@@ -2850,9 +2844,8 @@ fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
         .iter()
         .map(|id| {
             model
-                .namespaces
-                .get(*id)
-                .and_then(|namespace| namespace.parent.as_deref())
+                .namespace(id)
+                .and_then(|namespace| namespace.namespace.parent.as_deref())
                 .and_then(|parent| index_by_id.get(parent).copied())
         })
         .collect::<Vec<_>>();
@@ -3376,7 +3369,7 @@ fn class_layout_from_elk(
             title,
             title_label,
             requested_dir: None,
-            effective_dir: normalize_dir(&model.direction),
+            effective_dir: normalize_dir(&model.model().direction),
             padding: settings.namespace_padding,
             title_margin_top: settings.title_margin_top,
             title_margin_bottom: settings.title_margin_bottom,
@@ -3605,7 +3598,7 @@ mod tests {
     use dugong::graphlib::{Graph, GraphOptions};
     use dugong::{EdgeLabel, GraphLabel, NodeLabel};
     use merman_core::models::class_diagram::Namespace;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
@@ -3657,8 +3650,8 @@ mod tests {
                 .check_source_bytes(&source)
                 .expect("within normal source budget");
             stage("source-budget-accepted-before-engine-parse");
-            let parsed = Engine::new()
-                .with_site_config(merman_core::MermaidConfig::from_value(
+            let parsed = MermaidEngine::new()
+                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
                     serde_json::json!({"htmlLabels": true, "securityLevel": security}),
                 ))
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
@@ -3674,7 +3667,7 @@ mod tests {
                 ))
                 .expect("within normal Class model budget");
             stage("model-budget-accepted");
-            let label = model.classes["Alpha"].label.clone();
+            let label = model.class("Alpha").expect("Alpha class").label.clone();
             stage("before-markdown-xhtml-projection");
             let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(&label, true);
             stage("markdown-xhtml-projection-completed");
@@ -3764,7 +3757,7 @@ mod tests {
 
     #[test]
     fn class_member_display_preserves_authored_colon_spaces_and_classifiers() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nclass Box {\n+left :String\n+right: String\n+both : String$\n+tight:String\n+convert(value: String) Result\n}",
                 ParseOptions::default(),
@@ -3774,7 +3767,7 @@ mod tests {
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
-        let class = &model.classes["Box"];
+        let class = model.class("Box").expect("Box class");
         let members = class
             .members
             .iter()
@@ -3805,7 +3798,7 @@ mod tests {
     fn class_dagre_debug_input_uses_the_production_graph_and_source_identity_order() {
         let source =
             include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse Class fixture")
             .expect("detect Class fixture");
@@ -3837,7 +3830,7 @@ mod tests {
 
     #[cfg(feature = "layout-elk")]
     fn class_elk_graph_for_test(source: &str) -> super::elk::Graph {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse Class source")
             .expect("detect Class source");
@@ -3919,7 +3912,7 @@ mod tests {
                     let source = format!(
                         "---\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  themeVariables:\n    fontSize: {font_size}px\n---\nclassDiagram\nA --() CompleteInterface\n"
                     );
-                    let parsed = Engine::new()
+                    let parsed = MermaidEngine::new()
                         .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                         .unwrap()
                         .unwrap();
@@ -4012,7 +4005,7 @@ mod tests {
     #[test]
     fn class_elk_contracts_namespace_frame_without_rebasing_provider_routes() {
         for title_width in [32.0, 300.0] {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(
                     "classDiagram\nnamespace Frame {\nclass A\n}\nA --> A : loop\n",
                     ParseOptions::default(),
@@ -4154,7 +4147,7 @@ mod tests {
     fn class_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
         use std::num::NonZeroU64;
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("classDiagram\nA --> B", ParseOptions::default())
             .expect("parse Class source")
             .expect("detect Class source");
@@ -4264,7 +4257,7 @@ mod tests {
         fn render_html_label(
             &self,
             text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
         ) -> Option<String> {
             text.contains("$$").then(|| text.to_string())
         }
@@ -4272,7 +4265,7 @@ mod tests {
         fn measure_html_label(
             &self,
             text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -4295,23 +4288,24 @@ mod tests {
     }
 
     fn class_model_with_namespace_chain(count: usize) -> super::ClassDiagramModel {
-        let mut model: super::ClassDiagramModel = serde_json::from_value(serde_json::json!({
-            "type": "classDiagram",
-            "direction": "TB",
-            "classes": {},
-            "constants": {
-                "lineType": { "line": 0, "dottedLine": 1 },
-                "relationType": {
-                    "none": 0,
-                    "aggregation": 1,
-                    "extension": 2,
-                    "composition": 3,
-                    "dependency": 4,
-                    "lollipop": 5
+        let mut model: merman_core::models::class_diagram::ClassDiagramModel =
+            serde_json::from_value(serde_json::json!({
+                "type": "classDiagram",
+                "direction": "TB",
+                "classes": {},
+                "constants": {
+                    "lineType": { "line": 0, "dottedLine": 1 },
+                    "relationType": {
+                        "none": 0,
+                        "aggregation": 1,
+                        "extension": 2,
+                        "composition": 3,
+                        "dependency": 4,
+                        "lollipop": 5
+                    }
                 }
-            }
-        }))
-        .expect("minimal Class diagram model");
+            }))
+            .expect("minimal Class diagram model");
         for index in 0..count {
             let id = format!("ns{index}");
             model.namespaces.insert(
@@ -4319,7 +4313,6 @@ mod tests {
                 Namespace {
                     id,
                     label: String::new(),
-                    dom_id: format!("classId-namespace-{index}"),
                     class_ids: Vec::new(),
                     note_ids: Vec::new(),
                     parent: index.checked_sub(1).map(|parent| format!("ns{parent}")),
@@ -4327,7 +4320,7 @@ mod tests {
                 },
             );
         }
-        model
+        super::ClassDiagramModel::new(model, &merman_core::MermaidConfig::default())
     }
 
     fn class_candidate_test_graph(
@@ -4484,8 +4477,9 @@ mod tests {
 
     #[test]
     fn class_namespace_hierarchy_rejects_parent_cycles() {
-        let mut model = class_model_with_namespace_chain(3);
+        let mut model = class_model_with_namespace_chain(3).into_model();
         model.namespaces["ns0"].parent = Some("ns2".to_string());
+        let model = super::ClassDiagramModel::new(model, &merman_core::MermaidConfig::default());
 
         let error = super::validate_class_namespace_hierarchy(&model)
             .expect_err("namespace parent cycles must be rejected");
@@ -4687,7 +4681,7 @@ mod tests {
             "domId": "classId-Formula-0"
         }))
         .expect("Class node");
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let text_style = default_style();
         let context = super::ClassBoxMeasureCtx {
             measurer: &ClassMathGeometryMeasurer,
@@ -4710,7 +4704,7 @@ mod tests {
 
     #[test]
     fn class_svg_math_note_keeps_math_renderer_width_in_note_geometry() {
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = default_style();
 
         let (width, height, metrics) = super::note_dimensions(

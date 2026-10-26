@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -250,7 +250,7 @@ fn transformed_switch_native_fallback_is_kept_without_a_generated_duplicate() {
 #[test]
 fn swimlane_issue_200_export_keeps_lane_titles_rotated_and_centered() {
     let source = include_str!("../../../fixtures/swimlane/upstream_docs_basic.mmd");
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -353,7 +353,7 @@ swimlane-beta LR
 A -->|{html}| B
 "#
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
             .unwrap();

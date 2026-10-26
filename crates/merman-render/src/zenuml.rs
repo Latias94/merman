@@ -6,7 +6,7 @@ use crate::Result;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::zenuml::{
-    ZenumlDiagramRenderModel, ZenumlFragmentKind, ZenumlMessageStyle, ZenumlStatement,
+    ZenumlDiagramModel, ZenumlFragmentKind, ZenumlMessageStyle, ZenumlStatement,
     ZenumlStatementKind,
 };
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,7 @@ const MESSAGE_LABEL_PADDING: f64 = 10.0;
 const DEFAULT_STARTER: &str = "_STARTER_";
 
 pub(crate) fn resolve_zenuml_title<'a>(
-    model: &'a ZenumlDiagramRenderModel,
+    model: &'a ZenumlDiagramModel,
     diagram_title: Option<&'a str>,
 ) -> Option<&'a str> {
     model
@@ -380,7 +380,7 @@ pub struct ZenumlGroupLayout {
 }
 
 pub(crate) fn layout_zenuml_diagram_typed(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     typography: &ZenumlTypography,
     measurer: &dyn TextMeasurer,
 ) -> Result<ZenumlDiagramLayout> {
@@ -825,7 +825,7 @@ fn finite_layout_geometry(layout: &ZenumlDiagramLayout) -> bool {
 }
 
 fn apply_message_width_constraints(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     participants: &mut [ZenumlParticipantLayout],
     measurer: &dyn TextMeasurer,
     typography: &ZenumlTypography,
@@ -1070,7 +1070,7 @@ fn collect_fragment_frames(
 }
 
 fn self_message_extra_width(
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     positions: &HashMap<String, f64>,
     half_widths: &HashMap<String, f64>,
     measurer: &dyn TextMeasurer,
@@ -2402,7 +2402,7 @@ pub(crate) fn zenuml_emoji_unicode(shortcode: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     #[test]
     fn presentation_typography_measures_selected_fonts_and_preserves_vertical_clearance() {
@@ -2418,7 +2418,7 @@ mod tests {
             }
         }
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\n@Actor <<Client>> Alice\nBob\n// First line\n// (bold, italic) Second line\nAlice->Bob: A message wide enough to separate participants\nif(ready) {\n Alice->Bob: Continue\n}\n== Divider ==\n",
                 ParseOptions::strict(),
@@ -2515,7 +2515,7 @@ mod tests {
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nAlice->Bob: request\n",
                 ParseOptions::strict(),
@@ -2542,7 +2542,7 @@ mod tests {
         ] {
             let style = ZenumlSourceStyle::resolve(
                 Some(&resolved),
-                &merman_core::MermaidConfig::from_value(config),
+                &merman_core::presentation::PresentationConfig::from_value(config),
                 &meter,
                 false,
             )
@@ -2569,7 +2569,7 @@ mod tests {
 
     #[test]
     fn presentation_font_rejects_finite_size_that_overflows_layout_geometry() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "zenuml\nAlice->Bob: Message\n",
                 ParseOptions::strict(),
@@ -2592,7 +2592,7 @@ mod tests {
     }
 
     fn layout(source: &str) -> ZenumlDiagramLayout {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .unwrap();

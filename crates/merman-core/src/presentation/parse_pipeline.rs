@@ -1,24 +1,42 @@
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+use crate::EditorSemanticFacts;
+use crate::config::presentation::DetectorConfigCheckpoint;
 use crate::config::{AppearanceDecision, MaterializationPlan};
+#[cfg(any(feature = "compat-json", test))]
+use crate::diagram::CustomJsonRenderModel;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+use crate::diagram::{
+    CapturedPanic, DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture,
+    ParsedEditorFacts, RegistryOwner,
+};
+use crate::diagram::{
+    DiagramWarningFact, ParsedDiagramRender, RenderSemanticModel, RenderSemanticParseOutput,
+    ResolvedRenderParser,
+};
+#[cfg(feature = "compat-json")]
+use crate::diagram::{ParsedDiagram, ResolvedSemanticParser};
 use crate::operation::OperationPhase;
 use crate::preprocess::{
-    DirectiveRecoveryMode, PreprocessCaptureOutcome, PreprocessedSource, SourceConfigEvidence,
+    DirectiveRecoveryMode, PreprocessedSource,
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
-    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
+};
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+use crate::preprocess::{
+    PreprocessCaptureOutcome, SourceConfigEvidence,
+    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
+use crate::presentation::PresentationConfig;
 use crate::{
-    EditorSemanticFacts, Engine, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
-    OperationControlResult, ParseMetadata, ParseOptions, Result, SourceSpan, common_db, diagram,
-    diagrams::error_diagram, family, runtime, sanitize, theme,
+    Error, MermaidConfig, MermaidEngine, OperationControl, OperationControlResult, ParseOptions,
+    PresentationMetadata, Result, diagrams::error_diagram, family, runtime, sanitize, theme,
 };
-use diagram::{
-    CapturedPanic, CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot,
-    DiagramSnapshotCapture, DiagramWarningFact, ParsedDiagram, ParsedDiagramRender,
-    ParsedEditorFacts, RegistryOwner, RenderSemanticModel, RenderSemanticParseOutput,
-    ResolvedRenderParser, ResolvedSemanticParser,
-};
+#[cfg(feature = "compat-json")]
+use crate::{ManagedSemanticJson, common_db, diagram};
+#[cfg(feature = "compat-json")]
 use serde::Deserialize;
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy)]
@@ -33,17 +51,20 @@ enum PreprocessPath {
     Render,
 }
 
+#[cfg(feature = "compat-json")]
 struct CompatibilitySemanticParse {
     model: ManagedSemanticJson,
     warnings: CompatibilityWarnings,
 }
 
+#[cfg(feature = "compat-json")]
 enum CompatibilityWarnings {
     Typed(Vec<DiagramWarningFact>),
     BuiltInWithoutWarnings,
     CustomJson,
 }
 
+#[cfg(feature = "compat-json")]
 impl CompatibilitySemanticParse {
     fn built_in(model: ManagedSemanticJson, warning_facts: Vec<DiagramWarningFact>) -> Self {
         Self {
@@ -69,13 +90,15 @@ impl CompatibilitySemanticParse {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ParseTiming {
+    #[cfg(feature = "compat-json")]
     None,
+    #[cfg(feature = "compat-json")]
     Json,
     Render,
 }
 
 pub(crate) struct ParsePipeline<'a> {
-    engine: &'a Engine,
+    engine: &'a MermaidEngine,
     text: &'a str,
     options: ParseOptions,
     source: ParseSource<'a>,
@@ -84,14 +107,14 @@ pub(crate) struct ParsePipeline<'a> {
 /// Owns the configuration through detection, appearance selection, and paint input freezing.
 /// Snapshots remain local to the phases that need their values or mutation provenance.
 struct OperationConfigBuilder {
-    effective: MermaidConfig,
+    effective: PresentationConfig,
     source: MermaidConfig,
-    detector_checkpoint: Option<crate::config::DetectorConfigCheckpoint>,
+    detector_checkpoint: Option<DetectorConfigCheckpoint>,
 }
 
 impl OperationConfigBuilder {
     fn new(
-        engine: &Engine,
+        engine: &MermaidEngine,
         overrides: &MermaidConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Self>> {
@@ -102,7 +125,9 @@ impl OperationConfigBuilder {
         let source = if overrides.is_empty_object() {
             overrides.clone()
         } else {
-            let source = effective.source_filtered_overrides(overrides, control)?;
+            let source = effective
+                .as_config()
+                .source_filtered_overrides(overrides, control)?;
             effective.deep_merge_explicit(source.as_value());
             source
         };
@@ -115,10 +140,10 @@ impl OperationConfigBuilder {
 
     fn finalize(
         self,
-        engine: &Engine,
+        engine: &MermaidEngine,
         diagram_type: &str,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<MermaidConfig>> {
+    ) -> OperationControlResult<Result<PresentationConfig>> {
         let Self {
             mut effective,
             source,
@@ -133,15 +158,20 @@ impl OperationConfigBuilder {
         let decision = AppearanceDecision::resolve(
             diagram_type,
             &source,
-            &engine.site_config_overrides,
-            engine.theme_compatibility_config.as_ref(),
+            engine.site_config_overrides.as_config(),
+            engine
+                .theme_compatibility_config
+                .as_ref()
+                .map(PresentationConfig::as_config),
             &defaults,
         );
         match decision.materialization_plan(
             effective.get_str("theme"),
             engine.site_config.get_str("theme"),
         ) {
-            MaterializationPlan::InheritInitialized => decision.apply_to(&mut effective),
+            MaterializationPlan::InheritInitialized => {
+                decision.apply_to_presentation(&mut effective)
+            }
             MaterializationPlan::Materialize { selected } => {
                 // Detection must observe initialized config. Keep that result only when its
                 // assignments actually need replay onto a newly materialized theme.
@@ -155,17 +185,17 @@ impl OperationConfigBuilder {
                 }
                 // Detector writes cannot replace authored appearance. Scoped-key presence is
                 // checked again because replay can create or remove a scoped setting.
-                decision.apply_to(&mut effective);
+                decision.apply_to_presentation(&mut effective);
             }
         }
         // The explicit keyword is the only detector-level layout selection retained in Mermaid 12.
         if diagram_type == "flowchart-elk" {
             effective.set_value_explicit("layout", serde_json::Value::String("elk".to_owned()));
         }
-        if let Some(family) = family::operation_family_id(diagram_type, &effective) {
+        if let Some(family) = family::operation_family_id(diagram_type, effective.as_config()) {
             effective.freeze_family_paint_inputs(
                 family.as_str(),
-                &engine.initialization_inputs,
+                engine.initialization_inputs.as_config(),
                 &source,
                 detector_changes.as_ref(),
                 control,
@@ -177,11 +207,11 @@ impl OperationConfigBuilder {
     }
 
     fn materialize_operation_theme(
-        engine: &Engine,
+        engine: &MermaidEngine,
         decision: &AppearanceDecision<'_>,
         source_config: &MermaidConfig,
-        selected: theme::MermaidThemeId,
-    ) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
+        selected: crate::MermaidThemeId,
+    ) -> std::result::Result<PresentationConfig, theme::ThemeResolutionError> {
         let mut raw_config = engine.site_config.clone();
         // Every actual theme recalculation consumes raw initialization and allowed source inputs.
         // The inherited path instead keeps ordinary updates to initialized derivations.
@@ -190,15 +220,17 @@ impl OperationConfigBuilder {
             .as_value()
             .get("themeVariables")
             .filter(|value| theme::is_js_truthy(value))
-            .map(crate::compatibility_json::clone_value_nonrecursive)
+            .map(crate::json_value::clone_value_nonrecursive)
             .unwrap_or_else(|| serde_json::json!({}));
         raw_config.set_value_preserving_theme_compatibility("themeVariables", initial_variables);
         raw_config.deep_merge_explicit(source_config.as_value());
-        decision.apply_to(&mut raw_config);
+        decision.apply_to_presentation(&mut raw_config);
         theme::materialize_selected_theme(raw_config, selected)
     }
 }
 
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 struct PreparedPreprocessCapture {
     outcome: PreparedPreprocessOutcome,
     source_config: SourceConfigEvidence,
@@ -207,17 +239,19 @@ struct PreparedPreprocessCapture {
 // The ready variant is the parse hot path and is moved exactly once into snapshot construction.
 // Boxing it would add one allocation to every parse only to shrink this short-lived control value.
 #[allow(clippy::large_enum_variant)]
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 enum PreparedPreprocessOutcome {
-    Ready(PreprocessedSource, ParseMetadata),
+    Ready(PreprocessedSource, PresentationMetadata),
     Failed(Error),
     Panicked(CapturedPanic),
 }
 
-struct EditorParseSourceMap<'a> {
+struct ParserSourceMap<'a> {
     source: &'a PreprocessedSource,
 }
 
-impl<'a> EditorParseSourceMap<'a> {
+impl<'a> ParserSourceMap<'a> {
     fn new(source: &'a PreprocessedSource) -> Self {
         Self { source }
     }
@@ -226,103 +260,13 @@ impl<'a> EditorParseSourceMap<'a> {
         self.source.text()
     }
 
-    fn remap_facts(
-        &self,
-        facts: &mut EditorSemanticFacts,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        let original_symbol_count = facts.symbols.len();
-        let mut remapped_symbols = Vec::with_capacity(original_symbol_count);
-        for (index, mut symbol) in std::mem::take(&mut facts.symbols).into_iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            let Some(span) = self.try_remap_source_span(symbol.span) else {
-                continue;
-            };
-            let Some(selection) = self.try_remap_source_span(symbol.selection) else {
-                continue;
-            };
-            symbol.span = span;
-            symbol.selection = selection;
-            remapped_symbols.push(symbol);
-        }
-        facts.symbols = remapped_symbols;
-
-        let mut dropped_diagnostic_spans = 0usize;
-        for (index, diagnostic) in facts.diagnostics.iter_mut().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            if let Some(span) = diagnostic.span {
-                diagnostic.span = self.try_remap_source_span(span);
-                dropped_diagnostic_spans += usize::from(diagnostic.span.is_none());
-            }
-        }
-        let original_expected_count = facts.expected_syntax.len();
-        let mut remapped_expected = Vec::with_capacity(original_expected_count);
-        for (index, mut expected) in std::mem::take(&mut facts.expected_syntax)
-            .into_iter()
-            .enumerate()
-        {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            if let Some(span) = self.try_remap_source_span(expected.span) {
-                expected.span = span;
-                remapped_expected.push(expected);
-            }
-        }
-        facts.expected_syntax = remapped_expected;
-
-        let dropped_symbols = original_symbol_count - facts.symbols.len();
-        let dropped_expected = original_expected_count - facts.expected_syntax.len();
-        let dropped_spans = dropped_symbols + dropped_expected + dropped_diagnostic_spans;
-        if dropped_spans > 0 {
-            facts.mark_recovered_with_diagnostic(
-                format!(
-                    "dropped {dropped_spans} editor fact span(s) that crossed a preprocessing edit"
-                ),
-                None,
-            );
-        }
-        control.checkpoint()
-    }
-
     fn remap_parse_error(&self, err: Error) -> Error {
-        match err {
-            Error::DiagramParse {
-                diagram_type,
-                diagnostic,
-            } => Error::DiagramParse {
-                diagram_type,
-                diagnostic: self.remap_parse_diagnostic(diagnostic),
-            },
-            err => err,
-        }
-    }
-
-    fn remap_parse_diagnostic(&self, diagnostic: crate::ParseDiagnostic) -> crate::ParseDiagnostic {
-        let Some(span) = diagnostic.span() else {
-            return diagnostic;
-        };
-        match self.try_remap_source_span(span) {
-            Some(remapped) => diagnostic.map_span(|_| remapped),
-            None => diagnostic.without_span(),
-        }
-    }
-
-    fn try_remap_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
-        self.source.try_map_span(span)
-    }
-
-    fn try_remap_warning_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
-        self.try_remap_source_span(span)
+        self.source.remap_parse_error(err)
     }
 }
 
 impl<'a> ParsePipeline<'a> {
-    pub(crate) fn detect(engine: &'a Engine, text: &'a str, options: ParseOptions) -> Self {
+    pub(crate) fn detect(engine: &'a MermaidEngine, text: &'a str, options: ParseOptions) -> Self {
         Self {
             engine,
             text,
@@ -332,7 +276,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     pub(crate) fn known_type(
-        engine: &'a Engine,
+        engine: &'a MermaidEngine,
         diagram_type: &'a str,
         text: &'a str,
         options: ParseOptions,
@@ -345,15 +289,16 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
-    pub(crate) fn metadata(&self) -> Result<ParseMetadata> {
+    pub(crate) fn metadata(&self) -> Result<PresentationMetadata> {
         self.with_operation_context(|_| self.metadata_in_context())
     }
 
-    fn metadata_in_context(&self) -> Result<ParseMetadata> {
+    fn metadata_in_context(&self) -> Result<PresentationMetadata> {
         let (_, metadata) = self.preprocess_strict(PreprocessPath::PublicParse)?;
         Ok(metadata)
     }
 
+    #[cfg(feature = "compat-json")]
     pub(crate) fn parse_json(&self, timing: ParseTiming) -> Result<Option<ParsedDiagram>> {
         self.parse_model(
             timing,
@@ -372,10 +317,11 @@ impl<'a> ParsePipeline<'a> {
         )
     }
 
+    #[cfg(feature = "compat-json")]
     fn parse_compatibility_semantic(
         &self,
         code: &str,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
     ) -> Result<CompatibilitySemanticParse> {
         let Some(parser) = self.engine.diagram_registry.resolve(&meta.diagram_type) else {
             return Err(Error::UnsupportedDiagram {
@@ -400,6 +346,8 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn parse_editor_snapshot(
         &self,
         timing: ParseTiming,
@@ -409,6 +357,8 @@ impl<'a> ParsePipeline<'a> {
             .map_err(Error::from)?
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn parse_editor_snapshot_controlled(
         &self,
         timing: ParseTiming,
@@ -419,6 +369,8 @@ impl<'a> ParsePipeline<'a> {
             .into_result())
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     pub(crate) fn capture_editor_snapshot_controlled(
         &self,
         timing: ParseTiming,
@@ -439,6 +391,8 @@ impl<'a> ParsePipeline<'a> {
         })
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn parse_editor_snapshot_in_context_controlled(
         &self,
         timing: ParseTiming,
@@ -479,7 +433,7 @@ impl<'a> ParsePipeline<'a> {
             }
         };
         control.checkpoint()?;
-        let source_map = EditorParseSourceMap::new(&code);
+        let source_map = ParserSourceMap::new(&code);
         let recovered_incomplete_directive = code.recovered_incomplete_directive();
         let editor_input = source_map.parser_input();
         let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
@@ -571,7 +525,10 @@ impl<'a> ParsePipeline<'a> {
 
         control.checkpoint()?;
         let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
-        common_db::apply_common_db_sanitization(model.as_value_mut(), &meta.effective_config);
+        common_db::apply_common_db_sanitization(
+            model.as_value_mut(),
+            meta.effective_config.as_config(),
+        );
         control.checkpoint()?;
         let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
         let custom_warning_adapter_succeeded = if matches!(owner, Some(RegistryOwner::Custom)) {
@@ -626,20 +583,26 @@ impl<'a> ParsePipeline<'a> {
         )))
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn finish_snapshot_editor_facts(
         &self,
         owner: Option<RegistryOwner>,
         facts: Option<EditorSemanticFacts>,
-        meta: &ParseMetadata,
-        source_map: &EditorParseSourceMap<'_>,
+        meta: &PresentationMetadata,
+        source_map: &ParserSourceMap<'_>,
         control: &OperationControl,
     ) -> OperationControlResult<ParsedEditorFacts> {
         control.checkpoint()?;
         let facts = match (owner, facts) {
             (Some(RegistryOwner::Custom), _) | (None, _) => ParsedEditorFacts::Unavailable,
-            (Some(RegistryOwner::BuiltIn), Some(facts)) => ParsedEditorFacts::Available(
-                self.finish_editor_semantic_facts(facts, meta, source_map, control)?,
-            ),
+            (Some(RegistryOwner::BuiltIn), Some(facts)) => {
+                ParsedEditorFacts::Available(source_map.source.finish_editor_semantic_facts(
+                    facts,
+                    &meta.diagram_type,
+                    control,
+                )?)
+            }
             (Some(RegistryOwner::BuiltIn), None) => {
                 debug_assert!(
                     family::combined_parser(&meta.diagram_type).is_none(),
@@ -726,7 +689,7 @@ impl<'a> ParsePipeline<'a> {
             };
             let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
-            let source_map = EditorParseSourceMap::new(&code);
+            let source_map = ParserSourceMap::new(&code);
             let parse_start = operation_timing.map(runtime::OperationTiming::start);
             let parsed = self.parse_render_semantic_model_controlled(
                 source_map.parser_input(),
@@ -752,7 +715,7 @@ impl<'a> ParsePipeline<'a> {
             let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
             output
                 .model_mut()
-                .sanitize_common_db_fields(&meta.effective_config);
+                .sanitize_common_db_fields(meta.effective_config.as_config());
             let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
             let (line_offset, column_offset) = code.parser_position_offset();
@@ -778,43 +741,6 @@ impl<'a> ParsePipeline<'a> {
         })
     }
 
-    fn finish_editor_semantic_facts(
-        &self,
-        mut facts: EditorSemanticFacts,
-        meta: &ParseMetadata,
-        source_map: &EditorParseSourceMap<'_>,
-        control: &OperationControl,
-    ) -> OperationControlResult<EditorSemanticFacts> {
-        let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
-        source_map.remap_facts(&mut facts, control)?;
-        facts.family_semantics = family::diagram_type_editor_semantics(&meta.diagram_type)
-            .expect("built-in combined semantic facts have typed editor family semantics");
-        for expected in source_map.source.global_expected_syntax().chunks(128) {
-            control.checkpoint()?;
-            facts.expected_syntax.extend_from_slice(expected);
-        }
-        facts.finalize_expected_syntax_controlled(control)?;
-        for (index, prefix) in source_map
-            .source
-            .global_directive_prefixes()
-            .iter()
-            .enumerate()
-        {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            facts.push_directive_prefix(prefix.clone());
-        }
-        for (index, prefix) in family_directive_prefixes.into_iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            facts.push_directive_prefix(prefix);
-        }
-        control.checkpoint()?;
-        Ok(facts)
-    }
-
     // These callbacks are the explicit stages of the parse pipeline; bundling them into an
     // untyped options object would obscure their distinct ownership and lifetimes.
     #[allow(clippy::too_many_arguments)]
@@ -822,11 +748,11 @@ impl<'a> ParsePipeline<'a> {
         &self,
         timing: ParseTiming,
         preprocess_path: PreprocessPath,
-        parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
+        parse: impl FnOnce(&Self, &str, &PresentationMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
-        finish: impl FnOnce(ParseMetadata, T) -> O,
-        postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
+        suppressed: impl FnOnce(&PresentationMetadata, &Error) -> O,
+        finish: impl FnOnce(PresentationMetadata, T) -> O,
+        postprocess: impl FnOnce(&mut T, &ParserSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
     ) -> Result<Option<O>> {
         self.with_operation_context(|operation_context| {
@@ -850,11 +776,11 @@ impl<'a> ParsePipeline<'a> {
         timing: ParseTiming,
         preprocess_path: PreprocessPath,
         operation_context: &runtime::OperationContext,
-        parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
+        parse: impl FnOnce(&Self, &str, &PresentationMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
-        finish: impl FnOnce(ParseMetadata, T) -> O,
-        postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
+        suppressed: impl FnOnce(&PresentationMetadata, &Error) -> O,
+        finish: impl FnOnce(PresentationMetadata, T) -> O,
+        postprocess: impl FnOnce(&mut T, &ParserSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
     ) -> Result<Option<O>> {
         let operation_timing = timing.operation_timing(operation_context);
@@ -864,7 +790,7 @@ impl<'a> ParsePipeline<'a> {
         let Some((code, meta)) = self.preprocess_for(preprocess_path)? else {
             return Ok(None);
         };
-        let source_map = EditorParseSourceMap::new(&code);
+        let source_map = ParserSourceMap::new(&code);
         let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
 
         let parse_start = operation_timing.map(runtime::OperationTiming::start);
@@ -884,7 +810,7 @@ impl<'a> ParsePipeline<'a> {
         };
 
         let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
-        sanitize(&mut model, &meta.effective_config);
+        sanitize(&mut model, meta.effective_config.as_config());
         let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
         postprocess(&mut model, &source_map);
 
@@ -901,9 +827,10 @@ impl<'a> ParsePipeline<'a> {
         Ok(Some(finish(meta, model)))
     }
 
+    #[cfg(feature = "compat-json")]
     fn remap_compatibility_semantic_warnings(
         parsed: &mut CompatibilitySemanticParse,
-        source_map: &EditorParseSourceMap<'_>,
+        source_map: &ParserSourceMap<'_>,
     ) {
         match &mut parsed.warnings {
             CompatibilityWarnings::Typed(warning_facts) => {
@@ -931,9 +858,10 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     fn remap_custom_compatibility_json_warning_facts(
         model: &mut serde_json::Value,
-        source_map: &EditorParseSourceMap<'_>,
+        source_map: &ParserSourceMap<'_>,
     ) {
         let Some(warning_facts_value) = model.get_mut("warningFacts") else {
             return;
@@ -953,6 +881,7 @@ impl<'a> ParsePipeline<'a> {
         );
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn decode_custom_warning_facts_controlled(
         model: &Value,
         control: &OperationControl,
@@ -975,9 +904,10 @@ impl<'a> ParsePipeline<'a> {
         Ok(Some(warning_facts))
     }
 
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn remap_warning_facts_controlled(
         warning_facts: &mut [DiagramWarningFact],
-        source_map: &EditorParseSourceMap<'_>,
+        source_map: &ParserSourceMap<'_>,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         for (index, fact) in warning_facts.iter_mut().enumerate() {
@@ -990,6 +920,7 @@ impl<'a> ParsePipeline<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "compat-json")]
     fn sync_compatibility_warning_facts(model: &mut Value, warning_facts: &[DiagramWarningFact]) {
         let Some(value) = model.get_mut("warningFacts") else {
             return;
@@ -1001,29 +932,14 @@ impl<'a> ParsePipeline<'a> {
         );
     }
 
-    fn remap_warning_fact_spans(
-        fact: &mut DiagramWarningFact,
-        source_map: &EditorParseSourceMap<'_>,
-    ) {
-        let source_span = fact.span;
-        let remapped_span =
-            source_span.and_then(|span| source_map.try_remap_warning_source_span(span));
-        fact.span = remapped_span;
-        fact.fix_span = match (fact.fix_span, source_span, remapped_span) {
-            (Some(fix_span), Some(source_span), Some(remapped_span))
-                if fix_span.start == fix_span.end && fix_span.start == source_span.end =>
-            {
-                Some(SourceSpan::new(remapped_span.end, remapped_span.end))
-            }
-            (Some(fix_span), _, _) => source_map.try_remap_warning_source_span(fix_span),
-            (None, _, _) => None,
-        };
+    fn remap_warning_fact_spans(fact: &mut DiagramWarningFact, source_map: &ParserSourceMap<'_>) {
+        source_map.source.remap_warning_fact_spans(fact);
     }
 
     fn parse_render_semantic_model(
         &self,
         code: &str,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
     ) -> Result<RenderSemanticParseOutput> {
         let control = OperationControl::new();
         self.parse_render_semantic_model_controlled(code, meta, &control)
@@ -1033,10 +949,11 @@ impl<'a> ParsePipeline<'a> {
     fn parse_render_semantic_model_controlled(
         &self,
         code: &str,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
         control.checkpoint()?;
+        #[cfg(feature = "compat-json")]
         let semantic = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let render = self
             .engine
@@ -1051,6 +968,7 @@ impl<'a> ParsePipeline<'a> {
                 .map(RenderSemanticParseOutput::new));
         }
 
+        #[cfg(feature = "compat-json")]
         if let Some(ResolvedSemanticParser::Custom(_)) = semantic {
             return Ok(diagram::parse_or_unsupported_controlled(
                 &self.engine.diagram_registry,
@@ -1074,7 +992,11 @@ impl<'a> ParsePipeline<'a> {
             return parsed;
         }
 
-        if let Some(ResolvedSemanticParser::BuiltIn(_)) = semantic {
+        #[cfg(feature = "compat-json")]
+        let builtin_without_render = matches!(semantic, Some(ResolvedSemanticParser::BuiltIn(_)));
+        #[cfg(not(feature = "compat-json"))]
+        let builtin_without_render = family::is_builtin_diagram_type(&meta.diagram_type);
+        if builtin_without_render {
             return Ok(Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),
                 format!(
@@ -1092,7 +1014,7 @@ impl<'a> ParsePipeline<'a> {
     fn preprocess_for(
         &self,
         path: PreprocessPath,
-    ) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
+    ) -> Result<Option<(PreprocessedSource, PresentationMetadata)>> {
         let directive_recovery = if self.options.suppress_errors {
             DirectiveRecoveryMode::RecoverLine
         } else {
@@ -1105,7 +1027,7 @@ impl<'a> ParsePipeline<'a> {
         &self,
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
-    ) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
+    ) -> Result<Option<(PreprocessedSource, PresentationMetadata)>> {
         let control = OperationControl::new();
         self.preprocess_for_with_directive_recovery_controlled(path, directive_recovery, &control)
             .expect("a private parse control cannot be cancelled")
@@ -1116,7 +1038,7 @@ impl<'a> ParsePipeline<'a> {
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<Option<(PreprocessedSource, ParseMetadata)>>> {
+    ) -> OperationControlResult<Result<Option<(PreprocessedSource, PresentationMetadata)>>> {
         let preprocessed =
             self.preprocess_with_directive_recovery_controlled(path, directive_recovery, control)?;
         Ok(match preprocessed {
@@ -1128,7 +1050,7 @@ impl<'a> ParsePipeline<'a> {
     fn preprocess_strict(
         &self,
         path: PreprocessPath,
-    ) -> Result<(PreprocessedSource, ParseMetadata)> {
+    ) -> Result<(PreprocessedSource, PresentationMetadata)> {
         self.preprocess_with_directive_recovery(path, DirectiveRecoveryMode::Strict)
     }
 
@@ -1136,7 +1058,7 @@ impl<'a> ParsePipeline<'a> {
         &self,
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
-    ) -> Result<(PreprocessedSource, ParseMetadata)> {
+    ) -> Result<(PreprocessedSource, PresentationMetadata)> {
         let control = OperationControl::new();
         self.preprocess_with_directive_recovery_controlled(path, directive_recovery, &control)
             .expect("a private parse control cannot be cancelled")
@@ -1147,7 +1069,7 @@ impl<'a> ParsePipeline<'a> {
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+    ) -> OperationControlResult<Result<(PreprocessedSource, PresentationMetadata)>> {
         control.checkpoint()?;
         match self.source {
             ParseSource::Detect => {
@@ -1162,6 +1084,8 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn preprocess_with_evidence_controlled(
         &self,
         path: PreprocessPath,
@@ -1213,7 +1137,7 @@ impl<'a> ParsePipeline<'a> {
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+    ) -> OperationControlResult<Result<(PreprocessedSource, PresentationMetadata)>> {
         let pre = match self.preprocess_input_with_directive_recovery_controlled(
             path,
             None,
@@ -1232,7 +1156,7 @@ impl<'a> ParsePipeline<'a> {
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+    ) -> OperationControlResult<Result<(PreprocessedSource, PresentationMetadata)>> {
         let pre = match self.preprocess_input_with_directive_recovery_controlled(
             path,
             Some(diagram_type),
@@ -1247,10 +1171,10 @@ impl<'a> ParsePipeline<'a> {
 
     fn finish_preprocessed_controlled(
         &self,
-        mut pre: crate::PreprocessResult,
+        pre: crate::PreprocessResult,
         known_type: Option<&str>,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+    ) -> OperationControlResult<Result<(PreprocessedSource, PresentationMetadata)>> {
         control.checkpoint()?;
         if pre.code().trim_start().starts_with("---") {
             return Ok(Err(Error::MalformedFrontMatter));
@@ -1263,9 +1187,7 @@ impl<'a> ParsePipeline<'a> {
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
             None => {
-                config.detector_checkpoint = Some(crate::config::DetectorConfigCheckpoint::new(
-                    &config.effective,
-                ));
+                config.detector_checkpoint = Some(DetectorConfigCheckpoint::new(&config.effective));
                 match self.engine.registry.detect_type_precleaned_controlled(
                     pre.code(),
                     &mut config.effective,
@@ -1286,7 +1208,7 @@ impl<'a> ParsePipeline<'a> {
             .get("secure")
             .is_some()
         {
-            &self.engine.initialization_inputs
+            self.engine.initialization_inputs.as_config()
         } else {
             &upstream_defaults
         };
@@ -1297,26 +1219,20 @@ impl<'a> ParsePipeline<'a> {
         };
 
         control.checkpoint()?;
-        let title = sanitized_title(pre.title.as_deref(), &effective_config);
+        let title = sanitized_title(pre.title.as_deref(), effective_config.as_config());
         control.checkpoint()?;
 
-        if matches!(diagram_type.as_str(), "agentflow" | "eventmodeling")
-            && let Some(with_comments) = pre.with_comments.take()
-        {
-            let max_text_size = effective_config
-                .as_value()
-                .get("maxTextSize")
-                .and_then(Value::as_u64)
-                .unwrap_or(50_000);
-            if with_comments.text().encode_utf16().count() as u64 <= max_text_size {
-                pre.source =
-                    crate::preprocess::prepare_parser_text_controlled(with_comments, control)?;
-            }
-        }
+        let source = crate::preprocess::select_family_parser_source_controlled(
+            pre.source,
+            pre.with_comments,
+            &diagram_type,
+            effective_config.as_config(),
+            control,
+        )?;
 
         Ok(Ok((
-            pre.source,
-            ParseMetadata {
+            source,
+            PresentationMetadata {
                 diagram_type,
                 config: source_config,
                 effective_config,
@@ -1385,6 +1301,8 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn preprocess_input_with_evidence_controlled(
         &self,
         path: PreprocessPath,
@@ -1429,7 +1347,11 @@ impl ParseTiming {
         self,
         context: &runtime::OperationContext,
     ) -> Option<runtime::OperationTiming> {
-        (self != Self::None).then(|| context.timing()).flatten()
+        match self {
+            #[cfg(feature = "compat-json")]
+            Self::None => None,
+            _ => context.timing(),
+        }
     }
 
     fn log_suppressed_error(
@@ -1444,7 +1366,9 @@ impl ParseTiming {
         };
 
         match self {
+            #[cfg(feature = "compat-json")]
             Self::None => {}
+            #[cfg(feature = "compat-json")]
             Self::Json => {
                 eprintln!(
                     "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
@@ -1474,7 +1398,9 @@ impl ParseTiming {
         };
 
         match self {
+            #[cfg(feature = "compat-json")]
             Self::None => {}
+            #[cfg(feature = "compat-json")]
             Self::Json => {
                 eprintln!(
                     "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
@@ -1504,7 +1430,7 @@ impl ParseTiming {
 
 struct ParseTimingSuccess<'a> {
     total_start: Option<runtime::OperationTimer>,
-    meta: &'a ParseMetadata,
+    meta: &'a PresentationMetadata,
     model_kind: Option<&'static str>,
     preprocess: Option<std::time::Duration>,
     parse: Option<std::time::Duration>,
@@ -1520,32 +1446,48 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 
 #[cfg(test)]
 mod editor_parse_source_map_tests {
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     use std::sync::atomic::{AtomicUsize, Ordering};
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     use std::time::Duration;
 
-    use super::{CustomJsonRenderModel, EditorParseSourceMap, ParsePipeline, PreprocessPath};
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
+    use super::ParserSourceMap;
+    use super::{CustomJsonRenderModel, ParsePipeline, PreprocessPath};
     use crate::{
-        CancelReason, DetectorRegistry, DiagramSnapshotCapture, EditorExpectedSyntax,
-        EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
-        Engine, Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult,
-        OperationPhase, ParseMetadata, ParseOptions, Result, SourceSpan,
+        CancelReason, DetectorRegistry, Error, MermaidEngine, OperationCancelled, OperationControl,
+        OperationControlResult, OperationPhase, ParseOptions, PresentationConfig,
+        PresentationMetadata, Result,
+    };
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
+    use crate::{
+        DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
+        EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan,
     };
 
-    fn panicking_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
+    fn panicking_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         panic!("detector fixture panic")
     }
 
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     static FRONTMATTER_PROBE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
-    fn frontmatter_probe_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
+    fn frontmatter_probe_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
         FRONTMATTER_PROBE_CALLS.fetch_add(1, Ordering::Relaxed);
         panic!("frontmatter probe detector must not run")
     }
 
     fn cancelling_render_parser(
         _code: &str,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
         control.cancel();
@@ -1558,7 +1500,7 @@ mod editor_parse_source_map_tests {
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn expiring_render_parser(
         _code: &str,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
         assert!(
@@ -1573,9 +1515,11 @@ mod editor_parse_source_map_tests {
 
     #[test]
     fn operation_selects_appearance_once_with_or_without_rematerialization() {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "theme": "dark", "themeVariables": { "primaryColor": "#123456" },
-        })));
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
+                "theme": "dark", "themeVariables": { "primaryColor": "#123456" },
+            }),
+        ));
         for (source, materializations, expected_theme) in [
             ("flowchart TD\nA-->B", 0, "dark"),
             (
@@ -1605,16 +1549,17 @@ mod editor_parse_source_map_tests {
 
     #[test]
     fn rematerialization_replays_detector_values_before_reapplying_authored_appearance() {
-        fn detector(_source: &str, config: &mut MermaidConfig) -> bool {
+        fn detector(_source: &str, config: &mut PresentationConfig) -> bool {
             config.set_value("flowchart.nodeSpacing", serde_json::json!(71));
             config.set_value("flowchart.theme", serde_json::json!("forest"));
             config.set_value("themeVariables.primaryColor", serde_json::json!("#abcdef"));
             true
         }
-        let mut engine =
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        let mut engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({
                 "theme": "dark",
-            })));
+            }),
+        ));
         *engine.registry_mut() = DetectorRegistry::new();
         engine.registry_mut().add_fn("flowchart-v2", detector);
         let (metadata, work) = crate::config::measure_config_work(|| {
@@ -1640,19 +1585,21 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn controlled_snapshot_stops_before_a_cancelled_operation() {
         let control = OperationControl::new();
         control.cancel();
 
-        let result =
-            Engine::new().parse_diagram_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control);
+        let result = MermaidEngine::new()
+            .parse_diagram_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control);
 
         assert!(matches!(result, Err(OperationCancelled { .. })));
     }
 
     #[test]
     fn custom_render_parse_error_cannot_mask_callback_cancellation() {
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         engine
             .render_diagram_registry_mut()
             .insert("flowchart-v2", cancelling_render_parser);
@@ -1674,7 +1621,7 @@ mod editor_parse_source_map_tests {
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[test]
     fn custom_render_parse_error_cannot_mask_callback_deadline() {
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         engine
             .render_diagram_registry_mut()
             .insert("flowchart-v2", expiring_render_parser);
@@ -1694,11 +1641,13 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn controlled_capture_cancellation_never_returns_partial_evidence() {
         let control = OperationControl::new();
         control.cancel();
 
-        let result = Engine::new().capture_diagram_snapshot_controlled_sync(
+        let result = MermaidEngine::new().capture_diagram_snapshot_controlled_sync(
             "%%{init: {theme: 'dark'}}%%\nflowchart TD\nA-->B\n",
             &control,
         );
@@ -1707,9 +1656,11 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_retains_source_config_on_detection_failure() {
         let source = "%%{ initialize: { theme: 'dark' } }%%\nnot a diagram\n";
-        let captured = Engine::new()
+        let captured = MermaidEngine::new()
             .capture_diagram_snapshot_controlled_sync(source, &OperationControl::new())
             .expect("an active parse control must not cancel");
 
@@ -1726,12 +1677,14 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_retains_source_config_when_init_config_detection_panics() {
         let source = concat!(
             "%%{ initialize: { lazyLoadedDiagrams: true, config: { htmlLabels: false } } }%%\n",
             "detector-panic-fixture\n",
         );
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         *engine.registry_mut() = DetectorRegistry::new();
         engine
             .registry_mut()
@@ -1761,9 +1714,11 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn legacy_snapshot_facade_resumes_the_original_detector_panic_payload() {
         let source = "detector-panic-fixture\n";
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         *engine.registry_mut() = DetectorRegistry::new();
         engine
             .registry_mut()
@@ -1781,6 +1736,8 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_retains_later_source_config_on_preprocessing_failure() {
         let source = concat!(
             "---\n",
@@ -1789,7 +1746,7 @@ mod editor_parse_source_map_tests {
             "%%{ initialize: { theme: 'dark' } }%%\n",
             "flowchart TD\nA-->B\n",
         );
-        let captured = Engine::new()
+        let captured = MermaidEngine::new()
             .capture_diagram_snapshot_controlled_sync(source, &OperationControl::new())
             .expect("an active parse control must not cancel");
 
@@ -1806,6 +1763,8 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_capture_preserves_frontmatter_error_before_later_detector_panic() {
         let source = concat!(
             "---\n",
@@ -1814,7 +1773,7 @@ mod editor_parse_source_map_tests {
             "%%{ initialize: { config: { htmlLabels: false } } }%%\n",
             "detector-panic-fixture\n",
         );
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         *engine.registry_mut() = DetectorRegistry::new();
         FRONTMATTER_PROBE_CALLS.store(0, Ordering::Relaxed);
         engine
@@ -1839,8 +1798,10 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn lenient_editor_capture_preserves_suppressed_detection_semantics() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let pipeline = ParsePipeline::detect(&engine, "not a diagram\n", ParseOptions::lenient());
         let captured = pipeline
             .capture_editor_snapshot_controlled(super::ParseTiming::Json, &OperationControl::new())
@@ -1850,7 +1811,9 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     #[cfg(feature = "diagram-flowchart")]
+    #[cfg(feature = "editor-facts")]
     fn controlled_snapshot_stops_during_family_parser_work() {
         let mut source = String::from("flowchart TD\n");
         for index in 0..4_096 {
@@ -1860,7 +1823,7 @@ mod editor_parse_source_map_tests {
         control.cancel_after_checkpoints(128);
         crate::diagrams::flowchart::reset_flowchart_token_trace_construction_count();
 
-        let result = Engine::new().parse_diagram_snapshot_controlled_sync(&source, &control);
+        let result = MermaidEngine::new().parse_diagram_snapshot_controlled_sync(&source, &control);
 
         assert!(matches!(result, Err(OperationCancelled { .. })));
         assert_eq!(
@@ -1871,10 +1834,12 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
     #[cfg(feature = "diagram-flowchart")]
+    #[cfg(feature = "editor-facts")]
     fn active_control_preserves_the_snapshot_model() {
         let source = "flowchart TD\nA-->B\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let regular = engine
             .parse_diagram_snapshot_sync(source)
             .expect("regular parse succeeds")
@@ -1904,7 +1869,7 @@ mod editor_parse_source_map_tests {
             "flowchart TD\n",
             "A-->B\n",
         );
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let pipeline = ParsePipeline::detect(&engine, input, ParseOptions::strict());
 
         let render = pipeline
@@ -1930,7 +1895,7 @@ mod editor_parse_source_map_tests {
             "flowchart TD\n",
             "A-->B\n",
         );
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
 
         let error = engine
             .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -1940,9 +1905,11 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn fact_remap_drops_only_the_fact_crossing_a_deleted_span() {
         let original = "flowchart TD\nA%%{wrap}%%B\nC\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let preprocessed = crate::preprocess::preprocess_mermaid_public_parse_pipeline(
             original,
             &engine.registry,
@@ -1950,7 +1917,7 @@ mod editor_parse_source_map_tests {
         )
         .unwrap()
         .source;
-        let map = EditorParseSourceMap::new(&preprocessed);
+        let map = ParserSourceMap::new(&preprocessed);
         let mut facts = EditorSemanticFacts::new();
         let joined_start = preprocessed.text().find("AB").unwrap();
         facts.push_symbol(EditorSemanticSymbol::new(
@@ -1973,7 +1940,8 @@ mod editor_parse_source_map_tests {
             SourceSpan::new(c, c + 1),
         ));
 
-        map.remap_facts(&mut facts, &OperationControl::new())
+        map.source
+            .remap_editor_facts_controlled(&mut facts, &OperationControl::new())
             .expect("a private parse control cannot be cancelled");
 
         assert_eq!(facts.symbols.len(), 1);
@@ -1992,9 +1960,11 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn fact_remap_observes_cancellation_during_large_fact_batches() {
         let original = "flowchart TD\nA\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let preprocessed = crate::preprocess::preprocess_mermaid_public_parse_pipeline(
             original,
             &engine.registry,
@@ -2002,7 +1972,7 @@ mod editor_parse_source_map_tests {
         )
         .unwrap()
         .source;
-        let map = EditorParseSourceMap::new(&preprocessed);
+        let map = ParserSourceMap::new(&preprocessed);
         let mut facts = EditorSemanticFacts::new();
         let offset = preprocessed.text().find('A').unwrap();
         for index in 0..256 {
@@ -2018,7 +1988,8 @@ mod editor_parse_source_map_tests {
         control.cancel_after_checkpoints(1);
 
         assert!(matches!(
-            map.remap_facts(&mut facts, &control),
+            map.source
+                .remap_editor_facts_controlled(&mut facts, &control),
             Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());

@@ -326,7 +326,7 @@ fn flowchart_html_unicode_entities_use_finite_fallback_metrics() {
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
 
     let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
         crate::graph_label::FlowchartLabelMetricsRequest {
@@ -764,7 +764,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
 
     let actual = crate::graph_label::flowchart_label_metrics_for_layout(
         crate::graph_label::FlowchartLabelMetricsRequest {
@@ -793,7 +793,7 @@ fn flowchart_label_metrics_plain_text_uses_dom_text_operation() {
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
 
     let actual = crate::graph_label::flowchart_label_metrics_for_layout(
         crate::graph_label::FlowchartLabelMetricsRequest {
@@ -820,7 +820,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_icon_only_lines_preserve_break
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
 
     let twitter = crate::graph_label::flowchart_label_metrics_for_layout(
         crate::graph_label::FlowchartLabelMetricsRequest {
@@ -865,7 +865,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_keeps_icon_runs_bounded() {
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
 
     let database = crate::graph_label::flowchart_label_metrics_for_layout(
         crate::graph_label::FlowchartLabelMetricsRequest {
@@ -960,7 +960,7 @@ fn flowchart_multiline_html_label_uses_widest_measured_line() {
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
     let lines = [
         "short run",
         "a substantially wider synthetic run",
@@ -1153,7 +1153,7 @@ fn flowchart_svg_layout_metrics_follow_the_shared_text_operation() {
         measurer.measure_wrapped("synthetic node alpha beta", &style, None, WrapMode::SvgLike);
     assert!(extended.width > direct.width);
 
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
     let layout =
         flowchart_label_metrics_for_layout(crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
@@ -1370,7 +1370,7 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
     let markdown = "This is **bold** </br>and <strong>strong</strong>";
     assert!(mermaid_markdown_contains_html_tags(markdown));
 
@@ -1404,7 +1404,7 @@ fn flowchart_html_markdown_metrics_preserve_paragraph_break_height() {
         font_weight: None,
         font_style: None,
     };
-    let cfg = merman_core::MermaidConfig::default();
+    let cfg = merman_core::presentation::PresentationConfig::default();
     let measure = |markdown: &str| {
         crate::graph_label::flowchart_label_metrics_for_layout(
             crate::graph_label::FlowchartLabelMetricsRequest {

@@ -4,8 +4,8 @@ mod allocator;
 use allocator::CountingSystemAllocator;
 use merman::svg::{RenderResourcePolicy, SvgRenderOptions};
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
-    SvgRequest, runtime::RuntimePolicy,
+    MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer,
+    SvgEnvironment, SvgRequest, runtime::RuntimePolicy,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -263,8 +263,8 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     // capabilities remain enforced by this profile.
     let render_policy = RenderResourcePolicy::unbounded_for_trusted_input();
     let renderer = Renderer::new()
-        .with_engine(
-            Engine::new()
+        .with_presentation_engine(
+            MermaidEngine::new()
                 .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
         )
         .with_parse_options(ParseOptions::strict())

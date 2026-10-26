@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -177,7 +178,18 @@ class CliInstallationContractTests(unittest.TestCase):
             ):
                 contract.validate_repository_contract(root)
 
-    def test_default_features_must_equal_release_features(self) -> None:
+    def test_source_defaults_exclude_math_from_the_release_features(self) -> None:
+        manifest = contract._read_toml(ROOT, contract.CLI_MANIFEST)
+        defaults = set(manifest["features"]["default"])
+        release = set(contract._cli_release_profile(ROOT)["cargo"]["features"])
+        dist = set(manifest["package"]["metadata"]["dist"]["features"])
+
+        self.assertNotIn("math", defaults)
+        self.assertIn("math", release)
+        self.assertEqual(release, dist)
+        self.assertEqual(defaults, release - {"math"})
+
+    def test_default_features_must_match_release_features_except_math(self) -> None:
         with self.mutated_repository(
             "crates/merman-cli/Cargo.toml",
             'default = [\n    "all-diagrams",\n    "analysis",',
@@ -185,9 +197,36 @@ class CliInstallationContractTests(unittest.TestCase):
         ) as root:
             with self.assertRaisesRegex(
                 contract.InstallationContractError,
-                "CLI defaults must equal cli-release features",
+                "CLI defaults must equal cli-release features excluding opt-in math",
             ):
                 contract.validate_repository_contract(root)
+
+    def test_source_defaults_cannot_enable_math(self) -> None:
+        manifest = (ROOT / contract.CLI_MANIFEST).read_text(encoding="utf-8")
+        default_start = manifest.index("default = [", manifest.index("[features]"))
+        default_end = manifest.index("]", default_start) + 1
+        defaults = manifest[default_start:default_end]
+        self.assertNotIn('"math"', defaults)
+        with self.mutated_repository(
+            "crates/merman-cli/Cargo.toml",
+            defaults,
+            defaults.replace("default = [", 'default = [\n    "math",', 1),
+        ) as root:
+            with self.assertRaisesRegex(
+                contract.InstallationContractError,
+                "CLI defaults must equal cli-release features excluding opt-in math",
+            ):
+                contract.validate_repository_contract(root)
+
+    def test_release_recipe_must_explicitly_enable_math(self) -> None:
+        profile = contract._cli_release_profile(ROOT)
+        profile["cargo"]["features"].remove("math")
+        with mock.patch.object(contract, "_cli_release_profile", return_value=profile):
+            with self.assertRaisesRegex(
+                contract.InstallationContractError,
+                "cli-release must explicitly enable opt-in math",
+            ):
+                contract.validate_repository_contract(ROOT)
 
     def test_default_features_must_include_elk(self) -> None:
         manifest = (ROOT / contract.CLI_MANIFEST).read_text(encoding="utf-8")
@@ -201,7 +240,7 @@ class CliInstallationContractTests(unittest.TestCase):
         ) as root:
             with self.assertRaisesRegex(
                 contract.InstallationContractError,
-                "CLI defaults must equal cli-release features",
+                "CLI defaults must equal cli-release features excluding opt-in math",
             ):
                 contract.validate_repository_contract(root)
 

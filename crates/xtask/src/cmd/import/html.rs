@@ -447,7 +447,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                 }
             }
 
-            let mut cfg = merman::MermaidConfig::default();
+            let mut cfg = merman::presentation::PresentationConfig::default();
             let detected = match reg.detect_type(body.as_str(), &mut cfg) {
                 Ok(t) => t,
                 Err(_) => {

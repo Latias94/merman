@@ -25,7 +25,7 @@ pub(crate) use prepared::{
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
 use crate::text::{TextMetrics, TextStyle, WrapMode};
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -54,14 +54,18 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
     ///
     /// The returned string is treated as raw HTML and will still be sanitized by merman before
     /// emitting into an SVG `<foreignObject>`.
-    fn render_html_label(&self, text: &str, config: &MermaidConfig) -> Option<String>;
+    fn render_html_label(&self, text: &str, config: &PresentationConfig) -> Option<String>;
 
     /// Attempts to render a Sequence `drawKatex(...)` label.
     ///
     /// Sequence uses a bare `foreignObject` with `width: fit-content` rather than Flowchart's
     /// HTML-label shell, so math backends may support a slightly different surface here.
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    fn render_sequence_html_label(&self, text: &str, config: &MermaidConfig) -> Option<String> {
+    fn render_sequence_html_label(
+        &self,
+        text: &str,
+        config: &PresentationConfig,
+    ) -> Option<String> {
         self.render_html_label(text, config)
     }
 
@@ -72,7 +76,7 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
     fn measure_html_label(
         &self,
         _text: &str,
-        _config: &MermaidConfig,
+        _config: &PresentationConfig,
         _style: &TextStyle,
         _max_width_px: Option<f64>,
         _wrap_mode: WrapMode,
@@ -88,7 +92,7 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
     fn measure_sequence_html_label(
         &self,
         _text: &str,
-        _config: &MermaidConfig,
+        _config: &PresentationConfig,
     ) -> Option<TextMetrics> {
         None
     }
@@ -101,7 +105,7 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
     fn measure_sequence_html_label_with_style(
         &self,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         _style: &TextStyle,
     ) -> Option<TextMetrics> {
         self.measure_sequence_html_label(text, config)
@@ -115,7 +119,7 @@ pub(crate) struct NoopMathRenderer;
 
 #[cfg(any(test, merman_internal_theme_acceptance))]
 impl MathRenderer for NoopMathRenderer {
-    fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+    fn render_html_label(&self, _text: &str, _config: &PresentationConfig) -> Option<String> {
         None
     }
 }
@@ -177,7 +181,7 @@ pub(crate) struct MathLabelMetricsRequest<'a> {
     pub(crate) style: &'a TextStyle,
     pub(crate) max_width_px: Option<f64>,
     pub(crate) wrap_mode: WrapMode,
-    pub(crate) config: &'a MermaidConfig,
+    pub(crate) config: &'a PresentationConfig,
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
 }
 
@@ -193,7 +197,7 @@ fn measure_mixed_math_line(
     measurer: &dyn crate::text::TextMeasurer,
     line: &str,
     style: &TextStyle,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: &(dyn MathRenderer + Send + Sync),
 ) -> Option<(f64, f64)> {
     let start = line.find("$$")?;
@@ -293,14 +297,17 @@ pub(crate) fn math_label_metrics_for_layout(
 /// Renders, sanitizes, and XML-normalizes a shared Mermaid math label fragment.
 pub(crate) fn render_math_html_label(
     text: &str,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Option<String> {
     if !text.contains("$$") {
         return None;
     }
     let rendered = math_renderer?.render_html_label(text, config)?;
-    Some(merman_core::sanitize::sanitize_xhtml(&rendered, config))
+    Some(merman_core::sanitize::sanitize_xhtml(
+        &rendered,
+        config.as_config(),
+    ))
 }
 
 pub(crate) fn mark_math_html_native_unavailable(mut html: String) -> String {
@@ -409,7 +416,7 @@ impl RatexMathRenderer {
 
 #[cfg(feature = "math")]
 impl MathRenderer for RatexMathRenderer {
-    fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+    fn render_html_label(&self, text: &str, _config: &PresentationConfig) -> Option<String> {
         if !text.contains("$$") {
             return None;
         }
@@ -417,14 +424,18 @@ impl MathRenderer for RatexMathRenderer {
     }
 
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    fn render_sequence_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+    fn render_sequence_html_label(
+        &self,
+        text: &str,
+        _config: &PresentationConfig,
+    ) -> Option<String> {
         Self::render_katex_like_label(text)
     }
 
     fn measure_html_label(
         &self,
         text: &str,
-        _config: &MermaidConfig,
+        _config: &PresentationConfig,
         style: &TextStyle,
         _max_width_px: Option<f64>,
         wrap_mode: WrapMode,
@@ -440,7 +451,7 @@ impl MathRenderer for RatexMathRenderer {
     fn measure_sequence_html_label(
         &self,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
     ) -> Option<TextMetrics> {
         self.measure_sequence_html_label_with_style(text, config, &TextStyle::default())
     }
@@ -448,7 +459,7 @@ impl MathRenderer for RatexMathRenderer {
     fn measure_sequence_html_label_with_style(
         &self,
         text: &str,
-        _config: &MermaidConfig,
+        _config: &PresentationConfig,
         style: &TextStyle,
     ) -> Option<TextMetrics> {
         if !text.contains("$$") {
@@ -589,7 +600,7 @@ impl NodeKatexMathRenderer {
             .join("katex_flowchart_probe.cjs")
     }
 
-    fn math_config(config: &MermaidConfig) -> NodeMathConfig {
+    fn math_config(config: &PresentationConfig) -> NodeMathConfig {
         let config_value = config.as_value();
         let legacy_mathml = config_value
             .get("legacyMathML")
@@ -605,7 +616,7 @@ impl NodeKatexMathRenderer {
         }
     }
 
-    fn render_key(text: &str, config: &MermaidConfig) -> RenderCacheKey {
+    fn render_key(text: &str, config: &PresentationConfig) -> RenderCacheKey {
         let config = Self::math_config(config);
         RenderCacheKey {
             text: normalized_math_text(text),
@@ -669,7 +680,7 @@ impl NodeKatexMathRenderer {
         serde_json::from_slice(&output.stdout).ok()
     }
 
-    fn render_cached(&self, text: &str, config: &MermaidConfig) -> Option<String> {
+    fn render_cached(&self, text: &str, config: &PresentationConfig) -> Option<String> {
         let key = Self::render_key(text, config);
         if let Some(cached) = self
             .render_cache
@@ -702,7 +713,7 @@ impl NodeKatexMathRenderer {
     fn probe_cached(
         &self,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         style: &TextStyle,
         max_width_px: Option<f64>,
         _wrap_mode: WrapMode,
@@ -758,7 +769,7 @@ impl NodeKatexMathRenderer {
     fn sequence_probe_cached(
         &self,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         style: &TextStyle,
     ) -> Option<ProbeCacheValue> {
         let render = Self::render_key(text, config);
@@ -810,7 +821,7 @@ impl NodeKatexMathRenderer {
 
 #[cfg(test)]
 impl MathRenderer for NodeKatexMathRenderer {
-    fn render_html_label(&self, text: &str, config: &MermaidConfig) -> Option<String> {
+    fn render_html_label(&self, text: &str, config: &PresentationConfig) -> Option<String> {
         if !text.contains("$$") {
             return None;
         }
@@ -820,7 +831,7 @@ impl MathRenderer for NodeKatexMathRenderer {
     fn measure_html_label(
         &self,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         style: &TextStyle,
         max_width_px: Option<f64>,
         wrap_mode: WrapMode,
@@ -839,7 +850,7 @@ impl MathRenderer for NodeKatexMathRenderer {
     fn measure_sequence_html_label(
         &self,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
     ) -> Option<TextMetrics> {
         if !text.contains("$$") {
             return None;
@@ -855,7 +866,7 @@ impl MathRenderer for NodeKatexMathRenderer {
     fn measure_sequence_html_label_with_style(
         &self,
         text: &str,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         style: &TextStyle,
     ) -> Option<TextMetrics> {
         if !text.contains("$$") {
@@ -888,7 +899,7 @@ mod tests {
 
     #[test]
     fn node_probe_style_and_cache_identity_include_font_style() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let render = NodeKatexMathRenderer::render_key("$$x$$", &config);
         let normal = TextStyle::default();
         let italic = TextStyle {
@@ -961,7 +972,8 @@ mod tests {
     #[test]
     fn ratex_math_renderer_renders_pure_math_label_as_inline_svg() {
         let renderer = RatexMathRenderer;
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
 
         let html = renderer
             .render_html_label("$$x^2$$", &config)
@@ -976,7 +988,7 @@ mod tests {
             html.contains(r#"width="0.97153em""#),
             "unexpected SVG size: {html}"
         );
-        let sanitized = merman_core::sanitize::sanitize_text(&html, &config);
+        let sanitized = merman_core::sanitize::sanitize_text(&html, config.as_config());
         assert!(
             sanitized.contains("<svg") && sanitized.contains("<path"),
             "sanitizer should preserve RaTeX inline SVG: {sanitized}"
@@ -1010,7 +1022,7 @@ mod tests {
     #[test]
     fn ratex_math_renderer_renders_at_depth_limit_and_declines_deeper_input() {
         let renderer = RatexMathRenderer;
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let nested_label =
             |depth: usize| format!("$${}x{}$$", "{".repeat(depth), "}".repeat(depth));
 
@@ -1033,7 +1045,7 @@ mod tests {
     #[test]
     fn ratex_math_renderer_renders_multiple_formulas_on_one_line_independently() {
         let renderer = RatexMathRenderer;
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let label = "a $$x$$ b $$y$$ c";
 
         let html = renderer
@@ -1070,7 +1082,7 @@ mod tests {
     #[test]
     fn ratex_math_renderer_preserves_unclosed_delimiters_on_plain_lines() {
         let renderer = RatexMathRenderer;
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
 
         assert!(
             renderer
@@ -1101,7 +1113,7 @@ mod tests {
     #[test]
     fn ratex_math_measurements_match_emitted_svg_dimensions() {
         let renderer = RatexMathRenderer;
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let rendered = prepared::render_compiled_ratex_formula("x^2", ratex_types::Color::BLACK)
             .expect("ratex should emit the formula SVG");
@@ -1151,7 +1163,7 @@ mod tests {
     #[test]
     fn ratex_math_measurements_match_svg_viewports_across_formulas_and_lines() {
         let renderer = RatexMathRenderer;
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         for label in [
             "$$x^2$$",
             r"$$\frac{1}{\sqrt{x}}$$",
@@ -1212,7 +1224,7 @@ mod tests {
     #[test]
     fn ratex_math_measurement_preserves_declined_labels() {
         let renderer = RatexMathRenderer;
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         for label in ["$$x", r"$$\frac{1}{$$", r"$$x$$<br>$$\frac{1}{$$"] {
             assert!(
@@ -1263,7 +1275,7 @@ mod tests {
         }
 
         let renderer = NodeKatexMathRenderer::new(node_cwd);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
 
         let Some(html) = renderer.render_html_label("$$x^2$$", &config) else {
@@ -1287,7 +1299,7 @@ mod tests {
     #[test]
     fn node_katex_metrics_preserve_browser_probe_precision() {
         let renderer = NodeKatexMathRenderer::new("missing-node-environment");
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let render = NodeKatexMathRenderer::render_key("$$x$$", &config);
         let probe = ProbeCacheValue {
@@ -1346,7 +1358,7 @@ mod tests {
         }
 
         let renderer = NodeKatexMathRenderer::new(node_cwd);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
 
         let long_integral = "$$f(\\relax{x}) = \\int_{-\\infty}^\\infty \\hat{f}(\\xi)\\,e^{2 \\pi i \\xi x}\\,d\\xi$$";

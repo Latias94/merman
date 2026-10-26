@@ -96,7 +96,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
     let environment = merman::SvgEnvironment::deterministic();
     let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let renderer = merman::Renderer::new()
-        .with_engine(engine)
+        .with_presentation_engine(engine)
         .with_parse_options(fact.parse_policy.options());
     let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
     let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
@@ -169,7 +169,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
             }
 
             let semantic =
-                match renderer.prepare_semantic(input.text, merman::OperationControl::new()) {
+                match renderer.prepare_presentation(input.text, merman::OperationControl::new()) {
                     Ok(Some(v)) => v,
                     Ok(None) => {
                         return Err(format!(

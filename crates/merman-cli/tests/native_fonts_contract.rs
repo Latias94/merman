@@ -573,7 +573,11 @@ fn explicit_font_files_are_protected_from_output_aliases() {
 
     for output_name in ["font", "font-alias"] {
         args[5] = output_name;
-        let output = support::run_with_stdin_in_dir(&args, source, Some(temp.path()));
+        let output = support::run_before_stdin_close_in_dir(
+            &args,
+            Some(temp.path()),
+            std::time::Duration::from_secs(2),
+        );
         assert!(
             !output.status.success(),
             "font output alias must be rejected"
@@ -695,7 +699,7 @@ fn explicit_font_directory_protection_resolves_output_parent_aliases() {
     }
 
     for output_name in ["font-view/existing.svg", "font-view/new.svg"] {
-        let output = support::run_with_stdin_in_dir(
+        let output = support::run_before_stdin_close_in_dir(
             &[
                 "render",
                 "-",
@@ -706,8 +710,8 @@ fn explicit_font_directory_protection_resolves_output_parent_aliases() {
                 "--output",
                 output_name,
             ],
-            "flowchart LR\nA-->B\n",
             Some(temp.path()),
+            std::time::Duration::from_secs(2),
         );
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
@@ -749,21 +753,18 @@ fn explicit_font_directories_reject_external_hard_link_outputs() {
             "font-alias.svg",
             "unrelated-alias.svg",
         ] {
-            let output = support::run_with_stdin_in_dir(
-                &[
-                    command[0],
-                    command[1],
-                    "--font-dir",
-                    "fonts",
-                    "--format",
-                    "svg",
-                    "--output",
-                    output_name,
-                ],
-                source,
-                Some(temp.path()),
-            );
+            let args = [
+                command[0],
+                command[1],
+                "--font-dir",
+                "fonts",
+                "--format",
+                "svg",
+                "--output",
+                output_name,
+            ];
             if matches!(output_name, "ordinary.svg" | "new.svg") {
+                let output = support::run_with_stdin_in_dir(&args, source, Some(temp.path()));
                 assert!(
                     output.status.success(),
                     "{}",
@@ -771,6 +772,11 @@ fn explicit_font_directories_reject_external_hard_link_outputs() {
                 );
                 continue;
             }
+            let output = support::run_before_stdin_close_in_dir(
+                &args,
+                Some(temp.path()),
+                std::time::Duration::from_secs(2),
+            );
             assert!(
                 !output.status.success(),
                 "hard-linked output must be rejected"

@@ -10,7 +10,7 @@ use super::*;
 
 pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
-    metadata: &merman_core::ParseMetadata,
+    metadata: &merman_core::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(flowchart_request(artifact, metadata), options)
@@ -18,7 +18,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
 
 pub(super) fn flowchart_request<'a>(
     artifact: &'a crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
-    metadata: &'a merman_core::ParseMetadata,
+    metadata: &'a merman_core::PresentationMetadata,
 ) -> FlowchartSvgModelRequest<'a> {
     FlowchartSvgModelRequest {
         layout: artifact.pair().layout(),
@@ -42,7 +42,7 @@ pub(super) fn flowchart_request<'a>(
 
 pub(in crate::svg::parity) fn flowchart_edge_geometry(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
-    metadata: &merman_core::ParseMetadata,
+    metadata: &merman_core::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     super::paint::edge_geometry(flowchart_request(artifact, metadata), options)
@@ -57,7 +57,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(super) model: &'a crate::flowchart::FlowchartModel,
     pub(super) render_context: &'a crate::flowchart::FlowchartRenderContext,
-    pub(super) effective_config: &'a merman_core::MermaidConfig,
+    pub(super) effective_config: &'a merman_core::presentation::PresentationConfig,
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
@@ -529,7 +529,7 @@ fn push_flowchart_gradient(
         gradient_stop.as_str()
     );
 }
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-flowchart"))]
 mod integration_tests {
     use super::super::render_input::prepare_flowchart_render_inputs;
     use super::*;
@@ -537,11 +537,11 @@ mod integration_tests {
     use crate::model::{FlowchartLayout, LayoutNode};
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     #[test]
     fn unmerged_self_loop_occurrences_keep_source_owner_label_and_first_slot() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA -->|first| A\nA -->|regular| B\nA -->|last| A\n",
                 ParseOptions::strict(),
@@ -588,7 +588,7 @@ mod integration_tests {
 
     #[test]
     fn diagram_id_terminal_precedes_later_flowchart_node_emission_error() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TD\nA@{ img: \"https://example.invalid/a.svg\", label: \"A\" }\n",
                 ParseOptions::strict(),
@@ -734,7 +734,7 @@ mod integration_tests {
         // Pinned Mermaid geometry.spec.ts terminal-jog case, with measured rectangles whose
         // boundaries coincide with its ports. The layout is fixed to isolate SVG postprocessing.
         let render = |enabled: bool, trace: bool| {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(
                     &format!("---\nconfig:\n  elk:\n    straightenEdges: {enabled}\n---\nflowchart LR\nA --> B"),
                     ParseOptions::strict(),

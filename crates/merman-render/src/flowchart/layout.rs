@@ -1,4 +1,5 @@
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::geom::Size;
 use crate::layout_work::DugongOperationWorkControl as DagreOperationWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
@@ -14,7 +15,7 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
-use merman_core::{MermaidConfig, geom::Size};
+use merman_core::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -1461,7 +1462,7 @@ fn extract_clusters_recursively(
 #[cfg(test)]
 pub(crate) fn layout_flowchart_typed(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
@@ -1479,7 +1480,7 @@ pub(crate) fn layout_flowchart_typed(
 #[cfg(test)]
 pub(crate) fn layout_flowchart_typed_with_work_meter(
     model: &FlowchartModel,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
@@ -1509,7 +1510,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
 pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -1536,7 +1537,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -2419,7 +2420,7 @@ fn layout_flowchart_with_model(
             .expect("the extraction order references an extracted graph");
         dom_node_order_by_root.insert(id.clone(), cg.node_ids());
     }
-    type Rect = merman_core::geom::Box2;
+    type Rect = crate::geom::Box2;
 
     struct ClusterTitleMetricsContext<'a> {
         model: &'a FlowchartRenderModelRef<'a>,
@@ -2431,7 +2432,7 @@ fn layout_flowchart_with_model(
         html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     }
@@ -3460,7 +3461,7 @@ fn layout_flowchart_with_model(
         html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         cluster_padding: f64,
@@ -3691,7 +3692,7 @@ fn layout_flowchart_with_model(
         html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         title_total_margin: f64,
@@ -4237,17 +4238,20 @@ fn layout_flowchart_with_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{
-        CancelReason, Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
-    };
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    #[cfg(feature = "diagram-flowchart")]
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::sync::mpsc;
     use std::time::Duration;
 
     const DEEP_SUBGRAPH_DEPTH: usize = 10_000;
+    #[cfg(feature = "diagram-flowchart")]
     const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
 
+    #[cfg(feature = "diagram-flowchart")]
     struct NonLatticeComputedLengthMeasurer;
 
+    #[cfg(feature = "diagram-flowchart")]
     impl TextMeasurer for NonLatticeComputedLengthMeasurer {
         fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
             crate::text::TextMetrics {
@@ -4262,9 +4266,10 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_wrapped_labels_fit_rectangle_and_diamond_nodes() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"%%{init: {"flowchart": {"wrappingWidth": 120}}}%%
 flowchart TD
@@ -4323,10 +4328,11 @@ flowchart TD
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_preserves_operation_computed_length_precision() {
         // Isolate host precision from Mermaid 12's minimum label width.
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false, \"minNodeWidth\": 0}}}%%\nflowchart TB\nA[alpha]\n",
                 ParseOptions::default(),
@@ -4352,9 +4358,10 @@ flowchart TD
         assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_nonempty_subgraph_title_reuses_its_prepared_layout_measurement() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nsubgraph S[service title]\n  A\nend\n",
                 ParseOptions::default(),
@@ -4401,11 +4408,12 @@ flowchart TD
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_html_nbsp_only_edge_labels_respect_source_provenance() {
         let nbsp = '\u{00A0}';
         let source = format!("flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\n");
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");
@@ -4438,9 +4446,10 @@ flowchart TD
         assert!(direct_label.is_none(), "{direct_label:?}");
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_operation_meter_honors_below_equal_and_above_boundaries() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TB\nsubgraph Outer\nsubgraph Inner\nA-->B\nend\nB-->C\nend\nC-->C\n",
                 ParseOptions::default(),
@@ -4649,9 +4658,10 @@ flowchart TD
         assert_eq!(meter.used(), 0);
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn dagre_kernel_arithmetic_overflow_maps_to_the_resource_contract() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("flowchart TB\nA-->B\n", ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");
@@ -4677,9 +4687,10 @@ flowchart TD
         assert_eq!(limit.limit, "max_layout_work_units");
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn unknown_shape_is_rejected_instead_of_becoming_a_rectangle() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TB\nA[known]\n",
                 ParseOptions::default(),
@@ -4707,9 +4718,10 @@ flowchart TD
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn shape_validation_scan_is_admitted_before_invalid_model_reporting() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TB\nA[known]\nB[also known]\n",
                 ParseOptions::default(),

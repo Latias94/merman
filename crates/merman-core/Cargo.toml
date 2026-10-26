@@ -17,6 +17,10 @@ categories = ["parser-implementations", "visualization"]
 artifact-profile-required = true
 
 [features]
+presentation = ["dep:ryu-js"]
+editor-facts = []
+compat-json = ["presentation"]
+terminal-text = ["dep:unicode-segmentation", "dep:unicode-width"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -110,7 +114,6 @@ system-timing = ["dep:web-time"]
 
 [dependencies]
 cssparser.workspace = true
-euclid.workspace = true
 htmlize.workspace = true
 indexmap = { workspace = true, features = ["serde"], optional = true }
 lalrpop-util = { workspace = true, optional = true }
@@ -120,13 +123,13 @@ granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true
 unicode-general-category = { workspace = true, optional = true }
-unicode-segmentation.workspace = true
-unicode-width.workspace = true
+unicode-segmentation = { workspace = true, optional = true }
+unicode-width = { workspace = true, optional = true }
 html5ever.workspace = true
 url.workspace = true
 jiff = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
-ryu-js.workspace = true
+ryu-js = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 web-time = { workspace = true, optional = true }

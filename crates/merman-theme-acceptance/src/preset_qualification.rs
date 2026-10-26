@@ -4,12 +4,13 @@
 //! observations never populate the public catalog's qualified cells or the fixed C6a ledger.
 //! Scoped qualification additionally checks actual SVG and PNG output under a named host profile.
 
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     DiagramThemeCompiler, ThemePreset, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
     ThemeRecipeFingerprint, theme_preset_descriptors,
 };
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderArtifactKind, RenderOutput,
+    DiagramFamilyId, MermaidEngine, OperationControl, RenderArtifactKind, RenderOutput,
     RenderRequest, Renderer, TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus,
 };
 use sha2::{Digest as _, Sha256};
@@ -35,8 +36,8 @@ const CYBERPUNK_HOST_PROFILE: &str = "native-cyberpunk-full-scenes-system-fonts-
 /// Flowchart and Sequence retain the classic look observed by the original qualification scenes;
 /// Flowchart also retains Dagre layout. Other families keep their current defaults. This does not
 /// change any public preset recipe.
-pub fn preset_qualification_config() -> MermaidConfig {
-    MermaidConfig::from_value(serde_json::json!({
+pub fn preset_qualification_config() -> PresentationConfig {
+    PresentationConfig::from_value(serde_json::json!({
         "htmlLabels": false,
         "flowchart": { "look": "classic", "layout": "dagre" },
         "sequence": { "look": "classic" },
@@ -388,8 +389,9 @@ fn execute_preset(
         font_catalog_fingerprint: *theme.report().font_catalog_fingerprint().as_bytes(),
         observations: Vec::with_capacity(specs.len() * 2),
     };
-    let renderer =
-        Renderer::new().with_engine(Engine::new().with_site_config(preset_qualification_config()));
+    let renderer = Renderer::new().with_presentation_engine(
+        MermaidEngine::new().with_site_config(preset_qualification_config()),
+    );
     for &spec in specs {
         let output = renderer
             .render(
@@ -528,8 +530,9 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(ThemePreset::Spotless)
             .unwrap();
-        let renderer = Renderer::new()
-            .with_engine(Engine::new().with_site_config(preset_qualification_config()));
+        let renderer = Renderer::new().with_presentation_engine(
+            MermaidEngine::new().with_site_config(preset_qualification_config()),
+        );
         for spec in [FLOWCHART_SPEC, STATE_SPEC, SEQUENCE_SPEC] {
             let RenderOutput::Document(Some(document)) = renderer
                 .render(

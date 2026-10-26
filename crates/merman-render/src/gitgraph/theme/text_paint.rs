@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -88,7 +88,7 @@ impl GitGraphTextPaintPlan {
 
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         title: Option<&str>,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -543,7 +543,7 @@ mod tests {
         ] {
             let plan = GitGraphTextPaintPlan::resolve(
                 Some(&theme),
-                &MermaidConfig::default(),
+                &PresentationConfig::default(),
                 Some("Title"),
                 &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
             )

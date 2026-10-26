@@ -73,13 +73,13 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "94584c9eef352fe1cb815fa208d2647368c574733dedc5bb50b7f78682188ca2",
+    "cargo_lock_sha256": "228beabb5fdf675e26eaa50186ca066a0c18d77a499f14ef4e7b322e133aa2a7",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "3516aad35b96690b3939031993682cb520d5d5083e1eef3ca45bfd991eeedca8"
   },
   "dependency_closure": {
-    "package_count": 100,
-    "packages_sha256": "740aa8d17a466a95827186dd709f329f95c9018f76501b57fbf3571a3be2a724"
+    "package_count": 98,
+    "packages_sha256": "5b82e31a7c408876d901057d71a4ed2467934a173ed46e6a08de1c36e4374ba2"
   },
   "licenses": [
     {
@@ -396,16 +396,6 @@
           "repository": "https://github.com/indexmap-rs/equivalent"
         },
         {
-          "name": "euclid",
-          "version": "0.22.14",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "The Servo Project Developers"
-          ],
-          "repository": "https://github.com/servo/euclid"
-        },
-        {
           "name": "fastrand",
           "version": "2.5.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -520,16 +510,6 @@
             "The html5ever Project Developers"
           ],
           "repository": "https://github.com/servo/html5ever"
-        },
-        {
-          "name": "num-traits",
-          "version": "0.2.19",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "The Rust Project Developers"
-          ],
-          "repository": "https://github.com/rust-num/num-traits"
         },
         {
           "name": "once_cell",

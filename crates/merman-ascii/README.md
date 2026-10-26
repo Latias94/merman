@@ -25,7 +25,7 @@ required families, or `all-diagrams` for the complete parser and terminal-adapte
 Each selector forwards to `merman-core`; it does not enable system clock, time-zone, random,
 or timing adapters. Alpha.6 packages predate family selection. Parser availability alone does not promise a terminal projection.
 
-> **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Depend on `merman-ascii` directly only when the host already owns a typed `merman-core::RenderSemanticModel`.
+> **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Direct users pass a `merman_core::ParsedSemanticDiagram` to `AsciiRenderer::render_parsed` or `render_parsed_report`, or supply a borrowed `AsciiDiagram` with `AsciiSourceContext`. A full `merman_core::RenderSemanticModel` requires explicit projection into the borrowed inputs.
 
 This model renderer does not own a runtime-policy constructor, so it does not forward `system-*`
 features. Direct users construct `AsciiRenderer`, capture an `OperationContext` from their facade or
@@ -51,7 +51,7 @@ For a current-source checkout beside the application, select the required famili
 merman = { path = "../merman/crates/merman", default-features = false, features = ["ascii", "diagram-flowchart", "diagram-gantt"] }
 ```
 
-Depend on `merman-ascii` directly only when the application already owns a typed `merman-core::RenderSemanticModel`.
+Depend on `merman-ascii` directly when the application owns a `merman_core::ParsedSemanticDiagram` for `AsciiRenderer::render_parsed` or `render_parsed_report`, or supplies a borrowed `AsciiDiagram` with `AsciiSourceContext`. Explicitly project a full `merman_core::RenderSemanticModel` into those borrowed inputs before rendering.
 
 ## Supported Families
 
@@ -222,23 +222,25 @@ use merman_ascii::{
     AsciiOutputOutcome, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy,
     AsciiViewportPolicy, OverflowPolicy,
 };
-use merman_core::{Engine, OperationControl, ParseOptions, runtime::RuntimePolicy};
+use merman_core::{OperationControl, ParseOptions, SemanticParser};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let engine = Engine::new();
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(
+    let parser = SemanticParser::new();
+    let control = OperationControl::new();
+    let context = parser.begin_operation()?;
+    let parsed = parser
+        .parse_diagram_with_options_controlled_in_context_sync(
             "flowchart TD\nsubgraph one\nA((Start)) -- go --> B[(DB)]\nend",
             ParseOptions::strict(),
-        )?
+            &control,
+            &context,
+        )??
         .expect("diagram detected");
 
     let renderer = AsciiRenderer::new(AsciiRenderOptions::default())?;
-    let control = OperationControl::new();
-    let context = RuntimePolicy::deterministic().begin_operation()?;
     let resources = AsciiResourcePolicy::default();
-    let report = renderer.render_model_report(
-        parsed.model(),
+    let report = renderer.render_parsed_report(
+        &parsed,
         AsciiViewportPolicy::with_max_width(80).overflow(OverflowPolicy::Fallback),
         &control,
         &context,
@@ -255,6 +257,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+Enable matching `diagram-*` selectors on both crates. Canonical terminal rendering needs neither
+`presentation` nor `compat-json`; authored style precedence and complete fallback data come from
+the same family model. Parsing and output above share one control and runtime context.
 
 ## Upstream Provenance
 

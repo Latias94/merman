@@ -109,7 +109,7 @@ class CliProcessMatrixTests(unittest.TestCase):
             feature for feature in public_features if feature.startswith("diagram-")
         }
         expected_defaults = public_features - diagram_selectors - {
-            "experimental-system-font-query"
+            "experimental-system-font-query", "math"
         }
         self.assertSetEqual(
             set(features["default"]),
@@ -122,6 +122,8 @@ class CliProcessMatrixTests(unittest.TestCase):
         self.assertNotIn("experimental-system-font-query", features["default"])
         self.assertIn("rustdoc", public_features)
         self.assertIn("rustdoc", features["default"])
+        self.assertNotIn("math", features["default"])
+        self.assertIn("math", CLI_RELEASE_FEATURES)
 
     def test_unlocked_commands_project_every_selection_exactly(self) -> None:
         self.assertListEqual(

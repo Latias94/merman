@@ -2,12 +2,12 @@ mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions};
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
-use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
+use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyTask};
+use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineTask};
 use support::{render_model, render_source};
 
-fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> TimelineRenderTask {
-    TimelineRenderTask {
+fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> TimelineTask {
+    TimelineTask {
         id: 0,
         section: section.to_string(),
         section_index,
@@ -18,8 +18,8 @@ fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> Tim
     }
 }
 
-fn journey_task(section: &str, section_index: Option<usize>, task: &str) -> JourneyRenderTask {
-    JourneyRenderTask {
+fn journey_task(section: &str, section_index: Option<usize>, task: &str) -> JourneyTask {
+    JourneyTask {
         score: 3,
         score_is_nan: false,
         people: Vec::new(),

@@ -5,12 +5,12 @@ use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use std::path::Path;
 use support::render_model;
 
 fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("state diagram should parse")
         .expect("state diagram should be detected");
@@ -702,6 +702,56 @@ fn direct_state_model_rejects_non_string_label_values() {
             feature: "state labels with unsupported values",
         }
     );
+}
+
+#[test]
+fn direct_state_model_rejects_unknown_arrow_type() {
+    let model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![direct_state_node("A", "rect", None, None)],
+        edges: vec![StateDiagramRenderEdge {
+            id: "self".to_string(),
+            start: "A".to_string(),
+            end: "A".to_string(),
+            classes: "transition".to_string(),
+            arrow_type_end: "unsupported-arrow".to_string(),
+            label: String::new(),
+        }],
+        ..StateDiagramRenderModel::default()
+    };
+    let error = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("detached state models must validate their explicit arrow selectors");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature: "state arrow types",
+        }
+    );
+}
+
+#[test]
+fn direct_state_model_preserves_label_style_priority() {
+    let mut node = direct_state_node("A", "rect", None, None);
+    node.label = Some("Styled state".into());
+    node.css_compiled_styles = vec!["color:#112233".to_string()];
+    node.css_styles = vec!["color:#445566".to_string()];
+    node.label_style = "color:#778899".to_string();
+    let model = RenderSemanticModel::State(StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![node],
+        ..StateDiagramRenderModel::default()
+    });
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor);
+    let rendered = render_model(&model, &options).expect("detached label style should render");
+    let plain = render_model(&model, &AsciiRenderOptions::ascii()).unwrap();
+    assert_eq!(strip_ansi(&rendered), plain);
+    assert!(rendered.contains("\u{1b}[38;2;119;136;153m"));
+    assert!(!rendered.contains("\u{1b}[38;2;17;34;51m"));
+    assert!(!rendered.contains("\u{1b}[38;2;68;85;102m"));
 }
 
 #[test]

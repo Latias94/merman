@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -12,7 +12,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn parse_class(text: &str) -> ParsedDiagramRender {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected")
@@ -141,12 +141,12 @@ fn class_namespaces_contain_member_classes() {
         cluster_by_id.insert(c.id.as_str(), c);
     }
 
-    for (id, class) in &class_model(&parsed).classes {
-        let parent = class.parent.as_deref().unwrap_or("");
+    for (id, class) in class_model(&parsed).classes() {
+        let parent = class.parent.unwrap_or("");
         if parent.is_empty() {
             continue;
         }
-        let Some(node) = node_by_id.get(id.as_str()) else {
+        let Some(node) = node_by_id.get(id) else {
             continue;
         };
         let Some(cluster) = cluster_by_id.get(parent) else {
@@ -390,7 +390,11 @@ namespace Company.Project {
     );
 
     assert_eq!(
-        class_model(&parsed).notes[0].parent.as_deref(),
+        class_model(&parsed)
+            .notes()
+            .next()
+            .expect("namespace note")
+            .parent,
         Some("Company.Project")
     );
 
@@ -479,9 +483,8 @@ note for B "attached"
 
     assert_eq!(
         class_model(&parsed)
-            .notes
-            .iter()
-            .map(|note| note.id.as_str())
+            .notes()
+            .map(|note| note.id)
             .collect::<Vec<_>>(),
         vec!["note0", "note1"]
     );
@@ -545,7 +548,10 @@ namespace Company.Project.Module {
         "compact mode should use the full namespace id as the label"
     );
     assert_eq!(
-        class_model(&parsed).classes["User"].parent.as_deref(),
+        class_model(&parsed)
+            .class("User")
+            .expect("User class")
+            .parent,
         Some("Company.Project.Module")
     );
 }

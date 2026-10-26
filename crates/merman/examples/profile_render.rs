@@ -1,6 +1,6 @@
 use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family::FamilyRenderArtifact;
 use std::env;
@@ -48,7 +48,7 @@ struct Args {
 }
 
 struct ProfileCase<'a> {
-    engine: &'a Engine,
+    engine: &'a MermaidEngine,
     source: &'a str,
     parse_options: ParseOptions,
     layout_options: &'a LayoutOptions,
@@ -167,7 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let source = fs::read_to_string(&args.input)?;
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_options = ParseOptions::strict();
     let layout_options = LayoutOptions::headless_svg_defaults();
     let environment = RenderEnvironment::deterministic();
@@ -301,7 +301,7 @@ fn run_end_to_end(
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
     let renderer = Renderer::new()
-        .with_engine(case.engine.clone())
+        .with_presentation_engine(case.engine.clone())
         .with_parse_options(case.parse_options);
     let request = || SvgRequest {
         environment: SvgEnvironment::deterministic(),

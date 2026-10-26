@@ -60,6 +60,10 @@ FLOWCHART_LABEL_CONTRACT_PATH = (
 )
 EXECUTABLE_SHA256 = "a" * 64
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+CLEAN_SOURCE = {
+    "commit": "a" * 40, "tree": "b" * 40, "clean": True,
+    "dirty_status_sha256": EMPTY_SHA256, "dirty_disposition": "clean",
+}
 BINDING_DATA_SHA256 = "471b942eb8877b2ee7c38b86567b13f79fba101df1e5b4767b3421a200e0ad3f"
 BINDING_METADATA_SHA256 = "5662eba44530c1a9bf01f352dd84496fb368c9522757c479f735526d200a9e29"
 BINDING_OUTPUT_SHA256 = "5c5a3cdbe1f692c630006b4c365f348d93d8afd6ea99ecf45d8d2e10524acf53"
@@ -296,6 +300,221 @@ def validate_zero_work_smoke_report(report: Mapping[str, object]) -> None:
 
 
 class NativeMemoryDriverContractsTest(unittest.TestCase):
+    PARSER_LANES = (
+        "parser-sequence-typed-memory", "parser-sequence-json-memory",
+        "parser-state-typed-memory", "parser-state-json-memory",
+        "parser-sequence-snapshot-memory", "parser-state-snapshot-memory",
+        "parser-flowchart-typed-memory",
+    )
+
+    @staticmethod
+    def parser_probe(_executable, request, *, lane, contract, executable_sha256, **_kwargs):
+        response = response_for(dict(request))
+        for field in ("output_width", "output_height", "input_nodes", "input_edges"):
+            del response[field]
+        zero = request["mode"] == "zero"
+        semantic = contract["semantic_response"]
+        response.update(
+            schema_version=contract["probe"]["protocol_schema_version"],
+            lane_id=lane.id, public_operation=lane.public_operation,
+            executable_sha256=executable_sha256,
+            output_sha256=semantic["zero_output_sha256" if zero else "operation_output_sha256"],
+            workload_units=request["scale"], live_bytes_after_drop=100,
+            semantic_output={
+                **semantic["zero" if zero else "operation"],
+                semantic["scale_field"]: 0 if zero else request["scale"],
+            },
+        )
+        return response
+
+    def test_batch_builds_once_and_keeps_seven_independent_full_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            output = Path(raw) / "reports"
+            executable = Path(raw) / "parse_memory"
+            executable.write_bytes(b"probe")
+            executable.chmod(0o755)
+            provenance = {"command": ["cargo"], "profile_reset": {"command": ["cargo", "clean"]}}
+            source = dict(CLEAN_SOURCE)
+            with (
+                mock.patch.object(run_native_memory, "_git_provenance", return_value=source),
+                mock.patch.object(run_native_memory, "best_effort_cpu_model", return_value="Test CPU"),
+                mock.patch.object(run_native_memory, "_tool_output", return_value="tool-version"),
+                mock.patch.object(
+                    run_native_memory, "discover_executable",
+                    return_value=(executable, provenance),
+                ) as build,
+                mock.patch.object(
+                    run_native_memory, "run_probe", side_effect=self.parser_probe,
+                ) as probe,
+                mock.patch.object(
+                    run_native_memory, "analyze_samples",
+                    side_effect=[
+                        ({"matrix": {"complete": True}, "metrics": {}}, [outcome])
+                        for outcome in ("failed_bound", *(["pass"] * 6))
+                    ],
+                ),
+                redirect_stdout(io.StringIO()),
+            ):
+                result = run_native_memory.main([
+                    "--lanes", *self.PARSER_LANES, "--run-id", "batch-test",
+                    "--json-out-dir", str(output),
+                ])
+            reports = [json.loads((output / f"{lane}.json").read_text()) for lane in self.PARSER_LANES]
+
+        self.assertEqual(result, 1)
+        self.assertEqual(build.call_count, 1)
+        self.assertEqual(probe.call_count, 7 * 60)
+        self.assertEqual({report["lane"]["id"] for report in reports}, set(self.PARSER_LANES))
+        self.assertEqual(len({report["run_id"] for report in reports}), 7)
+        self.assertEqual([report["outcome"] for report in reports], ["failed_bound", *(["pass"] * 6)])
+        invocations = [entry["request"] for report in reports for entry in report["schedule"]]
+        self.assertEqual(len({request["invocation_id"] for request in invocations}), 420)
+        self.assertEqual(len({request["nonce"] for request in invocations}), 420)
+        for report in reports:
+            with self.subTest(lane=report["lane"]["id"]):
+                self.assertEqual(len(report["schedule"]), 60)
+                self.assertTrue(report["analysis"]["matrix"]["complete"])
+                self.assertEqual(report["executable"]["build"], provenance)
+                self.assertEqual(report["executable"]["sha256"], hashlib.sha256(b"probe").hexdigest())
+                self.assertEqual(report["source"], source)
+                self.assertEqual(report["inputs"]["owner_contract"]["value"]["lane_id"], report["lane"]["id"])
+
+    def test_batch_rejects_build_identity_drift_before_reuse(self) -> None:
+        for drift in ("source", "environment", "recipe", "executable", "rustc", "cargo"):
+            with self.subTest(drift=drift), tempfile.TemporaryDirectory() as raw:
+                executable = Path(raw) / "parse_memory"
+                executable.write_bytes(b"probe")
+                executable.chmod(0o755)
+                output = Path(raw) / "reports"
+                source = dict(CLEAN_SOURCE)
+                environment = run_native_memory._build_environment()
+                changed = False
+                original_recipe = run_native_memory.memory_recipe
+
+                def recipe(*args, **kwargs):
+                    value = original_recipe(*args, **kwargs)
+                    return replace(value, default_features=True) if changed and drift == "recipe" else value
+
+                def finish_first_lane(*_args, **_kwargs):
+                    nonlocal changed
+                    changed = True
+                    if drift == "source":
+                        source["commit"] = "c" * 40
+                    elif drift == "environment":
+                        environment["RUSTFLAGS"] = "changed"
+                    elif drift == "executable":
+                        executable.write_bytes(b"changed probe")
+                    return {"matrix": {"complete": True}, "metrics": {}}, ["pass"]
+
+                def tool_version(command, **_kwargs):
+                    tool = command[-2]
+                    version = "new" if changed and tool == drift else "old"
+                    return f"{tool}-{version}"
+
+                with (
+                    mock.patch.object(run_native_memory, "_git_provenance", side_effect=lambda _root: dict(source)),
+                    mock.patch.object(run_native_memory, "best_effort_cpu_model", return_value="Test CPU"),
+                    mock.patch.object(run_native_memory, "_build_environment", side_effect=lambda: dict(environment)),
+                    mock.patch.object(run_native_memory, "memory_recipe", side_effect=recipe),
+                    mock.patch.object(run_native_memory, "_tool_output", side_effect=tool_version),
+                    mock.patch.object(
+                        run_native_memory, "discover_executable",
+                        return_value=(executable, {"command": ["cargo"]}),
+                    ) as build,
+                    mock.patch.object(run_native_memory, "run_probe", side_effect=self.parser_probe) as probe,
+                    mock.patch.object(run_native_memory, "analyze_samples", side_effect=finish_first_lane),
+                    redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()),
+                ):
+                    result = run_native_memory.main([
+                        "--lanes", *self.PARSER_LANES[:2], "--toolchain", "stable",
+                        "--json-out-dir", str(output),
+                    ])
+                reports = [json.loads((output / f"{lane}.json").read_text()) for lane in self.PARSER_LANES[:2]]
+                self.assertEqual(result, 2)
+                self.assertEqual(build.call_count, 1)
+                self.assertEqual(probe.call_count, 60)
+                self.assertEqual(reports[0]["outcome"], "pass")
+                self.assertEqual(reports[1]["outcome"], "contract_failure")
+                self.assertIn("changed", reports[1]["contract_errors"][0])
+                self.assertEqual(reports[0]["environment"]["rustc"], "rustc-old")
+                self.assertEqual(reports[0]["environment"]["cargo"], "cargo-old")
+
+    def test_batch_preflights_every_lane_before_building_or_writing(self) -> None:
+        cases = (
+            ("duplicate", (self.PARSER_LANES[0], "memory/parse_sequence_typed/{fixture}"), "duplicate batch lane"),
+            ("unknown", (self.PARSER_LANES[0], "unknown-memory-lane"), "unknown lane selector"),
+            ("recipe", self.PARSER_LANES[:2], "same native-memory build recipe"),
+            ("contract", self.PARSER_LANES[:2], "invalid later owner contract"),
+            ("input", self.PARSER_LANES[:2], "probe input digest differs"),
+        )
+        original_loader = run_native_memory.load_owner_contract
+        original_recipe = run_native_memory.memory_recipe
+        for failure, lanes, expected_error in cases:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as raw:
+                output = Path(raw) / "reports"
+
+                def contract(path, *, lane):
+                    value = original_loader(path, lane=lane)
+                    if lane.id == self.PARSER_LANES[1]:
+                        if failure == "contract":
+                            raise run_native_memory.DriverContractError("invalid later owner contract")
+                        if failure == "input":
+                            value["probe"]["inputs"][0]["sha256"] = "0" * 64
+                    return value
+
+                def recipe(*args, **kwargs):
+                    value = original_recipe(*args, **kwargs)
+                    if failure == "recipe" and kwargs["contract"]["lane_id"] == self.PARSER_LANES[1]:
+                        return replace(value, default_features=True)
+                    return value
+
+                with (
+                    mock.patch.object(run_native_memory, "discover_executable") as build,
+                    mock.patch.object(run_native_memory, "_git_provenance", side_effect=lambda _root: dict(CLEAN_SOURCE)),
+                    mock.patch.object(run_native_memory, "load_owner_contract", side_effect=contract),
+                    mock.patch.object(run_native_memory, "memory_recipe", side_effect=recipe),
+                    mock.patch.object(run_native_memory, "best_effort_cpu_model", return_value="Test CPU"),
+                    mock.patch.object(run_native_memory, "run_probe") as probe,
+                    redirect_stderr(io.StringIO()) as stderr, redirect_stdout(io.StringIO()),
+                ):
+                    result = run_native_memory.main([
+                        "--lanes", *lanes, "--json-out-dir", str(output),
+                    ])
+                self.assertEqual(result, 2)
+                self.assertIn(expected_error, stderr.getvalue())
+                build.assert_not_called()
+                probe.assert_not_called()
+                self.assertFalse(output.exists())
+
+    def test_batch_cli_rejects_incompatible_flags_and_dry_run_has_no_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            output = Path(raw) / "reports"
+            selection = ["--lanes", *self.PARSER_LANES]
+            cases = (
+                selection,
+                [*selection, "--contract", str(CONTRACT_PATH), "--json-out-dir", str(output)],
+                [*selection, "--executable", "external-probe", "--json-out-dir", str(output)],
+                ["--json-out-dir", str(output)],
+            )
+            with (
+                mock.patch.object(run_native_memory, "discover_executable") as build,
+                mock.patch.object(run_native_memory, "_git_provenance", side_effect=lambda _root: dict(CLEAN_SOURCE)),
+                mock.patch.object(run_native_memory, "run_probe") as probe,
+                mock.patch.object(run_native_memory, "best_effort_cpu_model", return_value="Test CPU"),
+                redirect_stdout(io.StringIO()) as stdout,
+                redirect_stderr(io.StringIO()),
+            ):
+                for arguments in cases:
+                    with self.subTest(arguments=arguments):
+                        self.assertEqual(run_native_memory.main(arguments), 2)
+                self.assertEqual(run_native_memory.main([
+                    *selection, "--dry-run", "--json-out-dir", str(output),
+                ]), 0)
+            build.assert_not_called()
+            probe.assert_not_called()
+            self.assertFalse(output.exists())
+            self.assertIn("planned fresh subprocesses: 420", stdout.getvalue())
+
     @staticmethod
     def lane():
         return resolve_lane_selector(load_corpus(CORPUS_PATH), run_native_memory.DEFAULT_LANE)
@@ -514,7 +733,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         )
         self.assertEqual(recipe.package, "merman")
         self.assertEqual(recipe.bench, "flowchart_svg_label_memory")
-        self.assertEqual(recipe.features, ("all-diagrams", "svg"))
+        self.assertEqual(recipe.features, ("all-diagrams", "svg", "compat-json"))
         self.assertEqual(contract["probe"]["protocol_schema_version"], 3)
         self.assertEqual(
             [entry["path"] for entry in contract["probe"]["inputs"]],

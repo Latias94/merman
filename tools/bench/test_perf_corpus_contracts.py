@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
+import tomllib
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -17,6 +19,7 @@ from corpus_utils import (
     resolve_lane_group,
     select_corpus_fixtures,
 )
+from run_native_memory import load_owner_contract
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +63,7 @@ class CorpusContractsTest(unittest.TestCase):
             "parse",
             "compatibility_json_parse",
             "parse_cold_engine",
+            "editor_snapshot",
             "frontmatter_preprocess",
             "layout",
             "render",
@@ -72,6 +76,7 @@ class CorpusContractsTest(unittest.TestCase):
                 "parse": "typed-render-model-parse",
                 "compatibility_json_parse": "compatibility-json-parse",
                 "parse_cold_engine": "typed-render-model-parse-cold",
+                "editor_snapshot": "editor-snapshot-parse",
                 "frontmatter_preprocess": "frontmatter-preprocess-known-type",
                 "layout": "prepare-layout",
                 "render": "emit-svg",
@@ -85,6 +90,9 @@ class CorpusContractsTest(unittest.TestCase):
     def test_current_pipeline_corpora_require_explicit_diagram_coverage(self) -> None:
         for path, features in (
             (CORPUS_PATH, {"svg"}),
+            (CORPUS_PATH, {"all-diagrams", "svg"}),
+            (CORPUS_PATH, {"all-diagrams", "svg", "compat-json"}),
+            (CORPUS_PATH, {"all-diagrams", "svg", "editor-facts"}),
             (ASCII_CORPUS_PATH, {"ascii"}),
             (BINDING_REQUEST_CORPUS_PATH, {"analysis", "ascii", "svg"}),
         ):
@@ -96,12 +104,45 @@ class CorpusContractsTest(unittest.TestCase):
                     load_corpus(path), enabled_features=frozenset(features)
                 )
 
+    def test_current_native_recipes_cover_bench_gates_and_hash_current_inputs(self) -> None:
+        manifest = tomllib.loads(
+            (ROOT / "crates/merman/Cargo.toml").read_text(encoding="utf-8")
+        )
+        bench_features = {
+            bench["name"]: set(bench.get("required-features", []))
+            for bench in manifest["bench"]
+        }
+        for lane in load_corpus(CORPUS_PATH).lanes:
+            with self.subTest(lane=lane.id):
+                if lane.transport == "native-criterion":
+                    bench = "pipeline"
+                else:
+                    contract = load_owner_contract(
+                        ROOT / lane.evidence_contract, lane=lane
+                    )
+                    probe = contract.get("probe", {})
+                    bench = probe.get("bench", "native_memory")
+                    for item in probe.get("inputs", []):
+                        with self.subTest(input=item["path"]):
+                            self.assertEqual(
+                                item["sha256"],
+                                hashlib.sha256(
+                                    (ROOT / item["path"]).read_bytes()
+                                ).hexdigest(),
+                            )
+                self.assertTrue(
+                    bench_features[bench].issubset(lane.required_features),
+                    f"{bench} requires {sorted(bench_features[bench])}",
+                )
+
     def test_compiled_pipeline_list_requires_current_groups_and_rejects_history(self) -> None:
         corpus = load_corpus(CORPUS_PATH)
         current = dict(
             verify_pipeline_bench_list._pipeline_lane_groups(
                 corpus,
-                enabled_features=frozenset({"all-diagrams", "svg"}),
+                enabled_features=frozenset(
+                    {"all-diagrams", "svg", "compat-json", "editor-facts"}
+                ),
             )[0]
         )
         current_groups = sorted(current)

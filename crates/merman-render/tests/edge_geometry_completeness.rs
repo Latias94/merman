@@ -5,7 +5,7 @@
 ))]
 
 use base64::Engine as _;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{environment::RenderEnvironment, family};
@@ -46,7 +46,7 @@ fn geometry_contains_every_painted_edge_occurrence_for_each_flowchart_adapter() 
         ),
     ];
     for (case, source, expected_occurrences) in cases {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("{case}: {error}"))
             .expect("diagram");

@@ -1,4 +1,7 @@
-use merman_core::{Engine, MermaidConfig};
+#![cfg(feature = "presentation")]
+
+use merman_core::MermaidEngine;
+use merman_core::presentation::PresentationConfig;
 use serde_json::{Value, json};
 
 fn sources(config: &Value) -> [String; 2] {
@@ -22,7 +25,7 @@ fn source_presentation_values_are_allowed_by_default_in_both_syntaxes() {
         "sequence": { "actorFontFamily": "Noto Sans", "actorFontWeight": "600" }
     });
     for source in sources(&config) {
-        let metadata = Engine::new().parse_metadata_sync(&source).unwrap();
+        let metadata = MermaidEngine::new().parse_metadata_sync(&source).unwrap();
         let effective = metadata.effective_config;
         for (key, expected) in [
             ("fontFamily", "Courier New, monospace"),
@@ -43,7 +46,7 @@ fn source_presentation_values_are_allowed_by_default_in_both_syntaxes() {
 
 #[test]
 fn unsafe_source_values_preserve_trusted_site_values_in_both_syntaxes() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
         "fontFamily": "Host Font",
         "themeVariables": { "actorBkg": "#112233", "radar": { "axisColor": "#445566" } },
         "sequence": { "actorFontWeight": "500" }
@@ -96,7 +99,7 @@ fn source_cannot_unlock_host_policy_or_supply_stylesheets() {
         "themeVariables": { "lineColor": "#abcdef" }
     });
     for source in sources(&config) {
-        let effective = Engine::new()
+        let effective = MermaidEngine::new()
             .parse_metadata_sync(&source)
             .unwrap()
             .effective_config;
@@ -104,7 +107,7 @@ fn source_cannot_unlock_host_policy_or_supply_stylesheets() {
         assert_ne!(effective.as_value()["maxEdges"], 999999);
         assert!(effective.get_str("themeCSS").is_none());
 
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
             "secure": ["secure", "securityLevel", "themeVariables", "fontFamily", "themeCSS"],
             "fontFamily": "Host Font", "themeVariables": { "lineColor": "#123456" },
             "themeCSS": ".node { opacity: 0.8; }"

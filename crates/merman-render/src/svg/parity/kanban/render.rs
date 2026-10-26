@@ -270,7 +270,7 @@ fn record_kanban_typography_text(
 
 pub(crate) fn render_kanban_diagram_svg(
     prepared: &KanbanPreparedArtifact,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_sections, prepared_items) = prepared.render_parts();
@@ -731,7 +731,8 @@ mod tests {
         options: &SvgRenderOptions,
     ) -> Result<String> {
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+        let effective_config =
+            merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
         let prepared =
             prepare_kanban_artifact_from_layout_for_test(layout, &effective_config, &measurer)?;
         with_test_svg_execution(DiagramFamilyId::KANBAN, options, |options| {
@@ -1119,7 +1120,8 @@ mod tests {
         let style = crate::kanban::KanbanConfigView::new(&config)
             .layout_settings()
             .text_style;
-        let sanitize_config = merman_core::MermaidConfig::from_value(config.clone());
+        let sanitize_config =
+            merman_core::presentation::PresentationConfig::from_value(config.clone());
         let markdown = crate::kanban::KanbanMarkdown::new(&sanitize_config);
         let section_html = markdown.render("*Ready*");
         let section_metrics = markdown.measure_html(&measurer, &section_html, &style, None);
@@ -1138,7 +1140,7 @@ mod tests {
         let config = serde_json::json!({
             "securityLevel": "strict"
         });
-        let sanitize_config = merman_core::MermaidConfig::from_value(config);
+        let sanitize_config = merman_core::presentation::PresentationConfig::from_value(config);
         let html = crate::kanban::KanbanMarkdown::new(&sanitize_config)
             .render("*Ready* <b onclick=\"alert(1)\">safe</b><script>alert(2)</script>");
 
@@ -1302,7 +1304,8 @@ mod tests {
         let style = crate::kanban::KanbanConfigView::new(&config)
             .layout_settings()
             .text_style;
-        let sanitize_config = merman_core::MermaidConfig::from_value(config.clone());
+        let sanitize_config =
+            merman_core::presentation::PresentationConfig::from_value(config.clone());
         let markdown = crate::kanban::KanbanMarkdown::new(&sanitize_config);
         let title_html = markdown.render("Implement renderer");
         let title_metrics = markdown.measure_html(&measurer, &title_html, &style, None);
@@ -1369,7 +1372,7 @@ mod tests {
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::KANBAN)
                 .expect("SVG execution");
 
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let prepared =
             prepare_kanban_artifact_from_layout_for_test(&layout, &config, &measurer).unwrap();
         let measurement_count_before_render: u64 = session

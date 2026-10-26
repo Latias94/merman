@@ -1,4 +1,4 @@
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 use serde_json::Value;
 
 use crate::config::{config_bool, value_at};
@@ -47,7 +47,7 @@ fn number_at(root: &Value, path: &[&str]) -> Option<f64> {
 }
 
 impl SwimlaneConfig {
-    pub fn from_config(config: &MermaidConfig) -> Self {
+    pub fn from_config(config: &PresentationConfig) -> Self {
         let root = config.as_value();
         Self {
             // Mermaid layoutCore uses nullish-coalescing here. In a fully merged config the

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::config::value_at;
 use crate::diagram_theme::{
@@ -40,7 +40,7 @@ struct RuleObservation {
 
 impl RadarAxisPaintPlan {
     #[cfg(test)]
-    pub(crate) fn baseline(config: &MermaidConfig, axis_count: usize) -> Self {
+    pub(crate) fn baseline(config: &PresentationConfig, axis_count: usize) -> Self {
         Self::baseline_with_binding(
             &super::RadarCssBinding::resolve(config.as_value()),
             axis_count,
@@ -65,7 +65,7 @@ impl RadarAxisPaintPlan {
     #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         axis_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -75,7 +75,7 @@ impl RadarAxisPaintPlan {
 
     pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         binding: &super::RadarCssBinding,
         axis_count: usize,
         work_meter: &OperationWorkMeter,
@@ -414,7 +414,7 @@ mod tests {
 
     fn plan_for_rules(
         rules: impl IntoIterator<Item = crate::diagram_theme::ThemeRule>,
-        config: MermaidConfig,
+        config: PresentationConfig,
         count: usize,
     ) -> (RadarAxisPaintPlan, ResolvedDiagramTheme) {
         use crate::diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec, ThemeRuleSet};
@@ -430,9 +430,9 @@ mod tests {
         (plan, theme)
     }
 
-    fn effective_config(site_config: serde_json::Value) -> MermaidConfig {
-        merman_core::Engine::new()
-            .with_site_config(MermaidConfig::from_value(site_config))
+    fn effective_config(site_config: serde_json::Value) -> PresentationConfig {
+        merman_core::MermaidEngine::new()
+            .with_site_config(PresentationConfig::from_value(site_config))
             .parse_metadata_sync("radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n")
             .expect("parse Radar config ownership fixture")
             .effective_config
@@ -477,7 +477,7 @@ mod tests {
             let config = if source_owns {
                 effective_config(serde_json::json!({"radar":{"axisColor":"#abcdef"}}))
             } else {
-                MermaidConfig::empty_object()
+                PresentationConfig::empty_object()
             };
             let (plan, theme) = plan_for_rules([fill.clone(), axis_rule(clear.clone())], config, 3);
             assert_ne!(plan.axis_color(), "#123456");
@@ -515,7 +515,7 @@ mod tests {
             .with_ordinal(ordinal);
             let (plan, theme) = plan_for_rules(
                 [static_rule.clone(), dynamic],
-                MermaidConfig::empty_object(),
+                PresentationConfig::empty_object(),
                 3,
             );
             // Best-effort CSS retains its static fallback; this is not proof of the ordinal request.
@@ -550,7 +550,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::RADAR);
         let plan = RadarAxisPaintPlan::resolve(
             Some(&theme),
-            &MermaidConfig::empty_object(),
+            &PresentationConfig::empty_object(),
             3,
             &OperationWorkMeter::new(crate::RenderResourcePolicy::interactive()),
         )
@@ -655,7 +655,7 @@ mod tests {
 
     #[test]
     fn axis_paint_receipt_requires_all_css_and_both_terminal_channels() {
-        let plan = RadarAxisPaintPlan::baseline(&MermaidConfig::empty_object(), 1);
+        let plan = RadarAxisPaintPlan::baseline(&PresentationConfig::empty_object(), 1);
         let mut complete = receipt(&plan);
         complete.record_axis_line(0, "radarAxisLine");
         assert!(!complete.proves(&plan));
@@ -670,13 +670,13 @@ mod tests {
         let mut label_only = receipt(&plan);
         label_only.record_axis_label(0, "radarAxisLabel");
         assert!(!label_only.proves(&plan));
-        let empty = RadarAxisPaintPlan::baseline(&MermaidConfig::empty_object(), 0);
+        let empty = RadarAxisPaintPlan::baseline(&PresentationConfig::empty_object(), 0);
         assert!(!receipt(&empty).proves(&empty));
     }
 
     #[test]
     fn axis_paint_receipt_rejects_wrong_values_and_duplicate_css() {
-        let plan = RadarAxisPaintPlan::baseline(&MermaidConfig::empty_object(), 1);
+        let plan = RadarAxisPaintPlan::baseline(&PresentationConfig::empty_object(), 1);
         for wrong_channel in 0..3 {
             let mut bad = RadarAxisPaintReceipt::new(&plan);
             bad.record_base_line_css(if wrong_channel == 0 {

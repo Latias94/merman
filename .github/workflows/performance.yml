@@ -209,7 +209,7 @@ jobs:
       - name: Verify compiled pipeline benchmark list
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
-        run: python3 tools/bench/verify_pipeline_bench_list.py --features all-diagrams,svg,layout-cytoscape,layout-elk,math
+        run: python3 tools/bench/verify_pipeline_bench_list.py --features all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-elk,math
 
       - name: Verify compiled ASCII benchmark list
         working-directory: head

@@ -8,7 +8,7 @@ use crate::text::{
     measure_mermaid_text_dimensions_with_checkpoint, split_html_br_lines,
     wrap_label_like_mermaid_lines_with_checkpoint,
 };
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 struct SequenceWrapTextMeasurer<'a> {
     measurer: &'a dyn TextMeasurer,
@@ -104,7 +104,10 @@ pub(crate) fn sequence_inline_font_family(style: &TextStyle) -> Option<String> {
     has_name.then_some(css)
 }
 
-pub(crate) fn sequence_drawn_text_style(style: &TextStyle, config: &MermaidConfig) -> TextStyle {
+pub(crate) fn sequence_drawn_text_style(
+    style: &TextStyle,
+    config: &PresentationConfig,
+) -> TextStyle {
     let mut effective = style.clone();
     // CSSOM rejects invalid assignments, while accepted tokens must be serialized before
     // embedding them in a declaration list (an EOF-terminated string needs its closing quote).
@@ -139,7 +142,7 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
     text: &str,
     terminal_style: &TextStyle,
     node: SequenceDrawnTextNode,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     checkpoints: SequenceTextCheckpoints<'_>,
 ) -> Result<(f64, f64)> {
     let effective_style = sequence_drawn_text_style(terminal_style, config);
@@ -281,7 +284,7 @@ fn measure_sequence_mixed_math_line(
     measurer: &dyn TextMeasurer,
     parsed: DelimitedMathLine<'_>,
     style: &TextStyle,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: &(dyn MathRenderer + Send + Sync),
     checkpoints: SequenceTextCheckpoints<'_>,
 ) -> Result<Option<(f64, f64)>> {
@@ -338,7 +341,7 @@ fn measure_sequence_mixed_math_label(
     measurer: &dyn TextMeasurer,
     text: &str,
     style: &TextStyle,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: &(dyn MathRenderer + Send + Sync),
     checkpoints: SequenceTextCheckpoints<'_>,
 ) -> Result<Option<TextMetrics>> {
@@ -383,7 +386,7 @@ fn measure_sequence_mixed_math_label(
 fn sequence_math_height_px(
     text: &str,
     style: &TextStyle,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: &(dyn MathRenderer + Send + Sync),
     mode: SequenceMathHeightMode,
     full_metrics: &TextMetrics,
@@ -420,7 +423,7 @@ pub(crate) fn measure_sequence_math_label(
     measurer: &dyn TextMeasurer,
     text: &str,
     style: &TextStyle,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     mode: SequenceMathHeightMode,
     checkpoints: SequenceTextCheckpoints<'_>,
@@ -541,7 +544,7 @@ pub(super) fn measure_sequence_label_for_layout_with_prepared(
     measurer: &dyn TextMeasurer,
     text: &str,
     style: &TextStyle,
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     mode: SequenceMathHeightMode,
     checkpoints: SequenceTextCheckpoints<'_>,
@@ -582,7 +585,7 @@ mod tests {
         fn render_html_label(
             &self,
             text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
         ) -> Option<String> {
             text.contains("$$").then(|| text.to_string())
         }
@@ -590,7 +593,7 @@ mod tests {
         fn measure_sequence_html_label(
             &self,
             text: &str,
-            _config: &merman_core::MermaidConfig,
+            _config: &merman_core::presentation::PresentationConfig,
         ) -> Option<TextMetrics> {
             (text.starts_with("$$") && text.ends_with("$$")).then_some(TextMetrics {
                 width: 10.008,
@@ -710,8 +713,8 @@ mod tests {
         }
     }
 
-    fn drawn_text_config() -> merman_core::MermaidConfig {
-        merman_core::MermaidConfig::from_value(serde_json::json!({
+    fn drawn_text_config() -> merman_core::presentation::PresentationConfig {
+        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "\"trebuchet ms\", verdana, arial, sans-serif;",
             "themeVariables": { "fontFamily": "Theme Family, sans-serif" }
         }))
@@ -813,7 +816,7 @@ mod tests {
 
     #[test]
     fn sequence_mixed_math_metrics_preserve_fragment_precision() {
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = TextStyle::default();
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let metrics = super::measure_sequence_mixed_math_label(
@@ -860,7 +863,7 @@ mod tests {
     #[test]
     fn prepared_sequence_math_uses_the_resolved_role_font_size() {
         let backend = crate::math::ConfiguredMathBackend::compiled_ratex();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let default_style = TextStyle::default();
         let role_style = TextStyle {
             font_size: 28.0,
@@ -909,7 +912,7 @@ mod tests {
         use crate::math::{ConfiguredMathBackend, PrepareMathLabelRequest, RatexMathRenderer};
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = TextStyle::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let renderer = RatexMathRenderer;
@@ -957,7 +960,7 @@ mod tests {
     fn sequence_math_measurement_handles_multiple_formulas_on_one_line() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let renderer = crate::math::RatexMathRenderer;
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = crate::text::TextStyle::default();
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
@@ -982,7 +985,7 @@ mod tests {
     fn sequence_math_measurement_ignores_unclosed_delimiters_on_plain_lines() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let renderer = crate::math::RatexMathRenderer;
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let style = crate::text::TextStyle::default();
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 

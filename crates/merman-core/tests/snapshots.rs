@@ -1,7 +1,9 @@
 #![cfg(feature = "all-diagrams")]
+#![cfg(feature = "compat-json")]
 
+use merman_core::presentation::PresentationConfig;
 use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_fixture_render_context::RenderContextCatalog;
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -35,7 +37,7 @@ fn fixture_render_contexts() -> &'static RenderContextCatalog {
     })
 }
 
-fn fixture_site_config_for_path(path: &Path) -> Option<MermaidConfig> {
+fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
     fixture_render_contexts()
         .context_for_fixture(path)
         .unwrap_or_else(|error| {
@@ -44,10 +46,10 @@ fn fixture_site_config_for_path(path: &Path) -> Option<MermaidConfig> {
                 path.display()
             )
         })
-        .map(|context| MermaidConfig::from_value(context.site_config_value()))
+        .map(|context| PresentationConfig::from_value(context.site_config_value()))
 }
 
-fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
+fn engine_for_fixture(base: &MermaidEngine, path: &Path) -> MermaidEngine {
     match fixture_site_config_for_path(path) {
         Some(site_config) => base.clone().with_site_config(site_config),
         None => base.clone(),
@@ -64,7 +66,7 @@ fn newly_cataloged_host_options_change_effective_security_policy() {
         "flowchart/upstream_cypress_flowchart_handdrawn_spec_fdh37_should_render_non_escaped_with_html_labels_037.mmd",
     ];
 
-    let base = Engine::new();
+    let base = MermaidEngine::new();
     for relative in FIXTURES {
         let path = fixtures_root().join(relative);
         let source = std::fs::read_to_string(&path).expect("read fixture host-option source");
@@ -259,7 +261,7 @@ fn fixtures_match_golden_snapshots() {
     );
 
     // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
-    let engine = Engine::new()
+    let engine = MermaidEngine::new()
         .with_fixed_today(Some(CivilDate::new(2026, 2, 15).expect("valid date")))
         // Gantt date handling follows JavaScript local-time semantics, which varies by runner timezone.
         // Pin a fixed offset so snapshots are stable across CI environments.

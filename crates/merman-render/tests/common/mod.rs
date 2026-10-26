@@ -1,7 +1,8 @@
-use merman_core::{Engine, MermaidConfig};
+use merman_core::MermaidEngine;
+use merman_core::presentation::PresentationConfig;
 
-pub fn legacy_init_theme_compat_config() -> MermaidConfig {
-    MermaidConfig::from_value(serde_json::json!({
+pub fn legacy_init_theme_compat_config() -> PresentationConfig {
+    PresentationConfig::from_value(serde_json::json!({
         "secure": [
             "secure",
             "securityLevel",
@@ -14,6 +15,6 @@ pub fn legacy_init_theme_compat_config() -> MermaidConfig {
 }
 
 #[allow(dead_code)]
-pub fn legacy_init_theme_compat_engine() -> Engine {
-    Engine::new().with_site_config(legacy_init_theme_compat_config())
+pub fn legacy_init_theme_compat_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(legacy_init_theme_compat_config())
 }

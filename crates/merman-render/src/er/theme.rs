@@ -38,7 +38,7 @@ pub(crate) struct ErBaseFontSizePlan {
 impl ErBaseFontSizePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
     ) -> Self {
         let configured_font_size_px =
             crate::config::config_theme_or_root_font_size_px_opt(effective_config.as_value())
@@ -149,8 +149,8 @@ impl ErEntitySourceStyle {
 }
 
 pub(crate) fn compile_er_entity_source_style(
-    entity: &merman_core::diagrams::er::ErEntityRenderModel,
-    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+    entity: &merman_core::diagrams::er::ErEntity,
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDef>,
 ) -> ErEntitySourceStyle {
     compile_er_source_style(
         entity.css_classes.split_whitespace(),
@@ -160,8 +160,8 @@ pub(crate) fn compile_er_entity_source_style(
 }
 
 pub(crate) fn compile_er_subgraph_source_style(
-    subgraph: &merman_core::diagrams::er::ErSubgraphRenderModel,
-    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+    subgraph: &merman_core::diagrams::er::ErSubgraph,
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDef>,
 ) -> ErEntitySourceStyle {
     compile_er_source_style(
         subgraph.classes.iter().map(String::as_str),
@@ -173,7 +173,7 @@ pub(crate) fn compile_er_subgraph_source_style(
 fn compile_er_source_style<'a>(
     class_names: impl Iterator<Item = &'a str>,
     source_styles: &[String],
-    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDef>,
 ) -> ErEntitySourceStyle {
     let mut seen_classes = BTreeSet::<&str>::new();
     let class_defs = class_names
@@ -235,7 +235,7 @@ fn compile_er_source_style<'a>(
 
 fn charge_er_subgraph_class_style_work(
     class_names: &[String],
-    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDef>,
     work_meter: &OperationWorkMeter,
 ) -> Result<(), OperationWorkError> {
     let mut seen_classes = BTreeSet::new();
@@ -347,12 +347,12 @@ impl ErEntityThemePlan {
     )]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         inherited_font_stack: InheritedFontStackPlan,
         base_font_size: ErBaseFontSizePlan,
         relationship_html_labels: bool,
         diagram_title: Option<&str>,
-        model: &merman_core::diagrams::er::ErDiagramRenderModel,
+        model: &merman_core::diagrams::er::ErDiagramModel,
         layout: &crate::model::ErDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -1157,7 +1157,7 @@ fn typed_stroke_expectation(
 }
 
 pub(crate) fn subgraph_svg_text_facts(
-    subgraph: &merman_core::diagrams::er::ErSubgraphRenderModel,
+    subgraph: &merman_core::diagrams::er::ErSubgraph,
     source_style: &ErEntitySourceStyle,
 ) -> crate::text::VisibleTextStyleFacts {
     let facts = if matches!(subgraph.label_type.as_str(), "string" | "text") {
@@ -1172,7 +1172,7 @@ pub(crate) fn subgraph_svg_text_facts(
 }
 
 fn collect_text_terminals(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
     layout: &crate::model::ErDiagramLayout,
 ) -> BTreeMap<ErTextTerminalId, TextTerminalExpectation> {
     let mut terminals = BTreeMap::new();
@@ -1233,7 +1233,7 @@ fn insert_text_terminal(
 }
 
 fn collect_table_row_terminals(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    model: &merman_core::diagrams::er::ErDiagramModel,
 ) -> BTreeMap<ErTableRowTerminalId, Option<ExpectedPaint>> {
     model
         .entities
@@ -1303,7 +1303,7 @@ fn table_occurrence_count(
     }
 }
 
-fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_entity_fill(config: &merman_core::presentation::PresentationConfig) -> bool {
     merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
         || (matches!(
             config.get_str("theme"),
@@ -1312,7 +1312,7 @@ fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {
             && entity_palette_has_colors(config, "borderColorArray"))
 }
 
-fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_entity_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
     merman_core::__private::config_paint_overrides_typed_default(
         config,
         "themeVariables.nodeBorder",
@@ -1322,7 +1322,10 @@ fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
     ) && mermaid_owns_entity_palette(config, "borderColorArray"))
 }
 
-fn mermaid_owns_entity_palette(config: &merman_core::MermaidConfig, key: &str) -> bool {
+fn mermaid_owns_entity_palette(
+    config: &merman_core::presentation::PresentationConfig,
+    key: &str,
+) -> bool {
     entity_palette_has_colors(config, key)
         && merman_core::__private::config_paint_overrides_typed_default(
             config,
@@ -1330,7 +1333,10 @@ fn mermaid_owns_entity_palette(config: &merman_core::MermaidConfig, key: &str) -
         )
 }
 
-fn entity_palette_has_colors(config: &merman_core::MermaidConfig, key: &str) -> bool {
+fn entity_palette_has_colors(
+    config: &merman_core::presentation::PresentationConfig,
+    key: &str,
+) -> bool {
     // Match the writer's string-array consumer without allocating a second palette. Background
     // colors need a border palette too: that palette determines the emitted per-entity CSS rules.
     config.as_value()["themeVariables"][key]
@@ -1339,17 +1345,20 @@ fn entity_palette_has_colors(config: &merman_core::MermaidConfig, key: &str) -> 
 }
 
 fn mermaid_owns_paint_input(
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     input: merman_core::__private::ErPaintInput,
 ) -> bool {
     merman_core::__private::er_paint_inputs(config).is_none_or(|inputs| inputs.is_owned(input))
 }
 
-fn mermaid_owns_relation_stroke(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_relation_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
     mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Line)
 }
 
-fn mermaid_owns_text_fill(config: &merman_core::MermaidConfig, html_labels: bool) -> bool {
+fn mermaid_owns_text_fill(
+    config: &merman_core::presentation::PresentationConfig,
+    html_labels: bool,
+) -> bool {
     if html_labels && config.get_str("themeVariables.nodeTextColor").is_some() {
         mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText)
     } else {
@@ -1357,7 +1366,10 @@ fn mermaid_owns_text_fill(config: &merman_core::MermaidConfig, html_labels: bool
     }
 }
 
-fn mermaid_owns_table_fill(config: &merman_core::MermaidConfig, variant: ThemeVariant) -> bool {
+fn mermaid_owns_table_fill(
+    config: &merman_core::presentation::PresentationConfig,
+    variant: ThemeVariant,
+) -> bool {
     let input = match variant {
         ThemeVariant::Odd => merman_core::__private::ErPaintInput::OddRow,
         ThemeVariant::Even => merman_core::__private::ErPaintInput::EvenRow,
@@ -1408,10 +1420,9 @@ mod tests {
             ),
         ] {
             let parsed = theme
-                .install_parse_compatibility(
-                    merman_core::Engine::new()
-                        .with_site_config(merman_core::MermaidConfig::from_value(site)),
-                )
+                .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
+                    merman_core::presentation::PresentationConfig::from_value(site),
+                ))
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
@@ -1459,8 +1470,8 @@ mod tests {
             ),
         ] {
             let parsed = theme
-                .install_parse_compatibility(merman_core::Engine::new().with_site_config(
-                    merman_core::MermaidConfig::from_value(
+                .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
+                    merman_core::presentation::PresentationConfig::from_value(
                         serde_json::json!({"themeVariables": variables}),
                     ),
                 ))
@@ -1488,7 +1499,7 @@ mod tests {
     fn duplicate_subgraph_classes_charge_only_their_reference_work() {
         let classes = indexmap::IndexMap::from([(
             "accent".to_string(),
-            merman_core::diagrams::er::ErClassDefRenderModel {
+            merman_core::diagrams::er::ErClassDef {
                 id: "accent".to_string(),
                 styles: vec!["fill:#123456".to_string()],
                 text_styles: vec!["color:#654321".to_string()],

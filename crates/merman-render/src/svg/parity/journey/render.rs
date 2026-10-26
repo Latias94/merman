@@ -827,8 +827,8 @@ mod tests {
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::MermaidConfig;
     use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+    use merman_core::presentation::PresentationConfig;
 
     fn bounded_journey_layout() -> crate::model::JourneyDiagramLayout {
         crate::model::JourneyDiagramLayout {
@@ -908,7 +908,7 @@ mod tests {
         let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
         let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
             None,
-            &MermaidConfig::from_value(serde_json::json!({})),
+            &PresentationConfig::from_value(serde_json::json!({})),
         );
         render_journey_diagram_svg_model(
             &layout,
@@ -917,7 +917,7 @@ mod tests {
             &typography_theme,
             &crate::journey::JourneyTextPaintPlan::resolve(
                 None,
-                &MermaidConfig::empty_object(),
+                &PresentationConfig::empty_object(),
                 None,
                 execution.work_meter(),
             )?,
@@ -1017,7 +1017,7 @@ mod tests {
 
         let typography = crate::journey::JourneyTypographyThemePlan::resolve(
             None,
-            &MermaidConfig::from_value(cfg),
+            &PresentationConfig::from_value(cfg),
         );
         let css =
             journey_css_with_resolved_typography("journey", typography.css_binding(), true, None)
@@ -1050,7 +1050,7 @@ mod tests {
         let cfg = serde_json::json!({});
         let typography = crate::journey::JourneyTypographyThemePlan::resolve(
             None,
-            &MermaidConfig::from_value(cfg),
+            &PresentationConfig::from_value(cfg),
         );
         let css =
             journey_css_with_resolved_typography("journey", typography.css_binding(), true, None)
@@ -1149,7 +1149,7 @@ mod tests {
         let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
         let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
             None,
-            &MermaidConfig::from_value(cfg.clone()),
+            &PresentationConfig::from_value(cfg.clone()),
         );
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
@@ -1160,7 +1160,7 @@ mod tests {
                 &typography_theme,
                 &crate::journey::JourneyTextPaintPlan::resolve(
                     None,
-                    &MermaidConfig::from_value(cfg.clone()),
+                    &PresentationConfig::from_value(cfg.clone()),
                     None,
                     options.work_meter(),
                 )?,
@@ -1213,7 +1213,7 @@ mod tests {
         let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
         let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
             None,
-            &MermaidConfig::from_value(serde_json::json!({})),
+            &PresentationConfig::from_value(serde_json::json!({})),
         );
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
@@ -1224,7 +1224,7 @@ mod tests {
                 &typography_theme,
                 &crate::journey::JourneyTextPaintPlan::resolve(
                     None,
-                    &MermaidConfig::empty_object(),
+                    &PresentationConfig::empty_object(),
                     None,
                     options.work_meter(),
                 )?,

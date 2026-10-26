@@ -692,12 +692,9 @@ fn checkpoint_scan_offset(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::Engine;
 
     fn migration_fix(source: &str, source_map: &SourceMap) -> Option<DiagnosticFix> {
-        let metadata = merman_core::Engine::new()
-            .parse_metadata_sync(source)
-            .ok()?;
+        let metadata = crate::test_support::capture_source_metadata(source)?;
         init_directives_to_frontmatter_fix(source, source_map, &metadata.config)
     }
 
@@ -1063,16 +1060,13 @@ mod tests {
     fn init_directive_migration_preserves_effective_diagram_config() {
         let source = "---\nconfig:\n  flowchart:\n    curve: basis\n---\n%%{ initialize: {\"theme\":\"dark\",\"flowchart\":{\"htmlLabels\":false}} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
-        let engine = Engine::new();
-        let original = engine
-            .parse_metadata_sync(source)
-            .expect("original metadata");
+        let original =
+            crate::test_support::capture_source_metadata(source).expect("original metadata");
 
         let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
-        let migrated = engine
-            .parse_metadata_sync(&edited)
-            .expect("migrated metadata");
+        let migrated =
+            crate::test_support::capture_source_metadata(&edited).expect("migrated metadata");
 
         assert_eq!(migrated.config.as_value(), original.config.as_value());
         assert!(!edited.contains("%%{ initialize"));
@@ -1082,16 +1076,13 @@ mod tests {
     fn init_directive_migration_updates_indented_frontmatter_with_core_semantics() {
         let source = "  ---\n  title: Demo\n  config:\n    theme: default\n  ---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
-        let engine = Engine::new();
-        let original = engine
-            .parse_metadata_sync(source)
-            .expect("original metadata");
+        let original =
+            crate::test_support::capture_source_metadata(source).expect("original metadata");
 
         let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
-        let migrated = engine
-            .parse_metadata_sync(&edited)
-            .expect("migrated metadata");
+        let migrated =
+            crate::test_support::capture_source_metadata(&edited).expect("migrated metadata");
 
         assert!(edited.starts_with("  ---\n"));
         assert!(!edited.starts_with("---\n  ---\n"));

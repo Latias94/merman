@@ -1,6 +1,6 @@
 use super::{SequenceLayoutCheckpoints, sequence_activation_start_x};
 use crate::model::{LayoutEdge, LayoutNode};
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessageKind};
+use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ pub(crate) struct SequencePreparedActivationGeometry {
 }
 impl SequencePreparedActivationGeometry {
     pub(super) fn prepare(
-        model: &SequenceDiagramRenderModel,
+        model: &SequenceDiagramModel,
         nodes: &[LayoutNode],
         edges: &[LayoutEdge],
         activation_width: f64,
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn prepared_activation_geometry_keeps_unmatched_groups_and_requires_actor_geometry() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nA->>+B: Hello\nB-->>-A: Reply",
                 merman_core::ParseOptions::strict(),
@@ -195,7 +195,7 @@ mod tests {
         let prepared = super::super::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             None,
             &crate::text::DeterministicTextMeasurer::default(),
             None,

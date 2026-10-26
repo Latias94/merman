@@ -1,10 +1,11 @@
 use crate::rules::INTERNAL_RULE_REGISTRY_GAP_RULE;
 use crate::rules::{
     DIAGRAM_PARSE_RULE, DIAGRAM_PARSE_RULE_ID, INTERNAL_FAILURE_RULE, INVALID_DIRECTIVE_JSON_RULE,
-    INVALID_FRONT_MATTER_YAML_RULE, INVALID_THEME_COLOR_RULE, MALFORMED_FRONT_MATTER_RULE,
-    NO_DIAGRAM_RULE, PANIC_RULE, PARSER_CONTRACT_VIOLATION_RULE, RuleDescriptor,
-    THEME_EVALUATION_LIMIT_RULE, UNSUPPORTED_DIAGRAM_RULE, rule_descriptor,
+    INVALID_FRONT_MATTER_YAML_RULE, MALFORMED_FRONT_MATTER_RULE, NO_DIAGRAM_RULE, PANIC_RULE,
+    PARSER_CONTRACT_VIOLATION_RULE, RuleDescriptor, UNSUPPORTED_DIAGRAM_RULE, rule_descriptor,
 };
+#[cfg(feature = "compat-json")]
+use crate::rules::{INVALID_THEME_COLOR_RULE, THEME_EVALUATION_LIMIT_RULE};
 use crate::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisDiagnosticPolicy,
     AnalysisStatus, DiagnosticFix, DiagnosticRelated, DiagnosticSpan, SourceMap,
@@ -160,6 +161,7 @@ impl DiagnosticCandidate {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn project_diagnostic_candidates(
     candidates: &[DiagnosticCandidate],
     policy: &AnalysisDiagnosticPolicy,
@@ -233,6 +235,7 @@ struct ProjectedPrimaryParse {
     trailing_source_context_count: usize,
 }
 
+#[cfg(test)]
 pub(crate) fn materialize_diagnostic_candidates(
     candidates: &[DiagnosticCandidate],
     policy: &AnalysisDiagnosticPolicy,
@@ -313,6 +316,7 @@ pub(crate) fn core_error_candidate(
             diagram_type: None,
             parse_location: None,
         },
+        #[cfg(feature = "compat-json")]
         CoreError::ThemeColor(error) => CoreErrorCandidate {
             candidate: rule_candidate_without_default_span(
                 INVALID_THEME_COLOR_RULE,
@@ -322,6 +326,7 @@ pub(crate) fn core_error_candidate(
             diagram_type: None,
             parse_location: None,
         },
+        #[cfg(feature = "compat-json")]
         CoreError::ThemeEvaluationLimit(error) => CoreErrorCandidate {
             candidate: rule_candidate_without_default_span(
                 THEME_EVALUATION_LIMIT_RULE,
@@ -522,15 +527,19 @@ pub(crate) fn rule_candidate_without_default_span(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "compat-json")]
+    use crate::rules::{INVALID_THEME_COLOR_RULE_ID, THEME_EVALUATION_LIMIT_RULE_ID};
     use crate::{
         DiagnosticCategory, DiagnosticSeverity,
         rules::{
-            DIAGRAM_PARSE_RULE_ID, INTERNAL_FAILURE_RULE_ID, INVALID_THEME_COLOR_RULE_ID,
-            RECOVERED_EDITOR_FACTS_RULE, THEME_EVALUATION_LIMIT_RULE_ID,
+            DIAGRAM_PARSE_RULE_ID, INTERNAL_FAILURE_RULE_ID, INVALID_THEME_COLOR_RULE,
+            RECOVERED_EDITOR_FACTS_RULE,
         },
     };
+    #[cfg(feature = "compat-json")]
     use merman_core::theme_color::ColorError;
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn theme_color_errors_are_config_diagnostics_without_fabricated_source_ownership() {
         let projection = core_error_candidate(
@@ -551,6 +560,7 @@ mod tests {
         assert_eq!(projection.parse_location, None);
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn theme_evaluation_limits_are_resource_diagnostics_without_source_ownership() {
         let projection = core_error_candidate(

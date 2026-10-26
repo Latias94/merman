@@ -67,12 +67,29 @@ Input-policy precedence is:
 
 An explicit request/renderer **input** override does not replace target-local layout or output
 limits. This lets a host impose strict source admission while allowing sufficient layout work.
-For the two-stage `prepare_semantic` API, choose the input policy on the renderer **before**
-preparing the artifact; a later output target cannot retroactively change that admission.
+For the two-stage `prepare_presentation` API, choose the input policy on the renderer **before**
+preparing the artifact, or pass it explicitly to `prepare_presentation_with`; a later output
+target cannot retroactively change that admission. These calls return a full
+`PresentationArtifact` under the `presentation` capability. The former `prepare_semantic` API
+is removed.
 
-Parser-only calls do not perform SVG layout. Semantic input limits still matter. ASCII requests
-have their own `AsciiResourcePolicy`, grid/label limits, and output contract; an SVG work ceiling
-is not an ASCII budget. See the [host examples](../../crates/merman/examples/README.md).
+`Renderer::parse_semantic()` and `RenderRequest::semantic()` use the canonical `SemanticParser`
+and return a lean `SemanticArtifact`. They admit source/model resources without evaluating visual
+themes or performing layout. The artifact cannot be promoted to a graphical target or reusable
+full source. Configure this route through `with_semantic_parser`; full configuration and custom
+adapters installed through `with_presentation_engine(MermaidEngine::new()...)` are independent.
+`MermaidEngine::with_site_config` takes `merman::presentation::PresentationConfig`.
+
+Ordinary ASCII requests also use the semantic route and do not evaluate visual theme programs.
+Source-config admission and semantic sanitization still apply, but an admitted invalid visual
+color need not fail until full presentation is requested. Full presentation retains its theme
+errors and theme-evaluation resource accounting. `compat-json` is an explicit capability for
+Mermaid-compatible semantic JSON; it implies `presentation`, while `svg` alone does not expose
+the facade's compatibility JSON API.
+
+Semantic input limits still matter. ASCII requests have their own `AsciiResourcePolicy`,
+grid/label limits, and output contract; an SVG work ceiling is not an ASCII budget. See the
+[host examples](../../crates/merman/examples/README.md).
 
 ## SVG work has separate owners
 
@@ -82,6 +99,11 @@ do not exempt later outputs from stricter limits. Use
 `render_prepared_with_resource_policy` for an explicit input override; otherwise the current
 renderer input override precedes the graphical target's input policy. See the
 [snapshot migration](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
+
+`Renderer::prepare_source()` and `PresentationArtifact::into_prepared_source()` retain a full
+presentation parse, including its effective config and theme binding. A lean `SemanticArtifact`
+does not provide this handoff. Prepared outputs reuse that admitted presentation without
+reevaluating the visual theme program; their new input/work/output admission remains independent.
 
 | Boundary | Resource responsibility |
 | --- | --- |
@@ -189,6 +211,12 @@ The native [cancellable example](../../crates/merman/examples/render_cancellable
 cargo run --locked -p merman --example render_cancellable > preview.svg
 cargo run --locked -p merman --example render_cancellable -- --cancel
 ```
+
+Default editor and analysis snapshots use canonical semantic parsing, so they no longer emit
+visual theme color or theme-evaluation-limit diagnostics. This remains true when full
+presentation is compiled. Run an explicit full presentation operation when the host needs
+visual-theme diagnostics, and keep that operation's result associated with the same document
+revision as its preview.
 
 A host should keep its existing executor and apply this lifecycle:
 

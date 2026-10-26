@@ -1,10 +1,15 @@
 use super::*;
-use crate::{
-    Engine, MermaidConfig, OperationControl, ParseMetadata, ParseOptions, RenderSemanticModel,
-};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::{MermaidConfig, OperationControl};
+#[cfg(feature = "presentation")]
+use crate::{MermaidEngine, ParseOptions, PresentationMetadata, RenderSemanticModel};
+#[cfg(feature = "compat-json")]
+use serde_json::{Value, json};
 
+#[cfg(feature = "presentation")]
 fn model(source: &str) -> StateDiagramRenderModel {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("state parses")
         .expect("state detected");
@@ -26,15 +31,17 @@ fn chain(depth: usize) -> String {
     source
 }
 
-fn meta() -> ParseMetadata {
-    ParseMetadata {
+#[cfg(feature = "presentation")]
+fn meta() -> PresentationMetadata {
+    PresentationMetadata {
         diagram_type: "stateDiagram-v2".to_string(),
         config: MermaidConfig::empty_object(),
-        effective_config: MermaidConfig::empty_object(),
+        effective_config: crate::presentation::PresentationConfig::empty_object(),
         title: None,
     }
 }
 
+#[cfg(feature = "compat-json")]
 fn compatibility(model: &StateDiagramRenderModel) -> crate::ManagedSemanticJson {
     crate::ManagedSemanticJson::from(
         render_model_to_compat_json(model, &meta()).expect("state compatibility projection"),
@@ -42,6 +49,155 @@ fn compatibility(model: &StateDiagramRenderModel) -> crate::ManagedSemanticJson 
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
+fn state_semantic_graph_matches_full_model_without_presentation_materialization() {
+    let source = concat!(
+        "stateDiagram-v2\ndirection LR\n",
+        "state Outer {\ndirection RL\n[*] --> A: ready\n",
+        "note right of A : remember\n}\nOuter --> Done: finish\n",
+        "classDef active fill:red,color:blue\nclass A active\n",
+        "click Done href \"https://example.com\"\n",
+    );
+    parse::reset_state_syntax_construction_count();
+    #[cfg(feature = "editor-facts")]
+    crate::editor::test_work::reset();
+    render_model::reset_projected_document_count();
+    db::reset_dom_id_count();
+    let semantic = parse::parse_state_semantic_model_controlled(
+        source,
+        "stateDiagram-v2",
+        &MermaidConfig::default(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .unwrap()
+    .model
+    .unwrap();
+    assert_eq!(parse::state_syntax_construction_count(), 1);
+    #[cfg(feature = "editor-facts")]
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+    assert_eq!(render_model::projected_document_count(), 0);
+    assert_eq!(db::dom_id_count(), 0);
+
+    let render = model(source);
+    assert!(db::dom_id_count() > 0);
+    assert_eq!(semantic.direction, render.direction);
+    assert_eq!(semantic.document.root(), render.document.root());
+    assert_eq!(
+        semantic.document.documents.len(),
+        render.document.documents.len()
+    );
+    assert_eq!(semantic.nodes.len(), render.nodes.len());
+    assert_eq!(semantic.edges.len(), render.edges.len());
+    for (semantic, render) in semantic.nodes.iter().zip(&render.nodes) {
+        let mut expected = serde_json::to_value(render).unwrap();
+        let expected = expected.as_object_mut().unwrap();
+        for field in [
+            "labelStyle",
+            "domId",
+            "padding",
+            "rx",
+            "ry",
+            "colorIndex",
+            "wrappingWidth",
+            "minWidth",
+        ] {
+            expected.remove(field);
+        }
+        expected.insert("explicitDir".to_string(), json!(render.explicit_dir));
+        assert_eq!(serde_json::to_value(semantic).unwrap(), json!(expected));
+    }
+    for (semantic, render) in semantic.edges.iter().zip(&render.edges) {
+        let mut expected = serde_json::to_value(render).unwrap();
+        expected.as_object_mut().unwrap().remove("arrowTypeEnd");
+        assert_eq!(serde_json::to_value(semantic).unwrap(), expected);
+    }
+    assert_eq!(semantic.states["Outer"].doc, render.states["Outer"].doc);
+    assert_eq!(
+        serde_json::to_value(&semantic.links).unwrap(),
+        serde_json::to_value(&render.links).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&semantic.style_classes).unwrap(),
+        serde_json::to_value(&render.style_classes).unwrap()
+    );
+    assert!(semantic.nodes.iter().any(|node| node.shape == "note"));
+    assert!(
+        semantic
+            .nodes
+            .iter()
+            .any(|node| node.explicit_dir == Some(true))
+    );
+    assert!(semantic.nodes.iter().any(|node| {
+        node.css_compiled_styles
+            .iter()
+            .any(|style| style == "fill:red")
+    }));
+    #[cfg(feature = "editor-facts")]
+    crate::editor::test_work::reset();
+}
+
+#[test]
+fn state_semantic_graph_preserves_validation_and_cancellation() {
+    for source in [
+        "stateDiagram-v2\nstate Group {\nChild\n}\nGroup: first\nGroup: second\n",
+        "stateDiagram-v2\nnote right of A : note\nstate A----note-0\n",
+    ] {
+        let semantic = parse::parse_state_semantic_model_controlled(
+            source,
+            "stateDiagram-v2",
+            &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model;
+        let semantic_error = semantic.expect_err("canonical State validation rejects the input");
+        assert!(matches!(semantic_error, crate::Error::DiagramParse { .. }));
+        #[cfg(feature = "presentation")]
+        {
+            let render = parse::parse_state_model_for_render_controlled(
+                source,
+                &meta(),
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(semantic_error.to_string(), render.unwrap_err().to_string());
+        }
+    }
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(20);
+    let source = chain(128);
+    assert!(
+        parse::parse_state_semantic_model_controlled(
+            &source,
+            "stateDiagram-v2",
+            &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &control,
+        )
+        .is_err()
+    );
+    assert!(
+        parse::parse_state_semantic_model_controlled(
+            &source,
+            "stateDiagram-v2",
+            &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .is_ok()
+    );
+}
+
+#[test]
+#[cfg(feature = "compat-json")]
 fn state_flat_documents_preserve_dividers_and_nested_semantic_order() {
     let model = model(concat!(
         "stateDiagram-v2\ndirection LR\n",
@@ -103,9 +259,113 @@ fn state_flat_documents_preserve_dividers_and_nested_semantic_order() {
             .count(),
         1
     );
+    let note = model
+        .nodes
+        .iter()
+        .find(|node| node.shape == "note")
+        .unwrap();
+    assert_eq!(note.id, "C----note-2");
+    assert_eq!(note.dom_id, "state-C----note-2");
+    assert_eq!(note.label.as_ref().and_then(Value::as_str), Some("note"));
+    assert_eq!(note.position.as_deref(), Some("right of"));
+    assert_eq!(note.parent_id.as_deref(), Some("C----parent"));
+    assert_eq!(note.node_type.as_deref(), Some("node"));
+    assert!(!note.is_group);
+    let group = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "C----parent")
+        .unwrap();
+    assert!(group.is_group);
+    assert_eq!(group.shape, "noteGroup");
+    assert_eq!(group.position.as_deref(), Some("right of"));
+    assert_eq!(group.label, note.label);
+    let edge = model
+        .edges
+        .iter()
+        .find(|edge| edge.classes == "transition note-edge")
+        .unwrap();
+    assert_eq!(
+        (
+            edge.start.as_str(),
+            edge.end.as_str(),
+            edge.arrow_type_end.as_str()
+        ),
+        ("C", "C----note-2", "")
+    );
+    let wire_note = json["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "C----note-2")
+        .unwrap();
+    assert_eq!(wire_note["label"], "note");
+    assert_eq!(wire_note["position"], "right of");
+    assert_eq!(wire_note["parentId"], "C----parent");
+    assert_eq!(wire_note["isGroup"], false);
+    let wire_edge = json["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|edge| edge["classes"] == "transition note-edge")
+        .unwrap();
+    assert_eq!(wire_edge["start"], "C");
+    assert_eq!(wire_edge["end"], "C----note-2");
+    assert_eq!(wire_edge["arrowhead"], "none");
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
+fn state_root_document_lookup_preserves_first_root_composite() {
+    let model = model(concat!(
+        "stateDiagram-v2\nstate Container {\nstate Shared {\nNested\n}\n}\n",
+        "state Shared {\nFirst\n}\nstate Shared {\nLater\n}\n",
+    ));
+    let root = model.document.get(model.document.root().unwrap()).unwrap();
+    let [
+        StateStatement::State(container),
+        StateStatement::State(first),
+        StateStatement::State(last),
+    ] = root
+    else {
+        panic!("three root composites retain source order");
+    };
+    assert_eq!(
+        (container.id.as_str(), first.id.as_str(), last.id.as_str()),
+        ("Container", "Shared", "Shared")
+    );
+    let [StateStatement::State(nested)] = model.document.get(container.doc.unwrap()).unwrap()
+    else {
+        panic!("the nested same-id composite precedes both root definitions");
+    };
+    assert_eq!(nested.id, "Shared");
+    let selected = model.states["Shared"].doc.unwrap();
+    assert_eq!(selected, first.doc.unwrap());
+    assert_ne!(selected, last.doc.unwrap());
+    assert_ne!(selected, nested.doc.unwrap());
+    let [StateStatement::State(child)] = model.document.get(selected).unwrap() else {
+        panic!("the first root document remains the typed owner");
+    };
+    assert_eq!(child.id, "First");
+    assert_eq!(
+        model
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>(),
+        ["Container", "Shared", "Nested", "First", "Later"]
+    );
+    assert_eq!(
+        compatibility(&model)["states"]["Shared"]["doc"],
+        json!([{
+            "stmt": "state", "id": "First", "type": "default",
+            "description": null, "doc": null, "classes": [],
+        }])
+    );
+}
+
+#[test]
+#[cfg(feature = "compat-json")]
 fn state_compatibility_projection_preserves_nested_documents() {
     for source in [
         "stateDiagram-v2\nA --> B: label\nnote right of A : note\n",
@@ -123,6 +383,7 @@ fn state_compatibility_projection_preserves_nested_documents() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_compatibility_projection_supports_deep_documents() {
     let model = model(&chain(130));
     let json = compatibility(&model);
@@ -133,6 +394,7 @@ fn state_compatibility_projection_supports_deep_documents() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_compatibility_projection_handles_shared_documents() {
     let mut model = model(&chain(130));
     let doc = model.states["S0"].doc;
@@ -140,10 +402,10 @@ fn state_compatibility_projection_handles_shared_documents() {
         let id = format!("Shared{index}");
         model.states.insert(
             id.clone(),
-            StateDiagramRenderState {
+            StateRecord {
                 id,
                 doc,
-                ..StateDiagramRenderState::default()
+                ..StateRecord::default()
             },
         );
     }
@@ -173,10 +435,22 @@ fn state_divider_assignment_cancellation_releases_completed_grammar_documents() 
         "assignment had useful work before cancellation"
     );
     drop(document);
-    assert_eq!(model("stateDiagram-v2\nA\n").nodes.len(), 1);
+    let model = parse::parse_state_semantic_model_controlled(
+        "stateDiagram-v2\nA\n",
+        "stateDiagram-v2",
+        &MermaidConfig::default(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .unwrap()
+    .model
+    .unwrap();
+    assert_eq!(model.nodes.len(), 1);
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_projection_cancellation_releases_completed_inner_documents() {
     let model = model(&chain(1000));
     let control = OperationControl::new();
@@ -199,6 +473,7 @@ fn state_projection_cancellation_releases_completed_inner_documents() {
 }
 
 #[test]
+#[cfg(feature = "compat-json")]
 fn state_foreign_document_ids_report_projection_failure() {
     let foreign = model(&chain(3));
     let mut target = model("stateDiagram-v2\nA\n");
@@ -208,4 +483,35 @@ fn state_foreign_document_ids_report_projection_failure() {
         target.model_complexity(),
         model("stateDiagram-v2\nA\n").model_complexity()
     );
+}
+
+#[test]
+fn state_semantic_deep_documents_clone_count_and_drop_without_recursion() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            let source = chain(1000);
+            let model = parse::parse_state_semantic_model_controlled(
+                &source,
+                "stateDiagram-v2",
+                &MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            let clone = model.clone();
+            assert_eq!(clone.document.len(), 1001);
+            let complexity = model.model_complexity();
+            assert!(complexity.items > model.nodes.len());
+            assert_eq!(complexity.nesting_depth, 1000);
+            assert_eq!(clone.model_complexity(), complexity);
+            drop(model);
+            drop(clone);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

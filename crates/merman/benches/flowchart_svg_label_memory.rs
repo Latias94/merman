@@ -4,7 +4,8 @@ mod allocator;
 use allocator::CountingSystemAllocator;
 use merman::runtime::RuntimePolicy;
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SemanticArtifact,
+    MermaidEngine, OperationControl, ParseOptions, PresentationArtifact, RenderOutput,
+    RenderRequest, Renderer,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -239,7 +240,7 @@ fn sha256_bytes(bytes: &[u8]) -> String {
     encode_lower_hex(&Sha256::digest(bytes))
 }
 
-fn projected_node_labels(semantic: &SemanticArtifact) -> Result<(u32, bool), ProbeError> {
+fn projected_node_labels(semantic: &PresentationArtifact) -> Result<(u32, bool), ProbeError> {
     let projection = semantic
         .compatibility_json()
         .map_err(|error| ProbeError::new(format!("semantic projection failed: {error}")))?;
@@ -260,11 +261,14 @@ fn projected_node_labels(semantic: &SemanticArtifact) -> Result<(u32, bool), Pro
     Ok((count, labels.len() == nodes.len()))
 }
 
-fn prepare_flowchart(renderer: &Renderer, source: &str) -> Result<SemanticArtifact, ProbeError> {
+fn prepare_flowchart(
+    renderer: &Renderer,
+    source: &str,
+) -> Result<PresentationArtifact, ProbeError> {
     let output = renderer
-        .render(RenderRequest::semantic(source, OperationControl::new()))
+        .render(RenderRequest::presentation(source, OperationControl::new()))
         .map_err(|error| ProbeError::new(format!("render preparation failed: {error}")))?;
-    let RenderOutput::Semantic(Some(semantic)) = output else {
+    let RenderOutput::Presentation(Some(semantic)) = output else {
         return Err(ProbeError::new("render preparation returned no diagram"));
     };
     Ok(semantic)
@@ -282,8 +286,8 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     let executable_sha256 = executable_sha256()?;
     let source = build_flowchart(request.scale, request.seed)?;
     let renderer = Renderer::new()
-        .with_engine(
-            Engine::new()
+        .with_presentation_engine(
+            MermaidEngine::new()
                 .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
         )
         .with_parse_options(ParseOptions::strict());
@@ -291,7 +295,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     // Materialize parser/engine state before the measurement window. The retained signal must
     // describe the operation-owned semantic artifact, not the renderer's first-use parser caches.
     renderer
-        .engine()
+        .presentation_engine()
         .parse_metadata_sync(&source)
         .map_err(|error| ProbeError::new(format!("metadata preparation failed: {error}")))?;
 

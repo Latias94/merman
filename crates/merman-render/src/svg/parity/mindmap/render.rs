@@ -549,7 +549,7 @@ fn mindmap_css(
 fn write_mindmap_edge_label(
     out: &mut impl SvgOutput,
     edge_id: &str,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
 ) -> Result<()> {
     if !crate::config::config_effective_html_labels(config.as_value()) {
         let _ = write!(
@@ -575,7 +575,7 @@ fn write_mindmap_edge_label(
 pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
     prepared_labels: &crate::mindmap::MindmapPreparedLabels,
     options: &SvgExecution<'_>,
@@ -610,7 +610,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     fn mk_label(
         out: &mut impl SvgOutput,
         spec: MindmapLabelSpec<'_>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
         _font_family_css: &str,
         options: &SvgExecution<'_>,
         text_style: &TextStyle,
@@ -744,7 +744,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     diagram_type: "mindmap".to_string(),
                 })?;
             let html = crate::html::resolve_svg_fragment(
-                merman_core::sanitize::sanitize_xhtml_with_sink(&html, config, &sink),
+                merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink),
                 work_meter,
             )?;
             out.push_str(&escape_amp_preserving_entities(&html));
@@ -1519,7 +1519,7 @@ mod tests {
                 if complete {
                     raw["themeVariables"]["gradientStop"] = serde_json::json!("currentColor");
                 }
-                let config = merman_core::MermaidConfig::from_value(raw);
+                let config = merman_core::presentation::PresentationConfig::from_value(raw);
                 let meter = crate::resources::OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
                 );
@@ -1609,7 +1609,7 @@ mod tests {
         let error = write_mindmap_edge_label(
             &mut out,
             "edge-0",
-            &merman_core::MermaidConfig::empty_object(),
+            &merman_core::presentation::PresentationConfig::empty_object(),
         )
         .expect_err("the rejecting sink must stop Mindmap edge-label emission");
 
@@ -1638,7 +1638,7 @@ mod tests {
 
     #[test]
     fn mindmap_css_stops_at_the_first_bounded_sink_checkpoint() {
-        let config = merman_core::MermaidConfig::empty_object();
+        let config = merman_core::presentation::PresentationConfig::empty_object();
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -1680,7 +1680,7 @@ mod tests {
             }
         });
 
-        let config = merman_core::MermaidConfig::from_value(cfg);
+        let config = merman_core::presentation::PresentationConfig::from_value(cfg);
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );

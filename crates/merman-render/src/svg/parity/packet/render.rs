@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn packet_css_honors_mermaid_11_15_packet_style_options() {
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "packet": {
                 "byteFontSize": "11px",
                 "startByteColor": "#111111",

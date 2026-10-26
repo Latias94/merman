@@ -104,6 +104,21 @@ Never assume that base and head share a feature vocabulary or benchmark configur
 side's checkout, label, package, bench, features, default-feature policy, toolchain, target, target
 directory, and corpus.
 
+For the current full `pipeline` bench, explicitly enable
+`all-diagrams,svg,compat-json,editor-facts`; selecting only an SVG timing group still requires the
+compatibility and editor gates on the executable. The default facade does not enable
+`compat-json`. The Performance workflow reads the base recipe from the base checkout's
+`tools/bench/performance_lanes.json` and the head recipe from the head descriptor. Keep these
+independent for historical refs that lack the new feature names.
+
+The October 22, 2026 U8/U9 change is an API/recipe migration, not a new measurement or a
+performance pass. Current contracts refresh source input hashes and required features while
+retaining all metric thresholds, candidate-admission flags, and semantic output digests.
+Preserve ignored historical reports and frozen baselines. After the final
+`crates/merman/Cargo.toml` or `Cargo.lock` edit, refresh their `probe.inputs` hashes in
+`flowchart-svg-label-artifact-memory-v1.json`, `sequence-message-repeated-memory-v1.json`, and
+`sequence-message-unique-memory-v1.json` before checking current contracts.
+
 For the alpha.3 historical context, the essential capability difference is explicit:
 
 ```bash
@@ -117,7 +132,7 @@ python3 tools/bench/compare_self.py \
   --base-bench pipeline \
   --head-bench pipeline \
   --base-features render \
-  --head-features svg \
+  --head-features all-diagrams,svg,compat-json,editor-facts \
   --base-toolchain 1.95.0 \
   --head-toolchain 1.95.0 \
   --base-target-dir target/performance/base \
@@ -141,8 +156,9 @@ missing capability for a mandatory fixture is a contract failure. Corpus schema-
 validates the public operation, lifecycle, selector history, and normalization divisor. An explicit
 `--base-logical-operations` or `--head-logical-operations` value must match that metadata. Legacy
 schema-v1 confirmation keeps both divisors at one and requires exact benchmark identity. Use the
-same recipe shape for an adjacent candidate comparison, changing the labels and checkouts rather
-than silently inheriting head settings on base.
+same recipe shape for an adjacent candidate comparison. For two current revisions, explicitly set
+both feature lists to `all-diagrams,svg,compat-json,editor-facts`; older bases retain their own
+feature vocabulary.
 
 ## 3. Establish the evidence contract
 
@@ -183,8 +199,8 @@ python3 tools/bench/compare_self.py \
   --head-package merman \
   --base-bench pipeline \
   --head-bench pipeline \
-  --base-features svg \
-  --head-features svg \
+  --base-features all-diagrams,svg,compat-json,editor-facts \
+  --head-features all-diagrams,svg,compat-json,editor-facts \
   --base-toolchain 1.95.0 \
   --head-toolchain 1.95.0 \
   --base-target-dir target/performance/base \
@@ -289,7 +305,7 @@ calibration wrapper:
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
-  --example layout_work_calibration --features complete-svg-elk
+  --example layout_work_calibration --features svg,compat-json,layout-cytoscape,layout-elk,math
 
 python3 tools/bench/run_layout_work_calibration.py \
   --authoritative-date YYYY-MM-DD \
