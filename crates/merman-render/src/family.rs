@@ -3461,6 +3461,13 @@ impl RenderedFamilySvg {
         self.finalize_resvg_with_portability(pipeline, true)
     }
 
+    pub(crate) fn finalize_resvg_for_target_admission(
+        self,
+        pipeline: &SvgPipeline,
+    ) -> Result<RenderedResvgCompatibleSvg> {
+        self.finalize_resvg_with_portability(pipeline, false)
+    }
+
     fn finalize_resvg_with_portability(
         self,
         pipeline: &SvgPipeline,

@@ -27,6 +27,33 @@ fn render_session() -> RenderSession {
 }
 
 #[test]
+fn public_native_finalization_still_enforces_strict_portability() {
+    use merman_render::diagram_theme::ThemePortabilityRequirement;
+    use merman_render::svg::{RootBackgroundPostprocessor, SvgPipeline};
+
+    let parsed = parse_for_render("info");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session()
+        .unwrap();
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let error = rendered
+        .finalize_resvg(
+            &SvgPipeline::resvg_safe()
+                .with_postprocessor(RootBackgroundPostprocessor::new("#111827")),
+        )
+        .err()
+        .expect("only facade-owned target admission may defer strict enforcement");
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyOutputMutation { .. }
+    ));
+}
+
+#[test]
 fn c4_exposes_layout_only_through_the_prepared_family_artifact() {
     let parsed = parse_for_render("C4Context\nSystem(api, \"API\")\n");
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), render_session())

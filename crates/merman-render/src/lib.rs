@@ -595,6 +595,15 @@ pub mod __private {
         rendered.finalize_standalone_for_target_admission(pipeline)
     }
 
+    /// Finalizes native SVG while retaining evidence for the workspace facade's target-owned
+    /// portability admission. Resource, cancellation and prepared-math checks remain enforced.
+    pub fn finalize_resvg_for_target_admission(
+        rendered: crate::family::RenderedFamilySvg,
+        pipeline: &crate::svg::SvgPipeline,
+    ) -> crate::Result<crate::family::RenderedResvgCompatibleSvg> {
+        rendered.finalize_resvg_for_target_admission(pipeline)
+    }
+
     /// Reports whether terminal SVG text is fully resolved by a renderer-owned font seal.
     pub const fn svg_text_fonts_are_self_contained(
         report: &crate::svg::SvgFinalizationReport,
