@@ -1,6 +1,6 @@
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
-use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
 use std::fmt::Write as _;
 use std::time::Duration;
 
@@ -82,16 +82,8 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             }
         }
     } else {
-        let mut metrics =
-            ctx.measurer
-                .measure_wrapped(&note_text, ctx.text_style, None, WrapMode::SvgLike);
-        if let Some(width) = crate::class::class_svg_single_line_plain_label_width_px(
-            note_text.as_ref(),
-            ctx.measurer,
-            ctx.text_style,
-        ) {
-            metrics.width = width;
-        }
+        let metrics =
+            crate::class::class_svg_note_metrics(ctx.measurer, ctx.text_style, &note_text);
         (metrics.width, metrics.height)
     };
     let label_w = label_w_raw.max(1.0);

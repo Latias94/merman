@@ -2160,6 +2160,24 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
     (width.is_finite() && width > 0.0).then_some(width)
 }
 
+pub(crate) fn class_svg_note_metrics(
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    text: &str,
+) -> crate::text::TextMetrics {
+    let mut metrics = crate::text::measure_markdown_with_inline_styles(
+        measurer,
+        text,
+        style,
+        None,
+        WrapMode::SvgLike,
+    );
+    if let Some(width) = class_svg_single_line_plain_label_width_px(text, measurer, style) {
+        metrics.width = width;
+    }
+    metrics
+}
+
 fn note_dimensions(
     text: &str,
     measurer: &dyn TextMeasurer,
@@ -2174,23 +2192,15 @@ fn note_dimensions(
     let math_metrics = mermaid_config.and_then(|config| {
         class_math_label_metrics(&label, measurer, text_style, None, config, math_renderer)
     });
-    let has_math_metrics = math_metrics.is_some();
-    let mut m = if let Some(metrics) = math_metrics {
+    let m = if let Some(metrics) = math_metrics {
         metrics
     } else if matches!(wrap_mode, WrapMode::HtmlLike) {
         mermaid_config
             .map(|config| class_html_measure_note_metrics(measurer, text_style, text, config))
             .unwrap_or_else(|| measurer.measure_wrapped(&label, text_style, None, wrap_mode))
     } else {
-        measurer.measure_wrapped(&label, text_style, None, wrap_mode)
+        class_svg_note_metrics(measurer, text_style, &label)
     };
-    if !has_math_metrics
-        && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-        && let Some(width) =
-            class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
-    {
-        m.width = width;
-    }
     (m.width + p, m.height + p, m)
 }
 

@@ -134,3 +134,50 @@ fn class_svg_abstract_method_measurement_matches_the_terminal_tspan_reset() {
         }
     }
 }
+
+#[test]
+fn class_svg_note_measures_visible_markdown_instead_of_source_delimiters() {
+    let measurer = Arc::new(SvgFontMeasurer::default());
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("class-svg-note-contract").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        measurer.clone(),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let parsed = MermaidEngine::new()
+        .with_site_config(PresentationConfig::from_value(json!({"htmlLabels": false})))
+        .parse_diagram_for_render_model_sync(
+            "classDiagram\nnote \"**MMMM**\"\n",
+            ParseOptions::default(),
+        )
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let requests = measurer.requests.lock().unwrap();
+    assert!(
+        !requests.iter().any(|(text, _)| text.contains("**")),
+        "{requests:?}"
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|(text, style)| { text == "MMMM" && style.font_weight.as_deref() == Some("700") }),
+        "{requests:?}"
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.attribute("font-weight") == Some("bold") && node.text() == Some("MMMM")
+    }));
+}

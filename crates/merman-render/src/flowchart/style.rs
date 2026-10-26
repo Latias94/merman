@@ -152,33 +152,46 @@ impl std::ops::Deref for FlowchartTextStyleResolution<'_> {
     }
 }
 
-struct FlowchartTextStyleResolver<'a> {
+struct FlowchartTextStyleResolver<'a, 's> {
     resolution: FlowchartTextStyleResolution<'a>,
-    typography_cascade: crate::mermaid_style::TextStyleCascade<'a>,
+    base: &'a TextStyle,
+    typography: [Option<(&'s str, bool)>; 4],
 }
 
-impl<'a> FlowchartTextStyleResolver<'a> {
+impl<'a, 's> FlowchartTextStyleResolver<'a, 's> {
     fn new(base: &'a TextStyle) -> Self {
         Self {
             resolution: FlowchartTextStyleResolution::borrowed(base),
-            typography_cascade: crate::mermaid_style::TextStyleCascade::new(
-                base,
-                crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
-            ),
+            base,
+            typography: Default::default(),
         }
     }
 
     fn observe(
         &mut self,
         key: &str,
-        value: &str,
+        value: &'s str,
         provenance: FlowchartTerminalForegroundProvenance,
         important: bool,
     ) {
         if !flowchart_is_source_spelled_label_style_key(key) {
             return;
         }
-        self.typography_cascade.observe(key, value, important);
+        let index = match key {
+            "font-family" => Some(0),
+            "font-size" => Some(1),
+            "font-weight" => Some(2),
+            "font-style" => Some(3),
+            _ => None,
+        };
+        if let Some(index) = index
+            && self.typography[index]
+                .as_ref()
+                .is_none_or(|(_, previous)| important || !previous)
+        {
+            // compileStyles replaces a declaration before the browser validates its value.
+            self.typography[index] = Some((value, important));
+        }
         if key.trim() == "color" {
             FlowchartTerminalForeground::observe(
                 &mut self.resolution.terminal_foreground,
@@ -190,17 +203,29 @@ impl<'a> FlowchartTextStyleResolver<'a> {
     }
 
     fn finish(mut self) -> FlowchartTextStyleResolution<'a> {
-        self.resolution.style = self.typography_cascade.finish();
+        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+            self.base,
+            crate::mermaid_style::CssFontSizeContext::uniform(self.base.font_size),
+        );
+        for (property, winner) in ["font-family", "font-size", "font-weight", "font-style"]
+            .into_iter()
+            .zip(self.typography.iter())
+        {
+            if let Some((value, important)) = winner {
+                cascade.observe(property, value, *important);
+            }
+        }
+        self.resolution.style = cascade.finish();
         self.resolution
     }
 }
 
-fn flowchart_text_style_resolver_for_class_names<'a, 'b>(
+fn flowchart_text_style_resolver_for_class_names<'a, 'b, 's>(
     base: &'a TextStyle,
-    class_defs: &IndexMap<String, Vec<String>>,
+    class_defs: &'s IndexMap<String, Vec<String>>,
     class_names: impl IntoIterator<Item = &'b str>,
-    inline_styles: &[String],
-) -> FlowchartTextStyleResolver<'a> {
+    inline_styles: &'s [String],
+) -> FlowchartTextStyleResolver<'a, 's> {
     let mut resolver = FlowchartTextStyleResolver::new(base);
 
     for class in class_names {
@@ -815,6 +840,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn text_style_resolution_uses_the_compiled_invalid_winner() {
+        let base = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        for (source, expected) in [
+            ("font-size:32px,font-size:invalid", 16.0),
+            ("font-size:32px !important,font-size:invalid", 32.0),
+            ("font-size:32px,font-size:invalid !important", 16.0),
+        ] {
+            let style = flowchart_effective_text_style_for_classes(
+                &base,
+                &IndexMap::new(),
+                &[],
+                &[source.to_owned()],
+            )
+            .into_owned();
+            assert_eq!(style.font_size, expected, "{source}");
+        }
+    }
+
+    #[test]
     fn swimlane_label_rect_uses_only_the_first_concatenated_edge_style() {
         let base = TextStyle::default();
         let default_styles = vec![
@@ -1026,7 +1073,7 @@ mod tests {
             ),
             (
                 "font-size:24px,font-size:invalid !important,font-size:30px",
-                30.0,
+                16.0,
                 "700",
             ),
             ("font-weight:lighter,font-weight:lighter", 16.0, "400"),

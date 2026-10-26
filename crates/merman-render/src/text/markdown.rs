@@ -223,9 +223,9 @@ pub(crate) fn mermaid_markdown_to_lines(
     let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
 
     fn needs_full_delimiter_resolution(markdown: &str) -> bool {
-        // The lightweight SVG word scanner does not parse images. Marked's markdownToLines
-        // skips their tokens, so use the full parser to resume correctly at following text.
-        if markdown.contains("![") {
+        // Code spans and images are omitted by the pinned SVG token allowlist. Keep their
+        // delimiter handling in the full parser instead of a second partial implementation.
+        if markdown.contains("![") || markdown.contains('`') {
             return true;
         }
         let chars: Vec<char> = markdown.chars().collect();
@@ -486,7 +486,6 @@ pub(crate) fn mermaid_markdown_to_lines(
     let mut stack: Vec<MermaidMarkdownWordType> = vec![MermaidMarkdownWordType::Normal];
     let mut word = String::new();
     let mut word_ty = MermaidMarkdownWordType::Normal;
-    let mut in_code_span = false;
 
     fn line_mut(
         out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
@@ -518,7 +517,7 @@ pub(crate) fn mermaid_markdown_to_lines(
 
         // The pinned Mermaid SVG Markdown projection omits Marked's escape nodes,
         // rather than printing their escaped punctuation as a generic Markdown renderer would.
-        if !in_code_span && ch == '\\' && chars.get(i + 1).is_some_and(char::is_ascii_punctuation) {
+        if ch == '\\' && chars.get(i + 1).is_some_and(char::is_ascii_punctuation) {
             flush_word(&mut out, &mut line_idx, &mut word, word_ty);
             word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
             i += 2;
@@ -565,26 +564,7 @@ pub(crate) fn mermaid_markdown_to_lines(
             continue;
         }
 
-        if ch == '`' {
-            if word.is_empty() {
-                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-            }
-            word.push(ch);
-            in_code_span = !in_code_span;
-            i += 1;
-            continue;
-        }
-
         if ch == '*' || ch == '_' {
-            if in_code_span {
-                if word.is_empty() {
-                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-                }
-                word.push(ch);
-                i += 1;
-                continue;
-            }
-
             let prev = i.checked_sub(1).map(|index| chars[index]);
             let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
                 2
@@ -870,18 +850,20 @@ mod tests {
     }
 
     #[test]
-    fn inline_code_suppresses_emphasis_delimiters() {
+    fn svg_markdown_code_spans_match_the_full_parser_projection() {
         use MermaidMarkdownWordType::*;
 
-        // Mermaid CLI baselines (class diagram HTML labels) preserve backticks and do not
-        // interpret `**...**` inside them as strong/emphasis.
         assert_eq!(
             mermaid_markdown_to_lines("inline: `**not bold**`", true),
-            vec![vec![
-                ("inline:".to_string(), Normal),
-                ("`**not".to_string(), Normal),
-                ("bold**`".to_string(), Normal),
-            ]]
+            vec![vec![("inline:".to_string(), Normal)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`a ``x`` b`", true),
+            vec![vec![("a".to_string(), Normal), ("b".to_string(), Normal)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`a ``x`` ***b***`", true),
+            vec![vec![("a".to_string(), Normal), ("b".to_string(), Strong)]]
         );
     }
 

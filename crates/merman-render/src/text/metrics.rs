@@ -121,6 +121,32 @@ fn inline_text_style(base: &TextStyle, bold: bool, italic: bool, code: bool) -> 
     style
 }
 
+/// Matches createText's explicit word attributes, not the enclosing text's inheritance.
+pub(crate) fn svg_markdown_word_style(
+    base: &TextStyle,
+    kind: MermaidMarkdownWordType,
+) -> std::borrow::Cow<'_, TextStyle> {
+    let bold = kind == MermaidMarkdownWordType::Strong;
+    let italic = kind == MermaidMarkdownWordType::Em;
+    let weight_matches = match base.font_weight.as_deref() {
+        None | Some("normal" | "400") => !bold,
+        Some("bold" | "700") => bold,
+        _ => false,
+    };
+    let style_matches = match base.font_style.as_deref() {
+        None | Some("normal") => !italic,
+        Some("italic") => italic,
+        _ => false,
+    };
+    if weight_matches && style_matches {
+        return std::borrow::Cow::Borrowed(base);
+    }
+    let mut style = base.clone();
+    style.font_weight = Some(if bold { "700" } else { "normal" }.to_owned());
+    style.font_style = Some(if italic { "italic" } else { "normal" }.to_owned());
+    std::borrow::Cow::Owned(style)
+}
+
 fn measure_inline_run_width_px<M: TextMeasurer + ?Sized>(
     measurer: &M,
     text: &str,
@@ -147,7 +173,18 @@ fn measure_inline_runs_width_px<M: TextMeasurer + ?Sized>(
     runs.iter()
         .filter(|run| !run.text.is_empty())
         .map(|run| {
-            let run_style = inline_text_style(style, run.bold, run.italic, run.code);
+            let run_style = if svg_advance && wrap_mode != WrapMode::HtmlLike {
+                let kind = if run.bold {
+                    MermaidMarkdownWordType::Strong
+                } else if run.italic {
+                    MermaidMarkdownWordType::Em
+                } else {
+                    MermaidMarkdownWordType::Normal
+                };
+                svg_markdown_word_style(style, kind)
+            } else {
+                std::borrow::Cow::Owned(inline_text_style(style, run.bold, run.italic, run.code))
+            };
             measure_inline_run_width_px(measurer, &run.text, &run_style, wrap_mode, svg_advance)
         })
         .sum()
@@ -1511,6 +1548,42 @@ mod inline_planning_tests {
                 line_count: 1,
             }
         }
+    }
+
+    #[test]
+    fn svg_markdown_resets_parent_weight_without_changing_html_inheritance() {
+        let measurer = SoftHyphenMeasurer::default();
+        let style = TextStyle {
+            font_weight: Some("700".to_owned()),
+            font_style: Some("italic".to_owned()),
+            ..TextStyle::default()
+        };
+        let svg = measure_markdown_with_inline_styles(
+            &measurer,
+            "plain **bold**",
+            &style,
+            None,
+            WrapMode::SvgLike,
+        );
+        assert_eq!(svg.width, 150.0);
+        let calls = measurer.calls.borrow();
+        assert!(
+            calls.iter().any(|(text, weight, italic, _)| {
+                text == "plain"
+                    && weight.as_deref() == Some("normal")
+                    && italic.as_deref() == Some("normal")
+            }),
+            "{calls:?}"
+        );
+        drop(calls);
+        let html = measure_markdown_with_inline_styles(
+            &measurer,
+            "plain **bold**",
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(html.width, 200.0);
     }
 
     #[test]
@@ -3384,7 +3457,9 @@ fn markdown_word_line_plain_text_and_width_px(
 
         if word_idx > 0 {
             plain.push(' ');
-            push_inline_text_char(&mut runs, ' ', false, false, false);
+            // Each SVG word tspan owns its leading space and its font attributes.
+            let svg = wrap_mode != WrapMode::HtmlLike;
+            push_inline_text_char(&mut runs, ' ', svg && bold, svg && italic, false);
         }
         for ch in visible_word.chars() {
             plain.push(ch);
@@ -3548,8 +3623,9 @@ pub(crate) fn measure_svg_markdown_word_lines(
         plain_lines.push(plain);
         width = width.max(line_width);
     }
+    let row_style = svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
     let mut metrics =
-        measurer.measure_wrapped(&plain_lines.join("\n"), style, None, WrapMode::SvgLike);
+        measurer.measure_wrapped(&plain_lines.join("\n"), &row_style, None, WrapMode::SvgLike);
     metrics.width = round_to_1_64_px(width);
     metrics
 }
@@ -3765,10 +3841,15 @@ fn measure_markdown_with_inline_styles_impl(
         WrapMode::HtmlLike => trim_html_collapsible_ascii_whitespace(&plain).to_string(),
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => plain,
     };
-    let base = if manually_wrap_words {
-        measurer.measure_wrapped(&plain, style, None, wrap_mode)
+    let row_style = if wrap_mode == WrapMode::HtmlLike {
+        std::borrow::Cow::Borrowed(style)
     } else {
-        measurer.measure_wrapped(&plain, style, max_width, wrap_mode)
+        svg_markdown_word_style(style, MermaidMarkdownWordType::Normal)
+    };
+    let base = if manually_wrap_words {
+        measurer.measure_wrapped(&plain, &row_style, None, wrap_mode)
+    } else {
+        measurer.measure_wrapped(&plain, &row_style, max_width, wrap_mode)
     };
 
     let max_line_width = styled_width_px_by_line
