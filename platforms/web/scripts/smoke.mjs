@@ -137,6 +137,10 @@ class FakeMeasureElement {
   children = [];
   _textContent = "";
 
+  get isConnected() {
+    return this.parentElement?.isConnected ?? false;
+  }
+
   get textContent() {
     if (this.children.length > 0) {
       return this.children.map((child) => child.textContent || "").join("");
@@ -180,6 +184,7 @@ class FakeMeasureElement {
 
   remove() {
     this.removed = true;
+    this.parentElement = null;
   }
 
   getContext(kind) {
@@ -1416,13 +1421,25 @@ function withFakeMeasureDom(run) {
   const originalDocument = globalThis.document;
   const canvasContext = {
     font: "",
+    savedFonts: [],
+    save() {
+      this.savedFonts.push(this.font);
+    },
+    restore() {
+      assert.ok(this.savedFonts.length > 0);
+      this.font = this.savedFonts.pop();
+    },
     measureText(text) {
       return { width: text.length * 16 * 0.55 };
     },
   };
   globalThis.document = {
     body: {
-      appendChild() {},
+      isConnected: true,
+      appendChild(child) {
+        child.parentElement = this;
+        return child;
+      },
     },
     createElement(tagName) {
       assert.ok(tagName === "div" || tagName === "canvas");
@@ -1436,6 +1453,8 @@ function withFakeMeasureDom(run) {
 
   try {
     run();
+    assert.equal(canvasContext.savedFonts.length, 0);
+    assert.equal(canvasContext.font, "");
   } finally {
     if (originalDocument === undefined) {
       delete globalThis.document;

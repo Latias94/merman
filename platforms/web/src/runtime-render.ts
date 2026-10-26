@@ -173,7 +173,7 @@ export function edgeGeometryObject<T = unknown>(
 export function edgeGeometryJsonWithTextMeasurer(
   source: string,
   measurer: HostTextMeasurer,
-  options?: SvgBindingOptions | string
+  options?: HostTextMeasurerSvgBindingOptions | string
 ): string {
   const edgeGeometryWithMeasurer = getMerman().edgeGeometryJsonWithTextMeasurer;
   if (!edgeGeometryWithMeasurer) {
@@ -222,8 +222,12 @@ export function createBrowserTextMeasurementSession(ownerDocument?: Document): B
     }
 
     try {
+      if (probes && !textMeasureProbesConnected(probes)) {
+        disposeTextMeasureProbes(probes);
+        probes = null;
+      }
       probes ??= createTextMeasureProbes(ownerDocument);
-      if (!probes) {
+      if (!probes || !textMeasureProbesConnected(probes)) {
         return undefined;
       }
       return measureWithBrowserProbes(probes, request);
@@ -262,6 +266,10 @@ interface BrowserTextMeasureProbes {
   mermaidDimensionsText: SVGTextElement;
   mermaidDimensionsTspan: SVGTSpanElement;
   canvasContext?: CanvasRenderingContext2D | null;
+}
+
+function textMeasureProbesConnected(probes: BrowserTextMeasureProbes): boolean {
+  return probes.html.isConnected && probes.svg.isConnected && probes.mermaidDimensionsSvg.isConnected;
 }
 
 type SvgProbeShape = "direct" | "tspan";
@@ -389,9 +397,9 @@ function mermaidCalculateTextDimensions(
   text.setAttribute("x", "0");
   text.setAttribute("y", "0");
   text.style.textAnchor = "start";
-  text.style.fontSize = `${Number.isFinite(request.font_size) ? request.font_size : 12}px`;
-  text.style.fontWeight = request.font_weight ?? "400";
-  text.style.fontFamily = request.font_family ?? "Arial";
+  setTextMeasureStyle(text.style, "fontSize", `${request.font_size}px`);
+  setTextMeasureStyle(text.style, "fontWeight", request.font_weight ?? "400");
+  setTextMeasureStyle(text.style, "fontFamily", request.font_family ?? "Arial");
   tspan.setAttribute("x", "0");
   tspan.textContent = request.text;
   text.appendChild(tspan);
@@ -679,28 +687,47 @@ function applyHtmlTextMeasureStyle(
   probe: HTMLDivElement,
   request: HostTextMeasureRequest
 ) {
-    const style = probe.style;
-    style.fontFamily = request.font_family || "sans-serif";
-    style.fontSize = `${Math.max(1, request.font_size)}px`;
-    style.fontWeight = request.font_weight || "normal";
-    style.fontStyle = request.font_style || "normal";
-    style.lineHeight = `${Math.max(1, request.line_height || request.font_size)}px`;
-    style.letterSpacing = `${request.letter_spacing || 0}px`;
-    style.wordSpacing = `${request.word_spacing || 0}px`;
-    probe.dir = request.direction;
-    style.direction = request.direction === "auto" ? "" : request.direction;
+  applyTextMeasureStyle(probe.style, request);
+  setTextMeasureStyle(
+    probe.style,
+    "lineHeight",
+    `${Math.max(1, request.line_height ?? request.font_size)}px`
+  );
+  probe.dir = request.direction;
 }
 
 function applySvgTextStyle(element: SVGTextElement, request: HostTextMeasureRequest) {
-  const style = element.style;
-  style.fontFamily = request.font_family || "sans-serif";
-  style.fontSize = `${Math.max(1, request.font_size)}px`;
-  style.fontWeight = request.font_weight || "normal";
-  style.fontStyle = request.font_style || "normal";
-  style.letterSpacing = `${request.letter_spacing || 0}px`;
-  style.wordSpacing = `${request.word_spacing || 0}px`;
-  style.direction = request.direction === "auto" ? "" : request.direction;
-  style.whiteSpace = request.white_space;
+  applyTextMeasureStyle(element.style, request);
+  setTextMeasureStyle(element.style, "whiteSpace", request.white_space);
+}
+
+function applyTextMeasureStyle(style: CSSStyleDeclaration, request: HostTextMeasureRequest): void {
+  setTextMeasureStyle(style, "fontFamily", request.font_family ?? "sans-serif");
+  setTextMeasureStyle(style, "fontSize", `${Math.max(1, request.font_size)}px`);
+  setTextMeasureStyle(style, "fontWeight", request.font_weight ?? "normal");
+  setTextMeasureStyle(style, "fontStyle", request.font_style);
+  setTextMeasureStyle(style, "letterSpacing", `${request.letter_spacing ?? 0}px`);
+  setTextMeasureStyle(style, "wordSpacing", `${request.word_spacing ?? 0}px`);
+  if (request.direction === "auto") {
+    style.direction = "";
+  } else {
+    setTextMeasureStyle(style, "direction", request.direction);
+  }
+}
+
+function setTextMeasureStyle(
+  style: CSSStyleDeclaration,
+  property: "fontFamily" | "fontSize" | "fontWeight" | "fontStyle" |
+    "lineHeight" | "letterSpacing" | "wordSpacing" | "direction" | "whiteSpace",
+  value: string
+): void {
+  // CSSOM silently rejects invalid assignments. Clear the old value first and
+  // accept the browser's canonical serialization rather than comparing input.
+  style[property] = "";
+  style[property] = value;
+  if (!style[property]) {
+    throw new Error(`Browser rejected text measurement ${property}.`);
+  }
 }
 
 function measureHtmlProbe(
