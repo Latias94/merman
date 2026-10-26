@@ -49,6 +49,90 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
 }
 
 #[test]
+fn mindmap_configured_root_font_sizes_html_measurement_and_terminal_geometry() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::DeterministicTextMeasurer;
+
+    let measured_sizes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed_sizes = measured_sizes.clone();
+    let measurer = DeterministicTextMeasurer::default().with_width_callback(move |text, style| {
+        if text == "MMMM" {
+            observed_sizes.lock().unwrap().push(style.font_size);
+        }
+        text.chars().count() as f64 * style.font_size / 2.0
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.mindmap-configured-root-size").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity, measurer,
+        )))
+        .begin_session()
+        .unwrap();
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: tidy-tree\n  look: classic\n  htmlLabels: true\n  themeVariables:\n    fontSize: 32px\n---\nmindmap\n  root[MMMM]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+    let layout = artifact.layout_json().unwrap();
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("mindmap-configured-root-size".to_owned()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).expect("Mindmap SVG");
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    let root_rule = stylesheet
+        .strip_prefix("#mindmap-configured-root-size{")
+        .and_then(|rule| rule.split_once('}'))
+        .expect("Mindmap root typography rule")
+        .0;
+    assert!(root_rule.contains("font-size:32px;"), "{root_rule}");
+    let label = document
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .unwrap();
+    assert!(
+        label
+            .descendants()
+            .any(|node| node.is_text() && node.text() == Some("MMMM"))
+    );
+    assert!(
+        label.descendants().all(|node| {
+            node.attribute("font-size").is_none()
+                && !node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("font-size"))
+        }),
+        "the HTML label must inherit root typography"
+    );
+    let sizes = measured_sizes.lock().unwrap();
+    assert!(!sizes.is_empty(), "the HTML label must be measured");
+    assert!(
+        sizes.iter().all(|size| *size == 32.0),
+        "terminal label measurements: {sizes:?}"
+    );
+    let node = &layout["layout"]["MindmapDiagram"]["nodes"][0];
+    assert_eq!(node["width"].as_f64(), Some(104.0));
+    assert_eq!(node["height"].as_f64(), Some(68.0));
+    assert_eq!(label.attribute("width"), Some("64"));
+    assert_eq!(label.attribute("height"), Some("48"));
+}
+
+#[test]
 fn mindmap_html_recovery_and_policy_removal_share_layout_and_emitted_geometry() {
     let mut layouts = vec!["tidy-tree", "dagre", "swimlane"];
     if cfg!(feature = "layout-elk") {
