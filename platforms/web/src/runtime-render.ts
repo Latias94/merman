@@ -431,12 +431,30 @@ function canvasTextWidth(
   const fontWeight = request.font_weight ?? "normal";
   const fontSize = Number.isFinite(request.font_size) ? request.font_size : 16;
   const fontFamily = request.font_family ?? "sans-serif";
-  context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
-  const width = context.measureText(request.text).width;
-  if (!Number.isFinite(width)) {
-    return undefined;
+  const font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+  context.save();
+  try {
+    context.font = "10px sans-serif";
+    const initialFont = context.font;
+    context.font = font;
+    if (context.font === initialFont) {
+      // Rejected assignments leave the font unchanged. A second sentinel accepts
+      // valid collisions without comparing CSS input to its canonicalized value.
+      context.font = "12px serif";
+      const alternateFont = context.font;
+      context.font = font;
+      if (context.font === alternateFont) {
+        return undefined;
+      }
+    }
+    const width = context.measureText(request.text).width;
+    if (!Number.isFinite(width)) {
+      return undefined;
+    }
+    return { kind: "length", length: Math.max(0, width) };
+  } finally {
+    context.restore();
   }
-  return { kind: "length", length: Math.max(0, width) };
 }
 
 function wrappedMetrics(
