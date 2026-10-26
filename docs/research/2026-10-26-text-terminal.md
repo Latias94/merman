@@ -93,3 +93,23 @@ The separate focused formal review `20261026-195803-f2b454a7` completes on
 accessible-name ownership and the saved paired-audit fingerprints; it does not
 claim to have executed the browser tests listed above. The review uses Codex
 contexts only and makes no cross-provider independence claim.
+
+Replacement CI `40323444725` passes Linux `build-test`, including the full exact
+viewport owner, but its Web suite reports 109 passed and one failed: the Infinite
+Canvas test assumes that a long Sequence title naturally overflows. The title
+repair removes that old bug, so the overflow precondition is no longer valid.
+The local test reproduces this failure before adaptation.
+
+The test now deliberately shifts a mounted title across the root boundary in
+each presentation mode. It still verifies actual overflow, fitted containment,
+the same root and title markup, visible versus hidden root overflow, and extreme
+overflow fit. Comparing unchanged markup avoids asserting identical browser
+getBBox floats at different presentation scales. The focused Chromium case
+passes with the current production build; no rendering or comparator policy
+changes are made.
+
+All 15 maintenance presentation browser tests pass. The helper also waits for
+Fit's scheduled animation-frame transform before reading Infinite Canvas screen
+containment; its final focused check, browser TypeScript checking and targeted
+ESLint pass. This synchronization keeps the existing one-pixel assertion instead
+of depending on when a click promise completes.
