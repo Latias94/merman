@@ -94,11 +94,7 @@ impl<'a> FlowchartConfigView<'a> {
     }
 
     pub(crate) fn render_font_size(&self) -> f64 {
-        self.theme_variables
-            .get("fontSize")
-            .and_then(crate::config::json_f64_css_px)
-            .unwrap_or(16.0)
-            .max(1.0)
+        self.theme_font_size_px().unwrap_or(16.0).max(1.0)
     }
 
     pub(crate) fn render_wrapping_width(&self) -> f64 {
@@ -444,8 +440,8 @@ mod tests {
         let settings = FlowchartConfigView::new(&cfg).layout_settings();
 
         assert_eq!(settings.text_style.font_size, 24.0);
-        assert_eq!(settings.html_label_text_style.font_size, 24.5);
-        assert_eq!(FlowchartConfigView::new(&cfg).render_font_size(), 24.5);
+        assert_eq!(settings.html_label_text_style.font_size, 24.0);
+        assert_eq!(FlowchartConfigView::new(&cfg).render_font_size(), 24.0);
     }
 
     #[test]
@@ -455,7 +451,7 @@ mod tests {
             (json!(24.5), 24.5),
             (json!("24"), 24.0),
             (json!("24px"), 24.0),
-            (json!("24.5px"), 24.5),
+            (json!("24.5px"), 24.0),
             (json!(0), 1.0),
         ] {
             let cfg = json!({"themeVariables": {"fontSize": value}});

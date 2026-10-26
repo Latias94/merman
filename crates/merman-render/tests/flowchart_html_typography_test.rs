@@ -39,12 +39,12 @@ impl TextMeasurer for FontMeasurer {
 }
 
 #[test]
-fn flowchart_html_layout_and_svg_use_the_root_css_font_size_without_truncation() {
+fn flowchart_html_layout_and_svg_use_the_same_resolved_root_font_size() {
     for (value, expected) in [
         (json!(24), 24.0),
         (json!(24.5), 24.5),
         (json!("24"), 24.0),
-        (json!("24.5px"), 24.5),
+        (json!("24.5px"), 24.0),
     ] {
         let measurer = Arc::new(FontMeasurer::default());
         let profile = TextMeasurementProfile::new(
