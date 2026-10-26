@@ -32,6 +32,8 @@ initialized artifact; workspace support is not a promise that every Web package 
 The host owns environment detection, scheduling, caches, and display actions. The Web SDK provides
 its documented DOM-admission helpers without owning the surrounding editor or terminal UI.
 
+See the [Astro host integration guide](../../docs/integrations/astro.md) for browser and SSG examples with scoped icon packs and explicit font measurement.
+
 ## Quick start
 
 ```sh
