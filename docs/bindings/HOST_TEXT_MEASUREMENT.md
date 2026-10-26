@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-08-27
+Last updated: 2026-10-26
 
 This guide explains how native hosts should use Merman's text-measurement callback and where the
 remaining headless-rendering limits are. It complements the exact C ABI contract in
@@ -162,6 +162,20 @@ The request includes:
   or `MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH`.
 - `operation`, which identifies the exact browser/platform primitive and therefore the required
   result shape.
+
+The current core supplies actual family, size, weight, style, wrapping width,
+phase, and operation values. The remaining transport fields have a narrower
+contract: letter and word spacing are currently zero, direction is `auto`, and
+line height and white-space are derived from the requested wrapping operation.
+Their presence in a platform record does not imply that arbitrary CSS spacing,
+line-height, or direction has already been resolved and propagated from source.
+An adapter must not invent missing typography or report guessed geometry as an
+exact measurement.
+
+Callbacks are synchronous. Prepare fonts before rendering; returning a Promise,
+waiting for a UI thread, or starting a font download inside the callback cannot
+complete that measurement. A reusable host cache must include the complete
+request and invalidate when its font environment changes.
 
 The stable operation mapping is:
 

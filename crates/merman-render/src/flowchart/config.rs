@@ -182,8 +182,7 @@ impl<'a> FlowchartConfigView<'a> {
 
     pub(crate) fn html_label_measurement_base_style(&self, render_style: &TextStyle) -> TextStyle {
         let mut style = render_style.clone();
-        // HTML labels inherit the px value emitted on the SVG root. The legacy integer
-        // wrapping probe remains separate from final label measurement.
+        // HTML labels inherit the same px value emitted on the SVG root.
         style.font_size = self.render_font_size();
         style
     }
