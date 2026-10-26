@@ -3475,12 +3475,14 @@ fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let render = |source: &str, straighten: bool| {
         render_class_svg_from_text_with_session(
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "layout": "elk",
-                "fontSize": 16,
-                "themeVariables": { "fontSize": "16px" },
-                "elk": { "straightenEdges": straighten },
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "layout": "elk",
+                    "fontSize": 16,
+                    "themeVariables": { "fontSize": "16px" },
+                    "elk": { "straightenEdges": straighten },
+                }),
+            )),
             source,
             &LayoutOptions::headless_svg_defaults(),
             &SvgRenderOptions::default(),
