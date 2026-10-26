@@ -59,6 +59,10 @@ class FakeMeasureElement {
   children = [];
   _textContent = "";
 
+  get isConnected() {
+    return this.parentElement?.isConnected ?? false;
+  }
+
   get textContent() {
     return this.children.length > 0
       ? this.children.map((child) => child.textContent || "").join("")
@@ -113,6 +117,7 @@ class FakeMeasureElement {
         siblings.splice(index, 1);
       }
     }
+    this.parentElement = undefined;
   }
 
   getContext(kind) {
@@ -236,6 +241,7 @@ test("browser text measurement session routes exact operations to their DOM prim
   const canvasCalls = canvasContext.calls;
   const body = {
     tagName: "body",
+    isConnected: true,
     children: [],
     appended: [],
     appendChild(child) {
@@ -388,7 +394,7 @@ test("browser text measurement session routes exact operations to their DOM prim
 
     const mermaidDimensions = measure({
       ...request("Body attached", null, "mermaid-calculate-text-dimensions", "svg-like"),
-      font_family: "Configured Serif;",
+      font_family: '"Configured Serif;", serif',
       font_size: 18,
       font_weight: "700",
       font_style: "italic",
@@ -406,7 +412,7 @@ test("browser text measurement session routes exact operations to their DOM prim
     const mermaidText = mermaidSvg.children[0];
     const mermaidTspan = mermaidText.children[0];
     assert.equal(mermaidText.tagName, "text");
-    assert.equal(mermaidText.style.fontFamily, "Configured Serif;");
+    assert.equal(mermaidText.style.fontFamily, '"Configured Serif;", serif');
     assert.equal(mermaidText.style.fontSize, "18px");
     assert.equal(mermaidText.style.fontWeight, "700");
     assert.equal(mermaidText.style.fontStyle, undefined);
@@ -539,7 +545,7 @@ test("canvas accepts canonicalized weights and preserves quoted family punctuati
   context.font = "italic 700 31px serif";
   const originalFont = context.font;
 
-  withCanvasSession(context, (session) => {
+  withMeasurementSession(context, (session) => {
     for (const [weight, size, family, canonical] of cases) {
       assert.deepEqual(session.measure({
         ...request("Vehicle", null, "canvas-measure-text-width", "svg-like"),
@@ -563,7 +569,7 @@ test("canvas rejects malformed assignment without measuring default or previous 
     context.rejectedFonts.add(`normal normal 16px ${family}`);
   }
 
-  withCanvasSession(context, (session) => {
+  withMeasurementSession(context, (session) => {
     for (const family of invalidFamilies) {
       const invalid = {
         ...request("Vehicle", null, "canvas-measure-text-width", "svg-like"),
@@ -599,7 +605,7 @@ test("canvas restores saved state on invalid metrics and throwing browser primit
   const originalFont = context.font;
   const canvasRequest = request("Vehicle", null, "canvas-measure-text-width", "svg-like");
 
-  withCanvasSession(context, (session) => {
+  withMeasurementSession(context, (session) => {
     for (const width of [NaN, Infinity, -Infinity]) {
       context.width = width;
       assert.equal(session.measure(canvasRequest), undefined);
@@ -630,9 +636,48 @@ test("canvas restores saved state on invalid metrics and throwing browser primit
   });
 });
 
-function withCanvasSession(context, run) {
+test("DOM probes reject ignored CSSOM assignments and accept canonicalized values", () => {
+  withMeasurementSession(null, (session, body) => {
+    const inputs = [
+      request("Typography", null, "raw-bbox-width", "svg-like"),
+      request("Typography", null, "wrapped", "html-like"),
+    ];
+    assert.ok(session.measure(inputs[0]));
+    for (const style of [body.children[0].style, body.children[1].children[0].style]) {
+      for (const property of ["fontFamily", "fontWeight", "fontStyle"]) {
+        let current = style[property];
+        Object.defineProperty(style, property, {
+          get() { return current; },
+          set(value) {
+            if (value !== "invalid-css") current = value.trim();
+          },
+        });
+      }
+    }
+    for (const input of inputs) {
+      for (const field of ["font_family", "font_weight", "font_style"]) {
+        assert.ok(session.measure(input));
+        assert.equal(session.measure({ ...input, [field]: "invalid-css" }), undefined);
+        assert.ok(session.measure({
+          ...input,
+          font_family: "  serif  ",
+          font_weight: " 700 ",
+          font_style: " italic ",
+        }));
+      }
+    }
+    for (const style of [body.children[0].style, body.children[1].children[0].style]) {
+      assert.equal(style.fontFamily, "serif");
+      assert.equal(style.fontWeight, "700");
+      assert.equal(style.fontStyle, "italic");
+    }
+  });
+});
+
+function withMeasurementSession(context, run) {
   const originalDocument = globalThis.document;
   const body = {
+    isConnected: true,
     children: [],
     appendChild(child) {
       child.parentElement = this;
@@ -652,7 +697,7 @@ function withCanvasSession(context, run) {
   };
   const session = createBrowserTextMeasurementSession();
   try {
-    run(session);
+    run(session, body);
   } finally {
     session.dispose();
     if (originalDocument === undefined) {
@@ -662,6 +707,29 @@ function withCanvasSession(context, run) {
     }
   }
 }
+
+test("browser session replaces detached probes and falls back while the body is disconnected", () => {
+  withMeasurementSession(null, (session, body) => {
+    const input = request("Reattached", null, "measure", "svg-like");
+    const expected = session.measure(input);
+    assert.ok(expected.width > 0);
+
+    for (const index of [0, 1, 2]) {
+      const retired = [...body.children];
+      retired[index].remove();
+      assert.deepEqual(session.measure(input), expected);
+      assert.equal(body.children.length, 3);
+      assert.ok(retired.every((probe) => !probe.isConnected));
+      assert.ok(body.children.every((probe) => !retired.includes(probe)));
+    }
+
+    body.isConnected = false;
+    assert.equal(session.measure(input), undefined);
+    body.isConnected = true;
+    assert.deepEqual(session.measure(input), expected);
+    assert.equal(body.children.length, 3);
+  });
+});
 
 test("browser text measurement session can be disposed before first use", () => {
   const originalDocument = globalThis.document;
@@ -698,6 +766,7 @@ test("browser text measurement session rolls back partially constructed probes",
   let svgCreates = 0;
   let failConstruction = true;
   const body = {
+    isConnected: true,
     children: [],
     appendChild(child) {
       child.parentElement = this;
@@ -758,6 +827,7 @@ test("browser text measurement session falls back without a DOM", () => {
 test("browser text measurement session preserves fallback on browser primitive failure", () => {
   const originalDocument = globalThis.document;
   const body = {
+    isConnected: true,
     children: [],
     appendChild(child) {
       child.parentElement = this;
