@@ -3856,6 +3856,115 @@ fn block_source_all_reset_owns_node_and_edge_paint() {
 }
 
 #[test]
+fn block_html_source_font_longhands_measure_the_emitted_terminal() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::TextMetrics;
+    use std::sync::Arc;
+
+    struct FontHost;
+    impl HostTextMeasurer for FontHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::Wrapped || request.text != "Alpha" {
+                return Ok(None);
+            }
+            let family_width = if request.style.font_family.as_deref() == Some("monospace") {
+                7.0
+            } else {
+                0.0
+            };
+            let italic_width = if request.style.font_style.as_deref() == Some("italic") {
+                5.0
+            } else {
+                0.0
+            };
+            Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                width: request.style.font_size * 2.0 + family_width + italic_width,
+                height: request.style.font_size * 1.5,
+                line_count: 1,
+            })))
+        }
+    }
+
+    for (size, expected_width, expected_height) in [
+        ("48px", 108.0, 72.0),
+        // The same declaration reaches g.label, the XHTML div, and span.nodeLabel.
+        ("150%", 120.0, 81.0),
+        ("1.5em", 120.0, 81.0),
+    ] {
+        let source = format!(
+            "block\n A[\"Alpha\"]\n style A font-size:{size},font-family:monospace,font-style:italic\n"
+        );
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "16px"}}),
+        ));
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.block-source-terminal-font").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                Arc::new(FontHost),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session()
+            .unwrap();
+        let artifact =
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-A"))
+            .unwrap();
+        let terminal = node
+            .descendants()
+            .find(|node| node.has_tag_name("p"))
+            .unwrap();
+        assert_eq!(terminal.text(), Some("Alpha"));
+        let styled_ancestors: Vec<_> = terminal
+            .ancestors()
+            .filter(|node| {
+                node.attribute("style")
+                    .is_some_and(|style| style.contains("font-size:"))
+            })
+            .collect();
+        assert_eq!(styled_ancestors.len(), 3, "preserve the pinned style sinks");
+        for ancestor in styled_ancestors {
+            let style = ancestor.attribute("style").unwrap();
+            assert!(style.contains(&format!("font-size:{size};")), "{style}");
+            assert!(style.contains("font-family:monospace;"), "{style}");
+            assert!(style.contains("font-style:italic;"), "{style}");
+        }
+        let foreign_object = terminal
+            .ancestors()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            numeric_attribute(foreign_object, "width"),
+            expected_width,
+            "{size}"
+        );
+        assert_eq!(
+            numeric_attribute(foreign_object, "height"),
+            expected_height,
+            "{size}"
+        );
+    }
+}
+
+#[test]
 fn block_source_font_weight_priority_reaches_labels_and_measurement() {
     use merman_render::environment::{
         HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -3941,12 +4050,24 @@ fn block_source_font_weight_priority_reaches_labels_and_measurement() {
                 })
                 .unwrap();
             assert_eq!(terminal.attribute("style"), Some(expected_css));
+            if !html {
+                let word = terminal
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("text-inner-tspan"))
+                    .unwrap();
+                assert_eq!(word.attribute("font-weight"), Some("normal"));
+                assert_eq!(word.attribute("font-style"), Some("normal"));
+            }
             let measured = weights.lock().unwrap();
             assert!(!measured.is_empty());
             assert!(
-                measured
-                    .iter()
-                    .all(|weight| weight.as_deref() == Some(expected_weight)),
+                measured.iter().all(|weight| {
+                    if html {
+                        weight.as_deref() == Some(expected_weight)
+                    } else {
+                        matches!(weight.as_deref(), None | Some("normal" | "400"))
+                    }
+                }),
                 "html={html}, {later}: {measured:?}"
             );
         }

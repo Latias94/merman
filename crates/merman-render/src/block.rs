@@ -544,10 +544,7 @@ fn to_sized_block_shallow(
     // Block diagrams frequently use `&nbsp;` placeholders (notably for block arrows), so we must
     // decode those before measuring; otherwise node widths drift drastically.
     let label_decoded = decode_block_label_html(&node.label);
-    let mut label_text_style = text_style.clone();
-    if let Some(weight) = node_binding::source_font_weight(&node.styles, text_style) {
-        label_text_style.font_weight = Some(weight.to_string());
-    }
+    let label_text_style = node_binding::source_text_style(&node.styles, text_style, html_labels);
     let label_effectively_empty = block_label_is_effectively_empty(&label_decoded);
     let (label_width, label_height) = if label_effectively_empty {
         (0.0, 0.0)

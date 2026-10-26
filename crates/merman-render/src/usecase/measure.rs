@@ -101,25 +101,36 @@ fn shape_style(styles: &indexmap::IndexMap<String, String>) -> String {
         .collect()
 }
 
-fn styled(mut base: TextStyle, styles: &indexmap::IndexMap<String, String>) -> TextStyle {
-    for (key, value) in styles {
-        let value = value.trim_end_matches("!important").trim();
-        match key.as_str() {
-            "font-family" => base.font_family = Some(value.to_owned()),
-            "font-weight" => base.font_weight = Some(value.to_owned()),
-            "font-style" => base.font_style = Some(value.to_owned()),
-            "font-size" => {
-                if let Ok(size) = value.trim_end_matches("px").parse::<f64>()
-                    && size.is_finite()
-                    && size > 0.0
-                {
-                    base.font_size = size;
-                }
-            }
-            _ => {}
+fn styled(
+    inherited: &TextStyle,
+    element_defaults: Option<&TextStyle>,
+    styles: &indexmap::IndexMap<String, String>,
+    root_font_size: f64,
+) -> TextStyle {
+    let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+        inherited,
+        crate::mermaid_style::CssFontSizeContext::new(inherited.font_size, root_font_size),
+    );
+    // Role selectors match this element, not its parent. Their defaults compete
+    // with source declarations without changing the inherited relative-unit base.
+    if let Some(defaults) = element_defaults {
+        if let Some(family) = &defaults.font_family {
+            cascade.observe("font-family", family, false);
+        }
+        cascade.observe("font-size", &format!("{}px", defaults.font_size), false);
+        if let Some(weight) = &defaults.font_weight {
+            cascade.observe("font-weight", weight, false);
+        }
+        if let Some(style) = &defaults.font_style {
+            cascade.observe("font-style", style, false);
         }
     }
-    base
+    for (key, value) in styles {
+        let value = value.trim_end_matches("!important").trim();
+        // The writer emits every compiled label declaration as important.
+        cascade.observe(key, value, true);
+    }
+    cascade.finish().into_owned()
 }
 
 struct LabelContext<'a> {
@@ -127,6 +138,7 @@ struct LabelContext<'a> {
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
+    root_font_size: f64,
 }
 
 fn label(
@@ -148,6 +160,24 @@ fn label(
     } else {
         WrapMode::SvgLike
     };
+    // Node `style` describes g.label; edge groups carry no inline font. Source
+    // styles then repeat on div/span in HTML or text in SVG, whose words reset
+    // inherited weight and style.
+    let mut terminal_style = styled(style, None, context.styles, context.root_font_size);
+    if html {
+        terminal_style = styled(
+            &terminal_style,
+            None,
+            context.styles,
+            context.root_font_size,
+        );
+    } else {
+        terminal_style = crate::text::svg_markdown_word_style(
+            &terminal_style,
+            crate::text::MermaidMarkdownWordType::Normal,
+        )
+        .into_owned();
+    }
     let source = create_text_source(text, label_type);
     let source = source.as_ref();
     let math_renderer = context
@@ -162,7 +192,7 @@ fn label(
         crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
             measurer: context.measurer,
             raw_label: source,
-            style,
+            style: &terminal_style,
             max_width_px: max_width,
             wrap_mode: mode,
             config: context.config,
@@ -173,14 +203,14 @@ fn label(
                 measure_wrapped_markdown_with_inline_styles(
                     context.measurer,
                     text,
-                    style,
+                    &terminal_style,
                     max_width,
                     mode,
                 )
             } else {
                 context
                     .measurer
-                    .measure_wrapped(source, style, max_width, mode)
+                    .measure_wrapped(source, &terminal_style, max_width, mode)
             }
         });
     let text_metrics = metrics;
@@ -193,7 +223,9 @@ fn label(
         label_type,
         text_metrics,
         metrics,
-        style: style.clone(),
+        // HTML emits the g font again; retain it rather than re-emitting the
+        // terminal size and applying relative descendant declarations twice.
+        style: if html { style.clone() } else { terminal_style },
         max_width,
         math_html,
         styles: context
@@ -335,6 +367,11 @@ pub(super) fn measure(
     let sanitize = |text: &str| merman_core::sanitize::sanitize_text(text, full_config.as_config());
     let min_width = number(config, "minNodeWidth", 120.0);
     let wrapping_width = Some(number(config, "wrappingWidth", 120.0));
+    let html = config
+        .get("htmlLabels")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let root_font_size = css_binding.root_font.font_size;
     let mut nodes = Vec::new();
     for actor in [true, false] {
         for node in model
@@ -344,17 +381,28 @@ pub(super) fn measure(
         {
             work.charge_adapter(1)?;
             let css = styles(model, &node.classes, &node.styles);
-            let base = if actor {
+            let role_font = if actor {
                 &css_binding.actor_font
             } else {
                 &css_binding.usecase_font
             };
-            let style = styled(base.clone(), &css);
+            let (inherited, element_defaults) = if html {
+                // HTML emits the computed role font inline on g.label.
+                (role_font, None)
+            } else {
+                // Only SVG actor/business groups match a role selector; ordinary
+                // SVG labels inherit the root without .nodeLabel/.usecase-label.
+                let role_group =
+                    actor || (node.business && node.kind == UsecaseNodeKind::UseCaseEllipse);
+                (&css_binding.root_font, role_group.then_some(role_font))
+            };
+            let style = styled(inherited, element_defaults, &css, root_font_size);
             let label_context = LabelContext {
                 config: full_config,
                 measurer,
                 math_renderer,
                 styles: &css,
+                root_font_size,
             };
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
             let source_label = sanitize(&node.label);
@@ -391,10 +439,16 @@ pub(super) fn measure(
                 .as_ref()
                 .filter(|value| !value.is_empty() && !folded_stereotype)
                 .map(|value| {
+                    // The separate SVG stereotype lacks .actor-label/.usecase-label.
+                    let stereotype_style = if html {
+                        style.clone()
+                    } else {
+                        styled(&css_binding.root_font, None, &css, root_font_size)
+                    };
                     label(
                         &format!("«{value}»"),
                         UsecaseLabelType::Text,
-                        &style,
+                        &stereotype_style,
                         wrapping_width,
                         0.0,
                         &label_context,
@@ -450,12 +504,13 @@ pub(super) fn measure(
     for note in &model.notes {
         work.charge_adapter(1)?;
         let css = styles(model, &[], &[]);
-        let style = styled(generic.clone(), &css);
+        let style = styled(generic, None, &css, root_font_size);
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
+            root_font_size,
         };
         let main = label(
             &sanitize(&note.label),
@@ -485,12 +540,13 @@ pub(super) fn measure(
     for node in &model.json_nodes {
         work.charge_adapter(1)?;
         let css = styles(model, &node.classes, &node.styles);
-        let style = styled(generic.clone(), &css);
+        let style = styled(generic, None, &css, root_font_size);
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
+            root_font_size,
         };
         let main = label(
             &sanitize(&node.id),
@@ -566,12 +622,13 @@ pub(super) fn measure(
     for boundary in &model.boundaries {
         work.charge_adapter(1)?;
         let css = styles(model, &boundary.classes, &boundary.styles);
-        let style = styled(generic.clone(), &css);
+        let style = styled(generic, None, &css, root_font_size);
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
+            root_font_size,
         };
         let main = label(
             &sanitize(&boundary.label),
@@ -607,12 +664,13 @@ pub(super) fn measure(
             .iter()
             .any(|(key, value)| key.contains("animation") || value.contains("animation"));
         apply_inline_styles(&mut css, &edge.styles);
-        let style = styled(generic.clone(), &css);
+        let style = generic.clone();
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
+            root_font_size,
         };
         let (text, kind, start, end, dotted) = match edge.relationship_type {
             UsecaseRelationshipType::Include => (

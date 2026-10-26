@@ -518,33 +518,50 @@ fn usecase_elk_preserves_raw_missing_sections_and_draws_relationships() {
 #[cfg(feature = "layout-elk")]
 #[test]
 fn usecase_elk_spreads_implicit_ports_on_ellipses() {
-    let (projection, _) = render_config(
-        "usecase-beta\ndirection LR\nA --> Target\nB --> Target\nC --> Target",
-        json!({"layout":"elk", "htmlLabels":false, "usecase":{"usecaseFontSize":40}}),
-    );
-    let graph = &projection["layout"]["UsecaseDiagram"];
-    let target = graph["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == "Target")
-        .unwrap();
-    let center = target["y"].as_f64().unwrap();
-    let mut offsets: Vec<_> = graph["edges"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|edge| {
-            edge["points"].as_array().unwrap().last().unwrap()["y"]
-                .as_f64()
-                .unwrap()
-                - center
-        })
-        .collect();
-    offsets.sort_by(f64::total_cmp);
-    assert_eq!(offsets.len(), 3);
-    for (actual, expected) in offsets.iter().zip([-20.0, 0.0, 20.0]) {
-        assert!((actual - expected).abs() < 1e-9, "{offsets:?}");
+    for font_size in [14, 40] {
+        let (projection, _) = render_config(
+            "usecase-beta\ndirection LR\nA --> Target\nB --> Target\nC --> Target",
+            json!({"layout":"elk", "htmlLabels":false,
+                "themeVariables":{"fontSize":format!("{font_size}px")},
+                "usecase":{"usecaseFontSize":40}}),
+        );
+        let graph = &projection["layout"]["UsecaseDiagram"];
+        let target = graph["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "Target")
+            .unwrap();
+        let center = target["y"].as_f64().unwrap();
+        let half_height = target["height"].as_f64().unwrap() / 2.0;
+        let left = target["x"].as_f64().unwrap() - target["width"].as_f64().unwrap() / 2.0;
+        let mut offsets: Vec<_> = graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|edge| {
+                assert_eq!(edge["to"], "Target");
+                let port = edge["points"].as_array().unwrap().last().unwrap();
+                assert!((port["x"].as_f64().unwrap() - left).abs() < 1e-9, "{port}");
+                port["y"].as_f64().unwrap() - center
+            })
+            .collect();
+        offsets.sort_by(f64::total_cmp);
+        assert_eq!(offsets.len(), 3);
+        assert!(offsets[0] < -1e-9 && offsets[2] > 1e-9, "{offsets:?}");
+        assert!(offsets[1].abs() < 1e-9, "{offsets:?}");
+        assert!((offsets[0] + offsets[2]).abs() < 1e-9, "{offsets:?}");
+        assert!(
+            offsets.iter().all(|offset| offset.abs() < half_height),
+            "{offsets:?}"
+        );
+        // CENTER compresses port gaps on short sides. A tall root font restores
+        // enough room for the default 20px gaps and distinguishes DISTRIBUTED.
+        if font_size == 40 {
+            for (actual, expected) in offsets.iter().zip([-20.0, 0.0, 20.0]) {
+                assert!((actual - expected).abs() < 1e-9, "{offsets:?}");
+            }
+        }
     }
 }
 
@@ -661,6 +678,308 @@ fn usecase_palette_separates_containers_and_participants_and_preserves_edge_clas
         .filter_map(|node| node.text())
         .collect();
     assert!(css.contains("stroke:#405060;fill:#abcdef"), "{css}");
+}
+
+#[test]
+fn usecase_svg_terminal_font_uses_matching_selectors_while_html_keeps_role_font() {
+    struct FontHost;
+    impl HostTextMeasurer for FontHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::Wrapped || request.text != "Alpha" {
+                return Ok(None);
+            }
+            let family_width = if request.style.font_family.as_deref() == Some("monospace") {
+                7.0
+            } else {
+                0.0
+            };
+            let bold_width = if matches!(request.style.font_weight.as_deref(), Some("bold" | "700"))
+            {
+                40.0
+            } else {
+                0.0
+            };
+            let italic_width = if request.style.font_style.as_deref() == Some("italic") {
+                5.0
+            } else {
+                0.0
+            };
+            Ok(Some(HostTextMeasurement::Metrics(
+                merman_render::text::TextMetrics {
+                    width: request.style.font_size * 2.0 + family_width + bold_width + italic_width,
+                    height: request.style.font_size * 1.5,
+                    line_count: 1,
+                },
+            )))
+        }
+    }
+    for (html, source_override, expected_width, expected_height) in [
+        (true, false, 144.0, 68.0),
+        (false, false, 75.0, 41.0),
+        (true, true, 164.0, 74.0),
+        (false, true, 119.0, 74.0),
+    ] {
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.usecase-terminal-font").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::host_display(
+                identity,
+                Arc::new(FontHost),
+                TextMeasurementPhase::ALL,
+            ),
+        );
+        let source = if source_override {
+            "usecase-beta\nA[Alpha]\nstyle A font-size:36px,font-family:monospace,font-weight:bold,font-style:italic\n"
+        } else {
+            "usecase-beta\nA[Alpha]\n"
+        };
+        let (projection, svg) = render_config_with_environment(
+            source,
+            json!({
+                "layout": "dagre", "look": "classic", "htmlLabels": html,
+                "themeVariables": {"fontSize": "14px", "fontFamily": "monospace"},
+                "usecase": {"usecaseFontSize": 32, "usecaseFontFamily": "sans-serif",
+                    "usecaseFontWeight": "bold", "minNodeWidth": 0, "wrappingWidth": 1000},
+            }),
+            environment,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("data-usecase-id") == Some("A"))
+            .unwrap();
+        if html {
+            let terminal = node
+                .descendants()
+                .find(|node| node.has_tag_name("p"))
+                .unwrap();
+            assert_eq!(terminal.text(), Some("Alpha"));
+            assert!(
+                terminal
+                    .ancestors()
+                    .any(|node| node.attribute("class") == Some("nodeLabel"))
+            );
+            let label = terminal
+                .ancestors()
+                .find(|node| node.attribute("class") == Some("label"))
+                .unwrap();
+            let style = label.attribute("style").unwrap();
+            let expected_family = if source_override {
+                "monospace"
+            } else {
+                "sans-serif"
+            };
+            let expected_size = if source_override { 36 } else { 32 };
+            assert!(
+                style.contains(&format!("font-family:{expected_family}")),
+                "{style}"
+            );
+            assert!(
+                style.contains(&format!("font-size:{expected_size}px")),
+                "{style}"
+            );
+            assert!(
+                style.contains("font-weight:bold") || style.contains("font-weight:700"),
+                "{style}"
+            );
+        } else {
+            let terminal = node
+                .descendants()
+                .find(|node| node.attribute("class") == Some("text-inner-tspan"))
+                .unwrap();
+            assert_eq!(terminal.text(), Some("Alpha"));
+            assert_eq!(terminal.attribute("font-weight"), Some("normal"));
+            assert_eq!(terminal.attribute("font-style"), Some("normal"));
+            if source_override {
+                let text = terminal
+                    .ancestors()
+                    .find(|node| node.has_tag_name("text"))
+                    .unwrap();
+                let style = text.attribute("style").unwrap();
+                assert!(style.contains("font-size:36px !important"), "{style}");
+                assert!(
+                    style.contains("font-family:monospace !important"),
+                    "{style}"
+                );
+                assert!(style.contains("font-weight:bold !important"), "{style}");
+                assert!(style.contains("font-style:italic !important"), "{style}");
+            }
+            // Neither role selector matches this SVG label or any of its ancestors.
+            assert!(
+                !terminal
+                    .ancestors()
+                    .any(|node| node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| matches!(class, "nodeLabel" | "usecase-label"))
+                    }))
+            );
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            assert!(
+                css.contains("#usecase-test{font-family:monospace;font-size:14px;"),
+                "{css}"
+            );
+        }
+        let geometry = projection["layout"]["UsecaseDiagram"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "A")
+            .unwrap();
+        assert_eq!(
+            geometry["width"].as_f64(),
+            Some(expected_width),
+            "html={html}"
+        );
+        assert_eq!(
+            geometry["height"].as_f64(),
+            Some(expected_height),
+            "html={html}"
+        );
+    }
+}
+
+#[test]
+fn usecase_svg_actor_percent_font_inherits_root_before_repeated_source_style() {
+    assert_usecase_svg_relative_role_font(true, "150%", 164.0, 208.0);
+}
+
+#[test]
+fn usecase_svg_actor_em_font_inherits_root_before_repeated_source_style() {
+    assert_usecase_svg_relative_role_font(true, "2em", 276.0, 292.0);
+}
+
+#[test]
+fn usecase_svg_business_percent_font_inherits_root_before_repeated_source_style() {
+    assert_usecase_svg_relative_role_font(false, "150%", 184.0, 148.0);
+}
+
+#[test]
+fn usecase_svg_business_em_font_inherits_root_before_repeated_source_style() {
+    assert_usecase_svg_relative_role_font(false, "2em", 296.0, 232.0);
+}
+
+fn assert_usecase_svg_relative_role_font(
+    actor: bool,
+    relative_size: &str,
+    expected_width: f64,
+    expected_height: f64,
+) {
+    struct FontSizeHost;
+    impl HostTextMeasurer for FontSizeHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::Wrapped || request.text != "Alpha" {
+                return Ok(None);
+            }
+            Ok(Some(HostTextMeasurement::Metrics(
+                merman_render::text::TextMetrics {
+                    width: request.style.font_size * 2.0,
+                    height: request.style.font_size * 1.5,
+                    line_count: 1,
+                },
+            )))
+        }
+    }
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.usecase-relative-role-font").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(FontSizeHost),
+            TextMeasurementPhase::ALL,
+        ),
+    );
+    let declaration = if actor {
+        "actor A(\"Alpha\")"
+    } else {
+        "A(\"Alpha\")@{business:true}"
+    };
+    let source = format!("usecase-beta\n{declaration}\nstyle A font-size:{relative_size}\n");
+    let (projection, svg) = render_config_with_environment(
+        &source,
+        json!({
+            "layout": "dagre", "look": "classic", "htmlLabels": false,
+            "themeVariables": {"fontSize": "32px"},
+            "usecase": {"actorFontSize": 14, "usecaseFontSize": 14,
+                "minNodeWidth": 0, "wrappingWidth": 1000},
+        }),
+        environment,
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("data-usecase-id") == Some("A"))
+        .unwrap();
+    let label_class = if actor {
+        "label actor-label usecase-actor-label"
+    } else {
+        "label usecase-label"
+    };
+    let group = node
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some(label_class))
+        .unwrap();
+    let expected_style = format!("font-size:{relative_size} !important;");
+    assert_eq!(group.attribute("style"), Some(expected_style.as_str()));
+    let text = group
+        .descendants()
+        .find(|node| node.has_tag_name("text"))
+        .unwrap();
+    assert_eq!(text.attribute("style"), Some(expected_style.as_str()));
+    let wrapper = text.parent_element().unwrap();
+    assert!(wrapper.has_tag_name("g"));
+    assert_eq!(wrapper.parent_element(), Some(group));
+    assert_eq!(wrapper.attribute("style"), None);
+    let terminal = text
+        .descendants()
+        .find(|node| node.attribute("class") == Some("text-inner-tspan"))
+        .unwrap();
+    assert_eq!(terminal.text(), Some("Alpha"));
+    assert_eq!(terminal.attribute("font-weight"), Some("normal"));
+    assert_eq!(terminal.attribute("font-style"), Some("normal"));
+    assert_eq!(terminal.attribute("style"), None);
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains("font-size:32px;"), "{css}");
+    let role = if actor { "actor-" } else { "" };
+    assert!(
+        css.contains(&format!("font-size:var(--mermaid-usecase-{role}font-size)")),
+        "{css}"
+    );
+    let root_style = document.root_element().attribute("style").unwrap();
+    assert!(
+        root_style.contains(&format!("--mermaid-usecase-{role}font-size: 14px;")),
+        "{root_style}"
+    );
+    // The important declaration replaces the role default on g: root 32px
+    // becomes 48px (150%) or 64px (2em), then text repeats it: 72px or 128px.
+    let geometry = projection["layout"]["UsecaseDiagram"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "A")
+        .unwrap();
+    assert_eq!(geometry["width"].as_f64(), Some(expected_width), "{source}");
+    assert_eq!(
+        geometry["height"].as_f64(),
+        Some(expected_height),
+        "{source}"
+    );
 }
 
 #[test]
