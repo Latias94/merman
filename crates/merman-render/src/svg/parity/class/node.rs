@@ -103,6 +103,7 @@ pub(super) struct ClassHtmlNodeRowsContext<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub html_calc_text_style: &'a TextStyle,
+    pub node_label_style: &'a str,
     pub line_height: f64,
 }
 
@@ -153,6 +154,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
 pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
+    pub html_calc_text_style: &'a TextStyle,
     pub wrap_probe_font_size: f64,
     pub class_padding: f64,
     pub hide_empty_members_box: bool,
@@ -487,12 +489,17 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
     );
     let title_metrics = prepared_html.map_or_else(
         || {
+            let style = crate::class::class_html_node_text_style(
+                ctx.text_style,
+                "font-weight:bolder",
+                ctx.node_label_style_attr,
+            );
             ctx.mermaid_config
                 .and_then(|config| {
                     crate::class::class_math_label_metrics(
                         title_text,
                         ctx.measurer,
-                        ctx.text_style,
+                        &style,
                         Some(title_max_width_px.max(1) as f64),
                         config,
                         ctx.math_renderer,
@@ -504,6 +511,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
                         ctx.text_style,
                         title_text,
                         title_max_width_px,
+                        ctx.node_label_style_attr,
                     )
                 })
         },
@@ -518,6 +526,11 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
     let annotation_metrics = annotation_text.as_deref().map(|text| {
         annotation_prepared.map_or_else(
             || {
+                let style = crate::class::class_html_node_text_style(
+                    ctx.text_style,
+                    "",
+                    ctx.node_label_style_attr,
+                );
                 let max_width_px = crate::class::class_html_create_text_width_px(
                     text,
                     ctx.measurer,
@@ -528,20 +541,14 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
                         crate::class::class_math_label_metrics(
                             text,
                             ctx.measurer,
-                            ctx.text_style,
+                            &style,
                             Some(max_width_px.max(1) as f64),
                             config,
                             ctx.math_renderer,
                         )
                     })
                     .unwrap_or_else(|| {
-                        class_html_label_metrics(
-                            ctx.measurer,
-                            ctx.text_style,
-                            text,
-                            max_width_px,
-                            "",
-                        )
+                        class_html_label_metrics(ctx.measurer, &style, text, max_width_px, "")
                     })
             },
             |prepared| prepared.metrics,
@@ -567,6 +574,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
         measurer: ctx.measurer,
         text_style: ctx.text_style,
         html_calc_text_style: ctx.html_calc_text_style,
+        node_label_style: ctx.node_label_style_attr,
         line_height: ctx.line_height,
     };
     let members_rows_rendered = measure_class_html_node_rows(
@@ -764,6 +772,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
             &title_text,
             ctx.measurer,
             ctx.text_style,
+            ctx.html_calc_text_style,
             ctx.wrap_probe_font_size,
             false,
         )
@@ -828,6 +837,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
                 &text,
                 ctx.measurer,
                 ctx.text_style,
+                ctx.html_calc_text_style,
                 ctx.wrap_probe_font_size,
                 false,
             );
@@ -875,6 +885,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
                     &text,
                     ctx.measurer,
                     ctx.text_style,
+                    ctx.html_calc_text_style,
                     ctx.wrap_probe_font_size,
                     false,
                 );
@@ -932,6 +943,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
                     &text,
                     ctx.measurer,
                     ctx.text_style,
+                    ctx.html_calc_text_style,
                     ctx.wrap_probe_font_size,
                     false,
                 );
@@ -1162,12 +1174,17 @@ pub(super) fn measure_class_html_node_rows<'a>(
                 row_metrics
                     .and_then(|rows| rows.get(idx).copied())
                     .unwrap_or_else(|| {
+                        let style = crate::class::class_html_node_text_style(
+                            ctx.text_style,
+                            &member.css_style,
+                            ctx.node_label_style,
+                        );
                         class_html_label_metrics(
                             ctx.measurer,
-                            ctx.text_style,
+                            &style,
                             text.as_str(),
                             max_width_px,
-                            member.css_style.as_str(),
+                            "",
                         )
                     })
             });

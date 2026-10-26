@@ -12,11 +12,10 @@ use crate::family::{
 };
 use crate::text::TextStyle;
 
-/// Class keeps Mermaid's two configured font winners until a typed stack owns both layers.
+/// Class separates Mermaid's wrapping probe from the font inherited by displayed labels.
 ///
-/// Layout measurement reads root `fontFamily` first. The stylesheet reads
-/// `themeVariables.fontFamily` first. A directly owned FontStack intentionally replaces both;
-/// inactive, config-owned, and unsupported routes preserve the upstream split.
+/// The probe reads root `fontFamily` first; final measurement follows the stylesheet's
+/// `themeVariables.fontFamily` winner. A directly owned FontStack replaces both families.
 #[derive(Debug)]
 pub(crate) struct ClassTextThemePlan {
     css_binding: super::ClassCssThemeBinding,
@@ -379,9 +378,8 @@ impl ClassTextThemePlan {
         text_style: &mut TextStyle,
         html_calc_text_style: &mut TextStyle,
     ) {
-        let font_family = Some(self.layout_font_family_css().to_string());
-        text_style.font_family = font_family.clone();
-        html_calc_text_style.font_family = font_family;
+        text_style.font_family = Some(self.common_css.font_family().to_owned());
+        html_calc_text_style.font_family = Some(self.layout_font_family_css().to_owned());
         if self.typed_font_size_active() {
             text_style.font_size = self.font_size_px();
         }
@@ -1002,7 +1000,7 @@ mod tests {
     }
 
     #[test]
-    fn inactive_plan_preserves_class_layout_font_precedence() {
+    fn inactive_plan_separates_class_probe_and_displayed_font_precedence() {
         let config = merman_core::MermaidConfig::from_value(json!({
             "fontFamily": "Class Root, monospace",
             "themeVariables": {
@@ -1015,6 +1013,10 @@ mod tests {
 
         assert_eq!(
             render_config.text_style().font_family.as_deref(),
+            Some("Class Theme,sans-serif")
+        );
+        assert_eq!(
+            render_config.html_calc_text_style().font_family.as_deref(),
             Some("Class Root,monospace")
         );
         assert!(!plan.inherited_font_stack.typed_font_stack_active());

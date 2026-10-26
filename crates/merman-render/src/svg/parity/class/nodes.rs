@@ -877,6 +877,7 @@ fn render_class_node_id<O: SvgOutput>(
             &ClassSvgNodeBodyContext {
                 measurer: ctx.measurer,
                 text_style: settings.text_style(),
+                html_calc_text_style: settings.html_calc_text_style(),
                 wrap_probe_font_size: settings.wrap_probe_font_size(),
                 class_padding: settings.class_padding,
                 hide_empty_members_box: settings.hide_empty_members_box(),

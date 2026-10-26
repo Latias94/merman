@@ -267,7 +267,7 @@
       "text": "calls",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md.",
       "upstream": {
         "world": {
           "anchor_x": 120.133,
@@ -310,7 +310,7 @@
       },
       "local": {
         "world": {
-          "anchor_x": 117.356,
+          "anchor_x": 117.35,
           "anchor_y": 52.0,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
@@ -341,8 +341,8 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 44.406, y: 149.575 }, LineTo { abs: true, x: 57.335, y: 149.575 }, Quadratic { abs: true, x1: 64.406, y1: 149.575, x: 64.406, y: 142.504 }, LineTo { abs: true, x: 64.406, y: 59.571 }, Quadratic { abs: true, x1: 64.406, y1: 52.5, x: 71.477, y: 52.5 }, LineTo { abs: true, x: 164.306, y: 52.5 }]",
-            "data-points": "[(44.406,149.575),(64.406,149.575),(64.406,52.5),(170.306,52.5)]",
+            "d": "[MoveTo { abs: true, x: 44.4, y: 149.575 }, LineTo { abs: true, x: 57.329, y: 149.575 }, Quadratic { abs: true, x1: 64.4, y1: 149.575, x: 64.4, y: 142.504 }, LineTo { abs: true, x: 64.4, y: 59.571 }, Quadratic { abs: true, x1: 64.4, y1: 52.5, x: 71.471, y: 52.5 }, LineTo { abs: true, x: 164.3, y: 52.5 }]",
+            "data-points": "[(44.4,149.575),(64.4,149.575),(64.4,52.5),(170.3,52.5)]",
             "neo-mask-dasharray": "0.0 0.0 211.647 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
@@ -360,7 +360,7 @@
       "text": "reads",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix. Mermaid 12.1 resolveEdgeLabelPosition preserves the layout anchor plus the updated-minus-original path midpoint delta; both renderers now apply that rule. This receipt retains the measured-width residual after that semantic correction.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md. The reads anchor moves from y=144.000 to y=148.833 with the preserved terminal jog; do not describe this as an unchanged route or port row.",
       "upstream": {
         "world": {
           "anchor_x": 191.656,
@@ -403,8 +403,8 @@
       },
       "local": {
         "world": {
-          "anchor_x": 186.509,
-          "anchor_y": 144.0,
+          "anchor_x": 186.5,
+          "anchor_y": 148.833,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
           "y_axis_x": 0.0,
@@ -434,9 +434,9 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 44.406, y: 161.775 }, LineTo { abs: true, x: 77.335, y: 161.775 }, Quadratic { abs: true, x1: 84.406, y1: 161.775, x: 84.406, y: 154.704 }, LineTo { abs: true, x: 84.406, y: 151.071 }, Quadratic { abs: true, x1: 84.406, y1: 144.0, x: 91.477, y: 144.0 }, LineTo { abs: true, x: 117.356, y: 144.0 }, LineTo { abs: true, x: 262.173, y: 144.0 }, LineTo { abs: true, x: 321.444, y: 144.0 }]",
-            "data-points": "[(44.406,161.775),(84.406,161.775),(84.406,144.0),(117.356,144.0),(262.173,144.0),(327.444,144.0)]",
-            "neo-mask-dasharray": "0.0 0.0 289.485 0.0",
+            "d": "[MoveTo { abs: true, x: 44.4, y: 161.775 }, LineTo { abs: true, x: 78.179, y: 161.775 }, Quadratic { abs: true, x1: 84.4, y1: 161.775, x: 84.4, y: 155.554 }, LineTo { abs: true, x: 84.4, y: 155.554 }, Quadratic { abs: true, x1: 84.4, y1: 149.333, x: 90.621, y: 149.333 }, LineTo { abs: true, x: 117.35, y: 149.333 }, LineTo { abs: true, x: 262.16, y: 149.333 }, LineTo { abs: true, x: 298.953, y: 149.333 }, Quadratic { abs: true, x1: 301.62, y1: 149.333, x: 301.62, y: 146.667 }, LineTo { abs: true, x: 301.62, y: 146.667 }, Quadratic { abs: true, x1: 301.62, y1: 144.0, x: 304.287, y: 144.0 }, LineTo { abs: true, x: 327.31, y: 144.0 }, Quadratic { abs: true, x1: 327.433, y1: 144.0, x: 327.433, y: 143.877 }, LineTo { abs: true, x: 327.433, y: 143.754 }]",
+            "data-points": "[(44.4,161.775),(84.4,161.775),(84.4,149.333),(117.35,149.333),(262.16,149.333),(301.62,149.333),(301.62,144.0),(327.433,144.0),(327.433,137.754)]",
+            "neo-mask-dasharray": "0.0 0.0 294.31 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
         }
@@ -453,7 +453,7 @@
       "text": "writes",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md.",
       "upstream": {
         "world": {
           "anchor_x": 270.188,
@@ -496,7 +496,7 @@
       },
       "local": {
         "world": {
-          "anchor_x": 262.173,
+          "anchor_x": 262.16,
           "anchor_y": 193.833,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
@@ -527,9 +527,9 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 44.406, y: 173.975 }, LineTo { abs: true, x: 77.335, y: 173.975 }, Quadratic { abs: true, x1: 84.406, y1: 173.975, x: 84.406, y: 181.046 }, LineTo { abs: true, x: 84.406, y: 187.262 }, Quadratic { abs: true, x1: 84.406, y1: 194.333, x: 91.477, y: 194.333 }, LineTo { abs: true, x: 117.356, y: 194.333 }, LineTo { abs: true, x: 186.509, y: 194.333 }, LineTo { abs: true, x: 346.553, y: 194.333 }, LineTo { abs: true, x: 432.542, y: 194.333 }, LineTo { abs: true, x: 466.541, y: 194.333 }, Quadratic { abs: true, x1: 473.612, y1: 194.333, x: 473.612, y: 187.262 }, LineTo { abs: true, x: 473.612, y: 156.083 }, Quadratic { abs: true, x1: 473.612, y1: 149.083, x: 480.612, y: 149.083 }, LineTo { abs: true, x: 487.612, y: 149.083 }]",
-            "data-points": "[(44.406,173.975),(84.406,173.975),(84.406,194.333),(117.356,194.333),(186.509,194.333),(346.553,194.333),(432.542,194.333),(473.612,194.333),(473.612,149.083),(493.612,149.083)]",
-            "neo-mask-dasharray": "0.0 0.0 498.184 0.0",
+            "d": "[MoveTo { abs: true, x: 44.4, y: 173.975 }, LineTo { abs: true, x: 77.329, y: 173.975 }, Quadratic { abs: true, x1: 84.4, y1: 173.975, x: 84.4, y: 181.046 }, LineTo { abs: true, x: 84.4, y: 187.262 }, Quadratic { abs: true, x1: 84.4, y1: 194.333, x: 91.471, y: 194.333 }, LineTo { abs: true, x: 117.35, y: 194.333 }, LineTo { abs: true, x: 186.5, y: 194.333 }, LineTo { abs: true, x: 346.54, y: 194.333 }, LineTo { abs: true, x: 432.53, y: 194.333 }, LineTo { abs: true, x: 466.529, y: 194.333 }, Quadratic { abs: true, x1: 473.6, y1: 194.333, x: 473.6, y: 187.262 }, LineTo { abs: true, x: 473.6, y: 156.154 }, Quadratic { abs: true, x1: 473.6, y1: 149.083, x: 480.671, y: 149.083 }, LineTo { abs: true, x: 492.387, y: 149.083 }, Quadratic { abs: true, x1: 493.6, y1: 149.083, x: 493.6, y: 147.871 }, LineTo { abs: true, x: 493.6, y: 146.658 }]",
+            "data-points": "[(44.4,173.975),(84.4,173.975),(84.4,194.333),(117.35,194.333),(186.5,194.333),(346.54,194.333),(432.53,194.333),(473.6,194.333),(473.6,149.083),(493.6,149.083),(493.6,140.658)]",
+            "neo-mask-dasharray": "0.0 0.0 506.119 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
         }
@@ -546,7 +546,7 @@
       "text": "shares",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md.",
       "upstream": {
         "world": {
           "anchor_x": 270.188,
@@ -589,7 +589,7 @@
       },
       "local": {
         "world": {
-          "anchor_x": 262.173,
+          "anchor_x": 262.16,
           "anchor_y": 92.667,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
@@ -620,9 +620,9 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 219.963, y: 62.667 }, LineTo { abs: true, x: 221.338, y: 62.667 }, Quadratic { abs: true, x1: 222.713, y1: 62.667, x: 222.713, y: 64.042 }, LineTo { abs: true, x: 222.713, y: 86.096 }, Quadratic { abs: true, x1: 222.713, y1: 93.167, x: 229.784, y: 93.167 }, LineTo { abs: true, x: 294.561, y: 93.167 }, Quadratic { abs: true, x1: 301.633, y1: 93.167, x: 301.633, y: 100.238 }, LineTo { abs: true, x: 301.633, y: 116.596 }, Quadratic { abs: true, x1: 301.633, y1: 123.667, x: 308.704, y: 123.667 }, LineTo { abs: true, x: 327.444, y: 123.667 }]",
-            "data-points": "[(202.713,62.667),(222.713,62.667),(222.713,93.167),(301.633,93.167),(301.633,123.667),(327.444,123.667)]",
-            "neo-mask-dasharray": "0.0 0.0 159.97 0.0",
+            "d": "[MoveTo { abs: true, x: 219.95, y: 62.667 }, LineTo { abs: true, x: 221.325, y: 62.667 }, Quadratic { abs: true, x1: 222.7, y1: 62.667, x: 222.7, y: 64.042 }, LineTo { abs: true, x: 222.7, y: 86.096 }, Quadratic { abs: true, x1: 222.7, y1: 93.167, x: 229.771, y: 93.167 }, LineTo { abs: true, x: 294.549, y: 93.167 }, Quadratic { abs: true, x1: 301.62, y1: 93.167, x: 301.62, y: 100.238 }, LineTo { abs: true, x: 301.62, y: 116.596 }, Quadratic { abs: true, x1: 301.62, y1: 123.667, x: 308.691, y: 123.667 }, LineTo { abs: true, x: 324.31, y: 123.667 }, Quadratic { abs: true, x1: 327.433, y1: 123.667, x: 327.433, y: 126.79 }, LineTo { abs: true, x: 327.433, y: 129.913 }]",
+            "data-points": "[(202.7,62.667),(222.7,62.667),(222.7,93.167),(301.62,93.167),(301.62,123.667),(327.433,123.667),(327.433,129.913)]",
+            "neo-mask-dasharray": "0.0 0.0 165.042 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
         }
@@ -639,7 +639,7 @@
       "text": "caches",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix. Mermaid 12.1 resolveEdgeLabelPosition preserves the layout anchor plus the updated-minus-original path midpoint delta; both renderers now apply that rule. This receipt retains the measured-width residual after that semantic correction.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md.",
       "upstream": {
         "world": {
           "anchor_x": 359.617,
@@ -682,7 +682,7 @@
       },
       "local": {
         "world": {
-          "anchor_x": 346.553,
+          "anchor_x": 346.54,
           "anchor_y": 42.333,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
@@ -713,9 +713,9 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 202.713, y: 42.333 }, LineTo { abs: true, x: 262.173, y: 42.333 }, LineTo { abs: true, x: 432.542, y: 42.333 }, LineTo { abs: true, x: 466.541, y: 42.333 }, Quadratic { abs: true, x1: 473.612, y1: 42.333, x: 473.612, y: 49.404 }, LineTo { abs: true, x: 473.612, y: 111.583 }, Quadratic { abs: true, x1: 473.612, y1: 118.583, x: 480.612, y: 118.583 }, LineTo { abs: true, x: 487.612, y: 118.583 }]",
-            "data-points": "[(202.713,42.333),(262.173,42.333),(432.542,42.333),(473.612,42.333),(473.612,118.583),(493.612,118.583)]",
-            "neo-mask-dasharray": "0.0 0.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 0.0",
+            "d": "[MoveTo { abs: true, x: 202.7, y: 42.333 }, LineTo { abs: true, x: 262.16, y: 42.333 }, LineTo { abs: true, x: 432.53, y: 42.333 }, LineTo { abs: true, x: 466.529, y: 42.333 }, Quadratic { abs: true, x1: 473.6, y1: 42.333, x: 473.6, y: 49.404 }, LineTo { abs: true, x: 473.6, y: 111.512 }, Quadratic { abs: true, x1: 473.6, y1: 118.583, x: 480.671, y: 118.583 }, LineTo { abs: true, x: 492.387, y: 118.583 }, Quadratic { abs: true, x1: 493.6, y1: 118.583, x: 493.6, y: 119.796 }, LineTo { abs: true, x: 493.6, y: 121.009 }]",
+            "data-points": "[(202.7,42.333),(262.16,42.333),(432.53,42.333),(473.6,42.333),(473.6,118.583),(493.6,118.583),(493.6,127.009)]",
+            "neo-mask-dasharray": "0.0 0.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
         }
@@ -732,7 +732,7 @@
       "text": "depends",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md.",
       "upstream": {
         "world": {
           "anchor_x": 454.891,
@@ -775,7 +775,7 @@
       },
       "local": {
         "world": {
-          "anchor_x": 432.542,
+          "anchor_x": 432.53,
           "anchor_y": 133.333,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
@@ -806,8 +806,8 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 359.85, y: 133.833 }, LineTo { abs: true, x: 487.612, y: 133.833 }]",
-            "data-points": "[(359.85,133.833),(493.612,133.833)]",
+            "d": "[MoveTo { abs: true, x: 359.833, y: 133.833 }, LineTo { abs: true, x: 359.833, y: 133.833 }, LineTo { abs: true, x: 487.6, y: 133.833 }]",
+            "data-points": "[(359.833,133.833),(359.833,133.833),(493.6,133.833)]",
             "neo-mask-dasharray": "0.0 0.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
@@ -825,7 +825,7 @@
       "text": "emits",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md.",
       "upstream": {
         "world": {
           "anchor_x": 612.602,
@@ -868,7 +868,7 @@
       },
       "local": {
         "world": {
-          "anchor_x": 582.469,
+          "anchor_x": 582.45,
           "anchor_y": 133.333,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
@@ -899,8 +899,8 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 526.019, y: 133.833 }, LineTo { abs: true, x: 611.848, y: 133.833 }, Quadratic { abs: true, x1: 618.919, y1: 133.833, x: 618.919, y: 140.904 }, LineTo { abs: true, x: 618.919, y: 162.917 }, Quadratic { abs: true, x1: 618.919, y1: 169.917, x: 625.919, y: 169.917 }, LineTo { abs: true, x: 632.919, y: 169.917 }]",
-            "data-points": "[(526.019,133.833),(618.919,133.833),(618.919,169.917),(638.919,169.917)]",
+            "d": "[MoveTo { abs: true, x: 526.0, y: 133.833 }, LineTo { abs: true, x: 611.829, y: 133.833 }, Quadratic { abs: true, x1: 618.9, y1: 133.833, x: 618.9, y: 140.904 }, LineTo { abs: true, x: 618.9, y: 162.917 }, Quadratic { abs: true, x1: 618.9, y1: 169.917, x: 625.9, y: 169.917 }, LineTo { abs: true, x: 632.9, y: 169.917 }]",
+            "data-points": "[(526.0,133.833),(618.9,133.833),(618.9,169.917),(638.9,169.917)]",
             "neo-mask-dasharray": "0.0 0.0 137.682 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
@@ -918,7 +918,7 @@
       "text": "feedback",
       "input_sha256": "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
       "upstream_svg_sha256": "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
-      "reason": "Mermaid 12 Class shapeUtil.ts measures getBBox/getBoundingClientRect text widths; deterministic widths propagate through the same ELK node placement, straightened terminal channels, label anchors, and Neo path-length masks. Source and target port rows, directed route topology, label heights, text, presentation, markers, and CSS agree after the prepared-route painter fix.",
+      "reason": "Mermaid 12.2 Class shapeUtil.ts measures final HTML labels with getBBox/getBoundingClientRect; Merman measures the emitted XHTML with the effective CSS title font. Removing the old Markdown 1/64px title-width grid changes deterministic node widths and propagates through ELK placement, strict boundary clipping, terminal-channel straightening, label anchors, and Neo path-length masks. Text, explicit presentation, markers, CSS, directed relation identities, and attachment to the intended node side are preserved; numeric port rows and route bends need not match the browser baseline. This exact fixture receipt records deterministic-versus-browser geometry, not pixel parity. See the main Class residual appendix in docs/research/astro_mermaid_issue_77_2026-10-26.md.",
       "upstream": {
         "world": {
           "anchor_x": 359.617,
@@ -961,7 +961,7 @@
       },
       "local": {
         "world": {
-          "anchor_x": 346.553,
+          "anchor_x": 346.54,
           "anchor_y": 225.833,
           "x_axis_x": 1.0,
           "x_axis_y": 0.0,
@@ -992,8 +992,8 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 638.919, y: 190.25 }, LineTo { abs: true, x: 625.99, y: 190.25 }, Quadratic { abs: true, x1: 618.919, y1: 190.25, x: 618.919, y: 197.321 }, LineTo { abs: true, x: 618.919, y: 219.262 }, Quadratic { abs: true, x1: 618.919, y1: 226.333, x: 611.848, y: 226.333 }, LineTo { abs: true, x: 582.469, y: 226.333 }, LineTo { abs: true, x: 509.816, y: 226.333 }, LineTo { abs: true, x: 432.542, y: 226.333 }, LineTo { abs: true, x: 262.173, y: 226.333 }, LineTo { abs: true, x: 186.509, y: 226.333 }, LineTo { abs: true, x: 117.356, y: 226.333 }, LineTo { abs: true, x: 71.477, y: 226.333 }, Quadratic { abs: true, x1: 64.406, y1: 226.333, x: 64.406, y: 219.262 }, LineTo { abs: true, x: 64.406, y: 193.175 }, Quadratic { abs: true, x1: 64.406, y1: 186.175, x: 57.406, y: 186.175 }, LineTo { abs: true, x: 50.406, y: 186.175 }]",
-            "data-points": "[(638.919,190.25),(618.919,190.25),(618.919,226.333),(582.469,226.333),(509.816,226.333),(432.542,226.333),(262.173,226.333),(186.509,226.333),(117.356,226.333),(64.406,226.333),(64.406,186.175),(44.406,186.175)]",
+            "d": "[MoveTo { abs: true, x: 638.9, y: 190.25 }, LineTo { abs: true, x: 625.971, y: 190.25 }, Quadratic { abs: true, x1: 618.9, y1: 190.25, x: 618.9, y: 197.321 }, LineTo { abs: true, x: 618.9, y: 219.262 }, Quadratic { abs: true, x1: 618.9, y1: 226.333, x: 611.829, y: 226.333 }, LineTo { abs: true, x: 582.45, y: 226.333 }, LineTo { abs: true, x: 509.8, y: 226.333 }, LineTo { abs: true, x: 432.53, y: 226.333 }, LineTo { abs: true, x: 262.16, y: 226.333 }, LineTo { abs: true, x: 186.5, y: 226.333 }, LineTo { abs: true, x: 117.35, y: 226.333 }, LineTo { abs: true, x: 71.471, y: 226.333 }, Quadratic { abs: true, x1: 64.4, y1: 226.333, x: 64.4, y: 219.262 }, LineTo { abs: true, x: 64.4, y: 193.175 }, Quadratic { abs: true, x1: 64.4, y1: 186.175, x: 57.4, y: 186.175 }, LineTo { abs: true, x: 50.4, y: 186.175 }]",
+            "data-points": "[(638.9,190.25),(618.9,190.25),(618.9,226.333),(582.45,226.333),(509.8,226.333),(432.53,226.333),(262.16,226.333),(186.5,226.333),(117.35,226.333),(64.4,226.333),(64.4,186.175),(44.4,186.175)]",
             "neo-mask-dasharray": "0.0 0.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 2.0 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }

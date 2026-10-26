@@ -319,6 +319,10 @@ mod tests {
         let config = ClassRenderConfig::resolve(&source, &typography);
         assert_eq!(
             config.text_style().font_family.as_deref(),
+            Some("Theme Sans,sans-serif")
+        );
+        assert_eq!(
+            config.html_calc_text_style().font_family.as_deref(),
             Some("Root Sans,monospace")
         );
         assert!(std::ptr::eq(
