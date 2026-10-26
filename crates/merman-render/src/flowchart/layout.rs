@@ -1980,8 +1980,10 @@ fn layout_flowchart_with_model(
         } else {
             &text_style
         };
+        let base_style =
+            label_weights.parent_style(crate::diagram_theme::ThemeTarget::NodeLabel, base_style);
         let text_style_for_label = flowchart_effective_text_style_for_classes(
-            base_style,
+            base_style.as_ref(),
             &model.class_defs,
             classes,
             styles,

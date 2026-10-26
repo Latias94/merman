@@ -500,74 +500,217 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
         (Some("900"), "lighter", "900", "900", "700"),
         (Some("bolder"), "lighter", "700", "700", "400"),
     ] {
-        for html in [false, true] {
-            let engine = merman_render::__private::install_parse_compatibility(
+        for backend in [
+            "dagre",
+            #[cfg(feature = "layout-elk")]
+            "elk",
+        ] {
+            for html in [false, true] {
+                let engine = merman_render::__private::install_parse_compatibility(
                 &theme,
                 MermaidEngine::new().with_site_config(
                     merman_core::presentation::PresentationConfig::from_value(
-                        serde_json::json!({"htmlLabels": html, "fontWeight": root_weight}),
+                        serde_json::json!({"layout":backend, "htmlLabels": html, "fontWeight": root_weight}),
                     ),
                 ),
             );
-            let parsed = engine
+                let parsed = engine
             .parse_diagram_for_render_model_sync(
                 &format!("flowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nclassDef emphasis font-weight:800!important\nclass B emphasis\nstyle B font-weight:{source_weight}!important"),
                 ParseOptions::strict(),
             )
             .unwrap()
             .unwrap();
-            let identity = TextMeasurementProfileIdentity::new(
-                MeasurementProfileId::new("test.flowchart-label-weight").unwrap(),
-                "1",
-            )
-            .unwrap();
-            let host = Arc::new(RecordingFlowchartHost::new(HostOutcome::Success));
-            let session = RenderEnvironment::deterministic()
-                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
-                    identity,
-                    host.clone(),
-                    TextMeasurementPhase::ALL,
-                ))
-                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-                .begin_session_with_theme(&theme)
+                let identity = TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.flowchart-label-weight").unwrap(),
+                    "1",
+                )
                 .unwrap();
-            let artifact =
-                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
-            let layout_count = host.snapshot().len();
-            artifact
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .unwrap();
-            let requests = host.snapshot();
-            for (phase, phase_requests) in [
-                ("layout", &requests[..layout_count]),
-                ("writer", &requests[layout_count..]),
-            ] {
-                for (label, weight) in [
-                    ("NodeAlpha", node_weight),
-                    ("EdgeGamma", edge_weight),
-                    ("NodeBeta", source_result),
+                let host = Arc::new(RecordingFlowchartHost::new(HostOutcome::Success));
+                let session = RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                        identity,
+                        host.clone(),
+                        TextMeasurementPhase::ALL,
+                    ))
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .unwrap();
+                let artifact =
+                    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                        .unwrap();
+                let layout_count = host.snapshot().len();
+                artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let requests = host.snapshot();
+                for (phase, phase_requests) in [
+                    ("layout", &requests[..layout_count]),
+                    ("writer", &requests[layout_count..]),
                 ] {
-                    let matching: Vec<_> = phase_requests
-                        .iter()
-                        .filter(|request| request.text.contains(label))
-                        .collect();
-                    // HTML writers can reuse layout bounds without requesting a second measurement.
-                    if phase == "layout" || !html {
-                        assert!(
-                            !matching.is_empty(),
-                            "html={html}, phase={phase}: missing {label} measurement"
-                        );
-                    }
-                    for request in matching {
-                        assert_eq!(
-                            request.font_weight.as_deref(),
-                            Some(weight),
-                            "html={html}: {request:?}"
-                        );
+                    for (label, weight) in [
+                        ("NodeAlpha", node_weight),
+                        ("EdgeGamma", edge_weight),
+                        ("NodeBeta", source_result),
+                    ] {
+                        let matching: Vec<_> = phase_requests
+                            .iter()
+                            .filter(|request| request.text.contains(label))
+                            .collect();
+                        // HTML writers can reuse layout bounds without requesting a second measurement.
+                        if phase == "layout" || !html {
+                            assert!(
+                                !matching.is_empty(),
+                                "html={html}, phase={phase}: missing {label} measurement"
+                            );
+                        }
+                        for request in matching {
+                            assert_eq!(
+                                request.font_weight.as_deref(),
+                                Some(weight),
+                                "html={html}: {request:?}"
+                            );
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+#[test]
+fn node_shaped_subgraph_weights_match_their_measured_label_boxes() {
+    use merman_render::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget,
+    };
+    use merman_render::environment::TextMeasurementProfile;
+    use merman_render::text::{TextMeasurer, TextStyle};
+    #[derive(Default)]
+    struct WeightMeasurer(Mutex<Vec<(String, Option<String>)>>);
+    impl TextMeasurer for WeightMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.0
+                .lock()
+                .unwrap()
+                .push((text.to_owned(), style.font_weight.clone()));
+            TextMetrics {
+                width: text.chars().count() as f64
+                    * if style.font_weight.as_deref() == Some("900") {
+                        20.0
+                    } else {
+                        10.0
+                    },
+                height: 20.0,
+                line_count: 1,
+            }
+        }
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch {
+                    typography: TextStylePatch {
+                        font_weight: Specified::Value(600),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ))),
+        )
+        .unwrap();
+    for (backend, collapsed) in [
+        ("dagre", false),
+        ("dagre", true),
+        #[cfg(feature = "layout-elk")]
+        ("elk", true),
+    ] {
+        let host = Arc::new(WeightMeasurer::default());
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.subgraph-node-weight").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            host.clone(),
+        );
+        let engine = merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new().with_site_config(
+            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({"layout":backend,"htmlLabels":true,"flowchart":{"wrappingWidth":1000}})),
+        ));
+        let source = format!(
+            "flowchart LR\nsubgraph G[GroupTitle]\nend\nstyle G font-weight:bolder\n{}",
+            if collapsed {
+                "G@{view: collapsed}\n"
+            } else {
+                ""
+            }
+        );
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let artifact =
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        let requests = host.0.lock().unwrap();
+        let matching: Vec<_> = requests
+            .iter()
+            .filter(|(text, _)| text == "GroupTitle")
+            .collect();
+        assert!(!matching.is_empty(), "{backend}/{collapsed}: {requests:?}");
+        for request in matching {
+            assert_eq!(
+                request.1.as_deref(),
+                Some("900"),
+                "{backend}/{collapsed}: {request:?}"
+            );
+        }
+        drop(requests);
+        let layout = artifact.layout_json().unwrap();
+        let node = layout["layout"]["FlowchartV2"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "G")
+            .unwrap();
+        assert!(
+            node["width"].as_f64().unwrap() >= 200.0,
+            "{backend}/{collapsed}: {node}"
+        );
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let paragraph = document
+            .descendants()
+            .find(|node| node.has_tag_name("p") && node.text() == Some("GroupTitle"))
+            .unwrap();
+        let foreign_object = paragraph
+            .ancestors()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            foreign_object
+                .attribute("width")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap(),
+            200.0,
+            "{backend}/{collapsed}"
+        );
+        assert!(
+            paragraph.ancestors().any(|node| node
+                .attribute("style")
+                .is_some_and(|style| style.contains("font-weight:900"))),
+            "{backend}/{collapsed}: {}",
+            rendered.svg()
+        );
     }
 }
 
