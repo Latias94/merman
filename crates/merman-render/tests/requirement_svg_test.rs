@@ -102,3 +102,56 @@ fn requirement_safe_styles_preserve_order_overrides_and_quoted_values() {
     );
     assert!(!svg.contains("!important !important"), "{svg}");
 }
+
+#[test]
+fn requirement_svg_multiline_name_applies_role_to_the_first_row_only() {
+    let svg = render_requirement(
+        r#"%%{init: {"htmlLabels": false}}%%
+requirementDiagram
+requirement "W<br/>WW WW" {
+  text: ok
+}
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Requirement SVG");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node
+                    .children()
+                    .filter(|row| row.has_tag_name("tspan"))
+                    .count()
+                    == 2
+                && node
+                    .descendants()
+                    .filter(|child| child.is_text())
+                    .filter_map(|child| child.text())
+                    .collect::<String>()
+                    == "WWW WW"
+        })
+        .expect("two-row requirement name");
+    let rows = label
+        .children()
+        .filter(|row| row.has_tag_name("tspan"))
+        .collect::<Vec<_>>();
+    let first_word = rows[0]
+        .children()
+        .find(|word| word.has_tag_name("tspan"))
+        .unwrap();
+    assert!(
+        first_word.attribute("font-weight") == Some("bold")
+            || first_word
+                .attribute("style")
+                .is_some_and(|style| style.contains("font-weight: bold"))
+    );
+    let later_words = rows[1]
+        .children()
+        .filter(|word| word.has_tag_name("tspan"))
+        .collect::<Vec<_>>();
+    assert_eq!(later_words.len(), 2);
+    for word in later_words {
+        assert_eq!(word.attribute("font-weight"), Some("normal"));
+        assert_eq!(word.attribute("style"), None);
+    }
+}
