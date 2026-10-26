@@ -70,6 +70,82 @@ fn render_config_with_environment(
 }
 
 #[test]
+fn usecase_html_markdown_measures_visible_inline_literals_without_added_spaces() {
+    use merman_render::environment::TextMeasurementProfile;
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct LiteralMeasurer(Mutex<Vec<String>>);
+    impl TextMeasurer for LiteralMeasurer {
+        fn measure(&self, text: &str, _: &TextStyle) -> TextMetrics {
+            self.0.lock().unwrap().push(text.to_owned());
+            TextMetrics {
+                width: text.chars().count() as f64 * 2.0,
+                height: 20.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    for text in [
+        "x `c` [visible label](u)",
+        "pre`code`post",
+        "pre[visible label](u)`code`post",
+        "x `c` ~~visible label~~",
+        "pre~~visible~~`code`post",
+        "pre`code`[]()post",
+    ] {
+        let measurer = Arc::new(LiteralMeasurer::default());
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.usecase-inline-literals").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            measurer.clone(),
+        );
+        let (_, svg) = render_config_with_environment(
+            &format!("usecase-beta\nA(\"`{text}`\")\n"),
+            json!({"layout":"dagre", "htmlLabels":true,
+                "usecase":{"wrappingWidth":1000,"minNodeWidth":0}}),
+            RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let paragraph = document
+            .descendants()
+            .find(|node| node.has_tag_name("p"))
+            .unwrap();
+        let visible: String = paragraph
+            .descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect();
+        assert_eq!(visible, text);
+        let requests = measurer.0.lock().unwrap();
+        assert!(
+            requests.iter().any(|request| request == &visible),
+            "{text:?}: {requests:?}"
+        );
+        let foreign_object = paragraph
+            .ancestors()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            foreign_object
+                .attribute("width")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap(),
+            visible.chars().count() as f64 * 2.0,
+            "{text:?}"
+        );
+        assert_eq!(foreign_object.attribute("height"), Some("20"), "{text:?}");
+    }
+}
+
+#[test]
 fn usecase_svg_distinguishes_plain_and_positioned_labels_with_signed_host_bbox_offsets() {
     const TEXT_WIDTH: f64 = 40.0;
     const TEXT_HEIGHT: f64 = 24.0;
