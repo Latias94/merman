@@ -1596,7 +1596,11 @@ fn class_box_dimensions(
         let effective_style = if writer_uses_html_labels {
             class_html_node_text_style(text_style, css_style, &node_label_style)
         } else {
-            class_effective_text_style(text_style, css_style)
+            class_svg_row_text_style(
+                text_style,
+                css_style,
+                class_svg_empty_markdown_fallback(text).is_some(),
+            )
         };
         let style = effective_style.as_ref();
         let max_width_px = class_html_create_text_width_px(text, measurer, html_calc_text_style);
@@ -2001,112 +2005,38 @@ pub(crate) fn class_effective_text_style<'a>(
     base: &'a TextStyle,
     css_style: &str,
 ) -> std::borrow::Cow<'a, TextStyle> {
-    enum Value<T> {
-        Base,
-        Resolved(T),
-    }
-
-    struct Winner<T> {
-        important: bool,
-        value: Value<T>,
-    }
-
-    #[derive(Default)]
-    struct Winners<'a> {
-        font_weight: Option<Winner<&'a str>>,
-        font_style: Option<Winner<&'a str>>,
-        font_size: Option<Winner<f64>>,
-        font_family: Option<Winner<&'a str>>,
-    }
-
-    fn observe<T>(winner: &mut Option<Winner<T>>, important: bool, value: Value<T>) {
-        if winner
-            .as_ref()
-            .is_none_or(|current| important || !current.important)
-        {
-            *winner = Some(Winner { important, value });
-        }
-    }
-
-    fn resolved_value<T>(winner: Option<Winner<T>>) -> Option<T> {
-        match winner?.value {
-            Value::Base => None,
-            Value::Resolved(value) => Some(value),
-        }
-    }
-
-    let mut winners = Winners::default();
-    let font_size_context = crate::mermaid_style::CssFontSizeContext::uniform(base.font_size);
+    let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+        base,
+        crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
+    );
     crate::mermaid_style::visit_parsed_style_declarations(css_style, |declaration| {
-        let important = declaration.important();
-        let inherits = declaration.inherits_property_value();
-        match declaration.property() {
-            "font-weight" if inherits => observe(&mut winners.font_weight, important, Value::Base),
-            "font-weight"
-                if crate::mermaid_style::is_supported_css_font_weight_value(
-                    declaration.value(),
-                ) =>
-            {
-                observe(
-                    &mut winners.font_weight,
-                    important,
-                    Value::Resolved(declaration.value()),
-                );
-            }
-            "font-style" if inherits => observe(&mut winners.font_style, important, Value::Base),
-            "font-style"
-                if crate::mermaid_style::is_supported_css_font_style_value(declaration.value()) =>
-            {
-                observe(
-                    &mut winners.font_style,
-                    important,
-                    Value::Resolved(declaration.value()),
-                );
-            }
-            "font-size" if inherits => observe(&mut winners.font_size, important, Value::Base),
-            "font-size" => {
-                if let Some(font_size) = declaration.resolve_font_size_px(font_size_context) {
-                    observe(
-                        &mut winners.font_size,
-                        important,
-                        Value::Resolved(font_size),
-                    );
-                }
-            }
-            "font-family" if inherits => observe(&mut winners.font_family, important, Value::Base),
-            "font-family"
-                if crate::mermaid_style::is_static_css_font_family_list(declaration.value()) =>
-            {
-                observe(
-                    &mut winners.font_family,
-                    important,
-                    Value::Resolved(declaration.value()),
-                );
-            }
-            _ => {}
-        }
+        cascade.observe_declaration(&declaration);
     });
+    cascade.finish()
+}
 
-    let mut style = std::borrow::Cow::Borrowed(base);
-    if let Some(font_weight) = resolved_value(winners.font_weight) {
-        let inherited = base
+pub(crate) fn class_svg_row_text_style<'a>(
+    base: &'a TextStyle,
+    css_style: &str,
+    literal_fallback: bool,
+) -> std::borrow::Cow<'a, TextStyle> {
+    let mut style = class_effective_text_style(base, css_style);
+    // Pinned createText writes normal on each inner tspan. The empty-Markdown
+    // fallback resets style too, but its empty weight attribute inherits the row.
+    if style
+        .font_style
+        .as_deref()
+        .is_some_and(|value| value != "normal")
+    {
+        style.to_mut().font_style = Some("normal".to_owned());
+    }
+    if !literal_fallback
+        && style
             .font_weight
             .as_deref()
-            .and_then(|weight| crate::text::resolve_css_font_weight(weight, 400))
-            .unwrap_or(400);
-        style.to_mut().font_weight = Some(
-            crate::text::resolve_css_font_weight(font_weight, inherited)
-                .map_or_else(|| font_weight.to_owned(), |weight| weight.to_string()),
-        );
-    }
-    if let Some(font_style) = resolved_value(winners.font_style) {
-        style.to_mut().font_style = Some(font_style.to_string());
-    }
-    if let Some(font_size) = resolved_value(winners.font_size) {
-        style.to_mut().font_size = font_size;
-    }
-    if let Some(font_family) = resolved_value(winners.font_family) {
-        style.to_mut().font_family = Some(font_family.to_string());
+            .is_some_and(|value| value != "normal")
+    {
+        style.to_mut().font_weight = Some("normal".to_owned());
     }
     style
 }

@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 179.516,
+        "max_x": 179.52,
         "max_y": 93.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -15,16 +15,16 @@
           "height": 81.0,
           "id": "Animal",
           "is_cluster": false,
-          "width": 63.203,
-          "x": 43.602,
+          "width": 63.2,
+          "x": 43.6,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "Mineral",
           "is_cluster": false,
-          "width": 64.313,
-          "x": 147.359,
+          "width": 64.32,
+          "x": 147.36,
           "y": 52.5
         }
       ]

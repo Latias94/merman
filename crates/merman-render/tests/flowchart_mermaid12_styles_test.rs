@@ -70,6 +70,8 @@ fn flowchart_html_edge_labels_inherit_resolved_theme_font_size() {
         ("", "21"),
         ("  theme: default\n  look: classic\n", "24"),
         ("  themeVariables:\n    fontSize: 20px\n", "30"),
+        ("  themeVariables:\n    fontSize: 24\n", "36"),
+        ("  themeVariables:\n    fontSize: '24'\n", "36"),
     ] {
         let source = format!(
             "---\nconfig:\n  layout: dagre\n{configuration}---\nflowchart LR\nA -->|edge label| B\n"
@@ -91,4 +93,18 @@ fn flowchart_html_edge_labels_inherit_resolved_theme_font_size() {
             "{configuration}"
         );
     }
+}
+
+#[test]
+fn flowchart_root_css_preserves_legacy_fractional_string_parsing() {
+    let svg = render(
+        "---\nconfig:\n  themeVariables:\n    fontSize: 24.5px\n---\nflowchart LR\nA[Fractional]\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("stylesheet");
+    assert!(stylesheet.contains("font-size:24px"), "{stylesheet}");
 }

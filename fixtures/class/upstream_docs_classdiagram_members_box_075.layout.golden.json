@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 64.141,
+        "max_x": 64.14,
         "max_y": 57.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -15,7 +15,7 @@
           "height": 45.0,
           "id": "Duck",
           "is_cluster": false,
-          "width": 52.141,
+          "width": 52.14,
           "x": 38.07,
           "y": 34.5
         }

@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 306.082,
+        "max_x": 306.09,
         "max_y": 420.5,
         "min_x": 12.0,
         "min_y": 12.0
@@ -14,7 +14,7 @@
           "end_label_left": {
             "height": 16.5,
             "width": 4.95,
-            "x": 65.194,
+            "x": 65.195,
             "y": 167.75
           },
           "end_label_right": null,
@@ -25,11 +25,11 @@
           "label": null,
           "points": [
             {
-              "x": 51.719,
+              "x": 51.72,
               "y": 93.0
             },
             {
-              "x": 51.719,
+              "x": 51.72,
               "y": 186.0
             }
           ],
@@ -37,7 +37,7 @@
           "start_label_right": {
             "height": 16.5,
             "width": 6.16,
-            "x": 43.639,
+            "x": 43.64,
             "y": 105.25
           },
           "start_marker": null,
@@ -49,7 +49,7 @@
           "end_label_left": {
             "height": 16.5,
             "width": 17.27,
-            "x": 185.33,
+            "x": 185.335,
             "y": 167.75
           },
           "end_label_right": null,
@@ -60,11 +60,11 @@
           "label": null,
           "points": [
             {
-              "x": 165.695,
+              "x": 165.7,
               "y": 93.0
             },
             {
-              "x": 165.695,
+              "x": 165.7,
               "y": 186.0
             }
           ],
@@ -72,7 +72,7 @@
           "start_label_right": {
             "height": 16.5,
             "width": 6.16,
-            "x": 157.615,
+            "x": 157.62,
             "y": 105.25
           },
           "start_marker": null,
@@ -84,7 +84,7 @@
           "end_label_left": {
             "height": 16.5,
             "width": 24.09,
-            "x": 294.037,
+            "x": 294.045,
             "y": 321.25
           },
           "end_label_right": null,
@@ -95,16 +95,16 @@
           "label": {
             "height": 21.0,
             "width": 48.44,
-            "x": 270.712,
+            "x": 270.72,
             "y": 210.25
           },
           "points": [
             {
-              "x": 270.992,
+              "x": 271.0,
               "y": 93.0
             },
             {
-              "x": 270.992,
+              "x": 271.0,
               "y": 339.5
             }
           ],
@@ -121,24 +121,24 @@
           "height": 81.0,
           "id": "Customer",
           "is_cluster": false,
-          "width": 79.438,
-          "x": 51.719,
+          "width": 79.44,
+          "x": 51.72,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "Ticket",
           "is_cluster": false,
-          "width": 62.078,
-          "x": 51.719,
+          "width": 62.08,
+          "x": 51.72,
           "y": 226.5
         },
         {
           "height": 81.0,
           "id": "Student",
           "is_cluster": false,
-          "width": 68.516,
-          "x": 165.695,
+          "width": 68.52,
+          "x": 165.7,
           "y": 52.5
         },
         {
@@ -146,23 +146,23 @@
           "id": "Course",
           "is_cluster": false,
           "width": 62.5,
-          "x": 165.695,
+          "x": 165.7,
           "y": 226.5
         },
         {
           "height": 81.0,
           "id": "Galaxy",
           "is_cluster": false,
-          "width": 62.078,
-          "x": 270.992,
+          "width": 62.08,
+          "x": 271.0,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "Star",
           "is_cluster": false,
-          "width": 50.453,
-          "x": 270.992,
+          "width": 50.46,
+          "x": 271.0,
           "y": 380.0
         }
       ]

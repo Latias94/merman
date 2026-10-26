@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 242.953,
+        "max_x": 242.96,
         "max_y": 93.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -15,24 +15,24 @@
           "height": 81.0,
           "id": "Car",
           "is_cluster": false,
-          "width": 44.438,
-          "x": 34.219,
+          "width": 44.44,
+          "x": 34.22,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "Ca-r",
           "is_cluster": false,
-          "width": 49.063,
-          "x": 120.969,
+          "width": 49.06,
+          "x": 120.97,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "A_Car",
           "is_cluster": false,
-          "width": 57.453,
-          "x": 214.227,
+          "width": 57.46,
+          "x": 214.23,
           "y": 52.5
         }
       ]

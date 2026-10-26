@@ -418,6 +418,53 @@ impl ClassTextThemePlan {
         }
     }
 
+    /// Source-owned font sizes need portability evidence even without a typed theme.
+    pub(crate) fn root_dependent_source_residuals(
+        model: &merman_core::models::class_diagram::ClassDiagram,
+        diagram_use_html_labels: bool,
+        control: &merman_core::OperationControl,
+    ) -> merman_core::OperationControlResult<Vec<crate::diagram_theme::SourceStyleResidual>> {
+        use crate::diagram_theme::{
+            SourceStyleChannel, SourceStyleDeclaration, SourceStyleProvenance, SourceStyleResidual,
+            SourceStyleResidualReason,
+        };
+
+        let mut residuals = Vec::new();
+        for (id, class) in model.classes() {
+            control.checkpoint()?;
+            // Members are separate elements: a px declaration on one member cannot clear a
+            // root-dependent declaration on another. Node styles already include parser copies.
+            let node_uses_html =
+                diagram_use_html_labels || crate::class::class_node_requires_math(class.node);
+            let scopes = node_uses_html
+                .then_some(class.node.styles.as_slice())
+                .into_iter()
+                .chain(
+                    class
+                        .members
+                        .iter()
+                        .chain(&class.methods)
+                        .map(|member| std::slice::from_ref(&member.css_style)),
+                );
+            for styles in scopes {
+                if let Some((ordinal, raw)) = crate::mermaid_style::root_dependent_font_size(
+                    styles.iter().map(String::as_str),
+                    control,
+                )? {
+                    let provenance =
+                        SourceStyleProvenance::label_style(id, SourceStyleChannel::Label, ordinal);
+                    if let Ok(declaration) = SourceStyleDeclaration::parse(raw, provenance) {
+                        residuals.push(SourceStyleResidual::from_declaration(
+                            &declaration,
+                            SourceStyleResidualReason::UnsupportedSurface,
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(residuals)
+    }
+
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
         self.inherited_font_stack
@@ -876,6 +923,56 @@ impl ClassTextOutcomes {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn root_size_residuals_follow_the_actual_class_label_transport() {
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass A\nstyle A font-size:2rem\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("Class model");
+        };
+        let control = merman_core::OperationControl::new();
+        assert!(
+            ClassTextThemePlan::root_dependent_source_residuals(model, false, &control)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            ClassTextThemePlan::root_dependent_source_residuals(model, true, &control)
+                .unwrap()
+                .len(),
+            1,
+        );
+    }
+
+    #[test]
+    fn unconsumed_class_definition_does_not_manufacture_a_root_size_residual() {
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass A\nclassDef big font-size:2rem\ncssClass \"A\" big\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("Class model");
+        };
+        assert!(model.class("A").unwrap().styles.is_empty());
+        assert!(
+            ClassTextThemePlan::root_dependent_source_residuals(
+                model,
+                true,
+                &merman_core::OperationControl::new(),
+            )
+            .unwrap()
+            .is_empty()
+        );
+    }
 
     #[test]
     fn node_style_fact_projection_preserves_independent_color_and_typography_counts() {

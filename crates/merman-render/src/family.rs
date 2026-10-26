@@ -1650,18 +1650,12 @@ impl FamilyRenderContext {
     }
 
     fn ensure_portable(&self) -> Result<()> {
-        let portability = self
-            .session
-            .theme_portability_requirement()
-            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        let portability = self.session.portability_requirement();
         self.style_plan.ensure_portable(portability)
     }
 
     fn ensure_portable_before_svg(&self) -> Result<()> {
-        let portability = self
-            .session
-            .theme_portability_requirement()
-            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        let portability = self.session.portability_requirement();
         self.style_plan.ensure_portable_before_svg(portability)
     }
 
@@ -2925,6 +2919,12 @@ impl BuiltinFamilyArtifact<'_> {
             Self::State(_) => return Ok(()),
             #[cfg(feature = "diagram-class")]
             Self::Class(artifact) => {
+                style_plan.source_style_residuals =
+                    crate::class::ClassTextThemePlan::root_dependent_source_residuals(
+                        artifact.pair().semantic(),
+                        artifact.render_config().diagram_use_html_labels,
+                        session.work_meter().control(),
+                    )?;
                 let outcomes = artifact.theme_evidence().finish(
                     theme,
                     artifact.relation_theme(),
@@ -3445,14 +3445,9 @@ impl RenderedFamilySvg {
             self.style_report = self.style_report.invalidate_for_output_mutation();
         }
         if enforce_portability {
-            ensure_root_theme_portable(
-                &self.root_theme,
-                self.session
-                    .theme_portability_requirement()
-                    .unwrap_or(ThemePortabilityRequirement::BestEffort),
-            )?;
-            if self.session.theme_portability_requirement()
-                == Some(ThemePortabilityRequirement::RequirePortable)
+            ensure_root_theme_portable(&self.root_theme, self.session.portability_requirement())?;
+            if self.session.portability_requirement()
+                == ThemePortabilityRequirement::RequirePortable
             {
                 self.style_report.ensure_portable()?;
             }
@@ -3472,10 +3467,7 @@ impl RenderedFamilySvg {
         enforce_portability: bool,
     ) -> Result<RenderedResvgCompatibleSvg> {
         self.session.checkpoint(OperationPhase::Export)?;
-        let portability = self
-            .session
-            .theme_portability_requirement()
-            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        let portability = self.session.portability_requirement();
         let output_metadata = self.output_metadata()?;
         let prepared_math_evidence_valid = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
@@ -3966,12 +3958,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         }
         context.ensure_portable()?;
         let (session, style_report) = context.into_session_and_style_report();
-        ensure_root_theme_portable(
-            &root_theme,
-            session
-                .theme_portability_requirement()
-                .unwrap_or(ThemePortabilityRequirement::BestEffort),
-        )?;
+        ensure_root_theme_portable(&root_theme, session.portability_requirement())?;
         session.checkpoint(OperationPhase::Emit)?;
 
         if let Some((destination, staging, _)) = trace_stage {

@@ -7,15 +7,6 @@ fn parse_style_decl(s: &str) -> Option<(&str, &str, bool)> {
     Some((parsed.property_source(), parsed.value(), parsed.important()))
 }
 
-fn normalize_css_font_family(font_family: &str) -> String {
-    let font_family = font_family.trim().trim_end_matches(';').trim();
-    if crate::mermaid_style::is_safe_css_font_family_value(font_family) {
-        font_family.to_string()
-    } else {
-        String::new()
-    }
-}
-
 pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
     fn looks_like_key_start(s: &str) -> bool {
         let s = s.trim_start();
@@ -73,62 +64,10 @@ pub(crate) fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
     )
 }
 
-pub(crate) fn flowchart_apply_text_style_decl(
-    style: &mut std::borrow::Cow<'_, TextStyle>,
-    key: &str,
-    value: &str,
-) {
-    match key.trim() {
-        "font-size" => {
-            let inherited_px = style.as_ref().font_size;
-            if let Some(px) = crate::mermaid_style::resolve_mermaid_font_size_px(
-                value,
-                crate::mermaid_style::CssFontSizeContext::uniform(inherited_px),
-            ) {
-                style.to_mut().font_size = px;
-            }
-        }
-        "font-family" => {
-            let font_family = normalize_css_font_family(value);
-            if !font_family.is_empty() {
-                style.to_mut().font_family = Some(font_family);
-            }
-        }
-        "font-weight" => {
-            style.to_mut().font_weight = Some(value.trim().to_string());
-        }
-        "font-style" => {
-            style.to_mut().font_style = Some(value.trim().to_string());
-        }
-        _ => {}
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct FlowchartTextStyleResolution<'a> {
     pub(crate) style: Cow<'a, TextStyle>,
     pub(crate) terminal_foreground: Option<FlowchartTerminalForeground>,
-}
-
-#[derive(Debug, Default)]
-struct FlowchartTypographyCascade {
-    importance_by_property: IndexMap<String, bool>,
-}
-
-impl FlowchartTypographyCascade {
-    fn admit(&mut self, property: &str, important: bool) -> bool {
-        let property = property.trim();
-        if self
-            .importance_by_property
-            .get(property)
-            .is_some_and(|current| *current && !important)
-        {
-            return false;
-        }
-        self.importance_by_property
-            .insert(property.to_string(), important);
-        true
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,14 +154,17 @@ impl std::ops::Deref for FlowchartTextStyleResolution<'_> {
 
 struct FlowchartTextStyleResolver<'a> {
     resolution: FlowchartTextStyleResolution<'a>,
-    typography_cascade: FlowchartTypographyCascade,
+    typography_cascade: crate::mermaid_style::TextStyleCascade<'a>,
 }
 
 impl<'a> FlowchartTextStyleResolver<'a> {
     fn new(base: &'a TextStyle) -> Self {
         Self {
             resolution: FlowchartTextStyleResolution::borrowed(base),
-            typography_cascade: FlowchartTypographyCascade::default(),
+            typography_cascade: crate::mermaid_style::TextStyleCascade::new(
+                base,
+                crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
+            ),
         }
     }
 
@@ -236,10 +178,7 @@ impl<'a> FlowchartTextStyleResolver<'a> {
         if !flowchart_is_source_spelled_label_style_key(key) {
             return;
         }
-        if !self.typography_cascade.admit(key, important) {
-            return;
-        }
-        flowchart_apply_text_style_decl(&mut self.resolution.style, key, value);
+        self.typography_cascade.observe(key, value, important);
         if key.trim() == "color" {
             FlowchartTerminalForeground::observe(
                 &mut self.resolution.terminal_foreground,
@@ -250,7 +189,8 @@ impl<'a> FlowchartTextStyleResolver<'a> {
         }
     }
 
-    fn finish(self) -> FlowchartTextStyleResolution<'a> {
+    fn finish(mut self) -> FlowchartTextStyleResolution<'a> {
+        self.resolution.style = self.typography_cascade.finish();
         self.resolution
     }
 }
@@ -928,7 +868,7 @@ mod tests {
         );
 
         assert_eq!(style.font_size, 12.0);
-        assert_eq!(style.font_weight.as_deref(), Some("bold"));
+        assert_eq!(style.font_weight.as_deref(), Some("700"));
         assert_eq!(style.font_style.as_deref(), Some("normal"));
     }
 
@@ -1067,6 +1007,42 @@ mod tests {
         );
 
         assert_eq!(resolution.font_family.as_deref(), Some("\"Xiaolai SC\""));
-        assert_eq!(resolution.font_weight.as_deref(), Some("bolder"));
+        assert_eq!(resolution.font_weight.as_deref(), Some("700"));
+    }
+
+    #[test]
+    fn text_style_resolution_resolves_winners_against_the_parent() {
+        let base = TextStyle {
+            font_weight: Some("700".to_owned()),
+            ..TextStyle::default()
+        };
+        for (declarations, expected_size, expected_weight) in [
+            ("font-size:2em,font-size:150%", 24.0, "700"),
+            ("font-size:32px,font-size:inherit", 16.0, "700"),
+            (
+                "font-size:32px,font-size:unset !important,font-size:48px",
+                16.0,
+                "700",
+            ),
+            (
+                "font-size:24px,font-size:invalid !important,font-size:30px",
+                30.0,
+                "700",
+            ),
+            ("font-weight:lighter,font-weight:lighter", 16.0, "400"),
+        ] {
+            let style = flowchart_effective_text_style_for_classes(
+                &base,
+                &IndexMap::new(),
+                &[],
+                &[declarations.to_owned()],
+            );
+            assert_eq!(style.font_size, expected_size, "{declarations}");
+            assert_eq!(
+                style.font_weight.as_deref(),
+                Some(expected_weight),
+                "{declarations}"
+            );
+        }
     }
 }

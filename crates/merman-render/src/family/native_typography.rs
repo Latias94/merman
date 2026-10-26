@@ -85,12 +85,17 @@ mod declaration_scan {
         styles: impl IntoIterator<Item = &'a str>,
         control: &OperationControl,
     ) -> OperationControlResult<Option<String>> {
+        let mut checked_styles = Vec::new();
         for raw in styles {
             if let Some(property) = declaration(raw, control)? {
                 return Ok(Some(property.to_owned()));
             }
+            checked_styles.push(raw);
         }
-        Ok(None)
+        Ok(
+            crate::mermaid_style::root_dependent_font_size(checked_styles, control)?
+                .map(|_| "font-size (rem requires a document-root font size)".to_owned()),
+        )
     }
 
     pub(super) fn style_lists<'a>(
@@ -121,6 +126,73 @@ mod declaration_scan {
             assert_eq!(
                 declaration("fill:red; \u{2003}Word-Spacing\u{2003}:2px", &control).unwrap(),
                 Some("Word-Spacing")
+            );
+        }
+
+        #[test]
+        fn root_dependent_font_size_follows_the_winning_valid_declaration() {
+            let control = OperationControl::new();
+            for (styles, rejected) in [
+                (vec!["font-size:2rem"], true),
+                (vec![r"FONT-SIZE:/* root */2r\65m !important"], true),
+                (
+                    vec![
+                        r"FONT-SIZE:/* root */2r\65m !important",
+                        "font-size:24px !important",
+                    ],
+                    false,
+                ),
+                (vec!["font-size:2rem", "font-size:24px"], false),
+                (vec!["font-size:2rem;font-size:24px"], false),
+                (vec!["font-size:2rem !important", "font-size:24px"], true),
+                (
+                    vec!["font-size:2rem !important", "font-size:24px !important"],
+                    false,
+                ),
+                (vec!["font-size:24px !important", "font-size:2rem"], false),
+                (vec!["font-size:2rem;font-size:inherit"], false),
+                (vec!["font-size:2rem;font-size:24px junk !important"], true),
+                (vec!["font-size:2rem;font-size:#fff !important"], true),
+                (
+                    vec!["font-size:2rem;font-size:var(--size) !important"],
+                    true,
+                ),
+                (vec!["font-size:2rem;font-size:calc(20px + 1px)"], true),
+                (vec!["font-size:2rem;font-size:-1rem"], true),
+                (vec!["font-size:-1rem", "fill:red"], false),
+                (vec!["content:'font-size:2rem'", "fill:red"], false),
+            ] {
+                assert_eq!(
+                    declarations(styles.iter().copied(), &control)
+                        .unwrap()
+                        .is_some(),
+                    rejected,
+                    "{styles:?}",
+                );
+            }
+        }
+
+        #[test]
+        fn rem_ownership_is_unverified_without_changing_compatibility_resolution() {
+            use crate::mermaid_style::{CssFontSizeContext, CssFontSizeOwnership};
+
+            let rem = crate::mermaid_style::parse_style_declaration("font-size:2rem").unwrap();
+            assert!(rem.analysis().depends_on_root_font_size());
+            assert_eq!(
+                rem.resolve_font_size_px(CssFontSizeContext::uniform(18.0)),
+                Some(36.0)
+            );
+            assert_eq!(
+                crate::mermaid_style::css_font_size_override("font-size:2rem")
+                    .unwrap()
+                    .ownership(),
+                CssFontSizeOwnership::Unverified,
+            );
+            assert_eq!(
+                crate::mermaid_style::css_font_size_override("font-size:2rem;font-size:24px")
+                    .unwrap()
+                    .ownership(),
+                CssFontSizeOwnership::SourceOwned,
             );
         }
 
@@ -184,11 +256,12 @@ fn unsupported_native_model_text_style(
         ),
         #[cfg(feature = "diagram-state")]
         RenderSemanticModel::State(model) => {
-            if let Some(property) = declaration_scan::declarations(
-                model.nodes.iter().map(|node| node.label_style.as_str()),
-                &control,
-            )? {
-                return Ok(Some(property));
+            for node in &model.nodes {
+                if let Some(property) =
+                    declaration_scan::declarations([node.label_style.as_str()], &control)?
+                {
+                    return Ok(Some(property));
+                }
             }
             declaration_scan::style_lists(
                 model
@@ -227,15 +300,12 @@ fn unsupported_native_model_text_style(
         RenderSemanticModel::Class(model) => {
             for (_, class) in model.classes() {
                 control.checkpoint()?;
-                if let Some(property) = declaration_scan::declarations(
-                    class
-                        .members
-                        .iter()
-                        .chain(&class.methods)
-                        .map(|member| member.css_style.as_str()),
-                    &control,
-                )? {
-                    return Ok(Some(property));
+                for member in class.members.iter().chain(&class.methods) {
+                    if let Some(property) =
+                        declaration_scan::declarations([member.css_style.as_str()], &control)?
+                    {
+                        return Ok(Some(property));
+                    }
                 }
             }
             declaration_scan::style_lists(

@@ -1,5 +1,8 @@
 //! Mermaid CSS/style helpers shared by layout and SVG parity code.
 
+mod typography;
+pub(crate) use typography::{TextStyleCascade, root_dependent_font_size};
+
 use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, SourcePosition, Token, parse_important,
 };
@@ -495,7 +498,8 @@ fn font_size_value_ownership(
     if declaration.inherits_property_value() {
         return Some(CssFontSizeOwnership::Inherited);
     }
-    if declaration.analysis().has_dynamic_reference_function()
+    if declaration.analysis().depends_on_root_font_size()
+        || declaration.analysis().has_dynamic_reference_function()
         || matches!(
             declaration.analysis().single_ident(),
             Some("initial" | "revert" | "revert-layer")
@@ -831,6 +835,24 @@ pub(crate) struct CssValueAnalysis {
 }
 
 impl CssValueAnalysis {
+    /// A positive rem size needs a document-root size that diagram configuration cannot supply.
+    pub(crate) fn depends_on_root_font_size(&self) -> bool {
+        self.is_single_component()
+            && matches!(self.scalar, Some(CssScalar::Rem(value)) if value.is_finite() && value > 0.0)
+    }
+
+    pub(crate) fn font_size_depends_on_root(raw: &str) -> bool {
+        // Admission observes browser tokens even when emission safety rejects source comments.
+        // This is dependency detection only, not permission to measure or emit the value.
+        let raw = raw.trim().strip_suffix(';').unwrap_or(raw.trim()).trim();
+        let mut parser = Parser::new(raw);
+        let root_dependent = matches!(parser.next(), Ok(Token::Dimension { value, unit, .. })
+            if unit.eq_ignore_ascii_case("rem") && value.is_finite() && *value > 0.0);
+        root_dependent
+            && (parser.is_exhausted()
+                || (parser.try_parse(parse_important).is_ok() && parser.is_exhausted()))
+    }
+
     pub(crate) fn inherits_property_value(&self) -> bool {
         matches!(self.single_ident(), Some("inherit" | "unset"))
     }

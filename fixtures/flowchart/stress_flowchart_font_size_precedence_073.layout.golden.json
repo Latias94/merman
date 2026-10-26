@@ -3,8 +3,8 @@
   "layout": {
     "FlowchartV2": {
       "bounds": {
-        "max_x": 164.0,
-        "max_y": 196.0,
+        "max_x": 193.76,
+        "max_y": 280.0,
         "min_x": 12.0,
         "min_y": 12.0
       },
@@ -20,12 +20,12 @@
           "label": null,
           "points": [
             {
-              "x": 88.0,
-              "y": 108.0
+              "x": 102.88,
+              "y": 180.0
             },
             {
-              "x": 88.0,
-              "y": 148.0
+              "x": 102.88,
+              "y": 220.0
             }
           ],
           "start_label_left": null,
@@ -38,20 +38,20 @@
       ],
       "nodes": [
         {
-          "height": 96.0,
+          "height": 168.0,
           "id": "A",
           "is_cluster": false,
-          "width": 152.0,
-          "x": 88.0,
-          "y": 60.0
+          "width": 181.76,
+          "x": 102.88,
+          "y": 96.0
         },
         {
-          "height": 48.0,
+          "height": 60.0,
           "id": "B",
           "is_cluster": false,
           "width": 152.0,
-          "x": 88.0,
-          "y": 172.0
+          "x": 102.88,
+          "y": 250.0
         }
       ]
     }

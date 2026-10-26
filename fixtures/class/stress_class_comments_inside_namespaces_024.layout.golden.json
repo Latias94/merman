@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 322.536,
+        "max_x": 322.54,
         "max_y": 342.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -21,13 +21,13 @@
           "title_label": {
             "height": 21.0,
             "width": 32.48,
-            "x": 91.259,
+            "x": 91.26,
             "y": 22.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 158.519,
-          "x": 91.259,
+          "width": 158.52,
+          "x": 91.26,
           "y": 116.5
         }
       ],
@@ -42,16 +42,16 @@
           "label": {
             "height": 21.0,
             "width": 27.58,
-            "x": 224.309,
+            "x": 224.31,
             "y": 301.0
           },
           "points": [
             {
-              "x": 170.519,
+              "x": 170.52,
               "y": 301.5
             },
             {
-              "x": 278.099,
+              "x": 278.1,
               "y": 301.5
             }
           ],
@@ -68,32 +68,32 @@
           "height": 209.0,
           "id": "Outer",
           "is_cluster": true,
-          "width": 158.519,
-          "x": 91.259,
+          "width": 158.52,
+          "x": 91.26,
           "y": 116.5
         },
         {
           "height": 81.0,
           "id": "Bar",
           "is_cluster": false,
-          "width": 44.438,
-          "x": 300.318,
+          "width": 44.44,
+          "x": 300.32,
           "y": 301.5
         },
         {
           "height": 81.0,
           "id": "Outer.Foo",
           "is_cluster": false,
-          "width": 80.844,
-          "x": 130.097,
+          "width": 80.84,
+          "x": 130.1,
           "y": 301.5
         },
         {
           "height": 135.0,
           "id": "Foo",
           "is_cluster": false,
-          "width": 110.519,
-          "x": 91.259,
+          "width": 110.52,
+          "x": 91.26,
           "y": 129.5
         }
       ]

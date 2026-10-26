@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 151.844,
+        "max_x": 151.843,
         "max_y": 231.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -15,8 +15,8 @@
           "height": 219.0,
           "id": "Class10",
           "is_cluster": false,
-          "width": 139.844,
-          "x": 81.922,
+          "width": 139.843,
+          "x": 81.921,
           "y": 121.5
         }
       ]
