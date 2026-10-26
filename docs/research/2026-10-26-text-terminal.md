@@ -96,3 +96,74 @@ typed Flowchart relative-weight ordering, plus maintenance's accessible-name
 mismatch and a Playwright-patch-bound exact viewport receipt. These are separate
 repair units; terminal-text green results do not prove those failures resolved.
 No new remote CI success is claimed here.
+
+## Main CI repair verification
+
+The old Linux workspace failures are reproduced locally: all five selected
+tests fail before the repair. The native facade now completes a document while
+retaining strict requirements and invalidated evidence, then lets PNG/JPEG/PDF
+admission own rejection. A private workspace bridge mirrors standalone SVG's
+existing bridge. The public `finalize_resvg` remains strict, with a regression
+test proving it still rejects a mutating postprocessor. Budget, cancellation,
+prepared-math and evidence-invalidating checks are unchanged.
+
+Flowchart installs the typed/config-selected parent label weight before resolving
+the winning source declaration. Relative `bolder` therefore resolves against
+600 to 900, not against the pre-theme default to 700. Layout and writer fallback
+paths share this order; the global weight algorithm is unchanged. Invalid later
+declarations still win compilation and fall back to the inherited parent.
+
+At `4a835c9e1`, all 74 tests across native-export residuals, render operations,
+typed-family API, Flowchart measurement and theme-resolution contracts pass.
+This includes the five original failures and the public strict-finalization
+guard. Native tests select `system-fonts` and JPEG/PNG/PDF to match the workspace
+capability set; earlier runs without a usable font-source feature fail with
+`FontSourceUnavailable` and are not reported as successful validation.
+
+The broader renderer library, Flowchart, typed-theme and layout-snapshot run
+passes 3,413 tests with one existing skip. Strict facade/renderer library Clippy
+passes, as does the complete 37-family exact structure gate. These test counts
+overlap earlier runs. Main-only typed label and target-evidence architecture is
+not imported into maintenance, which does not have those failing paths.
+
+Independent review then identifies a remaining sibling path: collapsed
+subgraphs draw as nodes but are measured through `SubgraphTitle` ownership. Their
+Dagre/ELK measurement still resolves `bolder` before installing the typed parent,
+while writer fallback resolves it afterward. A new weight-sensitive regression
+fails with `dagre/true: ("GroupTitle", Some("700"))`, expecting 900.
+
+`7213f0e43` applies the same parent-first resolution to collapsed Dagre and ELK
+labels. The regression checks empty/collapsed node-shaped labels, their final
+200px foreignObject width, and terminal 900 weight; the existing ordinary-node
+host measurement contract additionally covers ELK. All 24 focused contracts pass.
+The final broader suite passes 3,414 tests with one existing skip, strict renderer
+Clippy over all targets passes, and the complete 37-family structure owner passes
+again. No additional layout snapshot changes are required.
+
+Formal review `20261026-194839-a50cbfd2` completes on `a0cb01fed..4a835c9e1`
+with the one collapsed-subgraph P2 confirmed by its independent validator.
+The original five reviewer results are retained; an interrupted sixth CLI read
+is recovered once through the parent's native Codex agent tools. Merge,
+validation and report complete with all child agents collected and closed.
+`7213f0e43` addresses #1 and the related ELK/empty-subgraph test gap. A separate
+independent inspection of that final patch finds no blocker; it notes that
+non-empty collapsed and pure-SVG subgraph paths are statically covered rather
+than each having a dedicated new fixture.
+
+The maintenance replacement CI run `40323444725` passes its Linux build-test and
+exact viewport receipt owner, but a remaining Web test assumes Sequence titles
+must naturally overflow their root. The repaired title now fits, invalidating
+that test precondition. Both branches explicitly move a mounted title across
+the root boundary before testing presentation modes and fit behavior. They
+retain strict overflow/containment checks, identical root and title markup,
+visible/hidden clipping, and the extreme-overflow fit check. No product overflow
+policy is changed to keep a historical bug alive.
+
+Final main production verification rebuilds and assembles all five WASM packages
+and Playground (42 exports, 56 runtime bindings, five TypeScript package entries).
+All 16 presentation browser tests pass on that production output. The changed
+test waits for Fit's scheduled animation-frame transform using the same strict
+containment assertion, rather than reading the old screen transform immediately
+after the click. Browser-test typechecking and targeted ESLint pass. Maintenance's
+corresponding presentation suite passes all 15 tests, with the final asynchronous
+fit adjustment separately rechecked in its focused case.
