@@ -15,8 +15,8 @@ Most applications should use one of the public packages instead:
 This crate has no default features by design. Select `all-diagrams` or required `diagram-*`
 families independently from outputs. Existing distributed recipes retain all families; custom
 source artifacts may narrow them. Parser metadata does not imply a local SVG or ASCII handler.
-Binding artifacts select direct capabilities rather
-than inheriting the Rust facade's `complete-svg` convenience aggregate. In particular,
+Binding artifacts select direct capabilities. The Rust facade's complete SVG aggregates
+remain source conveniences, not binding features; math is an explicit positive leaf. In particular,
 `layout-elk` is an explicit EPL-2.0 boundary and `math` brings the separately noticed RaTeX/font
 closure. Feature names describe compile-time inputs; the generated runtime catalog, exact artifact
 recipe, and bundled notices describe the resulting artifact.

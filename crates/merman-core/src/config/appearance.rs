@@ -1,18 +1,11 @@
 //! Resolve diagram appearance while the source and initialization layers are still distinct.
 
+use super::appearance_selection::{APPEARANCE_KEYS, AppearanceOrigin, select_appearance_value};
+#[cfg(test)]
+use super::presentation::PresentationConfig;
 use crate::{MermaidConfig, MermaidThemeId, family};
 use serde_json::Value;
 use std::borrow::Cow;
-
-const APPEARANCE_KEYS: [&str; 3] = ["theme", "look", "layout"];
-
-#[derive(Clone, Copy)]
-enum AppearanceOrigin {
-    Source,
-    Initialize,
-    Compatibility,
-    Default,
-}
 
 struct AppearanceWinner<'a> {
     value: Cow<'a, Value>,
@@ -45,38 +38,8 @@ impl<'a> AppearanceDecision<'a> {
         let section =
             family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
         let winners = APPEARANCE_KEYS.map(|key| {
-            [
-                (source, AppearanceOrigin::Source),
-                (initialize, AppearanceOrigin::Initialize),
-            ]
-            .into_iter()
-            .find_map(|(layer, origin)| {
-                read_appearance(layer, section, key).map(|value| AppearanceWinner {
-                    value: Cow::Borrowed(value),
-                    origin,
-                })
-            })
-            .or_else(|| {
-                compatibility
-                    .and_then(|layer| read_appearance(layer, section, key))
-                    .map(|value| AppearanceWinner {
-                        value: Cow::Borrowed(value),
-                        origin: AppearanceOrigin::Compatibility,
-                    })
-            })
-            // Mindmap chooses Cose only in the absence of an authored layout, including null.
-            .or_else(|| {
-                (section == "mindmap" && key == "layout").then(|| AppearanceWinner {
-                    value: Cow::Owned(Value::String("cose-bilkent".to_string())),
-                    origin: AppearanceOrigin::Default,
-                })
-            })
-            .or_else(|| {
-                read_appearance(defaults, section, key).map(|value| AppearanceWinner {
-                    value: Cow::Borrowed(value),
-                    origin: AppearanceOrigin::Default,
-                })
-            })
+            select_appearance_value(section, key, source, initialize, compatibility, defaults)
+                .map(|(value, origin)| AppearanceWinner { value, origin })
         });
         Self {
             section,
@@ -113,7 +76,10 @@ impl<'a> AppearanceDecision<'a> {
         }
     }
 
-    pub(crate) fn apply_to(&self, effective: &mut MermaidConfig) {
+    pub(crate) fn apply_to_presentation(
+        &self,
+        effective: &mut super::presentation::PresentationConfig,
+    ) {
         effective.set_source_theme_palette(self.winners[0].as_ref().is_some_and(|winner| {
             matches!(winner.origin, AppearanceOrigin::Source)
                 && winner.value.as_str().is_some_and(|name| name != "null")
@@ -158,44 +124,23 @@ pub(crate) fn resolve_appearance(
     initialize: &MermaidConfig,
     compatibility: Option<&MermaidConfig>,
     defaults: &MermaidConfig,
-    effective: &mut MermaidConfig,
+    effective: &mut PresentationConfig,
 ) {
     let decision =
         AppearanceDecision::resolve(diagram_type, source, initialize, compatibility, defaults);
-    decision.apply_to(effective);
-}
-
-fn read_appearance<'a>(layer: &'a MermaidConfig, section: &str, key: &str) -> Option<&'a Value> {
-    let root = layer.as_value();
-    [
-        root.get(section).and_then(|section| section.get(key)),
-        root.get(key),
-    ]
-    .into_iter()
-    .flatten()
-    .find(|value| match key {
-        "theme" => value
-            .as_str()
-            .is_some_and(|name| name == "null" || MermaidThemeId::NAMES.contains(&name)),
-        "look" => value
-            .as_str()
-            .is_some_and(|look| matches!(look, "classic" | "handDrawn" | "neo")),
-        // The extensible layout registry owns invalid/unknown-name fallback. In
-        // particular a JSON null is present in JavaScript, unlike undefined.
-        "layout" => true,
-        _ => false,
-    })
+    decision.apply_to_presentation(effective);
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::presentation::PresentationConfig;
     use super::*;
     use serde_json::json;
 
     #[test]
     fn source_selected_palette_owns_paint_without_claiming_typography_or_geometry() {
         let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
-        let empty = MermaidConfig::empty_object();
+        let empty = PresentationConfig::empty_object();
         for (source, initialize, compatibility, expected) in [
             (json!({"theme": "base"}), json!({}), json!({}), true),
             (json!({"theme": "default"}), json!({}), json!({}), true),
@@ -214,10 +159,10 @@ mod tests {
                 Some(&compatibility),
                 &defaults,
             );
-            let mut effective = MermaidConfig::from_value(json!({
+            let mut effective = PresentationConfig::from_value(json!({
                 "themeVariables": {"textColor": "#333", "fontFamily": "serif", "fontSize": "16px"}
             }));
-            decision.apply_to(&mut effective);
+            decision.apply_to_presentation(&mut effective);
             assert_eq!(
                 effective.config_paint_overrides_typed_default("themeVariables.textColor"),
                 expected,
@@ -239,14 +184,14 @@ mod tests {
         }
     }
 
-    fn resolve(initialize: Value, source: Value) -> MermaidConfig {
+    fn resolve(initialize: Value, source: Value) -> PresentationConfig {
         let defaults = MermaidConfig::from_value(json!({
             "theme": "default", "look": "classic", "layout": "elk",
             "flowchart": { "theme": "redux-color", "look": "neo" },
         }));
         let initialize = MermaidConfig::from_value(initialize);
         let source = MermaidConfig::from_value(source);
-        let mut effective = defaults.clone();
+        let mut effective = PresentationConfig::from_config(defaults.clone());
         effective.deep_merge(initialize.as_value());
         effective.deep_merge(source.as_value());
         resolve_appearance(
@@ -267,15 +212,15 @@ mod tests {
         let defaults = MermaidConfig::from_value(json!({"theme": "default", "layout": "dagre"}));
         let decision =
             AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
-        let mut effective = MermaidConfig::from_value(json!({"theme": "dark"}));
-        decision.apply_to(&mut effective);
+        let mut effective = PresentationConfig::from_value(json!({"theme": "dark"}));
+        decision.apply_to_presentation(&mut effective);
         assert!(effective.explicit_config_owns_path("theme"));
         assert!(effective.explicit_config_owns_path("layout"));
         assert_eq!(effective.as_value()["layout"], Value::Null);
         assert!(effective.as_value().get("flowchart").is_none());
 
         effective.set_value("flowchart.theme", json!("forest"));
-        decision.apply_to(&mut effective);
+        decision.apply_to_presentation(&mut effective);
         assert_eq!(effective.get_str("flowchart.theme"), Some("dark"));
         assert!(effective.explicit_config_owns_path("flowchart.theme"));
         assert!(effective.as_value()["flowchart"].get("layout").is_none());
@@ -290,12 +235,13 @@ mod tests {
         let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
         let decision =
             AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
-        let original = MermaidConfig::from_value(json!({
+        let original = PresentationConfig::from_value(json!({
             "theme": "dark", "look": "classic", "layout": "dagre",
             "flowchart": {"theme": "dark", "look": "classic", "layout": "dagre"},
         }));
         let mut effective = original.clone();
-        let (_, work) = super::super::measure_config_work(|| decision.apply_to(&mut effective));
+        let (_, work) =
+            super::super::measure_config_work(|| decision.apply_to_presentation(&mut effective));
         assert_eq!(effective.as_value(), original.as_value());
         for key in APPEARANCE_KEYS {
             assert!(effective.explicit_config_owns_path(key));
@@ -435,7 +381,7 @@ mod tests {
             ),
         ] {
             let defaults = MermaidConfig::from_value(json!({"layout": "elk"}));
-            let mut effective = defaults.clone();
+            let mut effective = PresentationConfig::from_config(defaults.clone());
             let initialize = MermaidConfig::from_value(initialize);
             let source = MermaidConfig::from_value(source);
             effective.deep_merge(initialize.as_value());

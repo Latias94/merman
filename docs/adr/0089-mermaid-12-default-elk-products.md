@@ -2,6 +2,10 @@
 
 ## Status
 
+The later [explicit math decision](0097-explicit-math-capability.md) replaces the facade's
+aggregate-based default with direct SVG/layout leaves and makes math explicit, including in
+the retained convenience aggregates. This ADR's ELK decision remains in force.
+
 Accepted for `0.8.0-alpha.7`. Supersedes the product-default selections in ADR-0085 and
 ADR-0088. Their explicit feature aggregates, artifact-specific license boundaries, and Rustdoc
 math opt-in decision remain in force. [ADR-0091](0091-selectable-diagram-families.md) adds

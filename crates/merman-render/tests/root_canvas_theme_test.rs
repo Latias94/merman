@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramThemeCompiler, DiagramThemeSpec,
@@ -57,10 +57,11 @@ fn render_root_canvas() -> String {
         );
     }
 
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
-        .expect("parse Flowchart source")
-        .expect("detect Flowchart source");
+    let parsed =
+        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .expect("parse Flowchart source")
+            .expect("detect Flowchart source");
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)

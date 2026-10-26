@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::c4::C4BoundaryRenderModel;
+use merman_core::diagrams::c4::C4Boundary;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -66,7 +66,10 @@ struct C4BoundaryTerminalExpectation {
 }
 
 impl C4BoundaryTerminalExpectation {
-    fn baseline(boundary: &C4BoundaryRenderModel, config: &merman_core::MermaidConfig) -> Self {
+    fn baseline(
+        boundary: &C4Boundary,
+        config: &merman_core::presentation::PresentationConfig,
+    ) -> Self {
         // Authored element styles keep precedence over explicit site-level boundary colors.
         Self {
             alias: boundary.alias.clone().into_boxed_str(),
@@ -109,8 +112,8 @@ pub(crate) struct C4ClusterThemePlan {
 impl C4ClusterThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        boundaries: &[C4BoundaryRenderModel],
-        config: &merman_core::MermaidConfig,
+        boundaries: &[C4Boundary],
+        config: &merman_core::presentation::PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let explicit_boundaries = boundaries
@@ -398,8 +401,8 @@ impl C4ClusterThemePlan {
     }
 
     pub(crate) fn baseline(
-        boundaries: &[C4BoundaryRenderModel],
-        config: &merman_core::MermaidConfig,
+        boundaries: &[C4Boundary],
+        config: &merman_core::presentation::PresentationConfig,
     ) -> Self {
         let boundaries = boundaries
             .iter()

@@ -225,7 +225,7 @@ fn unsupported_native_model_text_style(
         ),
         #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(model) => {
-            for class in model.classes.values() {
+            for (_, class) in model.classes() {
                 control.checkpoint()?;
                 if let Some(property) = declaration_scan::declarations(
                     class
@@ -240,10 +240,15 @@ fn unsupported_native_model_text_style(
             }
             declaration_scan::style_lists(
                 model
+                    .model()
                     .style_classes
                     .values()
                     .flat_map(|class| [class.styles.as_slice(), class.text_styles.as_slice()])
-                    .chain(model.classes.values().map(|class| class.styles.as_slice())),
+                    .chain(
+                        model
+                            .classes()
+                            .map(|(_, class)| class.node.styles.as_slice()),
+                    ),
                 &control,
             )
         }
@@ -301,17 +306,15 @@ fn unsupported_native_model_text_style(
         ),
         #[cfg(feature = "diagram-treemap")]
         RenderSemanticModel::Treemap(model) => {
-            if let Some(styles) = &model.root.css_compiled_styles
-                && let Some(property) =
-                    declaration_scan::style_lists([styles.as_slice()], &control)?
+            if let Some(styles) = model.compiled_styles(None)
+                && let Some(property) = declaration_scan::style_lists([styles], &control)?
             {
                 return Ok(Some(property));
             }
-            for node in &model.nodes {
+            for index in 0..model.nodes.len() {
                 control.checkpoint()?;
-                if let Some(styles) = &node.css_compiled_styles
-                    && let Some(property) =
-                        declaration_scan::style_lists([styles.as_slice()], &control)?
+                if let Some(styles) = model.compiled_styles(Some(index))
+                    && let Some(property) = declaration_scan::style_lists([styles], &control)?
                 {
                     return Ok(Some(property));
                 }
@@ -373,7 +376,7 @@ fn unsupported_native_model_text_style(
         RenderSemanticModel::Wardley(_) => Ok(None),
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
-            declaration_scan::style_lists(model.presentation.declaration_styles(), &control)
+            declaration_scan::style_lists(model.authored.declaration_styles(), &control)
         }
         // Another consumer can widen core features without enabling this renderer's handler.
         // Family planning retains responsibility for rejecting an unavailable renderer.
@@ -449,7 +452,7 @@ pub fn unsupported_native_html_style(
 fn unsupported_native_flowchart_html_style(
     model: &merman_core::diagrams::flowchart::FlowchartModel,
     context: &merman_core::diagrams::flowchart::FlowchartRenderContext,
-    config: &merman_core::MermaidConfig,
+    config: &merman_core::presentation::PresentationConfig,
     swimlane: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
@@ -519,7 +522,7 @@ fn unsupported_native_flowchart_html_style(
 #[cfg(all(test, feature = "diagram-block"))]
 mod tests {
     use super::*;
-    use merman_core::{BuiltinRenderSemantic, Engine, ParseOptions};
+    use merman_core::{BuiltinRenderSemantic, MermaidEngine, ParseOptions};
 
     #[test]
     fn native_admission_cancels_among_flat_records_without_declarations() {
@@ -535,7 +538,7 @@ mod tests {
 
     #[test]
     fn native_admission_does_not_expand_the_block_compatibility_tree() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("block-beta\nA\n", ParseOptions::strict())
             .unwrap()
             .unwrap();

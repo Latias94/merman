@@ -2,7 +2,8 @@ use crate::LayoutOptions;
 use crate::environment::RenderEnvironment;
 use crate::family;
 use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use serde_json::json;
 
 #[test]
@@ -14,14 +15,14 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
     #[derive(Debug)]
     struct FixedMath;
     impl MathRenderer for FixedMath {
-        fn render_html_label(&self, text: &str, _: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, text: &str, _: &PresentationConfig) -> Option<String> {
             assert_eq!(text, "$$x&lt;br&gt;y$$");
             Some("<span>rendered formula</span>".to_owned())
         }
         fn measure_html_label(
             &self,
             text: &str,
-            _: &MermaidConfig,
+            _: &PresentationConfig,
             _: &TextStyle,
             _: Option<f64>,
             _: WrapMode,
@@ -34,8 +35,8 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
             })
         }
     }
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(
+    let parsed = MermaidEngine::new()
+        .with_site_config(PresentationConfig::from_value(
             json!({"layout":"dagre", "htmlLabels":true}),
         ))
         .parse_diagram_for_render_model_sync(
@@ -61,8 +62,8 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
 
     // Markdown <br/> splits math delimiters; unlike a plain label it must not
     // acquire a math requirement or invoke the backend on a literal fragment.
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(
+    let parsed = MermaidEngine::new()
+        .with_site_config(PresentationConfig::from_value(
             json!({"layout":"dagre", "htmlLabels":true}),
         ))
         .parse_diagram_for_render_model_sync(

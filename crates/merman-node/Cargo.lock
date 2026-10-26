@@ -662,7 +662,6 @@ name = "merman-core"
 version = "0.9.2"
 dependencies = [
  "cssparser",
- "euclid",
  "granit-parser",
  "html5ever",
  "htmlize",
@@ -728,6 +727,7 @@ dependencies = [
  "data-encoding",
  "data-url",
  "dugong",
+ "euclid",
  "indexmap",
  "kurbo",
  "libm",

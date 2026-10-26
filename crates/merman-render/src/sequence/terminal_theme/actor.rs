@@ -21,8 +21,8 @@ pub(crate) struct SequencePreparedActorTheme {
 impl SequencePreparedActorTheme {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        sanitize_config: &merman_core::MermaidConfig,
-        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        sanitize_config: &merman_core::presentation::PresentationConfig,
+        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<SequencePreparedActorTheme> {
         use crate::diagram_theme::{
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn prepared_ordinals_keep_semantic_positions_when_actor_entries_are_missing() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "sequenceDiagram\nA->>B: Hello",
                 merman_core::ParseOptions::strict(),
@@ -223,7 +223,7 @@ mod tests {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let prepared = SequencePreparedActorTheme::resolve(
             Some(&resolved),
-            &merman_core::MermaidConfig::default(),
+            &merman_core::presentation::PresentationConfig::default(),
             &model,
             &meter,
         )

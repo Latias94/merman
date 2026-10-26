@@ -5,7 +5,7 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::xychart::{
-    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
+    XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotModel, XyChartPlotType,
 };
 use serde_json::Value;
 use std::fmt::Write as _;
@@ -81,7 +81,7 @@ struct Dimension {
     height: f64,
 }
 
-type Point = merman_core::geom::Point;
+type Point = crate::geom::Point;
 
 fn finite_geometry(values: impl IntoIterator<Item = f64>) -> Result<()> {
     if values.into_iter().all(f64::is_finite) {
@@ -123,7 +123,7 @@ fn linear_scale_value(value: f64, domain: (f64, f64), range: (f64, f64)) -> f64 
 }
 
 fn pt(x: f64, y: f64) -> Point {
-    merman_core::geom::point(x, y)
+    crate::geom::point(x, y)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -313,7 +313,7 @@ const LEGEND_ITEM_SPACING_TO_FONT_RATIO: f64 = 0.5;
 const LEGEND_MARKER_SPACING_TO_FONT_RATIO: f64 = 0.35;
 
 fn calculate_legend_space(
-    plots: &[(usize, &XyChartPlotRenderModel)],
+    plots: &[(usize, &XyChartPlotModel)],
     chart_config: &ChartConfig,
     available_space: Dimension,
     font_family: &str,
@@ -357,7 +357,7 @@ fn calculate_legend_space(
 }
 
 fn legend_drawable_elements(
-    plots: &[(usize, &XyChartPlotRenderModel)],
+    plots: &[(usize, &XyChartPlotModel)],
     origin: Point,
     chart_config: &ChartConfig,
     legend_text_color: &str,
@@ -1302,13 +1302,13 @@ pub(crate) fn layout_xychart_diagram_typed(
         Vec::with_capacity(model.plots.len().saturating_mul(2).saturating_add(4));
 
     let (x_axis_kind, x_axis_title) = match &model.x_axis {
-        XyChartAxisRenderModel::Band { title, categories } => (
+        XyChartAxisModel::Band { title, categories } => (
             AxisKind::Band {
                 categories: categories.clone(),
             },
             title.clone(),
         ),
-        XyChartAxisRenderModel::Linear { title, min, max } => (
+        XyChartAxisModel::Linear { title, min, max } => (
             AxisKind::Linear {
                 domain: (min.unwrap_or(0.0), max.unwrap_or(1.0)),
             },
@@ -1316,13 +1316,13 @@ pub(crate) fn layout_xychart_diagram_typed(
         ),
     };
     let (y_axis_kind, y_axis_title) = match &model.y_axis {
-        XyChartAxisRenderModel::Band { title, categories } => (
+        XyChartAxisModel::Band { title, categories } => (
             AxisKind::Band {
                 categories: categories.clone(),
             },
             title.clone(),
         ),
-        XyChartAxisRenderModel::Linear { title, min, max } => (
+        XyChartAxisModel::Linear { title, min, max } => (
             AxisKind::Linear {
                 domain: (min.unwrap_or(0.0), max.unwrap_or(1.0)),
             },
@@ -1949,35 +1949,38 @@ mod tests {
 
     fn layout(title: &str, orientation: &str, height: f64, legend: bool) -> XyChartDiagramLayout {
         let model = XyChartDiagramRenderModel {
-            orientation: orientation.to_string(),
-            title: Some(title.to_string()),
-            acc_title: None,
-            acc_descr: None,
-            x_axis: XyChartAxisRenderModel::Band {
-                title: String::new(),
-                categories: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            semantic: merman_core::diagrams::xychart::XyChartDiagramModel {
+                orientation: orientation.to_string(),
+                title: Some(title.to_string()),
+                acc_title: None,
+                acc_descr: None,
+                x_axis: XyChartAxisModel::Band {
+                    title: String::new(),
+                    categories: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                },
+                y_axis: XyChartAxisModel::Linear {
+                    title: "A fairly wide y-axis title".to_string(),
+                    min: Some(0.0),
+                    max: Some(100000.0),
+                },
+                plots: vec![XyChartPlotModel {
+                    plot_type: XyChartPlotType::Bar,
+                    title: Some("series".to_string()),
+                    values: vec![10.0, 20.0, 30.0],
+                    data: vec![
+                        ("a".to_string(), Some(10.0)),
+                        ("b".to_string(), Some(20.0)),
+                        ("c".to_string(), Some(30.0)),
+                    ],
+                    point_labels: Vec::new(),
+                }],
             },
-            y_axis: XyChartAxisRenderModel::Linear {
-                title: "A fairly wide y-axis title".to_string(),
-                min: Some(0.0),
-                max: Some(100000.0),
-            },
-            plots: vec![XyChartPlotRenderModel {
-                plot_type: XyChartPlotType::Bar,
-                title: Some("series".to_string()),
-                values: vec![10.0, 20.0, 30.0],
-                data: vec![
-                    ("a".to_string(), Some(10.0)),
-                    ("b".to_string(), Some(20.0)),
-                    ("c".to_string(), Some(30.0)),
-                ],
-                point_labels: Vec::new(),
-            }],
             display: Default::default(),
         };
-        let config = merman_core::MermaidConfig::from_value(json!({ "xyChart": {
-            "width": 700, "height": height, "showLegend": legend
-        }}));
+        let config =
+            merman_core::presentation::PresentationConfig::from_value(json!({ "xyChart": {
+                "width": 700, "height": height, "showLegend": legend
+            }}));
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::interactive(),
         );
@@ -2111,7 +2114,7 @@ mod tests {
                 UserUnitMeasurer.measure(text, style)
             }
         }
-        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+        let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "xychart\ntitle Chart\nx-axis Categories [One, Two, Three]\ny-axis Amount 0 --> 40\nline Series [10, 30, 20]",
             merman_core::ParseOptions::strict(),
         ).unwrap().unwrap();
@@ -2119,7 +2122,7 @@ mod tests {
             panic!("expected XYChart render model");
         };
         let measurer = RecordingFont(Mutex::new(Vec::new()));
-        let config = merman_core::MermaidConfig::from_value(json!({
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily":"Inter, sans-serif", "xyChart":{"showLegend":true},
         }));
         let work_meter = crate::resources::OperationWorkMeter::new(

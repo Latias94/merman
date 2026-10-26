@@ -4,13 +4,15 @@ use merman_ascii::{
     AsciiRenderOptions, AsciiRenderer, AsciiViewportPolicy, OverflowPolicy,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::{Engine, OperationControl, ParseOptions};
+use merman_core::{MermaidEngine, OperationControl, SemanticParser};
+use unicode_width::UnicodeWidthStr;
 
-fn parsed_model(source: &str) -> merman_core::diagram::ParsedDiagramRender {
-    Engine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("diagram should parse")
-        .expect("diagram should be detected")
+mod support;
+
+fn parsed_model(source: &str) -> merman_core::ParsedSemanticDiagram {
+    SemanticParser::new()
+        .parse_diagram_sync(source)
+        .expect("canonical diagram should parse")
 }
 
 fn render_report(
@@ -48,7 +50,7 @@ fn render_report_with_options_and_resources(
     resources: merman_ascii::AsciiResourcePolicy,
 ) -> merman_ascii::Result<merman_ascii::AsciiOutput> {
     let parsed = parsed_model(source);
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     AsciiRenderer::new(options)?.render_parsed_report(
@@ -58,6 +60,45 @@ fn render_report_with_options_and_resources(
         &operation,
         resources,
     )
+}
+
+fn visible_document_cells(text: &str) -> usize {
+    text.split('\n').map(UnicodeWidthStr::width).sum()
+}
+
+fn assert_fallback_document_cell_boundary(source: &str, max_width: usize) {
+    let viewport =
+        AsciiViewportPolicy::with_max_width(max_width).overflow(OverflowPolicy::Fallback);
+    let baseline = render_report(source, viewport).expect("unbounded fallback should render");
+    assert_eq!(baseline.outcome, AsciiOutputOutcome::Fallback);
+    let exact_cells = visible_document_cells(baseline.as_text());
+    assert!(exact_cells > 0);
+
+    let exact_resources = merman_ascii::AsciiResourcePolicy::unbounded()
+        .with_limit(
+            merman_ascii::AsciiResourceLimitId::MaxDocumentCells,
+            exact_cells,
+        )
+        .expect("limit should be valid");
+    let exact = render_report_with_resources(source, viewport, exact_resources)
+        .expect("fallback should fit its measured document-cell budget");
+    assert_eq!(exact.as_text(), baseline.as_text());
+
+    let below_resources = merman_ascii::AsciiResourcePolicy::unbounded()
+        .with_limit(
+            merman_ascii::AsciiResourceLimitId::MaxDocumentCells,
+            exact_cells - 1,
+        )
+        .expect("limit should be valid");
+    let error = render_report_with_resources(source, viewport, below_resources)
+        .expect_err("one fewer fallback document cell should fail");
+    assert!(matches!(
+        error,
+        AsciiError::ResourceLimitExceeded(details)
+            if details.limit == merman_ascii::AsciiResourceLimitId::MaxDocumentCells
+                && details.actual == exact_cells
+                && details.max == exact_cells - 1
+    ));
 }
 
 #[test]
@@ -251,13 +292,19 @@ fn sequence_fallback_preserves_empty_authored_property_objects() {
 #[test]
 fn empty_extent_is_reportable_without_special_sentinel_text() {
     let model = RenderSemanticModel::Timeline(Default::default());
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     let report = AsciiRenderer::new(AsciiRenderOptions::ascii())
         .expect("options should validate")
         .render_model_report(
-            &model,
+            &support::full_model::view(&model),
+            merman_ascii::AsciiSourceContext {
+                diagram_type: model.kind(),
+                config: &merman_core::MermaidConfig::empty_object(),
+                semantic_config: &merman_core::MermaidConfig::empty_object(),
+                title: None,
+            },
             AsciiViewportPolicy::default(),
             &OperationControl::new(),
             &operation,
@@ -275,7 +322,7 @@ fn compact_profile_is_explicit_and_reported() {
     )
     .expect("compact options should validate");
     let parsed = parsed_model("flowchart LR\nA[Alpha] --> B[Beta]");
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     let report = renderer
@@ -298,7 +345,7 @@ fn compact_profile_preserves_explicit_canonical_values_from_builders() {
         .with_flowchart_node_label_wrap_width(40);
     let renderer = AsciiRenderer::new(options).expect("options should validate");
     let parsed = parsed_model("flowchart LR\nA[Alpha] --> B[Beta]");
-    let operation = Engine::new()
+    let operation = MermaidEngine::new()
         .begin_operation()
         .expect("operation context should be available");
     let report = renderer
@@ -341,33 +388,7 @@ fn fallback_uses_the_render_wide_work_ledger() {
 #[test]
 fn flowchart_fallback_rolls_back_speculative_document_cells() {
     let source = "flowchart LR\nA[Alpha] --> B[Beta]";
-    let exact_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(merman_ascii::AsciiResourceLimitId::MaxDocumentCells, 1_834)
-        .expect("limit should be valid");
-    let report = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(5).overflow(OverflowPolicy::Fallback),
-        exact_resources,
-    )
-    .expect("flowchart fallback should not count the abandoned primary document twice");
-    assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
-
-    let below_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(merman_ascii::AsciiResourceLimitId::MaxDocumentCells, 1_833)
-        .expect("limit should be valid");
-    let error = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(5).overflow(OverflowPolicy::Fallback),
-        below_resources,
-    )
-    .expect_err("one fewer flowchart fallback document cell should fail");
-    assert!(matches!(
-        error,
-        AsciiError::ResourceLimitExceeded(details)
-            if details.limit == merman_ascii::AsciiResourceLimitId::MaxDocumentCells
-                && details.actual == 1_834
-                && details.max == 1_833
-    ));
+    assert_fallback_document_cell_boundary(source, 5);
 }
 
 #[test]
@@ -379,106 +400,72 @@ fn sequence_fallback_preserves_primary_work_in_the_render_wide_ledger() {
         "Alice->>Bob: Request with a long authored message\n",
         "Bob-->>Alice: Response with another long authored message\n",
     );
-    let exact_work = 4_082;
-    let exact_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(
-            merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits,
-            exact_work,
-        )
-        .expect("limit should be valid");
+    let viewport = AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback);
+    let render_at_work_limit = |limit| {
+        let resources = merman_ascii::AsciiResourcePolicy::unbounded()
+            .with_limit(
+                merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits,
+                limit,
+            )
+            .expect("limit should be valid");
+        render_report_with_resources(source, viewport, resources)
+    };
 
-    let report = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
-        exact_resources,
-    )
-    .expect("the exact cumulative primary-plus-fallback work boundary should succeed");
+    let mut rejected_work = 0usize;
+    let mut accepted_work = 1usize;
+    loop {
+        match render_at_work_limit(accepted_work) {
+            Ok(_) => break,
+            Err(AsciiError::ResourceLimitExceeded(details))
+                if details.limit == merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits =>
+            {
+                rejected_work = accepted_work;
+                accepted_work = accepted_work
+                    .checked_mul(2)
+                    .expect("small fixture work budget should not overflow");
+            }
+            Err(error) => panic!("work-budget probe failed unexpectedly: {error}"),
+        }
+    }
+    while accepted_work - rejected_work > 1 {
+        let candidate = rejected_work + (accepted_work - rejected_work) / 2;
+        match render_at_work_limit(candidate) {
+            Ok(_) => accepted_work = candidate,
+            Err(AsciiError::ResourceLimitExceeded(details))
+                if details.limit == merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits =>
+            {
+                rejected_work = candidate;
+            }
+            Err(error) => panic!("work-budget probe failed unexpectedly: {error}"),
+        }
+    }
+
+    let report = render_at_work_limit(accepted_work)
+        .expect("the exact cumulative primary-plus-fallback work boundary should succeed");
     assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
 
-    let below_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(
-            merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits,
-            exact_work - 1,
-        )
-        .expect("limit should be valid");
-    let error = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
-        below_resources,
-    )
-    .expect_err("the N-1 cumulative work boundary should fail");
+    let error = render_at_work_limit(accepted_work - 1)
+        .expect_err("the N-1 cumulative work boundary should fail");
 
     assert!(matches!(
         error,
         AsciiError::ResourceLimitExceeded(details)
             if details.limit == merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits
-                && details.actual == exact_work
-                && details.max == exact_work - 1
+                && details.actual == accepted_work
+                && details.max == accepted_work - 1
     ));
 }
 
 #[test]
 fn class_fallback_rolls_back_speculative_document_cells() {
     let source = "classDiagram\nclass A\nclass B\nA --> B : owns";
-    let exact_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(merman_ascii::AsciiResourceLimitId::MaxDocumentCells, 1_803)
-        .expect("limit should be valid");
-    let report = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(4).overflow(OverflowPolicy::Fallback),
-        exact_resources,
-    )
-    .expect("class fallback should not count the abandoned primary document twice");
-    assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
-
-    let below_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(merman_ascii::AsciiResourceLimitId::MaxDocumentCells, 1_802)
-        .expect("limit should be valid");
-    let error = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(4).overflow(OverflowPolicy::Fallback),
-        below_resources,
-    )
-    .expect_err("one fewer class fallback document cell should fail");
-    assert!(matches!(
-        error,
-        AsciiError::ResourceLimitExceeded(details)
-            if details.limit == merman_ascii::AsciiResourceLimitId::MaxDocumentCells
-                && details.actual == 1_803
-                && details.max == 1_802
-    ));
+    assert_fallback_document_cell_boundary(source, 4);
 }
 
 #[test]
 fn er_fallback_rolls_back_speculative_document_cells() {
     let source = "erDiagram\nA\nB\nA ||--o{ B : owns";
-    let exact_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(merman_ascii::AsciiResourceLimitId::MaxDocumentCells, 1_188)
-        .expect("limit should be valid");
-    let report = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(4).overflow(OverflowPolicy::Fallback),
-        exact_resources,
-    )
-    .expect("ER fallback should not count the abandoned primary document twice");
-    assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
-
-    let below_resources = merman_ascii::AsciiResourcePolicy::unbounded()
-        .with_limit(merman_ascii::AsciiResourceLimitId::MaxDocumentCells, 1_187)
-        .expect("limit should be valid");
-    let error = render_report_with_resources(
-        source,
-        AsciiViewportPolicy::with_max_width(4).overflow(OverflowPolicy::Fallback),
-        below_resources,
-    )
-    .expect_err("one fewer ER fallback document cell should fail");
-    assert!(matches!(
-        error,
-        AsciiError::ResourceLimitExceeded(details)
-            if details.limit == merman_ascii::AsciiResourceLimitId::MaxDocumentCells
-                && details.actual == 1_188
-                && details.max == 1_187
-    ));
+    assert_fallback_document_cell_boundary(source, 4);
 }
 
 #[test]

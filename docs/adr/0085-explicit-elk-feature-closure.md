@@ -3,9 +3,10 @@
 ## Status
 
 Accepted historically. [ADR-0089](0089-mermaid-12-default-elk-products.md) supersedes the facade,
-CLI, and Rustdoc default selections for `0.8.0-alpha.7`. The explicit aggregate membership and
-artifact-specific license boundary below remain in force. ADR-0088's math opt-in decision also
-remains in force for Rustdoc.
+CLI, and Rustdoc default selections for `0.8.0-alpha.7`.
+[ADR-0097](0097-explicit-math-capability.md) makes the complete aggregates math-free and supersedes their
+math-bearing membership for the development branch. The artifact-specific ELK license boundary
+and ADR-0088's Rustdoc math opt-in decision remain in force.
 
 ## Date
 

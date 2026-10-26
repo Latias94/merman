@@ -923,7 +923,13 @@ pub fn sanitize_xhtml_with_sink<S: SanitizeOutputSink>(
 /// Flowchart shape rendering calls `sanitizeText(decodeEntities(label), config)` after FlowDB has
 /// already sanitized the label. DOMPurify returns strings without a literal `<` unchanged; parsing
 /// those strings here would decode entity-authored dollar signs into unintended math delimiters.
-#[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane",))]
+#[cfg(any(
+    test,
+    all(
+        feature = "presentation",
+        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+    )
+))]
 pub(crate) fn sanitize_text_as_html_fragment(text: &str, config: &MermaidConfig) -> String {
     if text.is_empty() {
         return String::new();

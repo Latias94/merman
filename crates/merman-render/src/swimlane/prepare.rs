@@ -12,10 +12,10 @@ use crate::math::MathRenderer;
 use crate::model::SwimlaneDirection;
 use crate::text::{TextMeasurer, WrapMode};
 use indexmap::IndexMap;
-use merman_core::MermaidConfig;
 use merman_core::diagrams::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
+use merman_core::presentation::PresentationConfig;
 use std::collections::{HashMap, HashSet};
 
 fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
@@ -35,7 +35,7 @@ fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
 
 struct MeasureContext<'a> {
     model: &'a FlowchartRenderModelRef<'a>,
-    config: &'a MermaidConfig,
+    config: &'a PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     direction: SwimlaneDirection,
@@ -281,7 +281,7 @@ fn measure_group_title(
 pub(super) fn prepare(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,

@@ -1,5 +1,5 @@
 use futures::executor::block_on;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -12,7 +12,7 @@ fn main() {
         .read_to_string(&mut input)
         .expect("read stdin");
 
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(&input, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");

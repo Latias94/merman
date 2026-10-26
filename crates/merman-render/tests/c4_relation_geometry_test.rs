@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -6,7 +6,7 @@ use merman_render::model::{C4DiagramLayout, C4ShapeLayout};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render(source: &str) -> (C4DiagramLayout, String) {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse C4")
         .expect("C4 diagram");

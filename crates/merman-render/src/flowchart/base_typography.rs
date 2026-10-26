@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use super::{FlowchartConfigView, FlowchartLayoutSettings};
 use crate::diagram_theme::{
@@ -136,7 +136,7 @@ impl FlowchartBaseTypographyLabelEmission {
 impl FlowchartBaseTypographyPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
     ) -> Self {
         let config = FlowchartConfigView::new(effective_config.as_value());
         let configured_font_family = config.font_family();
@@ -542,7 +542,7 @@ mod tests {
         TypographySpec,
     };
 
-    fn typed_plan(config: MermaidConfig) -> FlowchartBaseTypographyPlan {
+    fn typed_plan(config: PresentationConfig) -> FlowchartBaseTypographyPlan {
         let typography = ThemeTextStyle::default()
             .with_font_stack(FontStack::single("Excalifont").expect("valid test font"))
             .with_font_size_px(23.0)
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn typed_base_typography_overrides_layout_and_html_measurement_styles() {
-        let plan = typed_plan(MermaidConfig::from_value(serde_json::json!({})));
+        let plan = typed_plan(PresentationConfig::from_value(serde_json::json!({})));
         let settings = plan.layout_settings(&serde_json::json!({}));
 
         assert_eq!(
@@ -579,7 +579,7 @@ mod tests {
     fn inactive_base_typography_does_not_request_terminal_evidence() {
         let plan = FlowchartBaseTypographyPlan::resolve(
             None,
-            &MermaidConfig::from_value(serde_json::json!({})),
+            &PresentationConfig::from_value(serde_json::json!({})),
         );
 
         assert!(!plan.requires_terminal_evidence());
@@ -612,7 +612,7 @@ mod tests {
         let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         let plan = FlowchartBaseTypographyPlan::resolve(
             Some(&resolved),
-            &MermaidConfig::from_value(serde_json::json!({})),
+            &PresentationConfig::from_value(serde_json::json!({})),
         );
 
         plan.begin_terminal_emission();
@@ -649,7 +649,7 @@ mod tests {
         let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         let plan = FlowchartBaseTypographyPlan::resolve(
             Some(&resolved),
-            &MermaidConfig::from_value(serde_json::json!({})),
+            &PresentationConfig::from_value(serde_json::json!({})),
         );
 
         plan.begin_terminal_emission();

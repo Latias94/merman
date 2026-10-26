@@ -13,7 +13,7 @@ fn combined_flowchart_variants_construct_one_token_and_accessibility_trace() {
         #[cfg(feature = "diagram-swimlane")]
         ("swimlane", "swimlane-beta LR"),
     ];
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for (diagram_type, header) in cases {
         for (tail, should_parse) in [
@@ -59,7 +59,7 @@ fn combined_flowchart_variants_construct_one_token_and_accessibility_trace() {
 
 #[test]
 fn warning_producing_flowchart_variants_register_typed_compatibility_sidecars() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let cases = [
         #[cfg(feature = "diagram-flowchart")]
         ("flowchart-elk", "flowchart-elk\nA-->B\n", "flowchart-elk"),

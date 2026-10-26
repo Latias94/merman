@@ -569,7 +569,7 @@ fn gitgraph_commit_tag_label_height_px(
 )]
 pub(crate) fn render_gitgraph_diagram_svg_model(
     layout: &crate::model::GitGraphDiagramLayout,
-    model: &merman_core::diagrams::git_graph::GitGraphRenderModel,
+    model: &merman_core::diagrams::git_graph::GitGraphDiagramModel,
     node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
     static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
@@ -1611,14 +1611,14 @@ mod tests {
     use crate::resources::{
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
     use std::cell::RefCell;
 
     fn typography_plan(config: &serde_json::Value) -> crate::gitgraph::GitGraphTypographyThemePlan {
         crate::gitgraph::GitGraphTypographyThemePlan::resolve(
             None,
-            &MermaidConfig::from_value(config.clone()),
+            &PresentationConfig::from_value(config.clone()),
         )
     }
 
@@ -1639,7 +1639,7 @@ mod tests {
             .resolve(DiagramFamilyId::GIT_GRAPH);
         crate::gitgraph::GitGraphTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(config.clone()),
+            &PresentationConfig::from_value(config.clone()),
         )
     }
 
@@ -1866,7 +1866,7 @@ mod tests {
 
     #[test]
     fn gitgraph_typed_body_title_renders_and_overrides_metadata_title() {
-        let model = merman_core::diagrams::git_graph::GitGraphRenderModel {
+        let model = merman_core::diagrams::git_graph::GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
             commits: Vec::new(),
             branches: Vec::new(),

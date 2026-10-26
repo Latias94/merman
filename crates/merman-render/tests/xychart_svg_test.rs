@@ -3,7 +3,8 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -47,7 +48,7 @@ fn xychart_series_palette_theme(colors: &[&str]) -> DiagramTheme {
 fn render_xychart_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
 ) -> family::RenderedFamilySvg {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -66,7 +67,7 @@ fn render_xychart_with_theme_and_engine(
 fn try_render_xychart_with_theme(
     source: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
     diagram_id: &str,
 ) -> merman_render::Result<(XyChartDiagramLayout, family::RenderedFamilySvg)> {
@@ -590,7 +591,7 @@ xychart
   line "Trend" [7 "Trend point"]
 "##,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed XY Chart SVG");
 
@@ -670,7 +671,7 @@ fn xychart_series_palette_supports_transparent_paint_and_cycles() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [2]\n  line [4]\n  bar [6]\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid palette-cycle SVG");
 
@@ -701,11 +702,13 @@ fn xychart_explicit_plot_palette_owners_outrank_typed_series_palette() {
     let cases = [
         (
             "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "themeVariables": {
-                    "xyChart": { "plotColorPalette": "#fedcba" }
-                }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": {
+                        "xyChart": { "plotColorPalette": "#fedcba" }
+                    }
+                }),
+            )),
         ),
         (
             concat!(
@@ -713,9 +716,11 @@ fn xychart_explicit_plot_palette_owners_outrank_typed_series_palette() {
                 "{\"plotColorPalette\": \"#fedcba\"}}}}%%\n",
                 "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
             ),
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "secure": []
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "secure": []
+                }),
+            )),
         ),
     ];
 
@@ -745,7 +750,7 @@ fn xychart_series_palette_is_not_applicable_without_plots() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
 
     let completion = rendered.into_completion();
@@ -778,7 +783,7 @@ fn xychart_typed_font_stack_reaches_layout_css_and_terminal_evidence() {
     let (layout, rendered) = try_render_xychart_with_theme(
         "xychart\n  title Typed chart\n  x-axis [Jan, Feb]\n  y-axis 0 --> 10\n  bar [4, 7]\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &environment,
         "xychart-typed-font",
     )
@@ -816,17 +821,21 @@ fn xychart_explicit_site_and_source_font_paths_outrank_typed_font_stack() {
     let cases = [
         (
             "xychart-site-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "themeVariables": { "fontFamily": "XYChartSite,sans-serif" }
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": { "fontFamily": "XYChartSite,sans-serif" }
+                }),
+            )),
             "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n".to_string(),
             "XYChartSite,sans-serif",
         ),
         (
             "xychart-source-font",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "secure": []
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "secure": []
+                }),
+            )),
             concat!(
                 "%%{init: {\"themeVariables\": {\"fontFamily\": \"XYChartSource,monospace\"}}}%%\n",
                 "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
@@ -875,7 +884,7 @@ fn xychart_mixed_base_typography_fails_closed() {
     let error = try_render_xychart_with_theme(
         "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
         "xychart-mixed-typography",
@@ -914,7 +923,7 @@ fn xychart_title_fill_is_portable_and_reaches_the_final_text() {
             let rendered = render_xychart_with_theme_and_engine(
                 "xychart-beta\ntitle Revenue\nx-axis [A, B]\ny-axis 0 --> 10\nbar [3, 7]\n",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             );
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
             let title = xychart_plot_group(&document, "chart-title")
@@ -974,7 +983,7 @@ fn xychart_title_absence_and_configuration_release_only_the_fill_obligation() {
         let rendered = render_xychart_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         let title = doc
@@ -1008,7 +1017,7 @@ fn xychart_title_overridden_rules_are_not_applicable_and_mixed_winners_remain_re
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
         ),
     ]);
-    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
@@ -1023,7 +1032,7 @@ fn xychart_title_overridden_rules_are_not_applicable_and_mixed_winners_remain_re
         let result = try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
             "title-residual",
@@ -1055,7 +1064,7 @@ fn xychart_title_preserves_generic_text_author_order() {
         let (_, rendered) = try_render_xychart_with_theme(
             "xychart-beta\ntitle Revenue\nx-axis [A, B]\nbar [3, 7]\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic(),
             "title-fallback",
         )
@@ -1104,7 +1113,7 @@ fn xychart_text_and_axis_paint_are_portable_on_every_existing_consumer() {
                         if horizontal { " horizontal" } else { "" }
                     );
                     let rendered =
-                        render_xychart_with_theme_and_engine(&source, &theme, Engine::new());
+                        render_xychart_with_theme_and_engine(&source, &theme, MermaidEngine::new());
                     let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
                     for group in if horizontal {
                         ["left-axis", "top-axis"]
@@ -1220,7 +1229,7 @@ fn xychart_axis_config_colors_follow_logical_axes_in_both_orientations() {
         let rendered = render_xychart_with_theme_and_engine(
             &source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         for (group, prefix, title_text) in if horizontal {
@@ -1307,7 +1316,7 @@ fn xychart_axis_mixed_fill_and_stroke_consume_both_facets() {
             let rendered = render_xychart_with_theme_and_engine(
                 "xychart\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar [3, 7]\n",
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
             );
             let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
             for group in ["left-axis", "bottom-axis"] {
@@ -1354,7 +1363,7 @@ fn xychart_text_and_axis_unsupported_winners_do_not_hide_inside_mixed_rules() {
             vec![ThemeRule::new(target, fill).with_ordinal(OrdinalSelector::Exact(2))],
         ] {
             let theme = xychart_paint_rules(rules);
-            let (_, rendered)=try_render_xychart_with_theme("xychart\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar [3, 7]\n",&theme,Engine::new(),&RenderEnvironment::deterministic(),"unsupported-text-axis").unwrap();
+            let (_, rendered)=try_render_xychart_with_theme("xychart\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar [3, 7]\n",&theme,MermaidEngine::new(),&RenderEnvironment::deterministic(),"unsupported-text-axis").unwrap();
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert!(
@@ -1376,7 +1385,7 @@ fn xychart_text_fill_reaches_legend_without_promoting_point_labels() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\ntitle Hidden\nx-axis [A, B]\ny-axis 0 --> 10\nline Trend [3 \"First\", 7 \"Last\"]\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
     );
     let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
     let texts = doc
@@ -1414,7 +1423,7 @@ fn xychart_zero_sized_title_and_axis_text_cannot_certify_paint() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar [3, 7]\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         let texts = doc
@@ -1455,7 +1464,7 @@ fn xychart_degenerate_ticks_do_not_certify_paint_or_create_ordinal_residuals() {
                     "showAxisLine": false, "showTick": true,
                     "tickLength": tick_length, "tickWidth": 2
                 });
-                let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({"xyChart": {"xAxis": axis, "yAxis": axis}}),
                 ));
                 let source = format!(
@@ -1531,7 +1540,7 @@ fn xychart_series_rules_follow_global_plot_ordinals_and_visible_legend_indices()
         let source = format!(
             "---\nconfig:\n  xyChart:\n    showDataLabel: true\n---\nxychart{orientation}\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [2]\n  line \"Trend\" [4 \"point label\"]\n  bar \"Bars\" [6]\n  line [8]\n"
         );
-        let rendered = render_xychart_with_theme_and_engine(&source, &theme, Engine::new());
+        let rendered = render_xychart_with_theme_and_engine(&source, &theme, MermaidEngine::new());
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         for (index, kind) in [(0, "bar"), (1, "line"), (2, "bar"), (3, "line")] {
             let group = xychart_plot_group(&doc, &format!("{kind}-plot-{index}"));
@@ -1639,10 +1648,10 @@ fn xychart_series_clear_restores_channel_baseline_and_blocks_palette_fallback() 
         &DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new())
             .unwrap(),
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let baseline_doc = roxmltree::Document::parse(baseline.svg()).unwrap();
-    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
     for (group, tag, width) in [
         ("bar-plot-0", "rect", "0"),
@@ -1699,7 +1708,7 @@ fn xychart_series_line_fill_is_geometry_and_does_not_recolor_point_labels() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\n x-axis [A, B, C]\n y-axis 0 --> 10\n line [2 \"P\", 7, 4]\n",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
     let line = xychart_plot_group(&doc, "line-plot-0");
@@ -1737,7 +1746,7 @@ fn xychart_series_source_palette_owns_colors_but_not_width_or_alpha() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\n x-axis [A]\n y-axis 0 --> 10\n bar \"Bar\" [4]\n line \"Line\" [7]\n",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":"#fedcba"}}}),
         )),
     );
@@ -1782,7 +1791,7 @@ fn xychart_series_unsupported_winning_sibling_is_not_certified_by_a_consumed_fil
         let (_, rendered) = try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic(),
             "series-residual",
         )
@@ -1794,7 +1803,7 @@ fn xychart_series_unsupported_winning_sibling_is_not_certified_by_a_consumed_fil
             try_render_xychart_with_theme(
                 source,
                 &theme,
-                Engine::new(),
+                MermaidEngine::new(),
                 &RenderEnvironment::deterministic().with_theme_portability_requirement(
                     ThemePortabilityRequirement::RequirePortable
                 ),
@@ -1836,7 +1845,7 @@ fn xychart_series_absent_plots_and_unmatched_selectors_are_not_applicable() {
         ),
     ] {
         let theme = xychart_paint_rules(rules);
-        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 0);
@@ -1862,7 +1871,7 @@ fn xychart_series_legend_receipt_tracks_hidden_and_nonfitting_legends() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\n x-axis [A]\n y-axis 0 --> 10\n bar \"A very long legend title that does not fit\" [4]\n",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         assert!(
@@ -1889,7 +1898,7 @@ fn xychart_series_opacity_preserves_small_and_near_one_values() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\n x-axis [A, B]\n y-axis 0 --> 10\n bar [4, 6]\n line [2, 3]\n",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
         );
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         for (group, tag) in [("bar-plot-0", "rect"), ("line-plot-1", "path")] {
@@ -1970,7 +1979,7 @@ fn xychart_composed_shadows_cover_vertical_and_horizontal_flat_lines_without_rel
         let (layout, result) = try_render_xychart_with_theme(
             &source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
             "chart",
@@ -1979,7 +1988,7 @@ fn xychart_composed_shadows_cover_vertical_and_horizontal_flat_lines_without_rel
         let (baseline, _) = try_render_xychart_with_theme(
             &source,
             &plain,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic(),
             "chart",
         )
@@ -2041,7 +2050,7 @@ fn xychart_shadow_clear_wins_and_unsupported_graph_is_not_certified() {
     let rendered = render_xychart_with_theme_and_engine(
         source,
         &xychart_shadow_theme(rules, false),
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
     assert_eq!(
@@ -2061,7 +2070,7 @@ fn xychart_shadow_clear_wins_and_unsupported_graph_is_not_certified() {
         try_render_xychart_with_theme(
             source,
             &xychart_shadow_theme(ThemeRuleSet::default(), true),
-            Engine::new(),
+            MermaidEngine::new(),
             &strict,
             "chart"
         )
@@ -2072,7 +2081,8 @@ fn xychart_shadow_clear_wins_and_unsupported_graph_is_not_certified() {
         true,
     );
     let (_, rendered) =
-        try_render_xychart_with_theme(source, &cleared, Engine::new(), &strict, "chart").unwrap();
+        try_render_xychart_with_theme(source, &cleared, MermaidEngine::new(), &strict, "chart")
+            .unwrap();
     assert!(!rendered.svg().contains("<filter"));
 }
 
@@ -2088,7 +2098,7 @@ fn xychart_shadow_filter_materialization_enforces_host_resource_ceiling() {
     let error = try_render_xychart_with_theme(
         "xychart-beta\n x-axis [A, B]\n line [7, 7]",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &environment,
         "chart",
     )
@@ -2113,7 +2123,7 @@ fn xychart_shadow_rule_winners_preserve_binding_and_sibling_accounting() {
         ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::ChartSeries, effect.clone())),
         false,
     );
-    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(
@@ -2130,7 +2140,7 @@ fn xychart_shadow_rule_winners_preserve_binding_and_sibling_accounting() {
         ),
         false,
     );
-    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(
         evidence.applied_count(),
@@ -2146,7 +2156,7 @@ fn xychart_shadow_rule_winners_preserve_binding_and_sibling_accounting() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\nx-axis [A, B]\ny-axis 0 --> 10",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 0);
@@ -2160,7 +2170,7 @@ fn xychart_shadow_rule_winners_preserve_binding_and_sibling_accounting() {
     let (_, rendered) = try_render_xychart_with_theme(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "chart",
     )
@@ -2195,7 +2205,7 @@ fn xychart_series_kind_variants_apply_without_replacing_default_rules() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 6]\nline [7, 8]",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     let bar = xychart_plot_group(&document, "bar-plot-0")
@@ -2222,7 +2232,7 @@ fn xychart_series_kind_and_default_rules_keep_author_order_and_clear() {
     };
     let source = "xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\nline [6]";
     let plain = xychart_paint_rules([]);
-    let baseline = render_xychart_with_theme_and_engine(source, &plain, Engine::new());
+    let baseline = render_xychart_with_theme_and_engine(source, &plain, MermaidEngine::new());
     let baseline_doc = roxmltree::Document::parse(baseline.svg()).unwrap();
     let baseline_fill = xychart_plot_group(&baseline_doc, "bar-plot-0")
         .children()
@@ -2246,7 +2256,7 @@ fn xychart_series_kind_and_default_rules_keep_author_order_and_clear() {
         ([bar, default], Some("#ff0000"), "5"),
     ] {
         let theme = xychart_paint_rules(rules);
-        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         let bar = xychart_plot_group(&xml, "bar-plot-0")
             .children()
@@ -2306,7 +2316,7 @@ fn xychart_series_kind_ordinals_follow_global_declaration_order() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\nx-axis [A]\ny-axis 0 --> 10\nline [1]\nbar [2]\nbar [3]\nline [4]\nline [5]\nbar [6]",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
     for (group, color, width) in [
@@ -2354,7 +2364,7 @@ fn xychart_series_kind_rules_preserve_source_color_ownership() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\nline [7]",
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
             serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":"#fedcba"}}}),
         )),
     );
@@ -2397,7 +2407,7 @@ fn xychart_series_kind_shadow_clear_and_unsupported_siblings_keep_evidence() {
             ThemeRule::new(ThemeTarget::ChartSeries, clear).with_variant(ThemeVariant::Line),
         );
     let theme = xychart_shadow_theme(rules, false);
-    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
     assert_eq!(
         xml.descendants()
@@ -2425,7 +2435,7 @@ fn xychart_series_kind_shadow_clear_and_unsupported_siblings_keep_evidence() {
     let (_, rendered) = try_render_xychart_with_theme(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "chart",
     )
@@ -2437,7 +2447,7 @@ fn xychart_series_kind_shadow_clear_and_unsupported_siblings_keep_evidence() {
         try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
             "chart"
@@ -2461,7 +2471,7 @@ fn xychart_series_absent_kind_is_not_applicable() {
                 .unwrap(),
         )
         .with_variant(variant)]);
-        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 0);
@@ -2478,7 +2488,7 @@ fn xychart_public_cyberpunk_series_keep_complete_family_evidence() {
     let (_, rendered) = try_render_xychart_with_theme(
         "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nline [7, 8]\nbar [4, 6]\nbar [2, 3]\nline [1, 2]",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "chart",
     )
@@ -2507,34 +2517,45 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff0000").unwrap()),
     )]);
     for (source, engine, applied, expected_fill) in [
-        ("xychart\nx-axis [A]\nbar [4]", Engine::new(), 0, None),
+        (
+            "xychart\nx-axis [A]\nbar [4]",
+            MermaidEngine::new(),
+            0,
+            None,
+        ),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
-            Engine::new(),
+            MermaidEngine::new(),
             1,
             Some("#ff0000"),
         ),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "xyChart": {"showLegend": false}
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "xyChart": {"showLegend": false}
+                }),
+            )),
             0,
             None,
         ),
         (
             "xychart\nx-axis [A]\nbar \"A very long legend title that does not fit\" [4]",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "xyChart": {"width": 80, "height": 80}
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "xyChart": {"width": 80, "height": 80}
+                }),
+            )),
             0,
             None,
         ),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "themeVariables": {"xyChart": {"legendTextColor": "#123456"}}
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "themeVariables": {"xyChart": {"legendTextColor": "#123456"}}
+                }),
+            )),
             0,
             Some("#123456"),
         ),
@@ -2622,7 +2643,7 @@ fn xychart_title_font_metrics_and_output_share_the_typed_winner() {
     let (_, rendered) = try_render_xychart_with_theme(
         "xychart\ntitle TitleProbe\nx-axis [A, B]\ny-axis 0 --> 10\nbar [3, 7]",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &environment,
         "chart",
     )
@@ -2663,7 +2684,7 @@ fn xychart_text_roles_keep_size_weight_and_paint_separate_from_axis_geometry() {
         let source = format!(
             "xychart {orientation}\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar \"Sales\" [4, 7]"
         );
-        let rendered = render_xychart_with_theme_and_engine(&source, &theme, Engine::new());
+        let rendered = render_xychart_with_theme_and_engine(&source, &theme, MermaidEngine::new());
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         for (text, size, weight, fill) in [
             ("TitleProbe", "18", "700", "#ff0000"),
@@ -2719,9 +2740,11 @@ fn xychart_role_typography_clear_and_source_size_preserve_other_properties() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar [4, 7]",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "xyChart":{"titleFontSize":23,"xAxis":{"titleFontSize":19}}
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "xyChart":{"titleFontSize":23,"xAxis":{"titleFontSize":19}}
+                }),
+            )),
         );
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         for (text, size, weight) in [
@@ -2757,7 +2780,7 @@ fn xychart_axis_role_fill_keeps_author_order_and_mixed_font_residuals() {
         let rendered = render_xychart_with_theme_and_engine(
             "xychart\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar [4,7]",
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
         );
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         let title = xml
@@ -2776,7 +2799,7 @@ fn xychart_axis_role_fill_keeps_author_order_and_mixed_font_residuals() {
     let (_, rendered) = try_render_xychart_with_theme(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "chart",
     )
@@ -2790,7 +2813,7 @@ fn xychart_axis_role_fill_keeps_author_order_and_mixed_font_residuals() {
         try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new(),
+            MermaidEngine::new(),
             &RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
             "chart"
@@ -2812,7 +2835,7 @@ fn xychart_source_font_size_ownership_is_independent_of_absent_role_rules() {
         }
         let theme = xychart_role_recipe(styles);
         let axis = serde_json::json!({"showLabel":false,"showTitle":false,"showTick":false,"showAxisLine":false});
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "xyChart":{"titleFontSize":23,"showLegend":false,"showDataLabel":false,"xAxis":axis,"yAxis":axis}
         })));
         let (_, rendered) = try_render_xychart_with_theme(
@@ -2845,9 +2868,11 @@ fn xychart_role_typography_requires_supported_selectors_and_visible_text() {
         let (_, rendered) = try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                "xyChart":{"showTitle":show_title}
-            }))),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "xyChart":{"showTitle":show_title}
+                }),
+            )),
             &environment,
             "chart",
         )
@@ -2871,7 +2896,7 @@ fn xychart_role_typography_requires_supported_selectors_and_visible_text() {
             }));
         }
         let theme = xychart_role_recipe(styles);
-        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         let title = xychart_plot_group(&xml, "chart-title")
             .children()
@@ -2892,8 +2917,11 @@ fn xychart_role_typography_requires_supported_selectors_and_visible_text() {
 fn xychart_role_fill_clear_restores_baseline_and_keeps_typography_evidence() {
     let source =
         "xychart\ntitle TitleProbe\nx-axis Month [A]\ny-axis Count 0 --> 10\nbar Sales [4]";
-    let baseline =
-        render_xychart_with_theme_and_engine(source, &xychart_paint_rules([]), Engine::new());
+    let baseline = render_xychart_with_theme_and_engine(
+        source,
+        &xychart_paint_rules([]),
+        MermaidEngine::new(),
+    );
     let baseline_doc = roxmltree::Document::parse(baseline.svg()).unwrap();
     for (target, text) in [
         ("title", "TitleProbe"),
@@ -2905,7 +2933,7 @@ fn xychart_role_fill_clear_restores_baseline_and_keeps_typography_evidence() {
             {"kind":"rule","target":target,"style":{"fill":"#ff0000"}},
             {"kind":"rule","target":target,"style":{"fill":null,"typography":{"font_weight":600}}}
         ]));
-        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, MermaidEngine::new());
         let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
         let label = doc
             .descendants()
@@ -2938,7 +2966,7 @@ fn xychart_axis_typography_overridden_on_all_text_does_not_apply_to_paths() {
     let rendered = render_xychart_with_theme_and_engine(
         "xychart\nx-axis Month [A]\ny-axis Count 0 --> 10\nbar [4]",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 2);
@@ -2951,7 +2979,7 @@ fn xychart_axis_typography_overridden_on_all_text_does_not_apply_to_paths() {
     let (_, rendered) = try_render_xychart_with_theme(
         "xychart\nx-axis Month [A]\ny-axis Count 0 --> 10\nbar [4]",
         &partial,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "chart",
     )
@@ -3014,12 +3042,22 @@ fn xychart_text_glow_binds_real_roles_without_changing_layout() {
         );
         let environment = RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
-        let (baseline, _) =
-            try_render_xychart_with_theme(&source, &plain, Engine::new(), &environment, "chart")
-                .unwrap();
-        let (layout, rendered) =
-            try_render_xychart_with_theme(&source, &theme, Engine::new(), &environment, "chart")
-                .unwrap();
+        let (baseline, _) = try_render_xychart_with_theme(
+            &source,
+            &plain,
+            MermaidEngine::new(),
+            &environment,
+            "chart",
+        )
+        .unwrap();
+        let (layout, rendered) = try_render_xychart_with_theme(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            &environment,
+            "chart",
+        )
+        .unwrap();
         assert_eq!(
             serde_json::to_value(layout).unwrap(),
             serde_json::to_value(baseline).unwrap()
@@ -3068,7 +3106,8 @@ fn xychart_text_glow_preserves_clear_missing_roles_and_property_ownership() {
             .with_rule(ThemeRule::new(ThemeTarget::Title, clear)),
     );
     let (_, rendered) =
-        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart").unwrap();
+        try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "chart")
+            .unwrap();
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
     assert_eq!(
         xml.descendants()
@@ -3085,7 +3124,7 @@ fn xychart_text_glow_preserves_clear_missing_roles_and_property_ownership() {
     let (_, absent) = try_render_xychart_with_theme(
         "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]",
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &strict,
         "chart",
     )
@@ -3095,7 +3134,8 @@ fn xychart_text_glow_preserves_clear_missing_roles_and_property_ownership() {
         "---\nconfig:\n  themeVariables:\n    xyChart:\n      titleColor: '#ff0000'\n---\n{source}"
     );
     let (_, overridden) =
-        try_render_xychart_with_theme(&source, &theme, Engine::new(), &strict, "chart").unwrap();
+        try_render_xychart_with_theme(&source, &theme, MermaidEngine::new(), &strict, "chart")
+            .unwrap();
     let xml = roxmltree::Document::parse(overridden.svg()).unwrap();
     let title = xml
         .descendants()
@@ -3130,7 +3170,8 @@ fn xychart_text_glow_cannot_certify_unsupported_siblings_or_inherited_targets() 
     ] {
         let theme = xychart_text_shadow_theme(ThemeRuleSet::default().with_rule(rule));
         assert!(
-            try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart").is_err()
+            try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "chart")
+                .is_err()
         );
     }
     let theme = xychart_text_shadow_theme(
@@ -3146,7 +3187,7 @@ fn xychart_text_glow_cannot_certify_unsupported_siblings_or_inherited_targets() 
     let (_, rendered) = try_render_xychart_with_theme(
         source,
         &theme,
-        Engine::new(),
+        MermaidEngine::new(),
         &RenderEnvironment::deterministic(),
         "chart",
     )
@@ -3188,13 +3229,14 @@ fn xychart_text_glow_unknown_dimensions_remain_unverified_in_best_effort() {
     let theme = xychart_text_shadow_theme(ThemeRuleSet::default());
     let source = "xychart\ntitle TitleProbe\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
     let (_, rendered) =
-        try_render_xychart_with_theme(source, &theme, Engine::new(), &environment, "chart")
+        try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &environment, "chart")
             .unwrap();
     assert!(!rendered.svg().contains("<filter"));
     let strict = environment
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
     assert!(
-        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart").is_err()
+        try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "chart")
+            .is_err()
     );
 }
 
@@ -3240,9 +3282,10 @@ fn xychart_text_glow_unsupported_graph_is_residual_for_rules_and_bindings() {
             .unwrap();
         let strict = RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
-        let error = try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart")
-            .err()
-            .expect("unsupported graph must retain a residual");
+        let error =
+            try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "chart")
+                .err()
+                .expect("unsupported graph must retain a residual");
         assert!(
             matches!(error, merman_render::Error::UnverifiedFamilyTheme { .. }),
             "binding={binding}: {error:?}"
@@ -3266,7 +3309,7 @@ fn xychart_axis_tick_style_is_independent_of_axis_lines_and_text() {
         let source =
             format!("xychart{orientation}\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar [4, 7]");
         let (_, rendered) =
-            try_render_xychart_with_theme(&source, &theme, Engine::new(), &strict, "ticks")
+            try_render_xychart_with_theme(&source, &theme, MermaidEngine::new(), &strict, "ticks")
                 .unwrap();
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         let mut ticks = 0;
@@ -3329,7 +3372,8 @@ fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
     ] {
         let theme = compile(rules);
         let (_, rendered) =
-            try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+            try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "ticks")
+                .unwrap();
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         for node in xml.descendants().filter(|n| {
             n.has_tag_name("path") && n.ancestors().any(|a| a.attribute("class") == Some("ticks"))
@@ -3339,7 +3383,7 @@ fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
         }
     }
     let theme = compile(vec![tick_rule.clone()]);
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"themeVariables":{"xyChart":{"xAxisTickColor":"#123456", "yAxisTickColor":"#123456"}}})));
+    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"themeVariables":{"xyChart":{"xAxisTickColor":"#123456", "yAxisTickColor":"#123456"}}})));
     let (_, rendered) =
         try_render_xychart_with_theme(source, &theme, engine, &strict, "ticks").unwrap();
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -3370,7 +3414,8 @@ fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
     };
     let plain = compile(vec![]);
     let (_, baseline) =
-        try_render_xychart_with_theme(source, &plain, Engine::new(), &strict, "ticks").unwrap();
+        try_render_xychart_with_theme(source, &plain, MermaidEngine::new(), &strict, "ticks")
+            .unwrap();
     let mut clear = ThemeStylePatch::default();
     clear.stroke.paint = Specified::Clear;
     clear.paint.opacity = Specified::Clear;
@@ -3380,7 +3425,8 @@ fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
         ThemeRule::new(ThemeTarget::AxisTick, clear),
     ]);
     let (_, cleared) =
-        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+        try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "ticks")
+            .unwrap();
     assert_eq!(
         collect_ticks(cleared.svg()),
         collect_ticks(baseline.svg()),
@@ -3389,13 +3435,14 @@ fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
     tick.paint.opacity = Specified::Value(0.0);
     let theme = compile(vec![ThemeRule::new(ThemeTarget::AxisTick, tick)]);
     let (_, transparent) =
-        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+        try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "ticks")
+            .unwrap();
     assert!(
         collect_ticks(transparent.svg())
             .iter()
             .all(|(_, opacity)| opacity.as_deref() == Some("0"))
     );
-    let hidden = Engine::new().with_site_config(MermaidConfig::from_value(
+    let hidden = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
         serde_json::json!({"xyChart":{"xAxis":{"showTick":false},"yAxis":{"showTick":false}}}),
     ));
     let (_, hidden) =
@@ -3427,7 +3474,8 @@ fn xychart_axis_tick_cannot_certify_unsupported_siblings_or_selectors() {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
             .unwrap();
-        let result = try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks");
+        let result =
+            try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "ticks");
         assert!(
             matches!(
                 result,
@@ -3445,7 +3493,8 @@ fn xychart_axis_tick_cannot_certify_unsupported_siblings_or_selectors() {
             .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
             .unwrap();
         let (_, rendered) =
-            try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+            try_render_xychart_with_theme(source, &theme, MermaidEngine::new(), &strict, "ticks")
+                .unwrap();
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.required_count(), 1);
@@ -3462,7 +3511,7 @@ fn xychart_axis_tick_keeps_the_combined_axis_geometry_ordinal_sequence() {
     };
     let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
     let engine = || {
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"xyChart":{"xAxis":{"showLabel":false,"showTitle":false},"yAxis":{"showLabel":false,"showTitle":false}}})))
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"xyChart":{"xAxis":{"showLabel":false,"showTitle":false},"yAxis":{"showLabel":false,"showTitle":false}}})))
     };
     let strict = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
@@ -3544,7 +3593,7 @@ fn xychart_axis_label_glow_keeps_source_style_and_clear_semantics() {
             for orientation in ["", " horizontal"] {
                 let source =
                     format!("xychart{orientation}\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]");
-                let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
                     "xyChart":{"xAxis":{"labelFontSize":19},"yAxis":{"labelFontSize":19}},
                     "themeVariables":{"xyChart":{"xAxisLabelColor":"#ff0000","yAxisLabelColor":"#ff0000"}}
                 })));
@@ -3677,7 +3726,7 @@ fn repair_u7_xychart_zero_size_text_does_not_certify_typography() {
         let (_, rendered) = try_render_xychart_with_theme(
             source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(zero.clone())),
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(zero.clone())),
             &RenderEnvironment::deterministic()
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
             "zero-font",
@@ -3712,7 +3761,7 @@ fn repair_u7_xychart_quoted_source_palette_receipt_uses_serialized_css() {
         let (_, rendered) = try_render_xychart_with_theme(
             "xychart\nx-axis [A, B]\nbar Sales [3, 7]\nline Trend [2, 6]",
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":color}}}),
             )),
             &RenderEnvironment::deterministic()

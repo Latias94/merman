@@ -1,14 +1,14 @@
 use super::*;
 
-fn meta() -> ParseMetadata {
-    ParseMetadata {
+fn meta() -> PresentationMetadata {
+    PresentationMetadata {
         diagram_type: "usecase".to_string(),
         config: crate::MermaidConfig::empty_object(),
-        effective_config: crate::MermaidConfig::empty_object(),
+        effective_config: crate::presentation::PresentationConfig::empty_object(),
         title: None,
     }
 }
-fn model(source: &str) -> UsecaseDiagramRenderModel {
+fn model(source: &str) -> UsecaseDiagramModel {
     parse_usecase_model_for_render_controlled(source, &meta(), &OperationControl::new())
         .unwrap()
         .unwrap()
@@ -156,6 +156,7 @@ fn rejects_invalid_grammar_and_semantics_without_silent_fallbacks() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
 fn editor_facts_have_exact_declarations_references_and_failure_spans() {
     let source = "usecase-beta\nactor User\nUser --> Login\nnote for Login \"Try again\"";
     let construction = construct(source, &meta(), &OperationControl::new())
@@ -210,6 +211,7 @@ fn generated_names_follow_javascript_utf16_and_are_not_renameable() {
         .unwrap()
         .unwrap_or_else(|failure| panic!("{}", failure.into_error()));
     assert_eq!(parsed.model.nodes[0].id, "___login");
+    #[cfg(feature = "editor-facts")]
     assert_eq!(
         parsed.editor_facts.symbols[0].rename_policy,
         crate::EditorRenamePolicy::None
@@ -243,7 +245,7 @@ json Data@{"positive":1e309,"negative":-1e309,"null":null}
         "negative"
     );
     assert_eq!(
-        serde_json::from_value::<UsecaseDiagramRenderModel>(encoded).unwrap(),
+        serde_json::from_value::<UsecaseDiagramModel>(encoded).unwrap(),
         parsed
     );
     let compat = render_model_to_compat_json(&parsed, &meta()).unwrap();

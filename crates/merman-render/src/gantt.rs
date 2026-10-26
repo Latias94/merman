@@ -1490,12 +1490,15 @@ mod tests {
         model.excludes = vec!["weekends".to_string()];
         model.weekend = "saturday".to_string();
         model.tasks.push(GanttRenderTask {
-            id: "boundary".to_string(),
-            task: "Boundary".to_string(),
-            section: "Boundary".to_string(),
-            task_type: "Boundary".to_string(),
-            start_ms: max_ms,
-            end_ms: max_ms,
+            semantic: merman_core::diagrams::gantt::GanttTask {
+                id: "boundary".to_string(),
+                task: "Boundary".to_string(),
+                section: "Boundary".to_string(),
+                task_type: "Boundary".to_string(),
+                start_ms: max_ms,
+                end_ms: max_ms,
+                ..Default::default()
+            },
             ..GanttRenderTask::default()
         });
 

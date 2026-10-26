@@ -762,7 +762,10 @@ mod tests {
     use crate::document_analysis::analyze_document_snapshot_with_shared_text;
     use crate::types::{DocumentKind, DocumentUri, Position};
     use merman_analysis::{AnalysisRejection, Analyzer};
-    use merman_core::{EditorSemanticCompleteness, Engine};
+    use merman_core::{
+        EditorSemanticCompleteness, ParsedEditorFacts, SemanticParseOutcome, SemanticParser,
+        SemanticSnapshotCapture,
+    };
     use std::sync::Arc;
 
     struct SnapshotHarness {
@@ -850,34 +853,31 @@ mod tests {
 
     #[test]
     fn flowchart_completion_policy_contains_only_parser_accepted_syntax() {
-        let engine = Engine::new();
+        let parser = SemanticParser::new();
+        let assert_complete = |source: &str| {
+            let captured = parser.capture_diagram_snapshot_with_type_sync("flowchart-v2", source);
+            let SemanticSnapshotCapture::Snapshot(snapshot) = captured else {
+                panic!("completion source must parse: {source}\n{captured:?}");
+            };
+            assert!(
+                matches!(snapshot.outcome(), SemanticParseOutcome::Parsed(_)),
+                "completion source must construct valid semantics: {source}\n{:?}",
+                snapshot.outcome(),
+            );
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("completion source must retain parser-backed facts: {source}");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        };
 
         for candidate in FLOWCHART_OPERATOR_ITEMS {
             let source = format!("flowchart TD\nA {} B\n", candidate.label);
-            let facts = engine
-                .parse_editor_semantic_facts_with_type_sync("flowchart-v2", &source)
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "flowchart completion operator {:?} must parse: {error}",
-                        candidate.label
-                    )
-                })
-                .expect("flowchart has parser-backed editor facts");
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert_complete(&source);
         }
 
         for candidate in FLOWCHART_DIRECTION_ITEMS {
             let source = format!("flowchart {}\nA --> B\n", candidate.label);
-            let facts = engine
-                .parse_editor_semantic_facts_with_type_sync("flowchart-v2", &source)
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "flowchart completion direction {:?} must parse: {error}",
-                        candidate.label
-                    )
-                })
-                .expect("flowchart has parser-backed editor facts");
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert_complete(&source);
         }
     }
 

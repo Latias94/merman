@@ -14,10 +14,12 @@ pub(super) fn begin_class_svg_document(
     root_context: &root_svg::RootViewportContext<'_>,
 ) -> crate::Result<ClassSvgDocument> {
     let has_acc_title = model
+        .model()
         .acc_title
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
     let has_acc_descr = model
+        .model()
         .acc_descr
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
@@ -38,7 +40,7 @@ pub(super) fn begin_class_svg_document(
             out,
             r#"<title id="chart-title-{}">{}"#,
             diagram_id,
-            escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
+            escape_xml_display(model.model().acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
         out.checkpoint()?;
@@ -48,7 +50,7 @@ pub(super) fn begin_class_svg_document(
             out,
             r#"<desc id="chart-desc-{}">{}"#,
             diagram_id,
-            escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
+            escape_xml_display(model.model().acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
         out.checkpoint()?;

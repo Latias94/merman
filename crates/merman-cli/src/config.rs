@@ -7,8 +7,9 @@ use crate::io::read_named_text_file;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::io::read_named_text_file_controlled;
 use crate::resources::ResolvedResourcePolicy;
+use merman::presentation::PresentationConfig;
 use merman::runtime::RuntimePolicy;
-use merman::{Engine, MermaidConfig, ParseOptions};
+use merman::{MermaidConfig, MermaidEngine, ParseOptions};
 use serde_json::Value;
 use std::path::Path;
 
@@ -67,14 +68,19 @@ impl ConfiguredRenderer {
 pub(crate) fn engine_for(
     parse: &ParseCliArgs,
     resources: &ResolvedResourcePolicy,
-) -> Result<Engine, CliError> {
+) -> Result<MermaidEngine, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
     let site_config = site_config_for(parse, resources)?;
     Ok(engine_from_config(runtime, site_config))
 }
 
-fn engine_from_config(runtime: ResolvedCliRuntimePolicy, site_config: MermaidConfig) -> Engine {
-    runtime.apply_engine(Engine::new().with_site_config(site_config))
+fn engine_from_config(
+    runtime: ResolvedCliRuntimePolicy,
+    site_config: MermaidConfig,
+) -> MermaidEngine {
+    runtime.apply_engine(
+        MermaidEngine::new().with_site_config(PresentationConfig::from_config(site_config)),
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -139,7 +145,7 @@ impl ResolvedCliRuntimePolicy {
         }
     }
 
-    fn apply_engine(&self, engine: Engine) -> Engine {
+    fn apply_engine(&self, engine: MermaidEngine) -> MermaidEngine {
         engine.with_runtime_policy(self.runtime_policy.clone())
     }
 }
@@ -435,6 +441,10 @@ fn renderer_from_config(
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
             TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
         ));
+    #[cfg(not(feature = "math"))]
+    {
+        environment = environment.without_math_renderer();
+    }
     if let Some(kind) = render.math_renderer {
         environment = match kind {
             MathRendererKind::None => environment.without_math_renderer(),
@@ -460,7 +470,9 @@ fn renderer_from_config(
         .map(|input| input.compile(&compiler, control))
         .transpose()?;
     let renderer = merman::Renderer::new()
-        .with_engine(runtime.apply_engine(Engine::new().with_site_config(site_config)))
+        .with_presentation_engine(runtime.apply_engine(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_config(site_config)),
+        ))
         .with_parse_options(parse_options)
         .with_resource_policy(*resources.input_policy());
     let svg_request = merman::SvgRequest {
@@ -489,7 +501,11 @@ pub(crate) fn ascii_renderer_for_resolved(
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     let site_config = site_config_for_resolved(parse, resources, control)?;
     let renderer = merman::Renderer::new()
-        .with_engine(engine_from_config(runtime, site_config))
+        .with_semantic_parser(
+            merman::SemanticParser::new()
+                .with_site_config(site_config)
+                .with_runtime_policy(runtime.runtime_policy),
+        )
         .with_parse_options(parse_options_for_resolved(parse))
         .with_resource_policy(*resources.input_policy());
     Ok(ConfiguredRenderer {

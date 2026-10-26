@@ -1,18 +1,30 @@
+#[cfg(feature = "editor-facts")]
+use crate::SourceSpan;
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
+#[cfg(feature = "editor-facts")]
+use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    EditorSemanticSymbol,
 };
-use serde_json::Value;
+use crate::{
+    Error, MermaidConfig, OperationControl, OperationControlResult, SemanticMetadata,
+    parse_diagnostic::lalrpop_parse_diagnostic,
+};
 #[cfg(test)]
 use std::cell::Cell;
+#[cfg(feature = "editor-facts")]
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::SequenceDiagramRenderModel;
+use super::SequenceDiagramModel;
 use super::Tok;
 use super::ast::{ActionArena, Actions};
-use super::db::{SequenceDb, is_css_color_value, split_box_color_and_title};
+use super::db::SequenceDb;
+#[cfg(feature = "editor-facts")]
+use super::db::{is_css_color_value, split_box_color_and_title};
 use super::lexer::Lexer;
 use super::sequence_grammar;
 
@@ -34,6 +46,12 @@ pub(crate) fn sequence_syntax_construction_count() -> usize {
 type SequenceLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
 type SequenceGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
+struct SequenceSyntaxOutcome {
+    actions: std::result::Result<Actions, SequenceGrammarError>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
 struct SequenceSyntax {
     events: Vec<SequenceLexicalEvent>,
 }
@@ -47,16 +65,21 @@ impl SequenceSyntax {
         Ok(Self { events })
     }
 
-    fn into_editor_facts_and_actions(
+    fn into_actions(
         self,
-        code: &str,
+        #[cfg(feature = "editor-facts")] code: &str,
+        #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
         control: &OperationControl,
-    ) -> OperationControlResult<(
-        EditorSemanticFacts,
-        std::result::Result<Actions, SequenceGrammarError>,
-    )> {
+    ) -> OperationControlResult<SequenceSyntaxOutcome> {
         let Self { events } = self;
-        let editor_facts = collect_sequence_editor_facts_from_events(&events, code, control)?;
+        #[cfg(feature = "editor-facts")]
+        let editor_facts = match facts_demand {
+            EditorFactsDemand::Omit => None,
+            EditorFactsDemand::Recovery => Some(EditorSemanticFacts::new()),
+            EditorFactsDemand::Capture => Some(collect_sequence_editor_facts_from_events(
+                &events, code, control,
+            )?),
+        };
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
@@ -69,40 +92,58 @@ impl SequenceSyntax {
             .parse(&mut arena, control, controlled_events)
             .map(|list| arena.into_actions(list));
         control.checkpoint()?;
-        Ok((editor_facts, actions))
+        Ok(SequenceSyntaxOutcome {
+            actions,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        })
     }
 }
 
-struct SequenceSemanticSource {
-    db: SequenceDb,
-    editor_facts: EditorSemanticFacts,
+pub(super) struct SequenceSemanticSource {
+    pub(super) db: SequenceDb,
+    #[cfg(feature = "editor-facts")]
+    pub(super) editor_facts: Option<EditorSemanticFacts>,
 }
 
-enum SequenceSemanticFailure {
+pub(super) enum SequenceSemanticFailure {
     Grammar {
         error: SequenceGrammarError,
-        editor_facts: EditorSemanticFacts,
+        #[cfg(feature = "editor-facts")]
+        editor_facts: Option<EditorSemanticFacts>,
     },
     Db {
         message: String,
-        editor_facts: EditorSemanticFacts,
+        #[cfg(feature = "editor-facts")]
+        editor_facts: Option<EditorSemanticFacts>,
     },
 }
 
 impl SequenceSemanticFailure {
-    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_error_and_editor_facts(meta, fallback_offset).0
-    }
-
-    fn into_error_and_editor_facts(
+    pub(super) fn into_parse_error_for_type(
         self,
-        meta: &ParseMetadata,
+        diagram_type: &str,
         fallback_offset: usize,
-    ) -> (Error, EditorSemanticFacts) {
-        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    ) -> Error {
+        match self {
+            Self::Grammar {
+                error,
+                #[cfg(feature = "editor-facts")]
+                    editor_facts: _,
+            } => Error::diagram_parse_diagnostic(
+                diagram_type.to_string(),
+                lalrpop_parse_diagnostic(&error, fallback_offset),
+            ),
+            Self::Db {
+                message,
+                #[cfg(feature = "editor-facts")]
+                    editor_facts: _editor_facts,
+            } => Error::diagram_parse_fallback(diagram_type.to_string(), message),
+        }
     }
 
-    fn into_error_and_editor_facts_for_type(
+    #[cfg(feature = "editor-facts")]
+    pub(super) fn into_error_and_editor_facts_for_type(
         self,
         diagram_type: &str,
         fallback_offset: usize,
@@ -110,7 +151,7 @@ impl SequenceSemanticFailure {
         match self {
             Self::Grammar {
                 error,
-                mut editor_facts,
+                editor_facts,
             } => {
                 let parse_error = Error::diagram_parse_diagnostic(
                     diagram_type.to_string(),
@@ -120,6 +161,8 @@ impl SequenceSemanticFailure {
                     lalrpop_util::ParseError::User { error } => error.span,
                     _ => lalrpop_recovery_span(&error, fallback_offset),
                 };
+                let mut editor_facts =
+                    editor_facts.expect("Sequence capture requests its failure journal");
                 editor_facts.mark_recovered_from_parse_error(
                     format!(
                         "sequence parser recovered after parse error: {}",
@@ -131,10 +174,12 @@ impl SequenceSemanticFailure {
             }
             Self::Db {
                 message,
-                mut editor_facts,
+                editor_facts,
             } => {
                 let parse_error =
                     Error::diagram_parse_fallback(diagram_type.to_string(), message.clone());
+                let mut editor_facts =
+                    editor_facts.expect("Sequence capture requests its failure journal");
                 editor_facts.mark_recovered_from_parse_error(
                     format!("sequence semantic construction failed: {message}"),
                     None,
@@ -145,63 +190,76 @@ impl SequenceSemanticFailure {
     }
 }
 
-pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_sequence_semantic_source(code, meta)?
-        .db
-        .into_model(meta))
-}
-
-pub(crate) fn parse_sequence_model_for_render_controlled(
+pub(crate) fn parse_sequence_semantic_model_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
-) -> OperationControlResult<Result<SequenceDiagramRenderModel>> {
-    let construction =
-        construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), control)?;
-    match construction {
-        Ok(source) => Ok(Ok(source.db.into_render_model())),
-        Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
-    }
+) -> OperationControlResult<SemanticConstruction<SequenceDiagramModel>> {
+    let construction = construct_sequence_semantic_source(
+        code,
+        sequence_wrap_enabled_from_config(&meta.semantic_config),
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    Ok(match construction {
+        Ok(SequenceSemanticSource {
+            db,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        }) => {
+            let mut model = db.into_model();
+            model.sanitize_common_db_fields(&meta.semantic_config);
+            SemanticConstruction {
+                model: Ok(model),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
+            }
+        }
+        #[cfg(feature = "editor-facts")]
+        Err(failure) if editor_demand.needs_recovery() => {
+            let (error, editor_facts) =
+                failure.into_error_and_editor_facts_for_type(&meta.diagram_type, code.len());
+            SemanticConstruction {
+                model: Err(error),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: Some(editor_facts),
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err(failure.into_parse_error_for_type(&meta.diagram_type, code.len())),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: None,
+        },
+    })
 }
 
-pub(crate) fn parse_sequence_json_and_editor_facts(
-    code: &str,
-    meta: &ParseMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction =
-        construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), control)?;
-    let parsed = crate::family::CombinedSemanticParse::from_construction(
-        construction,
-        |SequenceSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
-        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
-    );
-    control.checkpoint()?;
-    Ok(parsed)
-}
-
-fn parse_sequence_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<SequenceSemanticSource> {
-    construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
-}
-
-fn construct_sequence_semantic_source(
+pub(super) fn construct_sequence_semantic_source(
     code: &str,
     wrap_enabled: Option<bool>,
+    #[cfg(feature = "editor-facts")] facts_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<SequenceSemanticSource, Box<SequenceSemanticFailure>>>
 {
     let syntax = SequenceSyntax::lex(code, control)?;
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let SequenceSyntaxOutcome {
+        actions,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    } = syntax.into_actions(
+        #[cfg(feature = "editor-facts")]
+        code,
+        #[cfg(feature = "editor-facts")]
+        facts_demand,
+        control,
+    )?;
     let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
             return Ok(Err(Box::new(SequenceSemanticFailure::Grammar {
                 error,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
@@ -212,13 +270,18 @@ fn construct_sequence_semantic_source(
         Err(message) => {
             return Ok(Err(Box::new(SequenceSemanticFailure::Db {
                 message,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
     };
 
     control.checkpoint()?;
-    Ok(Ok(SequenceSemanticSource { db, editor_facts }))
+    Ok(Ok(SequenceSemanticSource {
+        db,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    }))
 }
 
 fn build_sequence_db(
@@ -238,13 +301,13 @@ fn build_sequence_db(
     Ok(Ok(db))
 }
 
-fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
-    meta.effective_config
+pub(super) fn sequence_wrap_enabled_from_config(config: &MermaidConfig) -> Option<bool> {
+    config
         .as_value()
         .get("wrap")
         .and_then(|v| v.as_bool())
         .or_else(|| {
-            meta.effective_config
+            config
                 .as_value()
                 .get("sequence")
                 .and_then(|v| v.get("wrap"))
@@ -252,11 +315,14 @@ fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
         })
 }
 
+#[cfg(feature = "editor-facts")]
 fn collect_sequence_editor_facts_from_events(
     events: &[SequenceLexicalEvent],
     code: &str,
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
+    #[cfg(test)]
+    crate::editor::test_work::record_collection();
     let mut facts = EditorSemanticFacts::new();
     let mut collector = SequenceEditorFactCollector::default();
 
@@ -275,6 +341,7 @@ fn collect_sequence_editor_facts_from_events(
 }
 
 #[derive(Debug, Default)]
+#[cfg(feature = "editor-facts")]
 struct SequenceEditorFactCollector {
     expected_actor: Option<ExpectedSequenceActor>,
     expected_text: Option<ExpectedSequenceText>,
@@ -284,12 +351,14 @@ struct SequenceEditorFactCollector {
 }
 
 #[derive(Debug)]
+#[cfg(feature = "editor-facts")]
 struct PendingSequenceActor {
     name: String,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum ExpectedSequenceActor {
     Participant,
     Actor,
@@ -300,6 +369,7 @@ enum ExpectedSequenceActor {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum ExpectedSequenceText {
     Message,
     Note,
@@ -309,11 +379,13 @@ enum ExpectedSequenceText {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum ExpectedSequenceRestOfLine {
     BoxLabel,
     Text(ExpectedSequenceText),
 }
 
+#[cfg(feature = "editor-facts")]
 impl SequenceEditorFactCollector {
     fn accept(
         &mut self,
@@ -574,6 +646,7 @@ impl SequenceEditorFactCollector {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_sequence_text_payload(
     text: String,
     expected: ExpectedSequenceText,
@@ -596,6 +669,7 @@ fn push_sequence_text_payload(
     push_sequence_named_payload(text, detail, start, end, code, facts);
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_sequence_named_payload(
     text: String,
     detail: &str,
@@ -616,6 +690,7 @@ fn push_sequence_named_payload(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn sequence_payload_selection(
     text: &str,
     start: usize,
@@ -633,6 +708,7 @@ fn sequence_payload_selection(
     ))
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_sequence_box_symbol(
     text: String,
     start: usize,
@@ -656,6 +732,7 @@ fn push_sequence_box_symbol(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn sequence_box_name_and_selection(
     text: &str,
     start: usize,
@@ -692,19 +769,127 @@ fn sequence_box_name_and_selection(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
+    use super::super::compat::parse_sequence_json_and_editor_facts;
     use super::*;
-    use crate::{EditorSemanticRole, MermaidConfig};
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    use crate::EditorSemanticRole;
+    use crate::MermaidConfig;
+    #[cfg(feature = "compat-json")]
+    use crate::PresentationMetadata;
     use std::fmt::Write as _;
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    #[cfg(feature = "compat-json")]
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "sequence".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
 
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn canonical_sequence_capture_distinguishes_grammar_and_database_failures() {
+        for (source, valid) in [
+            ("sequenceDiagram\nparticipant A\nA->>B: hello\n", true),
+            ("sequenceDiagram\nparticipant A\nA->>\n", false),
+            ("sequenceDiagram\nparticipant A\ndeactivate A\n", false),
+        ] {
+            let metadata = SemanticMetadata {
+                diagram_type: "sequence".to_string(),
+                config: MermaidConfig::empty_object(),
+                semantic_config: MermaidConfig::empty_object(),
+                title: None,
+            };
+            reset_sequence_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            let parsed = parse_sequence_semantic_model_controlled(
+                source,
+                &metadata,
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass Sequence facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert_eq!(sequence_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+            if !valid {
+                let expected = if source.contains("deactivate") {
+                    "sequence semantic construction failed:"
+                } else {
+                    "sequence parser recovered after parse error:"
+                };
+                assert!(facts.diagnostics[0].message.starts_with(expected));
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_semantic_model_retains_lifecycle_ownership_without_editor_work() {
+        let source = concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant C\n",
+            "create participant B\n",
+            "destroy A\n",
+            "loop pending\n",
+            "Note over C: pending\n",
+            "end\n",
+            "autonumber\n",
+            "activate C\n",
+            "deactivate C\n",
+            "C->>B: create\n",
+            "A--xC: destroy\n",
+        );
+        let metadata = SemanticMetadata {
+            diagram_type: "sequence".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        reset_sequence_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+
+        let model: SequenceDiagramModel = parse_sequence_semantic_model_controlled(
+            source,
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .expect("semantic construction is not cancelled")
+        .model
+        .expect("canonical Sequence semantics");
+
+        assert_eq!(sequence_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        assert_eq!(model.actor_order, ["A", "C", "B"]);
+        assert_eq!(model.created_actors.get("B"), Some(&0));
+        assert_eq!(model.destroyed_actors.get("A"), Some(&0));
+        assert_eq!(model.created_actor_message_index("B"), Some(6));
+        assert_eq!(model.destroyed_actor_message_index("A"), Some(7));
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn editor_facts(source: &str) -> EditorSemanticFacts {
         crate::family::test_support::editor_facts(
             parse_sequence_json_and_editor_facts,
@@ -794,12 +979,69 @@ mod tests {
         let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
         let control = OperationControl::new();
         let syntax = SequenceSyntax::lex(&source, &control).unwrap();
-        control.cancel_after_checkpoints(syntax.events.len().div_ceil(128) + 2);
+        #[cfg(feature = "editor-facts")]
+        let fact_checkpoints = syntax.events.len().div_ceil(128);
+        #[cfg(not(feature = "editor-facts"))]
+        let fact_checkpoints = 0;
+        control.cancel_after_checkpoints(fact_checkpoints + 2);
         let error = syntax
-            .into_editor_facts_and_actions(&source, &control)
+            .into_actions(
+                #[cfg(feature = "editor-facts")]
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &control,
+            )
             .err()
             .expect("cancelled delivery returns the outer terminal");
         assert_eq!(error.reason, crate::CancelReason::Requested);
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn cancelled_editor_collection_stops_with_bounded_work_and_recovers() {
+        let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
+        let control = OperationControl::new();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        reset_sequence_syntax_construction_count();
+        let syntax = SequenceSyntax::lex(&source, &control).unwrap();
+        control.cancel_after_checkpoints(1);
+
+        let error = syntax
+            .into_actions(
+                #[cfg(feature = "editor-facts")]
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &control,
+            )
+            .err()
+            .expect("editor collection returns cancellation through the outer result");
+
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+        assert_eq!(sequence_syntax_construction_count(), 1);
+        let partial = crate::editor::test_work::read();
+        assert_eq!(partial.collections, 1);
+        assert!(partial.symbols > 0 && partial.symbols <= 128 * 3);
+        assert!(partial.expected_syntax > 0 && partial.expected_syntax <= 128);
+        assert_eq!(control.checkpoint(), Err(error));
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), partial);
+
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        reset_sequence_syntax_construction_count();
+        let facts = editor_facts(&source);
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+        assert!(facts.symbols.len() > partial.symbols);
+        assert_eq!(sequence_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read().collections, 1);
     }
 
     #[test]
@@ -814,7 +1056,9 @@ mod tests {
         assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn participant_definitions_references_and_payloads_have_distinct_roles() {
         let source = concat!(
             "sequenceDiagram\n",
@@ -864,7 +1108,9 @@ mod tests {
         }));
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn unicode_implicit_participant_is_defined_once_then_referenced() {
         let source = concat!(
             "sequenceDiagram\n",
@@ -894,7 +1140,9 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn reference_only_statements_do_not_create_participant_entities() {
         let source = concat!(
             "sequenceDiagram\n",

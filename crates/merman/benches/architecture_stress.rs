@@ -1,6 +1,6 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions};
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use std::hint::black_box;
 
@@ -8,7 +8,7 @@ const ARCH_MANY_SERVICES_ONE_GROUP: &str =
     include_str!("fixtures/stress_architecture_batch3_many_services_one_group_059.mmd");
 
 fn bench_architecture_stress(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
     let environment = RenderEnvironment::deterministic();

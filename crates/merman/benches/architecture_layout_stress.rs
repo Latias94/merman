@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::{LayoutOptions, environment::RenderEnvironment, family};
 use std::hint::black_box;
 
@@ -7,7 +7,7 @@ const ARCH_REASONABLE_HEIGHT: &str =
     include_str!("fixtures/upstream_architecture_layout_reasonable_height.mmd");
 
 fn bench_architecture_layout_stress(c: &mut Criterion) {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parse_opts = ParseOptions::strict();
     let environment = RenderEnvironment::deterministic();
 

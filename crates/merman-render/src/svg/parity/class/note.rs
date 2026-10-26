@@ -27,7 +27,7 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub use_html_labels: bool,
-    pub mermaid_config: &'a merman_core::MermaidConfig,
+    pub mermaid_config: &'a merman_core::presentation::PresentationConfig,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
@@ -50,7 +50,7 @@ pub(super) struct ClassNoteRenderStats {
 
 pub(super) fn render_class_note_node<O: SvgOutput>(
     state: ClassNoteRenderState<'_, O>,
-    note: &ClassSvgNote,
+    note: ClassSvgNote<'_>,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassNoteRenderContext<'_>,
@@ -114,11 +114,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
                 .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
-    let rough_seed = class_rough_seed(
-        &ctx.hand_drawn_seed,
-        ctx.diagram_id.semantic_str(),
-        &note.id,
-    );
+    let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id.semantic_str(), note.id);
     include_xywh(
         content_bounds,
         position.node_bounds_tx + left,

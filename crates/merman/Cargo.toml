@@ -32,8 +32,6 @@ features = [
     "pdf",
     "layout-cytoscape",
     "layout-elk",
-    "complete-svg",
-    "complete-svg-elk",
     "math",
     "system-clock",
     "system-timezone",
@@ -320,14 +318,15 @@ diagram-zenuml = [
     "merman-editor-core?/diagram-zenuml",
     "merman-render?/diagram-zenuml",
 ]
-# The facade is the ergonomic Rust entry point. Low-level implementation crates stay
-# default-empty; this product default intentionally provides a complete deterministic SVG path.
-default = ["all-diagrams", "complete-svg-elk"]
+default = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]
 system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
 system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-core/system-random", "merman-render?/system-random"]
 system-timing = ["merman-core/system-timing", "merman-render?/system-timing"]
-svg = ["dep:merman-render", "dep:merman-theme-contract"]
+presentation = ["merman-core/presentation"]
+compat-json = ["presentation", "merman-core/compat-json"]
+editor-facts = ["merman-core/editor-facts"]
+svg = ["presentation", "dep:merman-render", "dep:merman-theme-contract"]
 native-fonts = ["svg", "dep:merman-export", "merman-export/native-fonts"]
 system-fonts = ["native-fonts", "merman-export/system-fonts"]
 experimental-system-font-query = ["system-fonts", "merman-export/experimental-system-font-query"]
@@ -337,18 +336,14 @@ ascii = ["dep:merman-ascii"]
 layout-cytoscape = ["svg", "merman-render/layout-cytoscape"]
 layout-elk = ["svg", "merman-render/layout-elk"]
 math = ["svg", "merman-render/math"]
+# Convenience output/layout bundles; mathematical labels require explicit `math`.
+complete-svg = ["svg", "layout-cytoscape"]
+complete-svg-elk = ["complete-svg", "layout-elk"]
 png = ["svg", "dep:merman-export", "merman-export/png"]
 jpeg = ["svg", "dep:merman-export", "merman-export/jpeg"]
 pdf = ["svg", "dep:merman-export", "merman-export/pdf"]
-complete-svg = [
-    "svg",
-    "layout-cytoscape",
-    "math",
-]
-complete-svg-elk = ["complete-svg", "layout-elk"]
-
 [dependencies]
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["terminal-text"] }
 merman-analysis = { workspace = true, optional = true }
 merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }
@@ -376,6 +371,26 @@ usvg = { workspace = true, features = ["system-fonts", "text"] }
 [[test]]
 name = "prepared_render"
 required-features = ["svg"]
+
+[[test]]
+name = "prepared_source"
+required-features = ["svg", "compat-json"]
+
+[[test]]
+name = "deep_lifecycle"
+required-features = ["compat-json"]
+
+[[test]]
+name = "bounded_lifecycle"
+required-features = ["compat-json"]
+
+[[test]]
+name = "pipeline_bench_fixtures"
+required-features = ["compat-json"]
+
+[[test]]
+name = "render_operation"
+required-features = ["svg", "compat-json"]
 
 [[test]]
 name = "theme_composed_effects"
@@ -406,7 +421,7 @@ required-features = ["layout-elk"]
 [[bench]]
 name = "pipeline"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json", "editor-facts"]
 
 [[bench]]
 name = "native_export"
@@ -424,14 +439,19 @@ harness = false
 required-features = ["svg"]
 
 [[bench]]
+name = "parse_memory"
+harness = false
+required-features = ["all-diagrams", "compat-json", "editor-facts"]
+
+[[bench]]
 name = "flowchart_svg_label_memory"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json"]
 
 [[bench]]
 name = "sequence_message_memory"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json"]
 
 [[bench]]
 name = "elk_hierarchy_memory"
@@ -441,7 +461,7 @@ required-features = ["layout-elk"]
 [[bench]]
 name = "flowchart_stress"
 harness = false
-required-features = ["svg"]
+required-features = ["svg", "compat-json"]
 
 [[bench]]
 name = "architecture_stress"
@@ -470,6 +490,10 @@ required-features = ["native-fonts", "diagram-flowchart"]
 
 [[example]]
 name = "render_svg"
+required-features = ["svg"]
+
+[[example]]
+name = "redraw_prepared"
 required-features = ["svg"]
 
 [[example]]
@@ -506,6 +530,7 @@ required-features = ["ascii"]
 
 [[example]]
 name = "inspect_semantics"
+required-features = ["diagram-flowchart"]
 
 [[example]]
 name = "inspect_layout"
@@ -517,6 +542,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "deterministic_gantt"
+required-features = ["compat-json", "diagram-gantt"]
 
 [[example]]
 name = "theme_preset"
@@ -540,7 +566,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "layout_work_calibration"
-required-features = ["complete-svg-elk"]
+required-features = ["svg", "compat-json", "layout-cytoscape", "layout-elk", "math"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

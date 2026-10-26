@@ -1,11 +1,17 @@
+#[cfg(feature = "presentation")]
+use crate::PresentationMetadata;
 use crate::diagrams::scan::leading_whitespace_len;
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
-    family::CombinedSemanticFailure,
+    EditorSemanticSymbol,
 };
+use crate::{Error, MermaidConfig, Result, SourceSpan, family::CombinedSemanticFailure};
 use serde::{Deserialize, Serialize, Serializer};
+#[cfg(feature = "compat-json")]
 use serde_json::{Map, Number, Value};
 #[cfg(test)]
 use std::cell::Cell;
@@ -27,7 +33,7 @@ fn xychart_syntax_construction_count() -> usize {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum XyChartAxisRenderModel {
+pub enum XyChartAxisModel {
     #[serde(rename = "band")]
     Band {
         #[serde(default)]
@@ -55,7 +61,7 @@ pub enum XyChartPlotType {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct XyChartPlotRenderModel {
+pub struct XyChartPlotModel {
     #[serde(rename = "type")]
     pub plot_type: XyChartPlotType,
     #[serde(default, serialize_with = "serialize_xychart_plot_title")]
@@ -127,7 +133,8 @@ impl Default for XyChartDisplayPolicy {
 }
 
 impl XyChartDisplayPolicy {
-    fn from_config(config: &MermaidConfig) -> Self {
+    /// Reads chart visibility from an already-admitted configuration.
+    pub fn from_config(config: &MermaidConfig) -> Self {
         let default = Self::default();
         Self {
             show_title: config
@@ -146,7 +153,7 @@ impl XyChartDisplayPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct XyChartDiagramRenderModel {
+pub struct XyChartDiagramModel {
     #[serde(default)]
     pub orientation: String,
     #[serde(default)]
@@ -156,23 +163,59 @@ pub struct XyChartDiagramRenderModel {
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     #[serde(rename = "xAxis")]
-    pub x_axis: XyChartAxisRenderModel,
+    pub x_axis: XyChartAxisModel,
     #[serde(rename = "yAxis")]
-    pub y_axis: XyChartAxisRenderModel,
+    pub y_axis: XyChartAxisModel,
     #[serde(default)]
-    pub plots: Vec<XyChartPlotRenderModel>,
-    #[serde(skip, default)]
-    pub display: XyChartDisplayPolicy,
+    pub plots: Vec<XyChartPlotModel>,
 }
 
-impl XyChartDiagramRenderModel {
+impl XyChartDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
+}
 
-    pub(crate) fn to_compat_json(&self, meta: &ParseMetadata) -> Value {
+/// The canonical chart owner plus the requested display policy.
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct XyChartDiagramRenderModel {
+    pub semantic: XyChartDiagramModel,
+    #[serde(skip, default)]
+    pub display: XyChartDisplayPolicy,
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for XyChartDiagramRenderModel {
+    type Target = XyChartDiagramModel;
+    fn deref(&self) -> &Self::Target {
+        &self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for XyChartDiagramRenderModel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl XyChartDiagramModel {
+    fn into_render_model(self, config: &MermaidConfig) -> XyChartDiagramRenderModel {
+        XyChartDiagramRenderModel {
+            semantic: self,
+            display: XyChartDisplayPolicy::from_config(config),
+        }
+    }
+}
+
+#[cfg(feature = "compat-json")]
+impl XyChartDiagramRenderModel {
+    pub(crate) fn to_compat_json(&self, meta: &PresentationMetadata) -> Value {
         let mut out = Map::with_capacity(10);
         out.insert(
             "orientation".to_string(),
@@ -187,12 +230,13 @@ impl XyChartDiagramRenderModel {
         out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
         out.insert(
             "config".to_string(),
-            crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
+            crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
         );
         Value::Object(out)
     }
 }
 
+#[cfg(feature = "compat-json")]
 fn option_string_value(value: &Option<String>) -> Value {
     value
         .as_ref()
@@ -210,6 +254,7 @@ where
     serializer.serialize_str(title.as_deref().unwrap_or_default())
 }
 
+#[cfg(feature = "compat-json")]
 fn optional_f64_value(value: Option<f64>) -> Value {
     value
         .and_then(Number::from_f64)
@@ -217,25 +262,28 @@ fn optional_f64_value(value: Option<f64>) -> Value {
         .unwrap_or(Value::Null)
 }
 
+#[cfg(feature = "compat-json")]
 fn f64_value(value: f64) -> Value {
     Number::from_f64(value)
         .map(Value::Number)
         .unwrap_or(Value::Null)
 }
 
+#[cfg(feature = "compat-json")]
 fn string_array_value(values: &[String]) -> Value {
     Value::Array(values.iter().cloned().map(Value::String).collect())
 }
 
-fn axis_value(axis: &XyChartAxisRenderModel) -> Value {
+#[cfg(feature = "compat-json")]
+fn axis_value(axis: &XyChartAxisModel) -> Value {
     let mut out = Map::new();
     match axis {
-        XyChartAxisRenderModel::Band { title, categories } => {
+        XyChartAxisModel::Band { title, categories } => {
             out.insert("type".to_string(), Value::String("band".to_string()));
             out.insert("title".to_string(), Value::String(title.clone()));
             out.insert("categories".to_string(), string_array_value(categories));
         }
-        XyChartAxisRenderModel::Linear { title, min, max } => {
+        XyChartAxisModel::Linear { title, min, max } => {
             out.insert("type".to_string(), Value::String("linear".to_string()));
             out.insert("title".to_string(), Value::String(title.clone()));
             out.insert("min".to_string(), optional_f64_value(*min));
@@ -245,11 +293,13 @@ fn axis_value(axis: &XyChartAxisRenderModel) -> Value {
     Value::Object(out)
 }
 
-fn plots_value(plots: &[XyChartPlotRenderModel]) -> Value {
+#[cfg(feature = "compat-json")]
+fn plots_value(plots: &[XyChartPlotModel]) -> Value {
     Value::Array(plots.iter().map(plot_value).collect())
 }
 
-fn plot_value(plot: &XyChartPlotRenderModel) -> Value {
+#[cfg(feature = "compat-json")]
+fn plot_value(plot: &XyChartPlotModel) -> Value {
     let mut out = Map::new();
     out.insert(
         "type".to_string(),
@@ -279,6 +329,7 @@ fn plot_value(plot: &XyChartPlotRenderModel) -> Value {
     Value::Object(out)
 }
 
+#[cfg(feature = "compat-json")]
 fn plot_type_name(plot_type: XyChartPlotType) -> String {
     match plot_type {
         XyChartPlotType::Line => "line".to_string(),
@@ -286,6 +337,7 @@ fn plot_type_name(plot_type: XyChartPlotType) -> String {
     }
 }
 
+#[cfg(feature = "compat-json")]
 fn plot_data_value(data: &[(String, Option<f64>)]) -> Value {
     Value::Array(
         data.iter()
@@ -325,12 +377,14 @@ struct Plot {
 struct ParsedDataPoint {
     value: f64,
     label: String,
+    #[cfg(feature = "editor-facts")]
     label_span: Option<SourceSpan>,
 }
 
 struct XyChartSemanticSource {
-    model: XyChartDiagramRenderModel,
-    editor_facts: EditorSemanticFacts,
+    model: XyChartDiagramModel,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct XyChartParseOutcome {
@@ -344,8 +398,10 @@ impl XyChartParseOutcome {
     ) -> std::result::Result<XyChartSemanticSource, CombinedSemanticFailure> {
         match self.first_error {
             Some(error) => Err(CombinedSemanticFailure::parser_recovery(
+                #[cfg(feature = "editor-facts")]
                 "xychart",
                 error,
+                #[cfg(feature = "editor-facts")]
                 self.source.editor_facts,
             )),
             None => Ok(self.source),
@@ -357,12 +413,14 @@ enum ParsedAxisData {
     None,
     Band {
         categories: Vec<String>,
-        source: SpannedText,
+        #[cfg(feature = "editor-facts")]
+        source: SourceSpan,
     },
     Range {
         min: f64,
         max: f64,
-        source: SpannedText,
+        #[cfg(feature = "editor-facts")]
+        source: SourceSpan,
     },
 }
 
@@ -374,7 +432,8 @@ struct ParsedAxisStatement {
 struct ParsedPlotStatement {
     title: Option<SpannedText>,
     data: Vec<ParsedDataPoint>,
-    data_source: SpannedText,
+    #[cfg(feature = "editor-facts")]
+    data_source: SourceSpan,
 }
 
 enum ParsedXyChartStatement {
@@ -398,9 +457,8 @@ struct XyChartState {
 }
 
 impl XyChartState {
-    fn new(meta: &ParseMetadata) -> Self {
-        let orientation = meta
-            .effective_config
+    fn new(config: &MermaidConfig) -> Self {
+        let orientation = config
             .get_str("xyChart.chartOrientation")
             .unwrap_or("vertical")
             .to_string();
@@ -429,16 +487,16 @@ impl XyChartState {
         }
     }
 
-    fn set_x_axis_title(&mut self, title: &str, meta: &ParseMetadata) {
-        let t = sanitize_text(title.trim(), &meta.effective_config);
+    fn set_x_axis_title(&mut self, title: &str, config: &MermaidConfig) {
+        let t = sanitize_text(title.trim(), config);
         match &mut self.x_axis {
             AxisData::Band { title, .. } => *title = t,
             AxisData::Linear { title, .. } => *title = t,
         }
     }
 
-    fn set_y_axis_title(&mut self, title: &str, meta: &ParseMetadata) {
-        let t = sanitize_text(title.trim(), &meta.effective_config);
+    fn set_y_axis_title(&mut self, title: &str, config: &MermaidConfig) {
+        let t = sanitize_text(title.trim(), config);
         match &mut self.y_axis {
             AxisData::Linear { title, .. } => *title = t,
             AxisData::Band { title, .. } => *title = t,
@@ -454,14 +512,14 @@ impl XyChartState {
         self.has_set_x_axis = true;
     }
 
-    fn set_x_axis_band(&mut self, categories: Vec<String>, meta: &ParseMetadata) {
+    fn set_x_axis_band(&mut self, categories: Vec<String>, config: &MermaidConfig) {
         let title = match &self.x_axis {
             AxisData::Band { title, .. } => title.clone(),
             AxisData::Linear { title, .. } => title.clone(),
         };
         let categories = categories
             .into_iter()
-            .map(|c| sanitize_text(c.trim(), &meta.effective_config))
+            .map(|c| sanitize_text(c.trim(), config))
             .collect::<Vec<_>>();
         self.x_axis = AxisData::Band { title, categories };
         self.has_set_x_axis = true;
@@ -546,7 +604,7 @@ impl XyChartState {
         &mut self,
         title: Option<String>,
         data: Vec<ParsedDataPoint>,
-        meta: &ParseMetadata,
+        config: &MermaidConfig,
     ) {
         let values = data.iter().map(|point| point.value).collect::<Vec<_>>();
         let mut point_labels = data
@@ -555,7 +613,7 @@ impl XyChartState {
                 if point.label.is_empty() {
                     String::new()
                 } else {
-                    sanitize_text(&point.label, &meta.effective_config)
+                    sanitize_text(&point.label, config)
                 }
             })
             .collect::<Vec<_>>();
@@ -584,14 +642,13 @@ impl XyChartState {
         });
     }
 
-    fn into_render_model(
+    fn into_semantic_model(
         self,
         title: Option<String>,
         acc_title: Option<String>,
         acc_descr: Option<String>,
-        meta: &ParseMetadata,
-    ) -> XyChartDiagramRenderModel {
-        XyChartDiagramRenderModel {
+    ) -> XyChartDiagramModel {
+        XyChartDiagramModel {
             orientation: self.orientation,
             title,
             acc_title,
@@ -601,7 +658,7 @@ impl XyChartState {
             plots: self
                 .plots
                 .into_iter()
-                .map(|p| XyChartPlotRenderModel {
+                .map(|p| XyChartPlotModel {
                     plot_type: p.plot_type,
                     title: p.title,
                     values: p.values,
@@ -609,12 +666,11 @@ impl XyChartState {
                     point_labels: p.point_labels,
                 })
                 .collect(),
-            display: XyChartDisplayPolicy::from_config(&meta.effective_config),
         }
     }
 }
 
-fn normalize_xychart_error(error: Error, meta: &ParseMetadata, fallback_span: SourceSpan) -> Error {
+fn normalize_xychart_error(error: Error, diagram_type: &str, fallback_span: SourceSpan) -> Error {
     match error {
         Error::DiagramParse {
             diagram_type,
@@ -623,14 +679,10 @@ fn normalize_xychart_error(error: Error, meta: &ParseMetadata, fallback_span: So
             diagram_type,
             diagnostic,
         },
-        Error::DiagramParse { diagnostic, .. } => Error::diagram_parse_exact(
-            meta.diagram_type.clone(),
-            diagnostic.message(),
-            fallback_span,
-        ),
-        error => {
-            Error::diagram_parse_exact(meta.diagram_type.clone(), error.to_string(), fallback_span)
+        Error::DiagramParse { diagnostic, .. } => {
+            Error::diagram_parse_exact(diagram_type, diagnostic.message(), fallback_span)
         }
+        error => Error::diagram_parse_exact(diagram_type, error.to_string(), fallback_span),
     }
 }
 
@@ -638,6 +690,7 @@ fn record_xychart_error(first_error: &mut Option<Error>, error: Error) {
     first_error.get_or_insert(error);
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_xychart_axis_facts(
     facts: &mut EditorSemanticFacts,
     axis: &ParsedAxisStatement,
@@ -667,12 +720,12 @@ fn push_xychart_axis_facts(
 fn apply_x_axis_statement(
     axis: ParsedAxisStatement,
     state: &mut XyChartState,
-    meta: &ParseMetadata,
+    config: &MermaidConfig,
 ) {
-    state.set_x_axis_title(axis.title.as_ref().map_or("", SpannedText::as_str), meta);
+    state.set_x_axis_title(axis.title.as_ref().map_or("", SpannedText::as_str), config);
     match axis.data {
         ParsedAxisData::None => {}
-        ParsedAxisData::Band { categories, .. } => state.set_x_axis_band(categories, meta),
+        ParsedAxisData::Band { categories, .. } => state.set_x_axis_band(categories, config),
         ParsedAxisData::Range { min, max, .. } => state.set_x_axis_range(min, max),
     }
 }
@@ -680,14 +733,15 @@ fn apply_x_axis_statement(
 fn apply_y_axis_statement(
     axis: ParsedAxisStatement,
     state: &mut XyChartState,
-    meta: &ParseMetadata,
+    config: &MermaidConfig,
 ) {
-    state.set_y_axis_title(axis.title.as_ref().map_or("", SpannedText::as_str), meta);
+    state.set_y_axis_title(axis.title.as_ref().map_or("", SpannedText::as_str), config);
     if let ParsedAxisData::Range { min, max, .. } = axis.data {
         state.set_y_axis_range(min, max);
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_xychart_plot_statement_facts(
     facts: &mut EditorSemanticFacts,
     plot: &ParsedPlotStatement,
@@ -760,16 +814,14 @@ fn parse_xychart_statement(
     ))
 }
 
-fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChartParseOutcome {
-    construct_xychart_semantic_source_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-}
-
 fn construct_xychart_semantic_source_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    diagram_type: &str,
+    config: &MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<XyChartParseOutcome> {
+    control.checkpoint()?;
     #[cfg(test)]
     XYCHART_SYNTAX_CONSTRUCTION_COUNT.set(XYCHART_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -781,24 +833,38 @@ fn construct_xychart_semantic_source_controlled(
     let Some(header) = statements.next() else {
         return Ok(XyChartParseOutcome {
             source: XyChartSemanticSource {
-                model: XyChartState::new(meta).into_render_model(None, None, None, meta),
-                editor_facts: EditorSemanticFacts::new(),
+                model: XyChartState::new(config).into_semantic_model(None, None, None),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: editor_demand
+                    .needs_recovery()
+                    .then(EditorSemanticFacts::new),
             },
             first_error: None,
         });
     };
 
-    let mut editor_facts = EditorSemanticFacts::new();
+    #[cfg(feature = "editor-facts")]
+    let mut editor_facts = match editor_demand {
+        EditorFactsDemand::Omit | EditorFactsDemand::Recovery => None,
+        EditorFactsDemand::Capture => {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            Some(EditorSemanticFacts::new())
+        }
+    };
     let mut first_error = None;
-    let mut state = XyChartState::new(meta);
+    let mut state = XyChartState::new(config);
     let header_trimmed = header.text.trim();
     let header_start = header.trimmed_start();
     let header_span = SourceSpan::new(header_start, header_start + header_trimmed.len());
     if let Err(error) = parse_header(&header.text, header_start, &mut state) {
-        let error = normalize_xychart_error(error, meta, header_span);
+        let error = normalize_xychart_error(error, diagram_type, header_span);
         first_error = Some(error);
     }
-    if let Some((prefix_len, _)) = header_token_len_and_rest(header_trimmed) {
+    #[cfg(feature = "editor-facts")]
+    if let Some((prefix_len, _)) = header_token_len_and_rest(header_trimmed)
+        && let Some(editor_facts) = &mut editor_facts
+    {
         editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::Payload,
             SourceSpan::new(header_start, header_start + prefix_len),
@@ -820,35 +886,46 @@ fn construct_xychart_semantic_source_controlled(
         }
         let statement_span =
             SourceSpan::new(statement_start, statement_start + statement_text.len());
-        let parsed =
-            match parse_xychart_statement(statement_text, statement_start, &meta.diagram_type) {
-                Ok(parsed) => parsed,
-                Err(error) => {
-                    record_xychart_error(
-                        &mut first_error,
-                        normalize_xychart_error(error, meta, statement_span),
-                    );
-                    continue;
-                }
-            };
+        let parsed = match parse_xychart_statement(statement_text, statement_start, diagram_type) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                record_xychart_error(
+                    &mut first_error,
+                    normalize_xychart_error(error, diagram_type, statement_span),
+                );
+                continue;
+            }
+        };
 
         match parsed {
             ParsedXyChartStatement::Title(value) => {
-                editor_facts.push_directive_prefix("title");
-                push_xychart_payload_fact(
-                    &mut editor_facts,
-                    value.as_str(),
-                    SourceSpan::new(value.start, value.end),
-                    "xychart title",
-                    EditorSemanticKind::String,
-                );
+                #[cfg(feature = "editor-facts")]
+                if let Some(editor_facts) = &mut editor_facts {
+                    editor_facts.push_directive_prefix("title");
+                }
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = &mut editor_facts {
+                    push_xychart_payload_fact(
+                        facts,
+                        value.as_str(),
+                        SourceSpan::new(value.start, value.end),
+                        "xychart title",
+                        EditorSemanticKind::String,
+                    );
+                }
                 title = Some(value.text.trim().to_string());
             }
             ParsedXyChartStatement::AccessibilityTitle(value) => {
-                editor_facts.push_directive_prefix("accTitle");
-                if !value.text.is_empty() {
+                #[cfg(feature = "editor-facts")]
+                if let Some(editor_facts) = &mut editor_facts {
+                    editor_facts.push_directive_prefix("accTitle");
+                }
+                #[cfg(feature = "editor-facts")]
+                if !value.text.is_empty()
+                    && let Some(facts) = &mut editor_facts
+                {
                     push_xychart_payload_fact(
-                        &mut editor_facts,
+                        facts,
                         value.as_str(),
                         SourceSpan::new(value.start, value.end),
                         "xychart accessibility title",
@@ -858,10 +935,16 @@ fn construct_xychart_semantic_source_controlled(
                 acc_title = Some(value.text);
             }
             ParsedXyChartStatement::AccessibilityDescription(value) => {
-                editor_facts.push_directive_prefix("accDescr");
-                if !value.text.is_empty() {
+                #[cfg(feature = "editor-facts")]
+                if let Some(editor_facts) = &mut editor_facts {
+                    editor_facts.push_directive_prefix("accDescr");
+                }
+                #[cfg(feature = "editor-facts")]
+                if !value.text.is_empty()
+                    && let Some(facts) = &mut editor_facts
+                {
                     push_xychart_payload_fact(
-                        &mut editor_facts,
+                        facts,
                         value.as_str(),
                         SourceSpan::new(value.start, value.end),
                         "xychart accessibility description",
@@ -871,39 +954,51 @@ fn construct_xychart_semantic_source_controlled(
                 acc_descr = Some(value.text);
             }
             ParsedXyChartStatement::XAxis(axis) => {
-                push_xychart_axis_facts(&mut editor_facts, &axis, "xychart x-axis");
-                apply_x_axis_statement(axis, &mut state, meta);
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = &mut editor_facts {
+                    push_xychart_axis_facts(facts, &axis, "xychart x-axis");
+                }
+                apply_x_axis_statement(axis, &mut state, config);
             }
             ParsedXyChartStatement::YAxis(axis) => {
-                push_xychart_axis_facts(&mut editor_facts, &axis, "xychart y-axis");
-                apply_y_axis_statement(axis, &mut state, meta);
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = &mut editor_facts {
+                    push_xychart_axis_facts(facts, &axis, "xychart y-axis");
+                }
+                apply_y_axis_statement(axis, &mut state, config);
             }
             ParsedXyChartStatement::Line(plot) => {
-                push_xychart_plot_statement_facts(
-                    &mut editor_facts,
-                    &plot,
-                    "xychart line",
-                    "xychart line data label",
-                );
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = &mut editor_facts {
+                    push_xychart_plot_statement_facts(
+                        facts,
+                        &plot,
+                        "xychart line",
+                        "xychart line data label",
+                    );
+                }
                 state.add_line_data(
                     plot.title
                         .as_ref()
-                        .and_then(|title| plot_title_value(title.as_str(), meta)),
+                        .and_then(|title| plot_title_value(title.as_str(), config)),
                     plot.data,
-                    meta,
+                    config,
                 );
             }
             ParsedXyChartStatement::Bar(plot) => {
-                push_xychart_plot_statement_facts(
-                    &mut editor_facts,
-                    &plot,
-                    "xychart bar",
-                    "xychart bar data label",
-                );
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = &mut editor_facts {
+                    push_xychart_plot_statement_facts(
+                        facts,
+                        &plot,
+                        "xychart bar",
+                        "xychart bar data label",
+                    );
+                }
                 state.add_bar_data(
                     plot.title
                         .as_ref()
-                        .and_then(|title| plot_title_value(title.as_str(), meta)),
+                        .and_then(|title| plot_title_value(title.as_str(), config)),
                     plot.data,
                 );
             }
@@ -913,33 +1008,100 @@ fn construct_xychart_semantic_source_controlled(
     control.checkpoint()?;
     Ok(XyChartParseOutcome {
         source: XyChartSemanticSource {
-            model: state.into_render_model(title, acc_title, acc_descr, meta),
-            editor_facts,
+            model: state.into_semantic_model(title, acc_title, acc_descr),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: editor_demand.finish_facts(editor_facts),
         },
         first_error,
     })
 }
 
-pub(crate) fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let source = construct_xychart_semantic_source(code, meta)
-        .into_strict_result()
-        .map_err(CombinedSemanticFailure::into_error)?;
-    render_model_to_compat_json(&source.model, meta)
+pub(crate) fn parse_xychart_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::SemanticConstruction<XyChartDiagramModel>> {
+    let construction = construct_xychart_semantic_source_controlled(
+        code,
+        &metadata.diagram_type,
+        &metadata.semantic_config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?
+    .into_strict_result();
+    Ok(match construction {
+        Ok(source) => {
+            #[cfg(feature = "editor-facts")]
+            let editor_facts = source.editor_facts;
+            let mut model = source.model;
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            crate::family::SemanticConstruction {
+                model: Ok(model),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
+            }
+        }
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            {
+                match editor_demand {
+                    EditorFactsDemand::Capture | EditorFactsDemand::Recovery => {
+                        let (error, facts) = failure.into_parts();
+                        crate::family::SemanticConstruction {
+                            model: Err(error),
+                            editor_facts: Some(facts),
+                        }
+                    }
+                    EditorFactsDemand::Omit => crate::family::SemanticConstruction {
+                        model: Err(failure.into_error()),
+                        editor_facts: None,
+                    },
+                }
+            }
+            #[cfg(not(feature = "editor-facts"))]
+            {
+                crate::family::SemanticConstruction {
+                    model: Err(failure.into_error()),
+                }
+            }
+        }
+    })
 }
 
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_xychart(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+    let model =
+        parse_xychart_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+            .expect("a private parse control cannot be cancelled")?;
+    render_model_to_compat_json(&model, meta)
+}
+
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_xychart_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let parsed = crate::family::CombinedSemanticParse::from_construction(
-        construct_xychart_semantic_source_controlled(code, meta, control)?.into_strict_result(),
-        |XyChartSemanticSource {
-             model,
-             editor_facts,
-         }| {
-            let model = render_model_to_compat_json(&model, meta);
-            (model, editor_facts)
+        construct_xychart_semantic_source_controlled(
+            code,
+            &meta.diagram_type,
+            meta.effective_config.as_config(),
+            EditorFactsDemand::Capture,
+            control,
+        )?
+        .into_strict_result(),
+        |source| {
+            let model = source
+                .model
+                .into_render_model(meta.effective_config.as_config());
+            (
+                render_model_to_compat_json(&model, meta),
+                source.editor_facts.unwrap_or_default(),
+            )
         },
         CombinedSemanticFailure::into_parts,
     );
@@ -947,50 +1109,60 @@ pub(crate) fn parse_xychart_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_xychart_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<XyChartDiagramRenderModel> {
-    construct_xychart_semantic_source(code, meta)
-        .into_strict_result()
-        .map(|source| source.model)
-        .map_err(CombinedSemanticFailure::into_error)
+    parse_xychart_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_xychart_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<XyChartDiagramRenderModel>> {
-    let outcome = construct_xychart_semantic_source_controlled(code, meta, control)?;
-    let source = match outcome.into_strict_result() {
-        Ok(source) => source,
-        Err(failure) => return Ok(Err(failure.into_error())),
-    };
+    let outcome = construct_xychart_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     control.checkpoint()?;
-    Ok(Ok(source.model))
+    Ok(outcome
+        .into_strict_result()
+        .map(|source| {
+            source
+                .model
+                .into_render_model(meta.effective_config.as_config())
+        })
+        .map_err(CombinedSemanticFailure::into_error))
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &XyChartDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     Ok(model.to_compat_json(meta))
 }
 
-fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
-    let title = sanitize_text(title.trim(), &meta.effective_config);
+fn plot_title_value(title: &str, config: &MermaidConfig) -> Option<String> {
+    let title = sanitize_text(title.trim(), config);
     (!title.is_empty()).then_some(title)
 }
 
-fn axis_data_to_render_model(axis: AxisData) -> XyChartAxisRenderModel {
+fn axis_data_to_render_model(axis: AxisData) -> XyChartAxisModel {
     match axis {
-        AxisData::Band { title, categories } => XyChartAxisRenderModel::Band { title, categories },
+        AxisData::Band { title, categories } => XyChartAxisModel::Band { title, categories },
         AxisData::Linear { title, min, max } => {
             let min = min.is_finite().then_some(min);
             let max = max.is_finite().then_some(max);
-            XyChartAxisRenderModel::Linear { title, min, max }
+            XyChartAxisModel::Linear { title, min, max }
         }
     }
 }
@@ -1035,6 +1207,7 @@ fn parse_header(stmt: &str, statement_start: usize, state: &mut XyChartState) ->
     ))
 }
 
+#[cfg(feature = "editor-facts")]
 fn header_token_len_and_rest(stmt: &str) -> Option<(usize, &str)> {
     let t = stmt.trim_start();
     let lower = t.to_ascii_lowercase();
@@ -1057,6 +1230,7 @@ fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
     Some(&s[kw.len()..])
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_xychart_payload_fact(
     facts: &mut EditorSemanticFacts,
     text: &str,
@@ -1080,7 +1254,9 @@ fn push_xychart_payload_fact(
 #[derive(Debug, Clone)]
 struct SpannedText {
     text: String,
+    #[cfg(feature = "editor-facts")]
     start: usize,
+    #[cfg(feature = "editor-facts")]
     end: usize,
 }
 
@@ -1116,7 +1292,9 @@ impl<'a> SpannedSlice<'a> {
     fn to_text(self) -> SpannedText {
         SpannedText {
             text: self.text.to_string(),
+            #[cfg(feature = "editor-facts")]
             start: self.start,
+            #[cfg(feature = "editor-facts")]
             end: self.end,
         }
     }
@@ -1158,12 +1336,15 @@ fn parse_text_prefix_source<'a>(
                 input_start + input.len(),
             ));
         };
+        #[cfg(feature = "editor-facts")]
         let value_start = text_start + 2;
         let tail_start = 2 + end + 2;
         return Ok((
             SpannedText {
                 text: body[..end].to_string(),
+                #[cfg(feature = "editor-facts")]
                 start: value_start,
+                #[cfg(feature = "editor-facts")]
                 end: value_start + end,
             },
             SpannedSlice::new(
@@ -1182,12 +1363,15 @@ fn parse_text_prefix_source<'a>(
                 input_start + input.len(),
             ));
         };
+        #[cfg(feature = "editor-facts")]
         let value_start = text_start + 1;
         let tail_start = 1 + end + 1;
         return Ok((
             SpannedText {
                 text: body[..end].to_string(),
+                #[cfg(feature = "editor-facts")]
                 start: value_start,
+                #[cfg(feature = "editor-facts")]
                 end: value_start + end,
             },
             SpannedSlice::new(
@@ -1247,7 +1431,9 @@ fn parse_text_prefix_source<'a>(
     Ok((
         SpannedText {
             text: value,
+            #[cfg(feature = "editor-facts")]
             start: text_start,
+            #[cfg(feature = "editor-facts")]
             end: text_start + raw_value.len(),
         },
         SpannedSlice::new(
@@ -1365,16 +1551,25 @@ fn parse_x_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
     }
 
     if input.text.starts_with('[') {
-        let (categories, source) = parse_text_list_source(input.text, input.start)?;
+        let (categories, _source) = parse_text_list_source(input.text, input.start)?;
         return Ok(ParsedAxisStatement {
             title: None,
-            data: ParsedAxisData::Band { categories, source },
+            data: ParsedAxisData::Band {
+                categories,
+                #[cfg(feature = "editor-facts")]
+                source: _source,
+            },
         });
     }
-    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start)? {
+    if let Some((min, max, _source)) = try_parse_range_source(input.text, input.start)? {
         return Ok(ParsedAxisStatement {
             title: None,
-            data: ParsedAxisData::Range { min, max, source },
+            data: ParsedAxisData::Range {
+                min,
+                max,
+                #[cfg(feature = "editor-facts")]
+                source: _source,
+            },
         });
     }
 
@@ -1387,16 +1582,25 @@ fn parse_x_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
         });
     }
     if tail.text.starts_with('[') {
-        let (categories, source) = parse_text_list_source(tail.text, tail.start)?;
+        let (categories, _source) = parse_text_list_source(tail.text, tail.start)?;
         return Ok(ParsedAxisStatement {
             title: Some(title),
-            data: ParsedAxisData::Band { categories, source },
+            data: ParsedAxisData::Band {
+                categories,
+                #[cfg(feature = "editor-facts")]
+                source: _source,
+            },
         });
     }
-    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start)? {
+    if let Some((min, max, _source)) = try_parse_range_source(tail.text, tail.start)? {
         return Ok(ParsedAxisStatement {
             title: Some(title),
-            data: ParsedAxisData::Range { min, max, source },
+            data: ParsedAxisData::Range {
+                min,
+                max,
+                #[cfg(feature = "editor-facts")]
+                source: _source,
+            },
         });
     }
     Err(Error::diagram_parse_exact(
@@ -1422,10 +1626,15 @@ fn parse_y_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
             SourceSpan::new(input.start, input.end),
         ));
     }
-    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start)? {
+    if let Some((min, max, _source)) = try_parse_range_source(input.text, input.start)? {
         return Ok(ParsedAxisStatement {
             title: None,
-            data: ParsedAxisData::Range { min, max, source },
+            data: ParsedAxisData::Range {
+                min,
+                max,
+                #[cfg(feature = "editor-facts")]
+                source: _source,
+            },
         });
     }
 
@@ -1444,10 +1653,15 @@ fn parse_y_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
             SourceSpan::new(tail.start, tail.end),
         ));
     }
-    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start)? {
+    if let Some((min, max, _source)) = try_parse_range_source(tail.text, tail.start)? {
         return Ok(ParsedAxisStatement {
             title: Some(title),
-            data: ParsedAxisData::Range { min, max, source },
+            data: ParsedAxisData::Range {
+                min,
+                max,
+                #[cfg(feature = "editor-facts")]
+                source: _source,
+            },
         });
     }
     Err(Error::diagram_parse_exact(
@@ -1488,19 +1702,20 @@ fn parse_plot_stmt_source(rest: &str, rest_start: usize) -> Result<ParsedPlotSta
         }
         (Some(title), tail)
     };
-    let (data, data_source) =
+    let (data, _data_source) =
         parse_data_point_list_in_brackets_spanned(data_input.text, data_input.start)?;
     Ok(ParsedPlotStatement {
         title,
         data,
-        data_source,
+        #[cfg(feature = "editor-facts")]
+        data_source: _data_source,
     })
 }
 
 fn try_parse_range_source(
     input: &str,
     input_start: usize,
-) -> Result<Option<(f64, f64, SpannedText)>> {
+) -> Result<Option<(f64, f64, SourceSpan)>> {
     let input = SpannedSlice::new(input, input_start, input_start + input.len()).trim();
     let Some((first, after_first)) = take_number_token(input.text) else {
         return Ok(None);
@@ -1563,11 +1778,7 @@ fn try_parse_range_source(
     Ok(Some((
         first_value,
         second_value,
-        SpannedText {
-            text: input.text[..source_end - input.start].to_string(),
-            start: input.start,
-            end: source_end,
-        },
+        SourceSpan::new(input.start, source_end),
     )))
 }
 
@@ -1590,7 +1801,7 @@ fn take_number_token(input: &str) -> Option<(&str, &str)> {
     Some((&input[..idx], &input[idx..]))
 }
 
-fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String>, SpannedText)> {
+fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String>, SourceSpan)> {
     let (inner, inner_start) = extract_bracket_inner_spanned(input, input_start)?;
     let source = SpannedSlice::new(inner, inner_start, inner_start + inner.len()).trim();
     if source.text.is_empty() {
@@ -1614,13 +1825,13 @@ fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String
         }
         categories.push(parse_text_source(part.text, part.start)?.text);
     }
-    Ok((categories, source.to_text()))
+    Ok((categories, SourceSpan::new(source.start, source.end)))
 }
 
 fn parse_data_point_list_in_brackets_spanned(
     input: &str,
     input_start: usize,
-) -> Result<(Vec<ParsedDataPoint>, SpannedText)> {
+) -> Result<(Vec<ParsedDataPoint>, SourceSpan)> {
     let leading = input.len().saturating_sub(input.trim_start().len());
     let t = input.trim_start();
     let t_start = input_start + leading;
@@ -1646,7 +1857,7 @@ fn parse_data_point_list_in_brackets_spanned(
         }
         out.push(parse_data_point_spanned(trimmed)?);
     }
-    Ok((out, source.to_text()))
+    Ok((out, SourceSpan::new(source.start, source.end)))
 }
 
 fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
@@ -1674,6 +1885,7 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
         return Ok(ParsedDataPoint {
             value,
             label: label.text,
+            #[cfg(feature = "editor-facts")]
             label_span: Some(SourceSpan::new(label.start, label.end)),
         });
     }
@@ -1688,6 +1900,7 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
     Ok(ParsedDataPoint {
         value,
         label: String::new(),
+        #[cfg(feature = "editor-facts")]
         label_span: None,
     })
 }
@@ -1721,7 +1934,9 @@ fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<Spa
     }
     Ok(SpannedText {
         text: body[..end].to_string(),
+        #[cfg(feature = "editor-facts")]
         start: input_start + 1,
+        #[cfg(feature = "editor-facts")]
         end: input_start + 1 + end,
     })
 }
@@ -2001,18 +2216,17 @@ fn is_xychart_accessibility_block_prefix(statement: &str) -> bool {
             .all(char::is_whitespace)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole, Engine,
-        ParseDiagnosticSpanKind, ParseOptions,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole};
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -2020,7 +2234,7 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> String {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
@@ -2035,7 +2249,7 @@ mod tests {
 
     #[test]
     fn xychart_empty_sources_share_the_configured_default_model_and_editor_facts() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let configured = concat!(
             "%%{init: {\"xyChart\": {\"chartOrientation\": \"horizontal\", ",
             "\"showTitle\": false, \"xAxis\": {\"showLabel\": false}}}}%%\nxychart",
@@ -2053,16 +2267,19 @@ mod tests {
             let projection = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
             assert_eq!(projection, parsed.model);
             assert_eq!(parse_xychart(source, &parsed.meta).unwrap(), projection);
-            let (combined, facts) =
-                crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
-                    source,
-                    &parsed.meta,
-                    &crate::OperationControl::new(),
-                ))
-                .unwrap();
-            assert_eq!(combined, projection);
-            assert!(facts.symbols.is_empty());
-            assert!(facts.diagnostics.is_empty());
+            #[cfg(feature = "editor-facts")]
+            {
+                let (combined, facts) =
+                    crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
+                        source,
+                        &parsed.meta,
+                        &crate::OperationControl::new(),
+                    ))
+                    .unwrap();
+                assert_eq!(combined, projection);
+                assert!(facts.symbols.is_empty());
+                assert!(facts.diagnostics.is_empty());
+            }
         }
     }
 
@@ -2265,7 +2482,7 @@ bar [1, 2]
     #[test]
     fn xychart_invalid_plot_number_reports_exact_token_span() {
         let text = "xychart\nbar \"t\" [  +23 , -4aa5  , 56.6 ]\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = err else {
             panic!("expected xychart parse error");
@@ -2283,7 +2500,7 @@ bar [1, 2]
     #[test]
     fn xychart_rejects_trailing_decimal_point_like_pinned_jison() {
         let text = "xychart\nbar [1.]\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
         let Error::DiagramParse { diagnostic, .. } = err else {
             panic!("expected xychart parse error");
@@ -2300,7 +2517,7 @@ bar [1, 2]
 
     #[test]
     fn xychart_entrypoints_and_combined_projection_construct_once() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "xychart horizontal\n",
             "title \"Revenue; Growth\"; accTitle: Revenue chart\n",
@@ -2328,6 +2545,7 @@ bar [1, 2]
         assert_eq!(xychart_syntax_construction_count(), 1);
 
         reset_xychart_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
         let (combined_json, combined_editor) =
             crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
                 text,
@@ -2335,6 +2553,8 @@ bar [1, 2]
                 &crate::OperationControl::new(),
             ))
             .expect("XYChart combined projection succeeds");
+        #[cfg(not(feature = "editor-facts"))]
+        let combined_json = parse_xychart(text, &parsed.meta).unwrap();
         assert_eq!(xychart_syntax_construction_count(), 1);
         for field in [
             "orientation",
@@ -2352,6 +2572,7 @@ bar [1, 2]
                 "XYChart combined {field} drift"
             );
         }
+        #[cfg(feature = "editor-facts")]
         assert!(!combined_editor.symbols.is_empty());
 
         let typed = serde_json::to_value(typed).expect("XYChart typed model serializes");
@@ -2382,7 +2603,7 @@ bar [1, 2]
     #[test]
     fn xychart_typed_projection_matches_complete_compat_json() {
         let text = "xychart\nx-axis [Q1, Q2]\nline [1, 2]\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let parsed = engine
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("XYChart compatibility parse succeeds")
@@ -2405,7 +2626,7 @@ bar [1, 2]
     #[test]
     fn xychart_plot_titles_are_sanitized_and_projected_for_legends() {
         let text = "xychart\nx-axis [Q1, Q2]\nline \" avg \" [1, 2]\nbar \" p95 \" [2, 3]\n";
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let parsed = engine
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("XYChart compatibility parse succeeds")
@@ -2420,8 +2641,9 @@ bar [1, 2]
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_editor_projection_preserves_multiline_and_nested_payload_spans() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "xychart\n",
             "title \"Revenue plan\"\n",
@@ -2522,8 +2744,9 @@ bar [1, 2]
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_malformed_plot_recovers_prior_parser_facts() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let text = concat!(
             "xychart\n",
             "title Revenue\n",
@@ -2563,7 +2786,7 @@ bar [1, 2]
         );
         let invalid_start = text.find("-4aa5").expect("invalid token");
 
-        let strict = Engine::new()
+        let strict = MermaidEngine::new()
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect_err("strict XYChart parse must return its first error");
         let Error::DiagramParse { diagnostic, .. } = strict else {
@@ -2578,24 +2801,28 @@ bar [1, 2]
             ))
         );
 
-        reset_xychart_syntax_construction_count();
-        let facts = Engine::new()
-            .parse_editor_semantic_facts_with_type_sync("xychart", text)
-            .expect("XYChart editor recovery")
-            .expect("XYChart recovered facts");
-        assert_eq!(xychart_syntax_construction_count(), 1);
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "After 后来"
-                && symbol.detail.as_deref() == Some("xychart line")
-                && symbol.role == EditorSemanticRole::Payload
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            reset_xychart_syntax_construction_count();
+            let facts = MermaidEngine::new()
+                .parse_editor_semantic_facts_with_type_sync("xychart", text)
+                .expect("XYChart editor recovery")
+                .expect("XYChart recovered facts");
+            assert_eq!(xychart_syntax_construction_count(), 1);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "After 后来"
+                    && symbol.detail.as_deref() == Some("xychart line")
+                    && symbol.role == EditorSemanticRole::Payload
+            }));
+        }
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_unterminated_eof_string_reports_insertion_point() {
         let text = "xychart\ntitle \"未完成 🤓";
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("xychart", text)
             .expect("XYChart editor recovery")
             .expect("XYChart recovered facts");
@@ -2608,9 +2835,10 @@ bar [1, 2]
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn xychart_missing_bracket_recovers_at_the_next_statement_boundary() {
         let text = "xychart\nbar [1, 2\nline [3]\n";
-        let facts = Engine::new()
+        let facts = MermaidEngine::new()
             .parse_editor_semantic_facts_with_type_sync("xychart", text)
             .expect("XYChart editor recovery")
             .expect("XYChart recovered facts");
@@ -2621,5 +2849,247 @@ bar [1, 2]
             expected.kind == EditorExpectedSyntaxKind::Payload
                 && expected.span == SourceSpan::new(later_value_start, later_value_start + 1)
         }));
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_empty_capture_keeps_an_available_empty_journal() {
+        reset_xychart_syntax_construction_count();
+        let parsed = parse_xychart_semantic_model_controlled(
+            "",
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.model.is_ok());
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = parsed
+                .editor_facts
+                .expect("empty input still provides requested facts");
+            assert!(facts.symbols.is_empty());
+            assert!(facts.diagnostics.is_empty());
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Complete
+            );
+        }
+    }
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "xychart".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn canonical_terminal_display_policy_reads_all_admitted_visibility_flags() {
+        let policy = XyChartDisplayPolicy::from_config(&MermaidConfig::from_value(
+            serde_json::json!({"xyChart": {
+                "showTitle": false,
+                "showDataLabel": true,
+                "showDataLabelOutsideBar": true,
+                "xAxis": {
+                    "showLabel": false, "showTitle": false,
+                    "showTick": false, "showAxisLine": false
+                },
+                "yAxis": {
+                    "showLabel": false, "showTitle": false,
+                    "showTick": false, "showAxisLine": false
+                }
+            }}),
+        ));
+        assert_eq!(
+            policy,
+            XyChartDisplayPolicy {
+                show_title: false,
+                show_data_label: true,
+                show_data_label_outside_bar: true,
+                x_axis: XyChartAxisDisplayPolicy {
+                    show_label: false,
+                    show_title: false,
+                    show_tick: false,
+                    show_axis_line: false,
+                },
+                y_axis: XyChartAxisDisplayPolicy {
+                    show_label: false,
+                    show_title: false,
+                    show_tick: false,
+                    show_axis_line: false,
+                },
+            }
+        );
+        assert_eq!(
+            XyChartDisplayPolicy::from_config(&MermaidConfig::empty_object()),
+            XyChartDisplayPolicy::default()
+        );
+    }
+
+    #[test]
+    fn semantic_axes_and_series_construct_once_without_display_or_editor_work() {
+        reset_xychart_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let model = parse_xychart_semantic_model_controlled(
+            "xychart horizontal\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Revenue 0 --> 100\nline Forecast [23 \"Low\", 45 \"High\"]\n",
+            &metadata(), #[cfg(feature = "editor-facts")]
+EditorFactsDemand::Omit, &crate::OperationControl::new(),
+        ).unwrap().model.unwrap();
+        assert_eq!(model.orientation, "horizontal");
+        assert_eq!(model.title.as_deref(), Some("Revenue"));
+        assert_eq!(
+            model.x_axis,
+            XyChartAxisModel::Band {
+                title: "Quarter".to_string(),
+                categories: vec!["Q1".to_string(), "Q2".to_string()]
+            }
+        );
+        assert_eq!(
+            model.y_axis,
+            XyChartAxisModel::Linear {
+                title: "Revenue".to_string(),
+                min: Some(0.0),
+                max: Some(100.0)
+            }
+        );
+        assert_eq!(model.plots[0].plot_type, XyChartPlotType::Line);
+        assert_eq!(model.plots[0].values, vec![23.0, 45.0]);
+        assert_eq!(
+            model.plots[0].data,
+            vec![
+                ("Q1".to_string(), Some(23.0)),
+                ("Q2".to_string(), Some(45.0))
+            ]
+        );
+        assert_eq!(model.plots[0].point_labels, vec!["Low", "High"]);
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        assert!(
+            serde_json::to_value(model)
+                .unwrap()
+                .get("display")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn semantic_config_sanitizes_text_without_materializing_display_policy() {
+        let mut metadata = metadata();
+        metadata.semantic_config = MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict", "xyChart": {"chartOrientation": "horizontal", "showTitle": false},
+            "themeVariables": {"primaryColor": "not-a-color"}
+        }));
+        let model = parse_xychart_semantic_model_controlled(
+            "xychart\ntitle \"<script>bad()</script>Revenue\"\nbar [1, 2]",
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        assert_eq!(model.orientation, "horizontal");
+        assert_eq!(model.title.as_deref(), Some("Revenue"));
+        assert_eq!(model.plots[0].values, vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn semantic_invalid_number_retains_exact_error_and_omits_editor_recovery() {
+        let input = "xychart\nbar [1.]\n";
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let error = parse_xychart_semantic_model_controlled(
+            input,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = &error else {
+            panic!("expected exact parser diagnostic")
+        };
+        let offset = input.find("1.").unwrap();
+        assert_eq!(diagnostic.message(), "invalid number: 1.");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset + 2)));
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "presentation")]
+        {
+            let full = PresentationMetadata {
+                diagram_type: "xychart".to_string(),
+                config: MermaidConfig::empty_object(),
+                effective_config: crate::presentation::PresentationConfig::empty_object(),
+                title: None,
+            };
+            let full_error = parse_xychart_model_for_render_controlled(
+                input,
+                &full,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap_err();
+            assert_eq!(error.to_string(), full_error.to_string());
+        }
+    }
+
+    #[test]
+    fn semantic_cancellation_stops_before_construction() {
+        reset_xychart_syntax_construction_count();
+        let control = crate::OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_xychart_semantic_model_controlled(
+                "xychart\nbar [1]",
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
+        );
+        assert_eq!(xychart_syntax_construction_count(), 0);
+    }
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn typed_and_json_paths_skip_editor_projection() {
+        let full = PresentationMetadata {
+            diagram_type: "xychart".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        reset_xychart_syntax_construction_count();
+        parse_xychart_model_for_render_controlled(
+            "xychart\nbar [1, 2]",
+            &full,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        reset_xychart_syntax_construction_count();
+        parse_xychart("xychart\nbar [1, 2]", &full).unwrap();
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

@@ -5,7 +5,7 @@ use merman_core::{
         ThemeCompatibilityConsumptionDisposition, ThemeCompatibilityFieldConsumption,
         ThemeCompatibilityFieldKind, ThemeParseEvidence,
     },
-    MermaidConfig,
+    presentation::PresentationConfig,
 };
 
 use crate::diagram_theme::{
@@ -102,7 +102,7 @@ impl PacketThemeOutcome {
 impl PacketTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut css_binding =
@@ -377,7 +377,7 @@ impl PacketThemeSelection {
 /// Final reports replace this deferral with actual writer outcomes.
 pub(crate) fn deferred_mermaid_compatibility_consumptions(
     theme: Option<&ResolvedDiagramTheme>,
-    effective_config: &MermaidConfig,
+    effective_config: &PresentationConfig,
     parse_evidence: &ThemeParseEvidence,
 ) -> Box<[ThemeCompatibilityFieldConsumption]> {
     let Some(theme) = theme else {
@@ -426,7 +426,7 @@ fn packet_text_surface_compatibility_consumptions(
         .into_boxed_slice()
 }
 
-fn packet_dark_mode_is_canonical(config: &MermaidConfig) -> bool {
+fn packet_dark_mode_is_canonical(config: &PresentationConfig) -> bool {
     match (
         config.get_bool("darkMode"),
         config.get_bool("themeVariables.darkMode"),
@@ -480,11 +480,11 @@ const fn selector_intersects_default_occurrences(
         && selector.ordinal_domain_intersects_occurrence_count(occurrence_count)
 }
 
-fn packet_config_owns_font_stack(config: &MermaidConfig) -> bool {
+fn packet_config_owns_font_stack(config: &PresentationConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.fontFamily")
         || merman_core::__private::config_path_overrides_typed_default(config, "fontFamily")
 }
 
-fn packet_config_path_owns(config: &MermaidConfig, path: &str) -> bool {
+fn packet_config_path_owns(config: &PresentationConfig, path: &str) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, path)
 }

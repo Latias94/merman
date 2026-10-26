@@ -47,15 +47,15 @@ pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
 
 pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) layout: &'a ClassDiagramLayout,
-    pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNode>,
+    pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, ClassSvgNode<'a>>,
     pub(super) class_color_indices: &'a FxHashMap<&'a str, usize>,
-    pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,
-    pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
+    pub(super) note_by_id: &'a FxHashMap<&'a str, ClassSvgNote<'a>>,
+    pub(super) iface_by_id: &'a FxHashMap<&'a str, ClassSvgInterface<'a>>,
     pub(super) settings: &'a ClassRenderConfig,
     pub(super) hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) mermaid_config: &'a merman_core::MermaidConfig,
+    pub(super) mermaid_config: &'a merman_core::presentation::PresentationConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) node_visual_plan: &'a crate::class::ClassNodeVisualPlan,
     pub(super) typography_theme: &'a crate::class::ClassTextThemePlan,
@@ -832,7 +832,7 @@ fn render_class_node_id<O: SvgOutput>(
     detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
 
     let use_html_labels =
-        settings.diagram_use_html_labels || crate::class::class_node_requires_math(node);
+        settings.diagram_use_html_labels || crate::class::class_node_requires_math(node.node);
     if use_html_labels {
         let html_stats = render_class_html_node_body(
             ClassNodeRenderState {

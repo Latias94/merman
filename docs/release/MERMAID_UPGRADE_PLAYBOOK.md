@@ -25,6 +25,13 @@ the verifier was rebuilt and the reference/generated/DOM gates replayed after th
 This note is a scope
 record, not an admission receipt or publication statement; the bundle, selection decision, and completed gate results remain the authorities.
 
+The 2026-10-24 security follow-up selects DOMPurify `3.4.17`, Puppeteer and Puppeteer Core
+`25.16.0`, and `@puppeteer/browsers` `3.2.6`, retaining the core, parser, and reference CLI versions.
+The CLI's Puppeteer peer range admits this update; the resulting Chromium BiDi dependency admits
+patched Zod `4.6.6` without an out-of-range major override. See the
+[security verification](../reviews/2026-10-24-dompurify-security.md) for supply-chain evidence,
+browser results, corpus admission status, and separately unresolved CI gates.
+
 ## 1. Freeze The Delivery Boundary
 
 Record the requested Mermaid release, exact tag and commit, current branch and dirty-tree ownership,

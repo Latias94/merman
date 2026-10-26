@@ -1,11 +1,19 @@
+#[cfg(feature = "presentation")]
+use crate::PresentationMetadata;
 use crate::diagrams::scan::strip_line_ending;
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
+use crate::family::{CombinedSemanticFailure, CombinedSemanticParse};
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan,
-    family::{CombinedSemanticFailure, CombinedSemanticParse},
+    EditorSemanticSymbol,
 };
+use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
@@ -100,7 +108,18 @@ struct ArchitectureDb {
 
 mod parse;
 
+#[cfg(test)]
+pub(crate) fn reset_architecture_syntax_construction_count() {
+    parse::ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn architecture_syntax_construction_count() -> usize {
+    parse::ARCHITECTURE_SYNTAX_CONSTRUCTION_COUNT.get()
+}
+
 impl ArchitectureDb {
+    #[cfg(feature = "editor-facts")]
     fn editor_kind_for_id(&self, id: &str) -> Option<EditorSemanticKind> {
         if self.groups.contains_key(id) {
             return Some(EditorSemanticKind::Namespace);
@@ -123,16 +142,18 @@ impl ArchitectureDb {
         self.acc_descr = descr;
     }
 
-    fn render_model(&self) -> ArchitectureDiagramRenderModel {
+    #[cfg(feature = "compat-json")]
+    #[cfg(test)]
+    fn semantic_model(&self) -> ArchitectureDiagramModel {
         let control = OperationControl::new();
-        self.render_model_controlled(&control)
+        self.semantic_model_controlled(&control)
             .expect("a private parse control cannot be cancelled")
     }
 
-    fn render_model_controlled(
+    fn semantic_model_controlled(
         &self,
         control: &OperationControl,
-    ) -> OperationControlResult<ArchitectureDiagramRenderModel> {
+    ) -> OperationControlResult<ArchitectureDiagramModel> {
         control.checkpoint()?;
         let title = (!self.title.trim().is_empty()).then(|| self.title.clone());
         let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
@@ -146,11 +167,11 @@ impl ArchitectureDb {
             let Some(n) = self.nodes.get(id) else {
                 continue;
             };
-            nodes.push(ArchitectureRenderNode {
+            nodes.push(ArchitectureNodeModel {
                 id: n.id.clone(),
                 node_type: match n.ty {
-                    ArchitectureNodeType::Service => ArchitectureRenderNodeType::Service,
-                    ArchitectureNodeType::Junction => ArchitectureRenderNodeType::Junction,
+                    ArchitectureNodeType::Service => ArchitectureNodeKind::Service,
+                    ArchitectureNodeType::Junction => ArchitectureNodeKind::Junction,
                 },
                 edge_indices: n.edges.clone(),
                 icon: n.icon.clone(),
@@ -168,7 +189,7 @@ impl ArchitectureDb {
             let Some(g) = self.groups.get(id) else {
                 continue;
             };
-            groups.push(ArchitectureRenderGroup {
+            groups.push(ArchitectureGroupModel {
                 id: g.id.clone(),
                 icon: g.icon.clone(),
                 title: g.title.clone(),
@@ -181,7 +202,7 @@ impl ArchitectureDb {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            edges.push(ArchitectureRenderEdge {
+            edges.push(ArchitectureEdgeModel {
                 lhs_id: e.lhs_id.clone(),
                 lhs_dir: e.lhs_dir,
                 lhs_into: e.lhs_into,
@@ -199,14 +220,14 @@ impl ArchitectureDb {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            layout_hints.push(ArchitectureRenderLayoutHint {
+            layout_hints.push(ArchitectureLayoutHintModel {
                 direction: hint.direction,
                 members: hint.members.clone(),
             });
         }
 
         control.checkpoint()?;
-        Ok(ArchitectureDiagramRenderModel {
+        Ok(ArchitectureDiagramModel {
             title,
             acc_title,
             acc_descr,
@@ -680,6 +701,7 @@ fn is_architecture_reserved_id(id: &str) -> bool {
             .is_some_and(|first| matches!(first, b'L' | b'R' | b'T' | b'B'))
 }
 
+#[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
     let mut last_was_word = false;
     for (index, ch) in candidate.chars().enumerate() {
@@ -699,13 +721,37 @@ fn architecture_reserved_id_message(id: &str) -> String {
     format!("reserved architecture keyword [{id}] cannot be used as an id")
 }
 
-pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse::parse_semantic_source(code, meta)?.compat_json(meta))
+pub(crate) fn parse_architecture_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::SemanticConstruction<ArchitectureDiagramModel>> {
+    Ok(parse::parse_semantic_model_controlled(
+        code,
+        &metadata.diagram_type,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?
+    .map_model(|mut model| {
+        model.sanitize_common_db_fields(&metadata.semantic_config);
+        model
+    }))
 }
 
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_architecture(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+    let model = parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
+        .expect("a private parse control cannot be cancelled")?;
+    render_model_to_compat_json(&model, meta)
+}
+
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<CombinedSemanticParse> {
     control.checkpoint()?;
@@ -723,8 +769,8 @@ pub(crate) fn parse_architecture_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchitectureDiagramRenderModel {
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ArchitectureDiagramModel {
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default, rename = "accTitle")]
@@ -732,16 +778,16 @@ pub struct ArchitectureDiagramRenderModel {
     #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
     #[serde(default)]
-    pub nodes: Vec<ArchitectureRenderNode>,
+    pub nodes: Vec<ArchitectureNodeModel>,
     #[serde(default)]
-    pub groups: Vec<ArchitectureRenderGroup>,
+    pub groups: Vec<ArchitectureGroupModel>,
     #[serde(default)]
-    pub edges: Vec<ArchitectureRenderEdge>,
+    pub edges: Vec<ArchitectureEdgeModel>,
     #[serde(default, rename = "layoutHints")]
-    pub layout_hints: Vec<ArchitectureRenderLayoutHint>,
+    pub layout_hints: Vec<ArchitectureLayoutHintModel>,
 }
 
-impl ArchitectureDiagramRenderModel {
+impl ArchitectureDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -749,23 +795,24 @@ impl ArchitectureDiagramRenderModel {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &ArchitectureDiagramRenderModel,
-    meta: &ParseMetadata,
+    model: &ArchitectureDiagramModel,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
-    model: &ArchitectureDiagramRenderModel,
-    meta: &ParseMetadata,
+    model: &ArchitectureDiagramModel,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
-    let mut config =
-        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value());
+    let mut config = crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
         && let Some(obj) = config.as_object_mut()
     {
@@ -789,8 +836,8 @@ pub(crate) fn render_model_to_compat_json_controlled(
         }
         let value = architecture_render_node_to_compat_json(node, &edges, control)?;
         match node.node_type {
-            ArchitectureRenderNodeType::Service => services.push(value.clone()),
-            ArchitectureRenderNodeType::Junction => junctions.push(value.clone()),
+            ArchitectureNodeKind::Service => services.push(value.clone()),
+            ArchitectureNodeKind::Junction => junctions.push(value.clone()),
         }
         nodes.push(value);
     }
@@ -840,7 +887,8 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(out)))
 }
 
-fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Value {
+#[cfg(feature = "compat-json")]
+fn architecture_render_edge_to_compat_json(edge: &ArchitectureEdgeModel) -> Value {
     json!({
         "lhsId": edge.lhs_id,
         "lhsDir": edge.lhs_dir.to_string(),
@@ -854,8 +902,9 @@ fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Val
     })
 }
 
+#[cfg(feature = "compat-json")]
 fn architecture_render_node_to_compat_json(
-    node: &ArchitectureRenderNode,
+    node: &ArchitectureNodeModel,
     edges: &[Value],
     control: &OperationControl,
 ) -> OperationControlResult<Value> {
@@ -880,7 +929,7 @@ fn architecture_render_node_to_compat_json(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ArchitectureRenderNodeType {
+pub enum ArchitectureNodeKind {
     #[serde(rename = "service")]
     Service,
     #[serde(rename = "junction")]
@@ -889,10 +938,10 @@ pub enum ArchitectureRenderNodeType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderNode {
+pub struct ArchitectureNodeModel {
     pub id: String,
     #[serde(rename = "type")]
-    pub node_type: ArchitectureRenderNodeType,
+    pub node_type: ArchitectureNodeKind,
     #[serde(default)]
     pub edge_indices: Vec<usize>,
     #[serde(default)]
@@ -907,7 +956,7 @@ pub struct ArchitectureRenderNode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderGroup {
+pub struct ArchitectureGroupModel {
     pub id: String,
     #[serde(default)]
     pub icon: Option<String>,
@@ -919,7 +968,7 @@ pub struct ArchitectureRenderGroup {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderEdge {
+pub struct ArchitectureEdgeModel {
     #[serde(rename = "lhsId")]
     pub lhs_id: String,
     #[serde(rename = "lhsDir")]
@@ -942,39 +991,40 @@ pub struct ArchitectureRenderEdge {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchitectureRenderLayoutHint {
+pub struct ArchitectureLayoutHintModel {
     pub direction: ArchitectureLayoutDirection,
     #[serde(default)]
     pub members: Vec<String>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_architecture_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
-) -> Result<ArchitectureDiagramRenderModel> {
-    Ok(parse::parse_semantic_source(code, meta)?.render_model())
+    meta: &PresentationMetadata,
+) -> Result<ArchitectureDiagramModel> {
+    parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_architecture_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<ArchitectureDiagramRenderModel>> {
-    parse::parse_model_for_render_controlled(code, meta, control)
+) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
+    parse::parse_model_controlled(code, &meta.diagram_type, control)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions,
-        ParsedEditorFacts,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::{EditorSemanticCompleteness, ParsedEditorFacts};
+    use crate::{MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
@@ -982,22 +1032,23 @@ mod tests {
     }
 
     fn parse_err(text: &str) -> crate::ParseDiagnostic {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic,
             other => panic!("expected architecture parse error, got {other:?}"),
         }
     }
 
-    fn test_meta() -> ParseMetadata {
-        ParseMetadata {
+    fn test_meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "architecture".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn payload_selection(facts: &EditorSemanticFacts, detail: &str, name: &str) -> SourceSpan {
         facts
             .symbols
@@ -1021,7 +1072,7 @@ mod tests {
 
     #[test]
     fn architecture_canonical_typed_entrypoint_accepts_simple_service() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "architecture-beta\nservice db\n",
                 ParseOptions::strict(),
@@ -1147,6 +1198,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_facts_report_reserved_entity_ids() {
         for (entity, suffix) in [
             ("service", "(server)[X]"),
@@ -1193,6 +1245,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_facts_report_reserved_id_references() {
         for (text, reserved) in [
             (
@@ -1229,6 +1282,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_entity_facts_use_the_architecture_rename_policy() {
         let facts = crate::family::test_support::editor_facts(
             parse_architecture_json_and_editor_facts,
@@ -1335,6 +1389,7 @@ service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 
         let json = source.compat_json(&meta);
         let render = source.render_model();
+        #[cfg(feature = "editor-facts")]
         let facts = source.editor_facts();
 
         assert_eq!(
@@ -1345,6 +1400,7 @@ service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 
         assert_eq!(json["services"][0]["iconText"], expected);
         assert_eq!(render.nodes[0].icon_text.as_deref(), Some(expected));
+        #[cfg(feature = "editor-facts")]
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.detail.as_deref() == Some("architecture service icon text")
                 && symbol.name == expected
@@ -1361,16 +1417,19 @@ service captioned(server)[\"third\nfourth\"]\n";
 
         let json = source.compat_json(&meta);
         let render = source.render_model();
+        #[cfg(feature = "editor-facts")]
         let facts = source.editor_facts();
 
         assert_eq!(json["services"][0]["iconText"], "first\nsecond");
         assert_eq!(json["services"][1]["title"], "third\nfourth");
         assert_eq!(render.nodes[0].icon_text.as_deref(), Some("first\nsecond"));
         assert_eq!(render.nodes[1].title.as_deref(), Some("third\nfourth"));
+        #[cfg(feature = "editor-facts")]
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.detail.as_deref() == Some("architecture service icon text")
                 && symbol.name == "first\nsecond"
         }));
+        #[cfg(feature = "editor-facts")]
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.detail.as_deref() == Some("architecture service title")
                 && symbol.name == "third\nfourth"
@@ -1406,6 +1465,7 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_payload_spans_point_to_values_when_values_match_keywords() {
         let text = "architecture-beta\n  title title\n  accTitle: accTitle\n  accDescr: accDescr\n";
         let facts = crate::family::test_support::editor_facts(
@@ -1457,6 +1517,7 @@ service caption(server)[\"title %% kept\"]\n",
             "accDescr: \"Description %% ignored\n",
         );
         let model = parse(text);
+        #[cfg(feature = "editor-facts")]
         let facts = crate::family::test_support::editor_facts(
             parse_architecture_json_and_editor_facts,
             text,
@@ -1466,6 +1527,7 @@ service caption(server)[\"title %% kept\"]\n",
         assert_eq!(model["title"], "\"Title");
         assert_eq!(model["accTitle"], "\"Accessible");
         assert_eq!(model["accDescr"], "\"Description");
+        #[cfg(feature = "editor-facts")]
         assert!(
             facts
                 .symbols
@@ -1561,6 +1623,7 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_align_editor_facts_preserve_spans() {
         let text = "architecture-beta\n  service rowspan(server)[Rowspan]\n  service columnar(server)[Columnar]\n  align row rowspan columnar\n";
         let facts = crate::family::test_support::editor_facts(
@@ -1619,7 +1682,7 @@ service caption(server)[\"title %% kept\"]\n",
 
     #[test]
     fn architecture_rejects_legacy_edge_shorthand() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let err = block_on(engine.parse_diagram(
             "architecture-beta\n  service a\n  service b\n  a (T--B) b\n",
             ParseOptions::default(),
@@ -1711,6 +1774,7 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_recovered_facts_preserve_declared_junction_kind() {
         let text = "architecture-beta\n\
 junction hub\n\
@@ -1774,6 +1838,7 @@ missing:R -- L:api\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_semantic_source_projects_json_render_and_editor_facts() {
         let text = "architecture-beta\n\
 title Platform\n\
@@ -1857,9 +1922,10 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_parse_pipeline_returns_combined_json_and_editor_projection() {
         let text = "architecture-beta\nservice api(server)[API]\n";
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -1880,14 +1946,18 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_honors_custom_registry_replacement() {
-        fn detect_architecture(code: &str, _config: &mut MermaidConfig) -> bool {
+        fn detect_architecture(
+            code: &str,
+            _config: &mut crate::presentation::PresentationConfig,
+        ) -> bool {
             code.starts_with("architecture-beta")
         }
 
         fn custom_architecture_parser(
             _code: &str,
-            _meta: &ParseMetadata,
+            _meta: &PresentationMetadata,
             control: &crate::OperationControl,
         ) -> crate::OperationControlResult<Result<Value>> {
             control.checkpoint()?;
@@ -1895,7 +1965,7 @@ group child(cloud)[Child] in root\n";
         }
 
         let text = "architecture-beta\nservice api(server)[API]\n";
-        let mut engine = Engine::new();
+        let mut engine = MermaidEngine::new();
         engine
             .registry_mut()
             .add_fn("architecture", detect_architecture);
@@ -1936,6 +2006,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_remaps_preprocessed_spans() {
         let text = concat!(
             "---\n",
@@ -1946,7 +2017,7 @@ group child(cloud)[Child] in root\n";
             "architecture-beta\n",
             "service api(server)[API]\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -1966,6 +2037,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_remaps_crlf_and_unicode_payload_spans() {
         let text = concat!(
             "---\r\n",
@@ -1976,7 +2048,7 @@ group child(cloud)[Child] in root\n";
             "architecture-beta\r\n",
             "service api(server)[\"Gateway \u{7f51}\u{5173}\"]\r\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -2005,6 +2077,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_combined_projection_remaps_spans_across_removed_body_segments() {
         let text = concat!(
             "architecture-beta\n",
@@ -2013,7 +2086,7 @@ group child(cloud)[Child] in root\n";
             "%% removed body comment\n",
             "service after(database)[After]\n",
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_snapshot_sync(text)
             .unwrap()
             .unwrap();
@@ -2036,6 +2109,7 @@ group child(cloud)[Child] in root\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_trace_keeps_lexical_editor_order_while_db_uses_category_order() {
         let text = "architecture-beta\n\
 api:R -- L:join\n\
@@ -2136,6 +2210,7 @@ group root(cloud)[Root]\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_editor_roles_keep_declarations_and_references_in_separate_projections() {
         let text = "architecture-beta\n\
 group platform\n\
@@ -2208,6 +2283,7 @@ api:R -- L:hub\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_multiline_acc_descr_projects_complete_payload_span() {
         let text = "architecture-beta\naccDescr {\n  First   line\n\n  Second line\n}\n";
         let facts = crate::family::test_support::editor_facts(
@@ -2233,6 +2309,7 @@ api:R -- L:hub\n";
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn architecture_recovering_parser_keeps_partial_statement_facts_out_of_db() {
         let cases = [
             (
@@ -2295,14 +2372,19 @@ api:R -- L:hub\n";
         };
 
         assert_eq!(json_diagnostic, typed_diagnostic);
+        #[cfg(feature = "editor-facts")]
         let facts = crate::family::test_support::editor_facts(
             parse_architecture_json_and_editor_facts,
             text,
             &test_meta(),
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        #[cfg(feature = "editor-facts")]
         assert_eq!(facts.diagnostics[0].message, json_diagnostic.message());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(facts.diagnostics[0].span, json_diagnostic.span());
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             facts
                 .symbols
@@ -2311,5 +2393,209 @@ api:R -- L:hub\n";
                 .count(),
             2
         );
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "architecture".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn architecture_canonical_model_preserves_authored_hints_without_editor_work() {
+        let source = "architecture-beta\napi:R -- L:join\nalign row api join\njunction join in root\nservice api(server)[API] in root\ngroup root(cloud)[Root]\n";
+        reset_architecture_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let model = parse_architecture_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        assert_eq!(
+            model
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            ["api", "join"]
+        );
+        assert_eq!(model.nodes[0].edge_indices, [0]);
+        assert_eq!(model.groups[0].id, "root");
+        assert_eq!(model.edges[0].lhs_id, "api");
+        assert_eq!(
+            model.layout_hints[0].direction,
+            ArchitectureLayoutDirection::Row
+        );
+        assert_eq!(model.layout_hints[0].members, ["api", "join"]);
+        assert_eq!(architecture_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn architecture_canonical_validation_keeps_exact_spans_without_editor_work() {
+        let source = "architecture-beta\nservice api\nservice api\n";
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let error = parse_architecture_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected parse diagnostic")
+        };
+        let offset = source.rfind("api").unwrap();
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset + 3)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn architecture_canonical_capture_keeps_one_construction_and_later_recovery_facts() {
+        for source in [
+            "architecture-beta\nservice api\n",
+            "architecture-beta\nservice api\nbroken ?\nservice later\n",
+            "architecture-beta\nservice api\nservice api\n",
+        ] {
+            let omitted = parse_architecture_semantic_model_controlled(
+                source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(omitted.editor_facts.is_none());
+            reset_architecture_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            let captured = parse_architecture_semantic_model_controlled(
+                source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(architecture_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            let facts = captured.editor_facts.unwrap();
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "api"));
+            match (omitted.model, captured.model) {
+                (Ok(omitted), Ok(captured)) => {
+                    assert_eq!(omitted.nodes.len(), captured.nodes.len());
+                    assert_eq!(captured.nodes[0].id, "api");
+                }
+                (Err(omitted), Err(captured)) => {
+                    assert_eq!(omitted.to_string(), captured.to_string());
+                    let (
+                        Error::DiagramParse {
+                            diagnostic: omitted,
+                            ..
+                        },
+                        Error::DiagramParse {
+                            diagnostic: captured,
+                            ..
+                        },
+                    ) = (omitted, captured)
+                    else {
+                        panic!("expected exact architecture diagnostics");
+                    };
+                    assert_eq!(omitted.span(), captured.span());
+                    assert!(!facts.diagnostics.is_empty());
+                }
+                _ => panic!("editor demand changed model admission"),
+            }
+            if source.contains("service later") {
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+            }
+        }
+    }
+
+    #[test]
+    fn architecture_canonical_construction_observes_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_architecture_semantic_model_controlled(
+                "architecture-beta\nservice api\n",
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn architecture_compat_layout_presence_uses_authored_config() {
+        let model = ArchitectureDiagramModel::default();
+        let mut meta = PresentationMetadata {
+            diagram_type: "architecture".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::from_value(
+                serde_json::json!({"layout": "elk"}),
+            ),
+            title: None,
+        };
+        assert_eq!(
+            render_model_to_compat_json(&model, &meta).unwrap()["config"]["layout"],
+            "dagre"
+        );
+        meta.config = crate::MermaidConfig::from_value(serde_json::json!({"layout": "elk"}));
+        assert_eq!(
+            render_model_to_compat_json(&model, &meta).unwrap()["config"]["layout"],
+            "elk"
+        );
+    }
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn architecture_typed_projection_omits_editor_observers() {
+        let metadata = PresentationMetadata {
+            diagram_type: "architecture".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let model = parse_architecture_model_for_render_controlled(
+            "architecture-beta\nservice api\n",
+            &metadata,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!model.nodes.is_empty());
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

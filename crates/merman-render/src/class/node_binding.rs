@@ -24,17 +24,17 @@ impl ClassNodeVisualPlan {
         work: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut indices: FxHashMap<String, ClassNodeVisualIndices> = FxHashMap::default();
-        let mut nodes = Vec::with_capacity(model.classes.len());
-        for (id, node) in &model.classes {
+        let mut nodes = Vec::with_capacity(model.classes().len());
+        for (id, node) in model.classes() {
             work.checkpoint(merman_core::OperationPhase::Layout)?;
             let binding = ClassNodeVisualBinding::lower(
-                node,
+                node.node,
                 relation.node_paint(nodes.len() + 1),
                 typography,
                 diagram_use_html_labels,
             )?;
             indices.insert(
-                id.clone(),
+                id.to_string(),
                 ClassNodeVisualIndices {
                     node: Some(nodes.len()),
                     interface: None,
@@ -43,14 +43,14 @@ impl ClassNodeVisualPlan {
             nodes.push(binding);
         }
         let mut interfaces = Vec::new();
-        for (ordinal, interface) in model.interfaces.iter().enumerate() {
+        for (ordinal, interface) in model.interfaces().enumerate() {
             work.checkpoint(merman_core::OperationPhase::Layout)?;
             let binding = ClassInterfaceVisualBinding::lower(
-                interface,
-                relation.node_paint(model.classes.len() + ordinal + 1),
+                interface.interface,
+                relation.node_paint(model.classes().len() + ordinal + 1),
             );
             let index = indices
-                .entry(interface.id.clone())
+                .entry(interface.id.to_string())
                 .or_insert(ClassNodeVisualIndices {
                     node: None,
                     interface: None,
@@ -370,7 +370,7 @@ mod tests {
     };
 
     fn fixture_model() -> ClassDiagram {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nclass A\nclass B\n",
                 merman_core::ParseOptions::default(),
@@ -380,19 +380,19 @@ mod tests {
         let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
-        let mut model = model.clone();
+        let mut model = model.model().clone();
         model.interfaces.push(ClassInterface {
             id: "interface0".into(),
             label: "$$x$$".into(),
             class_id: "A".into(),
         });
-        model
+        ClassDiagram::new(model, &merman_core::MermaidConfig::default())
     }
 
     #[test]
     fn inactive_consumers_do_not_require_a_synthetic_node_fact_map() {
         let model = fixture_model();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = super::super::ClassTextThemePlan::resolve(None, &config);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -424,9 +424,10 @@ mod tests {
         for padding in [0, 1024, 4096] {
             let fill = format!("rgb({}1,2,3)", " ".repeat(padding));
             let stroke = format!("rgb({}4,5,6)", " ".repeat(padding));
-            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-                "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
-            }));
+            let config =
+                merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+                    "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
+                }));
             let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
             let defaults = typography.css_binding();
             let meter = crate::resources::OperationWorkMeter::new(
@@ -458,8 +459,8 @@ mod tests {
 
     #[test]
     fn explicit_source_values_equal_to_defaults_remain_owned() {
-        let mut model = fixture_model();
-        let config = merman_core::MermaidConfig::default();
+        let mut model = fixture_model().into_model();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
         let defaults = typography.css_binding();
         model.classes.get_mut("A").unwrap().styles = vec![
@@ -471,6 +472,7 @@ mod tests {
         );
         let relation =
             crate::class::ClassRelationThemePlan::resolve(None, &config, 0, 3, &meter).unwrap();
+        let model = ClassDiagram::new(model, config.as_config());
         let visual =
             ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &meter).unwrap();
         let source = visual.node("A");
@@ -492,7 +494,7 @@ mod tests {
     #[test]
     fn visual_preparation_requires_sealed_layout_facts_and_observes_cancellation() {
         let model = fixture_model();
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
@@ -516,12 +518,8 @@ mod tests {
         assert!(
             typography.seal_node_style_facts(
                 model
-                    .classes
-                    .keys()
-                    .map(|id| (
-                        id.clone().into_boxed_str(),
-                        super::super::ClassNodeLabelStyleFacts::default(),
-                    ))
+                    .classes()
+                    .map(|(id, _)| (id.into(), super::super::ClassNodeLabelStyleFacts::default()))
                     .collect(),
             )
         );
@@ -556,7 +554,7 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::CLASS);
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(Some(&theme), &config);
         assert!(
             typography.seal_node_style_facts(std::collections::BTreeMap::from([(
@@ -570,10 +568,11 @@ mod tests {
         let plan =
             crate::class::ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 1, &meter)
                 .unwrap();
-        let mut model = fixture_model();
+        let mut model = fixture_model().into_model();
         model.classes.clear();
         model.classes.insert("A".into(), node);
         model.interfaces.clear();
+        let model = ClassDiagram::new(model, config.as_config());
         let prepared_work = meter.used();
         let visual =
             ClassNodeVisualPlan::resolve(&model, &plan, &typography, false, &meter).unwrap();
@@ -593,7 +592,7 @@ mod tests {
 
     #[test]
     fn same_value_source_and_typed_paints_keep_distinct_authority() {
-        let mut model = fixture_model();
+        let mut model = fixture_model().into_model();
         model.interfaces.clear();
         model.classes.get_mut("A").unwrap().styles = vec![
             "fill:#123456".into(),
@@ -615,7 +614,7 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::CLASS);
-        let config = merman_core::MermaidConfig::default();
+        let config = merman_core::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(Some(&theme), &config);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -623,6 +622,7 @@ mod tests {
         let relation =
             crate::class::ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &meter)
                 .unwrap();
+        let model = ClassDiagram::new(model, config.as_config());
         let visual =
             ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &meter).unwrap();
         let source = visual.node("A");

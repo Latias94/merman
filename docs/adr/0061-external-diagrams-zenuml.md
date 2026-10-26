@@ -35,7 +35,7 @@ ZenUML is a first-class, family-owned Merman diagram:
 
 1. `merman-core` owns a grammar-derived lexer, parser, syntax tree, semantic construction, recovery,
    exact source ranges, editor facts, and complexity model based on the selected ZenUML Core source.
-2. One `ZenumlDiagramRenderModel` feeds detection, analysis, editor services, layout, resource
+2. One canonical `ZenumlDiagramModel` feeds detection, analysis, editor services, layout, resource
    enforcement, and rendering. ZenUML is never translated through Sequence JSON or a line parser.
 3. `merman-render` owns typed ZenUML layout and SVG topology for participants, lifelines, messages,
    creation, returns, occurrences, groups, references, dividers, comments, and fragment sections.

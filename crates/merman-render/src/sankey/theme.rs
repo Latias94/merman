@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
@@ -57,7 +57,7 @@ pub(crate) struct SankeyTypographyThemePlan {
 impl SankeyTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         label_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -482,7 +482,7 @@ pub(crate) struct SankeyNodePalettePlan {
 impl SankeyNodePalettePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         layout: &SankeyDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -799,7 +799,7 @@ mod tests {
 
     #[test]
     fn unthemed_binding_keeps_label_background_and_link_paint_semantics() {
-        let config = MermaidConfig::from_value(json!({
+        let config = PresentationConfig::from_value(json!({
             "sankey": {"linkColor": "var(--link)", "labelStyle": "outlined"},
             "themeVariables": {"background": "fallback", "mainBkg": "",
                 "textColor": "currentColor"}
@@ -811,7 +811,7 @@ mod tests {
         assert!(plan.outlined_labels());
         assert_eq!(plan.common_css().text_color(), "currentColor");
 
-        let ignored = MermaidConfig::from_value(json!({"sankey": {
+        let ignored = PresentationConfig::from_value(json!({"sankey": {
             "$ref": "schema", "linkColor": "source", "labelStyle": "outlined"
         }}));
         let fallback = SankeyTypographyThemePlan::resolve(None, &ignored, 1, &meter).unwrap();
@@ -919,7 +919,7 @@ mod tests {
 
     fn palette_plan(config: serde_json::Value) -> (SankeyNodePalettePlan, ResolvedDiagramTheme) {
         let layout = layout(&["A", "B"]);
-        let config = MermaidConfig::from_value(config);
+        let config = PresentationConfig::from_value(config);
         let theme = resolved_node_palette(&["#123456", "#abcdef"]);
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -982,7 +982,7 @@ mod tests {
             ));
             let plan = SankeyTypographyThemePlan::resolve(
                 Some(&theme),
-                &MermaidConfig::from_value(json!({})),
+                &PresentationConfig::from_value(json!({})),
                 2,
                 &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
             )
@@ -1008,7 +1008,7 @@ mod tests {
 
         let missing_css = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1029,7 +1029,7 @@ mod tests {
 
         let duplicate_css = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1050,7 +1050,7 @@ mod tests {
 
         let reordered = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1077,7 +1077,7 @@ mod tests {
         ));
         let wrong_font = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1102,7 +1102,7 @@ mod tests {
 
         let inconsistent_surfaces = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1135,7 +1135,7 @@ mod tests {
         ));
         let plan = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(json!({})),
+            &PresentationConfig::from_value(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )

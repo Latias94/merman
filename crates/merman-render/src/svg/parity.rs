@@ -1129,7 +1129,7 @@ pub(crate) fn with_test_svg_execution<T>(
 
 pub(crate) fn edge_geometry_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
-    metadata: &merman_core::ParseMetadata,
+    metadata: &merman_core::PresentationMetadata,
     family_execution: FamilyExecutionView<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     let request = SvgRenderOptions::default();
@@ -1154,7 +1154,7 @@ pub(crate) fn edge_geometry_family_artifact(
 
 pub(crate) fn render_builtin_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
-    metadata: &merman_core::ParseMetadata,
+    metadata: &merman_core::PresentationMetadata,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
@@ -1206,7 +1206,7 @@ pub(crate) fn render_builtin_family_artifact(
 #[inline(never)]
 pub(crate) fn render_architecture_family_artifact(
     artifact: &crate::family::ArchitectureFamilyArtifact,
-    effective_config: &merman_core::MermaidConfig,
+    effective_config: &merman_core::presentation::PresentationConfig,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
@@ -1255,7 +1255,7 @@ pub(crate) fn render_architecture_family_artifact(
 )]
 fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
-    metadata: &merman_core::ParseMetadata,
+    metadata: &merman_core::PresentationMetadata,
     options: &SvgExecution<'_>,
     family_theme_evidence: &mut Option<crate::family::FamilyThemeOutcomes>,
     #[cfg(feature = "diagram-packet")] packet_theme_outcome: &mut Option<

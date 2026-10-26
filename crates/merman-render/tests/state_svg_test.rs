@@ -6,7 +6,8 @@ type FamilyFixture = (
 
 mod common;
 
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -31,8 +32,8 @@ use merman_render::text::{
 };
 
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
-fn classic_engine() -> Engine {
-    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+fn classic_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "theme": "default",
         "look": "classic",
         "layout": "dagre"
@@ -41,8 +42,8 @@ fn classic_engine() -> Engine {
 
 // Typed adapter fixtures select their Mermaid baseline through the recipe, leaving
 // external configuration free to own only the properties each case authors.
-fn classic_typed_engine() -> Engine {
-    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+fn classic_typed_engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
         "look": "classic",
         "layout": "dagre"
     })))
@@ -384,7 +385,7 @@ fn render_state_layout_and_svg_from_text_in_environment(
     (layout, svg)
 }
 
-fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+fn render_state_svg_from_text_with_engine(engine: MermaidEngine, text: &str) -> String {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -501,7 +502,7 @@ fn render_classic_state_svg_from_text_with_theme_in_environment(
 fn render_state_svg_from_text_with_theme_and_engine_in_environment(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
 ) -> String {
     let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
@@ -522,7 +523,7 @@ fn render_state_svg_from_text_with_theme_and_engine_in_environment(
 fn prepare_state_artifact_from_text_with_theme_in_environment(
     text: &str,
     theme: &DiagramTheme,
-    engine: Engine,
+    engine: MermaidEngine,
     environment: &RenderEnvironment,
 ) -> FamilyFixture {
     let session = environment.begin_session_with_theme(theme).unwrap();
@@ -574,12 +575,13 @@ fn render_strict_state_svg_with_theme_and_config(
 ) -> (String, StateThemeEvidenceCounts) {
     let (engine, source) = match origin {
         "site" => (
-            classic_typed_engine().with_site_config(MermaidConfig::from_value(config)),
+            classic_typed_engine().with_site_config(PresentationConfig::from_value(config)),
             source.to_string(),
         ),
         "source" => (
-            classic_typed_engine()
-                .with_site_config(MermaidConfig::from_value(serde_json::json!({"secure": []}))),
+            classic_typed_engine().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({"secure": []}),
+            )),
             {
                 let directive = format!(
                     "%%{{init: {}}}%%\n",
@@ -3368,14 +3370,15 @@ fn render_unhosted_state_svg_with_config(
 ) -> String {
     let (engine, source) = if origin == "site" {
         (
-            classic_typed_engine().with_site_config(MermaidConfig::from_value(config)),
+            classic_typed_engine().with_site_config(PresentationConfig::from_value(config)),
             source.to_string(),
         )
     } else {
         assert_eq!(origin, "source");
         (
-            classic_typed_engine()
-                .with_site_config(MermaidConfig::from_value(serde_json::json!({"secure": []}))),
+            classic_typed_engine().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({"secure": []}),
+            )),
             format!("%%{{init: {config}}}%%\n{source}"),
         )
     };
@@ -4225,7 +4228,7 @@ note right of Idle : split surface
 }
 
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
-    let site_config = MermaidConfig::from_value(serde_json::json!({
+    let site_config = PresentationConfig::from_value(serde_json::json!({
         "look": "handDrawn",
         "handDrawnSeed": seed,
         "themeVariables": {
@@ -4259,9 +4262,9 @@ note right of Idle : seeded note"#;
 #[test]
 fn state_svg_invalid_default_look_falls_back_to_the_family_neo_default() {
     let source = "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n";
-    let baseline = render_state_svg_from_text_with_engine(Engine::new(), source);
+    let baseline = render_state_svg_from_text_with_engine(MermaidEngine::new(), source);
     let svg = render_state_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "look": "default"
         }))),
         source,
@@ -4334,7 +4337,7 @@ fn state_svg_cross_composite_default_min_width_reaches_all_leaf_labels() {
 fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
     for look in ["classic", "neo"] {
         let engine =
-            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "look": look,
                 "layout": "elk",
                 "themeVariables": {
@@ -4424,7 +4427,7 @@ fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
 fn state_neo_rough_base_attributes_do_not_override_the_theme_stylesheet() {
     for gradient in [false, true] {
         let engine =
-            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "look": "neo",
                 "themeVariables": {
                     "mainBkg": "#110011",
@@ -4484,31 +4487,32 @@ note right of Idle : terminal note
 
 #[test]
 fn state_svg_classic_look_honors_theme_css_options() {
-    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "classic",
-        "themeVariables": {
-            "transitionColor": "#202020",
-            "lineColor": "#303030",
-            "nodeBorder": "#404040",
-            "stateLabelColor": "#505050",
-            "mainBkg": "#606060",
-            "background": "#707070",
-            "altBackground": "#808080",
-            "strokeWidth": 4,
-            "noteBorderColor": "#909090",
-            "noteBkgColor": "#a0a0a0",
-            "noteTextColor": "#b0b0b0",
-            "labelBackgroundColor": "#c0c0c0",
-            "edgeLabelBackground": "#d0d0d0",
-            "transitionLabelColor": "#e0e0e0",
-            "specialStateColor": "#f0f0f0",
-            "innerEndBackground": "#010101",
-            "compositeBackground": "#020202",
-            "stateBkg": "#030303",
-            "stateBorder": "#040404",
-            "compositeTitleBackground": "#050505"
-        }
-    })));
+    let engine =
+        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "look": "classic",
+            "themeVariables": {
+                "transitionColor": "#202020",
+                "lineColor": "#303030",
+                "nodeBorder": "#404040",
+                "stateLabelColor": "#505050",
+                "mainBkg": "#606060",
+                "background": "#707070",
+                "altBackground": "#808080",
+                "strokeWidth": 4,
+                "noteBorderColor": "#909090",
+                "noteBkgColor": "#a0a0a0",
+                "noteTextColor": "#b0b0b0",
+                "labelBackgroundColor": "#c0c0c0",
+                "edgeLabelBackground": "#d0d0d0",
+                "transitionLabelColor": "#e0e0e0",
+                "specialStateColor": "#f0f0f0",
+                "innerEndBackground": "#010101",
+                "compositeBackground": "#020202",
+                "stateBkg": "#030303",
+                "stateBorder": "#040404",
+                "compositeTitleBackground": "#050505"
+            }
+        })));
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -4562,20 +4566,21 @@ Active --> [*]: done"#,
 
 #[test]
 fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
-    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "neo",
-        "themeVariables": {
-            "transitionColor": "#202020",
-            "mainBkg": "#606060",
-            "stateBorder": "#040404",
-            "strokeWidth": 4,
-            "useGradient": true,
-            "gradientStart": "#112233",
-            "gradientStop": "#445566",
-            "dropShadow": "url(#drop-shadow)",
-            "radius": 3
-        }
-    })));
+    let engine =
+        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "look": "neo",
+            "themeVariables": {
+                "transitionColor": "#202020",
+                "mainBkg": "#606060",
+                "stateBorder": "#040404",
+                "strokeWidth": 4,
+                "useGradient": true,
+                "gradientStart": "#112233",
+                "gradientStop": "#445566",
+                "dropShadow": "url(#drop-shadow)",
+                "radius": 3
+            }
+        })));
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -4644,26 +4649,27 @@ fn state_svg_hand_drawn_seed_controls_visible_rough_paths() {
 
 #[test]
 fn state_hand_drawn_terminals_follow_shape_specific_mermaid_fallbacks() {
-    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "handDrawn",
-        "handDrawnSeed": 7,
-        "htmlLabels": false,
-        "themeVariables": {
-            "mainBkg": "#110011",
-            "nodeBorder": "#220022",
-            "stateBkg": "#330033",
-            "stateBorder": "#440044",
-            "strokeWidth": 9,
-            "lineColor": "#550055",
-            "specialStateColor": "#660066",
-            "noteBkgColor": "#770077",
-            "noteBorderColor": "#880088",
-            "compositeTitleBackground": "#990099",
-            "compositeBackground": "#aa00aa",
-            "altBackground": "#bb00bb",
-            "background": "#cc00cc"
-        }
-    })));
+    let engine =
+        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "look": "handDrawn",
+            "handDrawnSeed": 7,
+            "htmlLabels": false,
+            "themeVariables": {
+                "mainBkg": "#110011",
+                "nodeBorder": "#220022",
+                "stateBkg": "#330033",
+                "stateBorder": "#440044",
+                "strokeWidth": 9,
+                "lineColor": "#550055",
+                "specialStateColor": "#660066",
+                "noteBkgColor": "#770077",
+                "noteBorderColor": "#880088",
+                "compositeTitleBackground": "#990099",
+                "compositeBackground": "#aa00aa",
+                "altBackground": "#bb00bb",
+                "background": "#cc00cc"
+            }
+        })));
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -5661,7 +5667,7 @@ fn state_composite_paint_uses_large_and_multiline_title_measurements() {
         }
         for html_labels in [true, false] {
             for title in ["Large title", "First<br/>Second"] {
-                let engine = classic_engine().with_site_config(MermaidConfig::from_value(
+                let engine = classic_engine().with_site_config(PresentationConfig::from_value(
                     serde_json::json!({
                         "layout": layout,
                         "look": "classic",
@@ -5828,7 +5834,7 @@ Display : Running
 fn state_svg_root_html_labels_false_uses_svg_text_for_empty_edge_labels() {
     for backend in ["elk", "dagre"] {
         let engine =
-            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
                 "layout": backend,
                 "htmlLabels": false,
                 "flowchart": {"htmlLabels": true}
@@ -6034,7 +6040,7 @@ stateDiagram-v2
     );
 
     let loose = render_state_svg_from_text_with_engine(
-        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"stateDiagram-v2
@@ -6133,7 +6139,7 @@ click S1 "data:text/html,unsafe" "Data"
 #[test]
 fn state_svg_loose_repeated_clicks_preserve_each_href_and_target() {
     let svg = render_state_svg_from_text_with_engine(
-        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"stateDiagram-v2
@@ -6201,22 +6207,23 @@ click S1 "https://example.test/last" ""
 
 #[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
-    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": {
-            "stateBkg": "#101827",
-            "stateBorder": "#38bdf8",
-            "nodeBorder": "#a855f7",
-            "mainBkg": "#0f172a",
-            "lineColor": "#e11d48",
-            "strokeWidth": 4,
-            "specialStateColor": "#f97316",
-            "innerEndBackground": "#22c55e",
-            "background": "#020617",
-            "compositeBackground": "#111827",
-            "noteBkgColor": "#fef3c7",
-            "noteBorderColor": "#92400e"
-        }
-    })));
+    let engine =
+        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "stateBkg": "#101827",
+                "stateBorder": "#38bdf8",
+                "nodeBorder": "#a855f7",
+                "mainBkg": "#0f172a",
+                "lineColor": "#e11d48",
+                "strokeWidth": 4,
+                "specialStateColor": "#f97316",
+                "innerEndBackground": "#22c55e",
+                "background": "#020617",
+                "compositeBackground": "#111827",
+                "noteBkgColor": "#fef3c7",
+                "noteBorderColor": "#92400e"
+            }
+        })));
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -6416,7 +6423,7 @@ fn state_svg_plain_rect_radius_uses_effective_theme_for_both_label_modes() {
             if let Some(radius) = radius.clone() {
                 config["themeVariables"] = serde_json::json!({"radius": radius});
             }
-            let engine = classic_engine().with_site_config(MermaidConfig::from_value(config));
+            let engine = classic_engine().with_site_config(PresentationConfig::from_value(config));
             let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA\n");
             let document = roxmltree::Document::parse(&svg).expect("State SVG");
             let rect = document
@@ -6456,7 +6463,7 @@ fn state_svg_small_terminal_shadow_uses_effective_theme_and_look() {
         if let Some(shadow) = shadow.clone() {
             config["themeVariables"] = serde_json::json!({"nodeShadow": shadow});
         }
-        let engine = classic_engine().with_site_config(MermaidConfig::from_value(config));
+        let engine = classic_engine().with_site_config(PresentationConfig::from_value(config));
         let svg = render_state_svg_from_text_with_engine(
             engine,
             "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
@@ -6519,7 +6526,7 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
                 format!("stateDiagram-v2\nstate \"{label}\" as N\n")
             };
             let svg = render_state_svg_from_text_with_engine(
-                classic_engine().with_site_config(MermaidConfig::from_value(config)),
+                classic_engine().with_site_config(PresentationConfig::from_value(config)),
                 &source,
             );
             let document = roxmltree::Document::parse(&svg).expect("State SVG");
@@ -6547,7 +6554,7 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
         }
     }
     let svg = render_state_svg_from_text_with_engine(
-        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
             "htmlLabels": false, "state": {"minNodeWidth": 120}
         }))),
         "stateDiagram-v2\n[*] --> A\nA --> [*]\n",

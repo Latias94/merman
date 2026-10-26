@@ -15,9 +15,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use indexmap::IndexMap;
-use merman_core::diagrams::architecture::{
-    ArchitectureDiagramRenderModel, ArchitectureLayoutDirection,
-};
+use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureLayoutDirection};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
@@ -150,7 +148,7 @@ fn checked_architecture_adapter_work_plan(
 }
 
 fn checked_typed_architecture_adapter_work_plan(
-    model: &ArchitectureDiagramRenderModel,
+    model: &ArchitectureDiagramModel,
 ) -> Option<ArchitectureAdapterWorkPlan> {
     checked_architecture_adapter_work_plan_from_hint_lengths(
         model.nodes.len(),
@@ -933,7 +931,7 @@ fn typed_architecture_projection_count() -> usize {
 }
 
 impl<'a> ArchitectureModelView<'a> {
-    fn from_typed(model: &'a ArchitectureDiagramRenderModel) -> Self {
+    fn from_typed(model: &'a ArchitectureDiagramModel) -> Self {
         #[cfg(test)]
         TYPED_ARCHITECTURE_PROJECTION_COUNT
             .set(TYPED_ARCHITECTURE_PROJECTION_COUNT.get().saturating_add(1));
@@ -944,10 +942,10 @@ impl<'a> ArchitectureModelView<'a> {
             .map(|n| ArchitectureNodeView {
                 id: n.id.as_str(),
                 node_type: match n.node_type {
-                    merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service => {
+                    merman_core::diagrams::architecture::ArchitectureNodeKind::Service => {
                         ArchitectureNodeType::Service
                     }
-                    merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction => {
+                    merman_core::diagrams::architecture::ArchitectureNodeKind::Junction => {
                         ArchitectureNodeType::Junction
                     }
                 },
@@ -2023,7 +2021,7 @@ fn admit_architecture_layout(
 }
 
 pub(crate) fn layout_architecture_diagram_typed(
-    model: &ArchitectureDiagramRenderModel,
+    model: &ArchitectureDiagramModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     operation_seed: u64,
@@ -2876,9 +2874,9 @@ mod tests {
         use crate::resources::{
             OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
         };
-        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "architecture-beta\nservice api(server)[API]\n",
                 ParseOptions::strict(),

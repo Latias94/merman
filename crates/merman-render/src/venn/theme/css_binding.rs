@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use merman_core::diagrams::venn::VennDiagramRenderModel;
+use merman_core::diagrams::venn::VennDiagramModel;
 use merman_core::theme_color::{darken, is_dark, lighten};
 
 use crate::config::config_string;
@@ -28,7 +28,7 @@ pub(crate) enum VennAreaPaintBinding {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::venn::{VennStyleEntryRenderModel, VennSubsetRenderModel};
+    use merman_core::diagrams::venn::{VennStyleEntryModel, VennSubsetModel};
     use serde_json::json;
 
     fn work_meter() -> crate::resources::OperationWorkMeter {
@@ -37,9 +37,9 @@ mod tests {
         )
     }
 
-    fn model() -> VennDiagramRenderModel {
-        VennDiagramRenderModel {
-            subsets: vec![VennSubsetRenderModel {
+    fn model() -> VennDiagramModel {
+        VennDiagramModel {
+            subsets: vec![VennSubsetModel {
                 sets: vec!["A".into()],
                 size: 1.0,
                 label: None,
@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn source_color_wins_and_avoids_unnecessary_color_interpretation() {
         let mut model = model();
-        model.style_entries.push(VennStyleEntryRenderModel {
+        model.style_entries.push(VennStyleEntryModel {
             targets: vec!["A".into()],
             styles: [
                 ("fill".into(), "var(--circle)".into()),
@@ -121,11 +121,11 @@ mod tests {
     #[test]
     fn actual_area_styles_keep_scale_source_order_and_opaque_width() {
         let mut model = model();
-        model.style_entries.push(VennStyleEntryRenderModel {
+        model.style_entries.push(VennStyleEntryModel {
             targets: vec!["A".into()],
             styles: [("stroke-width".into(), "2px".into())].into(),
         });
-        model.style_entries.push(VennStyleEntryRenderModel {
+        model.style_entries.push(VennStyleEntryModel {
             targets: vec!["A".into()],
             styles: [
                 ("stroke-width".into(), "calc(1px + 2px)".into()),
@@ -134,7 +134,7 @@ mod tests {
             ]
             .into(),
         });
-        model.style_entries.push(VennStyleEntryRenderModel {
+        model.style_entries.push(VennStyleEntryModel {
             targets: vec!["A".into(), "B".into()],
             styles: [("color".into(), "var(--label)".into())].into(),
         });
@@ -275,7 +275,7 @@ impl VennCssBinding {
 
     pub(super) fn resolve(
         config: &serde_json::Value,
-        model: &VennDiagramRenderModel,
+        model: &VennDiagramModel,
         layout: &VennDiagramLayout,
         title_fill: Option<&str>,
         text_fill: Option<&str>,

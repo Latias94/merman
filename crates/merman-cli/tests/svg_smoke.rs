@@ -174,6 +174,19 @@ fn working_set_is_rejected_before_the_svg_backend_runs() {
 
 #[cfg(not(feature = "math"))]
 #[test]
+fn math_labels_require_the_cli_owned_capability() {
+    let output = run_with_stdin(
+        &["render", "--format", "svg", "-"],
+        "flowchart TD\nA[\"$$x^2$$\"] --> B\n",
+    );
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(stderr.contains("lacks capability `math`"), "{stderr}");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("<svg"));
+}
+
+#[cfg(not(feature = "math"))]
+#[test]
 fn svg_only_build_does_not_advertise_ratex() {
     let output = run_with_stdin(
         &["render", "--math-renderer", "ratex", "--format", "svg", "-"],

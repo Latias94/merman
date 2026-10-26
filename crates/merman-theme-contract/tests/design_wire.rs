@@ -308,27 +308,29 @@ fn serialization_rejects_non_finite_values_through_nested_typed_paths() {
     );
     designs.push(shadow);
 
-    let mut gradient = ThemeDesignV1::default();
-    gradient.canvas = Some(ThemeDesignCanvasV1 {
-        layers: vec![ThemeDesignCanvasLayerV1 {
-            paint: ThemeValueV1::Literal(ThemeDesignPaintV1::Structured(
-                ThemeDesignPaintObjectV1::LinearGradient {
-                    angle_degrees: ThemeValueV1::Literal(90.0),
-                    stops: vec![ThemeDesignGradientStopV1 {
-                        offset: ThemeValueV1::Literal(0.0),
-                        color: ThemeValueV1::Literal("#fff".into()),
-                        opacity: Some(ThemeValueV1::Literal(f32::NEG_INFINITY)),
-                    }],
-                    repetition: None,
-                },
-            )),
-            opacity: None,
-            blend_mode: None,
-            offset_x: None,
-            offset_y: None,
-        }],
+    let gradient = ThemeDesignV1 {
+        canvas: Some(ThemeDesignCanvasV1 {
+            layers: vec![ThemeDesignCanvasLayerV1 {
+                paint: ThemeValueV1::Literal(ThemeDesignPaintV1::Structured(
+                    ThemeDesignPaintObjectV1::LinearGradient {
+                        angle_degrees: ThemeValueV1::Literal(90.0),
+                        stops: vec![ThemeDesignGradientStopV1 {
+                            offset: ThemeValueV1::Literal(0.0),
+                            color: ThemeValueV1::Literal("#fff".into()),
+                            opacity: Some(ThemeValueV1::Literal(f32::NEG_INFINITY)),
+                        }],
+                        repetition: None,
+                    },
+                )),
+                opacity: None,
+                blend_mode: None,
+                offset_x: None,
+                offset_y: None,
+            }],
+            ..Default::default()
+        }),
         ..Default::default()
-    });
+    };
     designs.push(gradient);
 
     for design in designs {

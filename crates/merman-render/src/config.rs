@@ -149,7 +149,9 @@ pub(crate) fn config_diagram_look(cfg: &Value) -> DiagramLook<'_> {
     DiagramLook::from_raw(value_at(cfg, &["look"]).and_then(Value::as_str))
 }
 
-pub(crate) fn mermaid_config_diagram_look(cfg: &merman_core::MermaidConfig) -> DiagramLook<'_> {
+pub(crate) fn mermaid_config_diagram_look(
+    cfg: &merman_core::presentation::PresentationConfig,
+) -> DiagramLook<'_> {
     DiagramLook::from_raw(cfg.get_str("look"))
 }
 

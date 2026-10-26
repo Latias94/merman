@@ -32,11 +32,12 @@ fn completed_svg_evidence_records_coarse_render_identity() {
     assert_eq!(output.evidence().measurement_routes().len(), 4);
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
-fn semantic_artifact_is_format_neutral_before_target_layout() {
+fn presentation_artifact_preserves_full_json_before_target_layout() {
     let renderer = Renderer::new();
     let semantic = renderer
-        .prepare_semantic("info", OperationControl::new())
+        .prepare_presentation("info", OperationControl::new())
         .expect("semantic preparation succeeds")
         .expect("Info should prepare");
 
@@ -202,7 +203,7 @@ align row api db
 #[test]
 fn semantic_artifact_exposes_stable_identity_without_layout_types() {
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", OperationControl::new())
+        .prepare_presentation("flowchart TD\nA --> B", OperationControl::new())
         .expect("semantic preparation succeeds")
         .expect("flowchart should prepare");
     assert_eq!(artifact.semantic_kind(), "flowchart");

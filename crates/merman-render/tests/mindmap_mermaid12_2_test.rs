@@ -1,6 +1,6 @@
 #![cfg(feature = "diagram-mindmap")]
 
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::environment::TextMeasurementPhase;
@@ -32,7 +32,7 @@ fn label_translation(document: &roxmltree::Document<'_>, id: &str) -> (f64, f64)
 
 fn measure_visible_svg_text(source: &str, visible: &str) -> merman_render::text::TextMetrics {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -54,7 +54,7 @@ fn measure_visible_svg_text(source: &str, visible: &str) -> merman_render::text:
 
 fn render(source: &str, diagram_id: &str) -> (String, MindmapDiagramLayout) {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();

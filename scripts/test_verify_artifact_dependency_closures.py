@@ -248,6 +248,24 @@ def write_descriptor(
 
 
 class VerificationCaseTests(unittest.TestCase):
+    def test_generic_svg_profiles_reject_resolved_math_backend_payloads(self) -> None:
+        profiles = {
+            "rust-native-svg", "rust-render-native-svg", "rust-static-svg",
+            "rustdoc-static-svg", "web-full", "web-render",
+        }
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()}
+        for profile_id in profiles:
+            current = cases[profile_id]
+            with self.subTest(profile=profile_id):
+                closure = parse_fixture_metadata(
+                    metadata_document(current.recipe.package, {
+                        current.recipe.package: (), "ratex-svg": (), "ratex-katex-fonts": (),
+                    }), root_package=current.recipe.package,
+                )
+                failures, _ = check_case(current, closure)
+                self.assertTrue(any("ratex-katex-fonts" in failure and "ratex-svg" in failure
+                                    for failure in failures), failures)
+
     def test_sdk_profiles_keep_variant_and_wasi_runtime_boundaries(self) -> None:
         cases = {current.recipe.profile_id: current for current in load_verification_cases()
                  if current.recipe.profile_id.startswith("sdk-")}

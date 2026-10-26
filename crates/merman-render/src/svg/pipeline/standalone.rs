@@ -203,7 +203,7 @@ mod tests {
             "classDiagram\nA --> B",
             "journey\n  title Release\n  section Delivery\n    Ship: 5: Maintainer",
         ] {
-            let parsed = merman_core::Engine::new()
+            let parsed = merman_core::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()
                 .unwrap();

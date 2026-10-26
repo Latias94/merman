@@ -1,6 +1,6 @@
 //! Focused family-selection checks, also runnable with independently widened core features.
 
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 #[cfg(any(
@@ -29,7 +29,7 @@ use merman_render::{Error, LayoutOptions};
     feature = "diagram-mindmap"
 ))]
 fn parse(source: &str) -> merman_core::ParsedDiagramRender {
-    Engine::new()
+    MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()
@@ -85,8 +85,8 @@ fn widened_core_cannot_bypass_local_handlers_or_precedence() {
         "mindmap\n  root((Root))",
         "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d",
     ] {
-        let Ok(Some(parsed)) =
-            Engine::new().parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let Ok(Some(parsed)) = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         else {
             continue;
         };
@@ -165,7 +165,7 @@ fn mindmap_uses_shared_label_measurement_without_flowchart_implementation() {
 fn custom_provenance_and_cancellation_precede_family_availability() {
     fn custom(
         _: &str,
-        _: &merman_core::ParseMetadata,
+        _: &merman_core::PresentationMetadata,
         control: &merman_core::OperationControl,
     ) -> merman_core::OperationControlResult<merman_core::Result<merman_core::CustomJsonRenderModel>>
     {
@@ -175,7 +175,7 @@ fn custom_provenance_and_cancellation_precede_family_availability() {
             serde_json::json!({}),
         )))
     }
-    let mut engine = Engine::new();
+    let mut engine = MermaidEngine::new();
     engine
         .render_diagram_registry_mut()
         .insert("flowchart-v2", custom);

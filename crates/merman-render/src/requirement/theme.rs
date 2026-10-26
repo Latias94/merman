@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::MermaidConfig;
-use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+use merman_core::diagrams::requirement::RequirementDiagramModel;
+use merman_core::presentation::PresentationConfig;
 
 use super::source_typography::RequirementNodeTypography;
 use crate::diagram_theme::{
@@ -22,7 +22,7 @@ use crate::resources::OperationWorkMeter;
 
 mod node_visual;
 
-fn configured_font_size_css(effective_config: &MermaidConfig) -> Box<str> {
+fn configured_font_size_css(effective_config: &PresentationConfig) -> Box<str> {
     crate::config::config_css_number_or_string(
         effective_config.as_value(),
         &["themeVariables", "fontSize"],
@@ -84,8 +84,8 @@ pub(crate) struct RequirementPaintThemePlan {
 impl RequirementPaintThemePlan {
     pub(crate) fn resolve_with_title(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
-        model: &RequirementDiagramRenderModel,
+        effective_config: &PresentationConfig,
+        model: &RequirementDiagramModel,
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -495,7 +495,7 @@ impl RequirementPaintThemePlan {
 }
 
 fn requirement_source_owned_fill_mask(
-    model: &RequirementDiagramRenderModel,
+    model: &RequirementDiagramModel,
     node_indices: &BTreeMap<String, usize>,
     paint_owners: &[(bool, bool)],
 ) -> Vec<bool> {
@@ -562,9 +562,9 @@ fn typed_stroke_expectation(
 }
 
 fn requirement_paint_owners(
-    config: &MermaidConfig,
+    config: &PresentationConfig,
     css: &super::RequirementCssBinding,
-    model: &RequirementDiagramRenderModel,
+    model: &RequirementDiagramModel,
     node_indices: &BTreeMap<String, usize>,
 ) -> Vec<(bool, bool)> {
     let owns = |key| merman_core::__private::config_paint_overrides_typed_default(config, key);
@@ -866,9 +866,9 @@ mod tests {
 
     #[test]
     fn unthemed_plan_keeps_config_without_per_node_evidence() {
-        use merman_core::diagrams::requirement::RequirementRenderElement;
+        use merman_core::diagrams::requirement::RequirementElement;
 
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
             "themeVariables": {"fontSize": "24px"}
         }));
@@ -876,13 +876,13 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         for node_count in [0, 1, 4096] {
-            let model = RequirementDiagramRenderModel {
+            let model = RequirementDiagramModel {
                 acc_title: None,
                 acc_descr: None,
                 direction: "TB".to_owned(),
                 requirements: Vec::new(),
                 elements: (0..node_count)
-                    .map(|index| RequirementRenderElement {
+                    .map(|index| RequirementElement {
                         name: format!("element_{index}"),
                         element_type: "component".to_owned(),
                         doc_ref: String::new(),
@@ -944,7 +944,7 @@ mod tests {
         let model = serde_json::from_value(serde_json::json!({})).unwrap();
         let plan = RequirementPaintThemePlan::resolve_with_title(
             Some(&resolved),
-            &MermaidConfig::empty_object(),
+            &PresentationConfig::empty_object(),
             &model,
             None,
             &OperationWorkMeter::new(

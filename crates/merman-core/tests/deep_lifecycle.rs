@@ -1,6 +1,7 @@
 #![cfg(feature = "all-diagrams")]
+#![cfg(feature = "compat-json")]
 
-use merman_core::{BuiltinRenderSemantic, Engine, ParseOptions};
+use merman_core::{BuiltinRenderSemantic, MermaidEngine, ParseOptions};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};
@@ -190,7 +191,7 @@ fn marker(started: Instant, phase: &str, status: &str) {
     io::stdout().flush().expect("flush lifecycle phase marker");
 }
 
-fn after_small_operation(engine: &Engine, started: Instant) {
+fn after_small_operation(engine: &MermaidEngine, started: Instant) {
     marker(started, "after-small-operation", "begin");
     let small = engine
         .parse_diagram_for_render_model_sync("flowchart TD\na --> b\n", ParseOptions::strict())
@@ -205,9 +206,9 @@ fn run_worker(case: Case, depth: usize) {
     let started = Instant::now();
     let source = case.source(depth);
     let path = if matches!(case, Case::MindmapJsonDrop | Case::MindmapJsonCloneExport) {
-        "Engine.parse_diagram_sync"
+        "MermaidEngine.parse_diagram_sync"
     } else {
-        "Engine.parse_diagram_for_render_model_sync"
+        "MermaidEngine.parse_diagram_for_render_model_sync"
     };
     println!(
         "case={} depth={depth} source_bytes={} path={path} profile=direct-engine-strict \
@@ -221,7 +222,7 @@ fn run_worker(case: Case, depth: usize) {
         }
     );
     io::stdout().flush().expect("flush lifecycle case metadata");
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     marker(started, "parse", "begin");
 
     #[cfg(feature = "test-support")]

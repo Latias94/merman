@@ -1,14 +1,26 @@
 use crate::diagrams::scan::{consume_line_ending, is_ecmascript_whitespace};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+use crate::family::SemanticConstruction;
+#[cfg(feature = "editor-facts")]
+use crate::parse_diagnostic::{format_lalrpop_parse_error, lalrpop_recovery_span};
+#[cfg(feature = "editor-facts")]
+use crate::source_span::{
+    has_ascii_separator, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
+};
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
-    SourceSpan,
-    editor::{
-        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
-        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
-    },
+    EditorSemanticSymbol,
 };
+use crate::{
+    Error, OperationControl, OperationControlResult, SourceSpan,
+    parse_diagnostic::lalrpop_parse_diagnostic,
+};
+#[cfg(feature = "presentation")]
+use crate::{PresentationMetadata, Result};
 use indexmap::IndexMap;
+#[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
@@ -36,23 +48,23 @@ include_checked_in_lalrpop_parser!(
 );
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErDiagramRenderModel {
+pub struct ErDiagramModel {
     #[serde(default, rename = "accTitle")]
     pub acc_title: Option<String>,
     #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub direction: String,
     #[serde(default)]
-    pub classes: IndexMap<String, ErClassDefRenderModel>,
+    pub classes: IndexMap<String, ErClassDef>,
     #[serde(default)]
-    pub entities: IndexMap<String, ErEntityRenderModel>,
+    pub entities: IndexMap<String, ErEntity>,
     #[serde(default)]
-    pub relationships: Vec<ErRelationshipRenderModel>,
+    pub relationships: Vec<ErRelationship>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub subgraphs: Vec<ErSubgraphRenderModel>,
+    pub subgraphs: Vec<ErSubgraph>,
 }
 
-impl ErDiagramRenderModel {
+impl ErDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
@@ -63,7 +75,7 @@ impl ErDiagramRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErAttributeRenderModel {
+pub struct ErAttribute {
     #[serde(rename = "type")]
     pub ty: String,
     pub name: String,
@@ -74,7 +86,7 @@ pub struct ErAttributeRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErRelSpecRenderModel {
+pub struct ErRelSpec {
     #[serde(rename = "cardA")]
     pub card_a: String,
     #[serde(rename = "cardB")]
@@ -84,7 +96,7 @@ pub struct ErRelSpecRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErRelationshipRenderModel {
+pub struct ErRelationship {
     #[serde(rename = "entityA")]
     pub entity_a: String,
     #[serde(default, rename = "roleA")]
@@ -92,11 +104,11 @@ pub struct ErRelationshipRenderModel {
     #[serde(rename = "entityB")]
     pub entity_b: String,
     #[serde(default, rename = "relSpec")]
-    pub rel_spec: ErRelSpecRenderModel,
+    pub rel_spec: ErRelSpec,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErClassDefRenderModel {
+pub struct ErClassDef {
     pub id: String,
     #[serde(default)]
     pub styles: Vec<String>,
@@ -105,7 +117,7 @@ pub struct ErClassDefRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErSubgraphRenderModel {
+pub struct ErSubgraph {
     #[serde(default)]
     pub classes: Vec<String>,
     #[serde(default, rename = "cssStyles")]
@@ -121,11 +133,11 @@ pub struct ErSubgraphRenderModel {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ErEntityRenderModel {
+pub struct ErEntity {
     pub id: String,
     pub label: String,
     #[serde(default)]
-    pub attributes: Vec<ErAttributeRenderModel>,
+    pub attributes: Vec<ErAttribute>,
     #[serde(default)]
     pub alias: String,
     #[serde(default)]
@@ -136,8 +148,9 @@ pub struct ErEntityRenderModel {
     pub css_styles: Vec<String>,
 }
 
-impl ErEntityRenderModel {
+impl ErEntity {
     /// Returns the visible entity label source selected by Mermaid's ER renderer.
+    #[cfg(feature = "presentation")]
     pub fn label_source_for_render(&self) -> &str {
         if self.alias.is_empty() {
             self.label.as_str()
@@ -147,11 +160,11 @@ impl ErEntityRenderModel {
     }
 }
 
-pub(crate) type Attribute = ErAttributeRenderModel;
-pub(crate) type RelSpec = ErRelSpecRenderModel;
-type Relationship = ErRelationshipRenderModel;
-type EntityClass = ErClassDefRenderModel;
-type EntityNode = ErEntityRenderModel;
+pub(crate) type Attribute = ErAttribute;
+pub(crate) type RelSpec = ErRelSpec;
+type Relationship = ErRelationship;
+type EntityClass = ErClassDef;
+type EntityNode = ErEntity;
 
 #[derive(Debug, Clone)]
 enum Action {
@@ -260,6 +273,7 @@ struct ErReplayFrame {
 #[derive(Debug, Clone)]
 struct SpannedId {
     name: String,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -273,6 +287,7 @@ impl SpannedIdList {
         self.ids.into_iter().map(|id| id.name).collect()
     }
 
+    #[cfg(feature = "editor-facts")]
     fn span(&self) -> SourceSpan {
         let start = self.ids.first().map(|id| id.span.start).unwrap_or(0);
         let end = self.ids.last().map(|id| id.span.end).unwrap_or(start);
@@ -289,7 +304,7 @@ struct ErDb {
     entity_counter: usize,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    subgraphs: Vec<ErSubgraphRenderModel>,
+    subgraphs: Vec<ErSubgraph>,
     subgraph_lookup: IndexMap<String, usize>,
     subgraph_counter: usize,
     completed_members: HashSet<String>,
@@ -457,7 +472,7 @@ impl ErDb {
             raw_id.trim().to_string()
         };
         self.subgraph_counter = self.subgraph_counter.saturating_add(1);
-        let subgraph = ErSubgraphRenderModel {
+        let subgraph = ErSubgraph {
             classes: Vec::new(),
             css_styles: Vec::new(),
             dir: direction,
@@ -581,8 +596,8 @@ impl ErDb {
         Ok(())
     }
 
-    fn into_render_model(self) -> ErDiagramRenderModel {
-        ErDiagramRenderModel {
+    fn into_semantic_model(self) -> ErDiagramModel {
+        ErDiagramModel {
             acc_title: self.acc_title,
             acc_descr: self.acc_descr,
             direction: self.direction,
@@ -593,15 +608,17 @@ impl ErDb {
         }
     }
 
-    fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
-        let model = self.into_render_model();
+    #[cfg(feature = "compat-json")]
+    fn into_model(self, meta: &PresentationMetadata) -> Result<Value> {
+        let model = self.into_semantic_model();
         render_model_to_compat_json(&model, meta)
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &ErDiagramRenderModel,
-    meta: &ParseMetadata,
+    model: &ErDiagramModel,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     let mut value = serde_json::to_value(model)
         .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
@@ -644,6 +661,12 @@ type ErLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
 type ErGrammarError = lalrpop_util::ParseError<usize, Tok, LexError>;
 type ErParsedActions = std::result::Result<(ErActionArena, ErActionList), ErGrammarError>;
 
+struct ErSyntaxOutcome {
+    actions: ErParsedActions,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
+}
+
 struct ErSyntax {
     events: Vec<ErLexicalEvent>,
 }
@@ -662,23 +685,36 @@ impl ErSyntax {
         Ok(Self { events })
     }
 
-    fn into_editor_facts_and_actions(
+    fn into_actions(
         self,
-        code: &str,
+        #[cfg(feature = "editor-facts")] code: &str,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
         control: &OperationControl,
-    ) -> OperationControlResult<(EditorSemanticFacts, ErParsedActions)> {
-        let mut facts = EditorSemanticFacts::new();
-        let mut collector = ErEditorFactCollector::default();
-        for (index, event) in self.events.iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
+    ) -> OperationControlResult<ErSyntaxOutcome> {
+        #[cfg(feature = "editor-facts")]
+        let editor_facts = if editor_demand == EditorFactsDemand::Capture {
+            let mut facts = EditorSemanticFacts::new();
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            let mut collector = ErEditorFactCollector::default();
+            for (index, event) in self.events.iter().enumerate() {
+                if index % 128 == 0 {
+                    control.checkpoint()?;
+                }
+                match event {
+                    Ok((start, token, end)) => {
+                        collector.accept(code, token, *start, *end, &mut facts)
+                    }
+                    Err(_) => facts.mark_recovered(),
+                }
             }
-            match event {
-                Ok((start, token, end)) => collector.accept(code, token, *start, *end, &mut facts),
-                Err(_) => facts.mark_recovered(),
-            }
-        }
-        collector.finish(code, &mut facts);
+            collector.finish(code, &mut facts);
+            Some(facts)
+        } else {
+            editor_demand
+                .needs_recovery()
+                .then(EditorSemanticFacts::new)
+        };
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {
@@ -691,21 +727,28 @@ impl ErSyntax {
             .parse(&mut arena, controlled_events)
             .map(|actions| (arena, actions));
         control.checkpoint()?;
-        Ok((facts, actions))
+        Ok(ErSyntaxOutcome {
+            actions,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        })
     }
 }
 
 struct ErSemanticSource {
     db: ErDb,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct ErSemanticFailure {
     error: ErGrammarError,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 impl ErSemanticFailure {
+    #[cfg(feature = "editor-facts")]
     fn recovery_span(&self, fallback_offset: usize) -> SourceSpan {
         match &self.error {
             lalrpop_util::ParseError::User { error } => error.span,
@@ -713,50 +756,72 @@ impl ErSemanticFailure {
         }
     }
 
-    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
-        self.into_error_and_editor_facts(meta, fallback_offset).0
+    fn into_parse_error(self, diagram_type: &str, fallback_offset: usize) -> Error {
+        self.parse_error(diagram_type, fallback_offset)
     }
 
+    fn parse_error(&self, diagram_type: &str, fallback_offset: usize) -> Error {
+        Error::diagram_parse_diagnostic(
+            diagram_type.to_string(),
+            lalrpop_parse_diagnostic(&self.error, fallback_offset),
+        )
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
-        meta: &ParseMetadata,
+        meta: &PresentationMetadata,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
     }
 
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts_for_type(
-        mut self,
+        self,
         diagram_type: &str,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
-        let error = Error::diagram_parse_diagnostic(
-            diagram_type.to_string(),
-            lalrpop_parse_diagnostic(&self.error, fallback_offset),
-        );
+        let error = self.parse_error(diagram_type, fallback_offset);
         let span = self.recovery_span(fallback_offset);
-        self.editor_facts.mark_recovered_from_parse_error(
+        let mut editor_facts = self
+            .editor_facts
+            .expect("ER capture requests its failure journal");
+        editor_facts.mark_recovered_from_parse_error(
             format!(
                 "er parser recovered after parse error: {}",
                 format_lalrpop_parse_error(&self.error)
             ),
             Some(span),
         );
-        (error, self.editor_facts)
+        (error, editor_facts)
     }
 }
 
 fn construct_er_semantic_source(
     code: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
     let syntax = ErSyntax::lex(code, control)?;
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let ErSyntaxOutcome {
+        actions,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    } = syntax.into_actions(
+        #[cfg(feature = "editor-facts")]
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
     let (arena, actions) = match actions {
         Ok(actions) => actions,
         Err(error) => {
             return Ok(Err(Box::new(ErSemanticFailure {
                 error,
+                #[cfg(feature = "editor-facts")]
                 editor_facts,
             })));
         }
@@ -764,50 +829,128 @@ fn construct_er_semantic_source(
 
     let mut db = ErDb::new();
     db.replay(arena, actions, control)?;
-    Ok(Ok(ErSemanticSource { db, editor_facts }))
+    Ok(Ok(ErSemanticSource {
+        db,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    }))
 }
 
-fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
-    construct_er_semantic_source(code, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
+pub(crate) fn parse_er_semantic_model_controlled(
+    code: &str,
+    metadata: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<SemanticConstruction<ErDiagramModel>> {
+    let construction = construct_er_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        control,
+    )?;
+    Ok(match construction {
+        Ok(ErSemanticSource {
+            db,
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+        }) => {
+            let mut model = db.into_semantic_model();
+            model.sanitize_common_db_fields(&metadata.semantic_config);
+            SemanticConstruction {
+                model: Ok(model),
+                #[cfg(feature = "editor-facts")]
+                editor_facts,
+            }
+        }
+        #[cfg(feature = "editor-facts")]
+        Err(failure) if editor_demand.needs_recovery() => {
+            let (error, editor_facts) =
+                (*failure).into_error_and_editor_facts_for_type(&metadata.diagram_type, code.len());
+            SemanticConstruction {
+                model: Err(error),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: Some(editor_facts),
+            }
+        }
+        Err(failure) => SemanticConstruction {
+            model: Err((*failure).into_parse_error(&metadata.diagram_type, code.len())),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: None,
+        },
+    })
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
+fn parse_er_semantic_source(code: &str, meta: &PresentationMetadata) -> Result<ErSemanticSource> {
+    construct_er_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| (*failure).into_parse_error(&meta.diagram_type, code.len()))
+}
+
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_er_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
-) -> Result<ErDiagramRenderModel> {
-    Ok(parse_er_semantic_source(code, meta)?.db.into_render_model())
+    meta: &PresentationMetadata,
+) -> Result<ErDiagramModel> {
+    Ok(parse_er_semantic_source(code, meta)?
+        .db
+        .into_semantic_model())
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_er_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<ErDiagramRenderModel>> {
-    let construction = construct_er_semantic_source(code, control)?;
+) -> OperationControlResult<Result<ErDiagramModel>> {
+    let construction = construct_er_semantic_source(
+        code,
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
-        Err(failure) => return Ok(Err((*failure).into_parse_error(meta, code.len()))),
+        Err(failure) => {
+            return Ok(Err(
+                (*failure).into_parse_error(&meta.diagram_type, code.len())
+            ));
+        }
     };
     control.checkpoint()?;
-    Ok(Ok(source.db.into_render_model()))
+    Ok(Ok(source.db.into_semantic_model()))
 }
 
-pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_er(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_er_semantic_source(code, meta)?.db.into_model(meta)
 }
 
+#[cfg(feature = "compat-json")]
+#[cfg(feature = "editor-facts")]
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_er_semantic_source(code, control)?;
+    let construction = construct_er_semantic_source(code, EditorFactsDemand::Capture, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
-        |ErSemanticSource { db, editor_facts }| (db.into_model(meta), editor_facts),
+        |ErSemanticSource {
+             db,
+             #[cfg(feature = "editor-facts")]
+             editor_facts,
+         }| {
+            (
+                db.into_model(meta),
+                editor_facts.expect("ER combined parse requests editor facts"),
+            )
+        },
         |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
     );
     control.checkpoint()?;
@@ -815,6 +958,7 @@ pub(crate) fn parse_er_json_and_editor_facts(
 }
 
 #[derive(Debug, Default)]
+#[cfg(feature = "editor-facts")]
 struct ErEditorFactCollector {
     pending_entity: Option<ErTokenSymbol>,
     deferred_styled_entity: Option<ErTokenSymbol>,
@@ -831,6 +975,7 @@ struct ErEditorFactCollector {
     attr_word_index: usize,
 }
 
+#[cfg(feature = "editor-facts")]
 impl ErEditorFactCollector {
     fn finish(&mut self, code: &str, facts: &mut EditorSemanticFacts) {
         self.finish_line(code, line_content_end(code, code.len()), facts);
@@ -881,18 +1026,21 @@ impl ErEditorFactCollector {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "editor-facts")]
 struct ErTokenSymbol {
     name: String,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 enum ErEntityOccurrence {
     Definition,
     Relationship,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 enum ExpectedErIdList {
     StyleEntities,
     ClassDef,
@@ -902,11 +1050,13 @@ enum ExpectedErIdList {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "editor-facts")]
 struct PendingErExpectation {
     kind: ExpectedErIdList,
     anchor_end: Option<usize>,
 }
 
+#[cfg(feature = "editor-facts")]
 impl ErEditorFactCollector {
     fn accept(
         &mut self,
@@ -1405,6 +1555,7 @@ impl ErEditorFactCollector {
     }
 }
 
+#[cfg(feature = "editor-facts")]
 fn er_expected_id_list_kind(expected: ExpectedErIdList) -> EditorExpectedSyntaxKind {
     match expected {
         ExpectedErIdList::ClassDef
@@ -1419,6 +1570,7 @@ fn er_expected_id_list_kind(expected: ExpectedErIdList) -> EditorExpectedSyntaxK
 #[derive(Debug, Clone)]
 struct SpannedDirection {
     value: String,
+    #[cfg(any(test, feature = "editor-facts"))]
     selection: SourceSpan,
 }
 
@@ -1711,6 +1863,7 @@ impl<'input> Lexer<'input> {
                     start,
                     Tok::Direction(SpannedDirection {
                         value: direction.to_string(),
+                        #[cfg(any(test, feature = "editor-facts"))]
                         selection: SourceSpan::new(start + value_end - 2, start + value_end),
                     }),
                     self.pos,
@@ -1785,6 +1938,7 @@ impl<'input> Lexer<'input> {
             }
             ids.push(SpannedId {
                 name: self.input[id_start..id_end].to_string(),
+                #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(id_start, id_end),
             });
             self.pos = id_end;
@@ -2269,23 +2423,25 @@ impl Iterator for Lexer<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{EditorSemanticRole, MermaidConfig};
+    #[cfg(feature = "editor-facts")]
+    use crate::EditorSemanticRole;
+    use crate::MermaidConfig;
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "er".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         }
     }
 
     #[test]
     fn er_direction_lexer_preserves_ecmascript_line_terminators() {
-        // Test raw lexer rules before Engine preprocessing normalizes line endings.
+        // Test raw lexer rules before MermaidEngine preprocessing normalizes line endings.
         for separator in ['\r', '\u{2028}', '\u{2029}'] {
             let source = format!("direction RL{separator}direction TB");
             let (start, token, end) = Lexer::new(&source).next().unwrap().unwrap();
@@ -2357,7 +2513,7 @@ mod tests {
 
     #[test]
     fn er_entity_render_label_uses_javascript_string_truthiness() {
-        let mut entity = ErEntityRenderModel {
+        let mut entity = ErEntity {
             label: "CUSTOMER".to_string(),
             alias: "Buyer".to_string(),
             ..Default::default()
@@ -2419,7 +2575,7 @@ mod tests {
                 .eq(["zeta", "alpha", "middle"])
         );
 
-        let round_trip: ErDiagramRenderModel = serde_json::from_value(
+        let round_trip: ErDiagramModel = serde_json::from_value(
             serde_json::to_value(&typed).expect("ER typed model should serialize"),
         )
         .expect("ER typed model should deserialize");
@@ -2440,6 +2596,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn er_entity_occurrence_role_does_not_depend_on_display_detail() {
         let span = SourceSpan::new(0, "CUSTOMER".len());
         let symbol = || ErTokenSymbol {
@@ -2559,9 +2716,16 @@ mod tests {
             let source = nested_subgraphs(depth);
             let control = OperationControl::new();
             let syntax = ErSyntax::lex(&source, &control).unwrap();
-            let (_, parsed) = syntax
-                .into_editor_facts_and_actions(&source, &control)
-                .unwrap();
+            let parsed = syntax
+                .into_actions(
+                    #[cfg(feature = "editor-facts")]
+                    &source,
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Capture,
+                    &control,
+                )
+                .unwrap()
+                .actions;
             let (arena, actions) = parsed.unwrap();
             assert_eq!(arena.records.len(), depth + 1);
             assert_eq!(actions.first, actions.last, "one top-level subgraph");
@@ -2582,9 +2746,16 @@ mod tests {
         let source = nested_subgraphs(depth);
         let parsing = OperationControl::new();
         let syntax = ErSyntax::lex(&source, &parsing).unwrap();
-        let (_, parsed) = syntax
-            .into_editor_facts_and_actions(&source, &parsing)
-            .unwrap();
+        let parsed = syntax
+            .into_actions(
+                #[cfg(feature = "editor-facts")]
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &parsing,
+            )
+            .unwrap()
+            .actions;
         let (arena, actions) = parsed.unwrap();
         assert_eq!(actions.first, actions.last, "one top-level action");
 
@@ -2612,12 +2783,182 @@ mod tests {
         let source = nested_subgraphs(64);
         let control = OperationControl::new();
         let syntax = ErSyntax::lex(&source, &control).unwrap();
+        #[cfg(feature = "editor-facts")]
         let fact_checkpoints = syntax.events.len().div_ceil(128) + 1;
+        #[cfg(not(feature = "editor-facts"))]
+        let fact_checkpoints = 0;
         // Cancel during the third token batch, after inner grammar fragments have completed.
         control.cancel_after_checkpoints(fact_checkpoints + 2);
-        let Err(cancelled) = syntax.into_editor_facts_and_actions(&source, &control) else {
+        let Err(cancelled) = syntax.into_actions(
+            #[cfg(feature = "editor-facts")]
+            &source,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            &control,
+        ) else {
             panic!("token delivery observes cancellation");
         };
         assert_eq!(control.checkpoint(), Err(cancelled));
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "er".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            semantic_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn er_canonical_capture_retains_success_and_grammar_failure_facts() {
+        for (source, valid) in [
+            ("erDiagram\nA\n", true),
+            ("erDiagram\nA {\n string\n}\n", false),
+        ] {
+            reset_er_syntax_construction_count();
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            let parsed = parse_er_semantic_model_controlled(
+                source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(parsed.model.is_ok(), valid);
+            let facts = parsed.editor_facts.expect("same-pass ER facts");
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert_eq!(er_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                facts.completeness,
+                if valid {
+                    crate::EditorSemanticCompleteness::Complete
+                } else {
+                    crate::EditorSemanticCompleteness::Recovered
+                }
+            );
+            assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    fn er_canonical_model_constructs_once_without_editor_work() {
+        let source = "erDiagram\ndirection LR\nsubgraph Orders [Order Domain]\nCUSTOMER ||--o{ ORDER : places\nend\n";
+        reset_er_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let model = parse_er_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        assert_eq!(model.direction, "LR");
+        assert_eq!(
+            model
+                .entities
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["CUSTOMER", "ORDER"]
+        );
+        assert_eq!(model.relationships[0].role_a, "places");
+        assert_eq!(model.subgraphs[0].nodes, ["CUSTOMER", "ORDER"]);
+        assert_eq!(er_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
+
+    #[test]
+    fn er_canonical_errors_keep_spans_without_editor_work() {
+        let source = "erDiagram\nA {\n string\n}\n";
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let error = parse_er_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected parse diagnostic")
+        };
+        assert!(diagnostic.span().is_some());
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        #[cfg(feature = "compat-json")]
+        {
+            let Error::DiagramParse {
+                diagnostic: full, ..
+            } = parse_er(
+                source,
+                &PresentationMetadata {
+                    diagram_type: "er".to_string(),
+                    config: crate::MermaidConfig::empty_object(),
+                    effective_config: crate::presentation::PresentationConfig::empty_object(),
+                    title: None,
+                },
+            )
+            .unwrap_err()
+            else {
+                panic!("expected parse diagnostic")
+            };
+            assert_eq!(diagnostic, full);
+        }
+    }
+
+    #[test]
+    fn er_canonical_construction_observes_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+        assert!(
+            parse_er_semantic_model_controlled(
+                "erDiagram\nA\n",
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
+        );
+    }
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn er_typed_projection_omits_editor_observers() {
+        let metadata = PresentationMetadata {
+            diagram_type: "er".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let model = parse_er_model_for_render_controlled(
+            "erDiagram\nA\n",
+            &metadata,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!model.entities.is_empty());
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 }

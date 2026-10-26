@@ -345,7 +345,7 @@ mod tests {
         let resolved = theme
             .as_ref()
             .map(|theme| theme.resolve(crate::DiagramFamilyId::SEQUENCE));
-        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+        let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "sequenceDiagram\nautonumber\nA->>+B: Hello\nnote over B: Note\nloop control\nB-->>A: Reply\nend\nB-->>-A: Done",
             merman_core::ParseOptions::strict(),
         ).unwrap().unwrap();
@@ -358,7 +358,7 @@ mod tests {
         crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
-            &merman_core::MermaidConfig::from_value(config.clone()),
+            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
             resolved.as_ref(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,

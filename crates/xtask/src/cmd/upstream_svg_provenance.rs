@@ -735,7 +735,7 @@ impl UpstreamSvgProvenanceValidator {
     pub(crate) fn fixture_site_config(
         &self,
         fixture_path: &Path,
-    ) -> Result<Option<merman::MermaidConfig>, String> {
+    ) -> Result<Option<merman::presentation::PresentationConfig>, String> {
         self.render_contexts
             .context_for_fixture(fixture_path)
             .map_err(|error| {
@@ -746,8 +746,11 @@ impl UpstreamSvgProvenanceValidator {
                 )
             })
             .map(|context| {
-                context
-                    .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
+                context.map(|context| {
+                    merman::presentation::PresentationConfig::from_value(
+                        context.site_config_value(),
+                    )
+                })
             })
     }
 

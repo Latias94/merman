@@ -471,7 +471,7 @@ pub(super) fn parse_json5_config(input: &str) -> Json5ConfigCapture {
         Some(value) => match IgnoredAny::deserialize(&mut deserializer) {
             Err(error) if error.code() == Some(json5::ErrorCode::EofParsingValue) => Some(value),
             Ok(_) | Err(_) => {
-                crate::compatibility_json::drop_value_nonrecursive(value);
+                crate::json_value::drop_value_nonrecursive(value);
                 capture.rewrite_safe = false;
                 None
             }
@@ -631,7 +631,7 @@ impl<'de> Visitor<'de> for Json5ValueVisitor<'_, '_> {
                 capture_keys: self.capture_keys,
             })?;
             if let Some(replaced) = values.insert(key.name, value) {
-                crate::compatibility_json::drop_value_nonrecursive(replaced);
+                crate::json_value::drop_value_nonrecursive(replaced);
             }
         }
         Ok(Value::Object(values))

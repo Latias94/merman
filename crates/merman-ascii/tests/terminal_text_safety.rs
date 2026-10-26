@@ -2,7 +2,8 @@ mod support;
 
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions, TerminalWidthProfile};
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::git_graph::{GitGraphBranchRenderModel, GitGraphRenderModel};
+use merman_core::diagrams::git_graph::{GitGraphBranch, GitGraphDiagramModel};
+use merman_core::models::class_diagram::ClassDiagram;
 use support::{parse_model, render_model};
 use unicode_width::UnicodeWidthStr;
 
@@ -11,10 +12,10 @@ fn render(source: &str, options: &AsciiRenderOptions) -> String {
 }
 
 fn git_graph_with_authored_text(text: &str) -> RenderSemanticModel {
-    RenderSemanticModel::GitGraph(GitGraphRenderModel {
+    RenderSemanticModel::GitGraph(GitGraphDiagramModel {
         diagram_type: "gitGraph".to_string(),
         commits: Vec::new(),
-        branches: vec![GitGraphBranchRenderModel {
+        branches: vec![GitGraphBranch {
             name: text.to_string(),
         }],
         current_branch: text.to_string(),
@@ -56,13 +57,15 @@ fn model_with_visible_text(family: &str, source: &str, text: &str) -> RenderSema
     let mut model = parse_model(source);
     match &mut model {
         RenderSemanticModel::Class(model) => {
-            let class = model
+            let mut semantic = model.clone().into_model();
+            let class = semantic
                 .classes
                 .values_mut()
                 .next()
                 .expect("class fixture node");
             class.label = text.to_string();
             class.text = text.to_string();
+            *model = ClassDiagram::new(semantic, &Default::default());
         }
         RenderSemanticModel::Er(model) => {
             let entity = model
@@ -296,11 +299,13 @@ fn graph_and_relation_edge_labels_normalize_before_empty_checks() {
                 model.edges.first_mut().expect("state edge").label = authored.to_string();
             }
             RenderSemanticModel::Class(model) => {
-                model
+                let mut semantic = model.clone().into_model();
+                semantic
                     .relations
                     .first_mut()
                     .expect("class relation")
                     .relation_title_1 = Some(authored.to_string());
+                *model = ClassDiagram::new(semantic, &Default::default());
             }
             other => panic!("{family} fixture parsed as unexpected model {other:?}"),
         }

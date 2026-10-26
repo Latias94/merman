@@ -224,14 +224,14 @@ mod tests {
     use super::*;
     use crate::svg_observation::SvgArtifactObservation;
     use merman::svg::{DiagramThemeCompiler, ThemePreset};
-    use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
+    use merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer};
 
     fn document(source: &str) -> RenderedDocument {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(ThemePreset::Cyberpunk)
             .unwrap();
-        let renderer = Renderer::new().with_engine(
-            Engine::new().with_site_config(super::super::preset_qualification_config()),
+        let renderer = Renderer::new().with_presentation_engine(
+            MermaidEngine::new().with_site_config(super::super::preset_qualification_config()),
         );
         let RenderOutput::Document(Some(document)) = renderer
             .render(

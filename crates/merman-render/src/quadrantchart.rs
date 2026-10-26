@@ -5,7 +5,7 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use merman_core::diagrams::quadrant_chart::{
-    QuadrantChartPointModel, QuadrantChartRenderModel, QuadrantChartStyles,
+    QuadrantChartDiagramModel, QuadrantChartPointModel, QuadrantChartStyles,
 };
 use serde_json::Value;
 
@@ -18,7 +18,7 @@ pub(crate) use text_paint::QuadrantChartPaintPlan;
 pub(crate) use theme::QuadrantChartPointThemePlan;
 
 fn point_class_styles<'a>(
-    model: &'a QuadrantChartRenderModel,
+    model: &'a QuadrantChartDiagramModel,
     point: &QuadrantChartPointModel,
 ) -> Option<&'a QuadrantChartStyles> {
     point
@@ -49,7 +49,7 @@ fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
 }
 
 pub(crate) fn layout_quadrantchart_diagram_typed(
-    model: &QuadrantChartRenderModel,
+    model: &QuadrantChartDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     point_theme: &QuadrantChartPointThemePlan,

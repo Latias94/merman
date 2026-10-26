@@ -1,6 +1,6 @@
 #![cfg(feature = "layout-cytoscape")]
 
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::Error;
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -16,11 +16,14 @@ const DEEP_GROUP_LAYOUT_STACK_SIZE: usize = 512 * 1024;
 const DEEP_GROUP_LAYOUT_STACK_SIZE: usize = 128 * 1024;
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     layout_architecture_with_engine(&engine, text)
 }
 
-fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureDiagramLayout {
+fn layout_architecture_with_engine(
+    engine: &MermaidEngine,
+    text: &str,
+) -> ArchitectureDiagramLayout {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
@@ -137,7 +140,7 @@ fn disconnected_diagram() -> &'static str {
 #[test]
 fn architecture_default_layout_options_execute_fcose_layout() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(chain_diagram(), ParseOptions::strict())
         .expect("parse ok")
@@ -177,7 +180,7 @@ fn architecture_single_node_budget_includes_compound_topology_setup() {
 architecture-beta
   service api(server)[API]
 "#;
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -193,7 +196,7 @@ architecture-beta
     family::prepare(&parsed, &LayoutOptions::default(), exact_session)
         .expect("the exact public FCoSE work budget should be accepted");
 
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -228,7 +231,7 @@ fn architecture_conflicting_row_hints_fail_before_svg_projection() {
   align row b a
 "#;
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
@@ -250,7 +253,7 @@ fn architecture_conflicting_row_hints_fail_before_svg_projection() {
 fn architecture_parse_for_render_model_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-parse".to_string())
         .stack_size(128 * 1024)
@@ -271,7 +274,7 @@ fn architecture_layout_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     for depth in [1, DEPTH] {
         let source = deep_group_chain_diagram(depth);
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let handle = std::thread::Builder::new()
             .name("architecture-deep-group-layout".to_string())
             // Exercise both fixed preparation overhead and input-depth-dependent traversal.

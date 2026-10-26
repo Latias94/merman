@@ -74,4 +74,16 @@ export async function preparedSourceSmoke(api, raw, measurementResult) {
   disposable.dispose();
   assert.throws(() => disposable.layoutJson(), /disposed/);
   assert.throws(() => api.prepareSource("flowchart LR\nA -->"), error => error.code_name === "MERMAN_PARSE_ERROR");
+  if (!api.runtimeCatalog().capabilities.capability_ids.includes("math")) {
+    const formula = 'flowchart LR\nA["$$x^2$$"] --> B';
+    const missingMath = error => error.code_name === "MERMAN_UNSUPPORTED_OPERATION"
+      && error.kind === "missing-capability" && error.capability_id === "math";
+    assert.throws(() => api.renderSvg(formula, options), missingMath);
+    const parsedFormula = api.prepareSource(formula, options);
+    try {
+      assert.throws(() => parsedFormula.renderSvg(), missingMath);
+    } finally {
+      parsedFormula.dispose();
+    }
+  }
 }

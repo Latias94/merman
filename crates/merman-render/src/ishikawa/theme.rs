@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
@@ -42,7 +42,7 @@ impl IshikawaTextThemePlan {
     #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         layout: &IshikawaDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -59,7 +59,7 @@ impl IshikawaTextThemePlan {
 
     pub(crate) fn resolve_with_font_stack(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
+        effective_config: &PresentationConfig,
         layout: &IshikawaDiagramLayout,
         work_meter: &OperationWorkMeter,
         inherited_font_stack: InheritedFontStackPlan,
@@ -390,7 +390,7 @@ fn selector_matches_text_domain(selector: FamilyThemeSelectorShape, text_count: 
     }
 }
 
-fn mermaid_owns_text_fill(config: &MermaidConfig) -> bool {
+fn mermaid_owns_text_fill(config: &PresentationConfig) -> bool {
     merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.textColor")
 }
 
@@ -484,7 +484,7 @@ mod tests {
         };
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = MermaidConfig::from_value(json!({}));
+        let config = PresentationConfig::from_value(json!({}));
 
         let plan = IshikawaTextThemePlan::resolve(Some(&resolved), &config, &layout, &work_meter)
             .expect("resolve Ishikawa title-only theme");

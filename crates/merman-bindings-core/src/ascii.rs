@@ -87,12 +87,12 @@ impl AsciiOperationConfig {
             resources: self.ascii_resources,
             viewport: self.viewport,
         };
-        let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
+        let mut parser = merman::SemanticParser::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
-            engine = engine.with_site_config(site_config);
+            parser = parser.with_site_config(site_config);
         }
         let renderer = merman::Renderer::new()
-            .with_engine(engine)
+            .with_semantic_parser(parser)
             .with_parse_options(self.parse_options)
             .with_resource_policy(self.resources);
         CachedAsciiEngine {

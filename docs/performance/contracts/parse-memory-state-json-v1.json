@@ -1,0 +1,82 @@
+{
+  "schema_version": 2,
+  "lane_id": "parser-state-json-memory",
+  "workload": "parse-state-json-generated-chain-v1",
+  "evidence_class": "candidate-bound",
+  "candidate_admission": true,
+  "probe": {
+    "protocol_schema_version": 3,
+    "package": "merman",
+    "package_manifest": "crates/merman/Cargo.toml",
+    "bench": "parse_memory",
+    "features": [
+      "all-diagrams",
+      "compat-json",
+      "editor-facts"
+    ],
+    "default_features": false,
+    "inputs": [
+      {
+        "path": "crates/merman/benches/parse_memory.rs",
+        "sha256": "78df1a38d7a702cbcc7cc18ce5fff2fc0b5c78a0f1bfd3e6a98aa5b56c4574c6"
+      },
+      {
+        "path": "crates/merman/benches/native_memory/allocator.rs",
+        "sha256": "934c9e450d67f0fced79288e02b3056791120107dcd05f7038441c2516ada650"
+      }
+    ]
+  },
+  "scale": {
+    "dimension": "generated_units",
+    "units_per_scale": 1
+  },
+  "semantic_response": {
+    "scale_field": "generated_units",
+    "operation_output_sha256": "b4aace4d0611a9f3cfe2059d42e1ce3e8a976f7bd8684bd7367490f285d810d7",
+    "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "operation": {
+      "kind": "parse-allocation-observation-v1",
+      "family": "state",
+      "route": "json",
+      "metadata_matches": true,
+      "model_matches": true,
+      "editor_facts_requested": false,
+      "editor_facts_complete": false,
+      "editor_symbols_match": false,
+      "editor_spans_match_source": false,
+      "result_alive_at_checkpoint": true,
+      "recovery_characterized": false
+    },
+    "zero": {
+      "kind": "parse-allocation-observation-v1",
+      "family": "state",
+      "route": "json",
+      "metadata_matches": false,
+      "model_matches": false,
+      "editor_facts_requested": false,
+      "editor_facts_complete": false,
+      "editor_symbols_match": false,
+      "editor_spans_match_source": false,
+      "result_alive_at_checkpoint": false,
+      "recovery_characterized": false
+    }
+  },
+  "metrics": {
+    "allocated_bytes": {
+      "slope_cap": 1.0,
+      "max_scale_cap": 3108666
+    },
+    "allocation_count": {
+      "slope_cap": 1.0,
+      "max_scale_cap": 22756
+    },
+    "peak_growth_bytes": {
+      "slope_cap": 1.0,
+      "max_scale_cap": 1500595
+    },
+    "retained_growth_bytes": {
+      "slope_cap": 1.0,
+      "max_scale_cap": 1071875
+    }
+  }
+}

@@ -14,7 +14,7 @@ fn sequence_fragment_carriers_preserve_nested_control_and_activation_order() {
         "end\nend\nend\nend\nend\n",
         "Alice->>Bob: after\n",
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -43,7 +43,7 @@ fn sequence_fragment_carriers_preserve_nested_control_and_activation_order() {
 
 #[test]
 fn sequence_fragment_carrier_failures_preserve_eof_and_first_error_recovery() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let incomplete = "sequenceDiagram\nloop Outer\nopt Inner\nA->>B: message\nend\n";
     let unexpected = "sequenceDiagram\nend\nloop Later\nA->>B: message\n";
     for (source, span, kind) in [
@@ -58,14 +58,31 @@ fn sequence_fragment_carrier_failures_preserve_eof_and_first_error_recovery() {
             ParseDiagnosticSpanKind::Exact,
         ),
     ] {
-        let error = engine
-            .parse_diagram_sync(source, ParseOptions::strict())
-            .expect_err("malformed Sequence fragment is rejected");
-        let Error::DiagramParse { diagnostic, .. } = error else {
-            panic!("Sequence grammar failure must remain a parse error");
-        };
-        assert_eq!(diagnostic.span(), Some(span));
-        assert_eq!(diagnostic.span_kind(), kind);
+        for typed in [false, true] {
+            crate::editor::test_work::reset();
+            crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+            let error = if typed {
+                engine
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .expect_err("malformed Sequence fragment is rejected")
+            } else {
+                engine
+                    .parse_diagram_sync(source, ParseOptions::strict())
+                    .expect_err("malformed Sequence fragment is rejected")
+            };
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("Sequence grammar failure must remain a parse error");
+            };
+            assert_eq!(diagnostic.span(), Some(span));
+            assert_eq!(diagnostic.span_kind(), kind);
+            assert_eq!(
+                crate::diagrams::sequence::sequence_syntax_construction_count(),
+                1
+            );
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
         let facts = engine
             .parse_editor_semantic_facts_with_type_sync("sequence", source)
             .unwrap()
@@ -76,12 +93,19 @@ fn sequence_fragment_carrier_failures_preserve_eof_and_first_error_recovery() {
             diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
                 && diagnostic.span == Some(span)
         }));
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read().collections, 1);
+        assert!(crate::editor::test_work::read().symbols > 0);
+        assert!(crate::editor::test_work::read().diagnostics > 0);
     }
 }
 
 #[test]
 fn parse_diagram_sequence_basic_messages_and_notes() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 Alice->Bob:Hello Bob, how are you?
 Note right of Bob: Bob thinks
@@ -114,7 +138,7 @@ Bob-->Alice: I am good thanks!"#;
 
 #[test]
 fn parse_sequence_editor_facts_preserve_actor_and_box_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 title: Diagram Title
 accTitle: Accessible Title
@@ -127,12 +151,21 @@ end
 Alice->>Bob: Hello
 Note over Alice,Bob: Review
 details Alice: {"owner": "platform"}"#;
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
 
     let first_symbol = |name: &str| {
         facts
@@ -206,11 +239,31 @@ details Alice: {"owner": "platform"}"#;
             "missing payload expected syntax for {payload:?}"
         );
     }
+
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+        panic!("Sequence snapshot must retain its canonical model");
+    };
+    assert_eq!(model["actorOrder"], json!(["Alice", "Bob", "Carol"]));
+    assert_eq!(model["messages"][0]["message"], "Hello");
+    let ParsedEditorFacts::Available(captured) = snapshot.editor_facts() else {
+        panic!("Sequence snapshot must retain editor facts");
+    };
+    assert_eq!(captured, &facts);
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().expected_syntax > 0);
 }
 
 #[test]
 fn parse_sequence_editor_box_payload_reuses_db_color_semantics() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "sequenceDiagram\n",
         "box aqua\n",
@@ -245,7 +298,7 @@ fn parse_sequence_editor_box_payload_reuses_db_color_semantics() {
 
 #[test]
 fn parse_sequence_editor_payload_spans_skip_directive_prefix_text() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 title: title
 accTitle: Title
@@ -279,7 +332,7 @@ Alice->>Bob: Alice"#;
 
 #[test]
 fn parse_sequence_editor_facts_frontmatter_spans_use_original_source() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"---
 config:
   theme: dark
@@ -308,7 +361,7 @@ Alice->>Bob: Hello"#;
 
 #[test]
 fn parse_sequence_editor_facts_crlf_frontmatter_spans_use_original_source() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\r\n",
         "config:\r\n",
@@ -339,7 +392,7 @@ fn parse_sequence_editor_facts_crlf_frontmatter_spans_use_original_source() {
 
 #[test]
 fn parse_sequence_editor_facts_init_directive_spans_use_original_source() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"%%{init: {"theme": "dark"}}%%
 sequenceDiagram
 participant Alice
@@ -363,7 +416,7 @@ Alice->>Bob: Hello"#;
 
 #[test]
 fn parse_sequence_editor_facts_crlf_init_directive_spans_use_original_source() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "%%{init: {\"theme\": \"dark\"}}%%\r\n",
         "sequenceDiagram\r\n",
@@ -389,7 +442,7 @@ fn parse_sequence_editor_facts_crlf_init_directive_spans_use_original_source() {
 
 #[test]
 fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_source() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\r\n",
         "config:\r\n",
@@ -421,7 +474,7 @@ fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_
 
 #[test]
 fn parse_sequence_editor_facts_preserve_every_repeated_unicode_occurrence() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\r\n",
         "config:\r\n",
@@ -478,7 +531,7 @@ fn parse_sequence_editor_facts_preserve_every_repeated_unicode_occurrence() {
 
 #[test]
 fn parse_sequence_editor_facts_remap_entity_normalization_without_losing_other_facts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\n",
         "title: quoted\n",
@@ -520,7 +573,7 @@ fn parse_sequence_editor_facts_remap_entity_normalization_without_losing_other_f
 
 #[test]
 fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("sequence", text)
@@ -534,7 +587,7 @@ fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
 
 #[test]
 fn parse_sequence_editor_facts_stop_after_non_advancing_lexer_error() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     // A spaced config is valid in 12.1; whitespace inside the actor id remains invalid.
     let text =
         "sequenceDiagram\nparticipant Alice\nparticipant Bob Worker @{\nAlice->>Bob: Hello\n";
@@ -566,7 +619,7 @@ fn parse_sequence_editor_facts_stop_after_non_advancing_lexer_error() {
 
 #[test]
 fn parse_sequence_editor_facts_continue_after_advancing_lexer_error() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "sequenceDiagram\nparticipant Alice\n<\nparticipant Bob\nAlice->>Bob: Hello\n";
     crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
@@ -591,7 +644,7 @@ fn parse_sequence_editor_facts_continue_after_advancing_lexer_error() {
 
 #[test]
 fn parse_sequence_strict_failure_and_editor_recovery_share_exact_lexer_span() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "---\r\n",
         "config:\r\n",
@@ -631,29 +684,70 @@ fn parse_sequence_strict_failure_and_editor_recovery_share_exact_lexer_span() {
 
 #[test]
 fn parse_sequence_minimal_signals_preserve_canonical_db_order_without_a_second_grammar() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "sequenceDiagram\n",
         "Alice->>+Bob: Start\n",
         "Bob-->>-Alice: Done\n",
     );
 
-    let parsed = engine
-        .parse_diagram_sync(text, ParseOptions::strict())
+    for known_type in [false, true] {
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_with_type_sync("sequence", text, ParseOptions::strict())
+        } else {
+            engine.parse_diagram_sync(text, ParseOptions::strict())
+        }
         .unwrap()
         .expect("minimal Sequence parse");
-    let messages = parsed.model["messages"].as_array().unwrap();
-    assert_eq!(parsed.model["actorOrder"], json!(["Alice", "Bob"]));
-    assert_eq!(messages.len(), 4);
-    assert_eq!(messages[0]["message"], "Start");
-    assert_eq!(messages[1]["type"], 17);
-    assert_eq!(messages[2]["message"], "Done");
-    assert_eq!(messages[3]["type"], 18);
+        let messages = parsed.model["messages"].as_array().unwrap();
+        assert_eq!(parsed.model["actorOrder"], json!(["Alice", "Bob"]));
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0]["message"], "Start");
+        assert_eq!(messages[1]["type"], 17);
+        assert_eq!(messages[2]["message"], "Done");
+        assert_eq!(messages[3]["type"], 18);
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        crate::editor::test_work::reset();
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        let parsed = if known_type {
+            engine.parse_diagram_for_render_model_with_type_sync(
+                "sequence",
+                text,
+                ParseOptions::strict(),
+            )
+        } else {
+            engine.parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        }
+        .unwrap()
+        .expect("minimal typed Sequence parse");
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
+            panic!("Sequence typed parse returned another family");
+        };
+        assert_eq!(model.actor_order, ["Alice", "Bob"]);
+        assert_eq!(model.actors["Alice"].description, "Alice");
+        assert_eq!(model.messages.len(), 4);
+        assert_eq!(model.messages[0].message_text(), "Start");
+        assert_eq!(model.messages[1].message_type, 17);
+        assert_eq!(model.messages[2].message_text(), "Done");
+        assert_eq!(model.messages[3].message_type, 18);
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            1
+        );
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+    }
 }
 
 #[test]
 fn parse_diagram_sequence_multibyte_actor_ids_do_not_panic() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 顧客->>サーバー:こんにちは
 "#;
@@ -667,7 +761,7 @@ fn parse_diagram_sequence_multibyte_actor_ids_do_not_panic() {
 
 #[test]
 fn parse_diagram_sequence_central_connections_use_upstream_message_model() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant Alice
 participant John
@@ -710,7 +804,7 @@ John()->>()Alice: Great!"#;
 
 #[test]
 fn parse_diagram_sequence_autonumber_allows_decimal_start_and_step() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 autonumber 10.1 .01
 Alice->>Bob:Hello
@@ -731,7 +825,7 @@ Bob-->>Alice:Back"#;
 
 #[test]
 fn parse_diagram_sequence_autonumber_rejects_thousandths() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 autonumber 10.001
 Alice->>Bob:Hello"#;
@@ -745,7 +839,7 @@ Alice->>Bob:Hello"#;
 
 #[test]
 fn parse_diagram_sequence_is_stateless_across_multiple_parses() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let first = r#"sequenceDiagram
 Alice->Bob:Hello Bob, how are you?
 Bob-->Alice:I am good thanks!"#;
@@ -782,7 +876,7 @@ John-->Alice:I am good thanks!"#;
 
 #[test]
 fn parse_diagram_sequence_title_and_accessibility_fields() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 title: Diagram Title
 accTitle: Accessible Title
@@ -800,7 +894,7 @@ Alice->Bob:Hello"#;
 
 #[test]
 fn parse_diagram_sequence_wrap_directive_controls_default_wrap() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"%%{wrap}%%
 sequenceDiagram
 Alice->Bob:Hello
@@ -818,7 +912,7 @@ Alice->Bob:nowrap:Hello again"#;
 
 #[test]
 fn parse_diagram_sequence_links() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant a as Alice
 participant b as Bob
@@ -869,7 +963,7 @@ link a: Tests @ https://tests.contoso.com/?svc=alice@contoso.com
 
 #[test]
 fn parse_diagram_sequence_limits_keyword_like_actor_ids_to_id_states() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant AS as AppService
 participant DB as Store
@@ -912,7 +1006,7 @@ AS->>DB: get recorded file timestamps"#;
 
 #[test]
 fn parse_diagram_sequence_id_states_precede_title_line_lexing() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant title worker
 activate title worker
@@ -935,7 +1029,7 @@ destroy title worker"#;
 
 #[test]
 fn parse_diagram_sequence_preserves_mermaid_valid_spaced_actor_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant cron job
 participant data svc
@@ -1008,7 +1102,7 @@ as worker->>data svc: reserved prefix
 
 #[test]
 fn parse_diagram_sequence_keeps_pinned_spaced_alias_boundary() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "sequenceDiagram\nparticipant cron job as Cron";
 
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -1025,7 +1119,7 @@ fn parse_diagram_sequence_keeps_pinned_spaced_alias_boundary() {
 
 #[test]
 fn parse_diagram_sequence_rejects_config_on_spaced_declaration_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for actor in ["cron job", "cron\u{a0}job", "api\u{feff}svc"] {
         let text = format!("sequenceDiagram\nparticipant {actor}@{{ \"type\": \"database\" }}");
@@ -1044,7 +1138,7 @@ fn parse_diagram_sequence_rejects_config_on_spaced_declaration_ids() {
 
 #[test]
 fn parse_diagram_sequence_requires_whitespace_before_alias_after_config() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let invalid = "sequenceDiagram\nparticipant A@{ \"type\": \"database\" }as Label";
     assert!(
@@ -1061,7 +1155,7 @@ fn parse_diagram_sequence_requires_whitespace_before_alias_after_config() {
 
 #[test]
 fn parse_diagram_sequence_preserves_empty_alias_descriptions() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = concat!(
         "sequenceDiagram\n",
         "participant A as\n",
@@ -1078,7 +1172,7 @@ fn parse_diagram_sequence_preserves_empty_alias_descriptions() {
 
 #[test]
 fn parse_diagram_sequence_rejects_invalid_actor_token_extensions() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     for statement in [
         "A()B->>C: embedded central marker",
@@ -1103,7 +1197,7 @@ fn parse_diagram_sequence_rejects_invalid_actor_token_extensions() {
 
 #[test]
 fn parse_diagram_sequence_rejects_reference_private_quoted_actor_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "sequenceDiagram\n\"A->B\" ->> C: quoted arrow name";
 
     assert!(
@@ -1114,7 +1208,7 @@ fn parse_diagram_sequence_rejects_reference_private_quoted_actor_ids() {
 
 #[test]
 fn parse_diagram_sequence_preserves_comment_markers_inside_actor_tokens() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant C#
 participant A%%tag
@@ -1141,7 +1235,7 @@ A%%tag-->>B%%tag: percent comment
 
 #[test]
 fn parse_diagram_sequence_keeps_percent_text_in_exclusive_line_states() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant A as B%%tag
 loop A%%tag
@@ -1165,7 +1259,7 @@ end"#;
 
 #[test]
 fn parse_diagram_sequence_preserves_distinct_id_and_actor_character_sets() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant C++
 participant api(v2)
@@ -1192,7 +1286,7 @@ alice@example.com->>data@example.com: mail"#;
 
 #[test]
 fn parse_diagram_sequence_preserves_spaced_actor_statement_contexts() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant cron job
 participant data svc
@@ -1237,7 +1331,7 @@ data svc--xcron job: stop"#;
 
 #[test]
 fn parse_diagram_sequence_accepts_pinned_unicode_whitespace_boundaries() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = "sequenceDiagram\ntitle\u{a0}Unicode spacing\nparticipant A\nNote left of\u{a0}A: left\nNote right of\u{a0}A: right";
 
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -1252,7 +1346,7 @@ fn parse_diagram_sequence_accepts_pinned_unicode_whitespace_boundaries() {
 
 #[test]
 fn parse_diagram_sequence_keeps_fragment_labels_with_arrows_out_of_actor_scanning() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant cron job
 participant data svc
@@ -1286,7 +1380,7 @@ end"#;
 
 #[test]
 fn parse_diagram_sequence_properties() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant a as Alice
 participant b as Bob
@@ -1314,7 +1408,7 @@ properties b: {"class": "external-service-actor", "icon": "@computer"}
 
 #[test]
 fn parse_diagram_sequence_box_color_and_membership() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 box green Group 1
 participant a as Alice
@@ -1340,7 +1434,7 @@ link a: Tests @ https://tests.contoso.com/?svc=alice@contoso.com
 
 #[test]
 fn parse_diagram_sequence_box_without_color_defaults_to_transparent() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 box Group 1
 participant a as Alice
@@ -1359,7 +1453,7 @@ end
 
 #[test]
 fn parse_diagram_sequence_box_without_description_has_falsy_name() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 box aqua
 participant a as Alice
@@ -1378,7 +1472,7 @@ end
 
 #[test]
 fn parse_diagram_sequence_box_rgb_color() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 box rgb(34, 56, 0) Group1
 participant a as Alice
@@ -1397,7 +1491,7 @@ end
 
 #[test]
 fn parse_diagram_sequence_create_participant_and_actor() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant a as Alice
 a ->>b: Hello Bob?
@@ -1427,7 +1521,7 @@ a ->> d: Hello Donald?
 
 #[test]
 fn parse_diagram_sequence_destroy_participant_marks_destroyed_actor_index() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant a as Alice
 a ->>b: Hello Bob?
@@ -1448,7 +1542,7 @@ b ->> c: Where are you?
 
 #[test]
 fn parse_diagram_sequence_create_and_destroy_same_actor() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 a ->>b: Hello Bob?
 create participant c
@@ -1469,7 +1563,7 @@ b ->> c : Bye c !
 
 #[test]
 fn parse_diagram_sequence_extended_participant_syntax_parses_type_override() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant Alice@{ "type" : "database" }
 participant Bob@{ "type" : "database" }
@@ -1494,7 +1588,7 @@ Alice->>+Bob: Hi Bob
 
 #[test]
 fn parse_diagram_sequence_extended_participant_syntax_mixed_types_and_implicit_participants() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant lead
 participant dsa@{ "type" : "queue" }
@@ -1519,7 +1613,7 @@ dsa --> Database: hello
 
 #[test]
 fn parse_diagram_sequence_extended_participant_syntax_supports_aliases_and_actor_keyword() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant API@{ "type" : "boundary", "alias": "Internal API" } as Public API
 actor DB@{ "type" : "database" } as Data Store
@@ -1543,7 +1637,7 @@ DB->>Queue: enqueue
 
 #[test]
 fn parse_diagram_sequence_extended_participant_syntax_invalid_config_fails() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let bad_json = r#"sequenceDiagram
 participant D@{ "type: "entity" }
 participant E@{ "type": "dat
@@ -1566,7 +1660,7 @@ E ->> E: process
 
 #[test]
 fn parse_diagram_sequence_deactivate_inactive_participant_fails_like_upstream() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 participant user as End User
 participant Server as Server
@@ -1582,17 +1676,66 @@ Server->>-user: Test2
 %% The following deactivation of Server will fail
 Server->>-user: Test3"#;
 
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
     assert!(
         err.to_string()
             .contains("Trying to inactivate an inactive participant (Server)"),
         "unexpected error: {err}"
     );
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+    let typed_error = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .unwrap_err();
+    assert_eq!(typed_error.to_string(), err.to_string());
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read(), Default::default());
+
+    crate::editor::test_work::reset();
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+    let snapshot = engine.parse_diagram_snapshot_sync(text).unwrap().unwrap();
+    let DiagramParseOutcome::Failed(captured_error) = snapshot.outcome() else {
+        panic!("Sequence snapshot must retain the DB construction failure");
+    };
+    assert_eq!(captured_error.to_string(), err.to_string());
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("Sequence DB failure must retain requested editor facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let server_start = text.find("Server").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Server"
+            && symbol.selection == SourceSpan::new(server_start, server_start + "Server".len())
+    }));
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic
+                .message
+                .contains("sequence semantic construction failed")
+    }));
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1
+    );
+    assert_eq!(crate::editor::test_work::read().collections, 1);
+    assert!(crate::editor::test_work::read().symbols > 0);
+    assert!(crate::editor::test_work::read().diagnostics > 0);
 }
 
 #[test]
 fn parse_diagram_sequence_alt_multiple_elses_inserts_control_messages() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 Alice->Bob: Hello Bob, how are you?
 
@@ -1625,7 +1768,7 @@ end"#;
 
 #[test]
 fn parse_diagram_sequence_critical_without_options() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 critical Establish a connection to the DB
 Service-->DB: connect
@@ -1644,7 +1787,7 @@ end"#;
 
 #[test]
 fn parse_diagram_sequence_critical_with_options() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 critical Establish a connection to the DB
 Service-->DB: connect
@@ -1671,7 +1814,7 @@ end"#;
 
 #[test]
 fn parse_diagram_sequence_break_block_inserts_control_messages() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 Consumer-->API: Book something
 API-->BookingService: Start booking process
@@ -1696,7 +1839,7 @@ API-->BillingService: Start billing process"#;
 
 #[test]
 fn parse_diagram_sequence_par_over_block() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
 par_over Parallel overlap
 Alice ->> Bob: Message
@@ -1720,7 +1863,7 @@ end"#;
 
 #[test]
 fn parse_diagram_sequence_special_characters_in_loop_opt_alt_par() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"sequenceDiagram
@@ -1783,7 +1926,7 @@ end"#,
 
 #[test]
 fn parse_diagram_sequence_no_label_loop_opt_alt_par() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
 
     let res = block_on(engine.parse_diagram(
         r#"sequenceDiagram
@@ -1850,7 +1993,7 @@ end"#,
 
 #[test]
 fn sequence_actor_configs_accept_whitespace_and_hyphenated_ids() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for (keyword, id, gap) in [
         ("participant", "Harry", " "),
         ("actor", "lead-actor", ""),
@@ -1882,7 +2025,7 @@ fn sequence_actor_configs_accept_whitespace_and_hyphenated_ids() {
 
 #[test]
 fn sequence_actor_menu_keywords_are_message_endpoints_and_keep_menu_statements() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for id in ["Link", "link", "LINK", "Links", "Properties", "Details"] {
         for declared in [false, true] {
             let declaration = if declared {

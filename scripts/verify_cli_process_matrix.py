@@ -183,7 +183,7 @@ PROFILE_CASES = (
         "default",
         "Default",
         (),
-        "Exercise the distributed defaults and prove the release descriptor is exact.",
+        "Exercise source defaults and prove the release descriptor is exact.",
         use_default_features=True,
     ),
     ProfileCase(

@@ -470,7 +470,7 @@ require(runner);
                 mock.patch.object(compare_mermaid_renderers, "compare_mmdr_fixture_inputs", return_value={}),
                 mock.patch.object(compare_mermaid_renderers, "prepare_mermaid_js_reference", return_value=receipt),
                 mock.patch.object(compare_mermaid_renderers, "snapshot_files", wraps=compare_mermaid_renderers.snapshot_files) as snapshots,
-                mock.patch.object(compare_mermaid_renderers, "prepare_criterion_runner", side_effect=RuntimeError("stop before native build")),
+                mock.patch.object(compare_mermaid_renderers, "prepare_criterion_runner", side_effect=RuntimeError("stop before native build")) as prepare,
             ):
                 with self.assertRaisesRegex(RuntimeError, "stop before native build"):
                     compare_mermaid_renderers.main([
@@ -482,6 +482,10 @@ require(runner);
             self.assertEqual(files["mermaid_reference_builder"], ROOT / "tools/mermaid-cli/reference-runtime.mjs")
             self.assertNotIn("mermaid_bundle", files)
             self.assertNotIn("mermaid_zenuml_bundle", files)
+            self.assertEqual(
+                prepare.call_args.kwargs["features"],
+                "all-diagrams,svg,compat-json,editor-facts,layout-elk",
+            )
 
     def test_mermaid_js_output_retains_valid_raw_samples_and_recomputes_summary(self) -> None:
         method = {

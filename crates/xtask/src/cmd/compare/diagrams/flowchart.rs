@@ -271,10 +271,10 @@ fn run_flowchart_compare(
                 None => engine.clone(),
             };
             let renderer = merman::Renderer::new()
-                .with_engine(fixture_engine)
+                .with_presentation_engine(fixture_engine)
                 .with_parse_options(fact.parse_policy.options());
             let semantic =
-                match renderer.prepare_semantic(input.text, merman::OperationControl::new()) {
+                match renderer.prepare_presentation(input.text, merman::OperationControl::new()) {
                     Ok(Some(v)) => v,
                     Ok(None) => {
                         return Err(format!(
@@ -1030,7 +1030,7 @@ mod tests {
 
     fn render_plain_flowchart(fact: DiagramVerificationFact, stem: &str, source: &str) -> String {
         let renderer = merman::Renderer::new()
-            .with_engine(super::svg_compare_engine_with_site_config(
+            .with_presentation_engine(super::svg_compare_engine_with_site_config(
                 serde_json::json!({ "handDrawnSeed": 1 }),
             ))
             .with_parse_options(fact.parse_policy.options());

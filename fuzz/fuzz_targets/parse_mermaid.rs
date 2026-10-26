@@ -1,14 +1,14 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use merman::{Engine, diagram_family_capabilities};
+use merman::{MermaidEngine, diagram_family_capabilities};
 use merman_fuzz::{
     MAX_PARSE_INPUT_BYTES, assert_known_type_parse_paths, assert_parse_paths, bounded_utf8,
     deterministic_engine,
 };
 
 thread_local! {
-    static ENGINE: Engine = deterministic_engine();
+    static ENGINE: MermaidEngine = deterministic_engine();
 }
 
 fuzz_target!(|data: &[u8]| {

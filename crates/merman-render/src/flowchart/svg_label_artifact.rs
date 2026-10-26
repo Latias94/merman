@@ -731,7 +731,7 @@ impl Default for FlowchartMathTerminalStylePlan {
 
 impl FlowchartMathTerminalStylePlan {
     #[cfg(test)]
-    fn from_config(config: &merman_core::MermaidConfig) -> Self {
+    fn from_config(config: &merman_core::presentation::PresentationConfig) -> Self {
         Self::from_binding(&super::FlowchartCompatibilityBinding::resolve(
             config.as_value(),
         ))
@@ -823,7 +823,7 @@ impl FlowchartSvgLabelSidecarBuilder {
     pub(crate) fn with_math_backend(
         mut self,
         math_backend: Option<&ConfiguredMathBackend>,
-        config: &merman_core::MermaidConfig,
+        config: &merman_core::presentation::PresentationConfig,
     ) -> Self {
         self.math_backend = math_backend.cloned();
         self.math_terminal_style = FlowchartMathTerminalStylePlan::from_config(config);
@@ -1300,29 +1300,32 @@ impl FlowchartSvgLabelSidecarBuilder {
             request.label_type,
             request.config,
         );
-        let xhtml =
-            match merman_core::sanitize::sanitize_xhtml_with_sink(&html, request.config, &sink) {
-                Ok(xhtml) => xhtml,
-                Err(merman_core::sanitize::SanitizeFailure::Output(
-                    crate::html::HtmlOutputError::Operation(error),
-                )) => {
+        let xhtml = match merman_core::sanitize::sanitize_xhtml_with_sink(
+            &html,
+            request.config.as_config(),
+            &sink,
+        ) {
+            Ok(xhtml) => xhtml,
+            Err(merman_core::sanitize::SanitizeFailure::Output(
+                crate::html::HtmlOutputError::Operation(error),
+            )) => {
+                self.record_prepared_work_error(error);
+                return failed_prepared_metrics();
+            }
+            Err(merman_core::sanitize::SanitizeFailure::Output(
+                crate::html::HtmlOutputError::Limit { attempted },
+            )) => {
+                if let Err(error) = work
+                    .preflight_prepared_text_retained_bytes(owner_bytes.saturating_add(attempted))
+                {
                     self.record_prepared_work_error(error);
                     return failed_prepared_metrics();
                 }
-                Err(merman_core::sanitize::SanitizeFailure::Output(
-                    crate::html::HtmlOutputError::Limit { attempted },
-                )) => {
-                    if let Err(error) = work.preflight_prepared_text_retained_bytes(
-                        owner_bytes.saturating_add(attempted),
-                    ) {
-                        self.record_prepared_work_error(error);
-                        return failed_prepared_metrics();
-                    }
-                    String::new()
-                }
-                // Preserve the string sanitizer's fail-closed compatibility behavior.
-                Err(_) => String::new(),
-            };
+                String::new()
+            }
+            // Preserve the string sanitizer's fail-closed compatibility behavior.
+            Err(_) => String::new(),
+        };
         let retained_bytes = owner_bytes.saturating_add(xhtml.len());
         let reservation = match self
             .work_meter
@@ -2203,7 +2206,7 @@ mod tests {
     use crate::math::MathRenderer;
 
     use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-    use merman_core::MermaidConfig;
+    use merman_core::presentation::PresentationConfig;
 
     use super::*;
 
@@ -2214,7 +2217,8 @@ mod tests {
         ));
         let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(None, Arc::clone(&work));
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
         let source = "<b><i>API</b> tail</i>";
@@ -2271,7 +2275,8 @@ mod tests {
 
     #[test]
     fn html_preparation_records_parser_work_rejection_and_cancellation() {
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         for cancel in [false, true] {
@@ -2353,7 +2358,7 @@ mod tests {
             let work = Arc::new(OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             ));
-            let config = MermaidConfig::default();
+            let config = PresentationConfig::default();
             let builder =
                 FlowchartSvgLabelSidecarBuilder::new_with_work_meter(None, Arc::clone(&work));
             let style = TextStyle::default();
@@ -2410,7 +2415,7 @@ mod tests {
 
     #[test]
     fn node_source_typography_survives_non_svg_measurement_paths() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let measurer = StatefulOpaqueTraceMeasurer::new();
         let style = TextStyle {
             font_family: Some("Source Sans".to_owned()),
@@ -2468,7 +2473,7 @@ mod tests {
 
     #[test]
     fn cluster_source_typography_keeps_first_owner_on_repeated_measurement() {
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let measurer = StatefulOpaqueTraceMeasurer::new();
         for owner in [
             FlowchartSvgLabelOwner::SubgraphTitle(0),
@@ -2560,7 +2565,7 @@ mod tests {
     }
 
     impl MathRenderer for CountingPreparedMathRenderer {
-        fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, text: &str, _config: &PresentationConfig) -> Option<String> {
             self.render_calls.fetch_add(1, Ordering::SeqCst);
             Some(format!("<span class=\"prepared-math\">{text}</span>"))
         }
@@ -2568,7 +2573,7 @@ mod tests {
         fn measure_html_label(
             &self,
             _text: &str,
-            _config: &MermaidConfig,
+            _config: &PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -2588,7 +2593,7 @@ mod tests {
     }
 
     impl MathRenderer for StyleDependentPreparedMathRenderer {
-        fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, _text: &str, _config: &PresentationConfig) -> Option<String> {
             self.available
                 .load(Ordering::SeqCst)
                 .then(|| "<b>math</b>".into())
@@ -2597,7 +2602,7 @@ mod tests {
         fn measure_html_label(
             &self,
             _text: &str,
-            _config: &MermaidConfig,
+            _config: &PresentationConfig,
             style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -2617,7 +2622,8 @@ mod tests {
         let backend = ConfiguredMathBackend::external(Arc::new(
             StyleDependentPreparedMathRenderer::default(),
         ));
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2665,7 +2671,7 @@ mod tests {
             render_calls: Arc::clone(&render_calls),
             measure_calls: Arc::clone(&measure_calls),
         }));
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "nodeTextColor": "#e5e7eb" }
         }));
         let builder =
@@ -2720,7 +2726,7 @@ mod tests {
     #[test]
     fn declined_flowchart_math_terminal_is_retained_as_native_unavailable_evidence() {
         let backend = ConfiguredMathBackend::external(Arc::new(crate::math::NoopMathRenderer));
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
         let work_meter = Arc::clone(
@@ -2776,7 +2782,7 @@ mod tests {
             measure_calls: Arc::clone(&measure_calls),
         });
         let backend = ConfiguredMathBackend::external(renderer.clone());
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
         let style = TextStyle::default();
@@ -2817,7 +2823,7 @@ mod tests {
             render_calls: Arc::new(AtomicUsize::new(0)),
             measure_calls: Arc::new(AtomicUsize::new(0)),
         }));
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "nodeTextColor": "#111827" }
         }));
         let builder =
@@ -3036,7 +3042,7 @@ mod tests {
         let measurer = PhaseSensitiveMeasurer {
             computed_calls: Cell::new(0),
         };
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         for (raw_label, expected_width, line_count) in [
             ("Outer lane", 60.125, 1),
@@ -3083,7 +3089,7 @@ mod tests {
         with_sidecar: bool,
     ) -> (TextMetrics, Vec<Vec<String>>, Vec<OpaqueMeasurementCall>) {
         let measurer = StatefulOpaqueTraceMeasurer::new();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = with_sidecar.then(FlowchartSvgLabelSidecarBuilder::default);
         let owner = FlowchartSvgLabelOwner::Node(0);
@@ -3146,7 +3152,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let layout_measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::SubgraphTitle(0);
@@ -3211,7 +3217,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
@@ -3282,7 +3288,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::SubgraphTitle(0);
@@ -3406,7 +3412,7 @@ mod tests {
         let measurer = StreamingOpaqueMeasurer {
             wrapped_calls: Cell::new(0),
         };
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
@@ -3461,7 +3467,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
 
@@ -3496,7 +3502,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::Edge(3);
@@ -3526,7 +3532,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::Edge(100_000);
@@ -3567,7 +3573,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let wrap_style = TextStyle::default();
         let mut metrics_style = wrap_style.clone();
         metrics_style.font_size *= 2.0;

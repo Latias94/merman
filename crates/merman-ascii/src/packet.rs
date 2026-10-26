@@ -4,10 +4,10 @@ use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
 use crate::safe_text::{BudgetedTextDocument, push_optional_document_field};
-use merman_core::diagrams::packet::PacketDiagramRenderModel;
+use merman_core::diagrams::packet::PacketDiagramModel;
 
 pub(super) fn render_packet_diagram(
-    model: &PacketDiagramRenderModel,
+    model: &PacketDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -44,7 +44,7 @@ pub(super) fn render_packet_diagram(
 }
 
 fn validate_packet_blocks(
-    model: &PacketDiagramRenderModel,
+    model: &PacketDiagramModel,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -87,4 +87,46 @@ fn validate_packet_blocks(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::AsciiResourcePolicy;
+
+    #[test]
+    fn canonical_packet_matches_full_row_and_metadata_output() {
+        use merman_core::{
+            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
+        };
+
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default();
+        for source in [
+            "packet\ntitle Header\naccTitle: Accessible\naccDescr: Complete packet\n0-7: \"Type\"\n8-39: \"Payload\"\n",
+            "packet\n",
+        ] {
+            let canonical = SemanticParser::new().parse_diagram_sync(source).unwrap();
+            let SemanticDiagramModel::Packet(model) = &canonical.model else {
+                panic!("Packet model")
+            };
+            let full = MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Packet(full) = full.model() else {
+                panic!("Packet model")
+            };
+            assert!(std::ptr::eq(
+                full.packet.as_ptr(),
+                full.semantic.packet.as_ptr()
+            ));
+            let actual =
+                render_packet_diagram(model, &options, AsciiExecution::for_test(&policy)).unwrap();
+            let expected =
+                render_packet_diagram(&full.semantic, &options, AsciiExecution::for_test(&policy))
+                    .unwrap();
+            assert_eq!(actual, expected, "{source}");
+        }
+    }
 }

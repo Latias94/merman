@@ -7,7 +7,8 @@ paired with an unrelated semantic model.
 
 ## Public API
 
-Most callers should request layout JSON through `Renderer`:
+Most callers should request layout JSON through `Renderer`. Enable `svg` and the required
+`diagram-*` families; `svg` also enables the full `presentation` capability:
 
 ```rust
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
@@ -26,15 +27,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-When a caller must inspect metadata before choosing an output, prepare a format-neutral semantic
-artifact, then consume it into exactly one target:
+When a caller must inspect full metadata before choosing a graphical output, prepare a
+`PresentationArtifact`, then consume it into exactly one target:
 
 ```rust
 use merman::{OperationControl, RenderOutput, RenderTarget, Renderer, SvgRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let artifact = Renderer::new()
-        .prepare_semantic("flowchart TD\nA --> B", OperationControl::new())?
+        .prepare_presentation("flowchart TD\nA --> B", OperationControl::new())?
         .ok_or("no Mermaid diagram detected")?;
     assert_eq!(artifact.metadata().diagram_type, "flowchart-v2");
 
@@ -47,29 +48,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+`Renderer::parse_semantic()` instead returns a lean `SemanticArtifact` containing
+`SemanticMetadata` and a canonical `SemanticDiagramModel`. It does not evaluate visual themes,
+retain full presentation configuration, or support promotion to layout or SVG. Ordinary ASCII
+requests use this semantic path too. Request a separate full parse from the source when graphical
+output is needed. Full metadata is `PresentationMetadata`; the former `Engine` and `ParseMetadata`
+aliases are removed in favor of `MermaidEngine` and `PresentationMetadata`.
+
+Configure canonical parsing with `Renderer::with_semantic_parser`. Full configuration and custom
+detectors/adapters belong to `with_presentation_engine`; its `MermaidEngine::with_site_config`
+accepts `merman::presentation::PresentationConfig`. Installing a full engine does not change
+semantic or ordinary ASCII requests.
+
 Opening separate layout and SVG requests intentionally creates separate operations. This keeps
 target ownership and resource accounting explicit instead of exposing a reusable SVG-only layout
 artifact.
 
 Current development builds can share immutable parsing between those operations with
-`Renderer::prepare_source()` and `render_prepared()`. Each target still computes its own layout
+`Renderer::prepare_source()` and `render_prepared()`, or transfer a full artifact through
+`PresentationArtifact::into_prepared_source()`. Each target still computes its own layout
 under fresh control and resource admission. See the
 [prepared rendering migration](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
 
 ## Typed Ownership
 
-1. `merman-core` detects the diagram and constructs family semantics under one
-   `OperationControl` and runtime context.
-2. The public facade owns the format-neutral `SemanticArtifact`.
+1. For a graphical request, `merman-core` detects the diagram and constructs family semantics
+   with full presentation metadata under one `OperationControl` and runtime context.
+2. The public facade owns the full `PresentationArtifact`.
 3. `RenderTarget::LayoutJson` or `RenderTarget::Svg` enters the SVG adapter.
 4. `merman-render::family::prepare` borrows the canonical model/context and computes the matching
    owned typed layout behind the facade.
 5. Layout JSON or SVG is projected from that same target-local artifact.
 
 The opaque artifact makes cross-family combinations unrepresentable. Compatibility semantic or
-layout JSON remains an output format; it is not the master built-in render input.
+layout JSON remains an output format; it is not the master built-in render input. Select
+`compat-json` explicitly to call `PresentationArtifact::compatibility_json()`; `svg` alone does
+not expose that facade projection. Layout JSON remains an SVG target output.
 
-Custom semantic parsers may return a named JSON model, but that model is explicitly non-renderable
+Full custom parser overlays may return a named JSON model, but that model is explicitly non-renderable
 unless a renderer capability is designed and registered separately.
 
 ## Render Environment

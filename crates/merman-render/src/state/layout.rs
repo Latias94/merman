@@ -1,6 +1,7 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::geom::Size;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
@@ -11,7 +12,6 @@ use crate::text::{TextMeasurer, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::geom::Size;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -65,7 +65,7 @@ impl Drop for PreparedGraph {
     }
 }
 
-type Rect = merman_core::geom::Box2;
+type Rect = crate::geom::Box2;
 
 #[derive(Default)]
 struct HiddenPrefixTrieNode {
@@ -2285,7 +2285,7 @@ mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::sync::Arc;
 
     struct NonLatticeMeasurer {
@@ -2424,7 +2424,7 @@ mod tests {
         let source = include_str!(
             "../../../../fixtures/state/stress_state_batch5_concurrency_four_regions_long_titles_061.mmd"
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse state fixture")
             .expect("detect state fixture");

@@ -70,6 +70,7 @@ pub(crate) enum Tok {
 pub(crate) struct LexError {
     pub message: String,
     pub span: crate::SourceSpan,
+    #[cfg(feature = "editor-facts")]
     pub expected_syntax: Option<crate::EditorExpectedSyntax>,
 }
 
@@ -78,10 +79,12 @@ impl LexError {
         Self {
             message: message.into(),
             span,
+            #[cfg(feature = "editor-facts")]
             expected_syntax: None,
         }
     }
 
+    #[cfg(feature = "editor-facts")]
     fn expecting(mut self, kind: crate::EditorExpectedSyntaxKind, span: crate::SourceSpan) -> Self {
         self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
         self
@@ -337,11 +340,13 @@ impl<'input> Lexer<'input> {
         } else if direction == "RL" {
             "RL"
         } else {
-            return Some(Err(LexError::new("invalid class direction", selection)
-                .expecting(
-                    crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
-                    selection,
-                )));
+            let error = LexError::new("invalid class direction", selection);
+            #[cfg(feature = "editor-facts")]
+            let error = error.expecting(
+                crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
+                selection,
+            );
+            return Some(Err(error));
         };
         Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
     }
@@ -404,14 +409,16 @@ impl<'input> Lexer<'input> {
         }
         self.pos += 1;
         let Some(end_rel) = self.input[self.pos..].find(')') else {
-            return Some(Err(LexError::new(
+            let error = LexError::new(
                 "Unterminated callback arguments; missing ')'",
                 crate::SourceSpan::new(start, self.pos),
-            )
-            .expecting(
+            );
+            #[cfg(feature = "editor-facts")]
+            let error = error.expecting(
                 crate::EditorExpectedSyntaxKind::Payload,
                 crate::SourceSpan::new(start, self.pos),
-            )));
+            );
+            return Some(Err(error));
         };
         let args = self.input[self.pos..self.pos + end_rel].trim().to_string();
         self.pos = self.pos + end_rel + 1;

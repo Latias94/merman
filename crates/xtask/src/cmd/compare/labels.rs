@@ -3614,7 +3614,8 @@ mod tests {
     fn deterministic_semantic_svg(diagram: &str, fixture: &str) -> String {
         let source = signed_semantic_source(diagram, fixture);
         crate::cmd::compare::render_source_svg(
-            &merman::Renderer::new().with_engine(crate::cmd::compare::svg_compare_engine()),
+            &merman::Renderer::new()
+                .with_presentation_engine(crate::cmd::compare::svg_compare_engine()),
             &source,
             crate::cmd::compare::svg_request(
                 merman::SvgEnvironment::deterministic(),

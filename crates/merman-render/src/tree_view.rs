@@ -2,9 +2,7 @@ use crate::model::{Bounds, TreeViewDiagramLayout, TreeViewLineLayout, TreeViewNo
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
-use merman_core::diagrams::tree_view::{
-    TreeViewDiagramRenderModel, TreeViewNodeRenderModel as TreeViewNode,
-};
+use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -30,7 +28,7 @@ pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION + TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE;
 
 pub(crate) fn layout_tree_view_diagram_typed(
-    model: &TreeViewDiagramRenderModel,
+    model: &TreeViewDiagramModel,
     effective_config: &Value,
     theme: &TreeViewThemePlan,
     measurer: &dyn TextMeasurer,
@@ -403,7 +401,7 @@ mod tests {
             };
         }
 
-        let model = TreeViewDiagramRenderModel {
+        let model = TreeViewDiagramModel {
             root: TreeViewNode {
                 children: vec![child],
                 ..Default::default()

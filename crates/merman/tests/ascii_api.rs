@@ -6,27 +6,24 @@ use merman::ascii::{
 };
 use merman::resources::ResourceProfile;
 use merman::{
-    AsciiRequest, OperationControl, RenderOutput, RenderRequest, RenderSemanticModel, Renderer,
+    AsciiRequest, OperationControl, ParsedSemanticDiagram, RenderOutput, RenderRequest, Renderer,
 };
 
-fn render_model_for(source: &str) -> RenderSemanticModel {
-    merman::Engine::new()
-        .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
+fn render_model_for(source: &str) -> ParsedSemanticDiagram {
+    merman::SemanticParser::new()
+        .parse_diagram_sync(source)
         .unwrap()
-        .unwrap()
-        .into_parts()
-        .1
 }
 
 fn render_typed_model(
-    model: &RenderSemanticModel,
+    model: &ParsedSemanticDiagram,
     options: AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> Result<String, AsciiError> {
     let context = merman::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic operation context");
-    AsciiRenderer::new(options)?.render_model(model, &OperationControl::new(), &context, resources)
+    AsciiRenderer::new(options)?.render_parsed(model, &OperationControl::new(), &context, resources)
 }
 
 fn deeply_nested_flowchart(depth: usize) -> String {
@@ -88,6 +85,12 @@ fn facade_report_exposes_bounded_fallback_without_remeasuring_text() {
     assert!(flattened.contains("Beta"));
 }
 
+#[cfg(all(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-state",
+    feature = "diagram-xychart"
+))]
 #[test]
 fn renderer_renders_shipped_ascii_reference_diagram_families() {
     let cases = [
@@ -128,6 +131,12 @@ bar [2, 8]
     }
 }
 
+#[cfg(all(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-state",
+    feature = "diagram-xychart"
+))]
 #[test]
 fn model_backend_renders_shipped_typed_models_with_caller_operation_state() {
     let options = AsciiRenderOptions::ascii();
@@ -288,7 +297,7 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
                 .expect("deterministic operation context");
             let rendered = AsciiRenderer::new(options)
                 .expect("ASCII options should validate")
-                .render_model(&model, &control, &context, resources)
+                .render_parsed(&model, &control, &context, resources)
                 .expect("deep Flowchart ASCII render should not return an error");
             assert!(rendered.contains('A'));
         })

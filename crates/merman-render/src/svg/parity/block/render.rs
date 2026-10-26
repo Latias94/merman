@@ -222,7 +222,7 @@ struct BlockEdgePoints {
 
 /// Determine visible edge paint from the same geometry consumed by the SVG writer.
 pub(crate) fn block_edge_is_visible(
-    edge: &merman_core::diagrams::block::BlockEdgeRenderModel,
+    edge: &merman_core::diagrams::block::BlockEdge,
     layout_edge: &LayoutEdge,
     shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
 ) -> Option<bool> {
@@ -244,7 +244,7 @@ pub(crate) fn block_edge_is_visible(
 }
 
 fn block_render_edge_points(
-    edge: &merman_core::diagrams::block::BlockEdgeRenderModel,
+    edge: &merman_core::diagrams::block::BlockEdge,
     layout_edge: &LayoutEdge,
     shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
 ) -> BlockEdgePoints {

@@ -16,7 +16,7 @@ omitted-sequence = []
 
 [dependencies]
 merman = { path = "../../../../merman", default-features = false, optional = true }
-merman-core = { path = "../../../../merman-core", default-features = false }
+merman-core = { path = "../../../../merman-core", default-features = false, features = ["presentation", "compat-json", "editor-facts"] }
 merman-render = { path = "../../../../merman-render", default-features = false, optional = true }
 merman-ascii = { path = "../../../../merman-ascii", default-features = false, optional = true }
 merman-editor-core = { path = "../../../../merman-editor-core", default-features = false, optional = true }

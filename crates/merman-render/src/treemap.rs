@@ -41,18 +41,22 @@ fn push_node(
     model: &TreemapDiagramRenderModel,
     work_meter: &OperationWorkMeter,
 ) -> Result<()> {
-    let mut stack = vec![(&model.root, None, 0usize)];
+    let mut stack = vec![(&model.root, None, None, 0usize)];
     let mut seen = vec![false; model.nodes.len()];
-    while let Some((current, parent_idx, current_depth)) = stack.pop() {
+    while let Some((current, record_id, parent_idx, current_depth)) = stack.pop() {
         let children = current.children.as_deref().unwrap_or(&[]);
         work_meter.charge(
             1usize
                 .checked_add(children.len())
                 .ok_or_else(|| work_meter.arithmetic_overflow())?,
         )?;
-        let own_value = current.value.as_ref().and_then(json_f64).unwrap_or(0.0);
+        let own_value = current
+            .value
+            .as_ref()
+            .and_then(|value| json_f64(value.as_value()))
+            .unwrap_or(0.0);
         let css_compiled_styles =
-            clone_styles_with_work(current.css_compiled_styles.as_deref(), work_meter)?;
+            clone_styles_with_work(model.compiled_styles(record_id), work_meter)?;
         let idx = nodes.len();
         nodes.push(HierNode {
             name: current.name.clone(),
@@ -87,7 +91,12 @@ fn push_node(
                         message: "cyclic or repeated treemap child relationship".to_string(),
                     });
                 }
-                stack.push((node, Some(idx), current_depth.saturating_add(1)));
+                stack.push((
+                    node,
+                    Some(child),
+                    Some(idx),
+                    current_depth.saturating_add(1),
+                ));
             }
         }
     }
@@ -267,10 +276,7 @@ fn join_class_styles_with_work(
 
 fn clone_node_styles_with_work(
     node: &HierNode,
-    classes: &std::collections::BTreeMap<
-        String,
-        merman_core::diagrams::treemap::TreemapClassDefRenderModel,
-    >,
+    classes: &std::collections::BTreeMap<String, merman_core::diagrams::treemap::TreemapClassDef>,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<Vec<String>>> {
     if let Some(styles) = node.css_compiled_styles.as_deref() {
@@ -673,37 +679,37 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
 #[cfg(test)]
 mod tests {
     use merman_core::diagrams::treemap::{
-        TreemapClassDefRenderModel, TreemapDiagramRenderModel, TreemapNodeRenderModel,
+        TreemapClassDef, TreemapDiagramModel, TreemapDiagramRenderModel, TreemapNode,
     };
 
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     fn work_budget_fixture() -> TreemapDiagramRenderModel {
-        TreemapDiagramRenderModel {
-            root: TreemapNodeRenderModel {
+        TreemapDiagramRenderModel::from_semantic_model(TreemapDiagramModel {
+            root: TreemapNode {
                 name: "root".to_string(),
                 children: Some(vec![0]),
-                ..TreemapNodeRenderModel::default()
+                ..TreemapNode::default()
             },
             nodes: vec![
-                TreemapNodeRenderModel {
+                TreemapNode {
                     name: "Section".to_string(),
                     children: Some(vec![1, 2]),
-                    ..TreemapNodeRenderModel::default()
+                    ..TreemapNode::default()
                 },
-                TreemapNodeRenderModel {
+                TreemapNode {
                     name: "Alpha".to_string(),
-                    value: Some(serde_json::json!(3)),
-                    ..TreemapNodeRenderModel::default()
+                    value: Some(serde_json::json!(3).into()),
+                    ..TreemapNode::default()
                 },
-                TreemapNodeRenderModel {
+                TreemapNode {
                     name: "Beta".to_string(),
-                    value: Some(serde_json::json!(2)),
-                    ..TreemapNodeRenderModel::default()
+                    value: Some(serde_json::json!(2).into()),
+                    ..TreemapNode::default()
                 },
             ],
-            ..TreemapDiagramRenderModel::default()
-        }
+            ..TreemapDiagramModel::default()
+        })
     }
 
     fn shared_class_fixture(styles: Vec<String>) -> TreemapDiagramRenderModel {
@@ -711,7 +717,7 @@ mod tests {
         model.nodes[0].class_selector = Some("important".to_string());
         model.classes.insert(
             "important".to_string(),
-            TreemapClassDefRenderModel {
+            TreemapClassDef {
                 id: "important".to_string(),
                 styles,
                 text_styles: Vec::new(),

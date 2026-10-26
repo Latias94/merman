@@ -1,8 +1,5 @@
 use crate::analyzer::{CaptureCancellation, CaptureMode};
-use crate::diagnostic_projection::{
-    DiagnosticCandidate, append_diagnostic_candidates_cancellable,
-    materialize_diagnostic_candidates,
-};
+use crate::diagnostic_projection::{DiagnosticCandidate, append_projected_diagnostic_candidates};
 use crate::{
     AnalysisCaptureOutcome, AnalysisDiagnostic, AnalysisGeneration, AnalysisPayload, Analyzer,
     DiagnosticFix, DiagnosticFixEdit, DiagnosticRelated, DiagnosticSpan, SourceDescriptor,
@@ -113,7 +110,7 @@ impl CaptureText<'_> {
 
 enum CapturedSource {
     Rejected(crate::AnalysisRejection),
-    Diagnostics(Vec<DiagnosticCandidate>),
+    Diagnostics(Vec<Vec<DiagnosticCandidate>>),
     Generation(AnalysisGeneration),
 }
 
@@ -441,14 +438,58 @@ pub fn analyze_document(
     .expect("a private analysis cancellation token cannot be cancelled")
     {
         CapturedSource::Rejected(rejection) => rejection.into_payload(),
-        CapturedSource::Diagnostics(candidates) => AnalysisPayload::new(
-            source,
-            materialize_diagnostic_candidates(&candidates, analyzer.options().diagnostic_policy()),
-        ),
+        CapturedSource::Diagnostics(candidates) => {
+            project_document_diagnostics_cancellable(candidates, analyzer, source, &cancellation)
+                .expect("a private analysis cancellation token cannot be cancelled")
+        }
         CapturedSource::Generation(_) => {
             unreachable!("diagnostics-only capture cannot produce a rich generation")
         }
     }
+}
+
+pub(crate) fn analyze_document_shared_cancellable(
+    text: Arc<str>,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<AnalysisPayload, crate::AnalysisCancelled> {
+    let captured = capture_source_cancellable(
+        CaptureText::Shared(text),
+        analyzer,
+        source.clone(),
+        CaptureMode::DiagnosticsOnly,
+        CaptureCancellation::Propagate(cancellation),
+    )?;
+    cancellation.checkpoint()?;
+    match captured {
+        CapturedSource::Rejected(rejection) => Ok(rejection.into_payload()),
+        CapturedSource::Diagnostics(candidates) => {
+            project_document_diagnostics_cancellable(candidates, analyzer, source, cancellation)
+        }
+        CapturedSource::Generation(_) => {
+            unreachable!("diagnostics-only capture cannot produce a rich generation")
+        }
+    }
+}
+
+fn project_document_diagnostics_cancellable(
+    candidate_batches: Vec<Vec<DiagnosticCandidate>>,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<AnalysisPayload, crate::AnalysisCancelled> {
+    let mut diagnostics = Vec::new();
+    for candidates in candidate_batches {
+        cancellation.checkpoint()?;
+        append_projected_diagnostic_candidates(
+            &mut diagnostics,
+            &candidates,
+            analyzer.options().diagnostic_policy(),
+            cancellation,
+        )?;
+    }
+    AnalysisPayload::new_cancellable(source, diagnostics, cancellation)
 }
 
 pub fn analyze_document_facts(
@@ -585,7 +626,7 @@ fn capture_source_cancellable(
             let candidates =
                 request_analyzer.runtime_policy_candidates(error, document.source_map());
             return Ok(match mode {
-                CaptureMode::DiagnosticsOnly => CapturedSource::Diagnostics(candidates),
+                CaptureMode::DiagnosticsOnly => CapturedSource::Diagnostics(vec![candidates]),
                 CaptureMode::RichFacts => CapturedSource::Generation(
                     AnalysisGeneration::new(
                         document.source_map().clone(),
@@ -611,11 +652,7 @@ fn capture_source_cancellable(
         )?;
         match mode {
             CaptureMode::DiagnosticsOnly => {
-                append_diagnostic_candidates_cancellable(
-                    &mut diagnostic_candidates,
-                    captured.candidates,
-                    cancellation,
-                )?;
+                diagnostic_candidates.push(captured.candidates);
             }
             CaptureMode::RichFacts => {
                 analyzed_diagrams.push(crate::AnalyzedDiagram::from_document_diagram(

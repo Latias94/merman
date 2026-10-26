@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -8,7 +8,7 @@ fn render_requirement(layout: &str, look: &str) -> String {
     let source = format!(
         "---\nconfig:\n  layout: {layout}\n  look: {look}\n  themeVariables:\n    strokeWidth: 3\n    mainBkg: '#123456'\n    requirementBackground: '#abcdef'\n---\nrequirementDiagram\nrequirement Req {{\n  id: 1\n  text: body\n  risk: high\n  verifymethod: analysis\n}}\n"
     );
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
         .unwrap()
         .unwrap();

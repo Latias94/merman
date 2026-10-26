@@ -4,9 +4,7 @@ use crate::model::{
     Bounds, GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::git_graph::{
-    GitGraphCommitRenderModel as GitGraphCommit, GitGraphRenderModel,
-};
+use merman_core::diagrams::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 use std::collections::HashMap;
 
 mod css_binding;
@@ -23,7 +21,7 @@ pub(crate) use theme::{
 };
 
 pub(crate) fn resolve_gitgraph_title<'a>(
-    model: &'a GitGraphRenderModel,
+    model: &'a GitGraphDiagramModel,
     metadata_title: Option<&'a str>,
 ) -> Option<&'a str> {
     model
@@ -585,7 +583,7 @@ fn draw_arrow(
 }
 
 pub(crate) fn layout_gitgraph_diagram_typed(
-    model: &GitGraphRenderModel,
+    model: &GitGraphDiagramModel,
     effective_config: &serde_json::Value,
     typography_theme: &GitGraphTypographyThemePlan,
     measurer: &dyn TextMeasurer,
@@ -854,15 +852,13 @@ mod tests {
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::MermaidConfig;
-    use merman_core::diagrams::git_graph::{
-        GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
-    };
+    use merman_core::diagrams::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
+    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
     use std::cell::RefCell;
 
-    fn commit(id: &str, seq: i64, parents: &[&str], branch: &str) -> GitGraphCommitRenderModel {
-        GitGraphCommitRenderModel {
+    fn commit(id: &str, seq: i64, parents: &[&str], branch: &str) -> GitGraphCommit {
+        GitGraphCommit {
             id: id.to_string(),
             message: id.to_string(),
             seq,
@@ -876,7 +872,7 @@ mod tests {
     }
 
     fn typography_plan(config: &serde_json::Value) -> GitGraphTypographyThemePlan {
-        GitGraphTypographyThemePlan::resolve(None, &MermaidConfig::from_value(config.clone()))
+        GitGraphTypographyThemePlan::resolve(None, &PresentationConfig::from_value(config.clone()))
     }
 
     fn direct_typography_plan(
@@ -896,7 +892,7 @@ mod tests {
             .resolve(DiagramFamilyId::GIT_GRAPH);
         GitGraphTypographyThemePlan::resolve(
             Some(&theme),
-            &MermaidConfig::from_value(config.clone()),
+            &PresentationConfig::from_value(config.clone()),
         )
     }
 
@@ -989,9 +985,9 @@ mod tests {
             }
         }
 
-        let model = GitGraphRenderModel {
+        let model = GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
-            branches: vec![GitGraphBranchRenderModel {
+            branches: vec![GitGraphBranch {
                 name: "main".to_string(),
             }],
             commits: Vec::new(),
@@ -1024,9 +1020,9 @@ mod tests {
         let measurer = DeterministicTextMeasurer::default();
 
         for (theme, expected_y) in [("default", -2.0), ("redux", 7.0)] {
-            let model = GitGraphRenderModel {
+            let model = GitGraphDiagramModel {
                 diagram_type: "gitGraph".to_string(),
-                branches: vec![GitGraphBranchRenderModel {
+                branches: vec![GitGraphBranch {
                     name: "main".to_string(),
                 }],
                 commits: vec![commit("1", 0, &[], "main"), commit("2", 1, &["1"], "main")],
@@ -1060,11 +1056,11 @@ mod tests {
 
     #[test]
     fn parallel_lr_unconnected_branches_restart_commit_axis() {
-        let model = GitGraphRenderModel {
+        let model = GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
             branches: ["main", "dev", "v2", "feat"]
                 .into_iter()
-                .map(|name| GitGraphBranchRenderModel {
+                .map(|name| GitGraphBranch {
                     name: name.to_string(),
                 })
                 .collect(),
@@ -1105,11 +1101,11 @@ mod tests {
 
     #[test]
     fn parallel_bt_commits_use_mirrored_compact_axis() {
-        let model = GitGraphRenderModel {
+        let model = GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
             branches: ["main", "develop", "feature"]
                 .into_iter()
-                .map(|name| GitGraphBranchRenderModel {
+                .map(|name| GitGraphBranch {
                     name: name.to_string(),
                 })
                 .collect(),

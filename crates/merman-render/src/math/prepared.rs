@@ -13,8 +13,9 @@ use std::fmt;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use merman_core::OperationPhase;
+use merman_core::presentation::PresentationConfig;
 use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
-use merman_core::{MermaidConfig, OperationPhase};
 
 use super::MathRenderer;
 use crate::html::{HtmlOutputError, HtmlSanitizeSink};
@@ -101,7 +102,7 @@ enum MathLabelShell {
 #[derive(Clone, Copy)]
 pub(crate) struct PrepareMathLabelRequest<'a> {
     text: &'a str,
-    config: &'a MermaidConfig,
+    config: &'a PresentationConfig,
     style: &'a TextStyle,
     foreground: &'a str,
     text_measurer: Option<&'a dyn TextMeasurer>,
@@ -116,7 +117,7 @@ pub(crate) struct PrepareMathLabelRequest<'a> {
 impl<'a> PrepareMathLabelRequest<'a> {
     pub(crate) const fn flowchart(
         text: &'a str,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         style: &'a TextStyle,
         foreground: &'a str,
         max_width_px: Option<f64>,
@@ -157,7 +158,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
 
     pub(crate) const fn sequence(
         text: &'a str,
-        config: &'a MermaidConfig,
+        config: &'a PresentationConfig,
         style: &'a TextStyle,
         foreground: &'a str,
     ) -> Self {
@@ -742,24 +743,26 @@ fn browser_payload(
         &parse_work,
         OperationPhase::Layout,
     );
-    let rendered =
-        match merman_core::sanitize::sanitize_xhtml_with_sink(rendered, request.config, &body_sink)
-        {
-            Ok(sanitized) => sanitized,
-            Err(SanitizeFailure::Output(error)) => {
-                let error = match error {
-                    HtmlOutputError::Limit { attempted } => HtmlOutputError::Limit {
-                        attempted: fixed_bytes.saturating_add(attempted),
-                    },
-                    HtmlOutputError::Allocation => HtmlOutputError::Allocation,
-                    HtmlOutputError::Operation(error) => HtmlOutputError::Operation(error),
-                };
-                return resolve_output_error(error, retained_prefix, work_meter);
-            }
-            Err(SanitizeFailure::RejectedInput | SanitizeFailure::InvalidUtf8Output) | Err(_) => {
-                return Ok(None);
-            }
-        };
+    let rendered = match merman_core::sanitize::sanitize_xhtml_with_sink(
+        rendered,
+        request.config.as_config(),
+        &body_sink,
+    ) {
+        Ok(sanitized) => sanitized,
+        Err(SanitizeFailure::Output(error)) => {
+            let error = match error {
+                HtmlOutputError::Limit { attempted } => HtmlOutputError::Limit {
+                    attempted: fixed_bytes.saturating_add(attempted),
+                },
+                HtmlOutputError::Allocation => HtmlOutputError::Allocation,
+                HtmlOutputError::Operation(error) => HtmlOutputError::Operation(error),
+            };
+            return resolve_output_error(error, retained_prefix, work_meter);
+        }
+        Err(SanitizeFailure::RejectedInput | SanitizeFailure::InvalidUtf8Output) | Err(_) => {
+            return Ok(None);
+        }
+    };
     let final_len = fixed_bytes.saturating_add(rendered.len());
     let mut payload = match sink.string_with_capacity(final_len) {
         Ok(payload) => payload,
@@ -1347,7 +1350,8 @@ mod tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
         let meter = OperationWorkMeter::new(policy);
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
         let request = PrepareMathLabelRequest::flowchart(
             "$$x$$",
@@ -1375,7 +1379,8 @@ mod tests {
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         );
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle::default();
         let request = PrepareMathLabelRequest::flowchart(
             "$$x$$",
@@ -1407,7 +1412,8 @@ mod tests {
     #[test]
     fn compiled_artifact_carries_browser_and_native_projections_with_terminal_style() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let style = TextStyle {
             font_size: 24.0,
             ..TextStyle::default()
@@ -1455,7 +1461,7 @@ mod tests {
     #[test]
     fn compiled_css_foregrounds_color_pure_and_mixed_glyphs_without_string_roundtrips() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = MermaidConfig::from_value(serde_json::json!({
+        let config = PresentationConfig::from_value(serde_json::json!({
             "securityLevel": "strict",
             "htmlLabels": true,
         }));
@@ -1551,7 +1557,8 @@ mod tests {
     #[test]
     fn compiled_mixed_flowchart_artifact_prepares_prose_formulas_and_metrics() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let text_measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_size: 20.0,
@@ -1591,7 +1598,8 @@ mod tests {
     #[test]
     fn compiled_mixed_sequence_artifact_prepares_prose_formulas_and_metrics() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config =
+            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
         let text_measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_size: 18.0,
@@ -1655,7 +1663,7 @@ mod tests {
         }
 
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
         let text_measurer = RecordingTextMeasurer::default();
 
@@ -1681,7 +1689,7 @@ mod tests {
     }
 
     impl MathRenderer for CountingExternalRenderer {
-        fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, text: &str, _config: &PresentationConfig) -> Option<String> {
             self.render_calls.fetch_add(1, Ordering::SeqCst);
             Some(format!("<span>{text}</span>"))
         }
@@ -1689,7 +1697,7 @@ mod tests {
         fn measure_html_label(
             &self,
             _text: &str,
-            _config: &MermaidConfig,
+            _config: &PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -1707,7 +1715,7 @@ mod tests {
     fn compatibility_prepare_is_measure_first_and_writer_consumption_is_inert() {
         let renderer = Arc::new(CountingExternalRenderer::default());
         let backend = ConfiguredMathBackend::external(renderer.clone());
-        let config = MermaidConfig::default();
+        let config = PresentationConfig::default();
         let style = TextStyle::default();
 
         let outcome = backend
@@ -1740,7 +1748,7 @@ mod tests {
     }
 
     impl MathRenderer for OversizedExternalRenderer {
-        fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, _text: &str, _config: &PresentationConfig) -> Option<String> {
             self.render_calls.fetch_add(1, Ordering::SeqCst);
             Some("<".repeat(self.output_bytes))
         }
@@ -1748,7 +1756,7 @@ mod tests {
         fn measure_html_label(
             &self,
             _text: &str,
-            _config: &MermaidConfig,
+            _config: &PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -1777,7 +1785,7 @@ mod tests {
             .prepare(
                 PrepareMathLabelRequest::flowchart(
                     "$$x$$",
-                    &MermaidConfig::default(),
+                    &PresentationConfig::default(),
                     &TextStyle::default(),
                     "#334155",
                     None,
@@ -1804,7 +1812,7 @@ mod tests {
             .prepare(
                 PrepareMathLabelRequest::flowchart(
                     "$$x$$",
-                    &MermaidConfig::default(),
+                    &PresentationConfig::default(),
                     &TextStyle::default(),
                     "var(--message-color, currentColor)",
                     Some(200.0),
@@ -1829,7 +1837,7 @@ mod tests {
     }
 
     impl MathRenderer for DecliningMeasurementRenderer {
-        fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+        fn render_html_label(&self, _text: &str, _config: &PresentationConfig) -> Option<String> {
             self.render_calls.fetch_add(1, Ordering::SeqCst);
             Some("unexpected".to_string())
         }
@@ -1837,7 +1845,7 @@ mod tests {
         fn measure_html_label(
             &self,
             _text: &str,
-            _config: &MermaidConfig,
+            _config: &PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -1856,7 +1864,7 @@ mod tests {
             .prepare(
                 PrepareMathLabelRequest::flowchart(
                     "$$x$$",
-                    &MermaidConfig::default(),
+                    &PresentationConfig::default(),
                     &TextStyle::default(),
                     "#334155",
                     Some(200.0),
@@ -1904,7 +1912,7 @@ mod tests {
             .prepare(
                 PrepareMathLabelRequest::sequence(
                     "$$x$$<br><br>$$y$$",
-                    &MermaidConfig::default(),
+                    &PresentationConfig::default(),
                     &style,
                     "#334155",
                 ),
@@ -1916,7 +1924,7 @@ mod tests {
             .prepare(
                 PrepareMathLabelRequest::sequence(
                     "$$x$$<br>$$y$$",
-                    &MermaidConfig::default(),
+                    &PresentationConfig::default(),
                     &style,
                     "#334155",
                 ),

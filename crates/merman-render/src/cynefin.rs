@@ -8,7 +8,7 @@ use crate::model::{
     Bounds, CynefinDiagramLayout, CynefinDomainLayout, CynefinItemLayout, CynefinTransitionLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::cynefin::CynefinDiagramRenderModel;
+use merman_core::diagrams::cynefin::CynefinDiagramModel;
 
 const DOMAIN_COMPLEX: &str = "complex";
 const DOMAIN_COMPLICATED: &str = "complicated";
@@ -150,7 +150,7 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
 
 #[cfg(test)]
 pub(crate) fn layout_cynefin_diagram_typed(
-    model: &CynefinDiagramRenderModel,
+    model: &CynefinDiagramModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<CynefinDiagramLayout> {
@@ -166,7 +166,7 @@ pub(crate) fn layout_cynefin_diagram_typed(
 }
 
 pub(crate) fn layout_cynefin_diagram_typed_with_theme(
-    model: &CynefinDiagramRenderModel,
+    model: &CynefinDiagramModel,
     effective_config: &serde_json::Value,
     typography_theme: &CynefinTypographyThemePlan,
     measurer: &dyn TextMeasurer,
@@ -181,7 +181,7 @@ pub(crate) fn layout_cynefin_diagram_typed_with_theme(
 }
 
 fn layout_cynefin_diagram_with_font_family(
-    model: &CynefinDiagramRenderModel,
+    model: &CynefinDiagramModel,
     effective_config: &serde_json::Value,
     font_family_css: &str,
     theme: &CynefinTheme,
@@ -433,7 +433,7 @@ fn build_domain_layouts(width: f64, height: f64) -> Vec<CynefinDomainLayout> {
 }
 
 fn layout_items(
-    model: &CynefinDiagramRenderModel,
+    model: &CynefinDiagramModel,
     domain_layouts: &[CynefinDomainLayout],
     settings: &CynefinLayoutSettings,
     theme: &CynefinTheme,
@@ -552,7 +552,7 @@ fn push_item_layout(
 }
 
 fn layout_transitions(
-    model: &CynefinDiagramRenderModel,
+    model: &CynefinDiagramModel,
     domain_layouts: &[CynefinDomainLayout],
 ) -> Vec<CynefinTransitionLayout> {
     let mut out = Vec::new();
@@ -697,7 +697,7 @@ mod tests {
 
     #[test]
     fn cynefin_layout_caps_confusion_overflow() {
-        let model = CynefinDiagramRenderModel {
+        let model = CynefinDiagramModel {
             domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
                 name: DOMAIN_CONFUSION.to_string(),
                 items: vec![
@@ -723,7 +723,7 @@ mod tests {
 
     #[test]
     fn cynefin_item_width_prefers_a_positive_bbox_over_the_character_fallback() {
-        let model = CynefinDiagramRenderModel {
+        let model = CynefinDiagramModel {
             domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
                 name: DOMAIN_COMPLEX.to_string(),
                 items: vec![merman_core::diagrams::cynefin::CynefinItemModel {
@@ -742,7 +742,7 @@ mod tests {
     #[test]
     fn cynefin_item_width_uses_the_utf16_character_fallback_for_a_zero_bbox() {
         let label = "A\u{1f642}";
-        let model = CynefinDiagramRenderModel {
+        let model = CynefinDiagramModel {
             domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
                 name: DOMAIN_COMPLEX.to_string(),
                 items: vec![merman_core::diagrams::cynefin::CynefinItemModel {

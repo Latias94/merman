@@ -234,11 +234,16 @@ mod tests {
         let families = capabilities["merman"]["diagramSupport"]["families"]
             .as_array()
             .expect("diagram family capabilities");
-        assert!(families.iter().any(|family| {
-            family["diagramType"] == "gitGraph"
-                && family["semanticParser"] == true
-                && family["renderParser"] == true
-        }));
+        let gitgraph = families
+            .iter()
+            .find(|family| family["diagramType"] == "gitGraph")
+            .expect("GitGraph language capability");
+        assert_eq!(gitgraph["semanticParser"], true);
+        let core_gitgraph = merman_core::diagram_family_capabilities()
+            .iter()
+            .find(|family| family.diagram_type == "gitGraph")
+            .expect("catalog-owned GitGraph capability");
+        assert_eq!(gitgraph["renderParser"], core_gitgraph.has_render_parser);
         assert!(
             families
                 .iter()

@@ -17,10 +17,10 @@ equality, debug formatting, and drop traverse containers iteratively. The owner 
 value without changing its JSON shape.
 
 ```rust
-use merman_core::{Engine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let parsed = Engine::new()
+    let parsed = MermaidEngine::new()
         .parse_diagram_sync("flowchart TD\nA --> B\n", ParseOptions::strict())?
         .expect("a diagram");
     let copy = parsed.model.clone();
@@ -77,16 +77,22 @@ directly; nested compatibility JSON is built when requested.
 | Model | Rust API migration |
 | --- | --- |
 | State | `StateDiagramRenderModel.document` owns a `StateDocument`. A state's `doc` is `Option<StateDocumentId>`; use `model.document.get(id)` to borrow its statements. `root()`, `len()`, and `is_empty()` expose document metadata. IDs belong to their owning model. |
-| Block | `blocks_flat` stores each logical block once. `BlockNodeRenderModel.children` holds record indices; use `model.block(index)` and `model.root()`. |
+| Block | `blocks_flat` stores each logical block once. `BlockNode.children` holds record indices; use `model.block(index)` and `model.root()`. |
 | Treemap | `model.root` remains the synthetic root; its `children` and each node's `children` index `model.nodes`. |
 | Ishikawa | `model.root` is `Option<usize>` indexing `model.nodes`; node `children` contains indices into the same vector. |
 
 The four owning diagram models no longer implement `Serialize` or `Deserialize`. Their former
 typed-wire import and export paths, including State and Block `to_json` and Treemap and Ishikawa
-`to_compat_json`, are removed. Build or inspect the canonical records directly. Use an Engine
-semantic parse or a semantic artifact's `compatibility_json()` for Mermaid JSON, including its
-family-specific metadata and configuration, and keep that projection in managed ownership for
-deep export.
+`to_compat_json`, are removed. Build or inspect the canonical records directly. Enable
+`compat-json` and use a `MermaidEngine` JSON parse or a presentation artifact's
+`compatibility_json()` for Mermaid JSON, including its family-specific metadata and
+configuration. Keep that projection in managed ownership for deep export. Canonical
+`SemanticParser` results do not expose compatibility JSON.
+
+Pure render aliases now use the canonical family spelling in both semantic and full parsing;
+see the [current family type migration](render-reuse-host-integration.md#use-canonical-family-type-names).
+Presentation carriers such as `StateDiagramRenderModel` and `BlockDiagramRenderModel` retain
+their names and presentation gates because they own additional rendering state.
 
 State and Block node records do not implement standalone serde because their document or child
 indices require an owning model. Standalone Treemap and Ishikawa node serde exposes their canonical
@@ -99,7 +105,7 @@ flat; its nested `rootNode` JSON is protected by managed ownership during projec
 ## Resource and lifecycle boundaries
 
 Existing source/model limits, profile names, explicit overrides, and sticky operation terminals
-retain their meanings. Direct Engine parsing and policy-limited facade rendering remain different
+retain their meanings. Direct parser calls and policy-limited facade rendering remain different
 entry points. The obsolete renderer-only `typed_model_tree_depth` rejection for Treemap and
 Ishikawa is removed because these typed models no longer own recursive trees. Independent SVG
 backend capabilities still apply to emitted SVG and native export backends.

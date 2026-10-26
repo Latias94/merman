@@ -223,7 +223,7 @@ pub(crate) struct ClassRenderConfig {
 
 impl ClassRenderConfig {
     pub(crate) fn resolve(
-        effective_config: &merman_core::MermaidConfig,
+        effective_config: &merman_core::presentation::PresentationConfig,
         typography: &super::ClassTextThemePlan,
     ) -> Self {
         let effective_config = effective_config.as_value();
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn prepared_config_preserves_font_probe_and_padding_domains() {
-        let source = merman_core::MermaidConfig::from_value(json!({
+        let source = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily": "Root Sans, monospace",
             "fontSize": "18",
             "htmlLabels": false,
@@ -365,7 +365,8 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::CLASS);
-        let source = merman_core::MermaidConfig::from_value(json!({ "fontSize": "18" }));
+        let source =
+            merman_core::presentation::PresentationConfig::from_value(json!({ "fontSize": "18" }));
         let typography = super::super::ClassTextThemePlan::resolve(Some(&theme), &source);
         let config = ClassRenderConfig::resolve(&source, &typography);
         assert!(typography.typed_font_size_active());
@@ -394,7 +395,7 @@ mod tests {
                 crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
             ),
         ] {
-            let source = merman_core::MermaidConfig::from_value(
+            let source = merman_core::presentation::PresentationConfig::from_value(
                 json!({ "flowchart": { "wrappingWidth": width } }),
             );
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
@@ -407,7 +408,9 @@ mod tests {
             (json!("17"), None),
             (json!(null), None),
         ] {
-            let source = merman_core::MermaidConfig::from_value(json!({ "handDrawnSeed": seed }));
+            let source = merman_core::presentation::PresentationConfig::from_value(
+                json!({ "handDrawnSeed": seed }),
+            );
             let typography = super::super::ClassTextThemePlan::resolve(None, &source);
             let config = ClassRenderConfig::resolve(&source, &typography);
             assert_eq!(config.hand_drawn_seed, expected);

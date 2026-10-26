@@ -47,7 +47,6 @@ const DEFAULT_CAPABILITIES: &[&str] = &[
     "layout-cytoscape",
     "layout-elk",
     "markdown",
-    "math",
     "native-fonts",
     "network-icons",
     "parallel-markdown",
@@ -153,6 +152,7 @@ fn selected_case() -> String {
         "system-random",
         "system-timing",
         "default",
+        "release",
     ] {
         if expected_capabilities(case) == compiled {
             return case.to_string();
@@ -178,7 +178,7 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "cytoscape-layout" => vec!["layout-cytoscape", "svg"],
         "elk-layout" => vec!["layout-elk", "svg"],
         "math" => vec!["math", "svg"],
-        "rustdoc" => vec!["layout-cytoscape", "markdown", "math", "rustdoc", "svg"],
+        "rustdoc" => vec!["layout-cytoscape", "markdown", "rustdoc", "svg"],
         "completions" => vec!["shell-completions"],
         "svg-completions" => vec!["shell-completions", "svg"],
         "system-clock" => vec!["system-clock"],
@@ -186,7 +186,12 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "system-random" => vec!["system-random"],
         "system-timing" => vec!["system-timing"],
         "default" => DEFAULT_CAPABILITIES.to_vec(),
-        "release" => DEFAULT_CAPABILITIES.to_vec(),
+        "release" => {
+            let mut capabilities = DEFAULT_CAPABILITIES.to_vec();
+            capabilities.push("math");
+            capabilities.sort_unstable();
+            capabilities
+        }
         "auto" => compiled_capabilities_for_auto_detection(),
         other => panic!("unknown {CASE_ENV} value {other:?}"),
     }
@@ -1281,6 +1286,7 @@ fn workflow_standard_cli() {
     workflow_batch("pdf", Some("2"));
     workflow_cytoscape();
     workflow_elk();
+    #[cfg(feature = "math")]
     workflow_math();
     workflow_rustdoc();
     workflow_completions();

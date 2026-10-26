@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 import json
 import tempfile
+import tomllib
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -42,6 +43,22 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
         lane = self.registry.by_id["ascii"]
         self.assertEqual(lane["features"], "all-diagrams,ascii")
         self.assertIs(lane["default_features"], False)
+
+    def test_current_pipeline_lanes_explicitly_enable_the_full_bench(self) -> None:
+        manifest = tomllib.loads(
+            (ROOT / "crates/merman/Cargo.toml").read_text(encoding="utf-8")
+        )
+        required = next(
+            set(bench["required-features"])
+            for bench in manifest["bench"]
+            if bench["name"] == "pipeline"
+        )
+        for lane in self.registry.lanes:
+            if lane["bench"] == "pipeline":
+                with self.subTest(lane=lane["id"]):
+                    enabled = set(lane["features"].split(","))
+                    self.assertIn("all-diagrams", enabled)
+                    self.assertTrue(required.issubset(enabled))
 
     def test_event_selection_is_owned_by_the_registry(self) -> None:
         select = performance_workflow.select_lane_ids

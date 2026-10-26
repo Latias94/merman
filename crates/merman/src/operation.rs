@@ -1,23 +1,22 @@
 //! Internal operation ownership for the public rendering facade.
-//!
 
-use merman_core::{
-    Engine, OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
-    OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
-    ParseMetadata, ParseOptions, ParsedDiagramRender,
-    resources::{InputResourceLimitExceeded, InputResourcePolicy},
-    runtime::OperationContext,
-};
-
+#[cfg(feature = "presentation")]
 use crate::render::prepared::PreparedSource;
 use crate::render::{RenderError, ResourceLimitCause, ResourceLimitExceeded};
-use merman_core::resources::ModelComplexity;
+#[cfg(feature = "presentation")]
+use merman_core::{MermaidEngine, ParsedDiagramRender, PresentationMetadata};
+use merman_core::{
+    OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
+    OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
+    ParseOptions, ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser,
+    resources::{InputResourceLimitExceeded, InputResourcePolicy, ModelComplexity},
+    runtime::{OperationContext, RuntimePolicy},
+};
 #[cfg(feature = "svg")]
 use merman_render::diagram_theme::DiagramTheme;
 
 #[derive(Debug)]
-pub(crate) struct Operation<'engine> {
-    engine: &'engine Engine,
+pub(crate) struct Operation {
     pub(crate) control: OperationControl,
     pub(crate) context: OperationContext,
     resources: InputResourcePolicy,
@@ -25,16 +24,16 @@ pub(crate) struct Operation<'engine> {
     theme: Option<DiagramTheme>,
 }
 
-impl<'engine> Operation<'engine> {
+impl Operation {
     pub(crate) fn begin(
-        engine: &'engine Engine,
+        runtime: &RuntimePolicy,
         source: &str,
         control: OperationControl,
         resources: InputResourcePolicy,
         #[cfg(feature = "svg")] theme: Option<DiagramTheme>,
     ) -> Result<Self, RenderError> {
         Self::begin_source_bytes(
-            engine,
+            runtime,
             source.len(),
             control,
             resources,
@@ -44,7 +43,7 @@ impl<'engine> Operation<'engine> {
     }
 
     fn begin_source_bytes(
-        engine: &'engine Engine,
+        runtime: &RuntimePolicy,
         source_bytes: usize,
         control: OperationControl,
         resources: InputResourcePolicy,
@@ -58,10 +57,9 @@ impl<'engine> Operation<'engine> {
                 error,
             ));
         }
-        let context = engine.begin_operation().map_err(RenderError::from)?;
+        let context = runtime.begin_operation().map_err(RenderError::from)?;
         checkpoint(&control, OperationPhase::Admission)?;
         Ok(Self {
-            engine,
             control,
             context,
             resources,
@@ -70,65 +68,93 @@ impl<'engine> Operation<'engine> {
         })
     }
 
+    pub(crate) fn parse_semantic(
+        self,
+        parser: &SemanticParser,
+        source: &str,
+        options: ParseOptions,
+    ) -> Result<Option<SemanticArtifact>, RenderError> {
+        checkpoint(&self.control, OperationPhase::Parse)?;
+        let parsed = parser
+            .parse_diagram_with_options_controlled_in_context_sync(
+                source,
+                options,
+                &self.control,
+                &self.context,
+            )
+            .map_err(RenderError::Cancelled)?
+            .map_err(RenderError::from)?;
+        let Some(parsed) = parsed else {
+            return Ok(None);
+        };
+        self.admit_model(ModelComplexity::from_semantic_model(&parsed.model))?;
+        Ok(Some(SemanticArtifact {
+            parsed: Box::new(parsed),
+            operation: self.into_execution(),
+        }))
+    }
+
+    #[cfg(feature = "presentation")]
     pub(crate) fn resume_prepared(
-        engine: &'engine Engine,
+        runtime: &RuntimePolicy,
         prepared: &PreparedSource,
         control: OperationControl,
         resources: InputResourcePolicy,
-    ) -> Result<SemanticArtifact, RenderError> {
+    ) -> Result<PresentationArtifact, RenderError> {
         let operation = Self::begin_source_bytes(
-            engine,
+            runtime,
             prepared.source_bytes(),
             control,
             resources,
             #[cfg(feature = "svg")]
             prepared.theme().cloned(),
         )?;
-        checkpoint(&operation.control, OperationPhase::Semantic)?;
-        if let Err(error) = resources.check_model_complexity(prepared.model_complexity()) {
-            checkpoint(&operation.control, OperationPhase::Semantic)?;
-            return Err(terminate_input_resource_error(
-                &operation.control,
-                OperationPhase::Semantic,
-                error,
-            ));
-        }
-        checkpoint(&operation.control, OperationPhase::Semantic)?;
-        Ok(SemanticArtifact::from_prepared(
+        operation.admit_model(prepared.model_complexity())?;
+        Ok(PresentationArtifact::from_prepared(
             prepared.clone(),
-            OperationExecution {
-                control: operation.control,
-                #[cfg(any(feature = "svg", feature = "ascii"))]
-                context: operation.context,
-                #[cfg(feature = "svg")]
-                theme: operation.theme,
-            },
+            operation.into_execution(),
         ))
     }
 
-    pub(crate) fn parse_render_model(
+    #[cfg(feature = "presentation")]
+    pub(crate) fn parse_presentation(
         self,
+        engine: &MermaidEngine,
         source: &str,
         parse_options: ParseOptions,
-    ) -> Result<Option<SemanticArtifact>, RenderError> {
+    ) -> Result<Option<PresentationArtifact>, RenderError> {
         checkpoint(&self.control, OperationPhase::Parse)?;
-        let parsed = self
-            .engine
+        let parsed = engine
             .parse_diagram_for_render_model_controlled_in_context_sync(
                 source,
                 parse_options,
                 &self.control,
                 &self.context,
-            );
-        let parsed = match parsed {
-            Err(cancelled) => return Err(RenderError::Cancelled(cancelled)),
-            Ok(result) => result.map_err(RenderError::from)?,
-        };
+            )
+            .map_err(RenderError::Cancelled)?
+            .map_err(RenderError::from)?;
         let Some(parsed) = parsed else {
             return Ok(None);
         };
-        checkpoint(&self.control, OperationPhase::Semantic)?;
         let complexity = ModelComplexity::from_parsed_render(&parsed);
+        self.admit_model(complexity)?;
+        let prepared = PreparedSource::new(
+            parsed,
+            self.context.clone(),
+            parse_options,
+            source.len(),
+            complexity,
+            #[cfg(feature = "svg")]
+            self.theme.clone(),
+        );
+        Ok(Some(PresentationArtifact::from_prepared(
+            prepared,
+            self.into_execution(),
+        )))
+    }
+
+    fn admit_model(&self, complexity: ModelComplexity) -> Result<(), RenderError> {
+        checkpoint(&self.control, OperationPhase::Semantic)?;
         if let Err(error) = self.resources.check_model_complexity(complexity) {
             checkpoint(&self.control, OperationPhase::Semantic)?;
             return Err(terminate_input_resource_error(
@@ -137,27 +163,17 @@ impl<'engine> Operation<'engine> {
                 error,
             ));
         }
-        checkpoint(&self.control, OperationPhase::Semantic)?;
-        Ok(Some(SemanticArtifact {
-            state: Box::new(SemanticArtifactState {
-                prepared: PreparedSource::new(
-                    parsed,
-                    self.context.clone(),
-                    parse_options,
-                    source.len(),
-                    complexity,
-                    #[cfg(feature = "svg")]
-                    self.theme.clone(),
-                ),
-                operation: OperationExecution {
-                    control: self.control,
-                    #[cfg(any(feature = "svg", feature = "ascii"))]
-                    context: self.context,
-                    #[cfg(feature = "svg")]
-                    theme: self.theme,
-                },
-            }),
-        }))
+        checkpoint(&self.control, OperationPhase::Semantic)
+    }
+
+    fn into_execution(self) -> OperationExecution {
+        OperationExecution {
+            control: self.control,
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            context: self.context,
+            #[cfg(feature = "svg")]
+            theme: self.theme,
+        }
     }
 }
 
@@ -247,24 +263,63 @@ pub(crate) struct OperationExecution {
     pub(crate) theme: Option<DiagramTheme>,
 }
 
-/// A format-neutral semantic artifact paired with the operation that produced it.
+/// Canonical diagram meaning paired with the operation that admitted it.
 ///
-/// The artifact is intentionally not constructible from an arbitrary metadata/model pair. SVG
-/// and ASCII adapters consume this canonical pair and choose their own layout and emission path.
+/// This artifact has no presentation context, compatibility JSON, or graphical promotion API.
 #[derive(Debug)]
 pub struct SemanticArtifact {
-    state: Box<SemanticArtifactState>,
-}
-
-#[derive(Debug)]
-struct SemanticArtifactState {
-    prepared: PreparedSource,
+    parsed: Box<ParsedSemanticDiagram>,
     operation: OperationExecution,
 }
 
 impl SemanticArtifact {
+    pub fn metadata(&self) -> &SemanticMetadata {
+        &self.parsed.metadata
+    }
+
+    pub fn model(&self) -> &SemanticDiagramModel {
+        &self.parsed.model
+    }
+
+    pub fn diagram_type(&self) -> &str {
+        &self.metadata().diagram_type
+    }
+    pub fn semantic_kind(&self) -> &'static str {
+        merman_core::diagram_type_render_model_kind(self.diagram_type()).unwrap_or("unknown")
+    }
+    pub fn family_id(&self) -> Option<merman_core::DiagramFamilyId> {
+        merman_core::diagram_type_family_id(self.diagram_type())
+    }
+    pub(crate) fn control(&self) -> &OperationControl {
+        &self.operation.control
+    }
+    #[cfg(feature = "ascii")]
+    pub(crate) fn into_parts(self) -> (ParsedSemanticDiagram, OperationExecution) {
+        (*self.parsed, self.operation)
+    }
+}
+
+/// A full Mermaid presentation artifact paired with its original operation.
+///
+/// This artifact retains the admitted theme/configuration and can be handed off to a reusable
+/// full source. It cannot be created by promoting an already parsed semantic artifact.
+#[derive(Debug)]
+#[cfg(feature = "presentation")]
+pub struct PresentationArtifact {
+    state: Box<PresentationArtifactState>,
+}
+
+#[derive(Debug)]
+#[cfg(feature = "presentation")]
+struct PresentationArtifactState {
+    prepared: PreparedSource,
+    operation: OperationExecution,
+}
+
+#[cfg(feature = "presentation")]
+impl PresentationArtifact {
     /// Returns metadata captured by the controlled parse operation.
-    pub fn metadata(&self) -> &ParseMetadata {
+    pub fn metadata(&self) -> &PresentationMetadata {
         self.state.prepared.metadata()
     }
 
@@ -299,7 +354,7 @@ impl SemanticArtifact {
 
     pub(crate) fn from_prepared(prepared: PreparedSource, operation: OperationExecution) -> Self {
         Self {
-            state: Box::new(SemanticArtifactState {
+            state: Box::new(PresentationArtifactState {
                 prepared,
                 operation,
             }),
@@ -308,7 +363,7 @@ impl SemanticArtifact {
 
     #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) fn into_parts(self) -> (PreparedSource, OperationExecution) {
-        let SemanticArtifactState {
+        let PresentationArtifactState {
             prepared,
             operation,
         } = *self.state;

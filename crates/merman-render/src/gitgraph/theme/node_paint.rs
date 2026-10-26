@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -43,7 +43,7 @@ struct TerminalFacts {
 impl GitGraphNodePaintPlan {
     pub(crate) fn resolve(
         theme: &ResolvedDiagramTheme,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         work: &OperationWorkMeter,
     ) -> Result<Option<Self>, OperationWorkError> {
         let requested = theme.family_mechanism_routes().iter().any(|route| {

@@ -528,6 +528,7 @@ _PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     "parse": "typed_render_model",
     "compatibility_json_parse": "compatibility_json",
     "parse_cold_engine": "typed_render_model",
+    "editor_snapshot": "editor_snapshot",
     "frontmatter_preprocess": "preprocessed_diagram",
     "layout": "prepared_layout",
     "render": "svg",
@@ -4431,8 +4432,14 @@ def decision_grade_main(argv: list[str]) -> int:
     parser.add_argument("--head-package", default="merman")
     parser.add_argument("--base-bench", default="pipeline")
     parser.add_argument("--head-bench", default="pipeline")
-    parser.add_argument("--base-features", default="svg")
-    parser.add_argument("--head-features", default="svg")
+    parser.add_argument(
+        "--base-features",
+        default="svg",
+        help="Base checkout's features; override independently for its benchmark recipe.",
+    )
+    parser.add_argument(
+        "--head-features", default="all-diagrams,svg,compat-json,editor-facts"
+    )
     parser.add_argument(
         "--base-default-features", action=argparse.BooleanOptionalAction, default=True
     )

@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
@@ -29,18 +30,18 @@ fn compile(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramThemeSpec {
     )
 }
 
-fn config(swimlane: bool, base: &str, html: bool) -> MermaidConfig {
+fn config(swimlane: bool, base: &str, html: bool) -> PresentationConfig {
     let mut config = json!({"theme": base, "htmlLabels": html, "flowchart": {"htmlLabels": html}});
     if swimlane {
         config["layout"] = json!("swimlane");
     }
-    MermaidConfig::from_value(config)
+    PresentationConfig::from_value(config)
 }
 
 fn render_with_retained_recipe_baseline(
     source: &str,
     spec: &DiagramThemeSpec,
-    config: MermaidConfig,
+    config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::FamilyRenderCompletion<String>> {
     let mut value = config.as_value().clone();
@@ -59,7 +60,7 @@ fn render_with_retained_recipe_baseline(
     let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
     let parsed = merman_render::__private::install_parse_compatibility(
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(value)),
+        MermaidEngine::new().with_site_config(PresentationConfig::from_value(value)),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()
@@ -319,7 +320,7 @@ fn cluster_label_fill_yields_to_explicit_config_and_emitted_source_color() {
             let rendered = render_with_retained_recipe_baseline(
                 ONE,
                 &theme,
-                MermaidConfig::from_value(value),
+                PresentationConfig::from_value(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -468,7 +469,7 @@ fn cluster_label_config_ownership_follows_the_actual_theme_dependency() {
             let rendered = render_with_retained_recipe_baseline(
                 ONE,
                 &theme,
-                MermaidConfig::from_value(value),
+                PresentationConfig::from_value(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();

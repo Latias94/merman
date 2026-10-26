@@ -1,6 +1,7 @@
 #![cfg(all(feature = "diagram-class", feature = "diagram-sequence"))]
+#![cfg(feature = "presentation")]
 
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};
@@ -58,10 +59,10 @@ fn run_worker(case: &str, size: usize) {
     let source = source(case, size);
     println!(
         "case={case} size={size} source_bytes={} worker_stack_bytes={WORKER_STACK_BYTES} \
-         path=Engine.parse_diagram_for_render_model_sync profile=direct-engine-strict",
+         path=MermaidEngine.parse_diagram_for_render_model_sync profile=direct-engine-strict",
         source.len()
     );
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     marker("parse", "begin");
     let parsed = engine.parse_diagram_for_render_model_sync(&source, ParseOptions::strict());
     if case.contains("missing-outer") {
@@ -77,15 +78,15 @@ fn run_worker(case: &str, size: usize) {
         match parsed.model() {
             RenderSemanticModel::Class(model) => {
                 let expected_classes = if case == "class-wide" { size } else { 1 };
-                assert_eq!(model.classes.len(), expected_classes);
+                assert_eq!(model.classes().len(), expected_classes);
                 if case == "class-deep" {
-                    assert_eq!(model.namespaces.len(), size);
+                    assert_eq!(model.namespaces().len(), size);
                 }
-                let namespace_id_bytes: usize = model.namespaces.keys().map(String::len).sum();
+                let namespace_id_bytes: usize = model.namespaces().map(|(id, _)| id.len()).sum();
                 println!(
                     "class_records={} namespace_records={} namespace_id_bytes={namespace_id_bytes}",
-                    model.classes.len(),
-                    model.namespaces.len(),
+                    model.classes().len(),
+                    model.namespaces().len(),
                 );
             }
             RenderSemanticModel::Sequence(model) => {

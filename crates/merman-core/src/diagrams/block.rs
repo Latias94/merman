@@ -1,15 +1,27 @@
-use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
+#[cfg(feature = "compat-json")]
+use crate::ManagedSemanticJson;
+#[cfg(feature = "presentation")]
+use crate::PresentationMetadata;
+#[cfg(feature = "compat-json")]
+use crate::diagram::legacy_warning_messages;
+use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact};
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
+#[cfg(feature = "presentation")]
 use crate::resources::ModelComplexity;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
-    OperationControlResult, ParseMetadata, Result, SourceSpan,
-    editor::trailing_ascii_whitespace_slot,
+    EditorSemanticSymbol, source_span::trailing_ascii_whitespace_slot,
 };
+use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan};
 use indexmap::IndexMap;
+#[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(feature = "editor-facts")]
+use std::collections::HashSet;
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -38,15 +50,16 @@ pub(crate) fn block_syntax_construction_count() -> usize {
 /// Flat Block records in Mermaid database insertion order.
 ///
 /// Child indices address `blocks_flat`; compatibility serialization expands the nested wire shape.
-#[derive(Debug, Clone, Default)]
-pub struct BlockDiagramRenderModel {
-    pub blocks_flat: Vec<BlockNodeRenderModel>,
-    pub edges: Vec<BlockEdgeRenderModel>,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BlockDiagramModel {
+    pub blocks_flat: Vec<BlockNode>,
+    pub edges: Vec<BlockEdge>,
     pub warning_facts: Vec<DiagramWarningFact>,
-    pub class_defs: IndexMap<String, BlockClassDefRenderModel>,
-    compat_root_id: String,
+    pub class_defs: IndexMap<String, BlockClassDef>,
+    pub root: Option<usize>,
 }
 
+#[cfg(feature = "presentation")]
 #[derive(Clone, Copy, Default)]
 struct BlockRecordMetrics {
     items: usize,
@@ -54,22 +67,18 @@ struct BlockRecordMetrics {
     container_depth: usize,
 }
 
-impl BlockDiagramRenderModel {
+impl BlockDiagramModel {
     /// Returns the canonical root composite, when present.
-    pub fn root(&self) -> Option<&BlockNodeRenderModel> {
-        let root_id = if self.compat_root_id.is_empty() {
-            "root"
-        } else {
-            &self.compat_root_id
-        };
-        self.blocks_flat.iter().find(|block| block.id == root_id)
+    pub fn root(&self) -> Option<&BlockNode> {
+        self.root.and_then(|index| self.blocks_flat.get(index))
     }
 
     /// Resolves a direct child index without constructing a subtree.
-    pub fn block(&self, index: usize) -> Option<&BlockNodeRenderModel> {
+    pub fn block(&self, index: usize) -> Option<&BlockNode> {
         self.blocks_flat.get(index)
     }
 
+    #[cfg(feature = "presentation")]
     fn record_metrics(&self) -> std::result::Result<Vec<BlockRecordMetrics>, String> {
         let mut metrics = vec![BlockRecordMetrics::default(); self.blocks_flat.len()];
         let mut state = vec![0u8; self.blocks_flat.len()];
@@ -126,7 +135,8 @@ impl BlockDiagramRenderModel {
     }
 
     /// Counts the previous typed wire shape without allocating repeated descendant output.
-    pub(crate) fn model_complexity(&self) -> ModelComplexity {
+    #[cfg(feature = "presentation")]
+    fn wire_model_complexity(&self) -> ModelComplexity {
         let Ok(metrics) = self.record_metrics() else {
             return ModelComplexity::new(usize::MAX, usize::MAX, usize::MAX);
         };
@@ -167,7 +177,7 @@ impl BlockDiagramRenderModel {
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct BlockClassDefRenderModel {
+pub struct BlockClassDef {
     pub id: String,
     #[serde(default)]
     pub styles: Vec<String>,
@@ -175,10 +185,9 @@ pub struct BlockClassDefRenderModel {
     pub text_styles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct BlockNodeRenderModel {
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BlockNode {
     pub id: String,
-    pub color_index: Option<usize>,
     pub label: String,
     pub block_type: String,
     /// Indices of direct children in the owning model's `blocks_flat` records.
@@ -189,11 +198,10 @@ pub struct BlockNodeRenderModel {
     pub classes: Vec<String>,
     pub styles: Vec<String>,
     pub directions: Vec<String>,
-    compatibility: BlockNodeCompatibility,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct BlockEdgeRenderModel {
+pub struct BlockEdge {
     pub id: String,
     pub start: String,
     pub end: String,
@@ -203,10 +211,9 @@ pub struct BlockEdgeRenderModel {
     pub arrow_type_start: Option<String>,
     #[serde(default)]
     pub label: String,
-    #[serde(skip)]
-    compat_directions: Option<Vec<String>>,
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, Default)]
 enum CompatibilityFieldPresence {
     #[default]
@@ -214,6 +221,7 @@ enum CompatibilityFieldPresence {
     Present,
 }
 
+#[cfg(feature = "compat-json")]
 impl CompatibilityFieldPresence {
     fn from_option<T>(value: &Option<T>) -> Self {
         if value.is_some() {
@@ -228,15 +236,78 @@ impl CompatibilityFieldPresence {
     }
 }
 
+#[cfg(feature = "compat-json")]
 #[derive(Debug, Clone, Copy, Default)]
 struct BlockNodeCompatibility {
     styles: CompatibilityFieldPresence,
     directions: CompatibilityFieldPresence,
 }
 
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone, Default)]
+pub struct BlockVisuals {
+    /// Palette slots in canonical insertion order; the root has no slot.
+    pub color_indices: Vec<Option<usize>>,
+}
+
+#[cfg(feature = "compat-json")]
+#[derive(Debug, Clone, Default)]
+struct BlockCompatibility {
+    nodes: Vec<BlockNodeCompatibility>,
+    edge_directions: Vec<Option<Vec<String>>>,
+}
+
+#[cfg(feature = "presentation")]
+#[derive(Debug, Clone, Default)]
+pub struct BlockDiagramRenderModel {
+    pub semantic: BlockDiagramModel,
+    pub visuals: BlockVisuals,
+    #[cfg(feature = "compat-json")]
+    compatibility: BlockCompatibility,
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::Deref for BlockDiagramRenderModel {
+    type Target = BlockDiagramModel;
+    fn deref(&self) -> &Self::Target {
+        &self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl std::ops::DerefMut for BlockDiagramRenderModel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.semantic
+    }
+}
+
+#[cfg(feature = "presentation")]
+impl BlockDiagramRenderModel {
+    pub fn root(&self) -> Option<&BlockNode> {
+        self.semantic.root().or_else(|| {
+            self.semantic
+                .blocks_flat
+                .iter()
+                .find(|block| block.id == "root")
+        })
+    }
+
+    pub fn from_semantic_model(semantic: BlockDiagramModel) -> Self {
+        Self {
+            semantic,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn model_complexity(&self) -> ModelComplexity {
+        self.semantic.wire_model_complexity()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct Block {
     id: String,
+    #[cfg(feature = "presentation")]
     color_index: Option<usize>,
     block_type: String,
     label: Option<String>,
@@ -273,12 +344,13 @@ impl Block {
 #[derive(Debug, Default)]
 struct BlockDb {
     root_id: String,
+    #[cfg(feature = "presentation")]
     next_color_index: usize,
     block_ids: HashMap<String, usize>,
     blocks: Vec<Block>,
     edges: Vec<Block>,
     edge_count: HashMap<String, i64>,
-    classes: IndexMap<String, BlockClassDefRenderModel>,
+    classes: IndexMap<String, BlockClassDef>,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -317,14 +389,14 @@ impl BlockDb {
     }
 
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
-        let entry =
-            self.classes
-                .entry(id.to_string())
-                .or_insert_with(|| BlockClassDefRenderModel {
-                    id: id.to_string(),
-                    styles: Vec::new(),
-                    text_styles: Vec::new(),
-                });
+        let entry = self
+            .classes
+            .entry(id.to_string())
+            .or_insert_with(|| BlockClassDef {
+                id: id.to_string(),
+                styles: Vec::new(),
+                text_styles: Vec::new(),
+            });
 
         for raw in style_attributes.split(',') {
             let fixed = raw.split(';').next().unwrap_or("").trim().to_string();
@@ -375,6 +447,7 @@ impl BlockDb {
         &mut self,
         document: BlockDocument,
         config: &MermaidConfig,
+        _presentation_requested: bool,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         let mut records = document.records.into_iter().map(Some).collect::<Vec<_>>();
@@ -473,7 +546,8 @@ impl BlockDb {
                 }
                 index
             } else {
-                if block.block_type == "composite" {
+                #[cfg(feature = "presentation")]
+                if _presentation_requested && block.block_type == "composite" {
                     block.color_index = Some(self.next_color_index);
                     self.next_color_index += 1;
                 }
@@ -534,13 +608,19 @@ impl PopulateFrame {
     }
 }
 
-fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Vec<Value>) -> Value {
+#[cfg(feature = "compat-json")]
+fn block_render_node_to_value_shallow(
+    block: &BlockNode,
+    color_index: Option<usize>,
+    compatibility: BlockNodeCompatibility,
+    children: Vec<Value>,
+) -> Value {
     let mut obj = Map::new();
     obj.insert("id".to_string(), json!(&block.id));
     obj.insert("type".to_string(), json!(&block.block_type));
     obj.insert("label".to_string(), json!(&block.label));
     obj.insert("children".to_string(), Value::Array(children));
-    if let Some(index) = block.color_index {
+    if let Some(index) = color_index {
         obj.insert("colorIndex".to_string(), json!(index));
     }
 
@@ -553,19 +633,20 @@ fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Ve
     if let Some(v) = block.width_in_columns {
         obj.insert("widthInColumns".to_string(), json!(v));
     }
-    if block.compatibility.directions.is_present() {
+    if compatibility.directions.is_present() {
         obj.insert("directions".to_string(), json!(&block.directions));
     }
     if !block.classes.is_empty() {
         obj.insert("classes".to_string(), json!(&block.classes));
     }
-    if block.compatibility.styles.is_present() {
+    if compatibility.styles.is_present() {
         obj.insert("styles".to_string(), json!(&block.styles));
     }
 
     Value::Object(obj)
 }
 
+#[cfg(feature = "compat-json")]
 fn block_render_node_to_value_controlled(
     model: &BlockDiagramRenderModel,
     index: usize,
@@ -609,7 +690,19 @@ fn block_render_node_to_value_controlled(
             .into_iter()
             .map(ManagedSemanticJson::into_unmanaged_value)
             .collect();
-        let value = block_render_node_to_value_shallow(block, children);
+        let color_index = model
+            .visuals
+            .color_indices
+            .get(frame.index)
+            .copied()
+            .flatten();
+        let compatibility = model
+            .compatibility
+            .nodes
+            .get(frame.index)
+            .copied()
+            .unwrap_or_default();
+        let value = block_render_node_to_value_shallow(block, color_index, compatibility, children);
         let value = ManagedSemanticJson::from(value);
         if let Some(parent) = stack.last_mut() {
             parent.children.push(value);
@@ -619,7 +712,8 @@ fn block_render_node_to_value_controlled(
     }
 }
 
-fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
+#[cfg(feature = "compat-json")]
+fn block_render_edge_to_value(edge: &BlockEdge, directions: Option<&[String]>) -> Value {
     let mut obj = Map::new();
     obj.insert("id".to_string(), json!(&edge.id));
     obj.insert("type".to_string(), json!("edge"));
@@ -633,13 +727,14 @@ fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
     if let Some(value) = &edge.arrow_type_start {
         obj.insert("arrowTypeStart".to_string(), json!(value));
     }
-    if let Some(directions) = &edge.compat_directions {
+    if let Some(directions) = directions {
         obj.insert("directions".to_string(), json!(directions));
     }
     Value::Object(obj)
 }
 
-fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDefRenderModel>) -> Value {
+#[cfg(feature = "compat-json")]
+fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDef>) -> Value {
     let mut obj = Map::new();
     for (k, v) in classes {
         obj.insert(
@@ -654,14 +749,9 @@ fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDefRenderM
     Value::Object(obj)
 }
 
-fn block_to_render_node(b: Block) -> BlockNodeRenderModel {
-    let compatibility = BlockNodeCompatibility {
-        styles: CompatibilityFieldPresence::from_option(&b.styles),
-        directions: CompatibilityFieldPresence::from_option(&b.directions),
-    };
-    BlockNodeRenderModel {
+fn block_to_semantic_node(b: Block) -> BlockNode {
+    BlockNode {
         id: b.id,
-        color_index: b.color_index,
         label: b.label.unwrap_or_default(),
         block_type: b.block_type,
         children: b.children,
@@ -671,64 +761,117 @@ fn block_to_render_node(b: Block) -> BlockNodeRenderModel {
         classes: b.classes,
         styles: b.styles.unwrap_or_default(),
         directions: b.directions.unwrap_or_default(),
-        compatibility,
     }
 }
 
-fn block_to_render_edge(b: Block) -> BlockEdgeRenderModel {
-    BlockEdgeRenderModel {
+fn block_to_semantic_edge(b: Block) -> BlockEdge {
+    BlockEdge {
         id: b.id,
         start: b.start.unwrap_or_default(),
         end: b.end.unwrap_or_default(),
         arrow_type_end: b.arrow_type_end,
         arrow_type_start: b.arrow_type_start,
         label: b.label.unwrap_or_default(),
-        compat_directions: b.directions,
     }
 }
 
-fn block_db_to_render_model(
+struct BlockModelOutput {
+    semantic: BlockDiagramModel,
+    #[cfg(feature = "presentation")]
+    visuals: BlockVisuals,
+    #[cfg(feature = "compat-json")]
+    compatibility: BlockCompatibility,
+}
+
+fn block_db_to_model(
     db: BlockDb,
+    _presentation_requested: bool,
     control: &OperationControl,
-) -> OperationControlResult<BlockDiagramRenderModel> {
+) -> OperationControlResult<BlockModelOutput> {
+    let root = db.block_ids.get(&db.root_id).copied();
     let mut blocks_flat = Vec::with_capacity(db.blocks.len());
+    #[cfg(feature = "presentation")]
+    let mut visuals = BlockVisuals::default();
+    #[cfg(feature = "compat-json")]
+    let mut compatibility = BlockCompatibility::default();
     for (index, block) in db.blocks.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        blocks_flat.push(block_to_render_node(block));
+        #[cfg(feature = "presentation")]
+        if _presentation_requested {
+            visuals.color_indices.push(block.color_index);
+        }
+        #[cfg(feature = "compat-json")]
+        if _presentation_requested {
+            compatibility.nodes.push(BlockNodeCompatibility {
+                styles: CompatibilityFieldPresence::from_option(&block.styles),
+                directions: CompatibilityFieldPresence::from_option(&block.directions),
+            });
+        }
+        blocks_flat.push(block_to_semantic_node(block));
     }
     let mut edges = Vec::with_capacity(db.edges.len());
     for (index, edge) in db.edges.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        edges.push(block_to_render_edge(edge));
+        #[cfg(feature = "compat-json")]
+        let mut edge = edge;
+        #[cfg(feature = "compat-json")]
+        if _presentation_requested {
+            compatibility.edge_directions.push(edge.directions.take());
+        }
+        edges.push(block_to_semantic_edge(edge));
     }
     control.checkpoint()?;
+    Ok(BlockModelOutput {
+        semantic: BlockDiagramModel {
+            blocks_flat,
+            edges,
+            warning_facts: db.warning_facts,
+            class_defs: db.classes,
+            root,
+        },
+        #[cfg(feature = "presentation")]
+        visuals,
+        #[cfg(feature = "compat-json")]
+        compatibility,
+    })
+}
+
+#[cfg(feature = "presentation")]
+fn block_db_to_render_model(
+    db: BlockDb,
+    control: &OperationControl,
+) -> OperationControlResult<BlockDiagramRenderModel> {
+    let output = block_db_to_model(db, true, control)?;
     Ok(BlockDiagramRenderModel {
-        blocks_flat,
-        edges,
-        warning_facts: db.warning_facts,
-        class_defs: db.classes,
-        compat_root_id: db.root_id,
+        semantic: output.semantic,
+        visuals: output.visuals,
+        #[cfg(feature = "compat-json")]
+        compatibility: output.compatibility,
     })
 }
 
 struct BlockSemanticSource {
     db: BlockDb,
-    editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<EditorSemanticFacts>,
 }
 
 struct BlockParseFailure {
     error: Box<Error>,
-    editor_facts: Box<EditorSemanticFacts>,
+    #[cfg(feature = "editor-facts")]
+    editor_facts: Option<Box<EditorSemanticFacts>>,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
 impl BlockParseFailure {
+    #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
-        let mut facts = *self.editor_facts;
+        let mut facts = self.editor_facts.map(|facts| *facts).unwrap_or_default();
         facts.mark_recovered_from_parse_error(
             format!("block parser recovered after parse error: {}", self.error),
             Some(self.span),
@@ -739,40 +882,55 @@ impl BlockParseFailure {
 
 fn construct_block_semantic_source(
     code: &str,
-    meta: &ParseMetadata,
+    config: &MermaidConfig,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    presentation_requested: bool,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<BlockSemanticSource, BlockParseFailure>> {
     #[cfg(test)]
     BLOCK_SYNTAX_CONSTRUCTION_COUNT.set(BLOCK_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     control.checkpoint()?;
-    let mut parser = Parser::new(code, control);
+    let mut parser = Parser::new(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        presentation_requested,
+        control,
+    );
     if let Err(error) = parser.parse_header() {
-        let (error, span) = block_error_with_fallback_span(error, parser.current_token_span());
+        let (error, _span) = block_error_with_fallback_span(error, parser.current_token_span());
         return Ok(Err(BlockParseFailure {
             error: Box::new(error),
-            editor_facts: Box::new(parser.into_editor_facts()),
-            span,
+            #[cfg(feature = "editor-facts")]
+            editor_facts: parser.into_editor_facts().map(Box::new),
+            #[cfg(feature = "editor-facts")]
+            span: _span,
         }));
     }
 
     let document = match parser.parse_document(false)? {
         Ok(document) => document,
         Err(error) => {
-            let (error, span) = block_error_with_fallback_span(error, parser.current_token_span());
+            let (error, _span) = block_error_with_fallback_span(error, parser.current_token_span());
             return Ok(Err(BlockParseFailure {
                 error: Box::new(error),
-                editor_facts: Box::new(parser.into_editor_facts()),
-                span,
+                #[cfg(feature = "editor-facts")]
+                editor_facts: parser.into_editor_facts().map(Box::new),
+                #[cfg(feature = "editor-facts")]
+                span: _span,
             }));
         }
     };
+    #[cfg(feature = "editor-facts")]
     let editor_facts = parser.into_editor_facts();
 
     if let Some(failure) = document.failure {
         return Ok(Err(BlockParseFailure {
             error: Box::new(failure.error),
-            editor_facts: Box::new(editor_facts),
+            #[cfg(feature = "editor-facts")]
+            editor_facts: editor_facts.map(Box::new),
+            #[cfg(feature = "editor-facts")]
             span: failure.span,
         }));
     }
@@ -780,38 +938,101 @@ fn construct_block_semantic_source(
     control.checkpoint()?;
     let mut db = BlockDb::default();
     db.clear();
-    db.set_hierarchy(document, &meta.effective_config, control)?;
+    db.set_hierarchy(document, config, presentation_requested, control)?;
 
     control.checkpoint()?;
-    Ok(Ok(BlockSemanticSource { db, editor_facts }))
+    Ok(Ok(BlockSemanticSource {
+        db,
+        #[cfg(feature = "editor-facts")]
+        editor_facts,
+    }))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_block_model_for_render(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<BlockDiagramRenderModel> {
-    let source = construct_block_semantic_source(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| *failure.error)?;
+    let source = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        true,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| *failure.error)?;
     Ok(
         block_db_to_render_model(source.db, &OperationControl::new())
             .expect("a private conversion control cannot be cancelled"),
     )
 }
 
+#[cfg(feature = "presentation")]
 pub(crate) fn parse_block_model_for_render_controlled(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<BlockDiagramRenderModel>> {
-    let construction = construct_block_semantic_source(code, meta, control)?;
+    let construction = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        true,
+        control,
+    )?;
     let source = match construction {
         Ok(source) => source,
         Err(failure) => return Ok(Err(*failure.error)),
     };
     control.checkpoint()?;
     Ok(Ok(block_db_to_render_model(source.db, control)?))
+}
+
+pub(crate) fn parse_block_semantic_model_controlled(
+    code: &str,
+    meta: &crate::SemanticMetadata,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::SemanticConstruction<BlockDiagramModel>> {
+    let construction = construct_block_semantic_source(
+        code,
+        &meta.semantic_config,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        false,
+        control,
+    )?;
+    let construction = match construction {
+        Ok(source) => {
+            let output = block_db_to_model(source.db, false, control)?;
+            crate::family::SemanticConstruction {
+                model: Ok(output.semantic),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: source.editor_facts,
+            }
+        }
+        Err(failure) => {
+            #[cfg(feature = "editor-facts")]
+            if editor_demand.needs_recovery() {
+                let (error, facts) = failure.into_error_and_editor_facts();
+                control.checkpoint()?;
+                return Ok(crate::family::SemanticConstruction {
+                    model: Err(error),
+                    editor_facts: Some(facts),
+                });
+            }
+            crate::family::SemanticConstruction {
+                model: Err(*failure.error),
+                #[cfg(feature = "editor-facts")]
+                editor_facts: None,
+            }
+        }
+    };
+    control.checkpoint()?;
+    Ok(construction)
 }
 
 fn type_str_to_type(type_str: &str) -> String {
@@ -946,10 +1167,13 @@ struct BlockSpannedText {
 #[derive(Debug)]
 struct ParsedBlockNode {
     block: Block,
+    #[cfg(feature = "editor-facts")]
     id: BlockSpannedText,
+    #[cfg(feature = "editor-facts")]
     definition_emitted: bool,
 }
 
+#[cfg(feature = "editor-facts")]
 #[derive(Debug, Clone, Copy)]
 enum BlockNodeOccurrence {
     Definition,
@@ -970,6 +1194,7 @@ fn validate_block_space_width(width: i64, span: SourceSpan) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_block_entity(
     facts: &mut EditorSemanticFacts,
     text: BlockSpannedText,
@@ -992,6 +1217,7 @@ fn push_block_entity(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_block_reference(
     facts: &mut EditorSemanticFacts,
     text: BlockSpannedText,
@@ -1014,6 +1240,7 @@ fn push_block_reference(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_block_class_definition(
     facts: &mut EditorSemanticFacts,
     text: BlockSpannedText,
@@ -1036,6 +1263,7 @@ fn push_block_class_definition(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_block_payload(
     facts: &mut EditorSemanticFacts,
     text: BlockSpannedText,
@@ -1045,6 +1273,7 @@ fn push_block_payload(
     push_block_payload_as(facts, text, detail, kind, EditorExpectedSyntaxKind::Payload);
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_block_payload_as(
     facts: &mut EditorSemanticFacts,
     text: BlockSpannedText,
@@ -1065,6 +1294,7 @@ fn push_block_payload_as(
     ));
 }
 
+#[cfg(feature = "editor-facts")]
 fn push_block_id_list(
     facts: &mut EditorSemanticFacts,
     ids: BlockSpannedText,
@@ -1110,17 +1340,29 @@ fn push_block_id_list(
     }
 }
 
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_block_json_and_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
-    let construction = construct_block_semantic_source(code, meta, control)?;
+    let construction = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Capture,
+        true,
+        control,
+    )?;
     let construction = match construction {
         Ok(source) => {
             let model = block_db_to_render_model(source.db, control)?;
             let compatibility = render_model_to_compat_json_controlled(&model, meta, control)?;
-            Ok((compatibility, source.editor_facts, model.warning_facts))
+            Ok((
+                compatibility,
+                source.editor_facts.unwrap_or_default(),
+                model.semantic.warning_facts,
+            ))
         }
         Err(failure) => Err(failure),
     };
@@ -1285,6 +1527,7 @@ fn push_document_child(frames: &mut [DocumentFrame], index: usize) -> Result<()>
 
 struct BlockStatementFailure {
     error: Error,
+    #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
 
@@ -1323,25 +1566,45 @@ struct Parser<'input, 'control> {
     pos: usize,
     gen_counter: i64,
     records: Vec<Block>,
+    #[cfg(feature = "editor-facts")]
     declared_entities: HashSet<String>,
+    #[cfg(feature = "editor-facts")]
     editor_facts: EditorSemanticFacts,
+    #[cfg(feature = "editor-facts")]
+    editor_demand: EditorFactsDemand,
+    #[cfg(feature = "compat-json")]
+    compatibility_requested: bool,
 }
 
 impl<'input, 'control> Parser<'input, 'control> {
-    fn new(input: &'input str, control: &'control OperationControl) -> Self {
+    fn new(
+        input: &'input str,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+        _compatibility_requested: bool,
+        control: &'control OperationControl,
+    ) -> Self {
         Self {
             input,
             control,
             pos: 0,
             gen_counter: 0,
             records: Vec::new(),
+            #[cfg(feature = "editor-facts")]
             declared_entities: HashSet::new(),
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
+            #[cfg(feature = "compat-json")]
+            compatibility_requested: _compatibility_requested,
+            #[cfg(feature = "editor-facts")]
             editor_facts: EditorSemanticFacts::new(),
         }
     }
 
-    fn into_editor_facts(self) -> EditorSemanticFacts {
-        self.editor_facts
+    #[cfg(feature = "editor-facts")]
+    fn into_editor_facts(self) -> Option<EditorSemanticFacts> {
+        self.editor_demand
+            .needs_recovery()
+            .then_some(self.editor_facts)
     }
 
     fn is_eof(&self) -> bool {
@@ -1549,9 +1812,13 @@ impl<'input, 'control> Parser<'input, 'control> {
                 Ok(false) => continue,
                 Err(error) => {
                     let fallback = self.statement_span(statement_start);
-                    let (error, span) = block_error_with_fallback_span(error, fallback);
+                    let (error, _span) = block_error_with_fallback_span(error, fallback);
                     if first_failure.is_none() {
-                        first_failure = Some(BlockStatementFailure { error, span });
+                        first_failure = Some(BlockStatementFailure {
+                            error,
+                            #[cfg(feature = "editor-facts")]
+                            span: _span,
+                        });
                     }
                     self.recover_to_next_statement(statement_start);
                 }
@@ -1559,6 +1826,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
 
         if frames.len() > 1 && first_failure.is_none() {
+            #[cfg(feature = "editor-facts")]
             let span = SourceSpan::new(self.input.len(), self.input.len());
             first_failure = Some(BlockStatementFailure {
                 error: Error::diagram_parse_insertion_point(
@@ -1566,6 +1834,7 @@ impl<'input, 'control> Parser<'input, 'control> {
                     "expected end for nested block",
                     self.input.len(),
                 ),
+                #[cfg(feature = "editor-facts")]
                 span,
             });
         }
@@ -1605,8 +1874,12 @@ impl<'input, 'control> Parser<'input, 'control> {
 
         if self.peek_keyword("block:") {
             self.consume_keyword("block:");
-            let mut stm =
-                self.parse_node_statement("block composite", EditorSemanticKind::Namespace)?;
+            let mut stm = self.parse_node_statement(
+                #[cfg(feature = "editor-facts")]
+                "block composite",
+                #[cfg(feature = "editor-facts")]
+                EditorSemanticKind::Namespace,
+            )?;
             let header = stm
                 .drain(..)
                 .find(|b| b.block_type != "edge")
@@ -1657,7 +1930,12 @@ impl<'input, 'control> Parser<'input, 'control> {
             return Ok(false);
         }
 
-        let blocks = self.parse_node_statement("block node", EditorSemanticKind::Object)?;
+        let blocks = self.parse_node_statement(
+            #[cfg(feature = "editor-facts")]
+            "block node",
+            #[cfg(feature = "editor-facts")]
+            EditorSemanticKind::Object,
+        )?;
         for block in blocks {
             let index = self.insert_record(block);
             push_document_child(frames, index)?;
@@ -1692,13 +1970,16 @@ impl<'input, 'control> Parser<'input, 'control> {
         let value = if self.consume_keyword("auto") {
             -1
         } else {
-            let (value, value_fact) = self.parse_int()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                value_fact,
-                "block columns",
-                EditorSemanticKind::Property,
-            );
+            let (value, _value_fact) = self.parse_int()?;
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    _value_fact,
+                    "block columns",
+                    EditorSemanticKind::Property,
+                );
+            }
             value
         };
 
@@ -1724,12 +2005,15 @@ impl<'input, 'control> Parser<'input, 'control> {
         if self.consume_exact(":") {
             let (value, value_fact) = self.parse_int()?;
             validate_block_space_width(value, value_fact.span)?;
-            push_block_payload(
-                &mut self.editor_facts,
-                value_fact,
-                "block space width",
-                EditorSemanticKind::Property,
-            );
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    value_fact,
+                    "block space width",
+                    EditorSemanticKind::Property,
+                );
+            }
             width = value;
         }
         let mut b = Block::new(self.generate_id());
@@ -1741,6 +2025,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_classdef_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
+        #[cfg(feature = "editor-facts")]
         let directive_start = self.pos;
         if !self.consume_keyword("classDef") {
             return Err(Error::diagram_parse_fallback(
@@ -1748,35 +2033,48 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected classDef".to_string(),
             ));
         }
-        self.editor_facts.push_directive_prefix("classDef");
-        let line_end = self.statement_line_end(directive_start);
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Directive,
-                SourceSpan::new(directive_start, line_end),
-            ));
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts.push_directive_prefix("classDef");
+            let line_end = self.statement_line_end(directive_start);
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Directive,
+                    SourceSpan::new(directive_start, line_end),
+                ));
+        }
         let id = self.parse_classdef_id()?;
+        #[cfg(feature = "editor-facts")]
         let rest_start = self.pos;
         let css = self.take_rest_of_line_trimmed();
-        push_block_class_definition(
-            &mut self.editor_facts,
-            id.clone(),
-            "block class definition",
-            EditorSemanticKind::Class,
-        );
-        if let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos) {
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_class_definition(
+                &mut self.editor_facts,
+                id.clone(),
+                "block class definition",
+                EditorSemanticKind::Class,
+            );
+        }
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture
+            && let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos)
+        {
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::StyleValue,
                     span,
                 ));
         }
-        push_block_payload(
-            &mut self.editor_facts,
-            css.clone(),
-            "block class style",
-            EditorSemanticKind::String,
-        );
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_payload(
+                &mut self.editor_facts,
+                css.clone(),
+                "block class style",
+                EditorSemanticKind::String,
+            );
+        }
         let mut b = Block::new(id.text);
         b.block_type = "classDef".to_string();
         b.css = Some(css.text);
@@ -1785,6 +2083,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_apply_class_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
+        #[cfg(feature = "editor-facts")]
         let directive_start = self.pos;
         if !self.consume_keyword("class") {
             return Err(Error::diagram_parse_fallback(
@@ -1792,29 +2091,44 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected class".to_string(),
             ));
         }
-        self.editor_facts.push_directive_prefix("class");
-        let line_end = self.statement_line_end(directive_start);
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Directive,
-                SourceSpan::new(directive_start, line_end),
-            ));
-        let ids = self.parse_identifier_list().inspect_err(|_| {
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts.push_directive_prefix("class");
+            let line_end = self.statement_line_end(directive_start);
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::IdList,
-                    SourceSpan::new(line_end, line_end),
+                    EditorExpectedSyntaxKind::Directive,
+                    SourceSpan::new(directive_start, line_end),
                 ));
-        })?;
+        }
+        let ids = self.parse_identifier_list();
+        #[cfg(feature = "editor-facts")]
+        let ids = ids.inspect_err(|_| {
+            if self.editor_demand == EditorFactsDemand::Capture {
+                let line_end = self.statement_line_end(directive_start);
+                self.editor_facts
+                    .push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::IdList,
+                        SourceSpan::new(line_end, line_end),
+                    ));
+            }
+        });
+        let ids = ids?;
+        #[cfg(feature = "editor-facts")]
         let rest_start = self.pos;
         let style_class = self.take_rest_of_line_trimmed();
-        push_block_id_list(
-            &mut self.editor_facts,
-            ids.clone(),
-            "block class target",
-            EditorSemanticKind::Object,
-        );
-        if style_class.text.is_empty()
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_id_list(
+                &mut self.editor_facts,
+                ids.clone(),
+                "block class target",
+                EditorSemanticKind::Object,
+            );
+        }
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture
+            && style_class.text.is_empty()
             && let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos)
         {
             self.editor_facts
@@ -1823,13 +2137,16 @@ impl<'input, 'control> Parser<'input, 'control> {
                     span,
                 ));
         }
-        push_block_payload_as(
-            &mut self.editor_facts,
-            style_class.clone(),
-            "block class name",
-            EditorSemanticKind::Class,
-            EditorExpectedSyntaxKind::ClassName,
-        );
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_payload_as(
+                &mut self.editor_facts,
+                style_class.clone(),
+                "block class name",
+                EditorSemanticKind::Class,
+                EditorExpectedSyntaxKind::ClassName,
+            );
+        }
         let mut b = Block::new(ids.text);
         b.block_type = "applyClass".to_string();
         b.style_class = Some(style_class.text);
@@ -1838,6 +2155,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_style_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
+        #[cfg(feature = "editor-facts")]
         let directive_start = self.pos;
         if !self.consume_keyword("style") {
             return Err(Error::diagram_parse_fallback(
@@ -1845,41 +2163,60 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected style".to_string(),
             ));
         }
-        self.editor_facts.push_directive_prefix("style");
-        let line_end = self.statement_line_end(directive_start);
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Directive,
-                SourceSpan::new(directive_start, line_end),
-            ));
-        let ids = self.parse_identifier_list().inspect_err(|_| {
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts.push_directive_prefix("style");
+            let line_end = self.statement_line_end(directive_start);
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::IdList,
-                    SourceSpan::new(line_end, line_end),
+                    EditorExpectedSyntaxKind::Directive,
+                    SourceSpan::new(directive_start, line_end),
                 ));
-        })?;
+        }
+        let ids = self.parse_identifier_list();
+        #[cfg(feature = "editor-facts")]
+        let ids = ids.inspect_err(|_| {
+            if self.editor_demand == EditorFactsDemand::Capture {
+                let line_end = self.statement_line_end(directive_start);
+                self.editor_facts
+                    .push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::IdList,
+                        SourceSpan::new(line_end, line_end),
+                    ));
+            }
+        });
+        let ids = ids?;
+        #[cfg(feature = "editor-facts")]
         let rest_start = self.pos;
         let styles_str = self.take_rest_of_line_trimmed();
-        push_block_id_list(
-            &mut self.editor_facts,
-            ids.clone(),
-            "block style target",
-            EditorSemanticKind::Object,
-        );
-        if let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos) {
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_id_list(
+                &mut self.editor_facts,
+                ids.clone(),
+                "block style target",
+                EditorSemanticKind::Object,
+            );
+        }
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture
+            && let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos)
+        {
             self.editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::StyleValue,
                     span,
                 ));
         }
-        push_block_payload(
-            &mut self.editor_facts,
-            styles_str.clone(),
-            "block style",
-            EditorSemanticKind::String,
-        );
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            push_block_payload(
+                &mut self.editor_facts,
+                styles_str.clone(),
+                "block style",
+                EditorSemanticKind::String,
+            );
+        }
         let mut b = Block::new(ids.text);
         b.block_type = "applyStyles".to_string();
         b.styles_str = Some(styles_str.text);
@@ -1905,10 +2242,15 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_node_statement(
         &mut self,
-        detail: &str,
-        kind: EditorSemanticKind,
+        #[cfg(feature = "editor-facts")] detail: &str,
+        #[cfg(feature = "editor-facts")] kind: EditorSemanticKind,
     ) -> Result<Vec<Block>> {
-        let mut left = self.parse_node(detail, kind)?;
+        let mut left = self.parse_node(
+            #[cfg(feature = "editor-facts")]
+            detail,
+            #[cfg(feature = "editor-facts")]
+            kind,
+        )?;
         if self.consume_keyword_same_line("space") {
             let mut width = 1;
             self.skip_inline_whitespace();
@@ -1934,15 +2276,18 @@ impl<'input, 'control> Parser<'input, 'control> {
                     )
                 })?;
                 validate_block_space_width(width, SourceSpan::new(start, self.pos))?;
-                push_block_payload(
-                    &mut self.editor_facts,
-                    BlockSpannedText {
-                        text,
-                        span: SourceSpan::new(start, self.pos),
-                    },
-                    "block space width",
-                    EditorSemanticKind::Property,
-                );
+                #[cfg(feature = "editor-facts")]
+                if self.editor_demand == EditorFactsDemand::Capture {
+                    push_block_payload(
+                        &mut self.editor_facts,
+                        BlockSpannedText {
+                            text,
+                            span: SourceSpan::new(start, self.pos),
+                        },
+                        "block space width",
+                        EditorSemanticKind::Property,
+                    );
+                }
             }
             let mut space = Block::new(self.generate_id());
             space.block_type = "space".to_string();
@@ -1952,7 +2297,9 @@ impl<'input, 'control> Parser<'input, 'control> {
             left.block.width_in_columns.get_or_insert(1);
             self.skip_inline_whitespace();
             if self.starts_with("%%") || matches!(self.peek_char(), None | Some('\n' | '\r')) {
+                #[cfg(feature = "editor-facts")]
                 if !left.definition_emitted {
+                    #[cfg(feature = "editor-facts")]
                     self.push_block_node_occurrence(
                         &left.id,
                         detail,
@@ -1963,7 +2310,9 @@ impl<'input, 'control> Parser<'input, 'control> {
                 return Ok(vec![left.block, space]);
             }
 
+            #[cfg(feature = "editor-facts")]
             if !left.definition_emitted {
+                #[cfg(feature = "editor-facts")]
                 self.push_block_node_occurrence(
                     &left.id,
                     detail,
@@ -1971,9 +2320,16 @@ impl<'input, 'control> Parser<'input, 'control> {
                     BlockNodeOccurrence::Definition,
                 );
             }
-            let mut right = self.parse_node("block node", EditorSemanticKind::Object)?;
+            let mut right = self.parse_node(
+                #[cfg(feature = "editor-facts")]
+                "block node",
+                #[cfg(feature = "editor-facts")]
+                EditorSemanticKind::Object,
+            )?;
             right.block.width_in_columns.get_or_insert(1);
+            #[cfg(feature = "editor-facts")]
             if !right.definition_emitted {
+                #[cfg(feature = "editor-facts")]
                 self.push_block_node_occurrence(
                     &right.id,
                     "block node",
@@ -1988,7 +2344,9 @@ impl<'input, 'control> Parser<'input, 'control> {
         let link = match self.parse_link() {
             Ok(link) => link,
             Err(error) => {
+                #[cfg(feature = "editor-facts")]
                 if !left.definition_emitted {
+                    #[cfg(feature = "editor-facts")]
                     self.push_block_node_occurrence(
                         &left.id,
                         detail,
@@ -2000,7 +2358,9 @@ impl<'input, 'control> Parser<'input, 'control> {
             }
         };
         if let Some((label, edge_marker)) = link {
+            #[cfg(feature = "editor-facts")]
             if !left.definition_emitted {
+                #[cfg(feature = "editor-facts")]
                 self.push_block_node_occurrence(
                     &left.id,
                     detail,
@@ -2008,7 +2368,10 @@ impl<'input, 'control> Parser<'input, 'control> {
                     BlockNodeOccurrence::RelationEndpoint,
                 );
             }
-            if let Some(label) = label.as_ref() {
+            #[cfg(feature = "editor-facts")]
+            if let Some(label) = label.as_ref()
+                && self.editor_demand == EditorFactsDemand::Capture
+            {
                 push_block_payload(
                     &mut self.editor_facts,
                     label.clone(),
@@ -2016,7 +2379,12 @@ impl<'input, 'control> Parser<'input, 'control> {
                     EditorSemanticKind::String,
                 );
             }
-            let mut right = self.parse_node("block edge endpoint", EditorSemanticKind::Object)?;
+            let mut right = self.parse_node(
+                #[cfg(feature = "editor-facts")]
+                "block edge endpoint",
+                #[cfg(feature = "editor-facts")]
+                EditorSemanticKind::Object,
+            )?;
             let arrow_type_end = edge_str_to_edge_data(&edge_marker);
             let edge_id = format!("{}-{}", left.block.id, right.block.id);
             let edge = Block {
@@ -2028,11 +2396,17 @@ impl<'input, 'control> Parser<'input, 'control> {
                 end: Some(right.block.id.clone()),
                 arrow_type_end: Some(arrow_type_end),
                 arrow_type_start: Some("arrow_open".to_string()),
-                directions: right.block.directions.clone(),
+                #[cfg(feature = "compat-json")]
+                directions: self
+                    .compatibility_requested
+                    .then(|| right.block.directions.clone())
+                    .flatten(),
                 ..Default::default()
             };
 
+            #[cfg(feature = "editor-facts")]
             if !right.definition_emitted {
+                #[cfg(feature = "editor-facts")]
                 self.push_block_node_occurrence(
                     &right.id,
                     "block edge endpoint",
@@ -2047,19 +2421,24 @@ impl<'input, 'control> Parser<'input, 'control> {
 
         self.skip_ws_and_comments();
         if self.consume_exact(":") {
-            let (w, width_fact) = self.parse_int()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                width_fact,
-                "block width",
-                EditorSemanticKind::Property,
-            );
+            let (w, _width_fact) = self.parse_int()?;
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    _width_fact,
+                    "block width",
+                    EditorSemanticKind::Property,
+                );
+            }
             left.block.width_in_columns = Some(w);
         } else {
             left.block.width_in_columns.get_or_insert(1);
         }
 
+        #[cfg(feature = "editor-facts")]
         if !left.definition_emitted {
+            #[cfg(feature = "editor-facts")]
             self.push_block_node_occurrence(
                 &left.id,
                 detail,
@@ -2163,7 +2542,11 @@ impl<'input, 'control> Parser<'input, 'control> {
         })
     }
 
-    fn parse_node(&mut self, detail: &str, kind: EditorSemanticKind) -> Result<ParsedBlockNode> {
+    fn parse_node(
+        &mut self,
+        #[cfg(feature = "editor-facts")] detail: &str,
+        #[cfg(feature = "editor-facts")] kind: EditorSemanticKind,
+    ) -> Result<ParsedBlockNode> {
         self.skip_ws_and_comments();
         let id = self.parse_node_id()?;
         let mut b = Block::new(id.text.clone());
@@ -2173,16 +2556,20 @@ impl<'input, 'control> Parser<'input, 'control> {
         self.skip_ws_and_comments();
 
         if self.starts_with("<[") {
+            #[cfg(feature = "editor-facts")]
             self.push_block_node_occurrence(&id, detail, kind, BlockNodeOccurrence::Definition);
             self.pos += 2;
             self.skip_ws_and_comments();
             let label = self.parse_string_literal()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                label.clone(),
-                "block arrow label",
-                EditorSemanticKind::String,
-            );
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    label.clone(),
+                    "block arrow label",
+                    EditorSemanticKind::String,
+                );
+            }
             self.skip_ws_and_comments();
             if !self.consume_exact("]>") {
                 return Err(Error::diagram_parse_fallback(
@@ -2211,23 +2598,29 @@ impl<'input, 'control> Parser<'input, 'control> {
             b.width_in_columns = Some(1);
             return Ok(ParsedBlockNode {
                 block: b,
+                #[cfg(feature = "editor-facts")]
                 id,
+                #[cfg(feature = "editor-facts")]
                 definition_emitted: true,
             });
         }
 
         if let Some(delims) = node_delims_at_start(&self.input[self.pos..]) {
+            #[cfg(feature = "editor-facts")]
             self.push_block_node_occurrence(&id, detail, kind, BlockNodeOccurrence::Definition);
             let start_delim = delims.start;
             self.pos += start_delim.len();
             self.skip_ws_and_comments();
             let label = self.parse_string_literal_or_md()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                label.clone(),
-                "block label",
-                EditorSemanticKind::String,
-            );
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    label.clone(),
+                    "block label",
+                    EditorSemanticKind::String,
+                );
+            }
             self.skip_ws_and_comments();
             let mut matched_end: Option<&'static str> = None;
             for end in delims.ends {
@@ -2258,18 +2651,23 @@ impl<'input, 'control> Parser<'input, 'control> {
             b.width_in_columns = Some(1);
             return Ok(ParsedBlockNode {
                 block: b,
+                #[cfg(feature = "editor-facts")]
                 id,
+                #[cfg(feature = "editor-facts")]
                 definition_emitted: true,
             });
         }
 
         Ok(ParsedBlockNode {
             block: b,
+            #[cfg(feature = "editor-facts")]
             id,
+            #[cfg(feature = "editor-facts")]
             definition_emitted: false,
         })
     }
 
+    #[cfg(feature = "editor-facts")]
     fn push_block_node_occurrence(
         &mut self,
         id: &BlockSpannedText,
@@ -2277,6 +2675,9 @@ impl<'input, 'control> Parser<'input, 'control> {
         kind: EditorSemanticKind,
         occurrence: BlockNodeOccurrence,
     ) {
+        if !self.editor_demand.captures_rich() {
+            return;
+        }
         let is_entity = match occurrence {
             BlockNodeOccurrence::Definition => {
                 self.declared_entities.insert(id.text.clone());
@@ -2296,12 +2697,15 @@ impl<'input, 'control> Parser<'input, 'control> {
         loop {
             self.skip_ws_and_comments();
             let direction = self.parse_direction()?;
-            push_block_payload(
-                &mut self.editor_facts,
-                direction.clone(),
-                "block arrow direction",
-                EditorSemanticKind::Property,
-            );
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    direction.clone(),
+                    "block arrow direction",
+                    EditorSemanticKind::Property,
+                );
+            }
             out.push(direction.text);
             self.skip_ws_and_comments();
             if self.consume_exact(",") {
@@ -2321,11 +2725,14 @@ impl<'input, 'control> Parser<'input, 'control> {
             }
             self.bump();
         }
-        self.editor_facts
-            .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::BlockDirectionValue,
-                SourceSpan::new(start, self.pos),
-            ));
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::BlockDirectionValue,
+                    SourceSpan::new(start, self.pos),
+                ));
+        }
         if self.pos == start {
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
@@ -2506,17 +2913,19 @@ impl<'input, 'control> Parser<'input, 'control> {
     }
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &BlockDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<Value> {
     render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
         .expect("a private projection control cannot be cancelled")
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &BlockDiagramRenderModel,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     if let Err(message) = model.record_metrics() {
@@ -2540,14 +2949,23 @@ pub(crate) fn render_model_to_compat_json_controlled(
     let edges = model
         .edges
         .iter()
-        .map(block_render_edge_to_value)
+        .enumerate()
+        .map(|(index, edge)| {
+            block_render_edge_to_value(
+                edge,
+                model
+                    .compatibility
+                    .edge_directions
+                    .get(index)
+                    .and_then(Option::as_deref),
+            )
+        })
         .collect::<Vec<_>>();
-    let config = ManagedSemanticJson::from(
-        crate::compatibility_json::clone_value_nonrecursive_with_control(
+    let config =
+        ManagedSemanticJson::from(crate::json_value::clone_value_nonrecursive_with_control(
             meta.effective_config.as_value(),
             control,
-        )?,
-    );
+        )?);
     control.checkpoint()?;
     // All deep values remain managed until this checkpoint-free final handoff.
     let mut out = Map::new();
@@ -2584,40 +3002,70 @@ pub(crate) fn render_model_to_compat_json_controlled(
     Ok(Ok(Value::Object(out)))
 }
 
-pub(crate) fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
+#[cfg(feature = "compat-json")]
+pub(crate) fn parse_block(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     parse_block_with_warning_facts(code, meta).map(crate::family::WarningSemanticParse::into_model)
 }
 
+#[cfg(feature = "compat-json")]
 pub(crate) fn parse_block_with_warning_facts(
     code: &str,
-    meta: &ParseMetadata,
+    meta: &PresentationMetadata,
 ) -> Result<crate::family::WarningSemanticParse> {
-    let source = construct_block_semantic_source(code, meta, &OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
-        .map_err(|failure| *failure.error)?;
+    let source = construct_block_semantic_source(
+        code,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        true,
+        &OperationControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")
+    .map_err(|failure| *failure.error)?;
     let model = block_db_to_render_model(source.db, &OperationControl::new())
         .expect("a private conversion control cannot be cancelled");
     let compatibility = render_model_to_compat_json(&model, meta)?;
     Ok(crate::family::WarningSemanticParse::new(
         compatibility,
-        model.warning_facts,
+        model.semantic.warning_facts,
     ))
 }
-#[cfg(test)]
+#[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;
-    use crate::{
-        EditorSemanticCompleteness, Engine, ParseDiagnosticSpanKind, ParseOptions,
-        RenderSemanticModel,
-    };
+    #[cfg(feature = "editor-facts")]
+    use crate::EditorSemanticCompleteness;
+    use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> crate::ManagedSemanticJson {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap()
             .model
+    }
+
+    #[test]
+    fn block_ordinary_projections_do_not_collect_editor_facts() {
+        let source = "block\nA\n";
+        reset_block_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        parse_block_model_for_render_controlled(source, &meta(), &crate::OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(block_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        reset_block_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let projected = crate::ManagedSemanticJson::from(parse_block(source, &meta()).unwrap());
+        assert!(projected.as_value().is_object());
+        assert_eq!(block_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
     }
 
     #[test]
@@ -2637,11 +3085,11 @@ mod tests {
         assert_eq!(model["blocks"][0]["children"][0]["colorIndex"], json!(1));
     }
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
+    fn meta() -> PresentationMetadata {
+        PresentationMetadata {
             diagram_type: "block".to_string(),
             config: MermaidConfig::default(),
-            effective_config: MermaidConfig::default(),
+            effective_config: crate::presentation::PresentationConfig::default(),
             title: None,
         }
     }
@@ -2665,6 +3113,7 @@ mod tests {
                     failure: None
                 },
                 &MermaidConfig::default(),
+                false,
                 &control
             ),
             Err(crate::OperationCancelled { .. })
@@ -2715,7 +3164,13 @@ mod tests {
         let input = deep_block_chain(DEPTH);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2 * (DEPTH + 3));
-        let mut parser = Parser::new(&input, &control);
+        let mut parser = Parser::new(
+            &input,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            false,
+            &control,
+        );
         parser.parse_header().unwrap();
         assert!(parser.parse_document(false).is_err());
         assert!(
@@ -2732,9 +3187,16 @@ mod tests {
     #[test]
     fn block_conversion_observes_control_after_partial_record_transfer() {
         let input = deep_block_chain(500);
-        let source = construct_block_semantic_source(&input, &meta(), &OperationControl::new())
-            .unwrap()
-            .unwrap_or_else(|failure| panic!("unexpected parse error: {}", failure.error));
+        let source = construct_block_semantic_source(
+            &input,
+            meta().effective_config.as_config(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            true,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_or_else(|failure| panic!("unexpected parse error: {}", failure.error));
         let control = OperationControl::new().for_phase(crate::OperationPhase::Semantic);
         control.cancel_after_checkpoints(1);
         let cancelled = block_db_to_render_model(source.db, &control).unwrap_err();
@@ -2859,7 +3321,7 @@ mod tests {
 
     #[test]
     fn block_render_model_uses_typed_variant_without_changing_json_parse() {
-        let engine = Engine::new();
+        let engine = MermaidEngine::new();
         let input = "block-beta\n  A[\"first\"] --> B[\"second\"]\n";
 
         let parsed = engine
@@ -2898,6 +3360,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn block_combined_parse_constructs_once_and_preserves_projections() {
         let text = r#"block-beta
 columns 2
@@ -3024,6 +3487,7 @@ C<["Route"]>(left,down)
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn block_editor_projection_uses_parser_token_spans() {
         let text = r#"block
 A["Alpha"] --"calls"--> B["Beta"]
@@ -3086,6 +3550,7 @@ C<["Route"]>(left,down)
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn block_style_targets_are_references_without_creating_definitions() {
         let text = "block\nstyle Future fill:#f00\nFuture[\"Defined later\"]\n";
         let facts = crate::family::test_support::editor_facts(
@@ -3105,6 +3570,7 @@ C<["Route"]>(left,down)
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn block_node_occurrences_only_define_the_first_implicit_block() {
         let text = "block\nA --> B\nA --> C\n";
         let facts = crate::family::test_support::editor_facts(
@@ -3154,6 +3620,7 @@ C<["Route"]>(left,down)
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn block_editor_projection_publishes_typed_directive_slots() {
         let text = "block\nA\nclassDef hot \nclass A hot\nstyle A \n";
         let facts = crate::family::test_support::editor_facts(
@@ -3188,6 +3655,7 @@ C<["Route"]>(left,down)
     }
 
     #[test]
+    #[cfg(feature = "editor-facts")]
     fn block_classdef_does_not_consume_the_next_physical_line() {
         for (name, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
             let text = ["block", "classDef", "A", ""].join(line_ending);
@@ -3226,30 +3694,36 @@ C<["Route"]>(left,down)
         };
         assert_eq!(diagnostic.span(), Some(invalid_span));
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_block_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "鍚庣画"));
-        assert_eq!(facts.diagnostics[0].span, Some(invalid_span));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_block_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "鍚庣画"));
+            assert_eq!(facts.diagnostics[0].span, Some(invalid_span));
+        }
     }
 
     #[test]
     fn block_recovery_keeps_an_incomplete_labeled_edge_prefix() {
         let text = "block\nA o-- \"label\"\nB[\"later\"]\n";
         parse_block(text, &meta()).expect_err("strict parsing must reject incomplete labeled edge");
-        let facts = crate::family::test_support::editor_facts(
-            parse_block_json_and_editor_facts,
-            text,
-            &meta(),
-        );
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_block_json_and_editor_facts,
+                text,
+                &meta(),
+            );
 
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "B"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "B"));
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+        }
     }
 
     #[test]
@@ -3265,24 +3739,27 @@ C<["Route"]>(left,down)
         assert_eq!(diagnostic.span(), Some(invalid_span));
         assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 
-        reset_block_syntax_construction_count();
-        let facts = crate::family::test_support::editor_facts(
-            parse_block_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(block_syntax_construction_count(), 1);
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.span == Some(invalid_span)
-                && diagnostic.message.contains("invalid direction")
-        }));
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "B" && symbol.detail.as_deref() == Some("block node")
-        }));
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "Later" && symbol.detail.as_deref() == Some("block label")
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            reset_block_syntax_construction_count();
+            let facts = crate::family::test_support::editor_facts(
+                parse_block_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(block_syntax_construction_count(), 1);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.span == Some(invalid_span)
+                    && diagnostic.message.contains("invalid direction")
+            }));
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "B" && symbol.detail.as_deref() == Some("block node")
+            }));
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "Later" && symbol.detail.as_deref() == Some("block label")
+            }));
+        }
     }
 
     #[test]
@@ -3300,23 +3777,26 @@ C<["Route"]>(left,down)
             ParseDiagnosticSpanKind::InsertionPoint
         );
 
-        let facts = crate::family::test_support::editor_facts(
-            parse_block_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert!(facts.diagnostics.iter().any(|diagnostic| {
-            diagnostic.span == Some(eof) && diagnostic.message.contains("expected end")
-        }));
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "group"
-                && symbol.detail.as_deref() == Some("block composite")
-                && symbol.kind == EditorSemanticKind::Namespace
-        }));
-        assert!(facts.symbols.iter().any(|symbol| {
-            symbol.name == "Inside" && symbol.detail.as_deref() == Some("block label")
-        }));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_block_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.span == Some(eof) && diagnostic.message.contains("expected end")
+            }));
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "group"
+                    && symbol.detail.as_deref() == Some("block composite")
+                    && symbol.kind == EditorSemanticKind::Namespace
+            }));
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "Inside" && symbol.detail.as_deref() == Some("block label")
+            }));
+        }
     }
 
     #[test]
@@ -3338,7 +3818,7 @@ C<["Route"]>(left,down)
             Some("leaf")
         );
 
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
             .unwrap();
@@ -3610,5 +4090,137 @@ C<["Route"]>(left,down)
                 format!("block\nA; classDef {prop} color:#ffffff,fill:#000000; class A {prop}");
             let _ = parse(&text);
         }
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    fn metadata() -> crate::SemanticMetadata {
+        crate::SemanticMetadata {
+            diagram_type: "block".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn block_semantics_preserve_records_and_warnings_without_editor_or_palette_work() {
+        reset_block_syntax_construction_count();
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let source = r#"block
+columns 1
+A["Alpha"]:2
+block:outer
+turn<["Turn"]>(right,down)
+end
+classDef hot fill:red
+class A hot
+A --> turn
+"#;
+        let metadata = metadata();
+        let construction = construct_block_semantic_source(
+            source,
+            &metadata.semantic_config,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            false,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_or_else(|failure| panic!("unexpected parse error: {}", failure.error));
+        let output = block_db_to_model(construction.db, false, &OperationControl::new()).unwrap();
+        #[cfg(feature = "presentation")]
+        assert!(output.visuals.color_indices.is_empty());
+        let model = output.semantic;
+        let root = model.root().unwrap();
+        assert_eq!(root.columns, Some(1));
+        let alpha = model
+            .blocks_flat
+            .iter()
+            .find(|node| node.id == "A")
+            .unwrap();
+        assert_eq!(alpha.label, "Alpha");
+        assert_eq!(alpha.width_in_columns, Some(2));
+        assert_eq!(alpha.classes, ["hot"]);
+        let turn = model
+            .blocks_flat
+            .iter()
+            .find(|node| node.id == "turn")
+            .unwrap();
+        assert_eq!(turn.directions, ["right", "down"]);
+        assert_eq!(model.edges.len(), 1);
+        assert_eq!(model.edges[0].start, "A");
+        assert_eq!(model.edges[0].end, "turn");
+        assert_eq!(model.warning_facts.len(), 1);
+        assert!(model.class_defs.contains_key("hot"));
+        assert_eq!(block_syntax_construction_count(), 1);
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let direct = parse_block_semantic_model_controlled(
+            source,
+            &metadata,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+        assert_eq!(direct.blocks_flat.len(), model.blocks_flat.len());
+    }
+
+    #[test]
+    fn block_semantics_preserve_width_admission_spans_and_cancellation() {
+        let width = MAX_BLOCK_SPACE_EXPANSION_ITEMS + 1;
+        let source = format!(
+            "block
+space:{width}
+"
+        );
+        #[cfg(feature = "editor-facts")]
+        crate::editor::test_work::reset();
+        let error = parse_block_semantic_model_controlled(
+            &source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("structured error");
+        };
+        let start = source.find(&width.to_string()).unwrap();
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + width.to_string().len()))
+        );
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+        #[cfg(feature = "editor-facts")]
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        assert!(
+            parse_block_semantic_model_controlled(
+                "block
+A
+B
+",
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
+        );
     }
 }

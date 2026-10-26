@@ -10,8 +10,57 @@ See the [release index](../release/README.md) for published-version migrations.
 Use `Renderer::prepare_source(PrepareSourceRequest::new(source, control))` to create a
 `PreparedSource`, then `Renderer::render_prepared(&prepared, target, fresh_control)` for each
 output. The [redraw example](../../crates/merman/examples/redraw_prepared.rs) contains the complete
-request wiring. `SemanticArtifact::into_prepared_source()` transfers an already parsed semantic
-artifact into the same reusable owner and releases its original operation control.
+request wiring. `PresentationArtifact::into_prepared_source()` transfers an already parsed full
+presentation artifact into the same reusable owner and releases its original operation control.
+
+Canonical semantic inspection now uses `Renderer::parse_semantic()` or
+`RenderRequest::semantic()`. Its `SemanticArtifact` has canonical metadata and a
+`SemanticDiagramModel`, but no compatibility JSON or promotion to graphical output. Semantic
+and ordinary ASCII requests do not evaluate visual theme programs. An admitted invalid visual
+color can therefore succeed there while full presentation retains its original theme error.
+
+Replace the old format-neutral `prepare_semantic()` API with `prepare_presentation()` wherever
+the caller needs later graphical output or a reusable full source. Use
+`RenderRequest::presentation()` / `RenderOutput::Presentation` for an explicit full artifact.
+Select `compat-json` when calling `PresentationArtifact::compatibility_json()`; it implies
+`presentation`. `svg` selects presentation, not the facade's compatibility-JSON API.
+
+Configure canonical requests with `Renderer::with_semantic_parser(SemanticParser::new()
+.with_site_config(config))`. Full custom detectors and adapters remain explicitly full-only
+through `with_presentation_engine(MermaidEngine::new()...)`; they do not silently replace the
+canonical parser. `with_runtime_policy()` sets both operation routes. The old `Engine` and
+`ParseMetadata` aliases are removed; their full counterparts are `MermaidEngine` and
+`PresentationMetadata`.
+
+Without an explicitly installed full engine, presentation defaults inherit the canonical
+parser's host configuration and runtime. Replacing that parser also replaces those inherited
+defaults, even after an earlier full operation. An explicitly installed full engine retains its
+own configuration and adapters; `with_runtime_policy()` deliberately updates both routes.
+
+The remaining Rust source migrations are:
+
+| Former use | Current use |
+| --- | --- |
+| Full site configuration as `MermaidConfig` | `presentation::PresentationConfig::from_config(config)` for `MermaidEngine`; semantic parsers still accept `MermaidConfig` |
+| `merman_core::geom` | `merman_render::geom`; geometry belongs to rendering |
+| `ErrorDiagramRenderModel` | Canonical `diagrams::error_diagram::ErrorDiagramModel`, shared by semantic and full parsing |
+| `SequenceDiagramRenderModel` | Canonical `diagrams::sequence::SequenceDiagramModel`, shared by semantic and full parsing |
+| Moving Journey, Timeline or Packet fields out of a full carrier | Move through the carrier's `semantic` field; borrowed field reads remain available |
+| ASCII entrypoints taking `RenderSemanticModel` | `render_parsed` / `render_parsed_report` on a `ParsedSemanticDiagram`, or the explicit borrowed `AsciiDiagram` and `AsciiSourceContext` entrypoints |
+| Custom full analyzer construction | Enable analysis `compat-json` and use `Analyzer::with_mermaid_engine`; ordinary analyzers remain canonical |
+
+`editor-facts` does not enable presentation. Default analysis/editor captures retain syntax,
+recovery, warnings and source-config evidence but no longer validate visual theme programs.
+Request full presentation when the host needs preview/theme validation. Core's `terminal-text`
+leaf is selected by terminal and diagnostic owners, independently of diagram selection.
+
+The `complete-svg` and `complete-svg-elk` convenience features remain available on `merman`
+and `merman-rustdoc`. They now select `svg,layout-cytoscape` and
+`svg,layout-cytoscape,layout-elk`, respectively, without `math`. This is a behavior change from
+their published math-enabled definitions: add `math` explicitly to preserve mathematical-label
+rendering, for example `features = ["complete-svg-elk", "math"]`. Neither aggregate selects
+diagram families; with defaults disabled, also select `all-diagrams` or the required `diagram-*`
+features. Source defaults and exact artifact recipes continue to select direct capability leaves.
 
 The snapshot freezes canonical semantics, effective configuration, parse options, the existing
 compiled theme binding, source size/model complexity, and the actual parse-time runtime context.
@@ -34,6 +83,73 @@ layout/session while borrowing canonical model and render context. Update by-val
 `prepare(&parsed, ...)`, and add artifact lifetimes where a type is named explicitly.
 `layout_json_with_compatibility_json` was removed: request `artifact.layout_json()` so semantics
 are projected from the exact artifact that owns the layout, under its active control.
+
+## Use canonical family type names
+
+Pure public render aliases have been removed. Use the canonical types from
+`merman_core::diagrams::<family>` in semantic and full consumers, including imports,
+reexports, model construction, and explicit type annotations. The same canonical spelling
+now describes the shared family data on both paths; selecting `presentation` does not add
+an alternate name for that data. These types remain available with their diagram family
+without requiring `presentation`.
+
+This is a Rust source migration. It does not rename parse/layout/render functions, change
+compatibility JSON fields, or change the full parser's capability requirements. Upgrade
+coupled crates together. The following table includes the older Cynefin and Railroad aliases
+so that consumers can retire every pure family render spelling in one pass. Error and
+Sequence migrations are listed in the preceding source-migration table.
+
+| Family module | Removed spelling -> canonical spelling |
+| --- | --- |
+| `architecture` | `ArchitectureDiagramRenderModel` -> `ArchitectureDiagramModel`<br>`ArchitectureRenderNodeType` -> `ArchitectureNodeKind`<br>`ArchitectureRenderNode` -> `ArchitectureNodeModel`<br>`ArchitectureRenderGroup` -> `ArchitectureGroupModel`<br>`ArchitectureRenderEdge` -> `ArchitectureEdgeModel`<br>`ArchitectureRenderLayoutHint` -> `ArchitectureLayoutHintModel` |
+| `block` | `BlockNodeRenderModel` -> `BlockNode`<br>`BlockEdgeRenderModel` -> `BlockEdge`<br>`BlockClassDefRenderModel` -> `BlockClassDef` |
+| `c4` | `C4DiagramRenderModel` -> `C4DiagramModel`<br>`C4ShapeRenderModel` -> `C4Shape`<br>`C4BoundaryRenderModel` -> `C4Boundary`<br>`C4RelRenderModel` -> `C4Relation` |
+| `cynefin` | `CynefinDiagramRenderModel` -> `CynefinDiagramModel` |
+| `er` | `ErDiagramRenderModel` -> `ErDiagramModel`<br>`ErAttributeRenderModel` -> `ErAttribute`<br>`ErRelSpecRenderModel` -> `ErRelSpec`<br>`ErRelationshipRenderModel` -> `ErRelationship`<br>`ErClassDefRenderModel` -> `ErClassDef`<br>`ErSubgraphRenderModel` -> `ErSubgraph`<br>`ErEntityRenderModel` -> `ErEntity` |
+| `eventmodeling` | `EventModelingDiagramRenderModel` -> `EventModelingDiagramModel`<br>`EventModelingFrameRenderModel` -> `EventModelingFrame`<br>`EventModelingDataEntityRenderModel` -> `EventModelingDataEntity` |
+| `gantt` | `GanttRenderTaskRaw` -> `GanttTaskRaw`<br>`GanttRenderTaskStart` -> `GanttTaskStart`<br>`GanttRenderTaskEnd` -> `GanttTaskEnd`<br>`GanttRenderClickEvent` -> `GanttClickEvent` |
+| `git_graph` | `GitGraphRenderModel` -> `GitGraphDiagramModel`<br>`GitGraphBranchRenderModel` -> `GitGraphBranch`<br>`GitGraphCommitRenderModel` -> `GitGraphCommit` |
+| `ishikawa` | `IshikawaDiagramRenderModel` -> `IshikawaDiagramModel`<br>`IshikawaNodeRenderModel` -> `IshikawaNode` |
+| `journey` | `JourneyRenderTask` -> `JourneyTask` |
+| `pie` | `PieRenderSection` -> `PieSection` |
+| `quadrant_chart` | `QuadrantChartRenderModel` -> `QuadrantChartDiagramModel` |
+| `radar` | `RadarRenderAxis` -> `RadarAxis`<br>`RadarRenderCurve` -> `RadarCurve`<br>`RadarRenderOptions` -> `RadarOptions` |
+| `railroad` | `RailroadDiagramRenderModel` -> `RailroadDiagramModel` |
+| `requirement` | `RequirementDiagramRenderModel` -> `RequirementDiagramModel`<br>`RequirementRenderNode` -> `RequirementNode`<br>`RequirementRenderElement` -> `RequirementElement`<br>`RequirementRenderRelationship` -> `RequirementRelationship`<br>`RequirementRenderClass` -> `RequirementClass` |
+| `sankey` | `SankeyRenderNode` -> `SankeyNode`<br>`SankeyRenderLink` -> `SankeyLink`<br>`SankeyRenderGraph` -> `SankeyGraph`<br>`SankeyDiagramRenderModel` -> `SankeyDiagramModel` |
+| `state` | `StateDiagramRenderLink` -> `StateLink`<br>`StateDiagramRenderLinks` -> `StateLinks`<br>`StateDiagramRenderNote` -> `StateNote`<br>`StateDiagramRenderState` -> `StateRecord`<br>`StateDiagramRenderRelation` -> `StateRelation`<br>`StateDiagramRenderStyleClass` -> `StateStyleClass` |
+| `timeline` | `TimelineRenderTask` -> `TimelineTask` |
+| `tree_view` | `TreeViewDiagramRenderModel` -> `TreeViewDiagramModel`<br>`TreeViewNodeRenderModel` -> `TreeViewNode` |
+| `treemap` | `TreemapNodeRenderModel` -> `TreemapNode`<br>`TreemapClassDefRenderModel` -> `TreemapClassDef` |
+| `usecase` | `UsecaseDiagramRenderModel` -> `UsecaseDiagramModel` |
+| `venn` | `VennSubsetRenderModel` -> `VennSubsetModel`<br>`VennTextNodeRenderModel` -> `VennTextNodeModel`<br>`VennStyleEntryRenderModel` -> `VennStyleEntryModel`<br>`VennDiagramRenderModel` -> `VennDiagramModel` |
+| `wardley` | `WardleyDiagramRenderModel` -> `WardleyDiagramModel`<br>`WardleyPointRenderModel` -> `WardleyPoint`<br>`WardleyNodeRenderModel` -> `WardleyNode`<br>`WardleyLinkRenderModel` -> `WardleyLink`<br>`WardleyTrendRenderModel` -> `WardleyTrend`<br>`WardleyPipelineRenderModel` -> `WardleyPipeline`<br>`WardleyAnnotationRenderModel` -> `WardleyAnnotation`<br>`WardleyNoteRenderModel` -> `WardleyNote`<br>`WardleyAcceleratorRenderModel` -> `WardleyAccelerator`<br>`WardleyDeacceleratorRenderModel` -> `WardleyDeaccelerator`<br>`WardleyAxesRenderModel` -> `WardleyAxes`<br>`WardleySizeRenderModel` -> `WardleySize` |
+| `xychart` | `XyChartAxisRenderModel` -> `XyChartAxisModel`<br>`XyChartPlotRenderModel` -> `XyChartPlotModel` |
+| `zenuml` | `ZenumlDiagramRenderModel` -> `ZenumlDiagramModel` |
+
+State's shared `StateLink`, `StateLinks`, `StateNote`, `StateRecord`, `StateRelation`, and
+`StateStyleClass` are exported directly from `diagrams::state`. Import them there instead
+of using the removed `StateDiagramRender*` reexports. The full State model still owns its
+render nodes, render edges, and document graph.
+
+Actual presentation carriers keep their names and gates. In particular:
+
+- `BlockDiagramRenderModel` / `BlockVisuals` and `TreemapDiagramRenderModel` /
+  `TreemapVisuals` retain rendering state alongside canonical records.
+- `AgentflowDiagramRenderModel` / `AgentflowVisuals` retain parser-assigned DOM ordinals.
+- `GanttDiagramRenderModel` and `GanttRenderTask` retain display mode and rendered task ends;
+  their raw/start/end/click records use the canonical names in the table.
+- `JourneyDiagramRenderModel`, `TimelineDiagramRenderModel`, `PacketDiagramRenderModel`,
+  `PieDiagramRenderModel`, `RadarDiagramRenderModel`, and `InfoDiagramRenderModel` retain
+  their full-output or compatibility state.
+- `StateDiagramRenderModel`, `StateDiagramRenderNode`, `StateDiagramRenderEdge`, and
+  `XyChartDiagramRenderModel` retain their presentation data. Other actual render carriers,
+  including Class, Flowchart, Mindmap, and Kanban records, are likewise unchanged.
+
+Do not replace an actual full carrier with its semantic model solely because some nested
+records now use canonical names. For example, `Vec<PieSection>` is shared data while
+`PieDiagramRenderModel` remains the full owner. Journey, Timeline, and Packet continue to
+expose their canonical owner through `semantic` as described above.
 
 ## Migrate edge geometry budgets
 

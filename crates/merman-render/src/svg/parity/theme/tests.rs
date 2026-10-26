@@ -34,7 +34,7 @@ fn prepared_gantt_binding_resolves_gantt_roles() {
     );
     let task_theme = crate::gantt::GanttTaskTheme::resolve(
         None,
-        &merman_core::MermaidConfig::from_value(cfg),
+        &merman_core::presentation::PresentationConfig::from_value(cfg),
         &[],
         &meter,
     )
@@ -84,7 +84,7 @@ fn prepared_gantt_binding_uses_text_color_for_empty_title_color() {
     );
     let task_theme = crate::gantt::GanttTaskTheme::resolve(
         None,
-        &merman_core::MermaidConfig::from_value(cfg),
+        &merman_core::presentation::PresentationConfig::from_value(cfg),
         &[],
         &meter,
     )

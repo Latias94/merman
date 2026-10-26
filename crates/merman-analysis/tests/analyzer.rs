@@ -45,6 +45,79 @@ fn facts_and_diagnostics_payloads_use_independent_version_constants() {
     );
 }
 
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn default_analysis_captures_semantics_without_evaluating_visual_themes() {
+    let source = concat!(
+        "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\n",
+        "flowchart TD\nA-->B\n",
+    );
+    let configured = Analyzer::with_options(AnalysisOptions::default().with_site_config(
+        merman_core::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "primaryColor": "not-a-color" }
+        })),
+    ));
+
+    for (analyzer, source) in [
+        (Analyzer::new(), source),
+        (configured, "flowchart TD\nA-->B\n"),
+    ] {
+        let payload = analyzer.analyze(source);
+        assert!(payload.valid, "{:?}", payload.diagnostics);
+        let facts = analyzer.analyze_facts(source);
+        assert!(facts.valid, "{:?}", facts.diagnostics);
+        assert_eq!(facts.diagrams.len(), 1);
+        let syntax = &facts.diagrams[0].syntax;
+        assert_eq!(syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+        assert_eq!(syntax.fact_source, FenceTextIndexSource::ParserComplete);
+        assert!(syntax.parser_backed);
+        assert!(!syntax.recovered);
+        assert!(syntax.source_mapped_spans);
+        assert!(syntax.node_ids.iter().any(|id| id == "A"));
+        assert!(syntax.node_ids.iter().any(|id| id == "B"));
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "compat-json"))]
+#[test]
+fn explicit_mermaid_adapter_preserves_visual_theme_validation() {
+    let source = concat!(
+        "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\n",
+        "flowchart TD\nA-->B\n",
+    );
+    let configured_options = AnalysisOptions::default().with_site_config(
+        merman_core::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "primaryColor": "not-a-color" }
+        })),
+    );
+
+    for (options, source) in [
+        (AnalysisOptions::default(), source),
+        (configured_options, "flowchart TD\nA-->B\n"),
+    ] {
+        let analyzer =
+            Analyzer::with_mermaid_engine(merman_core::presentation::MermaidEngine::new(), options);
+        let diagnostics = analyzer.analyze(source);
+        let facts = analyzer.analyze_facts(source);
+        assert!(!diagnostics.valid);
+        assert!(!facts.valid);
+        assert_eq!(diagnostics.diagnostics, facts.diagnostics);
+        let error = diagnostics
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == "merman.config.invalid_theme_color")
+            .expect("full presentation validation must reject an invalid visual color");
+        assert_eq!(error.category, DiagnosticCategory::Config);
+        assert_eq!(error.span, None);
+        assert_eq!(error.diagram_type, None);
+        assert_eq!(facts.diagrams.len(), 1);
+        assert_eq!(
+            facts.diagrams[0].syntax.fact_source,
+            FenceTextIndexSource::Unavailable
+        );
+    }
+}
+
 #[test]
 fn unknown_source_exposes_unavailable_facts_without_inventing_body_semantics() {
     let facts = Analyzer::new().analyze_facts("unknownDiagram\nPretendNode --> OtherNode\n");
@@ -986,13 +1059,14 @@ fn deprecated_external_diagram_loading_config_is_core_warning() {
     );
 }
 
+#[cfg(feature = "compat-json")]
 #[test]
 fn unsupported_diagram_returns_compatibility_error() {
-    let mut engine = merman_core::Engine::new();
+    let mut engine = merman_core::presentation::MermaidEngine::new();
     *engine.diagram_registry_mut() = merman_core::diagram::DiagramRegistry::new();
 
-    let payload =
-        Analyzer::with_engine(engine, AnalysisOptions::default()).analyze("flowchart TD\nA-->B\n");
+    let payload = Analyzer::with_mermaid_engine(engine, AnalysisOptions::default())
+        .analyze("flowchart TD\nA-->B\n");
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);

@@ -18,7 +18,7 @@ use crate::safe_text::{
 };
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
-    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel, FlowchartRenderContext,
+    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
 };
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::num::NonZeroUsize;
@@ -36,7 +36,6 @@ pub(crate) fn from_flowchart_model(
     let layout_policy = options.flowchart_layout();
     from_flowchart_model_with_execution(
         model,
-        None,
         layout_policy,
         resources,
         AsciiExecution::new(&control, &policy),
@@ -45,35 +44,26 @@ pub(crate) fn from_flowchart_model(
 
 pub(crate) fn from_flowchart_model_with_execution(
     model: &FlowchartModel,
-    render_context: Option<&FlowchartRenderContext>,
     layout_policy: FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
     resources.transaction(|resources| {
-        from_flowchart_model_transactional(
-            model,
-            render_context,
-            &layout_policy,
-            resources,
-            execution,
-        )
+        from_flowchart_model_transactional(model, &layout_policy, resources, execution)
     })
 }
 
 fn from_flowchart_model_transactional(
     model: &FlowchartModel,
-    render_context: Option<&FlowchartRenderContext>,
     layout_policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
-    let memberships = preflight_flowchart_projection(model, render_context, resources, execution)?;
+    let memberships = preflight_flowchart_projection(model, resources, execution)?;
     validate_supported_flowchart_model(model, &memberships, resources, execution)?;
     let style_plan = FlowchartStylePlan::try_new(
         model,
-        render_context,
         |node_id| memberships.is_group_id(node_id),
         resources,
         execution,
@@ -247,7 +237,6 @@ fn parse_flow_edge_stroke(
 
 fn preflight_flowchart_projection<'a>(
     model: &'a FlowchartModel,
-    render_context: Option<&FlowchartRenderContext>,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<FlowchartMembershipIndex<'a>> {
@@ -299,10 +288,7 @@ fn preflight_flowchart_projection<'a>(
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, member)?;
         }
-        let (classes, declarations) = render_context.map_or_else(
-            || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
-            |context| context.effective_subgraph_css(index, subgraph),
-        );
+        let (classes, declarations) = model.effective_subgraph_css(index, subgraph);
         for (declaration_index, declaration) in classes.iter().enumerate() {
             checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
@@ -924,6 +910,7 @@ mod tests {
             nodes: vec![flow_node("A"), flow_node("B")],
             edges: vec![edge],
             subgraphs: Vec::new(),
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }
@@ -983,6 +970,7 @@ mod tests {
             nodes: Vec::new(),
             edges: Vec::new(),
             subgraphs,
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }
@@ -1286,6 +1274,7 @@ mod tests {
                 .collect(),
             edges: Vec::new(),
             subgraphs: Vec::new(),
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };
@@ -1346,7 +1335,6 @@ mod tests {
         control.cancel_after_checkpoints(64);
         let error = from_flowchart_model_with_execution(
             &model,
-            None,
             AsciiRenderOptions::default().flowchart_layout(),
             &mut resources,
             AsciiExecution::new(&control, &policy),
@@ -1386,6 +1374,7 @@ mod tests {
                 styles: Vec::new(),
                 nodes: vec!["member".to_string()],
             }],
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };
@@ -1446,6 +1435,7 @@ mod tests {
                 styles: vec!["fill:#00aa00".to_string()],
                 nodes: vec!["member".to_string()],
             }],
+            subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };

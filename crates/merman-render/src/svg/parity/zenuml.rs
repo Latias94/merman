@@ -5,14 +5,14 @@ use crate::zenuml::{
     ZenumlParticipantLayout, ZenumlReturnLayout, ZenumlSelfCallLayout, ZenumlSourceStyle,
     ZenumlThemePlan, resolve_zenuml_emojis_in_text, resolve_zenuml_title, zenuml_emoji_unicode,
 };
-use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
+use merman_core::diagrams::zenuml::ZenumlDiagramModel;
 
 const FRAME_HEADER_HEIGHT: f64 = 28.0;
 const CONTENT_PADDING: f64 = 10.0;
 
 pub(super) fn render_zenuml_diagram_svg_model(
     layout: &ZenumlDiagramLayout,
-    model: &ZenumlDiagramRenderModel,
+    model: &ZenumlDiagramModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     theme_plan: &ZenumlThemePlan,

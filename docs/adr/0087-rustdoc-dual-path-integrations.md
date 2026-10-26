@@ -4,6 +4,13 @@
 - Date: 2026-08-14
 - Supersedes: the Rustdoc-specific single-integration assumption in ADR-0076
 
+The default-feature statements below describe the original decision. The later
+[lean Rustdoc defaults](0088-lean-rustdoc-default-features.md),
+[ELK product defaults](0089-mermaid-12-default-elk-products.md), and
+[explicit math decision](0097-explicit-math-capability.md) supersede those selections.
+Current Rustdoc defaults use `all-diagrams,svg,layout-cytoscape,layout-elk` without math;
+the complete aggregates are retired. The two independent integration paths remain in force.
+
 ## Context
 
 `merman-rustdoc` renders deterministic static SVG during proc-macro expansion. It provides a useful

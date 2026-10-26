@@ -8,7 +8,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
     model.acc_descr = Some("Journey description".to_string());
     model.sections = vec!["Discovery".to_string()];
     model.tasks = vec![
-        JourneyRenderTask {
+        JourneyTask {
             score: 5,
             score_is_nan: false,
             people: vec!["Alice".to_string(), "Bob".to_string()],
@@ -17,7 +17,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
             task_type: "Discovery".to_string(),
             task: "Research".to_string(),
         },
-        JourneyRenderTask {
+        JourneyTask {
             score: 3,
             score_is_nan: false,
             people: vec!["Bob".to_string()],

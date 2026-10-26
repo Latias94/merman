@@ -66,32 +66,42 @@ const PLACEMENT_RIGHT_OF: i32 = 1;
 const PLACEMENT_OVER: i32 = 2;
 
 mod ast;
+mod compat;
 mod db;
 mod lexer;
+mod model;
 mod parse;
-mod render_model;
+#[cfg(feature = "presentation")]
+mod presentation;
 
 use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
-pub(crate) use parse::parse_sequence_json_and_editor_facts;
-pub(crate) use parse::{parse_sequence, parse_sequence_model_for_render_controlled};
-#[cfg(test)]
+pub use compat::SequenceCompatibilityProjection;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+pub(crate) use compat::parse_sequence_json_and_editor_facts;
+#[cfg(feature = "compat-json")]
+pub(crate) use compat::{parse_sequence, render_model_to_compat_json};
+pub(crate) use parse::parse_sequence_semantic_model_controlled;
+#[cfg(all(test, feature = "editor-facts"))]
 pub(crate) use parse::{
     reset_sequence_syntax_construction_count, sequence_syntax_construction_count,
 };
-pub(crate) use render_model::render_model_to_compat_json;
+#[cfg(feature = "presentation")]
+pub(crate) use presentation::parse_sequence_model_for_render_controlled;
 // Keep terminal consumers on the typed projection instead of duplicating LINETYPE decoding.
-pub use render_model::{
+pub use model::{
     SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
     SequenceCentralDecoration, SequenceControlKind, SequenceControlRole, SequenceControlSemantics,
-    SequenceDiagramRenderModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
+    SequenceDiagramModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
     SequenceMessageMarker, SequenceMessagePayload, SequenceMessageStroke, SequenceNote,
     SequenceNotePlacement, SequenceSignalSemantics,
 };
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "compat-json")]
+    use super::render_model_to_compat_json;
     use super::{
         LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
         LINETYPE_BREAK_START, LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_DUAL,
@@ -101,15 +111,17 @@ mod tests {
         LINETYPE_PAR_OVER_START, LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START,
         PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF, SequenceCentralDecoration,
         SequenceControlKind, SequenceControlRole, SequenceControlSemantics, SequenceMessage,
-        SequenceMessageDirection, SequenceMessageKind, SequenceMessageMarker,
-        SequenceMessagePayload, SequenceMessageStroke, SequenceNotePlacement,
-        render_model_to_compat_json,
+        SequenceMessageKind, SequenceMessagePayload, SequenceNotePlacement,
     };
-    use crate::{Engine, ParseOptions, RenderSemanticModel};
+    #[cfg(feature = "presentation")]
+    use super::{SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke};
+    #[cfg(feature = "presentation")]
+    use crate::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn parser_preserves_bracketed_block_titles_for_the_renderer() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"sequenceDiagram
     par [Action 1]
@@ -129,6 +141,7 @@ mod tests {
         assert_eq!(model.messages[2].message_text(), "[Action 2]");
     }
 
+    #[cfg(feature = "compat-json")]
     #[test]
     fn typed_render_model_projects_exact_compatibility_json() {
         let source = r#"sequenceDiagram
@@ -146,7 +159,7 @@ create participant Worker
 Bob->>Worker: Start
 destroy Worker
 Worker-->>Bob: Done"#;
-        let engine = crate::Engine::new();
+        let engine = crate::MermaidEngine::new();
         let compat = engine
             .parse_diagram_sync(source, crate::ParseOptions::strict())
             .unwrap()
@@ -165,9 +178,10 @@ Worker-->>Bob: Done"#;
         );
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_resolves_add_message_lifecycle_ownership() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 concat!(
                     "sequenceDiagram\n",
@@ -200,16 +214,20 @@ Worker-->>Bob: Done"#;
         let typed_json =
             serde_json::to_value(model).expect("typed lifecycle truth should serialize");
         assert!(typed_json.get("actorLifecycles").is_some());
-        let round_trip: super::SequenceDiagramRenderModel =
+        let round_trip: super::SequenceDiagramModel =
             serde_json::from_value(typed_json).expect("typed lifecycle truth should deserialize");
         assert_eq!(round_trip.created_actor_message_index("B"), Some(6));
         assert_eq!(round_trip.destroyed_actor_message_index("A"), Some(7));
 
-        let compat = render_model_to_compat_json(model, parsed.metadata())
-            .expect("compatibility projection should succeed");
-        assert!(compat.get("actorLifecycles").is_none());
+        #[cfg(feature = "compat-json")]
+        {
+            let compat = render_model_to_compat_json(model, parsed.metadata())
+                .expect("compatibility projection should succeed");
+            assert!(compat.get("actorLifecycles").is_none());
+        }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn consecutive_lifecycle_declarations_keep_only_the_latest_pending_actor() {
         for (source, consumed_actor, superseded_actor, created) in [
@@ -239,7 +257,7 @@ Worker-->>Bob: Done"#;
                 false,
             ),
         ] {
-            let parsed = Engine::new()
+            let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .expect("consecutive lifecycle declarations should parse")
                 .expect("sequence diagram should be detected");
@@ -262,9 +280,10 @@ Worker-->>Bob: Done"#;
         }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_projects_pinned_signal_semantics() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"sequenceDiagram
 participant A
@@ -363,6 +382,7 @@ A--//B: dotted open half bottom"#,
         }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_projects_every_pinned_half_arrow_semantic() {
         let cases = [
@@ -487,7 +507,7 @@ A--//B: dotted open half bottom"#,
                 .collect::<Vec<_>>()
                 .join("\n")
         );
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .expect("parse should succeed")
             .expect("sequence diagram should be detected");
@@ -512,9 +532,10 @@ A--//B: dotted open half bottom"#,
         }
     }
 
+    #[cfg(feature = "presentation")]
     #[test]
     fn typed_render_model_classifies_central_marker_records_without_losing_decorations() {
-        let parsed = Engine::new()
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 r#"sequenceDiagram
 participant A

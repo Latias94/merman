@@ -45,7 +45,7 @@ OrderController.post(payload) {
 fn advanced_zenuml_is_a_first_class_typed_render() {
     let renderer = Renderer::new();
     let semantic = renderer
-        .prepare_semantic(ADVANCED, OperationControl::new())
+        .prepare_presentation(ADVANCED, OperationControl::new())
         .expect("ZenUML preparation must succeed")
         .expect("ZenUML must be detected");
     assert_eq!(semantic.semantic_kind(), "zenuml");

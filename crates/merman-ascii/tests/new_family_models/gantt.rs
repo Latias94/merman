@@ -1,4 +1,5 @@
 use super::*;
+use merman_core::diagrams::gantt::GanttTask;
 
 #[test]
 fn gantt_render_model_renders_sections_tasks_and_flags() {
@@ -14,21 +15,23 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
         "Build".to_string(),
     ];
     model.tasks = vec![GanttRenderTask {
-        id: "task-1".to_string(),
-        task: "Implement".to_string(),
-        section: "Build".to_string(),
-        task_type: "Build".to_string(),
-        classes: Vec::new(),
-        active: true,
-        done: true,
-        crit: true,
-        milestone: true,
-        vert: true,
-        order: 0,
-        start_ms: 9_223_372_036_854_775_000,
-        end_ms: 9_223_372_036_854_775_001,
+        semantic: GanttTask {
+            id: "task-1".to_string(),
+            task: "Implement".to_string(),
+            section: "Build".to_string(),
+            task_type: "Build".to_string(),
+            classes: Vec::new(),
+            active: true,
+            done: true,
+            crit: true,
+            milestone: true,
+            vert: true,
+            order: 0,
+            start_ms: 9_223_372_036_854_775_000,
+            end_ms: 9_223_372_036_854_775_001,
+            ..GanttTask::default()
+        },
         render_end_ms: Some(9_223_372_036_854_775_002),
-        ..Default::default()
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
@@ -87,16 +90,22 @@ fn gantt_direct_model_discloses_task_order() {
     let mut model = GanttDiagramRenderModel::default();
     model.tasks = vec![
         GanttRenderTask {
-            id: "first".to_string(),
-            task: "First".to_string(),
-            order: 7,
-            ..Default::default()
+            semantic: GanttTask {
+                id: "first".to_string(),
+                task: "First".to_string(),
+                order: 7,
+                ..GanttTask::default()
+            },
+            ..GanttRenderTask::default()
         },
         GanttRenderTask {
-            id: "second".to_string(),
-            task: "Second".to_string(),
-            order: 3,
-            ..Default::default()
+            semantic: GanttTask {
+                id: "second".to_string(),
+                task: "Second".to_string(),
+                order: 3,
+                ..GanttTask::default()
+            },
+            ..GanttRenderTask::default()
         },
     ];
 
@@ -157,26 +166,29 @@ fn gantt_direct_model_renders_only_typed_constraints() {
     let mut model = GanttDiagramRenderModel::default();
     model.sections = vec!["Build".to_string()];
     model.tasks = vec![GanttRenderTask {
-        id: "implementation".to_string(),
-        task: "Implement".to_string(),
-        section: "Build".to_string(),
-        start_constraint: GanttTaskStartConstraint::After {
-            dependency_ids: vec!["design".to_string(), "review".to_string()],
-        },
-        end_constraint: GanttTaskEndConstraint::Until {
-            dependency_ids: vec!["release".to_string()],
-        },
-        prev_task_id: Some("legacy-previous".to_string()),
-        raw: GanttRenderTaskRaw {
-            data: "implementation,after raw-start,until raw-end".to_string(),
-            start_time: GanttRenderTaskStart::GetStartDate {
-                start_data: "after raw-start".to_string(),
+        semantic: GanttTask {
+            id: "implementation".to_string(),
+            task: "Implement".to_string(),
+            section: "Build".to_string(),
+            start_constraint: GanttTaskStartConstraint::After {
+                dependency_ids: vec!["design".to_string(), "review".to_string()],
             },
-            end_time: GanttRenderTaskEnd {
-                data: "until raw-end".to_string(),
+            end_constraint: GanttTaskEndConstraint::Until {
+                dependency_ids: vec!["release".to_string()],
             },
+            prev_task_id: Some("legacy-previous".to_string()),
+            raw: GanttTaskRaw {
+                data: "implementation,after raw-start,until raw-end".to_string(),
+                start_time: GanttTaskStart::GetStartDate {
+                    start_data: "after raw-start".to_string(),
+                },
+                end_time: GanttTaskEnd {
+                    data: "until raw-end".to_string(),
+                },
+            },
+            ..GanttTask::default()
         },
-        ..Default::default()
+        ..GanttRenderTask::default()
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
@@ -195,26 +207,32 @@ fn gantt_direct_model_distinguishes_fixed_and_relative_end_constraints() {
     let mut model = GanttDiagramRenderModel::default();
     model.tasks = vec![
         GanttRenderTask {
-            id: "fixed".to_string(),
-            task: "Fixed".to_string(),
-            start_constraint: GanttTaskStartConstraint::Fixed {
-                value: "2026-01-01 08:30".to_string(),
+            semantic: GanttTask {
+                id: "fixed".to_string(),
+                task: "Fixed".to_string(),
+                start_constraint: GanttTaskStartConstraint::Fixed {
+                    value: "2026-01-01 08:30".to_string(),
+                },
+                end_constraint: GanttTaskEndConstraint::Fixed {
+                    value: "2026-01-01 10:45".to_string(),
+                },
+                ..GanttTask::default()
             },
-            end_constraint: GanttTaskEndConstraint::Fixed {
-                value: "2026-01-01 10:45".to_string(),
-            },
-            ..Default::default()
+            ..GanttRenderTask::default()
         },
         GanttRenderTask {
-            id: "relative".to_string(),
-            task: "Relative".to_string(),
-            start_constraint: GanttTaskStartConstraint::PreviousTaskEnd {
-                dependency_id: Some("fixed".to_string()),
+            semantic: GanttTask {
+                id: "relative".to_string(),
+                task: "Relative".to_string(),
+                start_constraint: GanttTaskStartConstraint::PreviousTaskEnd {
+                    dependency_id: Some("fixed".to_string()),
+                },
+                end_constraint: GanttTaskEndConstraint::Duration {
+                    value: "2.5h".to_string(),
+                },
+                ..GanttTask::default()
             },
-            end_constraint: GanttTaskEndConstraint::Duration {
-                value: "2.5h".to_string(),
-            },
-            ..Default::default()
+            ..GanttRenderTask::default()
         },
     ];
 
@@ -230,13 +248,15 @@ fn gantt_structured_text_preserves_time_precision_and_render_end() {
     let mut model = GanttDiagramRenderModel::default();
     model.sections = vec!["Build".to_string()];
     model.tasks = vec![GanttRenderTask {
-        id: "timed".to_string(),
-        task: "Timed".to_string(),
-        section: "Build".to_string(),
-        start_ms: 1,
-        end_ms: 2,
+        semantic: GanttTask {
+            id: "timed".to_string(),
+            task: "Timed".to_string(),
+            section: "Build".to_string(),
+            start_ms: 1,
+            end_ms: 2,
+            ..GanttTask::default()
+        },
         render_end_ms: Some(3),
-        ..Default::default()
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
@@ -252,10 +272,13 @@ fn gantt_structured_text_preserves_time_precision_and_render_end() {
 #[test]
 fn gantt_direct_model_rejects_duplicate_task_ids() {
     let task = GanttRenderTask {
-        id: "same".to_string(),
-        task: "Task".to_string(),
-        section: "Build".to_string(),
-        ..Default::default()
+        semantic: GanttTask {
+            id: "same".to_string(),
+            task: "Task".to_string(),
+            section: "Build".to_string(),
+            ..GanttTask::default()
+        },
+        ..GanttRenderTask::default()
     };
     let mut model = GanttDiagramRenderModel::default();
     model.tasks = vec![task.clone(), task];

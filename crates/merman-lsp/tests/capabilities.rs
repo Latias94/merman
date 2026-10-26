@@ -211,9 +211,8 @@ fn capability_matrix_matches_explicit_lsp_admission_and_evidence() {
                 capability.metadata_id == Some(*diagram_type)
                     && capability.has_semantic_parser
                     && capability.has_editor_parser
-                    && capability.has_combined_parser
             }),
-            "admitted LSP type {diagram_type:?} must have catalog-owned semantic and editor facts"
+            "admitted LSP type {diagram_type:?} must have catalog-owned semantic and editor facts without requiring legacy JSON"
         );
     }
 }

@@ -21,7 +21,7 @@ cargo run -p merman --example render_svg > diagram.svg
 | Render bounded terminal text | [`render_terminal.rs`](render_terminal.rs) | Selects Unicode or ASCII-only output explicitly. |
 | Emit a plain JSON report for an agent or log | [`render_agent_log.rs`](render_agent_log.rs) | Uses canonical report serialization and typed outcome handling. |
 | Apply a terminal host palette | [`terminal_palette.rs`](terminal_palette.rs) | Maps explicit RGB colors to terminal roles with TrueColor encoding. |
-| Inspect the parsed semantic model | [`inspect_semantics.rs`](inspect_semantics.rs) | Uses `Engine` without requiring SVG rendering. |
+| Inspect the parsed semantic model | [`inspect_semantics.rs`](inspect_semantics.rs) | Uses `SemanticParser` without presentation, JSON, or SVG. |
 | Inspect computed geometry and routes | [`inspect_layout.rs`](inspect_layout.rs) | Stops after typed layout and serializes the result. |
 | Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
 | Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
@@ -58,9 +58,9 @@ cargo run -p merman --features ascii --example render_terminal -- --ascii
 Inspect parser and layout results:
 
 ```sh
-cargo run -p merman --example inspect_semantics
+cargo run -p merman --no-default-features --features diagram-flowchart --example inspect_semantics
 cargo run -p merman --example inspect_layout
-cargo run -p merman --example deterministic_gantt
+cargo run -p merman --features compat-json --example deterministic_gantt
 ```
 
 Configure host defaults, compiled themes, and output policy:
@@ -185,13 +185,15 @@ boundary, as described in [ADR-0008](../../../docs/adr/0008-async-and-runtime.md
 
 ## Copy Into An Application
 
-These examples target the published `merman 0.8.0` release, including Auto layout and schema-3 ASCII reports. Use the dependency below, or a path dependency on the matching source checkout.
+These examples target the current development source, including the semantic/presentation API
+split. Use a path dependency on the matching checkout. Published `0.9.1` and earlier releases
+retain their version-specific APIs; use examples from the corresponding tag for those packages.
 
-The release-facing dependency for the SVG examples is:
+The source dependency for the SVG examples is:
 
 ```toml
 [dependencies]
-merman = { version = "0.8.0" }
+merman = { path = "/path/to/merman/crates/merman" }
 ```
 
 For terminal-only source development:
@@ -208,7 +210,7 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
+Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
 
 `render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
@@ -220,7 +222,8 @@ The table lists output and engine requirements in addition to that family select
 
 | Examples | Additional capability selection |
 | --- | --- |
-| `inspect_semantics`, `deterministic_gantt` | None beyond the required diagram families |
+| `inspect_semantics` | None beyond the required diagram families |
+| `deterministic_gantt` | `compat-json` |
 | `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
 | `render_png` | `png` (also enables `svg`) |

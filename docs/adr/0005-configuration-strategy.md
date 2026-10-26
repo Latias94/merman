@@ -4,6 +4,10 @@
 
 Accepted
 
+The parser/presentation and theme-initialization clauses are amended by
+[ADR-0098](0098-semantic-presentation-capabilities.md). Layering, source admission and
+security-policy decisions remain in force.
+
 ## Context
 
 Mermaid's behavior depends on configuration defaults (e.g. detector branching based on
@@ -17,15 +21,16 @@ However, fully hand-maintaining a large config schema in Rust is expensive.
   - A raw map layer for trusted site config and retained semantic config.
 - The baseline source of truth is Mermaid's complete default-config construction: the pinned
   schema, `defaultConfig.ts`, and the `config.ts` clone semantics (see ADR-0019).
-- `Engine::default()` loads the pure upstream JSON value projection, applies Merman's typed hardened
-  site policy, and then applies theme defaults.
-- `Engine::with_site_config(...)` deep-merges user overrides onto the engine's default config
+- `SemanticParser::default()` loads upstream configuration and applies Merman's hardened
+  semantic policy without evaluating visual themes. `MermaidEngine::default()` additionally
+  initializes presentation and theme defaults.
+- Both parsers' `with_site_config(...)` constructors deep-merge user overrides onto the default config
   to avoid dropping Mermaid defaults that affect detection, such as `layout` and
   `flowchart.defaultRenderer`.
 - Sanitize untrusted init directives against Mermaid's generated flat key shape. Unknown, null, and
   prototype-pollution keys are removed; trusted site config remains forward-compatible.
 - Keep Merman security policy separate from upstream data. The upstream artifact retains Mermaid's
-  six secure keys; the default Engine uses the local seven-key hardened policy.
+  six secure keys; both default parsers use the local seven-key hardened policy.
 - Keep host analysis options separate from Mermaid site configuration.
   `merman-analysis::AnalysisConfigContract` owns direct/wrapped root selection, field constraints,
   rule/profile/severity projections, resource descriptors, invalidation scope, and the standard

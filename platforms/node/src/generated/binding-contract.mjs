@@ -76,8 +76,7 @@ export const CAPABILITY_SPECS = [
     "id": "rustdoc",
     "implication_ids": [
       "layout-cytoscape",
-      "markdown",
-      "math"
+      "markdown"
     ]
   },
   {

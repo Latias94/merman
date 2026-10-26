@@ -8,7 +8,7 @@ use crate::text::{
     trim_start_ecmascript_whitespace,
 };
 use merman_core::diagrams::railroad::{
-    RailroadAstNode, RailroadDiagramRenderModel, RailroadRepeatBound, RailroadRuleModel,
+    RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRuleModel,
 };
 
 mod theme;
@@ -83,7 +83,7 @@ impl RailroadRenderNode {
 
 #[cfg(test)]
 pub(crate) fn layout_railroad_diagram_typed(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<RailroadDiagramLayout> {
@@ -92,7 +92,7 @@ pub(crate) fn layout_railroad_diagram_typed(
 
 #[cfg(test)]
 pub(crate) fn layout_railroad_diagram_typed_for_type(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     diagram_type: &str,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -102,7 +102,7 @@ pub(crate) fn layout_railroad_diagram_typed_for_type(
 }
 
 pub(crate) fn layout_railroad_diagram_typed_for_type_with_theme(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     diagram_type: &str,
     typography_theme: &RailroadTypographyThemePlan,
     measurer: &dyn TextMeasurer,
@@ -116,7 +116,7 @@ pub(crate) fn layout_railroad_diagram_typed_for_type_with_theme(
 }
 
 fn layout_railroad_diagram_typed_for_type_with_style(
-    model: &RailroadDiagramRenderModel,
+    model: &RailroadDiagramModel,
     diagram_type: &str,
     style: &RailroadStyle,
     measurer: &dyn TextMeasurer,
@@ -1216,7 +1216,7 @@ mod tests {
         effective_config: &serde_json::Value,
         branch_label: &str,
     ) -> (String, String) {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
             .expect("railroad render model parses");
@@ -1335,7 +1335,7 @@ mod tests {
 
     #[test]
     fn railroad_layout_handles_sequence_choice_and_repetition() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "railroad-beta\nexpr = sequence(nonterminal(\"term\"), zeroOrMore(terminal(\"+\"))) ;\n",
                 merman_core::ParseOptions::strict(),
@@ -1423,7 +1423,7 @@ mod tests {
 
     #[test]
     fn railroad_variants_use_raw_svg_bbox_width_without_character_floor() {
-        let parsed = merman_core::Engine::new()
+        let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "railroad-beta\nexpr = choice(nonterminal(\"other\"), special(\"anything\")) ;\n",
                 merman_core::ParseOptions::strict(),

@@ -3,12 +3,10 @@ use std::fs;
 use std::path::Path;
 
 use merman_ascii::{
-    AsciiError, AsciiRenderOptions, AsciiResourceLimitCause, AsciiResourceLimitId,
+    AsciiError, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitCause, AsciiResourceLimitId,
     AsciiResourceLimitPhase, AsciiResourcePolicy,
 };
-use merman_core::{Engine, ParseOptions, resources::ResourceProfile};
-
-use super::support::{render_model, render_model_with_resources};
+use merman_core::{OperationControl, SemanticParser, resources::ResourceProfile};
 
 const IMPORTED_FAMILY_FIXTURE_COUNTS: &[(&str, &str, usize)] = &[
     ("sequence", "sequence", 323),
@@ -34,8 +32,12 @@ const IMPORTED_INTENTIONAL_EMPTY_FIXTURES: &[(&str, &str)] = &[
 #[test]
 fn imported_common_family_fixtures_parse_and_render() {
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let engine = Engine::new();
+    let parser = SemanticParser::new();
     let options = AsciiRenderOptions::ascii();
+    let renderer = AsciiRenderer::new(options).expect("valid fixture options");
+    let context = merman_core::runtime::RuntimePolicy::deterministic()
+        .begin_operation()
+        .unwrap();
     let mut failures = Vec::new();
     let mut intentional_empty_seen = BTreeSet::new();
     assert!(
@@ -70,10 +72,9 @@ fn imported_common_family_fixtures_parse_and_render() {
                 .expect("fixture name must be UTF-8");
             if *directory == "sequence" && file_name == "stress_end_keyword_016.mmd" {
                 assert!(
-                    engine
-                        .parse_diagram_for_render_model_sync(
+                    parser
+                        .parse_diagram_sync(
                             &fs::read_to_string(&path).expect("fixture must be readable"),
-                            ParseOptions::strict(),
                         )
                         .is_err(),
                     "the documented upstream-invalid local stress fixture must stay excluded"
@@ -89,24 +90,28 @@ fn imported_common_family_fixtures_parse_and_render() {
             let result = (|| -> std::result::Result<(), String> {
                 let source = fs::read_to_string(&path)
                     .map_err(|error| format!("failed to read fixture: {error}"))?;
-                let parsed = engine
-                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                    .map_err(|error| format!("strict parse failed: {error}"))?
-                    .ok_or_else(|| "diagram type was not detected".to_string())?;
-                let model = parsed.model();
-                if model.kind() != *expected_kind {
+                let parsed = parser
+                    .parse_diagram_sync(&source)
+                    .map_err(|error| format!("strict canonical parse failed: {error}"))?;
+                let parsed_family =
+                    merman_core::diagram_type_family_kind(&parsed.metadata.diagram_type);
+                if parsed_family != Some(*expected_kind) {
                     return Err(format!(
-                        "expected typed family `{expected_kind}`, got `{}`",
-                        model.kind()
+                        "expected typed family `{expected_kind}`, got `{}` (`{}`)",
+                        parsed_family.unwrap_or("unknown"),
+                        parsed.metadata.diagram_type,
                     ));
                 }
+                let render = |resources| {
+                    renderer.render_parsed(&parsed, &OperationControl::new(), &context, resources)
+                };
                 let rendered = if fixture_key
                     == "sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd"
                 {
                     // Complete message hosts make this large documentation diagram exceed the
                     // interactive grid ceiling. Keep that rejection observable and admit this
                     // named offline fixture under the existing bounded trusted-native profile.
-                    let error = render_model(model, &options)
+                    let error = render(AsciiResourcePolicy::default())
                         .expect_err("the complete API-flow diagram exceeds the interactive grid");
                     let AsciiError::ResourceLimitExceeded(limit) = error else {
                         return Err(format!("expected an interactive grid limit, got {error}"));
@@ -116,13 +121,11 @@ fn imported_common_family_fixtures_parse_and_render() {
                     assert_eq!(limit.cause, AsciiResourceLimitCause::Ceiling);
                     assert_eq!(limit.max, 250_000);
                     assert!(limit.actual > limit.max);
-                    render_model_with_resources(
-                        model,
-                        &options,
-                        AsciiResourcePolicy::for_profile(ResourceProfile::TrustedNative),
-                    )
+                    render(AsciiResourcePolicy::for_profile(
+                        ResourceProfile::TrustedNative,
+                    ))
                 } else {
-                    render_model(model, &options)
+                    render(AsciiResourcePolicy::default())
                 }
                 .map_err(|error| format!("ASCII render failed: {error}"))?;
                 if expected_empty {

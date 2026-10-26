@@ -8,18 +8,49 @@ Capability levels:
 
 - **Accepted**: an API, CLI flag, frontmatter block, or directive can receive the value without
   rejecting it.
-- **Merged**: the value reaches `ParseMetadata.config` / `effective_config` or the render engine's
-  site config with Mermaid-compatible precedence.
+- **Merged**: the value reaches `SemanticMetadata.config` / `semantic_config`,
+  `PresentationMetadata.config` / `effective_config`, or the owning parser/engine's site config
+  with Mermaid-compatible precedence.
 - **Consumed**: parser, detector, layout, sanitizer, theme, or SVG code reads the value and changes
   local behavior.
 - **Rendered**: semantic/layout/SVG tests or upstream goldens prove an observable result for the
   field.
 
+## Semantic and Full Presentation Boundaries
+
+`SemanticParser` and `Renderer::parse_semantic()` interpret canonical meaning without evaluating
+visual theme programs. The facade returns a lean `SemanticArtifact`; its `SemanticMetadata`
+retains authored `config` and effective `semantic_config` before theme materialization. Ordinary
+ASCII requests use the same semantic route. Source-config admission, secure-key filtering and
+semantic sanitization still apply.
+
+`MermaidEngine` and `PresentationMetadata` are the full API names; the old `Engine` and
+`ParseMetadata` aliases are removed. Enable `presentation` for full Mermaid configuration and
+`Renderer::prepare_presentation()` / `PresentationArtifact`. `MermaidEngine::with_site_config`
+requires `merman::presentation::PresentationConfig`; wrap existing `MermaidConfig` values with
+`PresentationConfig::from_config`. `Renderer::with_semantic_parser` configures semantic and
+ordinary ASCII requests, while `with_presentation_engine` installs independent full configuration
+and custom detectors/adapters. A lean artifact has no promotion to graphical output.
+
+Select `compat-json` explicitly for Mermaid-compatible JSON projections; it implies
+`presentation`. SVG enables presentation but does not expose the facade's compatibility JSON API.
+The visual-field consumption and rendered evidence below describe full presentation/layout/SVG
+behavior. Retaining a source `theme` or `themeVariables` value in semantic metadata does not prove
+that a visual theme was evaluated. An admitted invalid visual color can succeed semantically
+while full presentation still returns the original theme error.
+
+Default editor and analysis snapshots also use semantic parsing and no longer emit visual theme
+color or theme-evaluation-limit diagnostics. Compiling presentation does not change that default;
+hosts requiring visual-theme validation must select full presentation explicitly. See the
+[Rust embedding guide](../rendering/RUST_EMBEDDING.md#embed-canonical-semantics-without-presentation)
+and [migration reference](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
+
 ## Entry-Point Merge Semantics
 
 | Input source | Accepted | Merged | Evidence | Notes |
 | --- | --- | --- | --- | --- |
-| Engine site config | Yes | Yes | `Engine::with_site_config`, `crates/merman-core/src/parse_pipeline.rs`, `site_config_deep_merge_handles_deep_public_config_with_small_stack` | The pure Mermaid value projection loads first, Merman's hardened secure policy is applied, and caller site config is deep-merged on top. |
+| Semantic parser site config | Yes | Yes | `SemanticParser::with_site_config`, `crates/merman-core/src/semantic.rs`, `crates/merman-core/tests/semantic_request_contract.rs` | Accepts `MermaidConfig`; defaults and host overrides feed semantic config and source admission without visual theme evaluation. |
+| Full engine site config | Yes | Yes | `MermaidEngine::with_site_config`, `crates/merman-core/src/presentation/parse_pipeline.rs`, `site_config_deep_merge_handles_deep_public_config_with_small_stack` | Accepts `PresentationConfig`. The pure Mermaid value projection loads first, Merman's hardened secure policy is applied, and caller site config is deep-merged on top before full theme resolution. |
 | Bindings `options_json.site_config` | Bounded | Yes | `crates/merman-bindings-core/src/common.rs`, `render_svg_accepts_external_site_config`, `explicit_site_config_overrides_compiled_theme_variables` | Non-object values are rejected. Bounded site config overrides compiled-theme compatibility values, but general bindings reject `themeCSS` and `secure` as host-owned trust controls. |
 | CLI `--configFile` / `--config-file` | Yes | Yes | `crates/merman-cli/src/cli.rs`, `crates/merman-cli/src/config.rs`, `config_file_theme_overrides_cli_theme`, `config_file_theme_variables_and_theme_css_affect_svg`, `non_object_config_file_fails_before_rendering` | CLI `--theme` is applied first; JSON object config file values are deep-merged after it. Non-object JSON is rejected like bindings `site_config`. |
 | CLI `--handDrawnSeed` | Yes | Yes | `crates/merman-cli/src/config.rs` | Stored as root `handDrawnSeed` in site config. SVG-family proof is field-specific below. |

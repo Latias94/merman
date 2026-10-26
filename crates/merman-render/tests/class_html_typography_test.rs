@@ -1,4 +1,5 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::presentation::PresentationConfig;
+use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -82,8 +83,8 @@ fn render_class(layout: &str, node_style: &str) -> (String, Arc<FontRequests>) {
     );
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({
+    let parsed = MermaidEngine::new()
+        .with_site_config(PresentationConfig::from_value(json!({
             "layout": layout,
             "htmlLabels": true,
             "securityLevel": "loose",

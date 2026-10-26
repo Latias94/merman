@@ -63,6 +63,14 @@ TREE_SITTER_ALLOWED_PROFILE_IDS = frozenset(
         "lsp-stdio-release",
     }
 )
+MATH_FREE_SVG_PROFILE_IDS = frozenset({
+    "rust-native-svg", "rust-render-native-svg", "rust-static-svg",
+    "rustdoc-static-svg", "web-full", "web-render",
+})
+MATH_BACKEND_PACKAGES = (
+    "ratex-font", "ratex-font-loader", "ratex-katex-fonts", "ratex-layout",
+    "ratex-lexer", "ratex-parser", "ratex-svg", "ratex-types",
+)
 
 
 @dataclass(frozen=True)
@@ -935,6 +943,8 @@ def check_case(
     failures: list[str] = []
     required = set(claim.required_packages)
     forbidden = set(claim.forbidden_packages)
+    if case.recipe.profile_id in MATH_FREE_SVG_PROFILE_IDS:
+        forbidden.update(MATH_BACKEND_PACKAGES)
     tree_sitter_allowed = (
         case.recipe.profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS
         and case.recipe.package == "merman-lsp"

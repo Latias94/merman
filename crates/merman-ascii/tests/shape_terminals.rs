@@ -1,13 +1,10 @@
 #![cfg(feature = "diagram-flowchart")]
 
 use merman_ascii::{AsciiLayoutProfile, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy};
-use merman_core::{Engine, OperationControl, ParseOptions};
+use merman_core::{OperationControl, SemanticParser};
 
 fn render(source: &str, options: AsciiRenderOptions) -> String {
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .unwrap()
-        .unwrap();
+    let parsed = SemanticParser::new().parse_diagram_sync(source).unwrap();
     let context = merman_core::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .unwrap();

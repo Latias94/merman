@@ -55,7 +55,7 @@ theme resources, operation control, and provenance. Convert the final family SVG
 `FamilyRenderCompletion` only after the pipeline finishes; that boundary drops the live session and
 retains a frozen `RenderSessionReport`. The higher-level `Renderer` captures the operation context
 once and also applies its frozen date and timezone to date-sensitive parsing; direct low-level
-callers are responsible for configuring the core `Engine` consistently.
+callers are responsible for configuring the core `MermaidEngine` consistently.
 
 `TextMeasurer` keeps browser DOM primitives distinct. In particular, `measure_svg_create_text_bbox_y_offset_px` measures ordinary Mermaid createText, while `measure_svg_create_text_middle_bbox_y_offset_px` measures Architecture's formatted text under an inherited middle baseline. The latter is font- and x-height-dependent and cannot reuse the former. The built-in deterministic measurer is a font-agnostic fallback, not a named-font or browser formula; an authoritative host measurement bypasses it.
 
@@ -66,14 +66,14 @@ This is a breaking replacement for independently configured layout and SVG servi
 ## Low-Level Pipeline Example
 
 ```rust
-use merman_core::{Engine, OperationControl, ParseOptions};
+use merman_core::{MermaidEngine, OperationControl, ParseOptions};
 use merman_render::{
     environment::RenderEnvironment, family, LayoutOptions,
 };
 use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nA[API] --> B[DB]",

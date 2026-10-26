@@ -3,22 +3,20 @@ mod support;
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::gantt::{
-    GanttDiagramRenderModel, GanttRenderTask, GanttRenderTaskEnd, GanttRenderTaskRaw,
-    GanttRenderTaskStart, GanttTaskEndConstraint, GanttTaskStartConstraint,
+    GanttDiagramRenderModel, GanttRenderTask, GanttTaskEnd, GanttTaskEndConstraint, GanttTaskRaw,
+    GanttTaskStart, GanttTaskStartConstraint,
 };
-use merman_core::diagrams::git_graph::{
-    GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
-};
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
+use merman_core::diagrams::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
+use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyTask};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
 use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
 use merman_core::diagrams::timeline::{
-    TimelineDiagramRenderModel, TimelineDirection, TimelineRenderTask,
+    TimelineDiagramRenderModel, TimelineDirection, TimelineTask,
 };
-use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
+use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
 use merman_core::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 use support::{render_controlled_model, render_model, render_source};
 
@@ -38,7 +36,7 @@ fn render_with_scheduled_cancellation(
     model: RenderSemanticModel,
     successful_checkpoints: usize,
 ) -> AsciiError {
-    let engine = merman_core::Engine::new();
+    let engine = merman_core::MermaidEngine::new();
     let context = engine
         .begin_operation()
         .expect("deterministic operation context should be available");
@@ -54,18 +52,13 @@ fn render_with_scheduled_cancellation(
     .expect_err("scheduled cancellation must prevent summary output")
 }
 
-fn tree_node(
-    id: i64,
-    level: i64,
-    name: &str,
-    children: Vec<TreeViewNodeRenderModel>,
-) -> TreeViewNodeRenderModel {
+fn tree_node(id: i64, level: i64, name: &str, children: Vec<TreeViewNode>) -> TreeViewNode {
     let node_type = if children.is_empty() {
         "file"
     } else {
         "directory"
     };
-    TreeViewNodeRenderModel {
+    TreeViewNode {
         id,
         level,
         name: name.to_string(),

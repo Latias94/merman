@@ -22,7 +22,7 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) text_measurer: &'a dyn TextMeasurer,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) sanitize_config: &'a merman_core::presentation::PresentationConfig,
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(super) icon_scope_root: Option<IconIdScopePrefix>,
@@ -204,7 +204,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     let sanitized = crate::html::resolve_svg_fragment(
                         merman_core::sanitize::sanitize_xhtml_in_svg_context_with_sink(
                             icon_text.trim(),
-                            sanitize_config,
+                            sanitize_config.as_config(),
                             &sink,
                         ),
                         work_meter,

@@ -10,8 +10,8 @@
 
 use merman::svg::SvgRenderOptions;
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, RenderedDocument,
-    Renderer, SvgRequest,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, RenderedDocument, Renderer,
+    SvgRequest, presentation::PresentationConfig,
 };
 use serde_json::{Value, json};
 
@@ -28,16 +28,16 @@ const FAMILIES: &[(&str, &str)] = &[
 
 fn renderer() -> Renderer {
     Renderer::new()
-        .with_engine(
-            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        .with_presentation_engine(MermaidEngine::new().with_site_config(
+            PresentationConfig::from_value(json!({
                 "theme": "dark",
                 "look": "classic",
                 "layout": "dagre",
                 "htmlLabels": false,
                 "flowchart": { "htmlLabels": false },
                 "themeVariables": { "primaryColor": "#123456" }
-            }))),
-        )
+            })),
+        ))
         .with_runtime_policy(
             merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(0),
         )
@@ -45,7 +45,7 @@ fn renderer() -> Renderer {
 
 fn effective_config(renderer: &Renderer, source: &str) -> Value {
     renderer
-        .prepare_semantic(source, OperationControl::new())
+        .prepare_presentation(source, OperationControl::new())
         .expect("semantic preparation succeeds")
         .expect("fixture contains a diagram")
         .metadata()

@@ -1,14 +1,14 @@
 use super::lexer::{Token, TokenKind as K};
 use super::*;
-use crate::{
-    EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
-    diagrams::scan::is_ecmascript_whitespace,
-};
+use crate::diagrams::scan::is_ecmascript_whitespace;
+#[cfg(feature = "editor-facts")]
+use crate::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol};
 
 #[derive(Debug, Clone)]
 pub(super) struct Label {
     pub text: String,
     pub kind: UsecaseLabelType,
+    #[cfg(feature = "editor-facts")]
     pub span: SourceSpan,
 }
 #[derive(Debug, Clone)]
@@ -95,34 +95,51 @@ pub(super) struct Parser<'a> {
     tokens: Vec<Token>,
     at: usize,
     control: &'a OperationControl,
+    #[cfg(feature = "editor-facts")]
+    editor_demand: EditorFactsDemand,
     pub draft: Draft,
+    #[cfg(feature = "editor-facts")]
     pub facts: EditorSemanticFacts,
     anonymous: usize,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, tokens: Vec<Token>, control: &'a OperationControl) -> Self {
+    pub fn new(
+        source: &'a str,
+        tokens: Vec<Token>,
+        #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+        control: &'a OperationControl,
+    ) -> Self {
+        #[cfg(feature = "editor-facts")]
         let mut facts = EditorSemanticFacts::new();
-        for keyword in [
-            "actor",
-            "systemBoundary",
-            "direction",
-            "note for",
-            "json",
-            "classDef",
-            "class",
-            "style",
-            "accTitle:",
-            "accDescr:",
-        ] {
-            facts.push_directive_prefix(keyword);
+        #[cfg(feature = "editor-facts")]
+        if editor_demand == EditorFactsDemand::Capture {
+            #[cfg(test)]
+            crate::editor::test_work::record_collection();
+            for keyword in [
+                "actor",
+                "systemBoundary",
+                "direction",
+                "note for",
+                "json",
+                "classDef",
+                "class",
+                "style",
+                "accTitle:",
+                "accDescr:",
+            ] {
+                facts.push_directive_prefix(keyword);
+            }
         }
         Self {
             source,
             tokens,
             at: 0,
             control,
+            #[cfg(feature = "editor-facts")]
+            editor_demand,
             draft: Draft::default(),
+            #[cfg(feature = "editor-facts")]
             facts,
             anonymous: 0,
         }
@@ -260,9 +277,10 @@ impl<'a> Parser<'a> {
             ) && self.peek(1) == K::MetadataStart =>
             {
                 let token = self.take();
-                let (id, _, generated) = self.name(&token);
+                let (id, _, _generated) = self.name(&token);
                 let metadata = self.metadata()?;
-                self.reference(&id, self.content_span(&token), generated);
+                #[cfg(feature = "editor-facts")]
+                self.reference(&id, self.content_span(&token), _generated);
                 self.draft.metadata.push(Assignment {
                     target: id,
                     span: self.content_span(&token),
@@ -283,6 +301,7 @@ impl<'a> Parser<'a> {
                 if matches!(self.kind(), K::Eof | K::NewLine) {
                     source.declaration = true;
                     source.shape.get_or_insert(UsecaseNodeKind::UseCaseEllipse);
+                    #[cfg(feature = "editor-facts")]
                     self.record_entity(&source);
                     self.draft.entities.push(source);
                     self.line_end()
@@ -299,10 +318,12 @@ impl<'a> Parser<'a> {
         if allow_relation && !matches!(self.kind(), K::Comma | K::Eof | K::NewLine) {
             self.relation(source)?;
         } else {
+            #[cfg(feature = "editor-facts")]
             self.record_entity(&source);
             self.draft.entities.push(source);
             while self.eat(K::Comma) {
                 let entity = self.entity(true, parent)?;
+                #[cfg(feature = "editor-facts")]
                 self.record_entity(&entity);
                 self.draft.entities.push(entity);
             }
@@ -347,6 +368,7 @@ impl<'a> Parser<'a> {
             } else {
                 UsecaseLabelType::Text
             },
+            #[cfg(feature = "editor-facts")]
             span,
         }
     }
@@ -372,6 +394,7 @@ impl<'a> Parser<'a> {
         Ok(Label {
             text: self.source[span.start..span.end].to_string(),
             kind: UsecaseLabelType::Text,
+            #[cfg(feature = "editor-facts")]
             span,
         })
     }
@@ -479,13 +502,16 @@ impl<'a> Parser<'a> {
                 value: decoded,
                 span: self.content_span(&key),
             };
-            self.facts.push_symbol(EditorSemanticSymbol::payload(
-                property.key.clone(),
-                None,
-                EditorSemanticKind::Property,
-                SourceSpan::new(key.span.start, value.span.end),
-                self.content_span(&key),
-            ));
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                self.facts.push_symbol(EditorSemanticSymbol::payload(
+                    property.key.clone(),
+                    None,
+                    EditorSemanticKind::Property,
+                    SourceSpan::new(key.span.start, value.span.end),
+                    self.content_span(&key),
+                ));
+            }
             properties.push(property);
             if self.eat(K::RightBrace) {
                 break;
@@ -519,13 +545,16 @@ impl<'a> Parser<'a> {
         loop {
             let token = self.expect(K::Identifier)?;
             classes.push(self.text(&token).to_string());
-            self.facts.push_symbol(EditorSemanticSymbol::payload(
-                self.text(&token),
-                Some("class".to_string()),
-                EditorSemanticKind::Class,
-                token.span,
-                token.span,
-            ));
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                self.facts.push_symbol(EditorSemanticSymbol::payload(
+                    self.text(&token),
+                    Some("class".to_string()),
+                    EditorSemanticKind::Class,
+                    token.span,
+                    token.span,
+                ));
+            }
             if !self.eat(K::Comma) {
                 break;
             }
@@ -537,20 +566,23 @@ impl<'a> Parser<'a> {
         // Boundary names have the entity name forms but no stereotype suffix.
         let mut entity = self.entity_name(false, None, false)?;
         entity.declaration = true;
-        self.facts.push_symbol(
-            EditorSemanticSymbol::new(
-                entity.id.clone(),
-                Some(entity.label.text.clone()),
-                EditorSemanticKind::Namespace,
-                entity.full_span,
-                entity.span,
-            )
-            .with_rename_policy(if entity.generated {
-                EditorRenamePolicy::None
-            } else {
-                EditorRenamePolicy::UsecaseIdentifier
-            }),
-        );
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.facts.push_symbol(
+                EditorSemanticSymbol::new(
+                    entity.id.clone(),
+                    Some(entity.label.text.clone()),
+                    EditorSemanticKind::Namespace,
+                    entity.full_span,
+                    entity.span,
+                )
+                .with_rename_policy(if entity.generated {
+                    EditorRenamePolicy::None
+                } else {
+                    EditorRenamePolicy::UsecaseIdentifier
+                }),
+            );
+        }
         if !entity.metadata.is_empty() {
             self.draft.metadata.push(Assignment {
                 target: entity.id.clone(),
@@ -576,6 +608,7 @@ impl<'a> Parser<'a> {
                     let mut child = self.entity(false, Some(&parent))?;
                     child.declaration = true;
                     child.shape.get_or_insert(UsecaseNodeKind::UseCaseEllipse);
+                    #[cfg(feature = "editor-facts")]
                     self.record_entity(&child);
                     self.draft.entities.push(child);
                     self.line_end()?;
@@ -645,6 +678,7 @@ impl<'a> Parser<'a> {
             label = Some(Label {
                 text: self.text(&token).to_ascii_lowercase(),
                 kind: UsecaseLabelType::Text,
+                #[cfg(feature = "editor-facts")]
                 span: token.span,
             });
         } else if first.kind == K::Generalization {
@@ -706,7 +740,10 @@ impl<'a> Parser<'a> {
                 self.anonymous += 1;
                 id
             });
-        if let Some(token) = &explicit {
+        #[cfg(feature = "editor-facts")]
+        if let Some(token) = &explicit
+            && self.editor_demand == EditorFactsDemand::Capture
+        {
             self.facts.push_symbol(
                 EditorSemanticSymbol::new(
                     id.clone(),
@@ -719,6 +756,7 @@ impl<'a> Parser<'a> {
             );
         }
         for entity in [&source, &target] {
+            #[cfg(feature = "editor-facts")]
             self.record_entity(entity);
             if entity.declaration {
                 self.draft.entities.push(entity.clone());
@@ -758,6 +796,7 @@ impl<'a> Parser<'a> {
         self.expect(K::For)?;
         let target = self.expect(K::Identifier)?;
         let label = self.label()?;
+        #[cfg(feature = "editor-facts")]
         self.reference(self.text(&target), target.span, false);
         self.draft.notes.push(Note {
             target: self.text(&target).to_string(),
@@ -783,16 +822,19 @@ impl<'a> Parser<'a> {
         let literal = self.expect(K::JsonObjectLiteral)?;
         let parsed_json = super::ordered_json::parse(self.text(&literal), literal.span.start)?;
         let classes = self.class_suffix()?;
-        self.facts.push_symbol(
-            EditorSemanticSymbol::new(
-                id.clone(),
-                Some("JSON".to_string()),
-                EditorSemanticKind::Object,
-                SourceSpan::new(opening.span.start, literal.span.end),
-                span,
-            )
-            .with_rename_policy(EditorRenamePolicy::UsecaseIdentifier),
-        );
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.facts.push_symbol(
+                EditorSemanticSymbol::new(
+                    id.clone(),
+                    Some("JSON".to_string()),
+                    EditorSemanticKind::Object,
+                    SourceSpan::new(opening.span.start, literal.span.end),
+                    span,
+                )
+                .with_rename_policy(EditorRenamePolicy::UsecaseIdentifier),
+            );
+        }
         self.draft.json.push(JsonDraft {
             node: UsecaseJsonNode {
                 id,
@@ -819,14 +861,17 @@ impl<'a> Parser<'a> {
         let names = self.identifier_list()?;
         let styles = self.styles()?;
         for token in names {
-            self.facts
-                .push_symbol(EditorSemanticSymbol::class_definition(
-                    self.text(&token),
-                    None,
-                    EditorSemanticKind::Class,
-                    token.span,
-                    token.span,
-                ));
+            #[cfg(feature = "editor-facts")]
+            if self.editor_demand == EditorFactsDemand::Capture {
+                self.facts
+                    .push_symbol(EditorSemanticSymbol::class_definition(
+                        self.text(&token),
+                        None,
+                        EditorSemanticKind::Class,
+                        token.span,
+                        token.span,
+                    ));
+            }
             self.draft.class_defs.push(UsecaseClassDef {
                 id: self.text(&token).to_string(),
                 styles: styles.clone(),
@@ -840,6 +885,7 @@ impl<'a> Parser<'a> {
         let names = self.identifier_list()?;
         let mut targets = Vec::new();
         for token in tokens {
+            #[cfg(feature = "editor-facts")]
             self.reference(self.text(&token), token.span, false);
             targets.push((self.text(&token).to_string(), token.span));
         }
@@ -856,6 +902,7 @@ impl<'a> Parser<'a> {
         self.take();
         let target = self.expect(K::Identifier)?;
         let styles = self.styles()?;
+        #[cfg(feature = "editor-facts")]
         self.reference(self.text(&target), target.span, false);
         self.draft.styles.push(StyleAssignment {
             target: self.text(&target).to_string(),
@@ -898,42 +945,51 @@ impl<'a> Parser<'a> {
         }
         Ok(styles)
     }
+    #[cfg(feature = "editor-facts")]
     fn reference(&mut self, id: &str, span: SourceSpan, generated: bool) {
-        self.facts.push_symbol(
-            EditorSemanticSymbol::reference(id, None, EditorSemanticKind::Object, span, span)
-                .with_rename_policy(if generated {
-                    EditorRenamePolicy::None
-                } else {
-                    EditorRenamePolicy::UsecaseIdentifier
-                }),
-        );
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.facts.push_symbol(
+                EditorSemanticSymbol::reference(id, None, EditorSemanticKind::Object, span, span)
+                    .with_rename_policy(if generated {
+                        EditorRenamePolicy::None
+                    } else {
+                        EditorRenamePolicy::UsecaseIdentifier
+                    }),
+            );
+        }
     }
+    #[cfg(feature = "editor-facts")]
     fn record_entity(&mut self, entity: &Entity) {
         let role = if entity.declaration {
             EditorSemanticRole::Entity
         } else {
             EditorSemanticRole::Reference
         };
-        self.facts.push_symbol(
-            EditorSemanticSymbol::with_role(
-                entity.id.clone(),
-                Some(entity.label.text.clone()),
-                if entity.actor {
-                    EditorSemanticKind::Variable
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.facts.push_symbol(
+                EditorSemanticSymbol::with_role(
+                    entity.id.clone(),
+                    Some(entity.label.text.clone()),
+                    if entity.actor {
+                        EditorSemanticKind::Variable
+                    } else {
+                        EditorSemanticKind::Function
+                    },
+                    role,
+                    entity.full_span,
+                    entity.span,
+                )
+                .with_rename_policy(if entity.generated {
+                    EditorRenamePolicy::None
                 } else {
-                    EditorSemanticKind::Function
-                },
-                role,
-                entity.full_span,
-                entity.span,
-            )
-            .with_rename_policy(if entity.generated {
-                EditorRenamePolicy::None
-            } else {
-                EditorRenamePolicy::UsecaseIdentifier
-            }),
-        );
-        if entity.label.span != entity.span {
+                    EditorRenamePolicy::UsecaseIdentifier
+                }),
+            );
+        }
+        #[cfg(feature = "editor-facts")]
+        if entity.label.span != entity.span && self.editor_demand == EditorFactsDemand::Capture {
             self.facts.push_symbol(EditorSemanticSymbol::payload(
                 entity.label.text.clone(),
                 Some("label".to_string()),
@@ -943,7 +999,12 @@ impl<'a> Parser<'a> {
             ));
         }
     }
+    #[cfg(feature = "editor-facts")]
     pub fn finalize_editor_facts(&mut self) -> OperationControlResult<()> {
+        #[cfg(feature = "editor-facts")]
+        if !self.editor_demand.captures_rich() {
+            return Ok(());
+        }
         use std::collections::{HashMap, HashSet};
 
         // Completed declarations own identity even if a later statement is incomplete. Do not

@@ -1,10 +1,12 @@
-#![cfg(feature = "diagram-event-modeling")]
+#![cfg(all(feature = "diagram-event-modeling", feature = "compat-json"))]
 
-use merman_core::{EditorSemanticCompleteness, Engine, Error, ParseOptions, SourceSpan};
+#[cfg(feature = "editor-facts")]
+use merman_core::EditorSemanticCompleteness;
+use merman_core::{Error, MermaidEngine, ParseOptions, SourceSpan};
 
 #[test]
 fn duplicate_eventmodeling_frame_ids_fail_all_parse_routes_with_source_spans() {
-    let engine = Engine::new();
+    let engine = MermaidEngine::new();
     for first in ["tf", "rf"] {
         for second in ["tf", "rf"] {
             let source = format!(
@@ -30,26 +32,29 @@ fn duplicate_eventmodeling_frame_ids_fail_all_parse_routes_with_source_spans() {
                 );
                 assert_eq!(diagnostic.span(), Some(expected), "{first}/{second}");
             }
-            let facts = engine
-                .parse_editor_semantic_facts_with_type_sync("eventmodeling", &source)
-                .unwrap()
-                .unwrap();
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            assert!(
-                facts
-                    .diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.span == Some(expected)
-                        && diagnostic
-                            .message
-                            .contains("Duplicate event modeling frame ID")),
-                "{:?}",
-                facts.diagnostics
-            );
-            assert!(
-                facts.symbols.iter().any(|symbol| symbol.name == "02"),
-                "later valid frame facts must survive recovery"
-            );
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = engine
+                    .parse_editor_semantic_facts_with_type_sync("eventmodeling", &source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(
+                    facts
+                        .diagnostics
+                        .iter()
+                        .any(|diagnostic| diagnostic.span == Some(expected)
+                            && diagnostic
+                                .message
+                                .contains("Duplicate event modeling frame ID")),
+                    "{:?}",
+                    facts.diagnostics
+                );
+                assert!(
+                    facts.symbols.iter().any(|symbol| symbol.name == "02"),
+                    "later valid frame facts must survive recovery"
+                );
+            }
         }
     }
     let valid = "eventmodeling\ntf 01 ui Fresh\n";

@@ -24,7 +24,7 @@ pub(super) fn render_sequence_actor_popup_menus(
     out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    sanitize_config: &merman_core::MermaidConfig,
+    sanitize_config: &merman_core::presentation::PresentationConfig,
     options: SequenceActorPopupOptions,
     actor_popup_widths: &std::collections::HashMap<String, f64>,
     label_ctx: &super::actor_shapes::ActorLabelContext<'_>,

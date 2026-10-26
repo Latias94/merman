@@ -1006,7 +1006,7 @@ fn state_svg_text_label_lines<'a>(
 mod tests {
     use super::*;
     use crate::diagram_theme::{EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue};
-    use merman_core::diagrams::state::StateDiagramRenderStyleClass;
+    use merman_core::diagrams::state::StateStyleClass;
     use serde_json::json;
 
     #[test]
@@ -1059,7 +1059,7 @@ mod tests {
         let mut model = StateSvgModel::default();
         model.style_classes.insert(
             "hot".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "hot".to_string(),
                 styles: vec![
                     "fill:#ffdddd".to_string(),
@@ -1201,7 +1201,7 @@ mod tests {
         let mut model = StateSvgModel::default();
         model.style_classes.insert(
             "emphasis".to_string(),
-            StateDiagramRenderStyleClass {
+            StateStyleClass {
                 id: "emphasis".to_string(),
                 styles: vec!["font-style:italic".to_string()],
                 text_styles: vec![],

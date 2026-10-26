@@ -8,6 +8,7 @@ use crate::common::{
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use crate::theme_execution_evidence::BindingThemeExecutionEvidence;
+use merman::presentation::PresentationConfig;
 use merman::svg::{
     LayoutOptions, MeasurementProfileId, RenderCapability, RenderCapabilityPolicy,
     TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
@@ -576,14 +577,14 @@ impl RenderOperationConfig {
         let input_resources = self.input_resources;
         let resource_profile = input_resources.profile();
         let runtime_policy = self.runtime_policy;
-        let mut engine = merman::Engine::new().with_runtime_policy(runtime_policy.clone());
+        let mut engine = merman::MermaidEngine::new().with_runtime_policy(runtime_policy.clone());
         if let Some(site_config) = self.site_config {
-            engine = engine.with_site_config(site_config);
+            engine = engine.with_site_config(PresentationConfig::from_config(site_config));
         }
         RenderRequestPlan {
             runtime_policy,
             renderer: Renderer::new()
-                .with_engine(engine)
+                .with_presentation_engine(engine)
                 .with_parse_options(parse_options)
                 .with_resource_policy(input_resources),
             svg: SvgRequest {

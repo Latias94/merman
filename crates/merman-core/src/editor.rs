@@ -1,21 +1,18 @@
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
-
 #[cfg(any(feature = "diagram-packet", feature = "diagram-radar"))]
 use crate::error::Error;
 pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
 use crate::{OperationControl, OperationControlResult};
 
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-use crate::error::{ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
+pub use crate::source_span::SourceSpan;
+
+/// Parser-backed facts retained by one requested editor capture.
+#[derive(Debug)]
+pub enum ParsedEditorFacts {
+    Available(EditorSemanticFacts),
+    Unavailable,
+}
 
 /// Public shape names supported by the compiled Flowchart grammar.
 ///
@@ -38,64 +35,6 @@ pub fn flowchart_shape_names() -> impl Iterator<Item = &'static str> {
     )))]
     {
         std::iter::empty()
-    }
-}
-
-/// Byte span attached to an editor-visible semantic fact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SourceSpan {
-    pub start: usize,
-    pub end: usize,
-}
-
-pub(crate) fn line_content_end(source: &str, end: usize) -> usize {
-    let end = end.min(source.len());
-    end.checked_sub(1)
-        .filter(|index| source.as_bytes().get(*index) == Some(&b'\r'))
-        .unwrap_or(end)
-}
-
-#[allow(
-    dead_code,
-    reason = "Shared parser facilities have different consumers in each family selection."
-)]
-pub(crate) fn has_ascii_separator(source: &str, start: usize, end: usize) -> bool {
-    source.get(start..end).is_some_and(|slice| {
-        !slice.is_empty() && slice.as_bytes().iter().all(u8::is_ascii_whitespace)
-    })
-}
-
-#[allow(
-    dead_code,
-    reason = "Shared parser facilities have different consumers in each family selection."
-)]
-pub(crate) fn trailing_ascii_whitespace_slot(
-    source: &str,
-    start: usize,
-    end: usize,
-) -> Option<SourceSpan> {
-    let end = line_content_end(source, end);
-    let slice = source.get(start..end)?;
-    (!slice.is_empty() && slice.as_bytes().last().is_some_and(u8::is_ascii_whitespace))
-        .then_some(SourceSpan::new(end, end))
-}
-
-#[allow(
-    dead_code,
-    reason = "Shared parser facilities have different consumers in each family selection."
-)]
-pub(crate) fn source_value_span(source: &str, span: SourceSpan, value: &str) -> Option<SourceSpan> {
-    let slice = source.get(span.start..span.end)?;
-    let relative_start = slice.find(value)?;
-    Some(SourceSpan::new(
-        span.start + relative_start,
-        span.start + relative_start + value.len(),
-    ))
-}
-
-impl SourceSpan {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
     }
 }
 
@@ -487,12 +426,66 @@ pub struct EditorSemanticFacts {
     pub expected_syntax: Vec<EditorExpectedSyntax>,
 }
 
+#[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "Projection work is observed by the family demand tests."
+)]
+pub(crate) mod test_work {
+    use std::cell::Cell;
+
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub(crate) struct Counts {
+        pub(crate) collections: usize,
+        pub(crate) symbols: usize,
+        pub(crate) directives: usize,
+        pub(crate) diagnostics: usize,
+        pub(crate) expected_syntax: usize,
+    }
+
+    thread_local! {
+        static COUNTS: Cell<Counts> = const { Cell::new(Counts {
+            collections: 0,
+            symbols: 0,
+            directives: 0,
+            diagnostics: 0,
+            expected_syntax: 0,
+        }) };
+    }
+
+    pub(crate) fn reset() {
+        COUNTS.set(Counts::default());
+    }
+
+    pub(crate) fn read() -> Counts {
+        COUNTS.get()
+    }
+
+    pub(crate) fn record_collection() {
+        update(|work| work.collections += 1);
+    }
+
+    pub(super) fn update(record: impl FnOnce(&mut Counts)) {
+        let mut work = COUNTS.get();
+        record(&mut work);
+        COUNTS.set(work);
+    }
+}
+
 impl EditorSemanticFacts {
     pub fn new() -> Self {
         Self::default()
     }
 
+    pub(crate) fn retain_recovery_facts(&mut self) {
+        self.symbols.clear();
+        self.directive_prefixes.clear();
+        self.expected_syntax.clear();
+    }
+
     pub fn push_symbol(&mut self, symbol: EditorSemanticSymbol) {
+        #[cfg(test)]
+        test_work::update(|work| work.symbols += 1);
         self.symbols.push(symbol);
     }
 
@@ -515,11 +508,15 @@ impl EditorSemanticFacts {
         span: Option<SourceSpan>,
     ) {
         self.mark_recovered();
+        #[cfg(test)]
+        test_work::update(|work| work.diagnostics += 1);
         self.diagnostics
             .push(EditorSemanticDiagnostic::parser_recovery(message, span));
     }
 
     pub fn push_diagnostic(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {
+        #[cfg(test)]
+        test_work::update(|work| work.diagnostics += 1);
         self.diagnostics
             .push(EditorSemanticDiagnostic::new(message, span));
     }
@@ -527,11 +524,15 @@ impl EditorSemanticFacts {
     pub fn push_directive_prefix(&mut self, prefix: impl Into<String>) {
         let prefix = prefix.into();
         if !self.directive_prefixes.contains(&prefix) {
+            #[cfg(test)]
+            test_work::update(|work| work.directives += 1);
             self.directive_prefixes.push(prefix);
         }
     }
 
     pub fn push_expected_syntax(&mut self, expected: EditorExpectedSyntax) {
+        #[cfg(test)]
+        test_work::update(|work| work.expected_syntax += 1);
         self.expected_syntax.push(expected);
     }
 
@@ -555,61 +556,6 @@ impl EditorSemanticFacts {
         self.expected_syntax = unique;
         control.checkpoint()
     }
-}
-
-#[allow(
-    dead_code,
-    reason = "Shared parser facilities have different consumers in each family selection."
-)]
-pub(crate) fn editor_keyword_value_span(
-    source: &str,
-    statement_start: usize,
-    statement_end: usize,
-    keyword: &str,
-) -> Option<SourceSpan> {
-    let raw = source.get(statement_start..statement_end)?;
-    let trimmed = raw.trim_start();
-    let leading = raw.len().saturating_sub(trimmed.len());
-    let keyword_source = trimmed.get(..keyword.len())?;
-    if !keyword_source.eq_ignore_ascii_case(keyword) {
-        return None;
-    }
-    let after_keyword = trimmed.get(keyword.len()..)?;
-    if after_keyword
-        .chars()
-        .next()
-        .is_some_and(|ch| !ch.is_whitespace())
-    {
-        return None;
-    }
-    let whitespace = after_keyword
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum::<usize>();
-    let value_start = statement_start + leading + keyword.len() + whitespace;
-    let value_len = after_keyword[whitespace..]
-        .chars()
-        .take_while(|ch| !ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum::<usize>();
-    Some(SourceSpan::new(value_start, value_start + value_len))
-}
-
-#[cfg(any(feature = "diagram-packet", feature = "diagram-radar"))]
-pub(crate) fn editor_recovery_fallback_span(source: &str) -> SourceSpan {
-    let mut line_start = 0;
-    for segment in source.split_inclusive('\n') {
-        let line = segment.strip_suffix('\n').unwrap_or(segment);
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        let trimmed = line.trim();
-        if !trimmed.is_empty() {
-            let start = line_start + line.find(trimmed).unwrap_or_default();
-            return SourceSpan::new(start, start + trimmed.len());
-        }
-        line_start += segment.len();
-    }
-    SourceSpan::new(source.len(), source.len())
 }
 
 #[cfg(any(feature = "diagram-packet", feature = "diagram-radar"))]
@@ -639,247 +585,9 @@ pub(crate) fn ensure_editor_recovery_from_error(
     facts
 }
 
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-pub(crate) fn lalrpop_recovery_span<T, E>(
-    error: &lalrpop_util::ParseError<usize, T, E>,
-    fallback_offset: usize,
-) -> SourceSpan {
-    match error {
-        lalrpop_util::ParseError::InvalidToken { location } => {
-            SourceSpan::new(*location, *location)
-        }
-        lalrpop_util::ParseError::UnrecognizedEof { location, .. } => {
-            SourceSpan::new(*location, *location)
-        }
-        lalrpop_util::ParseError::UnrecognizedToken { token, .. }
-        | lalrpop_util::ParseError::ExtraToken { token } => SourceSpan::new(token.0, token.2),
-        lalrpop_util::ParseError::User { .. } => SourceSpan::new(fallback_offset, fallback_offset),
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-pub(crate) fn lalrpop_parse_diagnostic<T, E>(
-    error: &lalrpop_util::ParseError<usize, T, E>,
-    fallback_offset: usize,
-) -> ParseDiagnostic
-where
-    T: std::fmt::Debug,
-    E: std::fmt::Display + ParseErrorSourceSpan,
-{
-    let message = format_lalrpop_parse_error(error);
-    match error {
-        lalrpop_util::ParseError::InvalidToken { location }
-        | lalrpop_util::ParseError::UnrecognizedEof { location, .. } => {
-            ParseDiagnostic::new(message).with_span(
-                SourceSpan::new(*location, *location),
-                ParseDiagnosticSpanKind::InsertionPoint,
-            )
-        }
-        lalrpop_util::ParseError::UnrecognizedToken { token, .. }
-        | lalrpop_util::ParseError::ExtraToken { token } => ParseDiagnostic::new(message)
-            .with_span(
-                SourceSpan::new(token.0, token.2),
-                ParseDiagnosticSpanKind::Exact,
-            ),
-        lalrpop_util::ParseError::User { error } => {
-            if let Some(span) = error.source_span() {
-                ParseDiagnostic::new(message).with_span(span, ParseDiagnosticSpanKind::Exact)
-            } else {
-                ParseDiagnostic::new(message).with_span(
-                    SourceSpan::new(fallback_offset, fallback_offset),
-                    ParseDiagnosticSpanKind::Fallback,
-                )
-            }
-        }
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-pub(crate) fn format_lalrpop_parse_error<T, E>(
-    error: &lalrpop_util::ParseError<usize, T, E>,
-) -> String
-where
-    T: std::fmt::Debug,
-    E: std::fmt::Display,
-{
-    match error {
-        lalrpop_util::ParseError::InvalidToken { .. } => "unexpected token".to_string(),
-        lalrpop_util::ParseError::UnrecognizedEof { expected, .. } => {
-            let expected = format_expected_tokens(expected);
-            if expected.is_empty() {
-                "unexpected end of input".to_string()
-            } else {
-                format!("unexpected end of input; expected {expected}")
-            }
-        }
-        lalrpop_util::ParseError::UnrecognizedToken { token, expected } => {
-            let expected = format_expected_tokens(expected);
-            let found = format_found_token(&token.1);
-            if expected.is_empty() {
-                format!("unexpected {found}")
-            } else {
-                format!("unexpected {found}; expected {expected}")
-            }
-        }
-        lalrpop_util::ParseError::ExtraToken { token } => {
-            format!("unexpected extra {}", format_found_token(&token.1))
-        }
-        lalrpop_util::ParseError::User { error } => error.to_string(),
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-fn format_expected_tokens(expected: &[String]) -> String {
-    expected
-        .iter()
-        .map(|token| humanize_expected_token(token))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-fn humanize_expected_token(token: &str) -> String {
-    match token {
-        "Id" => "node identifier".to_string(),
-        "EdgeLabel" => "edge label".to_string(),
-        "Direction" => "diagram direction".to_string(),
-        "AlphaNumToken" => "identifier".to_string(),
-        "Text" | "NoteText" | "Descr" | "RestOfLine" => "text".to_string(),
-        "StringLit" => "string literal".to_string(),
-        other => humanize_token_name(other),
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-fn format_found_token<T>(token: &T) -> String
-where
-    T: std::fmt::Debug,
-{
-    let debug = format!("{token:?}");
-    let variant = debug
-        .split_once('(')
-        .map(|(name, _)| name)
-        .unwrap_or(debug.as_str());
-
-    match variant {
-        "Sep" | "Newline" => "statement separator".to_string(),
-        "StyleSep" => "style separator".to_string(),
-        "Amp" => "`&`".to_string(),
-        "Comma" => "`,`".to_string(),
-        "Plus" => "`+`".to_string(),
-        "Minus" => "`-`".to_string(),
-        "Arrow" => "edge operator".to_string(),
-        "SignalType" => "message operator".to_string(),
-        "Id" | "Actor" | "StyledId" => "identifier".to_string(),
-        "Direction" | "DirectionStmt" => "diagram direction".to_string(),
-        "EdgeLabel" | "Text" | "NoteText" | "Descr" | "RestOfLine" => "text".to_string(),
-        "NodeLabel" | "StateDescr" | "CompositState" => "node label".to_string(),
-        "StringLit" => "string literal".to_string(),
-        "Num" => "number".to_string(),
-        other => humanize_token_name(other),
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-sequence",
-    feature = "diagram-state"
-))]
-fn humanize_token_name(token: &str) -> String {
-    let token = token.strip_prefix("Kw").unwrap_or(token);
-    let mut out = String::new();
-    let mut previous_is_lowercase = false;
-
-    for ch in token.chars() {
-        if ch == '_' || ch == '-' {
-            if !out.ends_with(' ') {
-                out.push(' ');
-            }
-            previous_is_lowercase = false;
-            continue;
-        }
-
-        if ch.is_ascii_uppercase() && previous_is_lowercase && !out.ends_with(' ') {
-            out.push(' ');
-        }
-
-        if ch.is_ascii_digit() && !out.ends_with(' ') && !out.is_empty() {
-            out.push(' ');
-        }
-
-        out.push(ch.to_ascii_lowercase());
-        previous_is_lowercase = ch.is_ascii_lowercase();
-    }
-
-    out.trim().to_string()
-}
-
 #[cfg(test)]
 mod tests {
-    #[cfg(any(
-        feature = "diagram-class",
-        feature = "diagram-er",
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-sequence",
-        feature = "diagram-state"
-    ))]
-    use super::lalrpop_parse_diagnostic;
     use super::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol};
-    #[cfg(any(
-        feature = "diagram-class",
-        feature = "diagram-er",
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-sequence",
-        feature = "diagram-state"
-    ))]
-    use crate::ParseDiagnosticSpanKind;
 
     #[test]
     #[cfg(all(
@@ -1021,79 +729,5 @@ mod tests {
         );
         assert_eq!(symbol.role, role);
         assert_eq!(symbol.rename_policy, EditorRenamePolicy::Identifier);
-    }
-
-    #[test]
-    #[cfg(any(
-        feature = "diagram-class",
-        feature = "diagram-er",
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-sequence",
-        feature = "diagram-state"
-    ))]
-    fn lalrpop_parse_diagnostic_preserves_unrecognized_token_span() {
-        let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedToken {
-            token: (3, "bad", 6),
-            expected: vec!["ID".to_string()],
-        };
-
-        let diagnostic = lalrpop_parse_diagnostic(&error, 10);
-
-        let span = diagnostic.span().expect("diagnostic span");
-        assert_eq!(span.start, 3);
-        assert_eq!(span.end, 6);
-        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
-        assert!(diagnostic.message().contains("\"bad\""));
-    }
-
-    #[test]
-    #[cfg(any(
-        feature = "diagram-class",
-        feature = "diagram-er",
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-sequence",
-        feature = "diagram-state"
-    ))]
-    fn lalrpop_parse_diagnostic_preserves_eof_insertion_point() {
-        let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedEof {
-            location: 12,
-            expected: vec!["]".to_string()],
-        };
-
-        let diagnostic = lalrpop_parse_diagnostic(&error, 99);
-
-        let span = diagnostic.span().expect("diagnostic span");
-        assert_eq!(span.start, 12);
-        assert_eq!(span.end, 12);
-        assert_eq!(
-            diagnostic.span_kind(),
-            ParseDiagnosticSpanKind::InsertionPoint
-        );
-        assert!(diagnostic.message().contains("unexpected end of input"));
-    }
-
-    #[test]
-    #[cfg(any(
-        feature = "diagram-class",
-        feature = "diagram-er",
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-sequence",
-        feature = "diagram-state"
-    ))]
-    fn lalrpop_parse_diagnostic_marks_user_errors_as_fallback() {
-        let error = lalrpop_util::ParseError::<usize, &str, String>::User {
-            error: "custom parse failure".to_string(),
-        };
-
-        let diagnostic = lalrpop_parse_diagnostic(&error, 8);
-
-        let span = diagnostic.span().expect("diagnostic span");
-        assert_eq!(span.start, 8);
-        assert_eq!(span.end, 8);
-        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
-        assert_eq!(diagnostic.message(), "custom parse failure");
     }
 }

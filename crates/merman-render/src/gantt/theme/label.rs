@@ -1,4 +1,4 @@
-use merman_core::MermaidConfig;
+use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedStyleProperty, ThemeTarget, ThemeVariant,
@@ -31,7 +31,7 @@ struct GanttTaskLabelSourceOwners {
 impl GanttTaskLabelPlan {
     pub(super) fn resolve(
         theme: &ResolvedDiagramTheme,
-        config: &MermaidConfig,
+        config: &PresentationConfig,
         state: GanttTaskBarState,
         ordinal: usize,
         meter: &OperationWorkMeter,

@@ -1,6 +1,8 @@
 #[cfg(test)]
 use std::cell::Cell;
 
+#[cfg(feature = "editor-facts")]
+use crate::family::EditorFactsDemand;
 use crate::{OperationControl, OperationControlResult};
 
 #[cfg(test)]
@@ -19,11 +21,13 @@ pub(super) fn flowchart_accessibility_scan_count() -> usize {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 pub(super) enum FlowchartAccessibilityDirective {
     Title,
     Description,
 }
 
+#[cfg(feature = "editor-facts")]
 impl FlowchartAccessibilityDirective {
     pub(super) const fn prefix(self) -> &'static str {
         match self {
@@ -34,6 +38,7 @@ impl FlowchartAccessibilityDirective {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(feature = "editor-facts")]
 pub(super) struct FlowchartAccessibilityStatement {
     pub(super) directive: FlowchartAccessibilityDirective,
     pub(super) complete: bool,
@@ -47,17 +52,28 @@ pub(super) struct FlowchartAccessibilityScan {
     pub(super) parser_input: String,
     pub(super) title: Option<String>,
     pub(super) description: Option<String>,
+    #[cfg(feature = "editor-facts")]
     pub(super) statements: Vec<FlowchartAccessibilityStatement>,
 }
 
-pub(super) fn scan_flowchart_accessibility(code: &str) -> FlowchartAccessibilityScan {
+#[cfg(any(test, feature = "compat-json"))]
+pub(super) fn scan_flowchart_accessibility(
+    code: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
+) -> FlowchartAccessibilityScan {
     let control = OperationControl::new();
-    scan_flowchart_accessibility_controlled(code, &control)
-        .expect("a private parse control cannot be cancelled")
+    scan_flowchart_accessibility_controlled(
+        code,
+        #[cfg(feature = "editor-facts")]
+        editor_demand,
+        &control,
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn scan_flowchart_accessibility_controlled(
     code: &str,
+    #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
     control: &OperationControl,
 ) -> OperationControlResult<FlowchartAccessibilityScan> {
     #[cfg(test)]
@@ -69,6 +85,7 @@ pub(super) fn scan_flowchart_accessibility_controlled(
     control.checkpoint()?;
     let mut title = None;
     let mut description = None;
+    #[cfg(feature = "editor-facts")]
     let mut statements = Vec::new();
     let mut start = 0usize;
 
@@ -83,34 +100,32 @@ pub(super) fn scan_flowchart_accessibility_controlled(
             let rest = after_prefix.trim_start();
             if let Some(value) = rest.strip_prefix(':') {
                 title = Some(value.trim().to_string());
-                statements.push(inline_statement(FlowchartAccessibilityDirective::Title));
+                #[cfg(feature = "editor-facts")]
+                if editor_demand == EditorFactsDemand::Capture {
+                    statements.push(inline_statement(FlowchartAccessibilityDirective::Title));
+                }
                 mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
                 start = line_end;
                 continue;
             }
         }
 
-        let description_directive = trimmed.strip_prefix("accDescr").map(|after_prefix| {
-            let whitespace = after_prefix
-                .len()
-                .saturating_sub(after_prefix.trim_start().len());
-            (
-                FlowchartAccessibilityDirective::Description,
-                "accDescr",
-                whitespace,
-                after_prefix.trim_start(),
-            )
-        });
-
-        let Some((directive, prefix, whitespace, rest)) = description_directive else {
+        let Some(after_prefix) = trimmed.strip_prefix("accDescr") else {
             start = line_end;
             continue;
         };
-        let delimiter_start = prefix_start + prefix.len() + whitespace;
+        let rest = after_prefix.trim_start();
+        let whitespace = after_prefix.len().saturating_sub(rest.len());
+        let delimiter_start = prefix_start + "accDescr".len() + whitespace;
 
         if let Some(value) = rest.strip_prefix(':') {
             description = Some(value.trim().to_string());
-            statements.push(inline_statement(directive));
+            #[cfg(feature = "editor-facts")]
+            if editor_demand == EditorFactsDemand::Capture {
+                statements.push(inline_statement(
+                    FlowchartAccessibilityDirective::Description,
+                ));
+            }
             mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
             start = line_end;
             continue;
@@ -129,10 +144,13 @@ pub(super) fn scan_flowchart_accessibility_controlled(
         }
 
         let statement_end = closing_brace.map_or(code.len(), |position| position + 1);
-        statements.push(FlowchartAccessibilityStatement {
-            directive,
-            complete: closing_brace.is_some(),
-        });
+        #[cfg(feature = "editor-facts")]
+        if editor_demand == EditorFactsDemand::Capture {
+            statements.push(FlowchartAccessibilityStatement {
+                directive: FlowchartAccessibilityDirective::Description,
+                complete: closing_brace.is_some(),
+            });
+        }
         mask_range_preserving_newlines(&mut masked, start, statement_end, control)?;
         start = statement_end;
     }
@@ -144,10 +162,12 @@ pub(super) fn scan_flowchart_accessibility_controlled(
         parser_input,
         title,
         description,
+        #[cfg(feature = "editor-facts")]
         statements,
     })
 }
 
+#[cfg(feature = "editor-facts")]
 fn inline_statement(directive: FlowchartAccessibilityDirective) -> FlowchartAccessibilityStatement {
     FlowchartAccessibilityStatement {
         directive,
@@ -202,6 +222,27 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "editor-facts")]
+    fn omit_demand_preserves_accessibility_semantics_without_a_statement_journal() {
+        use crate::family::EditorFactsDemand;
+
+        let source = "flowchart TD\naccTitle: Checkout\naccDescr {\nFirst line\n}\nA --> B\n";
+        let control = OperationControl::new();
+        let omitted =
+            scan_flowchart_accessibility_controlled(source, EditorFactsDemand::Omit, &control)
+                .unwrap();
+        let captured =
+            scan_flowchart_accessibility_controlled(source, EditorFactsDemand::Capture, &control)
+                .unwrap();
+
+        assert!(omitted.statements.is_empty());
+        assert_eq!(captured.statements.len(), 2);
+        assert_eq!(omitted.title, captured.title);
+        assert_eq!(omitted.description, captured.description);
+        assert_eq!(omitted.parser_input, captured.parser_input);
+    }
+
+    #[test]
     fn scan_projects_values_directives_and_offset_preserving_input_once() {
         reset_flowchart_accessibility_scan_count();
         let source = concat!(
@@ -214,7 +255,11 @@ mod tests {
             "A --> B\n",
         );
 
-        let scan = scan_flowchart_accessibility(source);
+        let scan = scan_flowchart_accessibility(
+            source,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+        );
 
         assert_eq!(flowchart_accessibility_scan_count(), 1);
         assert_eq!(scan.title.as_deref(), Some("Checkout"));
@@ -222,6 +267,7 @@ mod tests {
             scan.description.as_deref(),
             Some("First line\n  second line")
         );
+        #[cfg(feature = "editor-facts")]
         assert_eq!(
             scan.statements
                 .iter()
@@ -252,7 +298,12 @@ mod tests {
         control.cancel_after_checkpoints(5);
 
         assert!(matches!(
-            scan_flowchart_accessibility_controlled(&source, &control),
+            scan_flowchart_accessibility_controlled(
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &control,
+            ),
             Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());
@@ -266,10 +317,15 @@ mod tests {
             "accDescr {\n  第一行\n  第二行",
         );
 
-        let scan = scan_flowchart_accessibility(source);
+        let scan = scan_flowchart_accessibility(
+            source,
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+        );
 
         assert_eq!(scan.title.as_deref(), Some("结账流程"));
         assert_eq!(scan.description, None);
+        #[cfg(feature = "editor-facts")]
         assert!(!scan.statements.last().unwrap().complete);
     }
 }
