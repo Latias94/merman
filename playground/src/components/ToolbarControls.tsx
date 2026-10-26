@@ -483,7 +483,6 @@ export function ToolbarControls() {
                     variant="outline"
                     size="sm"
                     className="w-8 px-0 sm:w-auto sm:px-2.5"
-                    aria-label={t("toolbar.theme")}
                     aria-describedby={PRESENTATION_STATUS_ID}
                   >
                     <Palette className="size-4" />
