@@ -105,8 +105,9 @@ the reusable engine never retains a previous request's cancellation or resource 
 font context conflicts with `with_host_text_measurer` in either setter order and with an explicit
 `environment.text_measurement` selector, including `null`, in base options or overlays. SVG fonts
 are not embedded, so an external SVG viewer still needs the selected font. The `native-font-context`
-service and its `native-fonts` measurement provider are exposed only by the Rust transport; C,
-UniFFI, Android, Node, Web, and Typst do not acquire a native font context through this API.
+service is available through Rust and the C ABI's separate `engine_new_with_fonts`
+constructor when the artifact enables `native-fonts`. UniFFI, Android, Node, Web,
+and Typst do not acquire a native font context through this API.
 
 ## SVG Output Contract
 
