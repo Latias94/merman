@@ -41,8 +41,10 @@ import {
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
 import {
   BINDING_OPTION_GROUP_SPECS,
+  CONSTRUCTOR_SERVICE_SPECS,
   METADATA_SPECS,
 } from "../src/generated/binding-contract.mjs";
+import { NODE_WIRE_CONTRACT } from "../src/errors.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
@@ -195,8 +197,15 @@ const RUNTIME_CATALOG = {
   ],
   metadata_ids: STATIC_SVG_METADATA_IDS,
   option_group_ids: STATIC_SVG_OPTION_GROUP_IDS,
-  constructor_service_ids: [],
-  constructor_service_contracts: [],
+  constructor_service_ids: [...NODE_WIRE_CONTRACT.artifact.constructor_service_ids],
+  constructor_service_contracts: NODE_WIRE_CONTRACT.artifact.constructor_service_ids.map((id) => {
+    const spec = CONSTRUCTOR_SERVICE_SPECS.find((spec) => spec.id === id);
+    return {
+      id,
+      provided_text_measurement_provider_ids: [...spec.provided_text_measurement_provider_ids],
+      resource_limits: structuredClone(spec.resource_limits),
+    };
+  }),
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
     output_ids: ["svg"],

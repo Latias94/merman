@@ -6,12 +6,13 @@ use std::time::Duration;
 
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingCancellationErrorDetails,
-    BindingDiagnosticErrorDetails, BindingEngine, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingJsSafeResourceErrorDetails, BindingOperationKind,
-    BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus, BindingTransportKey,
-    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationControl, OperationKey, OperationPhase,
-    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
-    TargetKey, ValidatedArtifactContract,
+    BindingDiagnosticErrorDetails, BindingEngine, BindingEngineServices, BindingError,
+    BindingErrorKind, BindingIconRegistryErrorDetails, BindingJsSafeResourceErrorDetails,
+    BindingOperationKind, BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus,
+    BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, ConstructorServiceKey,
+    OperationControl, OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    build_icon_registry_from_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -48,6 +49,7 @@ static ARTIFACT_CONTRACT: ValidatedArtifactContract =
         .with_operations(NODE_OPERATIONS)
         .with_supplemental_capabilities(NODE_SUPPLEMENTAL_CAPABILITIES)
         .with_all_available_metadata()
+        .with_constructor_services(&[ConstructorServiceKey::IconRegistry])
         .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
         .materialize();
 static NODE_WIRE_CONTRACT: LazyLock<NodeWireContract> = LazyLock::new(|| {
@@ -398,13 +400,24 @@ struct ErrorDetails<'a> {
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
 
+#[cfg(test)]
 pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, BindingError> {
-    binding_boundary(|| create_engine_inner(options_json))
+    create_engine_with_icon_packs(options_json, None)
 }
 
-fn create_engine_inner(options_json: &str) -> Result<BindingEngine, BindingError> {
-    validate_binding_options(options_json)?;
-    node_artifact_contract().create_engine(options_json.as_bytes())
+pub(crate) fn create_engine_with_icon_packs(
+    options_json: &str,
+    icon_packs_json: Option<&str>,
+) -> Result<BindingEngine, BindingError> {
+    binding_boundary(|| {
+        validate_binding_options(options_json)?;
+        let mut services = BindingEngineServices::new();
+        if let Some(packs) = icon_packs_json {
+            services =
+                services.with_icon_registry(build_icon_registry_from_json(packs.as_bytes())?);
+        }
+        node_artifact_contract().create_engine_with_services(options_json.as_bytes(), services)
+    })
 }
 
 pub(crate) fn transport_identity_wire(kind: NodeTransportKind) -> Result<String, BindingError> {
@@ -1339,10 +1352,11 @@ fn producer_error(message: String) -> BindingError {
 mod tests {
     use super::{
         NodeDocumentLimits, NodeTransportKind, admitted_operation_control, create_engine,
-        deserialize_bounded_json, error_envelope, execute_wire, execute_wire_with_admitted_control,
-        execute_wire_with_control, metadata_wire, node_artifact_contract, node_wire_contract,
-        parse_operation_request, runtime_catalog_wire, scan_bounded_json_text,
-        transport_identity_wire, validate_bounded_json_text, validate_runtime_catalog,
+        create_engine_with_icon_packs, deserialize_bounded_json, error_envelope, execute_wire,
+        execute_wire_with_admitted_control, execute_wire_with_control, metadata_wire,
+        node_artifact_contract, node_wire_contract, parse_operation_request, runtime_catalog_wire,
+        scan_bounded_json_text, transport_identity_wire, validate_bounded_json_text,
+        validate_runtime_catalog,
     };
 
     #[test]
@@ -1381,6 +1395,18 @@ mod tests {
             serde_json::json!(&expected.option_group_ids)
         );
         assert_eq!(
+            catalog["constructor_service_ids"],
+            serde_json::json!(["icon-registry"])
+        );
+        assert_eq!(expected.constructor_service_ids, ["icon-registry"]);
+        assert!(
+            catalog["constructor_service_contracts"][0]["resource_limits"]
+                .as_array()
+                .unwrap()
+                .len()
+                > 1
+        );
+        assert_eq!(
             catalog["output_contracts"],
             serde_json::to_value(&expected.output_contracts).unwrap()
         );
@@ -1388,6 +1414,81 @@ mod tests {
         let mut drifted = catalog.clone();
         drifted["output_contracts"][0]["media_type"] = serde_json::json!("image/png");
         assert!(validate_runtime_catalog(&drifted).is_err());
+    }
+
+    #[test]
+    fn loaded_icon_packs_render_with_request_overlays_and_isolated_engines() {
+        let packs = serde_json::json!([{
+            "json": r#"{"prefix":"original","icons":{"rocket":{"body":"<path data-icon=\"node-registry\" d=\"M0 0H16V16H0z\"/>"}}}"#,
+            "registrationName": "fleet",
+        }])
+        .to_string();
+        let registered = create_engine_with_icon_packs("", Some(&packs)).unwrap();
+        drop(packs);
+        let plain = create_engine("").unwrap();
+        let empty = create_engine_with_icon_packs("", Some("[]")).unwrap();
+        let request = serde_json::json!({
+            "operation_id": "svg",
+            "source": "flowchart TD\nA@{ icon: \"fleet:rocket\", label: \"A\" }",
+            "options_json": r#"{"svg":{"diagram_id":"node-icon-overlay"}}"#,
+        })
+        .to_string();
+        let render = |engine: &merman_bindings_core::BindingEngine| {
+            let result: serde_json::Value =
+                serde_json::from_str(&execute_wire(engine, &request)).unwrap();
+            assert_eq!(result["ok"], true, "{result}");
+            result["result"]["data"].as_str().unwrap().to_owned()
+        };
+        let plain_svg = render(&plain);
+        assert_eq!(render(&empty), plain_svg);
+        assert!(!plain_svg.contains("node-registry"));
+        assert!(render(&registered).contains("node-registry"));
+        drop(registered);
+        assert_eq!(render(&plain), plain_svg);
+    }
+
+    #[test]
+    fn icon_constructor_preserves_typed_content_and_resource_errors() {
+        for (json, name, code, kind) in [
+            (
+                r#"{"prefix":"test","icons":{"bad":{"body":"<path>"}}}"#,
+                "fleet".to_owned(),
+                "MERMAN_INVALID_ARGUMENT",
+                "invalid_xml",
+            ),
+            (
+                r#"{"icons":{}}"#,
+                "a".repeat(65),
+                "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+                "resource_limit_exceeded",
+            ),
+        ] {
+            let packs = serde_json::json!([{"json": json, "registrationName": name}]).to_string();
+            let error = create_engine_with_icon_packs("", Some(&packs))
+                .err()
+                .unwrap();
+            let envelope: serde_json::Value =
+                serde_json::from_str(&error_envelope(&error)).unwrap();
+            assert_eq!(envelope["error"]["code_name"], code);
+            assert_eq!(
+                envelope["error"]["details"]["icon_registry"]["kind_id"],
+                kind
+            );
+            assert_eq!(
+                envelope["error"]["details"]["icon_registry"]["pack_index"],
+                0
+            );
+            if code == "MERMAN_RESOURCE_LIMIT_EXCEEDED" {
+                assert_eq!(
+                    envelope["error"]["details"]["resource"]["profile"],
+                    "constructor-fixed"
+                );
+                assert_eq!(
+                    envelope["error"]["details"]["resource"]["limit_id"],
+                    "max_icon_registry_prefix_bytes"
+                );
+            }
+        }
     }
 
     #[test]

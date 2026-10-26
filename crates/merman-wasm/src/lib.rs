@@ -18,6 +18,11 @@ use wasm_bindgen::prelude::*;
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use std::{cell::RefCell, sync::Arc};
 
+#[cfg(feature = "svg")]
+mod render_session;
+#[cfg(feature = "svg")]
+pub use render_session::WasmRenderSession;
+
 #[cfg(feature = "editor")]
 mod editor_language;
 
@@ -78,6 +83,8 @@ const WASM_TRANSPORT_EXTENSIONS: &[TransportCompiledExtensionKey] = &[
 const WASM_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     #[cfg(all(feature = "svg", target_arch = "wasm32"))]
     ConstructorServiceKey::HostTextMeasurement,
+    #[cfg(feature = "svg")]
+    ConstructorServiceKey::IconRegistry,
 ];
 
 // Keep feature selection in the transport owner. Dependency features may be unified by Cargo.
@@ -418,7 +425,7 @@ fn execute_wasm_operation(
         .map(merman_bindings_core::BindingOperationResult::into_data)
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(feature = "svg")]
 fn execute_wasm_operation_with_services(
     operation_id: &'static str,
     source: &[u8],

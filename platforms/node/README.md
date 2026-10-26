@@ -68,6 +68,15 @@ The host owns semantic theme selection, caching, scheduling, persistence, and vi
 actions. SVG presentation values remain separate from the terminal palette used by ASCII-capable
 artifacts; see [presentation themes](../../docs/rendering/presentation-themes.md).
 
+## Loaded icon packs (unreleased)
+
+Both Node packages accept `createNodeEngine({ iconPacks: [{ json, registrationName? }] })`.
+`json` is an already loaded Iconify pack JSON string; `registrationName` optionally replaces its
+prefix. This constructor service is separate from `bindingOptions` and request options. Each
+engine owns an immutable registry, and an omitted or empty array preserves ordinary rendering.
+The host owns file loading, network requests, and disposal. See the
+[native package example](packages/node/README.md#loaded-icon-packs-unreleased).
+
 ## Package layout
 
 - `packages/node` contains the public ESM loader, JavaScript engine, declarations, and user README.

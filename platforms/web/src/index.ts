@@ -22,6 +22,7 @@ export {
 } from "./public-catalog.js";
 export type * from "./public-catalog.js";
 export type * from "./public-types.js";
+export { createRenderSession } from "./runtime-render-session.js";
 export {
   MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
 } from "./generated/text-measurement-abi.js";

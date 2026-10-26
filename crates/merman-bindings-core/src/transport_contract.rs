@@ -105,8 +105,7 @@ const COMMON_JSON_PAYLOAD_SCHEMAS: &[BindingPayloadSchemaKey] = &[
 ];
 const BINDING_RESULT_PAYLOAD_SCHEMA: &[BindingPayloadSchemaKey] =
     &[BindingPayloadSchemaKey::BindingResult];
-const HOST_TEXT_MEASUREMENT_SERVICE: &[ConstructorServiceKey] =
-    &[ConstructorServiceKey::HostTextMeasurement];
+const ICON_REGISTRY_SERVICE: &[ConstructorServiceKey] = &[ConstructorServiceKey::IconRegistry];
 const FULL_NATIVE_SDK_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::HostTextMeasurement,
     ConstructorServiceKey::IconRegistry,
@@ -137,7 +136,7 @@ define_binding_transports! {
         id: "node",
         targets: NODE_TARGETS,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
-        constructor_service_candidates: &[],
+        constructor_service_candidates: ICON_REGISTRY_SERVICE,
     },
     Rust => {
         id: "rust",
@@ -167,7 +166,7 @@ define_binding_transports! {
         id: "web",
         targets: WEB_TARGET,
         payload_schemas: BINDING_RESULT_PAYLOAD_SCHEMA,
-        constructor_service_candidates: HOST_TEXT_MEASUREMENT_SERVICE,
+        constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
     },
 }
 
@@ -215,6 +214,22 @@ mod tests {
                     .map(|service| service.id()),
             );
         }
+    }
+
+    #[test]
+    fn javascript_transports_expose_the_scoped_icon_constructor() {
+        assert_eq!(
+            BindingTransportKey::Node
+                .spec()
+                .constructor_service_candidates(),
+            &[ConstructorServiceKey::IconRegistry],
+        );
+        assert_eq!(
+            BindingTransportKey::Web
+                .spec()
+                .constructor_service_candidates(),
+            FULL_NATIVE_SDK_SERVICES,
+        );
     }
 
     fn assert_sorted_unique<'a>(ids: impl Iterator<Item = &'a str>) {

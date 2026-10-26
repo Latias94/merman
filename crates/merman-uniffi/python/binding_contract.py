@@ -349,7 +349,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "node",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
-        "constructor_service_candidate_ids": (),
+        "constructor_service_candidate_ids": ("icon-registry",),
     },
     {
         "id": "rust",
@@ -374,7 +374,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "web",
         "payload_schema_ids": ("binding-result",),
-        "constructor_service_candidate_ids": ("host-text-measurement",),
+        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
     },
 )
 DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID = "deterministic"

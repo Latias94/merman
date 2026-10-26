@@ -10,7 +10,7 @@ import {
 } from "../native-loader.mjs";
 import { wrapCandidateEngine } from "./wrap-engine.mjs";
 
-export async function loadNativeTransport(optionsJson, loaderOptions = {}) {
+export async function loadNativeTransport(optionsJson, loaderOptions = {}, iconPacksJson) {
   const binding = loadNativeBinding(loaderOptions);
   const NativeEngine = binding?.NativeEngine ?? binding?.default?.NativeEngine;
   if (typeof NativeEngine !== "function") {
@@ -26,7 +26,9 @@ export async function loadNativeTransport(optionsJson, loaderOptions = {}) {
   let transport;
   try {
     transport = wrapCandidateEngine(
-      new NativeEngine(optionsJson),
+      iconPacksJson === undefined
+        ? new NativeEngine(optionsJson)
+        : new NativeEngine(optionsJson, iconPacksJson),
       "The target-specific Merman addon",
       { forwardsAbortSignal: true },
     );
