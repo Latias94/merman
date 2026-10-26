@@ -47,6 +47,20 @@ pub(crate) fn mermaid_markdown_to_lines(
     markdown: &str,
     markdown_auto_wrap: bool,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    markdown_to_lines(markdown, markdown_auto_wrap, false)
+}
+
+pub(super) fn html_markdown_measurement_lines(
+    markdown: &str,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    markdown_to_lines(markdown, true, true)
+}
+
+fn markdown_to_lines(
+    markdown: &str,
+    markdown_auto_wrap: bool,
+    preserve_code_literals: bool,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
     fn preprocess_mermaid_markdown(markdown: &str, markdown_auto_wrap: bool) -> String {
         let markdown = markdown.replace("\r\n", "\n");
 
@@ -209,7 +223,8 @@ pub(crate) fn mermaid_markdown_to_lines(
 
     // Mermaid wraps SVG-label Markdown strings in single backticks; strip to avoid inline-code
     // suppressing `**`/`_` formatting.
-    let markdown = if markdown.len() >= 2
+    let markdown = if !preserve_code_literals
+        && markdown.len() >= 2
         && markdown.starts_with('`')
         && markdown.ends_with('`')
         && !markdown.starts_with("``")
@@ -263,7 +278,10 @@ pub(crate) fn mermaid_markdown_to_lines(
         })
     }
 
-    fn resolve_full_delimiter_runs(markdown: &str) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    fn resolve_full_delimiter_runs(
+        markdown: &str,
+        preserve_code_literals: bool,
+    ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
         fn line_mut(
             out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
             line_idx: usize,
@@ -440,6 +458,13 @@ pub(crate) fn mermaid_markdown_to_lines(
                     ));
                 }
                 pulldown_cmark::Event::Code(_) if in_paragraph && skipped_inline_depth == 0 => {
+                    if preserve_code_literals && let Some(raw) = markdown.get(range) {
+                        let kind = style_stack
+                            .last()
+                            .copied()
+                            .unwrap_or(MermaidMarkdownWordType::Normal);
+                        append_text(&mut out, &mut line_idx, raw, kind, false);
+                    }
                     previous_text = None;
                 }
                 pulldown_cmark::Event::Html(html) | pulldown_cmark::Event::InlineHtml(html)
@@ -475,7 +500,7 @@ pub(crate) fn mermaid_markdown_to_lines(
     }
 
     if needs_full_delimiter_resolution(&pre) {
-        return resolve_full_delimiter_runs(&pre);
+        return resolve_full_delimiter_runs(&pre, preserve_code_literals);
     }
 
     let chars: Vec<char> = pre.chars().collect();

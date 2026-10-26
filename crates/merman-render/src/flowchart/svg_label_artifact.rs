@@ -1150,6 +1150,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     request.measurer,
                     &markdown_lines,
                     metrics_style,
+                    crate::text::SvgTextEntityMode::CreateTextSource,
                 )
             } else {
                 source.metrics_from_wrapped(

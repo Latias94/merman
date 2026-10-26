@@ -258,7 +258,8 @@ pub(crate) fn measure_state_markdown_label(
     let max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
     let decoded = decode_mermaid_entities_for_render_text(text);
     let fragment = state_label_xhtml(text);
-    let simple_text = simple_xhtml_text(&fragment);
+    let simple_text = simple_xhtml_text(&fragment)
+        .filter(|_| wrap_mode == WrapMode::HtmlLike || !text.contains('`'));
     let measure = |width: Option<f64>| match simple_text.as_deref() {
         Some(plain) if wrap_mode == WrapMode::HtmlLike => {
             let natural = measurer.measure_wrapped(plain, style, None, WrapMode::HtmlLike);

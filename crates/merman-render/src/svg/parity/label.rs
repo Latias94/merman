@@ -3,11 +3,7 @@
 use super::*;
 use crate::svg::parity::util::escape_xml_serialized_text_into;
 
-#[derive(Clone, Copy)]
-enum SvgTextEntityMode {
-    DecodedModel,
-    CreateTextSource,
-}
+use crate::text::{MermaidMarkdownWordType, SvgTextEntityMode};
 
 #[derive(Clone, Copy)]
 pub(in crate::svg::parity) struct SvgTextRowStyle<'a> {
@@ -273,7 +269,7 @@ fn write_svg_text_word(
     match entity_mode {
         SvgTextEntityMode::DecodedModel => escape_xml_into(out, word),
         SvgTextEntityMode::CreateTextSource => {
-            let visible = crate::entities::decode_svg_text_content_entities(word);
+            let visible = entity_mode.visible_word(word);
             escape_xml_serialized_text_into(out, visible.as_ref());
         }
     }
@@ -286,27 +282,12 @@ fn normalized_markdown_label(markdown: &str) -> &str {
         .unwrap_or(markdown)
 }
 
-fn markdown_to_svg_word_lines(markdown: &str) -> Vec<Vec<(String, bool, bool)>> {
-    crate::text::mermaid_markdown_to_lines(markdown, true)
-        .into_iter()
-        .map(|line| {
-            line.into_iter()
-                .map(|(word, kind)| {
-                    let is_strong = kind == crate::text::MermaidMarkdownWordType::Strong;
-                    let is_em = kind == crate::text::MermaidMarkdownWordType::Em;
-                    (word, is_strong, is_em)
-                })
-                .collect()
-        })
-        .collect()
-}
-
 fn markdown_to_wrapped_svg_word_lines(
     measurer: &dyn crate::text::TextMeasurer,
     markdown: &str,
     style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
-) -> Vec<Vec<(String, bool, bool)>> {
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
     crate::text::mermaid_markdown_to_wrapped_word_lines(
         measurer,
         markdown,
@@ -314,22 +295,11 @@ fn markdown_to_wrapped_svg_word_lines(
         max_width_px,
         crate::text::WrapMode::SvgLike,
     )
-    .into_iter()
-    .map(|line| {
-        line.into_iter()
-            .map(|(word, kind)| {
-                let is_strong = kind == crate::text::MermaidMarkdownWordType::Strong;
-                let is_em = kind == crate::text::MermaidMarkdownWordType::Em;
-                (word, is_strong, is_em)
-            })
-            .collect()
-    })
-    .collect()
 }
 
 fn write_svg_text_markdown_lines(
     out: &mut impl crate::svg::parity::SvgOutput,
-    lines: &[Vec<(String, bool, bool)>],
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
     css: Option<&str>,
     center_text: bool,
     include_row_class: bool,
@@ -348,7 +318,7 @@ fn write_svg_text_markdown_lines(
 
 fn write_svg_text_markdown_lines_with_style<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
-    lines: &[Vec<(String, bool, bool)>],
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: Option<&'a str>,
     center_text: bool,
     include_row_class: bool,
@@ -368,9 +338,17 @@ fn write_svg_text_markdown_lines_with_style<'a>(
         let word_style = row_style.map(|style| style.style);
         open_tspan(out, index, center_text, include_row_class, 1.1, start);
 
-        for (word_index, (word, is_strong, is_em)) in words.iter().enumerate() {
-            let font_style = if *is_em { "italic" } else { "normal" };
-            let font_weight = if *is_strong { "bold" } else { "normal" };
+        for (word_index, (word, kind)) in words.iter().enumerate() {
+            let font_style = if *kind == MermaidMarkdownWordType::Em {
+                "italic"
+            } else {
+                "normal"
+            };
+            let font_weight = if *kind == MermaidMarkdownWordType::Strong {
+                "bold"
+            } else {
+                "normal"
+            };
             let _ = write!(
                 out,
                 r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}""#,
@@ -404,7 +382,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_with_style<'a>(
     markdown: &str,
     style: Option<&'a str>,
 ) -> Option<&'a str> {
-    let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
+    let lines = crate::text::mermaid_markdown_to_lines(normalized_markdown_label(markdown), true);
     write_svg_text_markdown_lines_with_style(
         out,
         &lines,
@@ -416,12 +394,21 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_with_style<'a>(
     )
 }
 
+pub(in crate::svg::parity) fn write_svg_markdown_word_lines_with_style<'a>(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: Option<&'a str>,
+    entity_mode: SvgTextEntityMode,
+) -> Option<&'a str> {
+    write_svg_text_markdown_lines_with_style(out, lines, style, false, true, entity_mode, None)
+}
+
 pub(in crate::svg::parity) fn write_svg_text_markdown_centered_with_style<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     style: Option<&'a str>,
 ) -> Option<&'a str> {
-    let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
+    let lines = crate::text::mermaid_markdown_to_lines(normalized_markdown_label(markdown), true);
     write_svg_text_markdown_lines_with_style(
         out,
         &lines,
@@ -450,7 +437,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source_wi
     markdown: &str,
     style: Option<&str>,
 ) {
-    let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
+    let lines = crate::text::mermaid_markdown_to_lines(normalized_markdown_label(markdown), true);
     write_svg_text_markdown_lines_with_style(
         out,
         &lines,

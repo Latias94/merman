@@ -56,6 +56,11 @@ impl TextMeasurer for SvgFontMeasurer {
             line_count: 1,
         }
     }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure(text, style);
+        0.0
+    }
 }
 
 #[test]
@@ -180,4 +185,59 @@ fn class_svg_note_measures_visible_markdown_instead_of_source_delimiters() {
     assert!(document.descendants().any(|node| {
         node.attribute("font-weight") == Some("bold") && node.text() == Some("MMMM")
     }));
+}
+
+#[test]
+fn class_svg_note_preserves_terminal_entity_depth_and_visible_baseline() {
+    for (source, visible) in [
+        ("ASCII `omitted`", "ASCII"),
+        ("**A &amp;amp; B**", "A &amp; B"),
+    ] {
+        let measurer = Arc::new(SvgFontMeasurer::default());
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("class-svg-note-projection").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            measurer.clone(),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let parsed = MermaidEngine::new()
+            .with_site_config(PresentationConfig::from_value(json!({"htmlLabels": false})))
+            .parse_diagram_for_render_model_sync(
+                &format!("classDiagram\nnote \"{source}\"\n"),
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let requests = measurer.requests.lock().unwrap();
+        assert!(
+            requests.iter().any(|(text, _)| text == visible),
+            "{requests:?}"
+        );
+        assert!(
+            !requests.iter().any(|(text, _)| {
+                text.contains("omitted") || text.contains("**") || text == "A & B"
+            }),
+            "{requests:?}"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let terminal = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .flat_map(|node| node.text())
+            .collect::<String>();
+        assert_eq!(terminal, visible);
+    }
 }

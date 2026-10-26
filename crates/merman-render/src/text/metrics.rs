@@ -1587,6 +1587,18 @@ mod inline_planning_tests {
     }
 
     #[test]
+    fn html_markdown_measurement_keeps_code_span_literals() {
+        let metrics = measure_markdown_with_inline_styles(
+            &SoftHyphenMeasurer::default(),
+            "inline: `**not bold**`",
+            &TextStyle::default(),
+            None,
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(metrics.width, 220.0);
+    }
+
+    #[test]
     fn soft_hyphen_inline_min_content_includes_the_selected_glyph() {
         let measurer = SoftHyphenMeasurer::default();
         let style = TextStyle::default();
@@ -3441,6 +3453,7 @@ fn markdown_word_line_plain_text_and_width_px(
     words: &[(String, MermaidMarkdownWordType)],
     style: &TextStyle,
     wrap_mode: WrapMode,
+    entity_mode: super::SvgTextEntityMode,
 ) -> (String, f64) {
     let mut plain = String::new();
     let mut runs = Vec::new();
@@ -3448,9 +3461,7 @@ fn markdown_word_line_plain_text_and_width_px(
     for (word_idx, (word, ty)) in words.iter().enumerate() {
         let visible_word = match wrap_mode {
             WrapMode::HtmlLike => merman_core::entities::decode_html_entities_to_unicode(word),
-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
-                crate::entities::decode_svg_text_content_entities(word)
-            }
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => entity_mode.visible_word(word),
         };
         let bold = *ty == MermaidMarkdownWordType::Strong;
         let italic = *ty == MermaidMarkdownWordType::Em;
@@ -3477,7 +3488,14 @@ fn measure_markdown_word_line_width_px(
     style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> f64 {
-    markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
+    markdown_word_line_plain_text_and_width_px(
+        measurer,
+        words,
+        style,
+        wrap_mode,
+        super::SvgTextEntityMode::CreateTextSource,
+    )
+    .1
 }
 
 fn split_markdown_word_to_width_px(
@@ -3607,6 +3625,7 @@ pub(crate) fn measure_svg_markdown_word_lines(
     measurer: &dyn TextMeasurer,
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: &TextStyle,
+    entity_mode: super::SvgTextEntityMode,
 ) -> TextMetrics {
     if lines.iter().all(Vec::is_empty) {
         return TextMetrics {
@@ -3618,8 +3637,13 @@ pub(crate) fn measure_svg_markdown_word_lines(
     let mut plain_lines = Vec::with_capacity(lines.len());
     let mut width = 0.0_f64;
     for line in lines {
-        let (plain, line_width) =
-            markdown_word_line_plain_text_and_width_px(measurer, line, style, WrapMode::SvgLike);
+        let (plain, line_width) = markdown_word_line_plain_text_and_width_px(
+            measurer,
+            line,
+            style,
+            WrapMode::SvgLike,
+            entity_mode,
+        );
         plain_lines.push(plain);
         width = width.max(line_width);
     }
@@ -3815,7 +3839,11 @@ fn measure_markdown_with_inline_styles_impl(
         }
     }
 
-    let raw_parsed = mermaid_markdown_to_lines(markdown, true);
+    let raw_parsed = if wrap_mode == WrapMode::HtmlLike {
+        super::markdown::html_markdown_measurement_lines(markdown)
+    } else {
+        mermaid_markdown_to_lines(markdown, true)
+    };
     let html_paragraph_gap_lines = if wrap_mode == WrapMode::HtmlLike {
         html_markdown_paragraph_gap_lines(markdown)
     } else {
@@ -3830,8 +3858,13 @@ fn measure_markdown_with_inline_styles_impl(
     let mut plain_lines: Vec<String> = Vec::with_capacity(parsed.len().max(1));
     let mut styled_width_px_by_line: Vec<f64> = Vec::with_capacity(parsed.len().max(1));
     for words in &parsed {
-        let (plain, width) =
-            markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode);
+        let (plain, width) = markdown_word_line_plain_text_and_width_px(
+            measurer,
+            words,
+            style,
+            wrap_mode,
+            super::SvgTextEntityMode::CreateTextSource,
+        );
         plain_lines.push(plain);
         styled_width_px_by_line.push(width);
     }
@@ -3872,7 +3905,14 @@ fn measure_markdown_with_inline_styles_impl(
         let raw_w = raw_parsed
             .iter()
             .map(|words| {
-                markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
+                markdown_word_line_plain_text_and_width_px(
+                    measurer,
+                    words,
+                    style,
+                    wrap_mode,
+                    super::SvgTextEntityMode::CreateTextSource,
+                )
+                .1
             })
             .fold(0.0_f64, f64::max);
         let needs_wrap = raw_w > w;

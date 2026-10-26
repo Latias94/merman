@@ -61,6 +61,7 @@ pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
     svg_wrapped_first_line_bbox_height_px,
 };
+pub(crate) use types::SvgTextEntityMode;
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{
     is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, trim_ecmascript_whitespace,

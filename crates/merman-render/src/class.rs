@@ -2160,22 +2160,63 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
     (width.is_finite() && width > 0.0).then_some(width)
 }
 
-pub(crate) fn class_svg_note_metrics(
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
-    text: &str,
-) -> crate::text::TextMetrics {
-    let mut metrics = crate::text::measure_markdown_with_inline_styles(
-        measurer,
-        text,
-        style,
-        None,
-        WrapMode::SvgLike,
-    );
-    if let Some(width) = class_svg_single_line_plain_label_width_px(text, measurer, style) {
-        metrics.width = width;
+pub(crate) struct ClassSvgNoteLabel {
+    analysis: MermaidMarkdownAnalysis,
+}
+
+impl ClassSvgNoteLabel {
+    pub(crate) fn new(decoded_text: &str) -> Self {
+        Self {
+            analysis: analyze_class_svg_markdown(decoded_text),
+        }
     }
-    metrics
+
+    pub(crate) fn lines(&self) -> &[Vec<(String, crate::text::MermaidMarkdownWordType)>] {
+        &self.analysis.lines
+    }
+
+    pub(crate) fn metrics(
+        &self,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> crate::text::TextMetrics {
+        let mut metrics = crate::text::measure_svg_markdown_word_lines(
+            measurer,
+            self.lines(),
+            style,
+            crate::text::SvgTextEntityMode::DecodedModel,
+        );
+        if self.analysis.line_count == 1 && self.analysis.all_runs_normal() {
+            let text = self.lines()[0]
+                .iter()
+                .map(|(word, _)| word.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let style = crate::text::svg_markdown_word_style(
+                style,
+                crate::text::MermaidMarkdownWordType::Normal,
+            );
+            let (left, right) = measurer.measure_svg_text_bbox_x(&text, &style);
+            let width = left + right;
+            if width.is_finite() && width > 0.0 {
+                metrics.width = width;
+            }
+        }
+        metrics
+    }
+
+    pub(crate) fn bbox_y_offset(&self, measurer: &dyn TextMeasurer, style: &TextStyle) -> f64 {
+        self.lines()
+            .first()
+            .into_iter()
+            .flatten()
+            .map(|(word, kind)| {
+                let style = crate::text::svg_markdown_word_style(style, *kind);
+                measurer.measure_svg_create_text_bbox_y_offset_px(word, &style)
+            })
+            .reduce(f64::min)
+            .unwrap_or(0.0)
+    }
 }
 
 fn note_dimensions(
@@ -2199,7 +2240,7 @@ fn note_dimensions(
             .map(|config| class_html_measure_note_metrics(measurer, text_style, text, config))
             .unwrap_or_else(|| measurer.measure_wrapped(&label, text_style, None, wrap_mode))
     } else {
-        class_svg_note_metrics(measurer, text_style, &label)
+        ClassSvgNoteLabel::new(&label).metrics(measurer, text_style)
     };
     (m.width + p, m.height + p, m)
 }

@@ -10,9 +10,7 @@ use super::super::{SvgOutput, escape_attr_display, fmt};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
-use super::label::{
-    class_math_html_label, class_note_html_div_style, write_class_svg_text_markdown_with_style,
-};
+use super::label::{class_math_html_label, class_note_html_div_style};
 use super::node::ClassNodeRenderPosition;
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
@@ -68,6 +66,8 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     });
     let note_src = note.text.trim();
     let note_text = decode_entities_minimal_cow(note_src);
+    let svg_label =
+        (!ctx.use_html_labels).then(|| crate::class::ClassSvgNoteLabel::new(&note_text));
     let (label_w_raw, label_h_raw) = if ctx.use_html_labels {
         match (layout_node.label_width, layout_node.label_height) {
             (Some(w), Some(h)) => (w, h),
@@ -82,8 +82,10 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             }
         }
     } else {
-        let metrics =
-            crate::class::class_svg_note_metrics(ctx.measurer, ctx.text_style, &note_text);
+        let metrics = svg_label
+            .as_ref()
+            .expect("SVG note plan")
+            .metrics(ctx.measurer, ctx.text_style);
         (metrics.width, metrics.height)
     };
     let label_w = label_w_raw.max(1.0);
@@ -101,9 +103,10 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         -label_h / 2.0
     } else {
         -label_h / 2.0
-            - ctx
-                .measurer
-                .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
+            - svg_label
+                .as_ref()
+                .expect("SVG note plan")
+                .bbox_y_offset(ctx.measurer, ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
     let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id.semantic_str(), note.id);
@@ -257,8 +260,13 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_x),
             fmt(label_y),
         );
-        emitted_style =
-            write_class_svg_text_markdown_with_style(out, note_text.as_ref(), &note_label_style);
+        emitted_style = super::super::label::write_svg_markdown_word_lines_with_style(
+            out,
+            svg_label.as_ref().expect("SVG note plan").lines(),
+            Some(&note_label_style),
+            crate::text::SvgTextEntityMode::DecodedModel,
+        )
+        .filter(|style| !style.is_empty());
         out.push_str("</g></g></g>");
         if ctx.capture_text_facts {
             let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());

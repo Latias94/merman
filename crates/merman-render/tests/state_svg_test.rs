@@ -3486,6 +3486,399 @@ fn state_transition_stroke_follows_source_backed_theme_ownership() {
 }
 
 #[test]
+fn native_state_svg_mixed_emphasis_retains_node_and_edge_runs() {
+    for (label, expected_rows) in [
+        ("plain **bold** *italic*", 1),
+        ("plain **bold** *italic*<br/>plain **bold** *italic*", 2),
+    ] {
+        let svg = render_state_svg_from_text(&format!(
+            "%%{{init: {{\"htmlLabels\": false}}}}%%\nstateDiagram-v2\nstate \"{label}\" as A\nA --> B: {label}\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid native State SVG");
+        for (owner, attribute, value) in [
+            ("node", "id", "merman-state-A-0"),
+            ("edge", "data-id", "edge0"),
+        ] {
+            let terminal = document
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute(attribute) == Some(value))
+                .unwrap_or_else(|| panic!("missing {owner} terminal: {svg}"));
+            let rows = terminal
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("text-outer-tspan row"))
+                .collect::<Vec<_>>();
+            assert_eq!(rows.len(), expected_rows, "{owner}: {svg}");
+            for row in rows {
+                let runs = row
+                    .children()
+                    .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                    .map(|node| {
+                        (
+                            node.text().unwrap_or_default().trim(),
+                            node.attribute("font-weight"),
+                            node.attribute("font-style"),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    runs,
+                    [
+                        ("plain", Some("normal"), Some("normal")),
+                        ("bold", Some("bold"), Some("normal")),
+                        ("italic", Some("normal"), Some("italic")),
+                    ],
+                    "{owner}: {svg}"
+                );
+            }
+        }
+        assert!(!svg.contains("<foreignObject"), "{svg}");
+    }
+
+    let svg = render_state_svg_from_text(
+        "%%{init: {\"htmlLabels\": false}}%%\nstateDiagram-v2\nstate \"**bold** *italic*\" as Parent {\nA\n}\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("cluster-label"))
+        .expect("plain cluster title");
+    let word = title
+        .descendants()
+        .find(|node| node.attribute("class") == Some("text-inner-tspan"))
+        .expect("literal cluster title text");
+    assert_eq!(word.text(), Some("**bold** *italic*"), "{svg}");
+    assert_eq!(word.attribute("font-weight"), Some("normal"), "{svg}");
+    assert_eq!(word.attribute("font-style"), Some("normal"), "{svg}");
+}
+
+struct StateEmphasisTextMeasurer {
+    fallback: std::sync::Arc<dyn TextMeasurer + Send + Sync>,
+}
+
+impl Default for StateEmphasisTextMeasurer {
+    fn default() -> Self {
+        Self {
+            fallback: DeterministicTextMeasurer::default().with_width_callback(Self::width),
+        }
+    }
+}
+
+impl StateEmphasisTextMeasurer {
+    fn width(text: &str, style: &TextStyle) -> f64 {
+        let bold = matches!(style.font_weight.as_deref(), Some("700" | "bold"));
+        let italic = style.font_style.as_deref() == Some("italic");
+        text.chars().count() as f64
+            * (4.0 + if bold { 4.0 } else { 0.0 } + if italic { 2.0 } else { 0.0 })
+    }
+}
+
+impl TextMeasurer for StateEmphasisTextMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.fallback.measure(text, style)
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.fallback
+            .measure_wrapped(text, style, max_width, wrap_mode)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        Self::width(text, style)
+    }
+
+    fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+        let half = Self::width(text, style) / 2.0;
+        match (text.trim_start(), style.font_style.as_deref()) {
+            ("Tilt", Some("italic")) => (half, half + 10.0),
+            ("Lean", Some("italic")) => (half + 7.0, half),
+            _ => (half, half),
+        }
+    }
+}
+
+fn state_emphasis_environment() -> RenderEnvironment {
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.state-emphasis").expect("valid profile id"),
+        "test",
+    )
+    .expect("valid profile identity");
+    RenderEnvironment::deterministic().with_text_measurement_policy(TextMeasurementPolicy::uniform(
+        TextMeasurementProfile::new(
+            identity,
+            std::sync::Arc::new(StateEmphasisTextMeasurer::default()),
+        ),
+    ))
+}
+
+#[test]
+fn native_state_svg_code_spans_use_the_svg_projection_even_when_empty() {
+    for label in ["ASCII ``omitted``", "``omitted``"] {
+        let svg = render_state_svg_from_text(&format!(
+            "%%{{init: {{\"htmlLabels\": false}}}}%%\nstateDiagram-v2\nstate \"{label}\" as A\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-state-A-0"))
+            .unwrap();
+        let text = node
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .flat_map(|node| node.text())
+            .collect::<String>();
+        assert_eq!(
+            text,
+            if label.starts_with("ASCII") {
+                "ASCII"
+            } else {
+                ""
+            }
+        );
+    }
+}
+
+#[test]
+fn native_state_node_styled_start_anchor_uses_run_ink_union() {
+    for (label, expected_rows, ink_left, ink_right) in [
+        ("**Skew** *Tilt*", 1, 0.0, 72.0),
+        ("**WiderWord**<br/>**Skew** *Tilt*", 2, 0.0, 72.0),
+        ("*Lean* **Skew**", 1, -7.0, 64.0),
+        ("*Lean* **Skew**<br/>**WiderWord**", 2, -7.0, 72.0),
+    ] {
+        let (layout, svg) = render_state_layout_and_svg_from_text_in_environment(
+            &format!(
+                "%%{{init: {{\"htmlLabels\": false, \"state\": {{\"minNodeWidth\": 0}}}}}}%%\nstateDiagram-v2\nstate \"{label}\" as A\n"
+            ),
+            &state_emphasis_environment(),
+        );
+        let layout_node = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .expect("State node layout");
+        let document = roxmltree::Document::parse(&svg).expect("valid native State SVG");
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-state-A-0"))
+            .expect("State SVG node");
+        let shape = node
+            .descendants()
+            .find(|node| node.attribute("class") == Some("basic label-container"))
+            .expect("State node shape");
+        let text = node
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .expect("native State node text");
+        // Start-anchored rows share their origin, not their individual advance centers.
+        // Keep the existing 8px shape padding on each side of the measured ink union.
+        let ink_width = ink_right - ink_left;
+        let shape_width = shape
+            .attribute("width")
+            .expect("State node width")
+            .parse::<f64>()
+            .expect("numeric State node width");
+        assert_eq!(layout_node.width, ink_width + 16.0, "{label}: {svg}");
+        assert_eq!(shape_width, layout_node.width, "{label}: {svg}");
+        assert_eq!(text.attribute("text-anchor"), None, "{svg}");
+        let label_group = text.parent().expect("State text label group");
+        let label_x = label_group
+            .attribute("transform")
+            .and_then(|value| value.strip_prefix("translate("))
+            .and_then(|value| value.split_once(','))
+            .expect("translated State node text")
+            .0
+            .parse::<f64>()
+            .expect("numeric State node text x");
+        assert_eq!(label_x, -ink_width / 2.0, "{label}: {svg}");
+        let rows = text
+            .children()
+            .filter(|node| node.has_tag_name("tspan"))
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), expected_rows, "{label}: {svg}");
+        for row in rows {
+            let baseline_x = row
+                .attribute("x")
+                .expect("State row baseline x")
+                .parse::<f64>()
+                .expect("numeric State row baseline x");
+            assert_eq!(baseline_x, -ink_left, "{label}: {svg}");
+            assert_eq!(
+                label_x + baseline_x + ink_left,
+                -shape_width / 2.0 + 8.0,
+                "{label}: {svg}"
+            );
+            assert_eq!(
+                label_x + baseline_x + ink_right,
+                shape_width / 2.0 - 8.0,
+                "{label}: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_state_transition_styled_bbox_preserves_symmetric_padding() {
+    let (layout, svg) = render_state_layout_and_svg_from_text_in_environment(
+        "%%{init: {\"htmlLabels\": false}}%%\nstateDiagram-v2\nA --> B: **Skew** *Tilt*",
+        &state_emphasis_environment(),
+    );
+    let layout_label = layout.edges[0].label.as_ref().expect("edge layout label");
+    let document = roxmltree::Document::parse(&svg).expect("valid native State SVG");
+    let label = document
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("edge0") && node.has_tag_name("g"))
+        .expect("edge SVG label");
+    let background = label
+        .descendants()
+        .find(|node| node.attribute("class") == Some("background"))
+        .expect("edge label background");
+    // The italic tspan owns its leading space: advances are 32 + 30, with 10px right overhang.
+    // Centering the 62px row requires a 41px half-width, plus the existing 2px padding.
+    assert_eq!(layout_label.width, 86.0, "{svg}");
+    assert_eq!(background.attribute("width"), Some("86"), "{svg}");
+    let label_x = label
+        .attribute("transform")
+        .and_then(|value| value.strip_prefix("translate("))
+        .and_then(|value| value.split_once(','))
+        .expect("translated edge label")
+        .0
+        .parse::<f64>()
+        .expect("numeric edge label x");
+    assert_eq!(label_x, -43.0, "{svg}");
+}
+
+#[test]
+fn native_state_svg_mixed_emphasis_preserves_terminal_inline_overrides() {
+    let typography = TextStylePatch {
+        font_weight: Specified::Value(400),
+        font_style: Specified::Value(merman_render::diagram_theme::FontStyle::Normal),
+        ..TextStylePatch::default()
+    };
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            state_theme_spec().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch {
+                            typography: typography.clone(),
+                            ..ThemeStylePatch::default()
+                        },
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::TransitionLabel,
+                        ThemeStylePatch {
+                            typography,
+                            ..ThemeStylePatch::default()
+                        },
+                    )),
+            ),
+        )
+        .expect("compile State terminal typography");
+    for (source_style, expected_weight, expected_style) in [
+        ("", "400", "normal"),
+        (
+            "style A font-weight:700,font-style:italic\n",
+            "700",
+            "italic",
+        ),
+    ] {
+        let source = format!(
+            "%%{{init: {{\"htmlLabels\": false}}}}%%\nstateDiagram-v2\nstate \"plain **bold** *italic*\" as A\nA --> B: plain **bold** *italic*\n{source_style}"
+        );
+        let svg = render_state_svg_from_text_with_theme_in_environment(
+            &source,
+            &theme,
+            &state_emphasis_environment(),
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+        for (attribute, value, weight, font_style) in [
+            ("id", "merman-state-A-0", expected_weight, expected_style),
+            ("data-id", "edge0", "400", "normal"),
+        ] {
+            let terminal = document
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute(attribute) == Some(value))
+                .expect("State label terminal");
+            let words = terminal
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                .collect::<Vec<_>>();
+            assert_eq!(words.len(), 3, "{value}: {svg}");
+            for word in words {
+                let inline = word.attribute("style").expect("terminal inline override");
+                assert!(
+                    inline.contains(&format!("font-weight:{weight} !important")),
+                    "{svg}"
+                );
+                assert!(
+                    inline.contains(&format!("font-style:{font_style} !important")),
+                    "{svg}"
+                );
+            }
+        }
+        let plain = render_state_svg_from_text_with_theme_in_environment(
+            &source.replace("plain **bold** *italic*", "plain bold italic"),
+            &theme,
+            &state_emphasis_environment(),
+        );
+        let shape_dimensions = |svg: &str| {
+            let document = roxmltree::Document::parse(svg).expect("valid State SVG");
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("rect")
+                        && matches!(
+                            node.attribute("class"),
+                            Some("basic label-container" | "background")
+                        )
+                })
+                .map(|node| {
+                    (
+                        node.attribute("width").expect("label width").to_owned(),
+                        node.attribute("height").expect("label height").to_owned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shape_dimensions(&svg), shape_dimensions(&plain), "{svg}");
+        let plain_document = roxmltree::Document::parse(&plain).expect("valid plain State SVG");
+        for (attribute, value, expected_rows) in [
+            (
+                "id",
+                "merman-state-A-0",
+                if source_style.is_empty() { 1 } else { 2 },
+            ),
+            ("data-id", "edge0", 1),
+        ] {
+            let rows = |document: &roxmltree::Document<'_>| {
+                document
+                    .descendants()
+                    .find(|node| node.has_tag_name("g") && node.attribute(attribute) == Some(value))
+                    .expect("State label terminal")
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("text-outer-tspan row"))
+                    .map(|row| {
+                        row.descendants()
+                            .filter(|node| node.is_text())
+                            .filter_map(|node| node.text())
+                            .collect::<String>()
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(rows(&document).len(), expected_rows, "{value}: {svg}");
+            assert_eq!(rows(&document), rows(&plain_document), "{value}: {svg}");
+        }
+    }
+}
+
+#[test]
 fn native_state_transition_labels_share_layout_background_and_measured_text_origin() {
     fn parse_translate(value: &str) -> (f64, f64) {
         value

@@ -108,6 +108,13 @@ impl StateLabelSidecarBuilder {
         &self,
         request: StateLabelMetricsRequest<'_>,
     ) -> StateLabelMeasurement {
+        let measurer = request
+            .typography
+            .svg_measurer(request.measurer, request.wrap_mode);
+        let request = StateLabelMetricsRequest {
+            measurer: measurer.as_measurer(),
+            ..request
+        };
         let mut measurement = measure_label(request);
         if let Some(geometry) = StateNativeLabelGeometry::from_measurement(request, &measurement) {
             measurement.metrics = geometry.layout_metrics();
@@ -126,11 +133,19 @@ impl StateLabelSidecarBuilder {
 }
 
 fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement {
+    let style = if request.wrap_mode == WrapMode::HtmlLike {
+        std::borrow::Cow::Borrowed(request.typography.text_style())
+    } else {
+        crate::text::svg_markdown_word_style(
+            request.typography.text_style(),
+            crate::text::MermaidMarkdownWordType::Normal,
+        )
+    };
     match request.source_kind {
         StateLabelSourceKind::Markdown => measure_state_markdown_label(
             request.text,
             request.measurer,
-            request.typography.text_style(),
+            &style,
             request.max_width_px,
             request.wrap_mode,
         ),
@@ -139,7 +154,7 @@ fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement
             StateLabelMeasurement {
                 metrics: request.measurer.measure_wrapped(
                     text.as_ref(),
-                    request.typography.text_style(),
+                    &style,
                     request.max_width_px,
                     request.wrap_mode,
                 ),

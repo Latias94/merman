@@ -20,7 +20,7 @@ use crate::mermaid_style::{
     is_supported_css_font_style_value, is_supported_css_font_weight_value,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter, RenderResourcePolicy};
-use crate::text::TextStyle;
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
 use super::{
     StateAppliedThemeOutcome, StateCompatibilityPlan, StateEffectPlan, StateNodeEffectPlan,
@@ -31,11 +31,17 @@ use super::{
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedLabelTypography {
     text_style: TextStyle,
+    svg_inline_weight: bool,
+    svg_inline_style: bool,
 }
 
 impl ResolvedLabelTypography {
     pub(crate) fn new(text_style: TextStyle) -> Self {
-        Self { text_style }
+        Self {
+            text_style,
+            svg_inline_weight: false,
+            svg_inline_style: false,
+        }
     }
 
     fn with_config_typography(
@@ -67,13 +73,17 @@ impl ResolvedLabelTypography {
 
     fn apply_font_weight(&mut self, value: u16) {
         self.text_style.font_weight = Some(value.to_string());
+        self.svg_inline_weight = true;
     }
 
     fn apply_font_style(&mut self, value: FontStyle) {
         self.text_style.font_style = Some(value.id().to_string());
+        self.svg_inline_style = true;
     }
 
-    fn canonicalize_emission(&self, out: &mut IndexMap<String, EmittedDeclaration>) {
+    fn canonicalize_emission(&mut self, out: &mut IndexMap<String, EmittedDeclaration>) {
+        self.svg_inline_weight |= out.contains_key("font-weight");
+        self.svg_inline_style |= out.contains_key("font-style");
         if out.contains_key("font-family")
             && let Some(family) = self.text_style.font_family.as_deref()
         {
@@ -94,6 +104,89 @@ impl ResolvedLabelTypography {
         }
         out.shift_remove("letter-spacing");
         out.shift_remove("word-spacing");
+    }
+
+    pub(super) fn svg_measurer<'a>(
+        &'a self,
+        inner: &'a dyn TextMeasurer,
+        wrap_mode: WrapMode,
+    ) -> StateLabelMeasurer<'a> {
+        StateLabelMeasurer {
+            inner,
+            typography: (wrap_mode != WrapMode::HtmlLike
+                && (self.svg_inline_weight || self.svg_inline_style))
+                .then_some(self),
+        }
+    }
+}
+
+/// Inner inline declarations override the SVG Markdown word's presentation attributes.
+pub(super) struct StateLabelMeasurer<'a> {
+    inner: &'a dyn TextMeasurer,
+    typography: Option<&'a ResolvedLabelTypography>,
+}
+
+impl StateLabelMeasurer<'_> {
+    pub(super) fn as_measurer(&self) -> &dyn TextMeasurer {
+        if self.typography.is_some() {
+            self
+        } else {
+            self.inner
+        }
+    }
+
+    fn final_style(&self, style: &TextStyle) -> TextStyle {
+        let mut style = style.clone();
+        if let Some(typography) = self.typography {
+            if typography.svg_inline_weight {
+                style.font_weight = typography.text_style.font_weight.clone();
+            }
+            if typography.svg_inline_style {
+                style.font_style = typography.text_style.font_style.clone();
+            }
+        }
+        style
+    }
+}
+
+impl TextMeasurer for StateLabelMeasurer<'_> {
+    fn cancellation_requested(&self) -> bool {
+        self.inner.cancellation_requested()
+    }
+
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.inner.measure(text, &self.final_style(style))
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.inner
+            .measure_wrapped(text, &self.final_style(style), max_width, wrap_mode)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_text_computed_length_px(text, &self.final_style(style))
+    }
+
+    fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+        self.inner
+            .measure_svg_text_bbox_x(text, &self.final_style(style))
+    }
+
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_tspan_text_bbox_height_px(text, &self.final_style(style))
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_create_text_bbox_y_offset_px(text, &self.final_style(style))
     }
 }
 
@@ -801,7 +894,7 @@ impl StateStylePlan {
             .with_config_typography(&base_text_style, &compatibility);
         let composite_label_typography = ResolvedLabelTypography::new(composite_text_style)
             .with_config_typography(&base_text_style, &compatibility);
-        let title_label_typography = ResolvedLabelTypography::new(title_text_style)
+        let mut title_label_typography = ResolvedLabelTypography::new(title_text_style)
             .with_config_typography(&title_base_text_style, &compatibility);
         if has_title {
             theme_evidence.observe_base_typography_use(
@@ -2958,7 +3051,7 @@ fn prepare_edge(
             source.as_ref(),
         );
     }
-    let label_typography = ResolvedLabelTypography::new(resolve_semantic_text_style(
+    let mut label_typography = ResolvedLabelTypography::new(resolve_semantic_text_style(
         base_text_style,
         semantic_label.as_ref(),
     ))
