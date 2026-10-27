@@ -1540,8 +1540,8 @@ mod tests {
         let svg = format!(
             concat!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
-                r#"<g class="merman-prepared-math-native" data-merman-prepared-math-occurrence="{}">"#,
-                r#"<g><path d="M0 0h2"/></g></g>"#,
+                r#"<defs><g id="math"><g><path d="M0 0h2"/></g></g></defs>"#,
+                r##"<use class="merman-prepared-math-native" data-merman-prepared-math-occurrence="{}" href="#math"/>"##,
                 r##"<path fill="url(#missing)"/></svg>"##,
             ),
             occurrence_id.as_str(),

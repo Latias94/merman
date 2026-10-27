@@ -7,6 +7,8 @@
 //! remain renderer-internal until their resource and evidence contracts are complete.
 
 mod evidence;
+#[cfg(feature = "math")]
+mod glyph_svg;
 mod prepared;
 
 pub(crate) use evidence::{

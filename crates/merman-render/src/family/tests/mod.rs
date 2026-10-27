@@ -10665,7 +10665,7 @@ fn prepared_math_native_glyph_geometry(svg: &str) -> Vec<bool> {
     document
         .descendants()
         .filter(|node| {
-            node.has_tag_name("g")
+            (node.has_tag_name("g") || node.has_tag_name("use"))
                 && node.attribute("class").is_some_and(|class| {
                     class
                         .split_ascii_whitespace()
@@ -10673,7 +10673,24 @@ fn prepared_math_native_glyph_geometry(svg: &str) -> Vec<bool> {
                 })
         })
         .map(|group| {
-            group.descendants().any(|node| {
+            let geometry = if group.has_tag_name("use") {
+                let Some(target) = group
+                    .attribute("href")
+                    .and_then(|href| href.strip_prefix('#'))
+                else {
+                    return false;
+                };
+                let Some(definition) = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(target))
+                else {
+                    return false;
+                };
+                definition
+            } else {
+                group
+            };
+            geometry.descendants().any(|node| {
                 node.has_tag_name("path")
                     && node
                         .attribute("d")

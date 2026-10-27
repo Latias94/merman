@@ -4302,6 +4302,18 @@ end"#;
 
 #[cfg(feature = "math")]
 fn assert_sequence_math_glyph_color(root: roxmltree::Node<'_, '_>, expected: [f64; 4]) {
+    let root = if root.has_tag_name("use") {
+        let target = root
+            .attribute("href")
+            .and_then(|href| href.strip_prefix('#'))
+            .expect("native math instance references a local definition");
+        root.document()
+            .descendants()
+            .find(|node| node.attribute("id") == Some(target))
+            .expect("native math definition exists")
+    } else {
+        root
+    };
     let mut painted_glyphs = 0;
     for glyph in root.descendants().filter(|node| {
         matches!(node.tag_name().name(), "path" | "line" | "rect" | "text")

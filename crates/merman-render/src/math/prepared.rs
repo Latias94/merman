@@ -932,16 +932,7 @@ pub(super) fn render_compiled_ratex_formula(
     color: ratex_types::Color,
 ) -> Option<CompiledRatexFormula> {
     let layout = layout_compiled_ratex_formula(latex, color)?;
-    let svg = ratex_svg::render_to_svg(
-        &layout.display_list,
-        &ratex_svg::SvgOptions {
-            font_size: 1.0,
-            padding: 0.0,
-            stroke_width: 0.04,
-            embed_glyphs: true,
-            font_dir: String::new(),
-        },
-    );
+    let svg = super::glyph_svg::render(&layout.display_list)?;
     Some(CompiledRatexFormula {
         svg: svg_with_em_size(svg, layout.width_em, layout.height_em),
         width_em: layout.width_em,

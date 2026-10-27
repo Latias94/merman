@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use sha2::{Digest as _, Sha256};
@@ -242,6 +243,24 @@ impl PreparedMathTerminalReceipt {
 
         let document = crate::xml_dom::Document::parse(svg)
             .map_err(|error| format!("prepared-math terminal SVG is malformed: {error}"))?;
+        let mut identifiers = HashMap::new();
+        let mut references = HashMap::<&str, usize>::new();
+        for node in document.descendants().filter(|node| node.is_element()) {
+            if let Some(identifier) = node.attribute("id")
+                && identifiers.insert(identifier, node).is_some()
+            {
+                return Err(format!("duplicate prepared-math SVG id `{identifier}`"));
+            }
+            if node.has_tag_name("use")
+                && let Some(target) = node
+                    .attribute("href")
+                    .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))
+                    .and_then(|href| href.trim().strip_prefix('#'))
+            {
+                *references.entry(target).or_default() += 1;
+            }
+        }
+        let mut used_definitions = HashSet::new();
         let mut emitted = vec![0usize; evidence.entries().len()];
         for node in document.descendants().filter(|node| node.is_element()) {
             let Some(class) = node.attribute("class") else {
@@ -268,7 +287,56 @@ impl PreparedMathTerminalReceipt {
                     "prepared-math terminal emitted duplicate occurrence `{occurrence_id}`"
                 ));
             }
-            let mut children = node.children().filter(|child| child.is_element());
+            let owner = {
+                if !node.has_tag_name("use") {
+                    return Err(
+                        "prepared-math instance must reference a root definition".to_owned()
+                    );
+                }
+                let target = node
+                    .attribute("href")
+                    .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))
+                    .and_then(|href| href.trim().strip_prefix('#'))
+                    .ok_or_else(|| {
+                        "prepared-math instance requires a local definition".to_owned()
+                    })?;
+                if references.get(target) != Some(&1) || !used_definitions.insert(target) {
+                    return Err(format!(
+                        "prepared-math definition `{target}` requires one instance"
+                    ));
+                }
+                let definition = *identifiers
+                    .get(target)
+                    .ok_or_else(|| format!("prepared-math definition `{target}` is missing"))?;
+                let root_definition = definition.parent_element().is_some_and(|parent| {
+                    parent.has_tag_name("defs")
+                        && parent.parent_element() == Some(document.root_element())
+                });
+                if !root_definition || !definition.has_tag_name("g") {
+                    return Err("prepared-math definition must be a root-owned group".to_owned());
+                }
+                if definition
+                    .attributes()
+                    .any(|attribute| attribute.namespace().is_some() || attribute.name() != "id")
+                    || definition
+                        .parent_element()
+                        .is_some_and(|parent| parent.attributes().next().is_some())
+                {
+                    return Err(
+                        "prepared-math definition wrappers must preserve projection paint"
+                            .to_owned(),
+                    );
+                }
+                if node.children().any(|child| child.is_element())
+                    || node
+                        .ancestors()
+                        .any(|ancestor| ancestor.has_tag_name("defs"))
+                {
+                    return Err("prepared-math instance must be a visible leaf".to_owned());
+                }
+                definition
+            };
+            let mut children = owner.children().filter(|child| child.is_element());
             let projection = children.next().ok_or_else(|| {
                 format!("prepared-math terminal occurrence `{occurrence_id}` has no projection")
             })?;
@@ -356,10 +424,19 @@ mod tests {
         )
     }
 
-    fn terminal_occurrence(occurrence_id: &PreparedMathOccurrenceId, projection: &str) -> String {
+    fn terminal_occurrence(
+        occurrence_id: &PreparedMathOccurrenceId,
+        projection: &str,
+        index: usize,
+    ) -> String {
         format!(
-            r#"<g class="merman-prepared-math-native" data-merman-prepared-math-occurrence="{}">{projection}</g>"#,
+            concat!(
+                r#"<defs><g id="math-{index}">{projection}</g></defs>"#,
+                r##"<use class="merman-prepared-math-native" data-merman-prepared-math-occurrence="{}" href="#math-{index}"/>"##,
+            ),
             occurrence_id.as_str(),
+            index = index,
+            projection = projection,
         )
     }
 
@@ -397,8 +474,9 @@ mod tests {
             PreparedMathOccurrenceId::indexed(DiagramFamilyId::SEQUENCE, "actor-label", 0);
         let projection = r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9"><path d="M0 0h1"/></g>"#;
         let evidence = available_evidence(occurrence_id.clone(), projection, 2);
-        let occurrence = terminal_occurrence(&occurrence_id, projection);
-        let svg = format!(r#"<svg>{occurrence}{occurrence}</svg>"#);
+        let occurrence = terminal_occurrence(&occurrence_id, projection, 0);
+        let repeated = terminal_occurrence(&occurrence_id, projection, 1);
+        let svg = format!(r#"<svg>{occurrence}{repeated}</svg>"#);
 
         let receipt = PreparedMathTerminalReceipt::from_terminal_svg(&svg, &evidence)
             .expect("valid terminal evidence")
@@ -406,7 +484,7 @@ mod tests {
 
         assert_eq!(receipt.occurrence_count(), 1);
         assert_ne!(receipt.artifact_digest(), [0; 32]);
-        let changed_svg = format!(r#"<svg data-version="2">{occurrence}{occurrence}</svg>"#);
+        let changed_svg = format!(r#"<svg data-version="2">{occurrence}{repeated}</svg>"#);
         let changed = PreparedMathTerminalReceipt::from_terminal_svg(&changed_svg, &evidence)
             .expect("same occurrence evidence in a different exact artifact")
             .expect("non-empty terminal receipt");
@@ -424,8 +502,9 @@ mod tests {
             .expect_err("missing occurrence must fail closed");
         assert!(error.contains("missing occurrence"), "{error}");
 
-        let occurrence = terminal_occurrence(&occurrence_id, projection);
-        let duplicated = format!(r#"<svg>{occurrence}{occurrence}</svg>"#);
+        let occurrence = terminal_occurrence(&occurrence_id, projection, 0);
+        let repeated = terminal_occurrence(&occurrence_id, projection, 1);
+        let duplicated = format!(r#"<svg>{occurrence}{repeated}</svg>"#);
         let error = PreparedMathTerminalReceipt::from_terminal_svg(&duplicated, &evidence)
             .expect_err("unexpected duplicate occurrence must fail closed");
         assert!(error.contains("duplicate occurrence"), "{error}");
@@ -444,6 +523,7 @@ mod tests {
         let mismatched = terminal_occurrence(
             &occurrence_id,
             r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9"><rect/></g>"#,
+            0,
         );
         let error = PreparedMathTerminalReceipt::from_terminal_svg(
             &format!("<svg>{mismatched}</svg>"),
@@ -451,6 +531,45 @@ mod tests {
         )
         .expect_err("mismatched projection must fail closed");
         assert!(error.contains("mismatched projection"), "{error}");
+    }
+
+    #[test]
+    fn terminal_receipt_requires_one_root_definition_per_visible_instance() {
+        let occurrence_id =
+            PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
+        let projection = r#"<g><path d="M0 0h1"/></g>"#;
+        let evidence = available_evidence(occurrence_id.clone(), projection, 1);
+        let valid = format!(
+            "<svg>{}</svg>",
+            terminal_occurrence(&occurrence_id, projection, 0)
+        );
+        PreparedMathTerminalReceipt::from_terminal_svg(&valid, &evidence).unwrap();
+        for invalid in [
+            valid.replace(r##"href="#math-0""##, r##"href="#missing""##),
+            valid
+                .replace("<defs>", "<g><defs>")
+                .replace("</defs>", "</defs></g>"),
+            valid.replace("</svg>", r##"<use href="#math-0"/></svg>"##),
+            valid.replace(
+                "</svg>",
+                r##"<use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#math-0"/></svg>"##,
+            ),
+            valid.replace("</svg>", r#"<g id="math-0"/></svg>"#),
+            valid.replace(r#"id="math-0""#, r#"id="math-0" transform="scale(0)""#),
+            valid.replace("<defs>", r#"<defs opacity="0">"#),
+            valid
+                .replace("<use ", "<defs><use ")
+                .replace("/></svg>", "/></defs></svg>"),
+            format!(
+                r#"<svg><g class="merman-prepared-math-native" data-merman-prepared-math-occurrence="{}">{projection}</g></svg>"#,
+                occurrence_id.as_str(),
+            ),
+        ] {
+            assert!(
+                PreparedMathTerminalReceipt::from_terminal_svg(&invalid, &evidence).is_err(),
+                "{invalid}"
+            );
+        }
     }
 
     #[test]

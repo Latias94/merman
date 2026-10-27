@@ -6,6 +6,7 @@ use crate::math::{
     PreparedMathEvidenceLease, PreparedMathProjectionFingerprint,
 };
 use crate::{DiagramFamilyId, Error, Result};
+use std::collections::HashSet;
 
 use super::util::{extract_quoted_attr, find_tag_end};
 
@@ -74,6 +75,18 @@ pub(crate) fn project_prepared_math(
         return Ok(svg.to_owned());
     }
 
+    let document = crate::xml_dom::Document::parse(svg)
+        .map_err(|error| projection_error(format!("malformed math SVG: {error}")))?;
+    let mut identifiers: HashSet<String> = document
+        .descendants()
+        .filter_map(|node| node.attribute("id").map(str::to_owned))
+        .collect();
+    let namespace = crate::svg::parity::sanitize_svg_id(
+        document.root_element().attribute("id").unwrap_or("merman"),
+    );
+    let root_open_end = find_tag_end(svg, document.root_element().range().start)
+        .ok_or_else(|| projection_error("missing root SVG start tag"))?;
+    let mut definitions = String::new();
     let mut output = String::with_capacity(svg.len());
     let mut cursor = 0usize;
     let mut projected = 0usize;
@@ -181,8 +194,23 @@ pub(crate) fn project_prepared_math(
 
         let (replacement_start, replacement_end) =
             prepared_math_switch_wrapper(svg, cursor, start, end).unwrap_or((start, end));
+        let mut identifier_index = projected;
+        let identifier = loop {
+            let identifier = format!("{namespace}-prepared-math-{identifier_index}");
+            if identifiers.insert(identifier.clone()) {
+                break identifier;
+            }
+            identifier_index += 1;
+        };
+        // Definitions keep native glyphs outside shape selectors. In particular, usvg does not
+        // give inline !important declarations browser-equivalent precedence over shape classDefs.
+        definitions.push_str(r#"<g id=""#);
+        definitions.push_str(&identifier);
+        definitions.push_str(r#"">"#);
+        definitions.push_str(projection);
+        definitions.push_str("</g>");
         output.push_str(&svg[cursor..replacement_start]);
-        output.push_str(r#"<g class=""#);
+        output.push_str(r#"<use class=""#);
         output.push_str(PREPARED_MATH_NATIVE_CLASS);
         output.push_str(r#"" data-merman-prepared-math-occurrence=""#);
         output.push_str(occurrence_id);
@@ -190,9 +218,9 @@ pub(crate) fn project_prepared_math(
         output.push_str(&format_number(translate_x));
         output.push(' ');
         output.push_str(&format_number(translate_y));
-        output.push_str(r#")">"#);
-        output.push_str(projection);
-        output.push_str("</g>");
+        output.push_str(r##")" href="#"##);
+        output.push_str(&identifier);
+        output.push_str(r#""/>"#);
         cursor = replacement_end;
         projected = projected.saturating_add(1);
     }
@@ -217,6 +245,7 @@ pub(crate) fn project_prepared_math(
             missing.occurrence_id().as_str()
         )));
     }
+    output.insert_str(root_open_end + 1, &format!("<defs>{definitions}</defs>"));
     Ok(output)
 }
 
@@ -592,7 +621,7 @@ mod tests {
             concat!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
                 r#"<foreignObject width="20" height="10"><div>"#,
-                r#"<span class="merman-prepared-math">user content</span>"#,
+                r#"<span id="merman-prepared-math-0" class="merman-prepared-math">user content</span>"#,
                 r#"</div></foreignObject>"#,
                 r#"<foreignObject width="10" height="10"><div>"#,
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
@@ -609,6 +638,10 @@ mod tests {
 
         assert!(output.contains("user content"), "{output}");
         assert!(output.contains(r#"d="native""#), "{output}");
+        assert!(
+            output.contains(r##"href="#merman-prepared-math-1""##),
+            "native definitions must preserve existing SVG identifiers: {output}"
+        );
     }
 
     #[test]
