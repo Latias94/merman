@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-27",
+  "platform": "darwin-arm64",
+  "source": "formula.mmd",
+  "publishedCommit": "8e303a43b",
+  "mainBeforeCommit": "0239c063bba12dee4c1b9555a96cad5ac6262b64",
+  "records": [
+    {
+      "label": "release-0.9.2",
+      "format": "png",
+      "file": "release-0.9.2.png",
+      "sha256": "05d6915386e0b428d0f24664eb5dbd4ebd18c0ee8e564068d54a7dbc9f4f2f80",
+      "argv": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    },
+    {
+      "label": "release-0.9.2",
+      "format": "svg",
+      "file": "release-0.9.2.svg",
+      "sha256": "e5a23ac5005308034210a9f9dec776c4011cc83fa8e65daf83fc6eed4f941bda",
+      "argv": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "label": "main-before",
+      "format": "png",
+      "file": "main-before.png",
+      "sha256": "6da6af62c488080249cf8b24e8857846bf8119024183b0cf518321e38d01f699",
+      "argv": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    },
+    {
+      "label": "main-before",
+      "format": "svg",
+      "file": "main-before.svg",
+      "sha256": "99bea59af04aa704355288b77037896770817044e938f9b87317f92561501006",
+      "argv": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "label": "main-after",
+      "format": "png",
+      "file": "main-after.png",
+      "sha256": "e5aace9230b20bd465f87401e3b0948d7c3652c4ce361fb09283c6e2e50b3085",
+      "argv": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    },
+    {
+      "label": "main-after",
+      "format": "svg",
+      "file": "main-after.svg",
+      "sha256": "cf27702ff7c8cf8010ea857a93ff215aecd9ae2bd910186c3f5acaeebf164289",
+      "argv": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    }
+  ],
+  "mainAfterCommit": "3f0c6bf9f"
+}

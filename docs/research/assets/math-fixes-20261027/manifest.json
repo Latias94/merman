@@ -1,0 +1,50 @@
+[
+  {
+    "line": "main",
+    "case": "flowchart",
+    "pipeline": "parity",
+    "file": "main-flowchart-parity.svg"
+  },
+  {
+    "line": "main",
+    "case": "flowchart",
+    "pipeline": "resvg-safe",
+    "file": "main-flowchart-resvg-safe.svg"
+  },
+  {
+    "line": "main",
+    "case": "fraction-styled",
+    "pipeline": "parity",
+    "file": "main-fraction-styled-parity.svg"
+  },
+  {
+    "line": "main",
+    "case": "fraction-styled",
+    "pipeline": "resvg-safe",
+    "file": "main-fraction-styled-resvg-safe.svg"
+  },
+  {
+    "line": "main",
+    "case": "sequence",
+    "pipeline": "parity",
+    "file": "main-sequence-parity.svg"
+  },
+  {
+    "line": "main",
+    "case": "sequence",
+    "pipeline": "resvg-safe",
+    "file": "main-sequence-resvg-safe.svg"
+  },
+  {
+    "line": "main",
+    "case": "swimlane",
+    "pipeline": "parity",
+    "file": "main-swimlane-parity.svg"
+  },
+  {
+    "line": "main",
+    "case": "swimlane",
+    "pipeline": "resvg-safe",
+    "file": "main-swimlane-resvg-safe.svg"
+  }
+]

@@ -96,7 +96,7 @@ mod rendering {
 
     fn replace_children(svg: &str, node: roxmltree::Node<'_, '_>, body: &str) -> String {
         let first = node.children().next().expect("nonempty SVG wrapper");
-        let last = node.children().last().expect("nonempty SVG wrapper");
+        let last = node.children().next_back().expect("nonempty SVG wrapper");
         format!(
             "{}{body}{}",
             &svg[node.range().start..first.range().start],
