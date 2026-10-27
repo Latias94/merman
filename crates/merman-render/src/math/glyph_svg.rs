@@ -125,18 +125,139 @@ pub(crate) fn primitive_paint_style(element: &BytesStart<'_>) -> Option<String> 
 }
 
 #[cfg(feature = "math")]
-pub(super) fn render(display_list: &ratex_types::DisplayList) -> Option<String> {
-    let svg = ratex_svg::render_to_svg(
-        display_list,
-        &ratex_svg::SvgOptions {
-            font_size: 1.0,
-            padding: 0.0,
-            stroke_width: 0.04,
-            embed_glyphs: true,
-            font_dir: String::new(),
-        },
+pub(super) struct RenderedFormula {
+    pub(super) svg: String,
+    pub(super) width_em: f64,
+    pub(super) height_em: f64,
+}
+
+#[cfg(feature = "math")]
+pub(super) fn render(
+    display_list: &ratex_types::DisplayList,
+    root_width: f64,
+) -> Option<RenderedFormula> {
+    let options = ratex_svg::SvgOptions {
+        font_size: 1.0,
+        padding: 0.0,
+        stroke_width: 0.04,
+        embed_glyphs: true,
+        font_dir: String::new(),
+    };
+    let svg = own_primitive_paint(&ratex_svg::render_to_svg(display_list, &options))?;
+    // Missing exact metrics identify candidates, not a claim about the selected font.
+    // Render only these candidates to keep structural paths and ordinary KaTeX ink
+    // on the upstream display-list bounds policy (including its large-path limits).
+    let candidates = ratex_types::DisplayList {
+        items: display_list
+            .items
+            .iter()
+            .filter(|item| {
+                let ratex_types::DisplayItem::GlyphPath {
+                    font, char_code, ..
+                } = item
+                else {
+                    return false;
+                };
+                let Some(font) = ratex_font::FontId::parse(font) else {
+                    return false;
+                };
+                let character = ratex_font::katex_ttf_glyph_char(font, *char_code);
+                ratex_font::get_char_metrics(font, u32::from(character)).is_none()
+            })
+            .cloned()
+            .collect(),
+        width: display_list.width,
+        height: display_list.height,
+        depth: display_list.depth,
+    };
+    let candidate_svg =
+        (!candidates.items.is_empty()).then(|| ratex_svg::render_to_svg(&candidates, &options));
+    fit_resolved_ink(
+        &svg,
+        candidate_svg.as_deref(),
+        display_list.width,
+        display_list.total_height(),
+        root_width < 0.01,
+    )
+}
+
+/// Reconcile the logical box with the actual self-contained glyphs emitted by RaTeX.
+///
+/// The backend resolves fallback outlines and PNG strikes after layout. Vertical ink
+/// belongs to the formula viewport, just as in RaTeX's display-list bounds recovery.
+/// Nonzero horizontal advances retain intentional nested lap clipping; only a
+/// near-zero root advance is recovered, following ratex-layout's to_display_list.
+#[cfg(feature = "math")]
+fn fit_resolved_ink(
+    svg: &str,
+    ink_svg: Option<&str>,
+    logical_width: f64,
+    logical_height: f64,
+    recover_horizontal: bool,
+) -> Option<RenderedFormula> {
+    use kurbo::Shape as _;
+    let document = roxmltree::Document::parse(ink_svg.unwrap_or("<svg/>")).ok()?;
+    let root = document.root_element();
+    const UNITS_PER_EM: f64 = 1_000_000.0;
+    // Keep already-rounded logical bounds in integer micro-units. Reapplying ceil
+    // after an f64 division can spuriously add one unit (for example 0.125008em).
+    let mut bounds = kurbo::Rect::new(
+        0.0,
+        0.0,
+        (logical_width.max(0.0) * UNITS_PER_EM).round(),
+        (logical_height.max(0.0) * UNITS_PER_EM).round(),
     );
-    own_primitive_paint(&svg)
+    for element in root.children().filter(|node| node.is_element()) {
+        let number = |key, default| -> Option<f64> {
+            let value = element
+                .attribute(key)
+                .map_or(Some(default), |value| value.parse::<f64>().ok())?;
+            value.is_finite().then_some(value)
+        };
+        let ink = match element.tag_name().name() {
+            "path" => {
+                let path = kurbo::BezPath::from_svg(element.attribute("d")?).ok()?;
+                if path.is_empty() {
+                    continue;
+                }
+                path.bounding_box()
+            }
+            "image" => {
+                let x = number("x", 0.0)?;
+                let y = number("y", 0.0)?;
+                kurbo::Rect::new(x, y, x + number("width", 0.0)?, y + number("height", 0.0)?)
+            }
+            // Unresolved text uses the host font. It has no renderer-owned outline to
+            // measure here; do not invent a second font resolver or synthetic bbox.
+            "text" => continue,
+            _ => return None,
+        };
+        if ![ink.x0, ink.y0, ink.x1, ink.y1]
+            .into_iter()
+            .all(f64::is_finite)
+        {
+            return None;
+        }
+        bounds.y0 = bounds.y0.min((ink.y0 * UNITS_PER_EM).floor());
+        bounds.y1 = bounds.y1.max((ink.y1 * UNITS_PER_EM).ceil());
+        if recover_horizontal {
+            bounds.x0 = bounds.x0.min((ink.x0 * UNITS_PER_EM).floor());
+            bounds.x1 = bounds.x1.max((ink.x1 * UNITS_PER_EM).ceil());
+        }
+    }
+    let x = bounds.x0 / UNITS_PER_EM;
+    let y = bounds.y0 / UNITS_PER_EM;
+    let width_em = (bounds.x1 - bounds.x0) / UNITS_PER_EM;
+    let height_em = (bounds.y1 - bounds.y0) / UNITS_PER_EM;
+    let open_end = svg.find('>')?;
+    let body = svg.get(open_end + 1..)?.strip_suffix("</svg>")?;
+    Some(RenderedFormula {
+        svg: format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {width_em} {height_em}" width="{width_em}em" height="{height_em}em" style="font-size:inherit!important">{body}</svg>"#,
+        ),
+        width_em,
+        height_em,
+    })
 }
 
 #[cfg(feature = "math")]
@@ -231,6 +352,115 @@ mod tests {
         assert!(style(4).contains("font-style:italic!important"));
         assert_eq!(children[4].text(), Some("<"));
         assert_eq!(style(5), "opacity:0.5!important;filter:none!important");
+    }
+
+    #[test]
+    fn ordinary_katex_and_structural_paths_keep_upstream_display_bounds() {
+        let list = ratex_types::DisplayList {
+            items: vec![ratex_types::DisplayItem::Path {
+                x: 0.0,
+                y: 0.0,
+                commands: vec![
+                    ratex_types::PathCommand::MoveTo {
+                        x: 0.0,
+                        y: -100000.0,
+                    },
+                    ratex_types::PathCommand::LineTo {
+                        x: 1.0,
+                        y: 100000.0,
+                    },
+                ],
+                fill: true,
+                color: ratex_types::Color::BLACK,
+            }],
+            width: 1.0,
+            height: 0.5,
+            depth: 0.5,
+        };
+        let rendered = render(&list, 1.0).unwrap();
+        assert_eq!((rendered.width_em, rendered.height_em), (1.0, 1.0));
+        assert!(rendered.svg.contains(r#"viewBox="0 0 1 1""#));
+        let font = ratex_font::FontId::MainBold;
+        let mapped = ratex_font::katex_ttf_glyph_char(font, u32::from('𝐀'));
+        assert!(ratex_font::get_char_metrics(font, u32::from(mapped)).is_some());
+    }
+
+    #[test]
+    fn resolved_geometry_recovers_zero_boxes_without_expanding_nested_lap_advances() {
+        let svg = r#"<svg><path d="M-0.2 -0.8L1.3 -0.8L1.3 0.2Z"/><image x="0" y="-0.01" width="1" height="1"/></svg>"#;
+        let normal = fit_resolved_ink(svg, Some(svg), 1.0, 0.74, false).unwrap();
+        let zero = fit_resolved_ink(svg, Some(svg), 0.0, 0.0, true).unwrap();
+        assert_eq!(
+            normal.width_em, 1.0,
+            "nonzero parent advance retains nested lap clipping"
+        );
+        assert_eq!(
+            zero.width_em, 1.5,
+            "a zero-width root recovers actual horizontal ink"
+        );
+        for result in [normal, zero] {
+            let document = roxmltree::Document::parse(&result.svg).unwrap();
+            let viewport: Vec<f64> = document
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_ascii_whitespace()
+                .map(|value| value.parse().unwrap())
+                .collect();
+            assert_eq!(viewport[1], -0.8);
+            assert!(viewport[1] + viewport[3] >= 0.99);
+            assert_eq!(result.height_em, viewport[3]);
+            assert!(
+                result.svg.contains(r#"d="M-0.2 -0.8L1.3 -0.8L1.3 0.2Z""#),
+                "preserve emitted geometry"
+            );
+        }
+        let exact = fit_resolved_ink("<svg></svg>", None, 0.125008, 1.0, false).unwrap();
+        assert_eq!(exact.width_em, 0.125008);
+        let empty = fit_resolved_ink("<svg></svg>", None, 0.0, 0.0, true).unwrap();
+        assert_eq!(
+            (empty.width_em, empty.height_em),
+            (0.0, 0.0),
+            "phantom/empty content must not gain synthetic ink"
+        );
+    }
+
+    #[test]
+    fn resolved_fallback_viewport_contains_real_ink() {
+        for (font, character) in [("CJK-Regular", '中'), ("Emoji-Fallback", '😀')] {
+            let list = ratex_types::DisplayList {
+                items: vec![ratex_types::DisplayItem::GlyphPath {
+                    x: 0.0,
+                    y: 0.0,
+                    scale: 1.0,
+                    font: font.to_owned(),
+                    char_code: u32::from(character),
+                    color: ratex_types::Color::BLACK,
+                }],
+                width: 1.0,
+                height: 0.0,
+                depth: 0.0,
+            };
+            let rendered = render(&list, list.width).unwrap();
+            let svg = rendered.svg;
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = document.root_element();
+            // Font availability belongs to the platform; the synthetic bounds test below
+            // remains unconditional when this backend cannot resolve a system glyph.
+            if !root
+                .children()
+                .any(|node| matches!(node.tag_name().name(), "path" | "image"))
+            {
+                continue;
+            }
+            let viewport: Vec<f64> = root
+                .attribute("viewBox")
+                .unwrap()
+                .split_ascii_whitespace()
+                .map(|number| number.parse().unwrap())
+                .collect();
+            assert!(viewport[2] > 0.0 && viewport[3] > 0.0, "{font}: {svg}");
+        }
     }
 
     #[test]

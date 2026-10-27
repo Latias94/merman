@@ -2,7 +2,8 @@
 
 use super::cascade::ResolvedFallbackTypography;
 use crate::svg::pipeline::{
-    escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints, find_with_checkpoints,
+    checkpoint_loop, escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
+    find_with_checkpoints,
 };
 use crate::text::{TextMeasurer, is_html_collapsible_ascii_whitespace};
 use quick_xml::{Reader, XmlVersion, events::Event};
@@ -21,6 +22,7 @@ pub(super) struct NativeMathRequest<'a> {
     pub(super) typography: &'a ResolvedFallbackTypography,
     pub(super) width: f64,
     pub(super) height: f64,
+    pub(super) align_to_start: bool,
     pub(super) text_measurer: &'a dyn TextMeasurer,
 }
 
@@ -78,14 +80,14 @@ fn dimension(value: &str) -> Option<f64> {
 
 fn view_box_dimensions(value: &str) -> Option<(f64, f64)> {
     let mut parts = value.split_ascii_whitespace();
-    let x = dimension(parts.next()?)?;
-    let y = dimension(parts.next()?)?;
+    let x = parts.next()?.parse::<f64>().ok()?;
+    let y = parts.next()?.parse::<f64>().ok()?;
     let width = dimension(parts.next()?)?;
     let height = dimension(parts.next()?)?;
-    (x == 0.0 && y == 0.0 && parts.next().is_none()).then_some((width, height))
+    (x.is_finite() && y.is_finite() && parts.next().is_none()).then_some((width, height))
 }
 
-// This list follows ratex-svg's outline, glyph-text, rule, and dashed-rule emitters.
+// This list follows ratex-svg's outline, glyph-text, bitmap-glyph, and rule emitters.
 fn primitive_attribute(element: &str, key: &str, value: &str) -> bool {
     match (element, key) {
         ("path", "d") => true,
@@ -96,11 +98,13 @@ fn primitive_attribute(element: &str, key: &str, value: &str) -> bool {
         }
         ("path" | "rect" | "text", "fill-opacity")
         | ("path" | "line", "stroke-opacity" | "stroke-width")
-        | ("rect", "width" | "height")
+        | ("rect" | "image", "width" | "height")
         | ("text", "font-size") => dimension(value).is_some(),
-        ("rect" | "text", "x" | "y") | ("line", "x1" | "y1" | "x2" | "y2") => {
+        ("rect" | "text" | "image", "x" | "y") | ("line", "x1" | "y1" | "x2" | "y2") => {
             value.parse::<f64>().is_ok_and(f64::is_finite)
         }
+        ("image", "preserveAspectRatio") => value == "none",
+        ("image", "opacity") => dimension(value).is_some_and(|value| value <= 1.0),
         ("text", "font-family") => !value.is_empty(),
         ("text", "font-weight") => matches!(value, "normal" | "bold"),
         ("text", "font-style") => matches!(value, "normal" | "italic"),
@@ -112,6 +116,30 @@ fn primitive_attribute(element: &str, key: &str, value: &str) -> bool {
                 && parts.next().is_none()
         }
         _ => false,
+    }
+}
+
+fn image_href<E>(value: &str, checkpoint: &mut impl FnMut() -> Result<(), E>) -> Result<bool, E> {
+    let Some(payload) = value.strip_prefix("data:image/png;base64,") else {
+        return Ok(false);
+    };
+    if payload.is_empty() {
+        return Ok(false);
+    }
+    for (index, byte) in payload.bytes().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        if !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'/' | b'=') {
+            return Ok(false);
+        }
+    }
+    let Ok(url) = data_url::DataUrl::process(value) else {
+        return Ok(false);
+    };
+    // Share the terminal image validator's streaming decoder; export owns decode budgets.
+    match url.decode(|_| checkpoint()) {
+        Ok(_) => Ok(true),
+        Err(data_url::forgiving_base64::DecodeError::InvalidBase64(_)) => Ok(false),
+        Err(data_url::forgiving_base64::DecodeError::WriteError(error)) => Err(error),
     }
 }
 
@@ -214,7 +242,7 @@ fn parse_rows<'a, E>(
                 let name = name.as_ref();
                 let in_svg = svg.is_some();
                 if in_svg {
-                    if !matches!(name, "path" | "rect" | "line" | "text")
+                    if !matches!(name, "path" | "rect" | "line" | "text" | "image")
                         || svg
                             .as_ref()
                             .is_some_and(|open| next_depth != open.source_depth + 1)
@@ -230,6 +258,7 @@ fn parse_rows<'a, E>(
                 let mut view_box = None;
                 let mut width_em = None;
                 let mut height_em = None;
+                let mut has_image_href = false;
                 for attribute in tag.attributes().with_checks(true) {
                     checkpoint()?;
                     let Ok(attribute) = attribute else {
@@ -240,6 +269,13 @@ fn parse_rows<'a, E>(
                     };
                     let key = attribute.key.as_ref();
                     if in_svg {
+                        if name == "image" && key == "href" {
+                            if !image_href(&value, checkpoint)? {
+                                return reject("invalid native math embedded PNG", invalid);
+                            }
+                            has_image_href = true;
+                            continue;
+                        }
                         if key == "style" {
                             // Admit only the producer's exact owned declarations, never arbitrary CSS.
                             if crate::math::glyph_svg::primitive_paint_style(&tag).as_deref()
@@ -262,6 +298,7 @@ fn parse_rows<'a, E>(
                                 owned_svg |= token == SVG_CLASS;
                             }
                         }
+                        "style" if name == "svg" && value == "font-size:inherit!important" => {}
                         "viewBox" if name == "svg" => view_box = Some(value.into_owned()),
                         "width" if name == "svg" => {
                             width_em = value.strip_suffix("em").and_then(dimension);
@@ -284,6 +321,9 @@ fn parse_rows<'a, E>(
                         }
                         _ => {}
                     }
+                }
+                if in_svg && name == "image" && !has_image_href {
+                    return reject("native math image requires an embedded PNG", invalid);
                 }
 
                 if let Some(open) = svg.as_mut() {
@@ -433,6 +473,7 @@ pub(super) fn project_native_math<E>(
         typography,
         width,
         height,
+        align_to_start,
         text_measurer,
     } = request;
     checkpoint()?;
@@ -524,10 +565,18 @@ pub(super) fn project_native_math<E>(
         &mut elements,
         preflight,
     )?;
-    let mut y = (height - total_height) / 2.0;
+    let mut y = if align_to_start {
+        0.0
+    } else {
+        (height - total_height) / 2.0
+    };
     for row in rows {
         checkpoint()?;
-        let mut x = (width - row.width) / 2.0;
+        let mut x = if align_to_start {
+            0.0
+        } else {
+            (width - row.width) / 2.0
+        };
         for run in row.runs {
             checkpoint()?;
             let (run_width, run_height) = run.size();
@@ -635,6 +684,18 @@ mod tests {
         r#"<svg class='merman-native-math-svg' viewBox='0 0 2 1' width='2em' height='1em'><path d='M0 0L1 1' fill='rgba(0,0,0,1)'/></svg>"#
     }
 
+    const PNG_HREF: &str = concat!(
+        "data:image/png;base64,",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ",
+        "AAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+    );
+
+    fn image_formula() -> String {
+        format!(
+            "<svg class='{SVG_CLASS}' viewBox='0 0 2 1' width='2em' height='1em'><image href='{PNG_HREF}' x='-0.25' y='-0.01' width='1' height='1' opacity='0.5' preserveAspectRatio='none' style='opacity:0.5!important;filter:none!important'/></svg>"
+        )
+    }
+
     fn project(inner: &str) -> Result<Option<NativeMathProjection>, &'static str> {
         project_native_math(
             NativeMathRequest {
@@ -642,6 +703,7 @@ mod tests {
                 typography: &typography(),
                 width: 100.0,
                 height: 60.0,
+                align_to_start: false,
                 text_measurer: &Measurer,
             },
             &mut || Ok(()),
@@ -666,6 +728,7 @@ mod tests {
                 typography: &typography(),
                 width: f64::NAN,
                 height: -1.0,
+                align_to_start: false,
                 text_measurer: &Measurer,
             },
             &mut || Ok::<_, ()>(()),
@@ -688,6 +751,33 @@ mod tests {
         assert!(result.svg.contains("d='M0 0L1 1'"));
         assert_eq!(result.elements, 3);
         assert_eq!(result.depth, 3);
+    }
+
+    #[test]
+    fn resolved_ink_keeps_signed_viewport_origins() {
+        let inner = format!(
+            "<div class='{ROW_CLASS}'>{}</div>",
+            formula().replace("0 0 2 1", "-0.2 -0.4 2 1")
+        );
+        let output = project(&inner).unwrap().unwrap();
+        assert!(output.svg.contains("viewBox=\"-0.2 -0.4 2 1\""));
+        for origin in ["NaN 0", "0 inf"] {
+            let invalid = inner.replace("-0.2 -0.4", origin);
+            assert!(matches!(project(&invalid), Err("invalid")));
+        }
+    }
+
+    #[test]
+    fn sequence_fit_content_uses_the_foreign_object_origin() {
+        let input = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' aria-roledescription='sequence'><foreignObject x='5' y='7' width='40' height='30'><div xmlns='http://www.w3.org/1999/xhtml' class='{ROW_CLASS}'>{}</div></foreignObject></svg>",
+            formula()
+        );
+        let svg = super::super::foreign_object_label_fallback_svg_text(&input, &Measurer);
+        assert!(
+            svg.contains(r#"x="0" y="0" width="32" height="16""#),
+            "{svg}"
+        );
     }
 
     #[test]
@@ -737,6 +827,166 @@ mod tests {
                 Err("invalid")
             ));
         }
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn real_formula_producer_is_admitted_without_weakening_root_style() {
+        use crate::math::MathRenderer as _;
+        let renderer = crate::math::RatexMathRenderer;
+        let html = renderer
+            .render_html_label("$$x$$", &merman_core::MermaidConfig::default())
+            .unwrap();
+        assert!(html.contains("font-size:inherit!important"));
+        assert!(project(&html).unwrap().is_some());
+        for style in [
+            "font-size:inherit",
+            "font-size:inherit!important;opacity:0",
+            "font-size:999px!important",
+        ] {
+            assert!(matches!(
+                project(&html.replace("font-size:inherit!important", style)),
+                Err("invalid")
+            ));
+        }
+    }
+
+    #[test]
+    fn bitmap_glyph_preserves_signed_geometry_alpha_and_canonical_paint() {
+        let formula = image_formula();
+        for formula in [
+            formula.clone(),
+            formula
+                .replace(" opacity='0.5'", "")
+                .replace("opacity:0.5!", "opacity:1!"),
+            formula.replace("width='1' height='1'", "width='0' height='0'"),
+        ] {
+            let inner = format!("<div class='{ROW_CLASS}'>{formula}</div>");
+            let result = project(&inner).unwrap().unwrap();
+            let image = &formula[formula.find("<image").unwrap()..formula.find("</svg>").unwrap()];
+            assert!(result.svg.contains(image), "preserve exact bitmap bytes");
+            assert_eq!(result.elements, 3);
+            assert_eq!(result.depth, 3);
+        }
+    }
+
+    #[test]
+    fn bitmap_glyph_rejects_non_emitter_resources_geometry_and_paint() {
+        let formula = image_formula();
+        for href in [
+            "/tmp/glyph.png",
+            "https://example.test/glyph.png",
+            "#glyph",
+            "data:image/svg+xml;base64,PHN2Zy8+",
+            "data:image/jpeg;base64,AAAA",
+            "data:image/png,AAAA",
+            "data:image/png;base64,",
+            "data:image/png;base64,AA*A",
+            "data:image/png;base64,A===",
+            "data:image/png;base64,AA%GG",
+            "data:image/png;base64,AAAA#fragment",
+        ] {
+            let inner = format!(
+                "<div class='{ROW_CLASS}'>{}</div>",
+                formula.replace(PNG_HREF, href),
+            );
+            assert!(matches!(project(&inner), Err("invalid")), "{href}");
+        }
+        for tampered in [
+            formula.replace(&format!(" href='{PNG_HREF}'"), ""),
+            formula.replace("href=", "xlink:href="),
+            formula.replace("x='-0.25'", "x='NaN'"),
+            formula.replace("y='-0.01'", "y='inf'"),
+            formula.replace("width='1'", "width='-1'"),
+            formula.replace("height='1'", "height='NaN'"),
+            formula.replace("opacity='0.5'", "opacity='-0.1'"),
+            formula.replace("opacity='0.5'", "opacity='1.1'"),
+            formula.replace("opacity='0.5'", "opacity='NaN'"),
+            formula.replace(
+                "preserveAspectRatio='none'",
+                "preserveAspectRatio='xMidYMid'",
+            ),
+            formula.replace("<image ", "<image onload='bad' "),
+            formula.replace("opacity:0.5!", "opacity:1!"),
+            formula.replace(
+                "filter:none!important",
+                "filter:none!important;display:none",
+            ),
+            formula.replace("!important", ""),
+        ] {
+            let inner = format!("<div class='{ROW_CLASS}'>{tampered}</div>");
+            assert!(matches!(project(&inner), Err("invalid")), "{tampered}");
+        }
+    }
+
+    #[test]
+    fn bitmap_glyph_propagates_decode_cancellation_and_generated_limits() {
+        let mut checks = 0;
+        let result = image_href(PNG_HREF, &mut || {
+            checks += 1;
+            if checks == 4 {
+                Err("cancelled")
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result, Err("cancelled"));
+
+        let inner = format!("<div class='{ROW_CLASS}'>{}</div>", image_formula());
+        let mut checked = Vec::new();
+        let result = project_native_math(
+            NativeMathRequest {
+                inner: &inner,
+                typography: &typography(),
+                width: 100.0,
+                height: 60.0,
+                align_to_start: false,
+                text_measurer: &Measurer,
+            },
+            &mut || Ok(()),
+            &mut |bytes, elements, depth| {
+                checked.push((bytes, elements, depth));
+                if elements > 2 { Err("budget") } else { Ok(()) }
+            },
+            &mut |_| Err("invalid"),
+        );
+        assert!(matches!(result, Err("budget")));
+        assert_eq!(checked.len(), 2);
+        assert_eq!((checked[1].1, checked[1].2), (3, 3));
+        assert!(checked[1].0 >= PNG_HREF.len());
+    }
+
+    #[test]
+    fn bitmap_glyph_remains_in_the_terminal_image_reference_plan() {
+        let svg = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='60'><g id='label'><foreignObject width='100' height='60'><div xmlns='http://www.w3.org/1999/xhtml' class='{ROW_CLASS}'>{}</div></foreignObject></g><use href='#label'/></svg>",
+            image_formula(),
+        );
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let output = crate::svg::SvgPipeline::resvg_safe()
+            .process_resvg_compatible(&svg, &session)
+            .unwrap();
+        let document = roxmltree::Document::parse(output.as_str()).unwrap();
+        let (index, image) = document
+            .descendants()
+            .filter(|node| node.is_element())
+            .enumerate()
+            .find(|(_, node)| node.has_tag_name("image"))
+            .unwrap();
+        assert_eq!(image.attribute("href"), Some(PNG_HREF));
+        assert!(image.ancestors().any(|node| node.has_tag_name("defs")));
+        assert!(
+            output.reference_plan().raw_element_occurrences()[index] >= 3,
+            "charge the definition and both expanded image instances",
+        );
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject")),
+            "native output must retain the bitmap after HTML removal",
+        );
     }
 
     #[test]
@@ -815,6 +1065,7 @@ mod tests {
                 typography: &typography(),
                 width: 100.0,
                 height: 60.0,
+                align_to_start: false,
                 text_measurer: &Measurer,
             },
             &mut || Err::<(), _>("cancelled"),
@@ -828,6 +1079,7 @@ mod tests {
                 typography: &typography(),
                 width: -1.0,
                 height: 60.0,
+                align_to_start: false,
                 text_measurer: &Measurer,
             },
             &mut || Ok::<_, ()>(()),
@@ -852,6 +1104,7 @@ mod tests {
                 typography: &typography,
                 width: 100.0,
                 height: 60.0,
+                align_to_start: false,
                 text_measurer: &Measurer,
             },
             &mut || Ok(()),

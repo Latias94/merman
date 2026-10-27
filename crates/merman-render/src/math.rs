@@ -307,45 +307,23 @@ impl RatexMathRenderer {
         }
     }
 
-    fn layout_formula_em(latex: &str) -> Option<(ratex_types::DisplayList, f64, f64)> {
+    fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
         let ast = ratex_parser::parse(latex).ok()?;
         let layout_options = ratex_layout::LayoutOptions::default()
             .with_style(ratex_types::MathStyle::Display)
             .with_color(ratex_types::Color::BLACK);
         let layout_box = ratex_layout::layout(&ast, &layout_options);
-        // Display-list bounds include overflowing ink (for example, smash and lap commands).
-        // Measurement must use those same rounded bounds as the emitted SVG viewport.
         let display_list = ratex_layout::to_display_list(&layout_box);
-        let width_em = Self::emitted_em_dimension(display_list.width.max(0.0));
-        let height_em = Self::emitted_em_dimension(display_list.total_height().max(0.0));
-        Some((display_list, width_em, height_em))
-    }
-
-    fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
-        let (display_list, width_em, height_em) = Self::layout_formula_em(latex)?;
-        let svg = glyph_svg::render(&display_list)?;
+        let rendered = glyph_svg::render(&display_list, layout_box.width)?;
         Some((
-            Self::svg_with_em_size(svg, width_em, height_em),
-            width_em,
-            height_em,
+            rendered.svg.replacen(
+                " viewBox=",
+                r#" class="merman-native-math-svg" viewBox="#,
+                1,
+            ),
+            rendered.width_em,
+            rendered.height_em,
         ))
-    }
-
-    fn svg_with_em_size(svg: String, width_em: f64, height_em: f64) -> String {
-        let Some(open_end) = svg.find('>') else {
-            return svg;
-        };
-        let Some(body_with_close) = svg.get(open_end + 1..) else {
-            return svg;
-        };
-        let Some(body) = body_with_close.strip_suffix("</svg>") else {
-            return svg;
-        };
-        let width = Self::fmt_num(width_em);
-        let height = Self::fmt_num(height_em);
-        format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" class="merman-native-math-svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
-        )
     }
 
     fn measure_math_only_label(text: &str) -> Option<RatexMathMetrics> {
@@ -354,7 +332,7 @@ impl RatexMathRenderer {
         let mut height_em: f64 = 0.0;
         let mut line_count = 0usize;
         for formula in formulas {
-            let (_display_list, line_width_em, line_height_em) = Self::layout_formula_em(&formula)?;
+            let (_svg, line_width_em, line_height_em) = Self::render_formula_svg_em(&formula)?;
             width_em = width_em.max(line_width_em);
             height_em += line_height_em;
             line_count += 1;
@@ -413,10 +391,7 @@ impl RatexMathRenderer {
         }
     }
 
-    fn emitted_em_dimension(value: f64) -> f64 {
-        Self::fmt_num(value).parse().unwrap_or(0.0)
-    }
-
+    #[cfg(test)]
     fn fmt_num(n: f64) -> String {
         let s = format!("{n:.6}");
         let s = s.trim_end_matches('0').trim_end_matches('.');
