@@ -1,0 +1,20 @@
+{
+  "line": "main",
+  "fixtures": 3737,
+  "changed": [],
+  "added": [],
+  "removed": [],
+  "previousSummary": {
+    "fixtures": 3737,
+    "localContainmentFailures": 2416,
+    "blockingContainmentFailures": 0,
+    "browserOwnedPaintDiagnostics": 54,
+    "exactResidualContainmentFailures": 1,
+    "upstreamInheritedContainmentFailures": 2361,
+    "localIndeterminate": 2302,
+    "upstreamDiagnosticsMissing": 0,
+    "unusedExactResiduals": 0
+  },
+  "method": "Fresh full structure/parity/parity-root corpus SHA-256 compared fixture-for-fixture with the previous complete exact-byte Chromium owner report; no missing or changed SVGs.",
+  "reportSha256": "8501bfacec4b21f6315fc9de96ed90bb3d7971edec11f46a778b260190291f94"
+}

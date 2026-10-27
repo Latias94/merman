@@ -1,0 +1,20 @@
+{
+  "line": "09",
+  "fixtures": 3720,
+  "changed": [],
+  "added": [],
+  "removed": [],
+  "previousSummary": {
+    "fixtures": 3720,
+    "localContainmentFailures": 2407,
+    "blockingContainmentFailures": 1,
+    "browserOwnedPaintDiagnostics": 54,
+    "exactResidualContainmentFailures": 1,
+    "upstreamInheritedContainmentFailures": 2351,
+    "localIndeterminate": 2293,
+    "upstreamDiagnosticsMissing": 0,
+    "unusedExactResiduals": 1
+  },
+  "reportSha256": "f9a62d41cc8cb0d951429ef822f58e748cd111cb910f52465647a6a647ef6013",
+  "method": "Compare SHA-256 of every freshly generated maintenance corpus SVG with the previous complete Chromium owner report. The existing environment-bound Flowchart title receipt still is not a passing macOS claim."
+}

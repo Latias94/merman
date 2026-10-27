@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-28",
+  "line": "09",
+  "sourceCommit": "5fa43519a",
+  "platform": "darwin-arm64",
+  "binarySha256": "e96baedc8f773d7da6d3a07f82e56fe8f64ecb919d321f560a2bc2cb58983863",
+  "argv": [
+    "render",
+    "-",
+    "--math-renderer",
+    "ratex",
+    "--format",
+    "svg",
+    "--output",
+    "-",
+    "--svg-pipeline",
+    "<manifest pipeline>"
+  ],
+  "exports": [
+    {
+      "file": "09-flowchart-parity.svg",
+      "source": "flowchart.mmd",
+      "pipeline": "parity",
+      "sha256": "28900352eae76e9021602166908ab5b3e12ae26a629579c9ac5c0594b509b2e6"
+    },
+    {
+      "file": "09-flowchart-resvg-safe.svg",
+      "source": "flowchart.mmd",
+      "pipeline": "resvg-safe",
+      "sha256": "018921ba82f6b98cd68ffde9bfb682ef16c70eb9cabb260c8be24f55265998ae"
+    },
+    {
+      "file": "09-fraction-styled-parity.svg",
+      "source": "fraction-styled.mmd",
+      "pipeline": "parity",
+      "sha256": "d98d35818569e9a8c71f839ccee54423d0411562bc129cd14212e98af9db453c"
+    },
+    {
+      "file": "09-fraction-styled-resvg-safe.svg",
+      "source": "fraction-styled.mmd",
+      "pipeline": "resvg-safe",
+      "sha256": "29883cfd160f35ebb26f2f4e4a356866f29c2e31455c8f7946d7dda7c5fe8ced"
+    },
+    {
+      "file": "09-sequence-parity.svg",
+      "source": "sequence.mmd",
+      "pipeline": "parity",
+      "sha256": "d0c64cd3b52c5e5f97e99113cb8ca8bd0f4d993159415f553dfcb0f4e658d19e"
+    },
+    {
+      "file": "09-sequence-resvg-safe.svg",
+      "source": "sequence.mmd",
+      "pipeline": "resvg-safe",
+      "sha256": "cdd5b385573ebe647dfe5c241890c578dae8adb67082173e3c612e570dc9e990"
+    },
+    {
+      "file": "09-swimlane-parity.svg",
+      "source": "swimlane.mmd",
+      "pipeline": "parity",
+      "sha256": "f6f5c3c480a5ac2bfbab5ac9fe30b644132b69487e92f3cca357eedc3d73cc41"
+    },
+    {
+      "file": "09-swimlane-resvg-safe.svg",
+      "source": "swimlane.mmd",
+      "pipeline": "resvg-safe",
+      "sha256": "4b082ef69fd9063b7ea238fe9c50fb6af6e77fb3af089f7c74ee7c0e480e4722"
+    },
+    {
+      "file": "09-cjk-smash-parity.svg",
+      "source": "cjk-smash.mmd",
+      "pipeline": "parity",
+      "sha256": "617a24db41652978dcb5f66af69fecf42a42e3a47fc5a9eecf0e367a8bd83ca7"
+    },
+    {
+      "file": "09-cjk-smash-resvg-safe.svg",
+      "source": "cjk-smash.mmd",
+      "pipeline": "resvg-safe",
+      "sha256": "2ab8db62198fa7403c21709f6caa8f391e523e849e3c07f028a6d49bf7a52328"
+    },
+    {
+      "file": "09-emoji-parity.svg",
+      "source": "emoji.mmd",
+      "pipeline": "parity",
+      "sha256": "c584e109d1f7be93e4806e10d21e45da5ec93db3f906bd148ee1f2433e88e228"
+    },
+    {
+      "file": "09-emoji-resvg-safe.svg",
+      "source": "emoji.mmd",
+      "pipeline": "resvg-safe",
+      "sha256": "51dd85fbb627310c734edc76386333a02734fd60999c3adb0bf4a94784ed2262"
+    }
+  ]
+}

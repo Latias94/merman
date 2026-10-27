@@ -1,5 +1,9 @@
 # Math SVG paint ownership
 
+Follow-up findings, fixes and current verification are recorded in
+[the adversarial review](2026-10-27-math-review.md). The initial repair results
+below are bound to their listed source commits.
+
 ## Problem and evidence
 
 The checksum-verified 0.9.2 CLI silently drops formula geometry when its native
