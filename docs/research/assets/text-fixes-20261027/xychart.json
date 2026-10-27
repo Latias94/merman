@@ -1,0 +1,17 @@
+{
+  "fontFamily": "Arial",
+  "themeVariables": {
+    "fontFamily": "Arial"
+  },
+  "xyChart": {
+    "width": 360,
+    "height": 240,
+    "useMaxWidth": false,
+    "showLegend": false,
+    "titleFontSize": 28,
+    "titlePadding": 10,
+    "yAxis": {
+      "labelFontSize": 16
+    }
+  }
+}
