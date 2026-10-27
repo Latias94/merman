@@ -113,6 +113,30 @@ fn pie_content_translate(svg: &str) -> (f64, f64) {
 }
 
 #[test]
+fn pie_configured_text_sizes_preserve_css_and_expand_the_horizontal_viewport() {
+    let diagram = "pie title TitleTitleTitleTitle\n  \"LegendLegendLegend\" : 1\n";
+    let baseline = render_pie_from_text(diagram);
+    let enlarged = render_pie_from_text(&format!(
+        "%%{{init: {{\"themeVariables\": {{\"pieTitleTextSize\": \"60px\", \"pieLegendTextSize\": \"40px\"}}}}}}%%\n{diagram}"
+    ));
+    let width = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).unwrap();
+        document
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .nth(2)
+            .unwrap()
+            .parse::<f64>()
+            .unwrap()
+    };
+    assert!(enlarged.contains("font-size:60px;"));
+    assert!(enlarged.contains("font-size:40px;"));
+    assert!(width(&enlarged) > width(&baseline));
+}
+
+#[test]
 fn pie_slices_follow_input_order_like_mermaid_11_16() {
     let layout = layout_pie_from_text(
         r#"pie

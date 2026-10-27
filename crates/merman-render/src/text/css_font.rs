@@ -1,8 +1,20 @@
-//! CSS font values used by Class measurement on the maintenance line.
+//! CSS font values shared by family measurement on the maintenance line.
 
 use super::TextStyle;
 use cssparser::{Delimiter, Parser, Token};
 use std::collections::BTreeMap;
+
+#[cfg(any(feature = "diagram-git-graph", feature = "diagram-timeline"))]
+pub(crate) fn css_font_value_inherits(value: &str) -> bool {
+    let mut parser = Parser::new(value);
+    if !matches!(parser.next(), Ok(Token::Ident(value))
+        if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset"))
+    {
+        return false;
+    }
+    let _ = parser.try_parse(cssparser::parse_important);
+    parser.expect_exhausted().is_ok()
+}
 
 pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
     if value

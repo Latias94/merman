@@ -789,11 +789,10 @@ pub(super) struct PieCss {
     pie_opacity: String,
     pie_outer_stroke_color: String,
     pie_outer_stroke_width: String,
-    pie_title_text_size: String,
+    typography: crate::pie::PieTypography,
     pie_title_text_color: String,
     pie_section_text_size: String,
     pie_section_text_color: String,
-    pie_legend_text_size: String,
     pie_legend_text_color: String,
 }
 
@@ -823,11 +822,10 @@ impl PieCss {
                 "pieOuterStrokeWidth",
                 "2px",
             ),
-            pie_title_text_size: pie_theme_option(effective_config, "pieTitleTextSize", "25px"),
+            typography: crate::pie::PieTypography::new(effective_config),
             pie_title_text_color,
             pie_section_text_size: pie_theme_option(effective_config, "pieSectionTextSize", "17px"),
             pie_section_text_color,
-            pie_legend_text_size: pie_theme_option(effective_config, "pieLegendTextSize", "17px"),
             pie_legend_text_color,
         }
     }
@@ -857,7 +855,7 @@ impl PieCss {
             self.pie_outer_stroke_color,
             self.pie_outer_stroke_width,
             diagram_id,
-            self.pie_title_text_size,
+            self.typography.title_size_css,
             self.pie_title_text_color,
             self.info.font_family,
             diagram_id,
@@ -867,7 +865,7 @@ impl PieCss {
             diagram_id,
             self.pie_legend_text_color,
             self.info.font_family,
-            self.pie_legend_text_size
+            self.typography.legend_size_css
         )?;
         self.info.write_root(out, diagram_id)
     }

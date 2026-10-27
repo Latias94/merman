@@ -16,6 +16,8 @@ mod whitespace;
 mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
+#[cfg(any(feature = "diagram-git-graph", feature = "diagram-timeline"))]
+pub(crate) use css_font::css_font_value_inherits;
 pub(crate) use css_font::{apply_css_font_declarations, is_static_css_font_family_list};
 pub use deterministic::{
     DeterministicTextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
