@@ -46,5 +46,29 @@
     "case": "swimlane",
     "pipeline": "resvg-safe",
     "file": "main-swimlane-resvg-safe.svg"
+  },
+  {
+    "line": "main",
+    "case": "cjk-smash",
+    "pipeline": "parity",
+    "file": "main-cjk-smash-parity.svg"
+  },
+  {
+    "line": "main",
+    "case": "cjk-smash",
+    "pipeline": "resvg-safe",
+    "file": "main-cjk-smash-resvg-safe.svg"
+  },
+  {
+    "line": "main",
+    "case": "emoji",
+    "pipeline": "parity",
+    "file": "main-emoji-parity.svg"
+  },
+  {
+    "line": "main",
+    "case": "emoji",
+    "pipeline": "resvg-safe",
+    "file": "main-emoji-resvg-safe.svg"
   }
 ]

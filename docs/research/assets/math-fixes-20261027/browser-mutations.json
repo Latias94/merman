@@ -1,0 +1,29 @@
+[
+  {
+    "mutation": "delete-use",
+    "exitCode": 1,
+    "result": {
+      "mutation": "delete-use",
+      "changed": 1,
+      "error": "Error: main-flowchart-resvg-safe.svg: formula 0 has no visible contribution in full SVG"
+    }
+  },
+  {
+    "mutation": "hide-foreign-object",
+    "exitCode": 1,
+    "result": {
+      "mutation": "hide-foreign-object",
+      "changed": 3,
+      "error": "Error: main-flowchart-parity.svg: formula 0 has no visible contribution in full SVG"
+    }
+  },
+  {
+    "mutation": "translate-use",
+    "exitCode": 1,
+    "result": {
+      "mutation": "translate-use",
+      "changed": 6,
+      "error": "Error: main flowchart: full-SVG formula placement differs by 20px (limit 1px)"
+    }
+  }
+]

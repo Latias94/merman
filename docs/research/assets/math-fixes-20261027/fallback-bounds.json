@@ -1,0 +1,127 @@
+{
+  "environment": "Chromium 156.0.8078.4, darwin-arm64",
+  "before": [
+    {
+      "line": "main",
+      "name": "cjk-smash",
+      "viewBox": {
+        "x": 0,
+        "y": -0.8261719942092896,
+        "width": 2,
+        "height": 0.8950200080871582
+      },
+      "bounds": [
+        {
+          "tag": "path",
+          "x": 0.13085898756980896,
+          "y": -0.8261719942092896,
+          "width": 0.7290040254592896,
+          "height": 0.8911130428314209
+        },
+        {
+          "tag": "path",
+          "x": 1.062011957168579,
+          "y": -0.8217769265174866,
+          "width": 0.8847650289535522,
+          "height": 0.890625
+        }
+      ],
+      "positiveViewport": true,
+      "contains": true
+    },
+    {
+      "line": "main",
+      "name": "emoji",
+      "viewBox": {
+        "x": 0,
+        "y": -0.010000000707805157,
+        "width": 1,
+        "height": 1
+      },
+      "bounds": [
+        {
+          "tag": "image",
+          "x": 0,
+          "y": -0.009999999776482582,
+          "width": 1,
+          "height": 1
+        }
+      ],
+      "positiveViewport": true,
+      "contains": true
+    },
+    {
+      "line": "main",
+      "name": "cjk-ext",
+      "viewBox": {
+        "x": 0,
+        "y": 0,
+        "width": 0.5,
+        "height": 0.4309999942779541
+      },
+      "bounds": [
+        {
+          "tag": "text",
+          "x": 0,
+          "y": -0.42653369903564453,
+          "width": 0.722427487373352,
+          "height": 1.0719170570373535
+        }
+      ],
+      "positiveViewport": true,
+      "contains": false
+    }
+  ],
+  "after": [
+    {
+      "line": "main",
+      "name": "cjk-smash",
+      "viewBox": {
+        "x": 0,
+        "y": -0.8261719942092896,
+        "width": 2,
+        "height": 0.8950200080871582
+      },
+      "bounds": [
+        {
+          "tag": "path",
+          "x": 0.13085898756980896,
+          "y": -0.8261719942092896,
+          "width": 0.7290040254592896,
+          "height": 0.8911130428314209
+        },
+        {
+          "tag": "path",
+          "x": 1.062011957168579,
+          "y": -0.8217769265174866,
+          "width": 0.8847650289535522,
+          "height": 0.890625
+        }
+      ],
+      "positiveViewport": true,
+      "contains": true
+    },
+    {
+      "line": "main",
+      "name": "emoji",
+      "viewBox": {
+        "x": 0,
+        "y": -0.010000000707805157,
+        "width": 1,
+        "height": 1
+      },
+      "bounds": [
+        {
+          "tag": "image",
+          "x": 0,
+          "y": -0.009999999776482582,
+          "width": 1,
+          "height": 1
+        }
+      ],
+      "positiveViewport": true,
+      "contains": true
+    }
+  ],
+  "unresolvedResidual": "U+20000 remains host-font text; no synthetic bounding box is claimed."
+}
