@@ -12,15 +12,15 @@
       "base_x": 200.0,
       "base_y": 50.0,
       "bounds": {
-        "max_x": 853.56,
+        "max_x": 840.0,
         "max_y": 528.0,
-        "min_x": 101.78,
+        "min_x": 95.0,
         "min_y": -61.0
       },
       "direction": "TD",
       "left_margin": 150.0,
       "orphan_tasks": [],
-      "pre_title_box_width": 603.56,
+      "pre_title_box_width": 590.0,
       "sections": [
         {
           "node": {
@@ -267,7 +267,7 @@
         }
       ],
       "title": "Timeline of Industrial Revolution",
-      "title_x": 151.78,
+      "title_x": 145.0,
       "title_y": 20.0,
       "use_max_width": true
     }

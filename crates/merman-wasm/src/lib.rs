@@ -1101,7 +1101,8 @@ mod tests {
         use merman_bindings_core::{
             HostTextMeasurementRequest,
             TextMeasurementOperation::{
-                CanvasMeasureTextWidth, Measure, TspanBBoxHeight, TspanBBoxWidth,
+                BBoxX, CanvasMeasureTextWidth, ComputedLength, Measure, RawBBoxWidth,
+                TspanBBoxHeight, TspanBBoxWidth,
             },
             TextMeasurementPhase, TextStyle,
         };
@@ -1113,6 +1114,9 @@ mod tests {
             font_style: Some("italic".to_string()),
         };
         for (operation, wrap_mode, max_width, white_space) in [
+            (ComputedLength, WrapMode::HtmlLike, None, "break-spaces"),
+            (BBoxX, WrapMode::HtmlLike, None, "break-spaces"),
+            (RawBBoxWidth, WrapMode::HtmlLike, None, "break-spaces"),
             (TspanBBoxWidth, WrapMode::HtmlLike, None, "break-spaces"),
             (TspanBBoxHeight, WrapMode::HtmlLike, None, "break-spaces"),
             (

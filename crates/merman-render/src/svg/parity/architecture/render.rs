@@ -5,7 +5,7 @@ use crate::model::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout
 use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
-use super::labels::{svg_line_plain_text, wrap_svg_words_to_lines};
+use super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
 use super::model::{ArchitectureModelAccess, ArchitectureServiceRef};
 use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_groups,
@@ -176,11 +176,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             arch_font_size_px,
             svc.title,
             text_measurer,
-            text_style,
             compound_text_style,
-            wrap_svg_words_to_lines,
-            |line| svg_line_plain_text(line.as_slice()),
-            |line, style| text_measurer.measure_svg_text_bbox_x(line, style),
+            |title| {
+                let lines =
+                    wrap_svg_words_to_lines(title, icon_size_px * 1.5, text_measurer, text_style);
+                svg_service_title_bounds(&lines, text_measurer, text_style)
+            },
         );
         let b_full = if svc.in_group.is_some() {
             estimate

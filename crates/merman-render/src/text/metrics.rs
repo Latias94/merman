@@ -2901,6 +2901,95 @@ impl InlineHtmlMeasurementCarrier {
     }
 }
 
+/// Consumes markup after `<`, leaving literal comparison signs in the text stream.
+///
+/// This only finds boundaries: the existing label logic still owns tag names, fonts, and icons.
+/// An empty tag represents a skipped comment or an unfinished tag discarded at EOF.
+fn take_inline_html_tag(input: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<String> {
+    let mut lookahead = input.clone();
+    let first = lookahead.next()?;
+    let name_start = if first == '/' {
+        lookahead.next()?
+    } else {
+        first
+    };
+    if matches!(first, '!' | '?') || (first == '/' && !name_start.is_ascii_alphabetic()) {
+        let is_comment =
+            first == '!' && lookahead.next() == Some('-') && lookahead.next() == Some('-');
+        if is_comment {
+            // Consume `!--`; quotes and tag-like text in comments have no attribute semantics.
+            input.next();
+            input.next();
+            input.next();
+            let mut at_start = true;
+            let mut hyphens = 0_u8;
+            let mut end_bang = false;
+            for ch in input.by_ref() {
+                if ch == '>' && (at_start || hyphens == 2 || end_bang) {
+                    break;
+                }
+                end_bang = ch == '!' && hyphens == 2;
+                hyphens = if ch == '-' { (hyphens + 1).min(2) } else { 0 };
+                at_start = at_start && ch == '-' && hyphens == 1;
+            }
+        } else {
+            // Bogus declarations, end tags, and processing instructions ignore attribute quotes.
+            for ch in input.by_ref() {
+                if ch == '>' {
+                    break;
+                }
+            }
+        }
+        return Some(String::new());
+    }
+
+    if !name_start.is_ascii_alphabetic() {
+        return None;
+    }
+
+    #[derive(Clone, Copy)]
+    enum Boundary {
+        TagName,
+        BeforeAttribute,
+        AttributeName,
+        AfterAttribute,
+        BeforeValue,
+        UnquotedValue,
+        QuotedValue(char),
+    }
+    use Boundary::*;
+
+    let mut tag = String::new();
+    if first == '/' {
+        tag.push(input.next()?);
+    }
+    let mut boundary = TagName;
+    for ch in input.by_ref() {
+        if ch == '>' && !matches!(boundary, QuotedValue(_)) {
+            return Some(tag);
+        }
+        tag.push(ch);
+        boundary = match boundary {
+            QuotedValue(quote) if ch == quote => BeforeAttribute,
+            QuotedValue(_) => boundary,
+            TagName | BeforeAttribute if is_html_collapsible_ascii_whitespace(ch) || ch == '/' => {
+                BeforeAttribute
+            }
+            BeforeAttribute => AttributeName,
+            AttributeName | AfterAttribute if ch == '=' => BeforeValue,
+            AttributeName if is_html_collapsible_ascii_whitespace(ch) => AfterAttribute,
+            AttributeName | AfterAttribute if ch == '/' => BeforeAttribute,
+            AfterAttribute if !is_html_collapsible_ascii_whitespace(ch) => AttributeName,
+            BeforeValue if is_html_collapsible_ascii_whitespace(ch) => BeforeValue,
+            BeforeValue if matches!(ch, '"' | '\'') => QuotedValue(ch),
+            BeforeValue => UnquotedValue,
+            UnquotedValue if is_html_collapsible_ascii_whitespace(ch) => BeforeAttribute,
+            _ => boundary,
+        };
+    }
+    Some(String::new())
+}
+
 fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     measurer: &M,
     carrier: InlineHtmlMeasurementCarrier,
@@ -2975,14 +3064,9 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     let mut it = html.chars().peekable();
     let mut entity_reference = String::new();
     while let Some(ch) = it.next() {
-        if ch == '<' {
-            let mut tag = String::new();
-            for c in it.by_ref() {
-                if c == '>' {
-                    break;
-                }
-                tag.push(c);
-            }
+        if ch == '<'
+            && let Some(tag) = take_inline_html_tag(&mut it)
+        {
             let tag = trim_html_collapsible_ascii_whitespace(&tag);
             let tag_lower = tag.to_ascii_lowercase();
             let tag_trim = trim_html_collapsible_ascii_whitespace(&tag_lower);

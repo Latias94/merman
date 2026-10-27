@@ -1220,7 +1220,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "fd0a745c3a3d40f1ce068b1df26ae7ea191ee0ae02cd84cfd53419d1c4d92f14",
+      "local_svg_signature_sha256": "e5e7f5b7d7bb2088264b93c22ddaa918d85a36c667ed27035423c51af9f6e9b0",
       "input_sha256": "aa9962a8b085f5ef89ebf94f524264a38ed351e846a7a9abd83cf7cf7ec65e3d",
       "upstream_svg_sha256": "8450dae2143a65fe43085a26554979205938d780dc5111110e0ec42a4c972597"
     },

@@ -761,7 +761,7 @@ fn usecase_svg_terminal_font_uses_matching_selectors_while_html_keeps_role_font(
     struct FontHost;
     impl HostTextMeasurer for FontHost {
         fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
-            if request.operation != TextMeasurementOperation::Wrapped || request.text != "Alpha" {
+            if request.text != "Alpha" {
                 return Ok(None);
             }
             let family_width = if request.style.font_family.as_deref() == Some("monospace") {
@@ -780,13 +780,26 @@ fn usecase_svg_terminal_font_uses_matching_selectors_while_html_keeps_role_font(
             } else {
                 0.0
             };
-            Ok(Some(HostTextMeasurement::Metrics(
-                merman_render::text::TextMetrics {
-                    width: request.style.font_size * 2.0 + family_width + bold_width + italic_width,
-                    height: request.style.font_size * 1.5,
-                    line_count: 1,
-                },
-            )))
+            let metrics = merman_render::text::TextMetrics {
+                width: request.style.font_size * 2.0 + family_width + bold_width + italic_width,
+                height: request.style.font_size * 1.5,
+                line_count: 1,
+            };
+            // Freeze the font oracle at both the wrapping and final emitted-text operations.
+            Ok(match request.operation {
+                TextMeasurementOperation::Wrapped => Some(HostTextMeasurement::Metrics(metrics)),
+                TextMeasurementOperation::CanvasMeasureTextWidth
+                | TextMeasurementOperation::TspanBBoxWidth => {
+                    Some(HostTextMeasurement::Length(metrics.width))
+                }
+                TextMeasurementOperation::TspanBBoxHeight => {
+                    Some(HostTextMeasurement::Length(metrics.height))
+                }
+                TextMeasurementOperation::CreateTextBBoxYOffset => {
+                    Some(HostTextMeasurement::Length(0.0))
+                }
+                _ => None,
+            })
         }
     }
     for (html, source_override, expected_width, expected_height) in [
@@ -952,16 +965,28 @@ fn assert_usecase_svg_relative_role_font(
     struct FontSizeHost;
     impl HostTextMeasurer for FontSizeHost {
         fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
-            if request.operation != TextMeasurementOperation::Wrapped || request.text != "Alpha" {
+            if request.text != "Alpha" {
                 return Ok(None);
             }
-            Ok(Some(HostTextMeasurement::Metrics(
-                merman_render::text::TextMetrics {
-                    width: request.style.font_size * 2.0,
-                    height: request.style.font_size * 1.5,
-                    line_count: 1,
-                },
-            )))
+            let metrics = merman_render::text::TextMetrics {
+                width: request.style.font_size * 2.0,
+                height: request.style.font_size * 1.5,
+                line_count: 1,
+            };
+            // Relative font-size assertions use host geometry, not the built-in fallback.
+            Ok(match request.operation {
+                TextMeasurementOperation::Wrapped => Some(HostTextMeasurement::Metrics(metrics)),
+                TextMeasurementOperation::TspanBBoxWidth => {
+                    Some(HostTextMeasurement::Length(metrics.width))
+                }
+                TextMeasurementOperation::TspanBBoxHeight => {
+                    Some(HostTextMeasurement::Length(metrics.height))
+                }
+                TextMeasurementOperation::CreateTextBBoxYOffset => {
+                    Some(HostTextMeasurement::Length(0.0))
+                }
+                _ => None,
+            })
         }
     }
     let identity = TextMeasurementProfileIdentity::new(

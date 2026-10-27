@@ -167,29 +167,11 @@ fn measure_c4_unified_text(
         &wrapping_style,
         wrap.then_some(text_limit_width),
     );
-    let visible = c4_visible_text(&rows);
-
-    if visible.is_empty() {
-        return UnifiedTextMeasure {
-            metrics: TextMeasure {
-                width: 0.0,
-                height: 0.0,
-                line_count: 0,
-            },
-            render_plan: C4TextRenderPlan {
-                rows,
-                bbox_x: 0.0,
-                bbox_y: 0.0,
-            },
-        };
-    }
-
-    // The rows above are the source of truth for both layout and SVG. Measuring the joined
-    // visible rows avoids asking the host to wrap the original source a second time.
-    let measured = measurer.measure_wrapped(&visible, style, None, WrapMode::SvgLike);
     let mut left: f64 = 0.0;
     let mut right: f64 = 0.0;
-    for row in &rows {
+    let mut top = f64::INFINITY;
+    let mut bottom = f64::NEG_INFINITY;
+    for (index, row) in rows.iter().enumerate() {
         let row_text = c4_visible_row(&row.words);
         if row_text.is_empty() {
             continue;
@@ -197,16 +179,31 @@ fn measure_c4_unified_text(
         let (row_left, row_right) = measurer.measure_svg_text_bbox_x(&row_text, style);
         left = left.max(row_left.max(0.0));
         right = right.max(row_right.max(0.0));
+        let y = measurer.measure_svg_create_text_bbox_y_offset_px(&row_text, style)
+            + index as f64 * style.font_size.max(1.0) * 1.1;
+        let height = measurer
+            .measure_svg_raw_text_bbox_height_px(&row_text, style)
+            .max(0.0);
+        if height > 0.0 {
+            top = top.min(y);
+            bottom = bottom.max(y + height);
+        }
     }
-    let first_row = rows
-        .first()
-        .map(|row| c4_visible_row(&row.words))
-        .unwrap_or_default();
-    let bbox_y = measurer.measure_svg_create_text_bbox_y_offset_px(&first_row, style);
+    // Rows are already final DOM text. Their decoded contents must not enter label parsing again.
+    let has_visible_text = top.is_finite();
+    let bbox_y = if has_visible_text { top } else { 0.0 };
     let metrics = TextMeasure {
-        width: measured.width.max(left + right).max(0.0),
-        height: measured.height.max(0.0),
-        line_count: rows.len().max(1),
+        width: (left + right).max(0.0),
+        height: if has_visible_text {
+            (bottom - top).max(0.0)
+        } else {
+            0.0
+        },
+        line_count: if has_visible_text {
+            rows.len().max(1)
+        } else {
+            0
+        },
     };
     UnifiedTextMeasure {
         metrics,
@@ -242,13 +239,6 @@ fn c4_visible_row(row: &[String]) -> String {
         visible.push_str(decoded.as_ref());
     }
     visible
-}
-
-fn c4_visible_text(rows: &[C4TextRowLayout]) -> String {
-    rows.iter()
-        .map(|row| c4_visible_row(&row.words))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn c4_row_width(measurer: &dyn TextMeasurer, row: &[String], style: &TextStyle) -> f64 {
@@ -455,5 +445,21 @@ mod tests {
         assert_eq!(measured.metrics.line_count, 1);
         assert_eq!(measured.render_plan.rows.len(), 1);
         assert!(measured.metrics.width > 176.0);
+    }
+    #[test]
+    fn c4_prepared_entity_row_is_measured_without_reinterpreting_literal_breaks() {
+        let measurer = crate::text::DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..Default::default()
+        };
+        let style = TextStyle {
+            font_size: 10.0,
+            ..Default::default()
+        };
+        let measured = measure_c4_unified_text(&measurer, "A&lt;br/&gt;B", &style, false, 500.0);
+        assert_eq!(measured.render_plan.rows.len(), 1);
+        assert_eq!(measured.metrics.line_count, 1);
+        assert_eq!(measured.metrics.height, 11.0);
+        assert_eq!(measured.metrics.width, 70.0);
     }
 }
