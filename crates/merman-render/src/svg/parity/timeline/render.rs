@@ -49,7 +49,7 @@ fn write_timeline_css(
             let _ = write!(
                 out,
                 r#"font-weight:{};}}#{diagram_id} .node-icon-{section}{{font-size:40px;color:{};}}#{diagram_id} .section-edge-{section}{{stroke:{};}}#{diagram_id} .edge-depth-{section}{{stroke-width:{sw};}}#{diagram_id} .section-{section} line{{stroke:{};stroke-width:3;}}#{diagram_id} .lineWrapper line{{"#,
-                theme.font_weight,
+                theme.section_font_weight().expect("Redux section rule"),
                 section_theme.c_scale_label,
                 section_theme.c_scale,
                 section_theme.c_scale_inv,

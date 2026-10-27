@@ -1486,7 +1486,7 @@ mod tests {
         assert_eq!(css.outer_stroke_width, "calc(1px + 1em)");
         assert_eq!(css.slice_opacity, "0.4");
         assert_eq!(css.title_text_size, "1.5em");
-        assert_eq!(css.title_measurement_style().font_size, 25.0);
+        assert_eq!(css.title_measurement_style().font_size, 24.0);
         assert_eq!(css.legend_measurement_style().font_size, 17.0);
     }
 

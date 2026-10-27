@@ -31,6 +31,41 @@ pub(crate) struct TimelineCssBinding {
 }
 
 impl TimelineCssBinding {
+    pub(crate) fn section_font_weight(&self) -> Option<&str> {
+        (self.is_redux_theme && !self.sections.is_empty()).then_some(self.font_weight.as_str())
+    }
+
+    pub(crate) fn node_text_style(&self, base: &crate::text::TextStyle) -> crate::text::TextStyle {
+        let Some(weight) = self.section_font_weight() else {
+            return base.clone();
+        };
+        if self.section_font_weight_is_measurable() {
+            let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+                base,
+                crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
+            );
+            cascade.observe("font-weight", weight, false);
+            cascade.finish().into_owned()
+        } else {
+            crate::text::TextStyle {
+                font_weight: Some(weight.to_owned()),
+                ..base.clone()
+            }
+        }
+    }
+
+    pub(crate) fn section_font_weight_is_measurable(&self) -> bool {
+        self.section_font_weight().is_none_or(|weight| {
+            crate::mermaid_style::parse_style_declaration(&format!("font-weight:{weight}"))
+                .is_some_and(|declaration| {
+                    declaration.inherits_property_value()
+                        || crate::mermaid_style::is_supported_css_font_weight_value(
+                            declaration.value(),
+                        )
+                })
+        })
+    }
+
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
         let theme = config_string(config, &["theme"]).unwrap_or_else(|| "default".into());
         let color = |key: &str, fallback: &str| {

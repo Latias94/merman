@@ -17,6 +17,7 @@ pub(crate) struct PieCssBinding {
     pub(crate) section_text_color: String,
     pub(crate) legend_text_size: String,
     pub(crate) legend_text_color: String,
+    inherited_font_size: f64,
 }
 
 /// An absent surface keeps its baseline CSS without admitting a typed terminal application.
@@ -65,6 +66,9 @@ impl PieCssBinding {
         let title_text_color = color("pieTitleTextColor", &task_text_dark);
         let section_text_color = color("pieSectionTextColor", common.text_color());
         let legend_text_color = color("pieLegendTextColor", &task_text_dark);
+        let inherited_font_size =
+            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+                .max(1.0);
         Self {
             common,
             slice_stroke: PieSurfaceStroke::baseline(value("pieStrokeColor", "black")),
@@ -78,22 +82,25 @@ impl PieCssBinding {
             section_text_color,
             legend_text_size: value("pieLegendTextSize", "17px"),
             legend_text_color,
+            inherited_font_size,
         }
     }
 
     pub(crate) fn legend_measurement_style(&self) -> TextStyle {
-        self.measurement_style(17.0)
+        self.measurement_style(&self.legend_text_size)
     }
 
     pub(crate) fn title_measurement_style(&self) -> TextStyle {
-        self.measurement_style(25.0)
+        self.measurement_style(&self.title_text_size)
     }
 
-    fn measurement_style(&self, font_size: f64) -> TextStyle {
-        // Pie's pinned measurement model uses fixed metrics; emitted CSS may remain opaque.
+    fn measurement_style(&self, font_size_css: &str) -> TextStyle {
         TextStyle {
             font_family: Some(self.common.font_family().to_owned()),
-            font_size,
+            font_size: super::super::config::pie_font_size_px(
+                font_size_css,
+                self.inherited_font_size,
+            ),
             font_weight: None,
             font_style: None,
         }

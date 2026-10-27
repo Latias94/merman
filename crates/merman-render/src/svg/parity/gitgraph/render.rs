@@ -406,11 +406,10 @@ fn gitgraph_css(
     }
     let branch_dasharray = terminal.branch_dasharray;
     let commit_label_fill = terminal.commit_label_fill.as_str();
-    let commit_label_weight = if use_color_gen {
-        format!("font-weight:{};", note_font_weight)
-    } else {
-        String::new()
-    };
+    let commit_label_weight = typography_theme
+        .commit_label_font_weight_css()
+        .map(|weight| format!("font-weight:{weight};"))
+        .unwrap_or_default();
     let commit_label_bkg_fill = terminal.commit_label_background.as_str();
     let commit_label_bkg_opacity = terminal.commit_background_opacity;
     let tag_label_bkg_fill = terminal.tag_background.as_str();
@@ -906,8 +905,20 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             );
 
             let name = escape_xml(&b.name);
-            let bbox_w = b.bbox_width.max(0.0);
-            let bbox_h = b.bbox_height.max(0.0);
+            let (bbox_w, bbox_h) = if use_redux_geometry {
+                // Numbered branch classes acquire noteFontWeight only after prelayout.
+                let style = typography_theme.rendered_branch_label_style(idx);
+                (
+                    measurer
+                        .measure_svg_preserved_tspan_text_bbox_width_px(&b.name, &style)
+                        .max(0.0),
+                    measurer
+                        .measure_svg_tspan_text_bbox_height_px(&b.name, &style)
+                        .max(0.0),
+                )
+            } else {
+                (b.bbox_width.max(0.0), b.bbox_height.max(0.0))
+            };
 
             let bkg_class = format!(r#"branchLabelBkg label{idx}"#);
             let label_class = format!(r#"label branch-label{idx}"#);
@@ -1684,6 +1695,50 @@ mod tests {
         }
     }
 
+    struct FixtureBranchMeasurer;
+
+    impl crate::text::TextMeasurer for FixtureBranchMeasurer {
+        fn measure(&self, text: &str, style: &crate::text::TextStyle) -> crate::text::TextMetrics {
+            crate::text::TextMeasurer::measure(
+                &crate::text::DeterministicTextMeasurer::default(),
+                text,
+                style,
+            )
+        }
+
+        fn measure_svg_preserved_tspan_text_bbox_width_px(
+            &self,
+            text: &str,
+            style: &crate::text::TextStyle,
+        ) -> f64 {
+            if text == "main" {
+                35.25
+            } else {
+                crate::text::TextMeasurer::measure_svg_preserved_tspan_text_bbox_width_px(
+                    &crate::text::DeterministicTextMeasurer::default(),
+                    text,
+                    style,
+                )
+            }
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(
+            &self,
+            text: &str,
+            style: &crate::text::TextStyle,
+        ) -> f64 {
+            if text == "main" {
+                19.0
+            } else {
+                crate::text::TextMeasurer::measure_svg_tspan_text_bbox_height_px(
+                    &crate::text::DeterministicTextMeasurer::default(),
+                    text,
+                    style,
+                )
+            }
+        }
+    }
+
     fn render_geometry_fixture(
         layout: &crate::model::GitGraphDiagramLayout,
         config: &serde_json::Value,
@@ -1725,7 +1780,7 @@ mod tests {
             &typography_theme,
             config,
             None,
-            &crate::text::DeterministicTextMeasurer::default(),
+            &FixtureBranchMeasurer,
             &execution,
         )
     }

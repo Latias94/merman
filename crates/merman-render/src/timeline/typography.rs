@@ -176,6 +176,8 @@ impl TimelineTypographyThemePlan {
             let key = FamilyThemeMechanismKey::Typography(property);
             if !outcome.has_visible_base_text || !active {
                 evidence.mark_not_applicable(key);
+            } else if !self.css_binding.section_font_weight_is_measurable() {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             } else {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
             }
@@ -196,16 +198,30 @@ mod tests {
     #[test]
     fn prepared_layout_preserves_independent_root_font_offset() {
         let config = PresentationConfig::from_value(serde_json::json!({
-            "fontSize": "18px", "themeVariables": {"fontSize": "24px"}
+            "theme": "redux", "fontSize": "18px",
+            "themeVariables": {"fontSize": "24px", "fontWeight": 900}
         }));
         let plan =
             TimelineTypographyThemePlan::resolve_with_text(None, &config, Some("var(--text)"));
         assert_eq!(plan.layout_settings().text_style.font_size, 24.0);
+        assert_eq!(plan.layout_settings().node_text_style.font_size, 24.0);
+        assert_eq!(plan.layout_settings().text_style.font_weight, None);
+        assert_eq!(
+            plan.layout_settings()
+                .node_text_style
+                .font_weight
+                .as_deref(),
+            plan.css_binding().section_font_weight()
+        );
         assert_eq!(plan.layout_settings().layout_font_size, 18.0);
         assert_eq!(plan.common_css().text_color(), "var(--text)");
         assert_eq!(
             plan.layout_settings().text_style.font_family.as_deref(),
             Some(plan.inherited_font_stack.font_family_css())
+        );
+        assert_eq!(
+            plan.layout_settings().node_text_style.font_family,
+            plan.layout_settings().text_style.font_family
         );
     }
 }
