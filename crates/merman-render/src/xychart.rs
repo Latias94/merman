@@ -183,8 +183,14 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
     }
 }
 
-fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasurer) -> Dimension {
+fn max_text_dimension(
+    texts: &[String],
+    font_size: f64,
+    font_family: &str,
+    measurer: &dyn TextMeasurer,
+) -> Dimension {
     let style = TextStyle {
+        font_family: Some(font_family.to_owned()),
         font_size,
         ..Default::default()
     };
@@ -199,12 +205,10 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
     // These metrics and the chart dimensions already share SVG user units. Mermaid 12.1
     // divides browser screen measurements by the SVG's CTM; no display scale enters this path.
     for t in texts {
-        let m = measurer.measure(t, &style);
-        max_w = max_w.max(m.width);
-        // Mermaid XYChart uses `computeDimensionOfText(...)` which probes a `<tspan>`'s
-        // `getBoundingClientRect().height`. That tends to be closer to "simple text bbox height"
-        // than the slightly taller wrapped SVG `<text>.getBBox().height` heuristic.
-        max_h = max_h.max(measurer.measure_svg_simple_text_bbox_height_px(t, &style));
+        max_w = max_w.max(measurer.measure_svg_text_bounding_client_rect_width_px(t, &style));
+        // computeDimensionOfText() inserts one literal run, not a wrapped HTML label.
+        // The raw-height route is this profile's existing single-row approximation.
+        max_h = max_h.max(measurer.measure_svg_raw_text_bbox_height_px(t, &style));
     }
     Dimension {
         width: max_w,
@@ -212,18 +216,21 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
     }
 }
 
-fn single_text_height(text: &str, font_size: f64, measurer: &dyn TextMeasurer) -> f64 {
+fn single_text_height(
+    text: &str,
+    font_size: f64,
+    font_family: &str,
+    measurer: &dyn TextMeasurer,
+) -> f64 {
     if text.trim().is_empty() {
         return 0.0;
     }
-    if text.contains('\n') || text.contains("<br") {
-        return max_text_dimension(&[text.to_string()], font_size, measurer).height;
-    }
     let style = TextStyle {
+        font_family: Some(font_family.to_owned()),
         font_size,
         ..Default::default()
     };
-    measurer.measure_svg_simple_text_bbox_height_px(text, &style)
+    measurer.measure_svg_raw_text_bbox_height_px(text, &style)
 }
 
 const LEGEND_MARKER_TO_FONT_RATIO: f64 = 0.75;
@@ -234,6 +241,7 @@ fn calculate_legend_space(
     plots: &[(usize, &XyChartPlotRenderModel)],
     chart_config: &ChartConfig,
     available_space: Dimension,
+    font_family: &str,
     measurer: &dyn TextMeasurer,
 ) -> Dimension {
     if plots.is_empty() {
@@ -247,7 +255,12 @@ fn calculate_legend_space(
         .iter()
         .filter_map(|(_, plot)| plot.title.clone())
         .collect::<Vec<_>>();
-    let text_dimension = max_text_dimension(&titles, chart_config.legend_font_size, measurer);
+    let text_dimension = max_text_dimension(
+        &titles,
+        chart_config.legend_font_size,
+        font_family,
+        measurer,
+    );
     let marker_size = chart_config.legend_font_size * LEGEND_MARKER_TO_FONT_RATIO;
     let marker_spacing = chart_config.legend_font_size * LEGEND_MARKER_SPACING_TO_FONT_RATIO;
     let item_spacing = chart_config.legend_font_size * LEGEND_ITEM_SPACING_TO_FONT_RATIO;
@@ -478,6 +491,7 @@ enum AxisKind {
 
 #[derive(Debug, Clone)]
 struct Axis {
+    font_family: String,
     kind: AxisKind,
     axis_config: AxisConfig,
     axis_theme: AxisThemeConfig,
@@ -501,8 +515,10 @@ impl Axis {
         axis_config: AxisConfig,
         axis_theme: AxisThemeConfig,
         title: String,
+        font_family: &str,
     ) -> Self {
         Self {
+            font_family: font_family.to_owned(),
             kind,
             axis_config,
             axis_theme,
@@ -683,7 +699,12 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(
+                    ticks,
+                    self.axis_config.label_font_size,
+                    &self.font_family,
+                    measurer,
+                );
                 self.label_dimension = dim;
                 let max_padding = 0.2 * available.height;
                 self.outer_padding = (dim.height / 2.0).min(max_padding);
@@ -700,8 +721,12 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let title_height =
-                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let title_height = single_text_height(
+                    &self.title,
+                    self.axis_config.title_font_size,
+                    &self.font_family,
+                    measurer,
+                );
                 let width_required = title_height + self.axis_config.title_padding * 2.0;
                 self.title_text_height = title_height;
                 if width_required <= available_width {
@@ -728,7 +753,12 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(
+                    ticks,
+                    self.axis_config.label_font_size,
+                    &self.font_family,
+                    measurer,
+                );
                 self.label_dimension = dim;
                 let max_padding = 0.2 * available.width;
                 self.outer_padding = (dim.width / 2.0).min(max_padding);
@@ -752,8 +782,12 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let title_height =
-                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let title_height = single_text_height(
+                    &self.title,
+                    self.axis_config.title_font_size,
+                    &self.font_family,
+                    measurer,
+                );
                 let height_required = title_height + self.axis_config.title_padding * 2.0;
                 self.title_text_height = title_height;
                 if height_required <= available_height {
@@ -1105,6 +1139,7 @@ pub(crate) fn layout_xychart_diagram_typed(
         });
     }
 
+    let font_family = crate::config::config_font_family_css(effective_config);
     let chart_cfg = parse_chart_config(effective_config, model);
     let theme_cfg = PresentationTheme::new(effective_config).xychart();
 
@@ -1128,6 +1163,7 @@ pub(crate) fn layout_xychart_diagram_typed(
     let title_dimension = max_text_dimension(
         std::slice::from_ref(&title),
         chart_cfg.title_font_size,
+        &font_family,
         text_measurer,
     );
     let title_height = title_dimension.height + 2.0 * chart_cfg.title_padding;
@@ -1184,12 +1220,14 @@ pub(crate) fn layout_xychart_diagram_typed(
         chart_cfg.x_axis.clone(),
         x_axis_theme,
         x_axis_title,
+        &font_family,
     );
     let mut y_axis = Axis::new(
         y_axis_kind,
         chart_cfg.y_axis.clone(),
         y_axis_theme,
         y_axis_title,
+        &font_family,
     );
 
     let mut legend_plots = if chart_cfg.show_legend {
@@ -1237,6 +1275,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: chart_height,
             },
+            &font_family,
             text_measurer,
         );
         if legend_space.width == 0.0 && legend_space.height == 0.0 {
@@ -1299,6 +1338,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: chart_height,
             },
+            &font_family,
             text_measurer,
         );
         if legend_space.width == 0.0 && legend_space.height == 0.0 {
@@ -1680,8 +1720,19 @@ mod tests {
 
     #[test]
     fn xychart_measurement_keeps_svg_user_units_without_display_rescaling() {
-        let dimensions = max_text_dimension(&["CPU".to_string()], 14.0, &UserUnitMeasurer);
+        let dimensions = max_text_dimension(&["CPU".to_string()], 14.0, "serif", &UserUnitMeasurer);
         assert_eq!(dimensions.width, 42.0);
         assert_eq!(dimensions.height, 14.0);
+    }
+    #[test]
+    fn xychart_dimension_probe_keeps_literal_markup_in_one_svg_run() {
+        let measurer = crate::text::DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..Default::default()
+        };
+        let text = "AAAAAA<br/>BBBBBB";
+        let dimensions = max_text_dimension(&[text.to_owned()], 10.0, "serif", &measurer);
+        assert_eq!(dimensions.width, text.len() as f64 * 10.0);
+        assert_eq!(dimensions.height, 11.0);
     }
 }

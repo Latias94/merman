@@ -92,6 +92,7 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
       const session = createBrowserTextMeasurementSession();
       try {
         const nativeComparisons = [];
+        const preservedComparisons = [];
         const nativeSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         const nativeText = document.createElementNS("http://www.w3.org/2000/svg", "text");
         const nativeDiv = document.createElement("div");
@@ -147,6 +148,17 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
               }
             }
           }
+          const preservedInput = {
+            ...base, text: " A  B ", wrap_mode: "html-like", white_space: "break-spaces",
+          };
+          nativeText.style.cssText = "font:20px monospace;white-space:break-spaces";
+          nativeText.textContent = preservedInput.text;
+          const expectedWidth = nativeText.getBBox().width;
+          const expectedLength = nativeText.getComputedTextLength();
+          for (const operation of ["computed-length", "bbox-x", "raw-bbox-width", "tspan-bbox-width"]) {
+            const result = session.measure({ ...preservedInput, operation });
+            preservedComparisons.push({ operation, result, expectedWidth, expectedLength });
+          }
         } finally {
           nativeSvg.remove();
           nativeDiv.remove();
@@ -192,6 +204,7 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
         session.dispose();
         return {
           nativeComparisons,
+          preservedComparisons,
           assignments,
           detachments,
           expected,
@@ -217,6 +230,14 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
         assert.equal(sequence.rejected, undefined, `${label}: reject ${sequence.field} without stale metrics`);
         assert.deepEqual(sequence.second, expectedSecond, `${label}: recover after ${sequence.field}`);
       }
+    }
+    for (const { operation, result, expectedWidth, expectedLength } of evidence.preservedComparisons) {
+      assert.ok(result, `${operation}: preserved text is measurable`);
+      const actual = result.kind === "horizontal-extents"
+        ? result.bbox_left + result.bbox_right : result.length;
+      const expected = operation === "computed-length" ? expectedLength : expectedWidth;
+      assert.ok(Math.abs(actual - expected) < 0.001,
+        `${operation}: preserve connecting and repeated spaces: ${actual} vs ${expected}`);
     }
     assert.ok(evidence.expected.every(Boolean));
     for (const entry of evidence.detachments) {

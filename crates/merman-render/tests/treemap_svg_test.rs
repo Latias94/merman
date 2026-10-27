@@ -37,8 +37,8 @@ impl HostTextMeasurer for CountingTreemapHost {
                 })
             }
             TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
-            TextMeasurementOperation::SimpleBBoxWidth => HostTextMeasurement::Length(width),
-            TextMeasurementOperation::SimpleBBoxHeight => {
+            TextMeasurementOperation::RawBBoxWidth => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::RawBBoxHeight => {
                 HostTextMeasurement::Length(request.style.font_size.max(1.0))
             }
             _ => return Ok(None),
@@ -424,7 +424,7 @@ title Routed title
             .entries()
             .iter()
             .any(|entry| {
-                entry.provenance().operation == TextMeasurementOperation::SimpleBBoxHeight
+                entry.provenance().operation == TextMeasurementOperation::RawBBoxHeight
                     && entry.provenance().source
                         == merman_render::environment::TextMeasurementSource::Host
             }),

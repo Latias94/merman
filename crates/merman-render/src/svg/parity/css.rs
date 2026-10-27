@@ -230,32 +230,6 @@ where
     )
 }
 
-pub(super) fn info_css_into<I>(out: &mut String, diagram_id: I)
-where
-    I: Copy + std::fmt::Display,
-{
-    // Production callers pass a normalized `SvgDiagramId`, whose grammar is already safe for
-    // direct CSS selector interpolation. Keeping the wrapper intact makes every occurrence flow
-    // through the shared resource projection instead of caching one escaped string.
-    let id = diagram_id;
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    write_mermaid_base_css_prefix(
-        out,
-        id,
-        MermaidBaseCss {
-            font_family: font,
-            font_size_css: "16px",
-            normal_edge_stroke_width_css: "1px",
-            text_color: "#333",
-            line_color: "#333333",
-            error_bkg: "#552222",
-            error_text: "#552222",
-        },
-    );
-    write_mermaid_common_neo_css(out, id, &serde_json::Value::Null);
-    out.push_str(&mermaid_base_css_root_rule(id, font));
-}
-
 pub(super) struct InfoCssParts {
     pub(super) css_prefix: String,
     pub(super) root_rule: String,
@@ -940,14 +914,31 @@ where
 }
 
 #[cfg(feature = "diagram-xychart")]
-pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I)
-where
+pub(super) fn push_xychart_css<I>(
+    out: &mut String,
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+) where
     I: Copy + std::fmt::Display,
 {
-    // Mermaid does not ship dedicated XYChart styles at 11.12.2 (it relies on theme variables and
-    // inline attributes). Keep the shared base stylesheet for consistency with upstream SVG
-    // baselines. The compare tooling ignores `<style>` content in parity mode.
-    info_css_into(out, diagram_id);
+    // XYChart's drawables own their numeric sizes and fills. Only the inherited family
+    // changes here; retain the established shared rules for unrelated neo shapes.
+    let font = crate::config::config_font_family_css(effective_config);
+    write_mermaid_base_css_prefix(
+        out,
+        diagram_id,
+        MermaidBaseCss {
+            font_family: &font,
+            font_size_css: "16px",
+            normal_edge_stroke_width_css: "1px",
+            text_color: "#333",
+            line_color: "#333333",
+            error_bkg: "#552222",
+            error_text: "#552222",
+        },
+    );
+    write_mermaid_common_neo_css(out, diagram_id, &serde_json::Value::Null);
+    out.push_str(&mermaid_base_css_root_rule(diagram_id, &font));
 }
 
 #[cfg(feature = "diagram-gantt")]

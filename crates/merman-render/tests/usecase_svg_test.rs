@@ -166,6 +166,23 @@ fn usecase_plain_svg_word_measurement_resets_weight_without_changing_role_fonts(
                 line_count: 1,
             }
         }
+
+        // Keep the font oracle explicit for the terminal HTML line and SVG tspan operations.
+        fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).width
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).width
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).height
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _: &str, _: &TextStyle) -> f64 {
+            0.0
+        }
     }
 
     for html in [false, true] {

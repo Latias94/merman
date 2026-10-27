@@ -161,6 +161,13 @@ pub trait TextMeasurer {
         self.measure_svg_simple_text_bbox_width_px(text, style)
     }
 
+    /// Measures direct SVG text whose emitted CSS preserves consecutive spaces.
+    ///
+    /// Exact hosts receive RawBBoxWidth with HtmlLike whitespace preservation, without wrapping.
+    fn measure_svg_preserved_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_raw_text_bbox_width_px(text, style)
+    }
+
     /// Measures raw SVG `<text>.getBBox().height` for direct text content.
     ///
     /// This stays distinct from tspan and Mermaid helper probes so browser hosts can preserve the
