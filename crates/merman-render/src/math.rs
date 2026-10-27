@@ -6,6 +6,8 @@
 //! text. The `math` feature installs the pure-Rust RaTeX backend by default; hosts may still supply
 //! another implementation explicitly.
 
+pub(crate) mod glyph_svg;
+
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
 use crate::text::{TextMetrics, TextStyle, WrapMode};
@@ -321,16 +323,7 @@ impl RatexMathRenderer {
 
     fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
         let (display_list, width_em, height_em) = Self::layout_formula_em(latex)?;
-        let svg = ratex_svg::render_to_svg(
-            &display_list,
-            &ratex_svg::SvgOptions {
-                font_size: 1.0,
-                padding: 0.0,
-                stroke_width: 0.04,
-                embed_glyphs: true,
-                font_dir: String::new(),
-            },
-        );
+        let svg = glyph_svg::render(&display_list)?;
         Some((
             Self::svg_with_em_size(svg, width_em, height_em),
             width_em,

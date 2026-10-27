@@ -240,6 +240,15 @@ fn parse_rows<'a, E>(
                     };
                     let key = attribute.key.as_ref();
                     if in_svg {
+                        if key == "style" {
+                            // Admit only the producer's exact owned declarations, never arbitrary CSS.
+                            if crate::math::glyph_svg::primitive_paint_style(&tag).as_deref()
+                                != Some(value.as_ref())
+                            {
+                                return reject("invalid native math owned paint", invalid);
+                            }
+                            continue;
+                        }
                         if !primitive_attribute(name, key, &value) {
                             return reject("unsupported native math SVG attribute", invalid);
                         }
@@ -706,6 +715,28 @@ mod tests {
         );
         assert_eq!(result.elements, 4);
         assert_eq!(result.depth, 3);
+    }
+
+    #[test]
+    fn primitive_style_admits_only_canonical_producer_paint() {
+        let tag = quick_xml::events::BytesStart::from_content(
+            r#"path d="M0 0L1 1" fill="rgba(0,0,0,1)""#,
+            4,
+        );
+        let style = crate::math::glyph_svg::primitive_paint_style(&tag).unwrap();
+        let owned = formula().replace("<path ", &format!("<path style='{style}' "));
+        let inner = format!("<div class='{ROW_CLASS}'>{owned}</div>");
+        assert!(project(&inner).unwrap().unwrap().svg.contains(&style));
+        for tampered in [
+            style.replace("fill:rgba(0,0,0,1)", "fill:rgba(255,0,0,1)"),
+            format!("{style};display:none"),
+            style.replace("!important", ""),
+        ] {
+            assert!(matches!(
+                project(&inner.replace(&style, &tampered)),
+                Err("invalid")
+            ));
+        }
     }
 
     #[test]
