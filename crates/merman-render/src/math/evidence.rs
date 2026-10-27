@@ -253,9 +253,9 @@ impl PreparedMathTerminalReceipt {
             }
             if node.has_tag_name("use")
                 && let Some(target) = node
-                    .attribute("href")
-                    .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))
-                    .and_then(|href| href.trim().strip_prefix('#'))
+                    .attribute(("http://www.w3.org/1999/xlink", "href"))
+                    .or_else(|| node.attribute("href"))
+                    .and_then(|href| svgtypes::IRI::from_str(href).ok().map(|iri| iri.0))
             {
                 *references.entry(target).or_default() += 1;
             }
@@ -263,24 +263,25 @@ impl PreparedMathTerminalReceipt {
         let mut used_definitions = HashSet::new();
         let mut emitted = vec![0usize; evidence.entries().len()];
         for node in document.descendants().filter(|node| node.is_element()) {
-            let Some(class) = node.attribute("class") else {
+            let Some(occurrence_id) = node.attribute(super::PREPARED_MATH_OCCURRENCE_ATTRIBUTE)
+            else {
+                // User classes do not establish renderer ownership. Missing owned instances are
+                // rejected by the expected emission counts below.
                 continue;
             };
-            if !class
-                .split_ascii_whitespace()
-                .any(|token| token == PREPARED_MATH_NATIVE_CLASS)
-            {
-                continue;
-            }
-            let occurrence_id = node
-                .attribute(super::PREPARED_MATH_OCCURRENCE_ATTRIBUTE)
-                .ok_or_else(|| {
-                    "prepared-math native terminal is missing its occurrence identity".to_owned()
-                })?;
             let (expected_index, expected) =
                 evidence.expectation(occurrence_id)?.ok_or_else(|| {
                     format!("prepared-math terminal emitted unknown occurrence `{occurrence_id}`")
                 })?;
+            if !node.attribute("class").is_some_and(|class| {
+                class
+                    .split_ascii_whitespace()
+                    .any(|token| token == PREPARED_MATH_NATIVE_CLASS)
+            }) {
+                return Err(format!(
+                    "prepared-math terminal occurrence `{occurrence_id}` is missing its native class"
+                ));
+            }
             emitted[expected_index] = emitted[expected_index].saturating_add(1);
             if emitted[expected_index] > expected.expected_emissions() {
                 return Err(format!(
@@ -294,9 +295,9 @@ impl PreparedMathTerminalReceipt {
                     );
                 }
                 let target = node
-                    .attribute("href")
-                    .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))
-                    .and_then(|href| href.trim().strip_prefix('#'))
+                    .attribute(("http://www.w3.org/1999/xlink", "href"))
+                    .or_else(|| node.attribute("href"))
+                    .and_then(|href| svgtypes::IRI::from_str(href).ok().map(|iri| iri.0))
                     .ok_or_else(|| {
                         "prepared-math instance requires a local definition".to_owned()
                     })?;
@@ -492,6 +493,85 @@ mod tests {
     }
 
     #[test]
+    fn terminal_receipt_ignores_user_native_classes_without_owned_occurrences() {
+        let occurrence_id =
+            PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
+        let projection = r#"<g><path d="M0 0h1"/></g>"#;
+        let evidence = available_evidence(occurrence_id.clone(), projection, 1);
+        let occurrence = terminal_occurrence(&occurrence_id, projection, 0);
+        let svg = format!(
+            concat!(
+                r#"<svg><g class="node merman-prepared-math-native"><path d="M0 0h2"/></g>"#,
+                r#"<defs><path id="user-shape" d="M0 0h3"/></defs>"#,
+                r##"<use class="merman-prepared-math-native" href="#user-shape"/>"##,
+                "{occurrence}</svg>",
+            ),
+            occurrence = occurrence,
+        );
+
+        let receipt = PreparedMathTerminalReceipt::from_terminal_svg(&svg, &evidence)
+            .expect("ordinary user classes must not claim renderer-owned occurrences")
+            .expect("the owned math occurrence still requires a receipt");
+
+        assert_eq!(receipt.occurrence_count(), 1);
+        assert_eq!(receipt.occurrences[0].emitted, 1);
+    }
+
+    #[test]
+    fn terminal_receipt_rejects_owned_occurrences_without_native_classes() {
+        let occurrence_id =
+            PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
+        let projection = r#"<g><path d="M0 0h1"/></g>"#;
+        let evidence = available_evidence(occurrence_id.clone(), projection, 1);
+        let occurrence = terminal_occurrence(&occurrence_id, projection, 0);
+        for replacement in ["", r#"class="ordinary-user-class""#] {
+            let svg = format!(
+                "<svg>{}</svg>",
+                occurrence.replace(PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE, replacement)
+            );
+            let error = PreparedMathTerminalReceipt::from_terminal_svg(&svg, &evidence)
+                .expect_err("an occurrence identity must not bypass native class validation");
+
+            assert!(error.contains("missing its native class"), "{error}");
+        }
+
+        let unmarked = terminal_occurrence(&occurrence_id, projection, 1)
+            .replace(PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE, "");
+        let error = PreparedMathTerminalReceipt::from_terminal_svg(
+            &format!("<svg>{occurrence}{unmarked}</svg>"),
+            &evidence,
+        )
+        .expect_err("an additional owned instance cannot hide by dropping its class");
+        assert!(error.contains("missing its native class"), "{error}");
+    }
+
+    #[test]
+    fn terminal_receipt_rejects_missing_owned_identities_beside_user_native_classes() {
+        let occurrence_id =
+            PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
+        let projection = r#"<g><path d="M0 0h1"/></g>"#;
+        let evidence = available_evidence(occurrence_id.clone(), projection, 1);
+        let occurrence = terminal_occurrence(&occurrence_id, projection, 0);
+        let identity = format!(
+            r#" data-merman-prepared-math-occurrence="{}""#,
+            occurrence_id.as_str()
+        );
+        for missing in [
+            occurrence.replace(&identity, ""),
+            occurrence
+                .replace(&identity, "")
+                .replace(PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE, ""),
+            String::new(),
+        ] {
+            let svg = format!(r#"<svg><g class="merman-prepared-math-native"/>{missing}</svg>"#);
+            let error = PreparedMathTerminalReceipt::from_terminal_svg(&svg, &evidence)
+                .expect_err("user classes cannot replace a missing renderer-owned occurrence");
+
+            assert!(error.contains("missing occurrence"), "{error}");
+        }
+    }
+
+    #[test]
     fn terminal_receipt_rejects_missing_duplicate_unavailable_and_mismatched_occurrences() {
         let occurrence_id =
             PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
@@ -570,6 +650,28 @@ mod tests {
                 "{invalid}"
             );
         }
+    }
+
+    #[test]
+    fn terminal_receipt_follows_native_xlink_target_precedence() {
+        let occurrence =
+            PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
+        let projection = r#"<g><path d="M0 0h1"/></g>"#;
+        let evidence = available_evidence(occurrence.clone(), projection, 1);
+        let valid = format!(
+            "<svg xmlns:xlink=\"http://www.w3.org/1999/xlink\">{}</svg>",
+            terminal_occurrence(&occurrence, projection, 0)
+        );
+        let redirected = valid.replace(
+            r##"href="#math-0""##,
+            r##"href="#math-0" xlink:href="#missing""##,
+        );
+        assert!(PreparedMathTerminalReceipt::from_terminal_svg(&redirected, &evidence).is_err());
+        let native_target = valid.replace(
+            r##"href="#math-0""##,
+            r##"href="#missing" xlink:href="#math-0""##,
+        );
+        PreparedMathTerminalReceipt::from_terminal_svg(&native_target, &evidence).unwrap();
     }
 
     #[test]

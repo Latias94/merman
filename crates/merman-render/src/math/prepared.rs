@@ -891,39 +891,12 @@ pub(super) struct CompiledRatexFormula {
 }
 
 #[cfg(feature = "math")]
-struct CompiledRatexLayout {
-    display_list: ratex_types::DisplayList,
-    width_em: f64,
-    height_em: f64,
-}
-
-#[cfg(feature = "math")]
-fn layout_compiled_ratex_formula(
-    latex: &str,
-    color: ratex_types::Color,
-) -> Option<CompiledRatexLayout> {
-    let ast = ratex_parser::parse(latex).ok()?;
-    let layout_options = ratex_layout::LayoutOptions::default()
-        .with_style(ratex_types::MathStyle::Display)
-        .with_color(color);
-    let layout_box = ratex_layout::layout(&ast, &layout_options);
-    let display_list = ratex_layout::to_display_list(&layout_box);
-    let width_em = emitted_em_dimension(display_list.width.max(0.0));
-    let height_em = emitted_em_dimension(display_list.total_height().max(0.0));
-    Some(CompiledRatexLayout {
-        display_list,
-        width_em,
-        height_em,
-    })
-}
-
-#[cfg(feature = "math")]
 pub(super) fn measure_compiled_ratex_formula(
     latex: &str,
     color: ratex_types::Color,
 ) -> Option<(f64, f64)> {
-    let layout = layout_compiled_ratex_formula(latex, color)?;
-    Some((layout.width_em, layout.height_em))
+    let formula = render_compiled_ratex_formula(latex, color)?;
+    Some((formula.width_em, formula.height_em))
 }
 
 #[cfg(feature = "math")]
@@ -931,12 +904,17 @@ pub(super) fn render_compiled_ratex_formula(
     latex: &str,
     color: ratex_types::Color,
 ) -> Option<CompiledRatexFormula> {
-    let layout = layout_compiled_ratex_formula(latex, color)?;
-    let svg = super::glyph_svg::render(&layout.display_list)?;
+    let ast = ratex_parser::parse(latex).ok()?;
+    let layout_options = ratex_layout::LayoutOptions::default()
+        .with_style(ratex_types::MathStyle::Display)
+        .with_color(color);
+    let layout_box = ratex_layout::layout(&ast, &layout_options);
+    let display_list = ratex_layout::to_display_list(&layout_box);
+    let rendered = super::glyph_svg::render(&display_list, layout_box.width)?;
     Some(CompiledRatexFormula {
-        svg: svg_with_em_size(svg, layout.width_em, layout.height_em),
-        width_em: layout.width_em,
-        height_em: layout.height_em,
+        svg: rendered.svg,
+        width_em: rendered.width_em,
+        height_em: rendered.height_em,
     })
 }
 
@@ -1094,14 +1072,14 @@ fn positioned_ratex_svg(
 ) -> Option<String> {
     let open_end = rendered.svg.find('>')?;
     let body = rendered.svg.get(open_end + 1..)?.strip_suffix("</svg>")?;
+    let document = crate::xml_dom::Document::parse(&rendered.svg).ok()?;
+    let view_box = document.root_element().attribute("viewBox")?;
     Some(format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" x="{}" y="{}" width="{}" height="{}" viewBox="0 0 {} {}">{body}</svg>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" x="{}" y="{}" width="{}" height="{}" viewBox="{view_box}">{body}</svg>"#,
         format_number(x_px),
         format_number(y_px),
         format_number(width_px),
         format_number(height_px),
-        format_number(rendered.width_em),
-        format_number(rendered.height_em),
     ))
 }
 
@@ -1283,30 +1261,7 @@ pub(super) fn compiled_ratex_math_only_lines(text: &str) -> Option<Vec<Classifie
     Some(lines)
 }
 
-#[cfg(feature = "math")]
-pub(super) fn svg_with_em_size(svg: String, width_em: f64, height_em: f64) -> String {
-    let Some(open_end) = svg.find('>') else {
-        return svg;
-    };
-    let Some(body_with_close) = svg.get(open_end + 1..) else {
-        return svg;
-    };
-    let Some(body) = body_with_close.strip_suffix("</svg>") else {
-        return svg;
-    };
-    let width = fmt_num(width_em);
-    let height = fmt_num(height_em);
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
-    )
-}
-
-#[cfg(feature = "math")]
-pub(super) fn emitted_em_dimension(value: f64) -> f64 {
-    fmt_num(value).parse().unwrap_or(0.0)
-}
-
-#[cfg(feature = "math")]
+#[cfg(all(feature = "math", test))]
 pub(super) fn fmt_num(n: f64) -> String {
     format_number(n)
 }

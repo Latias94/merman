@@ -7513,8 +7513,18 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
     )
     .expect("render svg");
 
-    let inline_formula_count = svg
-        .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let inline_formula_count = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("svg")
+                && node
+                    .attribute("width")
+                    .is_some_and(|value| value.ends_with("em"))
+                && !node
+                    .ancestors()
+                    .any(|ancestor| ancestor.has_tag_name("template"))
+        })
         .count();
     assert_eq!(
         inline_formula_count, 7,

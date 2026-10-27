@@ -2607,6 +2607,7 @@ dependencies = [
  "merman-unicode-linebreak",
  "pulldown-cmark",
  "quick-xml",
+ "ratex-font",
  "ratex-layout",
  "ratex-parser",
  "ratex-svg",

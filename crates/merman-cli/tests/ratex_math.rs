@@ -161,203 +161,221 @@ mod rendering {
     }
 
     fn assert_math_paint(formula: &str, primitive: Primitive) {
-        for html_labels in [true, false] {
-            for pipeline in ["parity", "resvg-safe"] {
-                for styled in [false, true] {
-                    // Chromium owns browser !important cascade checks; usvg is not its oracle.
-                    if pipeline == "parity" && styled {
-                        continue;
-                    }
-                    let source = format!(
-                        "%%{{init: {{\"flowchart\": {{\"htmlLabels\": {html_labels}}}}}}}%%\n\
-                         flowchart LR\nA[\"$${formula}$$\"]{}\n\
-                         classDef hostile fill:#ffffff,stroke:#00ff00,stroke-width:3px,color:#0055cc;\n",
-                        if styled { ":::hostile" } else { "" },
-                    );
-                    let case = format!(
-                        "{formula}, htmlLabels={html_labels}, {pipeline}, classDef={styled}"
-                    );
-                    let output = run_with_stdin(
-                        &[
-                            "render",
-                            "--math-renderer",
-                            "ratex",
-                            "--format",
-                            "svg",
-                            "--svg-pipeline",
-                            pipeline,
-                            "-",
-                        ],
-                        &source,
-                    );
+        let html_labels = true;
+        for pipeline in ["parity", "resvg-safe"] {
+            for styled in [false, true] {
+                // Chromium owns browser !important cascade checks; usvg is not its oracle.
+                if pipeline == "parity" && styled {
+                    continue;
+                }
+                let source = format!(
+                    "%%{{init: {{\"htmlLabels\": {html_labels}, \"flowchart\": {{\"htmlLabels\": {html_labels}}}}}}}%%\n\
+                     flowchart LR\nA[\"$${formula}$$\"]{}\n\
+                     classDef hostile fill:#ffffff,stroke:#00ff00,stroke-width:3px,color:#0055cc;\n",
+                    if styled { ":::hostile" } else { "" },
+                );
+                let case =
+                    format!("{formula}, htmlLabels={html_labels}, {pipeline}, classDef={styled}");
+                let output = run_with_stdin(
+                    &[
+                        "render",
+                        "--math-renderer",
+                        "ratex",
+                        "--format",
+                        "svg",
+                        "--svg-pipeline",
+                        pipeline,
+                        "-",
+                    ],
+                    &source,
+                );
+                assert!(
+                    output.status.success(),
+                    "{case}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let svg = String::from_utf8(output.stdout).expect("UTF-8 SVG");
+                let doc = roxmltree::Document::parse(&svg).expect("parse CLI SVG");
+                let root = doc.root_element();
+                let css: String = root
+                    .descendants()
+                    .filter(|node| node.has_tag_name("style"))
+                    .filter_map(|node| node.text())
+                    .collect();
+                let filters: String = root
+                    .children()
+                    .filter(|node| {
+                        node.has_tag_name("defs")
+                            && node.descendants().any(|child| child.has_tag_name("filter"))
+                    })
+                    .map(|node| &svg[node.range()])
+                    .collect();
+                if styled {
                     assert!(
-                        output.status.success(),
-                        "{case}: {}",
-                        String::from_utf8_lossy(&output.stderr)
+                        css.split('}')
+                            .any(|rule| rule.contains(".hostile") && rule.contains("!important")),
+                        "{case}: expected source classDef important CSS"
                     );
-                    let svg = String::from_utf8(output.stdout).expect("UTF-8 SVG");
-                    let doc = roxmltree::Document::parse(&svg).expect("parse CLI SVG");
-                    let root = doc.root_element();
-                    let css: String = root
-                        .descendants()
-                        .filter(|node| node.has_tag_name("style"))
-                        .filter_map(|node| node.text())
+                }
+                let node = root
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class").is_some_and(|class| {
+                            class.split_ascii_whitespace().any(|c| c == "node")
+                        })
+                    })
+                    .expect("actual flowchart node");
+                let node_classes = node.attribute("class").expect("node classes");
+                assert_eq!(
+                    node_classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "hostile"),
+                    styled,
+                    "{case}: source node class"
+                );
+                let context = format!(
+                    "<style>{css}</style><g class=\"{}\" data-look=\"{}\"><g class=\"label nodeLabel\">",
+                    node_classes,
+                    node.attribute("data-look").unwrap_or(""),
+                );
+                let math_svgs: Vec<_> = root
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("svg")
+                            && *node != root
+                            && node.children().any(|child| child.has_tag_name("path"))
+                            && (pipeline != "parity"
+                                || !node.ancestors().any(|ancestor| {
+                                    ancestor.has_tag_name("template")
+                                        || ancestor.has_tag_name("defs")
+                                }))
+                    })
+                    .collect();
+                assert!(!math_svgs.is_empty(), "{case}: no actual formula SVG");
+                for (index, math) in math_svgs.into_iter().enumerate() {
+                    let view_box: Vec<f64> = math
+                        .attribute("viewBox")
+                        .expect("formula viewBox")
+                        .split_ascii_whitespace()
+                        .map(|value| value.parse().expect("viewBox number"))
                         .collect();
-                    let filters: String = root
+                    assert_eq!(view_box.len(), 4, "{case}");
+                    assert!(
+                        view_box.iter().all(|value| value.is_finite())
+                            && view_box[2] > 0.0
+                            && view_box[3] > 0.0,
+                        "{case}: invalid formula viewport"
+                    );
+                    let canvas = format!(
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" id=\"{}\" \
+                         width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\">",
+                        root.attribute("id").expect("diagram id"),
+                        ((view_box[2] + 0.5) * 48.0).ceil(),
+                        ((view_box[3] + 0.5) * 48.0).ceil(),
+                        view_box[0] - 0.25,
+                        view_box[1] - 0.25,
+                        view_box[2] + 0.5,
+                        view_box[3] + 0.5,
+                    );
+                    // Copy exact XML ranges: glyph paint and geometry must survive unchanged.
+                    let body: String = math
                         .children()
-                        .filter(|node| {
-                            node.has_tag_name("defs")
-                                && node.descendants().any(|child| child.has_tag_name("filter"))
-                        })
-                        .map(|node| &svg[node.range()])
+                        .filter(|child| child.is_element())
+                        .map(|child| &svg[child.range()])
                         .collect();
-                    if styled {
-                        assert!(
-                            css.split('}').any(
-                                |rule| rule.contains(".hostile") && rule.contains("!important")
-                            ),
-                            "{case}: expected source classDef important CSS"
-                        );
-                    }
-                    let node = root
-                        .descendants()
-                        .find(|node| {
-                            node.attribute("class").is_some_and(|class| {
-                                class.split_ascii_whitespace().any(|c| c == "node")
-                            })
-                        })
-                        .expect("actual flowchart node");
-                    let node_classes = node.attribute("class").expect("node classes");
-                    assert_eq!(
-                        node_classes
-                            .split_ascii_whitespace()
-                            .any(|class| class == "hostile"),
-                        styled,
-                        "{case}: source node class"
-                    );
-                    let context = format!(
-                        "<style>{css}</style><g class=\"{}\" data-look=\"{}\"><g class=\"label nodeLabel\">",
-                        node_classes,
-                        node.attribute("data-look").unwrap_or(""),
-                    );
-                    let math_svgs: Vec<_> = root
-                        .descendants()
-                        .filter(|node| {
-                            node.has_tag_name("svg")
-                                && *node != root
-                                && node.children().any(|child| child.has_tag_name("path"))
-                                && (pipeline != "parity"
-                                    || !node.ancestors().any(|ancestor| {
-                                        ancestor.has_tag_name("template")
-                                            || ancestor.has_tag_name("defs")
-                                    }))
-                        })
-                        .collect();
-                    assert!(!math_svgs.is_empty(), "{case}: no actual formula SVG");
-                    for (index, math) in math_svgs.into_iter().enumerate() {
-                        let view_box: Vec<f64> = math
-                            .attribute("viewBox")
-                            .expect("formula viewBox")
-                            .split_ascii_whitespace()
-                            .map(|value| value.parse().expect("viewBox number"))
-                            .collect();
-                        assert_eq!(view_box.len(), 4, "{case}");
-                        assert!(
-                            view_box.iter().all(|value| value.is_finite())
-                                && view_box[2] > 0.0
-                                && view_box[3] > 0.0,
-                            "{case}: invalid formula viewport"
-                        );
-                        let canvas = format!(
-                            "<svg xmlns=\"http://www.w3.org/2000/svg\" id=\"{}\" \
-                             width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\">",
-                            root.attribute("id").expect("diagram id"),
-                            ((view_box[2] + 0.5) * 48.0).ceil(),
-                            ((view_box[3] + 0.5) * 48.0).ceil(),
-                            view_box[0] - 0.25,
-                            view_box[1] - 0.25,
-                            view_box[2] + 0.5,
-                            view_box[3] + 0.5,
-                        );
-                        // Copy exact XML ranges: glyph paint and geometry must survive unchanged.
-                        let body: String = math
-                            .children()
-                            .filter(|child| child.is_element())
-                            .map(|child| &svg[child.range()])
-                            .collect();
-                        let required = math
-                            .children()
-                            .find(|child| match primitive {
-                                Primitive::Outline => child.has_tag_name("path"),
-                                Primitive::Rule => child.has_tag_name("rect"),
-                                Primitive::Stroke => {
-                                    child.has_tag_name("path")
-                                        && child.attribute("fill") == Some("none")
-                                        && child
-                                            .attribute("stroke")
-                                            .is_some_and(|stroke| stroke != "none")
-                                }
-                            })
-                            .unwrap_or_else(|| {
-                                panic!("{case}: required formula primitive missing")
-                            });
-                        // A rule/stroke must paint on its own, even if the other glyphs survive.
-                        for (part, body) in [
-                            ("formula", body.as_str()),
-                            ("primitive", &svg[required.range()]),
-                        ] {
-                            let (reference_svg, actual_svg) = if pipeline == "resvg-safe" {
-                                let scene = native_scene(&svg, math, body);
-                                (
-                                    replace_children(&svg, root, &scene),
-                                    replace_children(
-                                        &svg,
-                                        root,
-                                        &format!("<style>{css}</style>{scene}"),
-                                    ),
-                                )
-                            } else {
-                                (
-                                    format!("{canvas}{filters}{body}</svg>"),
-                                    format!("{canvas}{filters}{context}{body}</g></g></svg>"),
-                                )
-                            };
-                            let reference = rasterize(&reference_svg);
-                            let actual = rasterize(&actual_svg);
-                            assert_eq!(
-                                (reference.0, reference.1),
-                                (actual.0, actual.1),
-                                "{case}, SVG {index}, {part}: canvas dimensions"
-                            );
-                            assert!(
-                                reference.2.chunks_exact(4).any(|pixel| {
-                                    pixel[3] == 255 && pixel[..3] != [255, 255, 255]
-                                }),
-                                "{case}, SVG {index}, {part}: reference has no ink"
-                            );
-                            if formula.contains(r"\color{red}") {
-                                assert!(
-                                    reference.2.chunks_exact(4).any(|pixel| {
-                                        pixel[0] > 200 && pixel[1] < 80 && pixel[2] < 80
-                                    }),
-                                    "{case}, SVG {index}, {part}: explicit red lost"
-                                );
+                    let required = math
+                        .children()
+                        .find(|child| match primitive {
+                            Primitive::Outline => child.has_tag_name("path"),
+                            Primitive::Rule => child.has_tag_name("rect"),
+                            Primitive::Stroke => {
+                                child.has_tag_name("path")
+                                    && child.attribute("fill") == Some("none")
+                                    && child
+                                        .attribute("stroke")
+                                        .is_some_and(|stroke| stroke != "none")
                             }
-                            let different = reference
+                        })
+                        .unwrap_or_else(|| panic!("{case}: required formula primitive missing"));
+                    // A rule/stroke must paint on its own, even if the other glyphs survive.
+                    for (part, body) in [
+                        ("formula", body.as_str()),
+                        ("primitive", &svg[required.range()]),
+                    ] {
+                        let (reference_svg, actual_svg) = if pipeline == "resvg-safe" {
+                            let scene = native_scene(&svg, math, body);
+                            (
+                                replace_children(&svg, root, &scene),
+                                replace_children(
+                                    &svg,
+                                    root,
+                                    &format!("<style>{css}</style>{scene}"),
+                                ),
+                            )
+                        } else {
+                            (
+                                format!("{canvas}{filters}{body}</svg>"),
+                                format!("{canvas}{filters}{context}{body}</g></g></svg>"),
+                            )
+                        };
+                        let reference = rasterize(&reference_svg);
+                        let actual = rasterize(&actual_svg);
+                        assert_eq!(
+                            (reference.0, reference.1),
+                            (actual.0, actual.1),
+                            "{case}, SVG {index}, {part}: canvas dimensions"
+                        );
+                        assert!(
+                            reference
                                 .2
                                 .chunks_exact(4)
-                                .zip(actual.2.chunks_exact(4))
-                                .filter(|(expected, actual)| expected != actual)
-                                .count();
-                            assert_eq!(
-                                different, 0,
-                                "{case}, SVG {index}, {part}: node CSS changed formula pixels"
+                                .any(|pixel| { pixel[3] == 255 && pixel[..3] != [255, 255, 255] }),
+                            "{case}, SVG {index}, {part}: reference has no ink"
+                        );
+                        if formula.contains(r"\color{red}") {
+                            assert!(
+                                reference.2.chunks_exact(4).any(|pixel| {
+                                    pixel[0] > 200 && pixel[1] < 80 && pixel[2] < 80
+                                }),
+                                "{case}, SVG {index}, {part}: explicit red lost"
                             );
                         }
+                        let different = reference
+                            .2
+                            .chunks_exact(4)
+                            .zip(actual.2.chunks_exact(4))
+                            .filter(|(expected, actual)| expected != actual)
+                            .count();
+                        assert_eq!(
+                            different, 0,
+                            "{case}, SVG {index}, {part}: node CSS changed formula pixels"
+                        );
                     }
                 }
             }
         }
+    }
+
+    #[test]
+    fn cli_plain_svg_labels_follow_the_literal_math_branch() {
+        let output = run_with_stdin(
+            &["render", "--math-renderer", "ratex", "--format", "svg", "-"],
+            "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\nA[\"$$x^2$$\"]\n",
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let svg = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            !svg.contains("<foreignObject"),
+            "plain SVG labels must use their own branch"
+        );
+        assert!(
+            svg.contains("$$x^2$$"),
+            "plain SVG math retains the existing literal semantics"
+        );
     }
 
     #[test]

@@ -189,8 +189,16 @@ pub(crate) fn project_prepared_math(
                 "prepared-math native projection exceeds its terminal foreignObject bounds",
             ));
         }
-        let translate_x = x + (width - projection_width) / 2.0;
-        let translate_y = y + (height - projection_height) / 2.0;
+        // Mermaid Sequence positions the fit-content HTML at the foreignObject origin.
+        // Flowchart and Swimlane use centered label shells instead.
+        let (translate_x, translate_y) = if family_id == Some(DiagramFamilyId::SEQUENCE) {
+            (x, y)
+        } else {
+            (
+                x + (width - projection_width) / 2.0,
+                y + (height - projection_height) / 2.0,
+            )
+        };
 
         let (replacement_start, replacement_end) =
             prepared_math_switch_wrapper(svg, cursor, start, end).unwrap_or((start, end));
@@ -437,6 +445,10 @@ mod tests {
         let output = project_prepared_math(&svg, Some(DiagramFamilyId::SEQUENCE), Some(&evidence))
             .expect("the renderer-owned switch should collapse to its native projection");
 
+        assert!(
+            output.contains(r#"transform="translate(10 20)""#),
+            "{output}"
+        );
         assert!(!output.contains("<switch"), "{output}");
         assert!(!output.contains("$$x$$"), "{output}");
         assert!(!output.contains("<foreignObject"), "{output}");
