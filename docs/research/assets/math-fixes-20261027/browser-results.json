@@ -1,0 +1,75 @@
+{
+  "browser": "156.0.8078.4",
+  "results": [
+    {
+      "line": "09",
+      "case": "flowchart",
+      "pipeline": "parity",
+      "file": "09-flowchart-parity.svg",
+      "formulaCount": 1,
+      "primitiveCount": 5
+    },
+    {
+      "line": "09",
+      "case": "flowchart",
+      "pipeline": "resvg-safe",
+      "file": "09-flowchart-resvg-safe.svg",
+      "formulaCount": 2,
+      "primitiveCount": 11
+    },
+    {
+      "line": "09",
+      "case": "fraction-styled",
+      "pipeline": "parity",
+      "file": "09-fraction-styled-parity.svg",
+      "formulaCount": 1,
+      "primitiveCount": 3
+    },
+    {
+      "line": "09",
+      "case": "fraction-styled",
+      "pipeline": "resvg-safe",
+      "file": "09-fraction-styled-resvg-safe.svg",
+      "formulaCount": 2,
+      "primitiveCount": 7
+    },
+    {
+      "line": "09",
+      "case": "sequence",
+      "pipeline": "parity",
+      "file": "09-sequence-parity.svg",
+      "formulaCount": 1,
+      "primitiveCount": 3
+    },
+    {
+      "line": "09",
+      "case": "sequence",
+      "pipeline": "resvg-safe",
+      "file": "09-sequence-resvg-safe.svg",
+      "formulaCount": 2,
+      "primitiveCount": 7
+    },
+    {
+      "line": "09",
+      "case": "swimlane",
+      "pipeline": "parity",
+      "file": "09-swimlane-parity.svg",
+      "formulaCount": 1,
+      "primitiveCount": 5
+    },
+    {
+      "line": "09",
+      "case": "swimlane",
+      "pipeline": "resvg-safe",
+      "file": "09-swimlane-resvg-safe.svg",
+      "formulaCount": 2,
+      "primitiveCount": 11
+    },
+    {
+      "line": "09",
+      "case": "browser-classDef-important",
+      "exactScreenshotMatch": true,
+      "referenceInkPixels": 1057
+    }
+  ]
+}
