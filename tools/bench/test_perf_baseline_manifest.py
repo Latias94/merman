@@ -89,7 +89,7 @@ def lane(
 class PerfBaselineManifestTest(unittest.TestCase):
     def setUp(self) -> None:
         self._temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self._temporary.name)
+        self.root = Path(self._temporary.name).resolve()
         (self.root / "tools" / "bench").mkdir(parents=True)
         (self.root / "fixtures").mkdir()
         (self.root / "contracts").mkdir()

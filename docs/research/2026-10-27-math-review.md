@@ -70,6 +70,27 @@ Maintenance's reviewed head has 59 successful and 4 intentionally skipped
 checks. New source commits need
 fresh CI; earlier heads are not qualification for the new revision.
 
+## CI integration follow-up (2026-10-28)
+
+The subsequent complete-SVG verification heads (main `f1edead9d`, maintenance
+`d80499a70`) exposed stale dependency records. All seven fuzz jobs on each
+branch stopped at the locked workspace check, before replaying any corpus:
+`fuzz/Cargo.lock` lacked the optional direct `merman-render -> ratex-font` edge.
+Refreshing that single local-package relation leaves every registry package
+version and checksum unchanged. Both branches now pass the workflow's pinned
+`nightly-2026-07-01` workspace check with `--locked --offline`.
+
+The maintenance performance owner contracts already match their current inputs.
+Only the current source-input hashes change; thresholds, semantic digests,
+candidate-admission rules and historical evidence remain intact. The complete
+performance-owner Python checks pass locally on both branches (157 focused
+contracts on main, 121 on maintenance).
+
+Local verification also exposed macOS `/var` versus `/private/var` aliases in
+test fixtures. Canonicalizing fixture paths fixes command-provenance assertions
+without relaxing production receipt validation. New remote CI results belong
+to the follow-up commits, not the previously reviewed heads.
+
 ## Verification record
 
 Source repairs: main `19518166e`; maintenance `5fa43519a`.
