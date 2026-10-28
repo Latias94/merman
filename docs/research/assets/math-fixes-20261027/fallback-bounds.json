@@ -1,6 +1,7 @@
 {
   "environment": "Chromium 156.0.8078.4, darwin-arm64",
-  "before": [
+  "evidenceScope": "Post-repair containment observations only; these capture sets do not establish a historical before/after comparison. Maintenance retains its own historical before/after record.",
+  "observations": [
     {
       "line": "main",
       "name": "cjk-smash",
@@ -72,7 +73,7 @@
       "contains": false
     }
   ],
-  "after": [
+  "repeatedObservations": [
     {
       "line": "main",
       "name": "cjk-smash",

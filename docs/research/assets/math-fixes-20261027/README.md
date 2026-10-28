@@ -45,6 +45,7 @@ interceptor: remove native formula instances, hide real foreignObjects, or add a
 hide only the Sequence fraction bar; both mutations must fail even while the
 numerator and denominator remain visible. No tracked SVG or result file was
 changed during those negative runs (`--check-only`). `fallback-bounds.json`
-records actual before/after browser geometry, including the unresolved host-text
-residual. `main-paint-identity.json` binds the unchanged full corpus to its prior
+records main's post-repair containment observations, including the unresolved
+host-text residual; maintenance retains its own historical before/after record.
+`main-paint-identity.json` binds the unchanged full corpus to its prior
 exact-byte root paint report.

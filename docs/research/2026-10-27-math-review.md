@@ -120,10 +120,13 @@ failure; no source or working-tree changes were discarded.
   tolerance. `browser-mutations.json` records the counterexamples.
 
 The resolved-glyph Chromium controls confirm actual containment on both lines:
-CJK smash changes from a zero-height viewport to `viewBox="0 -0.826172 2 0.89502"`;
-the emoji bitmap changes from a clipped 0.74em viewport to
-`viewBox="0 -0.01 1 1"`. These figures describe the generated self-contained
-font output in this environment, not arbitrary missing host glyphs.
+CJK smash uses `viewBox="0 -0.826172 2 0.89502"` and the emoji bitmap uses
+`viewBox="0 -0.01 1 1"`. Maintenance's `fallback-bounds.json` records the
+historical change from zero height and a clipped 0.74em viewport, respectively.
+Main's file contains only post-repair containment observations, including repeated
+captures; it does not establish a historical before/after comparison. These
+figures describe the generated self-contained font output in this environment,
+not arbitrary missing host glyphs.
 
 The existing PNG overview remains bound to the previous paint source commit.
 The regenerated SVG/browser evidence is separate; no old picture is repainted
@@ -161,3 +164,33 @@ and all 42 package/feature builds pass. Both source repair lines have complete
 local qualification; new-head CI remains responsible for its Linux workspace,
 assembled Web and platform/binding jobs. Prior-head CI success is not reused
 as proof for these source commits.
+
+## Final md2pdf verification (2026-10-28)
+
+The submitted source heads, main `e60841bb6121212cb229cd6116dc76b61b56df3e`
+and maintenance `613e6a0b601c28b30fcb642c10b2ae552cb7b67d`, were rebuilt
+from clean detached worktrees with the shared target and two build jobs.
+Each passes all seven actual CLI math tests with this focused recipe:
+
+```text
+cargo nextest run --locked -p merman-cli --no-default-features \
+  --features diagram-flowchart,math,png,native-fonts,system-fonts \
+  --test ratex_math --cargo-quiet
+```
+
+The native center-ink test uses system font discovery, as enabled in the release
+profile. A build without `system-fonts` requires explicit font inputs and reports
+the missing capability rather than silently drawing an empty formula.
+
+Fresh direct PNG and native-safe SVG exports of the original `E=mc^2` reproducer
+show a visible formula on both source heads. The committed browser exports are
+separate historical artifacts: their check-only replay passes nineteen checks,
+twelve formula contributions, four fraction bars and six independent placement
+pairs on each line. The overview image retains its original source identity.
+
+The exact source heads also have successful remote PR gates:
+[main: 68 successful checks, seven intentional skips](https://github.com/Latias94/merman/actions/runs/40638174205/job/122684084496)
+and [maintenance: 59 successful checks, four intentional skips](https://github.com/Latias94/merman/actions/runs/40643570683/job/122685005647).
+These results qualify those source revisions; subsequent documentation commits
+have their own checks. The published 0.9.2 archive remains unchanged, and no
+repaired release is published by this verification.
