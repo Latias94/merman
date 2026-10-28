@@ -144,16 +144,29 @@ pub(super) fn render(
         font_dir: String::new(),
     };
     let svg = own_primitive_paint(&ratex_svg::render_to_svg(display_list, &options))?;
-    // Missing exact metrics identify candidates, not a claim about the selected font.
-    // Render only these candidates to keep structural paths and ordinary KaTeX ink
-    // on the upstream display-list bounds policy (including its large-path limits).
+    let recover_horizontal = root_width < 0.01;
+    let mut logical_bounds = kurbo::Rect::new(
+        0.0,
+        0.0,
+        display_list.width.max(0.0),
+        display_list.total_height().max(0.0),
+    );
+    // Upstream visual bounds look up the original codepoint without mapping mathematical
+    // Unicode to its KaTeX slot. Recover those missing extents from exact mapped metrics,
+    // keeping ordinary KaTeX ink and structural paths on the upstream bounds policy.
+    // Only glyphs without even mapped metrics need actual fallback outline/bitmap bounds.
     let candidates = ratex_types::DisplayList {
         items: display_list
             .items
             .iter()
             .filter(|item| {
                 let ratex_types::DisplayItem::GlyphPath {
-                    font, char_code, ..
+                    x,
+                    y,
+                    scale,
+                    font,
+                    char_code,
+                    ..
                 } = item
                 else {
                     return false;
@@ -161,8 +174,20 @@ pub(super) fn render(
                 let Some(font) = ratex_font::FontId::parse(font) else {
                     return false;
                 };
+                if ratex_font::get_char_metrics(font, *char_code).is_some() {
+                    return false;
+                }
                 let character = ratex_font::katex_ttf_glyph_char(font, *char_code);
-                ratex_font::get_char_metrics(font, u32::from(character)).is_none()
+                if let Some(metrics) = ratex_font::get_char_metrics(font, u32::from(character)) {
+                    logical_bounds.y0 = logical_bounds.y0.min(y - metrics.height * scale);
+                    logical_bounds.y1 = logical_bounds.y1.max(y + metrics.depth * scale);
+                    if recover_horizontal {
+                        logical_bounds.x0 = logical_bounds.x0.min(*x);
+                        logical_bounds.x1 = logical_bounds.x1.max(x + metrics.width * scale);
+                    }
+                    return false;
+                }
+                true
             })
             .cloned()
             .collect(),
@@ -175,9 +200,8 @@ pub(super) fn render(
     fit_resolved_ink(
         &svg,
         candidate_svg.as_deref(),
-        display_list.width,
-        display_list.total_height(),
-        root_width < 0.01,
+        logical_bounds,
+        recover_horizontal,
     )
 }
 
@@ -191,21 +215,20 @@ pub(super) fn render(
 fn fit_resolved_ink(
     svg: &str,
     ink_svg: Option<&str>,
-    logical_width: f64,
-    logical_height: f64,
+    logical_bounds: kurbo::Rect,
     recover_horizontal: bool,
 ) -> Option<RenderedFormula> {
     use kurbo::Shape as _;
     let document = roxmltree::Document::parse(ink_svg.unwrap_or("<svg/>")).ok()?;
     let root = document.root_element();
     const UNITS_PER_EM: f64 = 1_000_000.0;
-    // Keep already-rounded logical bounds in integer micro-units. Reapplying ceil
-    // after an f64 division can spuriously add one unit (for example 0.125008em).
+    // Quantize metric bounds like the upstream serializer, then retain integer micro-units.
+    // Reapplying ceil after an f64 division can spuriously add a unit (e.g. 0.125008em).
     let mut bounds = kurbo::Rect::new(
-        0.0,
-        0.0,
-        (logical_width.max(0.0) * UNITS_PER_EM).round(),
-        (logical_height.max(0.0) * UNITS_PER_EM).round(),
+        (logical_bounds.x0 * UNITS_PER_EM).round(),
+        (logical_bounds.y0 * UNITS_PER_EM).round(),
+        (logical_bounds.x1 * UNITS_PER_EM).round(),
+        (logical_bounds.y1 * UNITS_PER_EM).round(),
     );
     for element in root.children().filter(|node| node.is_element()) {
         let number = |key, default| -> Option<f64> {
@@ -310,6 +333,160 @@ fn own_primitive_paint(svg: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn render_formula(latex: &str) -> RenderedFormula {
+        let ast = ratex_parser::parse(latex).unwrap();
+        let options =
+            ratex_layout::LayoutOptions::default().with_style(ratex_types::MathStyle::Display);
+        let layout = ratex_layout::layout(&ast, &options);
+        render(&ratex_layout::to_display_list(&layout), layout.width).unwrap()
+    }
+
+    fn assert_same_metric_viewport(latex: &str, katex: &str) -> RenderedFormula {
+        let rendered = render_formula(latex);
+        let expected = render_formula(katex);
+        // Independent upstream recovery can round the extent and origin separately.
+        // Allow one serialized micro-em when comparing their resulting dimensions.
+        let precision = 0.000001 + f64::EPSILON;
+        assert!(
+            (rendered.width_em - expected.width_em).abs() <= precision
+                && (rendered.height_em - expected.height_em).abs() <= precision,
+            "{latex}: {} x {}, {katex}: {} x {}",
+            rendered.width_em,
+            rendered.height_em,
+            expected.width_em,
+            expected.height_em,
+        );
+        assert!(
+            rendered.width_em > 0.0 && rendered.height_em > 0.0,
+            "{latex}"
+        );
+        let relative_path_bounds = |svg: &str| {
+            use kurbo::Shape as _;
+
+            let document = roxmltree::Document::parse(svg).unwrap();
+            let mut viewport = document
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_ascii_whitespace()
+                .map(|value| value.parse::<f64>().unwrap());
+            let origin_x = viewport.next().unwrap();
+            let origin_y = viewport.next().unwrap();
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("path"))
+                .map(|node| {
+                    let path = kurbo::BezPath::from_svg(node.attribute("d").unwrap()).unwrap();
+                    assert!(!path.is_empty());
+                    let bounds = path.bounding_box();
+                    [
+                        bounds.x0 - origin_x,
+                        bounds.y0 - origin_y,
+                        bounds.x1 - origin_x,
+                        bounds.y1 - origin_y,
+                    ]
+                })
+                .collect::<Vec<_>>()
+        };
+        let actual_ink = relative_path_bounds(&rendered.svg);
+        let expected_ink = relative_path_bounds(&expected.svg);
+        assert!(
+            !actual_ink.is_empty(),
+            "bundled outline is missing: {latex}"
+        );
+        assert_eq!(actual_ink.len(), expected_ink.len(), "{latex}");
+        for (actual, expected) in actual_ink.iter().zip(&expected_ink) {
+            assert!(
+                actual
+                    .iter()
+                    .zip(expected)
+                    .all(|(actual, expected)| (actual - expected).abs() <= 2.0 * precision),
+                "glyph bounds relative to the viewport differ: {latex}: {actual:?}, {katex}: {expected:?}",
+            );
+        }
+        rendered
+    }
+
+    #[test]
+    fn mapped_unicode_smash_recovers_metric_height() {
+        for (latex, katex) in [
+            (r"\smash{𝐀}", r"\smash{\mathbf{A}}"),
+            (r"\smash[b]{𝐠}", r"\smash[b]{\mathbf{g}}"),
+            (r"\smash{𝐀+x}", r"\smash{\mathbf{A}+x}"),
+        ] {
+            assert_same_metric_viewport(latex, katex);
+        }
+    }
+
+    #[test]
+    fn mapped_unicode_root_laps_recover_complete_advance() {
+        for (latex, katex) in [
+            (r"\mathllap{𝐀}", r"\mathllap{\mathbf{A}}"),
+            (r"\mathrlap{𝐀}", r"\mathrlap{\mathbf{A}}"),
+            (r"\mathclap{𝐀}", r"\mathclap{\mathbf{A}}"),
+        ] {
+            assert_same_metric_viewport(latex, katex);
+        }
+    }
+
+    #[test]
+    fn mapped_unicode_nested_sizes_preserve_metric_recovery() {
+        for (latex, katex) in [
+            (r"{\Huge\smash{𝐀}}", r"{\Huge\smash{\mathbf{A}}}"),
+            (r"\smash{{\Huge\tiny 𝐀}}", r"\smash{{\Huge\tiny\mathbf{A}}}"),
+            (
+                r"\mathrlap{{\Huge\tiny 𝐀}}",
+                r"\mathrlap{{\Huge\tiny\mathbf{A}}}",
+            ),
+            (
+                r"\mathclap{{\tiny\Huge 𝐀}}",
+                r"\mathclap{{\tiny\Huge\mathbf{A}}}",
+            ),
+            (r"\smash{𝐀^{𝐠}}", r"\smash{\mathbf{A}^{\mathbf{g}}}"),
+        ] {
+            assert_same_metric_viewport(latex, katex);
+        }
+    }
+
+    #[test]
+    fn mapped_unicode_complete_boxes_keep_upstream_viewports() {
+        for (latex, katex) in [
+            ("𝐀", r"\mathbf{A}"),
+            ("𝐠", r"\mathbf{g}"),
+            (r"{\Huge\tiny 𝐀}", r"{\Huge\tiny\mathbf{A}}"),
+        ] {
+            let rendered = assert_same_metric_viewport(latex, katex);
+            assert!(rendered.svg.contains(r#"viewBox="0 0 "#), "{latex}");
+        }
+    }
+
+    #[test]
+    fn mapped_unicode_nested_laps_preserve_parent_advance() {
+        use kurbo::Shape as _;
+
+        let parent_width = render_formula("x").width_em;
+        for (latex, katex) in [
+            (r"\mathllap{𝐀}x", r"\mathllap{\mathbf{A}}x"),
+            (r"x\mathrlap{𝐀}", r"x\mathrlap{\mathbf{A}}"),
+            (r"x\mathclap{𝐀}", r"x\mathclap{\mathbf{A}}"),
+        ] {
+            let rendered = assert_same_metric_viewport(latex, katex);
+            assert_eq!(rendered.width_em, parent_width, "{latex}");
+            let document = roxmltree::Document::parse(&rendered.svg).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("path"))
+                    .any(|node| {
+                        let path = kurbo::BezPath::from_svg(node.attribute("d").unwrap()).unwrap();
+                        let bounds = path.bounding_box();
+                        bounds.x0 < 0.0 || bounds.x1 > rendered.width_em
+                    }),
+                "nested lap ink must retain its intentional horizontal overflow: {latex}",
+            );
+        }
+    }
+
     #[test]
     fn primitive_paint_preserves_each_backend_semantic_and_svg_defaults() {
         let input = concat!(
@@ -377,19 +554,31 @@ mod tests {
             height: 0.5,
             depth: 0.5,
         };
-        let rendered = render(&list, 1.0).unwrap();
-        assert_eq!((rendered.width_em, rendered.height_em), (1.0, 1.0));
-        assert!(rendered.svg.contains(r#"viewBox="0 0 1 1""#));
-        let font = ratex_font::FontId::MainBold;
-        let mapped = ratex_font::katex_ttf_glyph_char(font, u32::from('𝐀'));
-        assert!(ratex_font::get_char_metrics(font, u32::from(mapped)).is_some());
+        let ordinary_glyph = ratex_types::DisplayItem::GlyphPath {
+            x: -2.0,
+            y: -10.0,
+            scale: 1.0,
+            font: "Main-Bold".to_owned(),
+            char_code: u32::from('A'),
+            color: ratex_types::Color::BLACK,
+        };
+        for items in [list.items.clone(), vec![ordinary_glyph]] {
+            let list = ratex_types::DisplayList {
+                items,
+                ..list.clone()
+            };
+            let rendered = render(&list, 1.0).unwrap();
+            assert_eq!((rendered.width_em, rendered.height_em), (1.0, 1.0));
+            assert!(rendered.svg.contains(r#"viewBox="0 0 1 1""#));
+        }
     }
 
     #[test]
     fn resolved_geometry_recovers_zero_boxes_without_expanding_nested_lap_advances() {
         let svg = r#"<svg><path d="M-0.2 -0.8L1.3 -0.8L1.3 0.2Z"/><image x="0" y="-0.01" width="1" height="1"/></svg>"#;
-        let normal = fit_resolved_ink(svg, Some(svg), 1.0, 0.74, false).unwrap();
-        let zero = fit_resolved_ink(svg, Some(svg), 0.0, 0.0, true).unwrap();
+        let normal =
+            fit_resolved_ink(svg, Some(svg), kurbo::Rect::new(0.0, 0.0, 1.0, 0.74), false).unwrap();
+        let zero = fit_resolved_ink(svg, Some(svg), kurbo::Rect::ZERO, true).unwrap();
         assert_eq!(
             normal.width_em, 1.0,
             "nonzero parent advance retains nested lap clipping"
@@ -415,9 +604,15 @@ mod tests {
                 "preserve emitted geometry"
             );
         }
-        let exact = fit_resolved_ink("<svg></svg>", None, 0.125008, 1.0, false).unwrap();
+        let exact = fit_resolved_ink(
+            "<svg></svg>",
+            None,
+            kurbo::Rect::new(0.0, 0.0, 0.125008, 1.0),
+            false,
+        )
+        .unwrap();
         assert_eq!(exact.width_em, 0.125008);
-        let empty = fit_resolved_ink("<svg></svg>", None, 0.0, 0.0, true).unwrap();
+        let empty = fit_resolved_ink("<svg></svg>", None, kurbo::Rect::ZERO, true).unwrap();
         assert_eq!(
             (empty.width_em, empty.height_em),
             (0.0, 0.0),
