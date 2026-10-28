@@ -55,6 +55,7 @@ enum SequenceHostResponse {
     Missing,
     StatefulMetrics,
     WeightSensitiveMetrics,
+    EntitySensitiveMetrics,
     Error,
 }
 
@@ -118,6 +119,28 @@ impl HostTextMeasurer for RecordingSequenceHost {
                     height: 24.0,
                     line_count: 1,
                 })))
+            }
+            SequenceHostResponse::EntitySensitiveMetrics => {
+                let bold = request.style.font_weight.as_deref() == Some("700");
+                let width = match request.text {
+                    "😀" => 40.0,
+                    "&#128512;" => 90.0,
+                    "\u{200b}" => 0.0,
+                    text => text.chars().count() as f64 * 8.0,
+                };
+                let width = width * if bold { 2.0 } else { 1.0 };
+                let height = if bold { 17.0 } else { 9.0 };
+                Ok(Some(match request.operation {
+                    TextMeasurementOperation::RawBBoxWidth
+                    | TextMeasurementOperation::TspanBBoxWidth => HostTextMeasurement::Length(width),
+                    TextMeasurementOperation::RawBBoxHeight
+                    | TextMeasurementOperation::TspanBBoxHeight => HostTextMeasurement::Length(height),
+                    _ => HostTextMeasurement::Metrics(TextMetrics {
+                        width,
+                        height,
+                        line_count: 1,
+                    }),
+                }))
             }
             SequenceHostResponse::Error => Err(HostTextMeasurementError::new(
                 "recorded Sequence host failure",
@@ -4049,6 +4072,159 @@ fn sequence_family_fonts_match_measurement_and_svg_with_falsy_or_string_global_s
                     style.contains(&format!("font-family: {family};")),
                     "{config}: {class} has the wrong family: {style}"
                 );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_entities_emit_one_layer_without_creating_markup_or_extra_rows() {
+    // Both pinned Mermaid 12.1/12.2 packages produce these final textContent values.
+    for (encoded, visible) in [
+        ("#128512;", "😀"),
+        ("#38;#35;128512#59;", "&#128512;"),
+        ("#lt;br/#gt;", "<br/>"),
+        ("#38;lt#59;br/#38;gt#59;", "&lt;br/&gt;"),
+    ] {
+        let label = format!("{encoded}<br/><br/>W");
+        let source = format!(
+            "---\nconfig:\n  sequence:\n    wrap: false\n    mirrorActors: false\n---\nsequenceDiagram\nbox transparent {label}\nparticipant A as {label}\nend\nparticipant B\nA->>B: {label}\nNote over A,B: {label}\nalt {label}\nA->>B: ok\nelse {label}\nA->>B: ok\nend"
+        );
+        let svg = render_sequence_svg_from_text(&source);
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence entity SVG");
+        assert!(
+            !doc.descendants().any(|node| node.has_tag_name("br")),
+            "{encoded}"
+        );
+        let rows = |class: &str| -> Vec<String> {
+            doc.descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            if class == "actor" {
+                                classes.split_whitespace().any(|part| part == "actor")
+                            } else {
+                                classes == class
+                            }
+                        })
+                })
+                .map(|node| {
+                    node.descendants()
+                        .filter(|child| child.is_text())
+                        .filter_map(|child| child.text())
+                        .collect::<String>()
+                })
+                .filter(|text| text != "B" && text != "ok")
+                .collect()
+        };
+        for class in ["actor", "text"] {
+            assert_eq!(rows(class), [visible, "", "W"], "{encoded}/{class}");
+        }
+        for class in ["messageText", "noteText"] {
+            assert_eq!(rows(class), [visible, "\u{200b}", "W"], "{encoded}/{class}");
+        }
+        for class in ["loopText", "sectionTitle"] {
+            assert_eq!(
+                rows(class),
+                [
+                    format!("[{visible}"),
+                    "\u{200b}".to_owned(),
+                    "W]".to_owned()
+                ],
+                "{encoded}/{class}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_entities_measure_the_emitted_text_with_resolved_weight() {
+    for weight in ["400", "700"] {
+        for (encoded, visible) in [
+            ("#38;#35;128512#59;", "&#128512;"),
+            ("#lt;br/#gt;", "<br/>"),
+            ("#38;lt#59;br/#38;gt#59;", "&lt;br/&gt;"),
+        ] {
+            let label = format!("{encoded}<br/><br/>W");
+            let source = format!(
+                "---\nconfig:\n  sequence:\n    mirrorActors: false\n    wrap: false\n    messageFontWeight: '{weight}'\n    noteFontWeight: '{weight}'\n---\nsequenceDiagram\nparticipant A\nparticipant B\nA->>B: {label}\nNote over A,B: {label}"
+            );
+            let observation = render_sequence_with_host_environment(
+                &source,
+                SequenceHostResponse::EntitySensitiveMetrics,
+                "sequence-entity-terminal-probe",
+                RenderEnvironment::deterministic(),
+            );
+            let expected = [visible, "\u{200b}", "W"];
+            for operation in [
+                TextMeasurementOperation::RawBBoxHeight,
+                TextMeasurementOperation::TspanBBoxHeight,
+            ] {
+                let requests: Vec<_> = observation
+                    .requests
+                    .iter()
+                    .filter(|request| {
+                        request.phase == TextMeasurementPhase::SvgBBox
+                            && request.operation == operation
+                            && expected.contains(&request.text.as_str())
+                    })
+                    .collect();
+                assert!(!requests.is_empty(), "{encoded}/{weight}/{operation:?}");
+                for rows in requests.chunks(3) {
+                    assert_eq!(
+                        rows.iter()
+                            .map(|request| request.text.as_str())
+                            .collect::<Vec<_>>(),
+                        expected,
+                        "{encoded}/{weight}/{operation:?}"
+                    );
+                }
+                assert!(
+                    requests
+                        .iter()
+                        .all(|request| request.font_weight.as_deref() == Some(weight)),
+                    "{requests:?}"
+                );
+            }
+            let layout_requests: Vec<_> = observation
+                .requests
+                .iter()
+                .filter(|request| {
+                    request.phase == TextMeasurementPhase::SvgBBox
+                        && request.operation == TextMeasurementOperation::TspanBBoxWidth
+                })
+                .collect();
+            assert!(
+                layout_requests.iter().any(|request| request.text == visible
+                    && request.font_weight.as_deref() == Some(weight)),
+                "{layout_requests:?}"
+            );
+            let doc = roxmltree::Document::parse(&observation.render.svg)
+                .expect("Sequence entity host SVG");
+            for class in ["messageText", "noteText"] {
+                let rows: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("text") && node.attribute("class") == Some(class)
+                    })
+                    .collect();
+                let text: Vec<String> = rows
+                    .iter()
+                    .map(|node| {
+                        node.descendants()
+                            .filter(|child| child.is_text())
+                            .filter_map(|child| child.text())
+                            .collect()
+                    })
+                    .collect();
+                assert_eq!(text, expected, "{encoded}/{weight}/{class}");
+                let ys: Vec<f64> = rows
+                    .iter()
+                    .map(|node| node.attribute("y").unwrap().parse().unwrap())
+                    .collect();
+                let height = if weight == "700" { 17.0 } else { 9.0 };
+                assert_eq!(ys[1] - ys[0], height, "{encoded}/{weight}/{class}");
+                assert_eq!(ys[2] - ys[1], height, "{encoded}/{weight}/{class}");
             }
         }
     }

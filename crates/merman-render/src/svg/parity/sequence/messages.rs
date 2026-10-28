@@ -563,7 +563,7 @@ fn render_sequence_message_text_lines<'a>(
     for (i, raw) in raw_lines.into_iter().enumerate() {
         checkpoints.checkpoint_loop(i)?;
         let y = sequence_drawn_text_y(layout.label_y, layout.margin, preceding_height);
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
+        let decoded = crate::sequence::prepare_sequence_text_line(raw);
         let line = if decoded.as_ref().is_empty() {
             "\u{200B}"
         } else {
@@ -576,7 +576,7 @@ fn render_sequence_message_text_lines<'a>(
             y = fmt(y),
             anchor = layout.label_anchor,
             css = escape_attr(&css),
-            text = escape_xml(line)
+            text = super::escape_prepared_text(line)
         );
         if layout.margin > 0.0 {
             preceding_height += measure_sequence_drawn_line_height(
