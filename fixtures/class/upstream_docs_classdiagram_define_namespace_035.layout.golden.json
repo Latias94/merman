@@ -13,17 +13,17 @@
         },
         {
           "id": "Triangle",
-          "x": 71.172,
+          "x": 71.17,
           "y": 129.5,
-          "width": 70.344,
+          "width": 70.34,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "Rectangle",
-          "x": 218.287,
+          "x": 218.285,
           "y": 129.5,
-          "width": 123.887,
+          "width": 123.89,
           "height": 135.0,
           "is_cluster": false
         }

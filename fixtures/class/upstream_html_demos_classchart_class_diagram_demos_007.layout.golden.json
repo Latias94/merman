@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Apple",
-          "x": 94.736,
+          "x": 94.735,
           "y": 82.5,
-          "width": 128.087,
+          "width": 128.09,
           "height": 141.0,
           "is_cluster": false
         },

@@ -103,7 +103,7 @@ pub use service_contract::{
 };
 pub use services::BindingEngineServices;
 #[cfg(feature = "svg")]
-pub use services::{BindingIconRegistry, build_icon_registry};
+pub use services::{BindingIconRegistry, build_icon_registry, build_icon_registry_from_json};
 pub use svg_plan::{
     SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
 };

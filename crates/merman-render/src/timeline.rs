@@ -12,6 +12,7 @@ use std::borrow::Cow;
 mod config;
 
 pub(crate) use config::TimelineConfigView;
+use config::TimelineNodeTypography;
 
 const MAX_SECTIONS: i64 = 12;
 
@@ -314,7 +315,7 @@ fn expand_bounds_for_node_text(
     max_x: &mut f64,
     _max_y: &mut f64,
     nodes: &[TimelineNodeLayout],
-    style: &TextStyle,
+    typography: &TimelineNodeTypography,
     measurer: &dyn TextMeasurer,
 ) {
     for n in nodes {
@@ -322,6 +323,7 @@ fn expand_bounds_for_node_text(
             continue;
         }
 
+        let style = typography.for_class(&n.section_class);
         let anchor_x = n.x + n.width / 2.0;
         for line in &n.label_lines {
             if line.trim().is_empty() {
@@ -363,6 +365,7 @@ fn layout_timeline_horizontal(
 
     let cfg = TimelineConfigView::new(effective_config).layout_settings();
     let text_style = cfg.text_style;
+    let node_typography = cfg.node_typography;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
 
@@ -458,7 +461,7 @@ fn layout_timeline_horizontal(
                     content_width,
                     padding: NODE_PADDING,
                     max_height: max_section_height,
-                    style: &text_style,
+                    style: node_typography.for_section(section_number),
                     layout_font_size,
                 },
                 measurer,
@@ -468,6 +471,8 @@ fn layout_timeline_horizontal(
             let mut tasks: Vec<TimelineTaskLayout> = Vec::new();
             let mut task_x = master_x;
             let task_y = section_y + max_section_height + 50.0;
+            // drawTasks() carries the real node height within this section only.
+            let mut max_task_height = max_task_height;
 
             for task in &tasks_for_section {
                 let full_section = section_number;
@@ -481,12 +486,13 @@ fn layout_timeline_horizontal(
                         content_width: task_content_width,
                         padding: NODE_PADDING,
                         max_height: max_task_height,
-                        style: &text_style,
+                        style: node_typography.for_section(full_section),
                         layout_font_size,
                     },
                     measurer,
                 );
                 all_nodes_pre_title.push(task_node.clone());
+                max_task_height = max_task_height.max(task_node.height);
 
                 let connector = TimelineLineLayout {
                     kind: "task-events".to_string(),
@@ -510,7 +516,7 @@ fn layout_timeline_horizontal(
                             content_width: task_content_width,
                             padding: NODE_PADDING,
                             max_height: 50.0,
-                            style: &text_style,
+                            style: node_typography.for_section(full_section),
                             layout_font_size,
                         },
                         measurer,
@@ -540,6 +546,7 @@ fn layout_timeline_horizontal(
         let mut master_x = base_x;
         let master_y = base_y;
         let mut section_color: i64 = 0;
+        let mut max_task_height = max_task_height;
 
         for task in &model.tasks {
             let task_node = compute_node(
@@ -552,12 +559,13 @@ fn layout_timeline_horizontal(
                     content_width: task_content_width,
                     padding: NODE_PADDING,
                     max_height: max_task_height,
-                    style: &text_style,
+                    style: node_typography.for_section(section_color),
                     layout_font_size,
                 },
                 measurer,
             );
             all_nodes_pre_title.push(task_node.clone());
+            max_task_height = max_task_height.max(task_node.height);
 
             let connector = TimelineLineLayout {
                 kind: "task-events".to_string(),
@@ -581,7 +589,7 @@ fn layout_timeline_horizontal(
                         content_width: task_content_width,
                         padding: NODE_PADDING,
                         max_height: 50.0,
-                        style: &text_style,
+                        style: node_typography.for_section(section_color),
                         layout_font_size,
                     },
                     measurer,
@@ -615,7 +623,7 @@ fn layout_timeline_horizontal(
             &mut pre_max_x,
             &mut pre_max_y,
             &all_nodes_pre_title,
-            &text_style,
+            &node_typography,
             measurer,
         );
     }
@@ -686,7 +694,7 @@ fn layout_timeline_horizontal(
         &mut full_max_x,
         &mut full_max_y,
         &all_nodes_full,
-        &text_style,
+        &node_typography,
         measurer,
     );
 
@@ -724,10 +732,10 @@ fn layout_vertical_tasks<'a>(
     timeline_x: f64,
     start_y: f64,
     task_spacing: f64,
-    max_task_height: f64,
+    mut max_task_height: f64,
     mut section_color: i64,
     advance_section_color: bool,
-    text_style: &TextStyle,
+    node_typography: &TimelineNodeTypography,
     layout_font_size: f64,
     measurer: &dyn TextMeasurer,
     all_nodes: &mut Vec<TimelineNodeLayout>,
@@ -750,12 +758,13 @@ fn layout_vertical_tasks<'a>(
                 content_width: VERTICAL_NODE_CONTENT_WIDTH,
                 padding: VERTICAL_NODE_PADDING,
                 max_height: max_task_height,
-                style: text_style,
+                style: node_typography.for_section(section_color),
                 layout_font_size,
             },
             measurer,
         );
         all_nodes.push(task_node.clone());
+        max_task_height = max_task_height.max(task_node.height);
 
         let mut events = Vec::new();
         let mut connectors = Vec::new();
@@ -771,7 +780,7 @@ fn layout_vertical_tasks<'a>(
                     content_width: VERTICAL_EVENT_CONTENT_WIDTH,
                     padding: VERTICAL_NODE_PADDING,
                     max_height: 0.0,
-                    style: text_style,
+                    style: node_typography.for_section(section_color),
                     layout_font_size,
                 },
                 measurer,
@@ -814,6 +823,7 @@ fn layout_timeline_vertical(
 
     let cfg = TimelineConfigView::new(effective_config).layout_settings();
     let text_style = cfg.text_style;
+    let node_typography = cfg.node_typography;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
     let left_margin = cfg.left_margin;
@@ -899,7 +909,7 @@ fn layout_timeline_vertical(
                     content_width: section_content_width,
                     padding: VERTICAL_NODE_PADDING,
                     max_height: max_section_height,
-                    style: &text_style,
+                    style: node_typography.for_section(section_number),
                     layout_font_size,
                 },
                 measurer,
@@ -914,7 +924,7 @@ fn layout_timeline_vertical(
                 max_task_height,
                 section_number,
                 false,
-                &text_style,
+                &node_typography,
                 layout_font_size,
                 measurer,
                 &mut all_nodes_pre_title,
@@ -944,7 +954,7 @@ fn layout_timeline_vertical(
             max_task_height,
             0,
             !cfg.disable_multicolor,
-            &text_style,
+            &node_typography,
             layout_font_size,
             measurer,
             &mut all_nodes_pre_title,
@@ -963,7 +973,7 @@ fn layout_timeline_vertical(
             &mut pre_max_x,
             &mut pre_max_y,
             &all_nodes_pre_title,
-            &text_style,
+            &node_typography,
             measurer,
         );
     }
@@ -1026,7 +1036,7 @@ fn layout_timeline_vertical(
         &mut full_max_x,
         &mut full_max_y,
         &all_nodes_full,
-        &text_style,
+        &node_typography,
         measurer,
     );
     let padding = cfg.viewbox_padding;
@@ -1181,7 +1191,9 @@ mod tests {
             &mut max_x,
             &mut max_y,
             &[node],
-            &TextStyle::default(),
+            &TimelineConfigView::new(&serde_json::json!({}))
+                .layout_settings()
+                .node_typography,
             &TspanOnlyMeasurer,
         );
 

@@ -45,3 +45,18 @@ browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for br
 The native package is the recommended choice when a supported platform binary is available. Use
 this package when a deployment target cannot load the native package or when a single portable
 Node artifact is more useful than native startup and throughput.
+
+## Loaded icon packs (unreleased)
+
+The native and Node-WASM packages accept the same
+`createNodeEngine({ iconPacks: [{ json, registrationName? }] })` constructor argument. `json` is
+an already loaded Iconify pack JSON string; the host owns acquisition. `registrationName`
+optionally replaces the pack prefix. The registry is immutable and scoped to that engine;
+per-request options preserve it, and `dispose()` releases it after queued work settles.
+An omitted argument or `[]` preserves ordinary rendering.
+
+Use the [native package example](https://github.com/Latias94/merman/blob/main/platforms/node/packages/node/README.md#loaded-icon-packs-unreleased)
+with the import changed to `@mermanjs/node-wasm`. Keep packs outside `bindingOptions`.
+The `icon-registry` constructor catalog exposes the same fixed resource ceilings on both
+transports. Construction errors preserve `MermanOperationError.iconRegistryDetails` and,
+for resource failures, `resourceDetails`.

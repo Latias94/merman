@@ -24,8 +24,27 @@ impl<'a> TimelineConfigView<'a> {
 
     pub(crate) fn layout_settings(&self) -> TimelineLayoutSettings {
         let text_style = self.text_style();
+        let theme =
+            crate::svg::render_theme::PresentationTheme::new(self.effective_config).timeline();
+        let mut node_text_style = text_style.clone();
+        if theme.is_redux_theme && !theme.sections.is_empty() {
+            node_text_style = crate::text::apply_css_font_declarations(
+                &text_style,
+                &format!("font-weight:{}", theme.font_weight),
+            );
+            if node_text_style.font_weight.is_none()
+                && !crate::text::css_font_value_inherits(&theme.font_weight)
+            {
+                node_text_style.font_weight = Some(theme.font_weight);
+            }
+        }
         TimelineLayoutSettings {
             text_style: text_style.clone(),
+            node_typography: TimelineNodeTypography {
+                inherited: text_style.clone(),
+                section: node_text_style,
+                section_rule_count: theme.sections.len(),
+            },
             layout_font_size: config_f64_css_px(self.effective_config, &["fontSize"])
                 .unwrap_or(text_style.font_size)
                 .max(1.0),
@@ -61,8 +80,43 @@ impl<'a> TimelineConfigView<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct TimelineNodeTypography {
+    inherited: TextStyle,
+    section: TextStyle,
+    section_rule_count: usize,
+}
+
+impl TimelineNodeTypography {
+    pub(crate) fn for_section(&self, full_section: i64) -> &TextStyle {
+        self.for_index(super::section_index(full_section))
+    }
+
+    pub(crate) fn for_class(&self, class: &str) -> &TextStyle {
+        class
+            .strip_prefix("section-")
+            .and_then(|index| index.parse().ok())
+            .map_or(&self.inherited, |index| self.for_index(index))
+    }
+
+    fn for_index(&self, index: i64) -> &TextStyle {
+        // Mermaid 12.1 assigns classes on a fixed ring; configured CSS may cover fewer slots.
+        let has_rule = index
+            .checked_add(1)
+            .and_then(|slot| usize::try_from(slot).ok())
+            .is_some_and(|slot| slot < self.section_rule_count);
+        if has_rule {
+            &self.section
+        } else {
+            &self.inherited
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct TimelineLayoutSettings {
+    // getVirtualNodeHeight() has no section class; drawNode() attaches it before wrap()/getBBox().
     pub(crate) text_style: TextStyle,
+    pub(crate) node_typography: TimelineNodeTypography,
     pub(crate) layout_font_size: f64,
     pub(crate) left_margin: f64,
     pub(crate) disable_multicolor: bool,
@@ -74,6 +128,76 @@ pub(crate) struct TimelineLayoutSettings {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn timeline_section_weight_keeps_virtual_probes_normal() {
+        for look in ["classic", "neo"] {
+            for theme in [
+                "default",
+                "redux",
+                "redux-color",
+                "redux-dark",
+                "redux-dark-color",
+            ] {
+                let cfg = json!({
+                    "theme": theme, "look": look,
+                    "themeVariables": {"fontWeight": 900}
+                });
+                let settings = TimelineConfigView::new(&cfg).layout_settings();
+                assert_eq!(settings.text_style.font_weight, None);
+                assert_eq!(
+                    settings
+                        .node_typography
+                        .for_section(0)
+                        .font_weight
+                        .as_deref(),
+                    theme.contains("redux").then_some("900"),
+                    "{theme}/{look}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn timeline_section_weight_priority_is_not_part_of_the_measured_face() {
+        for (raw, expected) in [
+            ("900 !important", Some("900")),
+            ("bold!important", Some("700")),
+            ("inherit !important", None),
+            ("unset!important", None),
+        ] {
+            let config = json!({"theme": "redux", "themeVariables": {"fontWeight": raw}});
+            let settings = TimelineConfigView::new(&config).layout_settings();
+            assert_eq!(settings.text_style.font_weight, None);
+            assert_eq!(
+                settings
+                    .node_typography
+                    .for_section(0)
+                    .font_weight
+                    .as_deref(),
+                expected,
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn timeline_dynamic_section_weight_remains_an_unresolved_css_input() {
+        let cfg = json!({
+            "theme": "redux",
+            "themeVariables": {"fontWeight": "var(--section-weight)"}
+        });
+        let settings = TimelineConfigView::new(&cfg).layout_settings();
+        assert_eq!(settings.text_style.font_weight, None);
+        assert_eq!(
+            settings
+                .node_typography
+                .for_section(0)
+                .font_weight
+                .as_deref(),
+            Some("var(--section-weight)")
+        );
+    }
 
     #[test]
     fn timeline_layout_settings_preserve_defaults() {

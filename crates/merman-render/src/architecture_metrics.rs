@@ -258,18 +258,15 @@ pub(crate) fn architecture_node_bbox_extras_to_manatee(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn architecture_estimate_service_bounds<TLine>(
+pub(crate) fn architecture_estimate_service_bounds(
     x: f64,
     y: f64,
     icon_size_px: f64,
     arch_font_size_px: f64,
     title: Option<&str>,
     text_measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
     compound_text_style: &TextStyle,
-    wrap_svg_words_to_lines: impl Fn(&str, f64, &dyn TextMeasurer, &TextStyle) -> Vec<TLine>,
-    svg_line_plain_text: impl Fn(&TLine) -> String,
-    measure_svg_text_bbox_x: impl Fn(&str, &TextStyle) -> (f64, f64),
+    measure_svg_title_bounds: impl Fn(&str) -> Option<Bounds>,
 ) -> ArchitectureServiceBoundsEstimate {
     let emitted_icon_bounds = Bounds {
         min_x: x,
@@ -281,36 +278,19 @@ pub(crate) fn architecture_estimate_service_bounds<TLine>(
     let mut cytoscape_group_child_contribution =
         architecture_cytoscape_child_contribution_bounds(&emitted_icon_bounds, None);
     if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
-        let lines = wrap_svg_words_to_lines(title, icon_size_px * 1.5, text_measurer, text_style);
-        let mut bbox_left_root = 0.0f64;
-        let mut bbox_right_root = 0.0f64;
-        let mut first_line_text = None;
-        for line in &lines {
-            let s = svg_line_plain_text(line);
-            let (l, r) = measure_svg_text_bbox_x(s.as_str(), text_style);
-            bbox_left_root = bbox_left_root.max(l);
-            bbox_right_root = bbox_right_root.max(r);
-            first_line_text.get_or_insert(s);
+        if let Some(label) = measure_svg_title_bounds(title) {
+            let cx = x + icon_size_px / 2.0;
+            let baseline_y = y + icon_size_px;
+            svg_root_bounds = union_bounds(
+                &svg_root_bounds,
+                &Bounds {
+                    min_x: cx + label.min_x,
+                    min_y: baseline_y + label.min_y,
+                    max_x: cx + label.max_x,
+                    max_y: baseline_y + label.max_y,
+                },
+            );
         }
-        let line_count_root = lines.len().max(1);
-        let (_, label_extra_bottom_root) = architecture_create_text_middle_bbox_y_range_px(
-            first_line_text.as_deref().unwrap_or(title),
-            text_style,
-            line_count_root,
-            text_measurer,
-        );
-
-        let cx = x + icon_size_px / 2.0;
-        let text_left_root = cx - bbox_left_root;
-        let text_right_root = cx + bbox_right_root;
-        let text_bottom_root = y + icon_size_px + label_extra_bottom_root;
-
-        svg_root_bounds = Bounds {
-            min_x: svg_root_bounds.min_x.min(text_left_root),
-            min_y: svg_root_bounds.min_y,
-            max_x: svg_root_bounds.max_x.max(text_right_root),
-            max_y: svg_root_bounds.max_y.max(text_bottom_root),
-        };
         if let Some(cytoscape_label_bounds) = architecture_cytoscape_child_label_bounds(
             Some(title),
             text_measurer,

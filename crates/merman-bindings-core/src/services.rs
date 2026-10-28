@@ -204,6 +204,93 @@ pub fn build_icon_registry<'a>(
         .map_err(BindingError::from)
 }
 
+/// Admits already loaded packs from `[{"json":"...","registrationName":"optional"}]`.
+///
+/// This transport envelope does not parse Iconify content or acquire pack sources. All pack
+/// content and fixed constructor limits remain owned by [`build_icon_registry`].
+#[cfg(feature = "svg")]
+pub fn build_icon_registry_from_json(
+    packs_json: &[u8],
+) -> Result<BindingIconRegistry, BindingError> {
+    use crate::IconRegistryResourceLimitId as Limit;
+    use serde::de::{SeqAccess, Visitor};
+    use serde::{Deserialize, Deserializer};
+
+    // JSON escaping needs at most six bytes per input byte. Include only the bounded array,
+    // field names, registration names, and separators around the existing pack byte budget.
+    const MAX_PACKS: usize = Limit::MaxPacks.fixed_value() as usize;
+    const MAX_ENVELOPE_BYTES: usize = 6
+        * (Limit::MaxInputBytes.fixed_value() as usize
+            + MAX_PACKS * Limit::MaxPrefixBytes.fixed_value() as usize)
+        + MAX_PACKS * br#"{"json":"","registrationName":""},"#.len()
+        + 2;
+    if packs_json.len() > MAX_ENVELOPE_BYTES {
+        return Err(BindingError::invalid_argument(
+            "icon pack JSON envelope exceeds the capacity derived from fixed registry limits",
+        ));
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields, rename_all = "camelCase")]
+    struct JsonPack {
+        json: String,
+        registration_name: Option<String>,
+    }
+
+    struct PacksVisitor<'a> {
+        exceeded: &'a std::cell::Cell<bool>,
+    }
+    impl<'de> Visitor<'de> for PacksVisitor<'_> {
+        type Value = Vec<JsonPack>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an array of already loaded icon packs")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+            let mut packs = Vec::new();
+            while let Some(pack) = sequence.next_element()? {
+                packs.push(pack);
+                if packs.len() > MAX_PACKS {
+                    self.exceeded.set(true);
+                    return Err(serde::de::Error::custom(
+                        "icon pack count exceeds its fixed ceiling",
+                    ));
+                }
+            }
+            Ok(packs)
+        }
+    }
+
+    let invalid_envelope = |_| {
+        BindingError::invalid_argument(
+            "invalid icon pack JSON envelope; expected an array of {json, registrationName?}",
+        )
+    };
+    let mut deserializer = serde_json::Deserializer::from_slice(packs_json);
+    let exceeded = std::cell::Cell::new(false);
+    let packs = deserializer.deserialize_seq(PacksVisitor {
+        exceeded: &exceeded,
+    });
+    if exceeded.get() {
+        return Err(BindingError::icon_registry_resource_limit(
+            Limit::MaxPacks,
+            (MAX_PACKS + 1) as u64,
+            Some(MAX_PACKS),
+            "icon pack count exceeds the fixed registry ceiling",
+        ));
+    }
+    let packs = packs.map_err(invalid_envelope)?;
+    deserializer.end().map_err(invalid_envelope)?;
+    build_icon_registry(packs.iter().map(|pack| {
+        let icon_pack = crate::IconPack::new(pack.json.as_bytes());
+        match pack.registration_name.as_deref() {
+            Some(name) => icon_pack.with_registration_name(name),
+            None => icon_pack,
+        }
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +331,119 @@ mod tests {
         assert!(services.is_empty());
         assert!(services.icon_registry().is_none());
         assert_eq!(services.service_keys().count(), 0);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn json_icon_admission_rejects_envelope_shape_and_preserves_pack_errors() {
+        for invalid in [
+            r#"{}"#,
+            r#"[{"json":{}}]"#,
+            r#"[{"json":"{}","url":"https://example.invalid/pack.json"}]"#,
+            r#"[{"json":"{}","json":"{}"}]"#,
+            r#"[] true"#,
+        ] {
+            let error = build_icon_registry_from_json(invalid.as_bytes()).unwrap_err();
+            assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+        }
+        assert!(build_icon_registry_from_json(b"[]").unwrap().is_empty());
+
+        for json in [
+            r#"{"prefix":"test","icons":{"bad":{"body":"<path>"}}}"#,
+            r#"{"prefix":"test","icons":{},"icons":{}}"#,
+        ] {
+            let wire = serde_json::to_vec(&serde_json::json!([{
+                "json": json, "registrationName": "fleet",
+            }]))
+            .unwrap();
+            let from_json = build_icon_registry_from_json(&wire).unwrap_err();
+            let direct = build_icon_registry([
+                crate::IconPack::new(json.as_bytes()).with_registration_name("fleet")
+            ])
+            .unwrap_err();
+            assert_eq!(from_json, direct);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn json_icon_admission_bounds_pack_count_and_preserves_prefix_limits() {
+        let maximum = crate::IconRegistryResourceLimitId::MaxPacks.fixed_value() as usize;
+        let empty = serde_json::json!({"json": r#"{"prefix":"test","icons":{}}"#});
+        let exact = serde_json::to_vec(&vec![empty.clone(); maximum]).unwrap();
+        assert!(build_icon_registry_from_json(&exact).unwrap().is_empty());
+        for count in [maximum + 1, maximum + 2, maximum * 2] {
+            let too_many = serde_json::to_vec(&vec![empty.clone(); count]).unwrap();
+            let error = build_icon_registry_from_json(&too_many).unwrap_err();
+            assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+            let resource = error.resource_details().unwrap();
+            assert_eq!(resource.limit_id, "max_icon_registry_packs");
+            assert_eq!(resource.actual, (maximum + 1) as u64);
+            assert_eq!(resource.max, maximum as u64);
+            assert_eq!(resource.profile, "constructor-fixed");
+            assert_eq!(
+                error.icon_registry_details().unwrap().pack_index,
+                Some(maximum as u64)
+            );
+        }
+
+        let maximum = crate::IconRegistryResourceLimitId::MaxPrefixBytes.fixed_value() as usize;
+        for length in [maximum, maximum + 1] {
+            let wire = serde_json::to_vec(&serde_json::json!([{
+                "json": r#"{"icons":{}}"#, "registrationName": "a".repeat(length),
+            }]))
+            .unwrap();
+            let result = build_icon_registry_from_json(&wire);
+            if length == maximum {
+                assert!(result.unwrap().is_empty());
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(
+                    error.resource_details().unwrap().limit_id,
+                    "max_icon_registry_prefix_bytes"
+                );
+                assert_eq!(
+                    error.icon_registry_details().unwrap().registration_name,
+                    None
+                );
+            }
+        }
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn json_icon_services_render_with_registration_override_and_engine_isolation() {
+        let json = r#"{"prefix":"original","icons":{"rocket":{"body":"<path data-icon=\"json-service\" d=\"M0 0H16V16H0z\"/>"}}}"#;
+        let wire = serde_json::to_vec(&serde_json::json!([{
+            "json": json, "registrationName": "fleet",
+        }]))
+        .unwrap();
+        let registry = build_icon_registry_from_json(&wire).unwrap();
+        drop(wire);
+        let engine = crate::BindingEngine::from_options_and_services(
+            b"",
+            BindingEngineServices::new().with_icon_registry(registry),
+        )
+        .unwrap();
+        let plain = crate::BindingEngine::new(b"").unwrap();
+        let source = b"flowchart TD\nA@{ icon: \"fleet:rocket\", label: \"A\" }";
+        let render = |engine: &crate::BindingEngine, options: &[u8]| {
+            String::from_utf8(
+                engine
+                    .execute(
+                        crate::BindingOperationRequest::new("svg", source)
+                            .with_options_json(options),
+                    )
+                    .unwrap()
+                    .into_data(),
+            )
+            .unwrap()
+        };
+        assert!(render(&engine, b"").contains("json-service"));
+        assert!(!render(&plain, b"").contains("json-service"));
+        assert!(render(&engine, br#"{"svg":{"diagram_id":"override"}}"#).contains("json-service"));
+        drop(engine);
+        assert!(!render(&plain, b"").contains("json-service"));
     }
 
     #[cfg(feature = "svg")]

@@ -40,8 +40,9 @@ if (diagnostics.length > 0) {
   process.exit(1);
 }
 
-const wasmGlueExports = new Set(["default", "EditorSession", "initSync", "start"]);
+const wasmGlueExports = new Set(["default", "EditorSession", "RenderSession", "initSync", "start"]);
 const runtimeWrapperOnlyExports = new Set([
+  "createRenderSession",
   "createEditorSession",
   "initMerman",
   "getMerman",
@@ -72,6 +73,7 @@ const stablePublicTypes = new Set([
 ]);
 
 const rawWasmExports = contract.exportedValueNames(fullWasmTypes);
+const rawRenderSessionProperties = contract.exportedTypePropertyNames(fullWasmTypes, "RenderSession");
 const rawEditorSessionProperties = contract.exportedTypePropertyNames(
   fullWasmTypes,
   "EditorSession",
@@ -123,6 +125,7 @@ const requiredTypeProperties = new Map([
     ],
   ],
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
+  ["BrowserRenderSession", ["renderSvg", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "dispose"]],
   ["ResourceOptions", ["profile", "limits"]],
   ["EditorResourceOptions", ["profile", "limits"]],
   [
@@ -224,6 +227,10 @@ const requiredTypePropertyTypes = [
 ];
 
 let failed = false;
+failed ||= reportMissing(
+  "check-contracts: wasm-bindgen RenderSession is missing scoped outputs",
+  ["renderSvg", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "free"].filter(name => !rawRenderSessionProperties.has(name)),
+);
 failed ||= reportMissing(
   "check-contracts: root public API is missing public catalog values",
   difference(catalogValueExports, publicValueExports),

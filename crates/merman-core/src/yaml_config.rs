@@ -989,6 +989,25 @@ config:
     }
 
     #[test]
+    fn folds_minimally_indented_quoted_scalar_continuations() {
+        for input in ["title: \"one\n two\"", "title: 'one\n two'"] {
+            let value = parse_yaml_value(input, 16).expect("quoted continuation parses");
+
+            assert_eq!(value, json!({ "title": "one two" }));
+        }
+    }
+
+    #[test]
+    fn literal_scalar_chomping_ignores_indentation_only_line_at_eof() {
+        for (indicator, expected) in [("|", "a\n"), ("|-", "a"), ("|+", "a\n")] {
+            let input = format!("title: {indicator}\n  a\n  ");
+            let value = parse_yaml_value(&input, 16).expect("literal scalar parses");
+
+            assert_eq!(value, json!({ "title": expected }), "{indicator}");
+        }
+    }
+
+    #[test]
     fn ignores_complex_mapping_keys() {
         let value = parse_yaml_value(
             r#"

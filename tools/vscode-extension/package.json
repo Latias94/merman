@@ -631,7 +631,7 @@
     "licenses:generate": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --write"
   },
   "dependencies": {
-    "vscode-languageclient": "10.1.2"
+    "vscode-languageclient": "11.0.0"
   },
   "devDependencies": {
     "@types/node": "26.6.5",

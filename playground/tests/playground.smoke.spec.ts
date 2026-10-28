@@ -248,18 +248,21 @@ test("Compare detection and rendering share built-in ELK configuration", async (
 });
 
 test("automatic and explicit default themes remain distinct in the presentation controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await waitForPreviewSvg(page);
 
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  const presentationTrigger = page.getByRole("button", { name: "Presentation", exact: true });
+  await expect(presentationTrigger).toHaveText("Presentation");
+  await presentationTrigger.click();
   await expect(page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }))
     .toHaveAttribute("aria-checked", "true");
   await page.getByRole("menuitemradio", { name: "Default", exact: true }).click();
   await waitForPreviewSvg(page);
   await expect(page.locator("footer")).toContainText("Default");
 
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  await presentationTrigger.click();
   await expect(page.getByRole("menuitemradio", { name: "Default", exact: true }))
     .toHaveAttribute("aria-checked", "true");
   await page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }).click();

@@ -758,17 +758,27 @@ fn validate_element(
         }
 
         let (attribute_namespace, local_name) = resolver.resolve_attribute(attribute.key);
-        let is_unbound_attribute = matches!(&attribute_namespace, ResolveResult::Unbound);
         let is_xlink_attribute = matches!(
             &attribute_namespace,
             ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
         );
         let consumes_namespace = usvg_consumes_attribute_namespace(attribute_namespace);
         checkpoint()?;
+        let semantic_name = local_name.as_ref();
+        // Raw XML use resolution precedes presentation-attribute projection. roxmltree's
+        // fallback selects the first local name in any namespace; XLink still takes priority.
+        if semantic_name == "id" {
+            use_id.get_or_insert_with(|| value.to_string());
+        }
+        if is_use && semantic_name == "href" {
+            use_href.get_or_insert_with(|| value.to_string());
+            if is_xlink_attribute {
+                use_xlink_href.get_or_insert_with(|| value.to_string());
+            }
+        }
         if !consumes_namespace? {
             continue;
         }
-        let semantic_name = local_name.as_ref();
         checkpoint()?;
         let violates_contract =
             parsed_attribute_violates_resvg_contract(element_name, qualified_name, &value);
@@ -813,16 +823,6 @@ fn validate_element(
         if is_svg_element && semantic_name == "id" && !parsed_id_seen {
             parsed_id_seen = true;
             parsed_id = Some(value.to_string());
-        }
-        if is_svg_element && is_unbound_attribute && semantic_name == "id" {
-            use_id = Some(value.to_string());
-        }
-        if is_use && semantic_name == "href" {
-            if is_xlink_attribute {
-                use_xlink_href.get_or_insert_with(|| value.to_string());
-            } else if is_unbound_attribute {
-                use_href.get_or_insert_with(|| value.to_string());
-            }
         }
         if is_fe_image && semantic_name == "href" && !fe_image_href_seen {
             fe_image_href_seen = true;
@@ -1008,7 +1008,7 @@ fn build_svg_reference_dependencies_with_checkpoints<E>(
     for (index, node) in nodes.iter().enumerate() {
         checkpoint_loop(index, checkpoint)?;
         if let Some(id) = node.use_id.as_deref() {
-            // Raw `<use>` expansion resolves the first unqualified XML `id`.
+            // Raw XML lookup selects the first local-name ID in document order.
             use_ids.entry(id).or_insert(index);
         }
         if let Some(id) = node.parsed_id.as_deref() {
@@ -1691,6 +1691,66 @@ mod tests {
     }
 
     #[test]
+    fn use_local_name_fallback_charges_the_selected_native_target() {
+        for href in [
+            r##"href="#source""##,
+            r##"xml:href="#source""##,
+            r##"s:href="#source""##,
+            r##"q:href="#source""##,
+            r##"xml:href="#source" href="#other""##,
+            r##"href="#other" x:href="#source""##,
+            r##"x:href="#source" xml:href="#other""##,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" xmlns:q="urn:other"><defs><g id="source"><rect/><rect/><rect/><rect/></g><g id="other"/></defs><use {href}/></svg>"##,
+            );
+            let plan = validate_resvg_compatible_svg(
+                &svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            assert_eq!(plan.expanded_elements(), 14, "{href}");
+            assert_eq!(plan.raw_element_occurrences()[3], 2, "{href}");
+            let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgElements, 13)
+                .unwrap();
+            let error = validate_resvg_compatible_svg(&svg, limits).unwrap_err();
+            assert!(
+                error.to_string().contains("max_svg_elements"),
+                "{href}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn use_id_resolution_keeps_the_first_local_name_across_namespaces() {
+        for id in [
+            r#"id="source""#,
+            r#"xml:id="source""#,
+            r#"q:id="source""#,
+            r#"q:id="source" id="other""#,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other"><defs><g {id}><rect/><rect/><rect/><rect/></g></defs><use href="#source"/></svg>"##,
+            );
+            let plan = validate_resvg_compatible_svg(
+                &svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            assert_eq!(plan.expanded_elements(), 13, "{id}");
+            let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgElements, 12)
+                .unwrap();
+            let error = validate_resvg_compatible_svg(&svg, limits).unwrap_err();
+            assert!(
+                error.to_string().contains("max_svg_elements"),
+                "{id}: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn reference_plan_matches_usvg_namespace_alias_and_first_attribute_semantics() {
         let fe_image_svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="source"><rect/><rect/><rect/><rect/><rect/></g><g id="other"/><filter><feImage xml:href="#source" href="#other"/></filter></defs></svg>"##;
         let fe_image_plan = validate_resvg_compatible_svg(
@@ -1728,7 +1788,7 @@ mod tests {
 
         assert_eq!(
             occurrences[2], 2,
-            "<use> must resolve the first unqualified XML id"
+            "<use> must resolve the first local-name XML id"
         );
         assert!(
             occurrences[4] > 4,

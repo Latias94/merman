@@ -1,0 +1,74 @@
+[
+  {
+    "line": "09",
+    "case": "flowchart",
+    "pipeline": "parity",
+    "file": "09-flowchart-parity.svg"
+  },
+  {
+    "line": "09",
+    "case": "flowchart",
+    "pipeline": "resvg-safe",
+    "file": "09-flowchart-resvg-safe.svg"
+  },
+  {
+    "line": "09",
+    "case": "fraction-styled",
+    "pipeline": "parity",
+    "file": "09-fraction-styled-parity.svg"
+  },
+  {
+    "line": "09",
+    "case": "fraction-styled",
+    "pipeline": "resvg-safe",
+    "file": "09-fraction-styled-resvg-safe.svg"
+  },
+  {
+    "line": "09",
+    "case": "sequence",
+    "pipeline": "parity",
+    "file": "09-sequence-parity.svg"
+  },
+  {
+    "line": "09",
+    "case": "sequence",
+    "pipeline": "resvg-safe",
+    "file": "09-sequence-resvg-safe.svg"
+  },
+  {
+    "line": "09",
+    "case": "swimlane",
+    "pipeline": "parity",
+    "file": "09-swimlane-parity.svg"
+  },
+  {
+    "line": "09",
+    "case": "swimlane",
+    "pipeline": "resvg-safe",
+    "file": "09-swimlane-resvg-safe.svg"
+  },
+  {
+    "line": "09",
+    "case": "cjk-smash",
+    "pipeline": "parity",
+    "file": "09-cjk-smash-parity.svg"
+  },
+  {
+    "line": "09",
+    "case": "cjk-smash",
+    "pipeline": "resvg-safe",
+    "file": "09-cjk-smash-resvg-safe.svg"
+  },
+  {
+    "line": "09",
+    "case": "emoji",
+    "pipeline": "parity",
+    "file": "09-emoji-parity.svg"
+  },
+  {
+    "line": "09",
+    "case": "emoji",
+    "pipeline": "resvg-safe",
+    "file": "09-emoji-resvg-safe.svg"
+  }
+]

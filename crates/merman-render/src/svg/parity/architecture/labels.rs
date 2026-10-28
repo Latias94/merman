@@ -2,8 +2,10 @@ use std::collections::VecDeque;
 use std::fmt::Write as _;
 
 use crate::architecture_metrics::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
+use crate::model::Bounds;
 
 use super::super::{decode_mermaid_entities_for_render_text, escape_xml_into, fmt};
+use super::geometry::extend_bounds;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SvgWordType {
@@ -67,6 +69,66 @@ fn svg_line_computed_length_px(
             measurer.measure_svg_text_computed_length_px(&text, &word_style)
         })
         .sum()
+}
+
+pub(super) fn svg_service_title_bounds(
+    lines: &[SvgLine],
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+) -> Option<Bounds> {
+    let mut bounds = None;
+    for (row_index, line) in lines.iter().enumerate() {
+        let mut runs: Vec<(SvgWordType, String)> = Vec::new();
+        for (word_index, word) in line.iter().enumerate() {
+            if let Some((word_type, text)) = runs.last_mut()
+                && *word_type == word.word_type
+            {
+                text.push(' ');
+                text.push_str(&word.content);
+            } else {
+                runs.push((word.word_type, svg_word_rendered_text(word, word_index)));
+            }
+        }
+
+        let mixed_faces = runs.len() > 1;
+        let mut advance = 0.0;
+        let mut row_bounds = None;
+        for (word_type, text) in runs {
+            let run_style = svg_word_style(style, word_type);
+            // Scalar probes retain each face. Advances position runs; ink widths do not.
+            let run_advance = if mixed_faces {
+                measurer.measure_svg_text_computed_length_px(&text, &run_style)
+            } else {
+                0.0
+            };
+            let center = advance + run_advance / 2.0;
+            let (left, right) = measurer.measure_svg_text_bbox_x(&text, &run_style);
+            let height = measurer
+                .measure_svg_tspan_text_bbox_height_px(&text, &run_style)
+                .max(0.0);
+            let top = measurer.measure_svg_create_text_middle_bbox_y_offset_px(&text, &run_style);
+            extend_bounds(
+                &mut row_bounds,
+                Bounds {
+                    min_x: center - left,
+                    min_y: top,
+                    max_x: center + right,
+                    max_y: top + height,
+                },
+            );
+            advance += run_advance;
+        }
+        if let Some(mut row) = row_bounds {
+            // Each emitted outer tspan restarts at x=0 and advances by 1.1em per row.
+            let row_y = row_index as f64 * style.font_size.max(1.0) * 1.1;
+            row.min_x -= advance / 2.0;
+            row.max_x -= advance / 2.0;
+            row.min_y += row_y;
+            row.max_y += row_y;
+            extend_bounds(&mut bounds, row);
+        }
+    }
+    bounds
 }
 
 pub(super) fn svg_line_formatted_bbox_width_px(

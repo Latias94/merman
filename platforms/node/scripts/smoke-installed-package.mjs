@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runIconRegistrySmoke } from "./icon-registry-smoke.mjs";
 
 if (isMainModule()) {
   await main();
@@ -33,12 +34,14 @@ async function main() {
     const svg = await engine.renderSvg("flowchart TD\nA --> B");
     assert.match(svg, /<svg\b/);
     assert.match(svg, /<\/svg>/);
+    const iconRegistry = await runIconRegistrySmoke(module);
     console.log(
       JSON.stringify({
         package: packageName,
         version: expectedVersion,
         target: expectedTarget,
         svg_bytes: Buffer.byteLength(svg),
+        icon_registry: iconRegistry,
       }),
     );
   } finally {

@@ -456,7 +456,7 @@ jobs:
 
       - name: Install pinned npm
         if: matrix.parity
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install pinned Mermaid runtime
         if: matrix.parity
@@ -704,7 +704,7 @@ jobs:
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install npm toolchain
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install Node candidate dependencies
         run: npm ci --prefix platforms/node
@@ -1220,6 +1220,8 @@ jobs:
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
     uses: ./.github/workflows/fuzz.yml
+    with:
+      ci_only: true
 
   grammar-owner:
     name: grammar-owner

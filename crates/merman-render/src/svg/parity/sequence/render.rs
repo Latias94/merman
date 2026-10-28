@@ -9,7 +9,7 @@ use super::actors::{
 use super::frames::{SequenceFrameRenderOptions, render_sequence_box_frames_and_rect_blocks};
 use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
 use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
-use super::root::write_sequence_svg_root_open;
+use super::root::{sequence_title_geometry, write_sequence_svg_root_open};
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
 
@@ -108,6 +108,18 @@ fn render_sequence_diagram_svg_inner(
 
     let diagram_id = options.diagram_id_or("merman");
     let settings = SequenceRenderSettings::from_effective_config(effective_config);
+    let title_geometry = effective_title
+        .map(|title| {
+            sequence_title_geometry(
+                title,
+                layout,
+                effective_config,
+                settings.diagram_margin_x,
+                measurer,
+                checkpoints,
+            )
+        })
+        .transpose()?;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
@@ -126,7 +138,13 @@ fn render_sequence_diagram_svg_inner(
 
     let mut out = String::new();
     checkpoints.checkpoint()?;
-    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
+    let root_document = write_sequence_svg_root_open(
+        &mut out,
+        layout,
+        model,
+        diagram_id,
+        title_geometry.as_ref().map(|title| &title.bounds),
+    )?;
     checkpoints.checkpoint()?;
 
     render_sequence_box_frames_and_rect_blocks(
@@ -261,17 +279,15 @@ fn render_sequence_diagram_svg_inner(
         checkpoints,
     )?;
 
-    if let Some(title) = effective_title {
+    if let Some((title, geometry)) = effective_title.zip(title_geometry.as_ref()) {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.
         // Mermaid positions the title using the inner (content) box width:
         // `x = (box.stopx - box.startx) / 2 - 2 * diagramMarginX`.
-        let title_x = ((root_metrics.viewbox_width - 2.0 * settings.diagram_margin_x) / 2.0)
-            - 2.0 * settings.diagram_margin_x;
         checkpoints.checkpoint()?;
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="-25">{text}</text>"#,
-            x = fmt(title_x),
+            x = fmt(geometry.x),
             text = escape_xml(title)
         );
     }
@@ -279,7 +295,7 @@ fn render_sequence_diagram_svg_inner(
     checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
     checkpoints.checkpoint()?;
-    let rooted = root_metrics.document.complete(out)?;
+    let rooted = root_document.complete(out)?;
     checkpoints.checkpoint()?;
     Ok(rooted)
 }

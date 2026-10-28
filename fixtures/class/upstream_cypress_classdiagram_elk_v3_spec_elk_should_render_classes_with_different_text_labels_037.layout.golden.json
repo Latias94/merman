@@ -5,97 +5,97 @@
       "nodes": [
         {
           "id": "C1",
-          "x": 49.203,
+          "x": 49.2,
           "y": 52.5,
-          "width": 74.406,
+          "width": 74.4,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C2",
-          "x": 177.75,
+          "x": 177.74,
           "y": 52.5,
-          "width": 102.688,
+          "width": 102.68,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C3",
-          "x": 328.063,
+          "x": 328.05,
           "y": 52.5,
-          "width": 117.938,
+          "width": 117.94,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C4",
-          "x": 486.0,
+          "x": 485.99,
           "y": 52.5,
-          "width": 117.938,
+          "width": 117.94,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C5",
-          "x": 643.938,
+          "x": 643.93,
           "y": 52.5,
-          "width": 117.938,
+          "width": 117.94,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C7",
-          "x": 797.883,
+          "x": 797.88,
           "y": 52.5,
-          "width": 109.953,
+          "width": 109.96,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C8",
-          "x": 948.258,
+          "x": 948.26,
           "y": 52.5,
-          "width": 110.797,
+          "width": 110.8,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C9",
-          "x": 1088.555,
+          "x": 1088.56,
           "y": 52.5,
-          "width": 89.797,
+          "width": 89.8,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C10",
-          "x": 1236.414,
+          "x": 1236.42,
           "y": 52.5,
-          "width": 125.922,
+          "width": 125.92,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C11",
-          "x": 1407.445,
+          "x": 1407.45,
           "y": 52.5,
-          "width": 136.141,
+          "width": 136.14,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C12",
-          "x": 1600.453,
+          "x": 1600.46,
           "y": 52.5,
-          "width": 169.875,
+          "width": 169.88,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C13",
-          "x": 1817.68,
+          "x": 1817.69,
           "y": 52.5,
-          "width": 184.578,
+          "width": 184.58,
           "height": 81.0,
           "is_cluster": false
         }
@@ -105,7 +105,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 1909.969,
+        "max_x": 1909.98,
         "max_y": 93.0
       }
     }

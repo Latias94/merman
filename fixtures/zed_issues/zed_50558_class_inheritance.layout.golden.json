@@ -7,7 +7,7 @@
           "id": "Animal",
           "x": 75.941,
           "y": 90.0,
-          "width": 127.883,
+          "width": 127.881,
           "height": 156.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "Dog",
           "x": 75.941,
           "y": 268.0,
-          "width": 115.281,
+          "width": 115.283,
           "height": 120.0,
           "is_cluster": false
         }
@@ -51,7 +51,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 139.883,
+        "max_x": 139.881,
         "max_y": 328.0
       }
     }

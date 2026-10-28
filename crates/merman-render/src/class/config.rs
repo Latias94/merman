@@ -6,7 +6,6 @@ use crate::text::{TextStyle, WrapMode};
 use serde_json::Value;
 
 const DEFAULT_CLASS_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
-const DEFAULT_CLASS_HTML_CALC_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif;";
 
 pub(crate) struct ClassConfigView<'a> {
     effective_config: &'a Value,
@@ -126,8 +125,12 @@ impl<'a> ClassConfigView<'a> {
 
     pub(crate) fn html_calculate_text_style(&self) -> TextStyle {
         TextStyle {
-            font_family: config_string(self.effective_config, &["fontFamily"])
-                .or_else(|| Some(DEFAULT_CLASS_HTML_CALC_FONT_FAMILY.to_string())),
+            font_family: Some(
+                config_string(self.effective_config, &["fontFamily"])
+                    .map(|family| crate::config::normalize_css_font_family(&family))
+                    .filter(|family| !family.is_empty())
+                    .unwrap_or_else(|| DEFAULT_CLASS_FONT_FAMILY.to_owned()),
+            ),
             font_size: config_f64_css_px(self.effective_config, &["fontSize"])
                 .unwrap_or(16.0)
                 .max(1.0),
@@ -174,7 +177,7 @@ impl<'a> ClassConfigView<'a> {
 
     pub(crate) fn render_text_style(&self, font_size: f64) -> TextStyle {
         TextStyle {
-            font_family: self.text_font_family(),
+            font_family: Some(crate::config::config_font_family_css(self.effective_config)),
             font_size,
             font_weight: None,
             font_style: None,
@@ -207,12 +210,6 @@ impl<'a> ClassConfigView<'a> {
         config_diagram_look(self.effective_config)
             .as_str()
             .to_string()
-    }
-
-    fn text_font_family(&self) -> Option<String> {
-        config_string(self.effective_config, &["fontFamily"])
-            .or_else(|| self.theme_string("fontFamily"))
-            .or_else(|| Some(DEFAULT_CLASS_FONT_FAMILY.to_string()))
     }
 }
 
@@ -287,7 +284,7 @@ mod tests {
         assert!(settings.hide_empty_members_box);
         assert_eq!(
             settings.text_style.font_family.as_deref(),
-            Some("Root Sans")
+            Some("Theme Sans")
         );
         assert_eq!(settings.text_style.font_size, 24.0);
         assert_eq!(

@@ -38,6 +38,25 @@ impl<'a> SequenceConfigView<'a> {
         self.effective_config.get(key).and_then(Value::as_bool)
     }
 
+    pub(crate) fn root_font_size_css(&self) -> String {
+        crate::config::config_css_number_or_string(
+            self.effective_config,
+            &["themeVariables", "fontSize"],
+        )
+        .unwrap_or_else(|| "16px".to_string())
+    }
+
+    pub(crate) fn root_text_style(&self) -> TextStyle {
+        let inherited = TextStyle {
+            font_family: Some(crate::config::config_font_family_css(self.effective_config)),
+            ..TextStyle::default()
+        };
+        crate::text::apply_css_font_declarations(
+            &inherited,
+            &format!("font-size:{}", self.root_font_size_css()),
+        )
+    }
+
     pub(crate) fn sequence_string(&self, key: &str) -> Option<String> {
         crate::config::config_string(self.sequence_config, &[key])
     }

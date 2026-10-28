@@ -104,6 +104,7 @@ pub(super) struct ClassHtmlNodeRowsContext<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub html_calc_text_style: &'a TextStyle,
+    pub node_label_style: &'a str,
     pub line_height: f64,
 }
 
@@ -150,6 +151,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
 pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
+    pub html_calc_text_style: &'a TextStyle,
     pub wrap_probe_font_size: f64,
     pub class_padding: f64,
     pub hide_empty_members_box: bool,
@@ -479,12 +481,17 @@ pub(super) fn render_class_html_node_body(
     );
     let title_metrics = prepared_html.map_or_else(
         || {
+            let style = crate::class::class_html_node_text_style(
+                ctx.text_style,
+                "font-weight:bolder",
+                ctx.node_style_attr,
+            );
             ctx.mermaid_config
                 .and_then(|config| {
                     crate::class::class_math_label_metrics(
                         title_text,
                         ctx.measurer,
-                        ctx.text_style,
+                        &style,
                         Some(title_max_width_px.max(1) as f64),
                         config,
                         ctx.math_renderer,
@@ -496,6 +503,7 @@ pub(super) fn render_class_html_node_body(
                         ctx.text_style,
                         title_text,
                         title_max_width_px,
+                        ctx.node_style_attr,
                     )
                 })
         },
@@ -517,6 +525,11 @@ pub(super) fn render_class_html_node_body(
     let annotation_metrics = annotation_text.as_deref().map(|text| {
         annotation_prepared.map_or_else(
             || {
+                let style = crate::class::class_html_node_text_style(
+                    ctx.text_style,
+                    "",
+                    ctx.node_style_attr,
+                );
                 let max_width_px = crate::class::class_html_create_text_width_px(
                     text,
                     ctx.measurer,
@@ -527,20 +540,14 @@ pub(super) fn render_class_html_node_body(
                         crate::class::class_math_label_metrics(
                             text,
                             ctx.measurer,
-                            ctx.text_style,
+                            &style,
                             Some(max_width_px.max(1) as f64),
                             config,
                             ctx.math_renderer,
                         )
                     })
                     .unwrap_or_else(|| {
-                        class_html_label_metrics(
-                            ctx.measurer,
-                            ctx.text_style,
-                            text,
-                            max_width_px,
-                            "",
-                        )
+                        class_html_label_metrics(ctx.measurer, &style, text, max_width_px, "")
                     })
             },
             |prepared| prepared.metrics,
@@ -566,6 +573,7 @@ pub(super) fn render_class_html_node_body(
         measurer: ctx.measurer,
         text_style: ctx.text_style,
         html_calc_text_style: ctx.html_calc_text_style,
+        node_label_style: ctx.node_style_attr,
         line_height: ctx.line_height,
     };
     let members_rows_rendered = measure_class_html_node_rows(
@@ -746,6 +754,7 @@ pub(super) fn render_class_svg_node_body(
     position: ClassNodeRenderPosition,
     node: &ClassSvgNode,
     geometry: ClassNodeBoxGeometry,
+    prepared_title: &crate::class::ClassPreparedSvgTitle,
     ctx: &ClassSvgNodeBodyContext<'_>,
 ) -> ClassNodeRenderStats {
     let out = &mut *state.out;
@@ -754,69 +763,8 @@ pub(super) fn render_class_svg_node_body(
     let gap = padding;
     let text_padding = 3.0;
 
-    let mut title_text = decode_entities_minimal_cow(node.text.trim()).into_owned();
-    if title_text.starts_with('\\') {
-        title_text = title_text.trim_start_matches('\\').to_string();
-    }
-    let title_markdown_analysis = crate::class::analyze_class_svg_markdown(&title_text);
-    let wrapped_title_text = if title_markdown_analysis.all_runs_normal() {
-        wrap_class_svg_text_like_mermaid(
-            &title_text,
-            ctx.measurer,
-            ctx.text_style,
-            ctx.wrap_probe_font_size,
-            false,
-        )
-    } else {
-        title_text.clone()
-    };
-    let title_lines =
-        crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
-    let title_has_styled_runs = title_markdown_analysis.has_styled_runs;
-    let mut title_metrics = if title_has_styled_runs {
-        let title_md = title_lines
-            .iter()
-            .map(|l| format!("**{l}**"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        crate::text::measure_markdown_with_inline_styles(
-            ctx.measurer,
-            &title_md,
-            ctx.text_style,
-            None,
-            WrapMode::SvgLike,
-        )
-    } else {
-        let bold_title_style = TextStyle {
-            font_family: ctx.text_style.font_family.clone(),
-            font_size: ctx.text_style.font_size,
-            font_weight: Some("bolder".to_string()),
-            font_style: ctx.text_style.font_style.clone(),
-        };
-        ctx.measurer.measure_wrapped(
-            &wrapped_title_text,
-            &bold_title_style,
-            None,
-            WrapMode::SvgLike,
-        )
-    };
-    if !title_has_styled_runs {
-        let bold_title_style = TextStyle {
-            font_family: ctx.text_style.font_family.clone(),
-            font_size: ctx.text_style.font_size,
-            font_weight: Some("bolder".to_string()),
-            font_style: None,
-        };
-        let width = title_lines.iter().fold(0.0_f64, |width, line| {
-            width.max(
-                ctx.measurer
-                    .measure_svg_tspan_text_bbox_width_px(line, &bold_title_style),
-            )
-        });
-        if width.is_finite() && width > 0.0 {
-            title_metrics.width = width;
-        }
-    }
+    let title_label = &prepared_title.label;
+    let title_metrics = prepared_title.metrics;
     // Annotation group: Mermaid only renders the first annotation.
     let mut annotation_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
     let mut annotation_rect: Option<Rect> = None;
@@ -830,6 +778,7 @@ pub(super) fn render_class_svg_node_body(
                 &text,
                 ctx.measurer,
                 ctx.text_style,
+                ctx.html_calc_text_style,
                 ctx.wrap_probe_font_size,
                 false,
             );
@@ -858,96 +807,16 @@ pub(super) fn render_class_svg_node_body(
     let label_group_height = title_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
     let label_group_width = title_metrics.width.max(0.0);
 
-    let mut members_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
-    let mut members_rect: Option<Rect> = None;
-    {
-        let mut y_offset = 0.0;
-        for m in &node.members {
-            let mut text =
-                decode_entities_minimal(crate::class::class_member_display_text(m).as_str());
-            if text.starts_with('\\') {
-                text = text.trim_start_matches('\\').to_string();
-            }
-            if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
-                text = wrap_class_svg_text_like_mermaid(
-                    &text,
-                    ctx.measurer,
-                    ctx.text_style,
-                    ctx.wrap_probe_font_size,
-                    false,
-                );
-            }
-            let metrics = crate::text::measure_markdown_with_inline_styles(
-                ctx.measurer,
-                &text,
-                ctx.text_style,
-                None,
-                WrapMode::SvgLike,
-            );
-            if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
-                if let Some(cur) = members_rect.as_mut() {
-                    cur.union(r);
-                } else {
-                    members_rect = Some(r);
-                }
-            }
-            members_runs.push(ClassSvgNodeLabelRun {
-                text,
-                style: m.css_style.trim().to_string(),
-                metrics,
-                y_offset,
-            });
-            y_offset += metrics.height.max(0.0) + text_padding;
-        }
-    }
+    let (members_runs, members_rect) =
+        measure_class_svg_node_rows(&node.members, ctx, text_padding);
     let mut members_group_height = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
     if members_group_height <= 0.0 {
         // Mermaid reserves half a gap when the members group is empty.
         members_group_height = (gap / 2.0).max(0.0);
     }
 
-    let mut methods_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
-    let mut methods_rect: Option<Rect> = None;
-    {
-        let mut y_offset = 0.0;
-        for m in &node.methods {
-            let raw = decode_entities_minimal(m.display_text.trim());
-            let mut text = raw;
-            if text.starts_with('\\') {
-                text = text.trim_start_matches('\\').to_string();
-            }
-            if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
-                text = wrap_class_svg_text_like_mermaid(
-                    &text,
-                    ctx.measurer,
-                    ctx.text_style,
-                    ctx.wrap_probe_font_size,
-                    false,
-                );
-            }
-            let metrics = crate::text::measure_markdown_with_inline_styles(
-                ctx.measurer,
-                &text,
-                ctx.text_style,
-                None,
-                WrapMode::SvgLike,
-            );
-            if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
-                if let Some(cur) = methods_rect.as_mut() {
-                    cur.union(r);
-                } else {
-                    methods_rect = Some(r);
-                }
-            }
-            methods_runs.push(ClassSvgNodeLabelRun {
-                text,
-                style: m.css_style.trim().to_string(),
-                metrics,
-                y_offset,
-            });
-            y_offset += metrics.height.max(0.0) + text_padding;
-        }
-    }
+    let (methods_runs, methods_rect) =
+        measure_class_svg_node_rows(&node.methods, ctx, text_padding);
 
     // textHelper(...) pre-adjust group transforms.
     let ann_tx = -annotation_group_width / 2.0;
@@ -1054,7 +923,7 @@ pub(super) fn render_class_svg_node_body(
         out,
         adjusted_label_group_x,
         label_new_y,
-        &title_lines,
+        title_label,
         &title_metrics,
     );
 
@@ -1141,12 +1010,17 @@ pub(super) fn measure_class_html_node_rows<'a>(
                 row_metrics
                     .and_then(|rows| rows.get(idx).copied())
                     .unwrap_or_else(|| {
+                        let style = crate::class::class_html_node_text_style(
+                            ctx.text_style,
+                            &member.css_style,
+                            ctx.node_label_style,
+                        );
                         class_html_label_metrics(
                             ctx.measurer,
-                            ctx.text_style,
+                            &style,
                             text.as_str(),
                             max_width_px,
-                            member.css_style.as_str(),
+                            "",
                         )
                     })
             });
@@ -1244,6 +1118,56 @@ fn render_class_html_node_rows_group(
     out.push_str("</g>");
 }
 
+fn measure_class_svg_node_rows(
+    rows: &[ClassMember],
+    ctx: &ClassSvgNodeBodyContext<'_>,
+    text_padding: f64,
+) -> (Vec<ClassSvgNodeLabelRun>, Option<Rect>) {
+    let mut runs = Vec::with_capacity(rows.len());
+    let mut rect: Option<Rect> = None;
+    let mut y_offset = 0.0;
+    for row in rows {
+        let text_style = crate::class::class_svg_row_text_style(ctx.text_style, &row.css_style);
+        let mut text =
+            decode_entities_minimal(crate::class::class_member_display_text(row).as_str());
+        if text.starts_with('\\') {
+            text = text.trim_start_matches('\\').to_string();
+        }
+        if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
+            text = wrap_class_svg_text_like_mermaid(
+                &text,
+                ctx.measurer,
+                &text_style,
+                ctx.html_calc_text_style,
+                ctx.wrap_probe_font_size,
+                false,
+            );
+        }
+        let metrics = crate::text::measure_markdown_with_inline_styles(
+            ctx.measurer,
+            &text,
+            &text_style,
+            None,
+            WrapMode::SvgLike,
+        );
+        if let Some(row_rect) = class_svg_label_rect(&metrics, y_offset) {
+            if let Some(rect) = rect.as_mut() {
+                rect.union(row_rect);
+            } else {
+                rect = Some(row_rect);
+            }
+        }
+        runs.push(ClassSvgNodeLabelRun {
+            text,
+            style: row.css_style.trim().to_owned(),
+            metrics,
+            y_offset,
+        });
+        y_offset += metrics.height.max(0.0) + text_padding;
+    }
+    (runs, rect)
+}
+
 pub(super) fn render_class_svg_node_runs_group(
     out: &mut String,
     group_class: &str,
@@ -1288,7 +1212,7 @@ pub(super) fn render_class_svg_title_group(
     out: &mut String,
     group_x: f64,
     group_y: f64,
-    title_lines: &[String],
+    title: &crate::class::ClassSvgTitleLabel,
     title_metrics: &crate::text::TextMetrics,
 ) {
     let _ = write!(
@@ -1303,27 +1227,7 @@ pub(super) fn render_class_svg_title_group(
         r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="">"#,
         fmt(t_y)
     );
-    for (idx, line) in title_lines.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(
-                r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight="">"#,
-            );
-        } else {
-            let y_em = if idx == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em" font-weight="">"#,
-                y_em
-            );
-        }
-        out.push_str(r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="">"#);
-        escape_xml_into(out, line);
-        out.push_str("</tspan></tspan>");
-    }
+    write_class_svg_label_rows(out, title.lines(), true, title.literal_first_row(), false);
     out.push_str("</text></g></g></g>");
 }
 
@@ -1338,5 +1242,295 @@ mod palette_tests {
         super::write_class_color_slot(&mut attributes, None, 3);
         super::write_class_color_slot(&mut attributes, Some(0), 0);
         assert!(attributes.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod typography_tests {
+    use super::*;
+    use crate::text::TextMetrics;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use std::sync::Mutex;
+
+    struct RecordingMeasurer {
+        measured: Mutex<Vec<(String, TextStyle)>>,
+        computed: Mutex<Vec<TextStyle>>,
+        probe_width: f64,
+        probes: Mutex<Vec<TextStyle>>,
+    }
+
+    impl RecordingMeasurer {
+        fn new(probe_width: f64) -> Self {
+            Self {
+                measured: Mutex::default(),
+                computed: Mutex::default(),
+                probe_width,
+                probes: Mutex::default(),
+            }
+        }
+
+        fn metrics(text: &str, style: &TextStyle) -> TextMetrics {
+            let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
+            TextMetrics {
+                width: lines
+                    .iter()
+                    .map(|line| line.chars().count() as f64 * style.font_size)
+                    .fold(0.0, f64::max),
+                height: lines.len() as f64 * style.font_size,
+                line_count: lines.len(),
+            }
+        }
+    }
+
+    impl TextMeasurer for RecordingMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.measured
+                .lock()
+                .unwrap()
+                .push((text.to_owned(), style.clone()));
+            Self::metrics(text, style)
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap: WrapMode,
+        ) -> TextMetrics {
+            self.measure(text, style)
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.computed.lock().unwrap().push(style.clone());
+            self.measure(text, style).width
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            _text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            self.probes.lock().unwrap().push(style.clone());
+            TextMetrics {
+                width: self.probe_width,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    fn body_context<'a>(
+        measurer: &'a dyn TextMeasurer,
+        style: &'a TextStyle,
+    ) -> ClassSvgNodeBodyContext<'a> {
+        ClassSvgNodeBodyContext {
+            measurer,
+            text_style: style,
+            html_calc_text_style: style,
+            wrap_probe_font_size: 16.0,
+            class_padding: 12.0,
+            hide_empty_members_box: false,
+            node_style_attr: "",
+            node_stroke: "#000",
+            node_stroke_width: "1",
+            node_stroke_dasharray: "",
+            look: "classic",
+            use_gradient: false,
+            timing: RenderTiming::disabled(),
+        }
+    }
+
+    fn class_node() -> merman_core::models::class_diagram::ClassNode {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass Vehicle {\n+owner\n+name\n+drive()\n+stop()\n}",
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        model.classes["Vehicle"].clone()
+    }
+
+    #[test]
+    fn class_svg_row_plans_use_member_and_method_fonts_for_measurement_and_positioning() {
+        let mut node = class_node();
+        node.members[0].css_style =
+            "font-family:serif;font-size:32px;font-weight:900;font-style:italic".to_owned();
+        node.methods[0].css_style =
+            "font-family:serif;font-size:24px;font-weight:900;font-style:italic".to_owned();
+        let measurer = RecordingMeasurer::new(1024.0);
+        let base = TextStyle::default();
+        let ctx = body_context(&measurer, &base);
+
+        for (rows, font_size) in [(&node.members, 32.0), (&node.methods, 24.0)] {
+            let (runs, rect) = measure_class_svg_node_rows(rows, &ctx, 3.0);
+            assert_eq!(runs[0].metrics.height, font_size);
+            assert_eq!(runs[1].metrics.height, 16.0);
+            assert_eq!(runs[1].y_offset, font_size + 3.0);
+            assert_eq!(rect.unwrap().height(), font_size * 1.5 + 11.0);
+            let measured = measurer.measured.lock().unwrap();
+            assert!(measured.iter().any(|(text, style)| {
+                text == &runs[0].text
+                    && style.font_family.as_deref() == Some("serif")
+                    && style.font_size == font_size
+                    && style.font_weight.as_deref() == Some("normal")
+                    && style.font_style.as_deref() == Some("normal")
+            }));
+            drop(measured);
+
+            let mut svg = String::new();
+            render_class_svg_node_runs_group(&mut svg, "members-group text", 0.0, 0.0, &runs);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let labels: Vec<_> = document.root_element().children().collect();
+            assert_eq!(
+                labels[0].attribute("transform"),
+                Some(format!("translate(0,{})", -font_size / 2.0).as_str())
+            );
+            assert_eq!(
+                labels[1].attribute("transform"),
+                Some(format!("translate(0,{})", font_size - 5.0).as_str())
+            );
+            let word = labels[0]
+                .descendants()
+                .find(|child| child.attribute("class") == Some("text-inner-tspan"))
+                .unwrap();
+            assert_eq!(word.attribute("font-style"), Some("normal"));
+            assert_eq!(word.attribute("font-weight"), Some("normal"));
+        }
+    }
+
+    #[test]
+    fn class_svg_row_wrapping_uses_the_effective_font_without_changing_probe_budget() {
+        let mut node = class_node();
+        node.members[0].display_text = "WWWWWW".to_owned();
+        node.members[0].css_style = "font-size:32px".to_owned();
+        let measurer = RecordingMeasurer::new(0.0);
+        let base = TextStyle::default();
+        let ctx = body_context(&measurer, &base);
+        let (runs, _) = measure_class_svg_node_rows(&node.members[..1], &ctx, 3.0);
+
+        assert_eq!(runs[0].text, "W\nW\nW\nW\nW\nW");
+        assert_eq!(runs[0].metrics.line_count, 6);
+        assert_eq!(runs[0].metrics.height, 192.0);
+        let computed = measurer.computed.lock().unwrap();
+        assert!(!computed.is_empty());
+        assert!(computed.iter().all(|style| style.font_size == 32.0));
+        let probes = measurer.probes.lock().unwrap();
+        assert!(!probes.is_empty());
+        assert!(probes.iter().all(|style| style.font_size == 16.0));
+    }
+
+    #[test]
+    fn class_svg_markdown_emphasis_is_applied_after_the_row_font_reset() {
+        let mut node = class_node();
+        node.members[0].display_text = "`plain **bold** *em*`".to_owned();
+        node.members[0].css_style = "font-size:24px;font-weight:900;font-style:oblique".to_owned();
+        let measurer = RecordingMeasurer::new(1024.0);
+        let base = TextStyle::default();
+        let ctx = body_context(&measurer, &base);
+        let (runs, _) = measure_class_svg_node_rows(&node.members[..1], &ctx, 3.0);
+        let mut svg = String::new();
+        render_class_svg_node_runs_group(&mut svg, "members-group text", 0.0, 0.0, &runs);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let words: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .collect();
+        assert_eq!(words.len(), 3, "{svg}");
+        let measured = measurer.measured.lock().unwrap();
+        for (word, (text, weight, measured_weight, font_style)) in words.iter().zip([
+            ("plain", "normal", "normal", "normal"),
+            ("bold", "bold", "700", "normal"),
+            ("em", "normal", "normal", "italic"),
+        ]) {
+            assert_eq!(word.attribute("font-weight"), Some(weight), "{svg}");
+            assert_eq!(word.attribute("font-style"), Some(font_style), "{svg}");
+            assert!(
+                measured.iter().any(|(actual, style)| {
+                    actual.trim() == text
+                        && style.font_size == 24.0
+                        && style.font_weight.as_deref() == Some(measured_weight)
+                        && style.font_style.as_deref() == Some(font_style)
+                }),
+                "{text}: {measured:?}"
+            );
+        }
+    }
+}
+
+/// Emit retained createText words; title role and literal fallback are applied after parsing.
+pub(super) fn write_class_svg_label_rows(
+    out: &mut String,
+    lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+    title: bool,
+    literal_first_row: bool,
+    centered: bool,
+) {
+    if !title && lines.len() == 1 && lines[0].is_empty() {
+        let _ = write!(
+            out,
+            r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"{}/>"#,
+            if centered {
+                r#" text-anchor="middle""#
+            } else {
+                ""
+            }
+        );
+        return;
+    }
+    for (index, words) in lines.iter().enumerate() {
+        let y_em = if index == 0 {
+            "-0.1em".to_owned()
+        } else if index == 1 {
+            "1em".to_owned()
+        } else {
+            format!("{:.1}em", 1.0 + (index as f64 - 1.0) * 1.1)
+        };
+        let _ = write!(
+            out,
+            r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em"{}{}>"#,
+            y_em,
+            if title { r#" font-weight="""# } else { "" },
+            if centered {
+                r#" text-anchor="middle""#
+            } else {
+                ""
+            }
+        );
+        if literal_first_row && index == 0 {
+            if let Some((literal, _)) = words.first() {
+                escape_xml_into(out, literal);
+            }
+        } else {
+            for (word_index, (word, kind)) in words.iter().enumerate() {
+                let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
+                    "italic"
+                } else {
+                    "normal"
+                };
+                let font_weight = if title {
+                    ""
+                } else if *kind == crate::text::MermaidMarkdownWordType::Strong {
+                    "bold"
+                } else {
+                    "normal"
+                };
+                let _ = write!(
+                    out,
+                    r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                    font_style, font_weight
+                );
+                if word_index > 0 {
+                    out.push(' ');
+                }
+                escape_xml_into(out, word);
+                out.push_str("</tspan>");
+            }
+        }
+        out.push_str("</tspan>");
     }
 }

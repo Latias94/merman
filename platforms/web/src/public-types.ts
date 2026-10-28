@@ -409,6 +409,41 @@ interface SvgBindingFields {
 
 export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
 
+/** Already loaded Iconify JSON; acquisition and credentials belong to the host. */
+export interface LoadedIconPack {
+  json: string;
+  registrationName?: string;
+}
+
+export interface RenderSessionOptions {
+  iconPacks?: readonly LoadedIconPack[];
+}
+
+/** Immutable constructor services, scoped to this session and its creating package runtime. */
+export interface BrowserRenderSession {
+  renderSvg(source: string, options?: SvgBindingOptions | string): string;
+  layoutJson(source: string, options?: SvgBindingOptions | string): string;
+  edgeGeometryJson(source: string, options?: SvgBindingOptions | string): string;
+  renderSvgWithTextMeasurer(source: string, measurer: HostTextMeasurer, options?: SvgBindingOptions | string): string;
+  layoutJsonWithTextMeasurer(source: string, measurer: HostTextMeasurer, options?: SvgBindingOptions | string): string;
+  edgeGeometryJsonWithTextMeasurer(source: string, measurer: HostTextMeasurer, options?: SvgBindingOptions | string): string;
+  dispose(): void;
+}
+
+export interface WasmRenderSessionBinding {
+  renderSvg(source: string, optionsJson?: string | null): string;
+  layoutJson(source: string, optionsJson?: string | null): string;
+  edgeGeometryJson(source: string, optionsJson?: string | null): string;
+  renderSvgWithTextMeasurer(source: string, optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  layoutJsonWithTextMeasurer(source: string, optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  edgeGeometryJsonWithTextMeasurer(source: string, optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  free(): void;
+}
+
+export interface WasmRenderSessionConstructor {
+  new (iconPacksJson?: string | null): WasmRenderSessionBinding;
+}
+
 export type BindingOptions = SvgBindingOptions;
 
 export interface HostTextMeasureRequest {
@@ -962,6 +997,7 @@ export interface MermanWasmModuleBase {
 }
 
 export interface MermanWasmModule extends MermanWasmModuleBase {
+  RenderSession?: WasmRenderSessionConstructor;
   EditorSession?: WasmEditorSessionConstructor;
   transportApiVersion: () => number;
   packageVersion: () => string;

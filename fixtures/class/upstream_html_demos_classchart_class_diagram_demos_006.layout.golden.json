@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "Dog",
-          "x": 270.39,
+          "x": 270.391,
           "y": 220.417,
-          "width": 83.499,
+          "width": 83.5,
           "height": 141.0,
           "is_cluster": false
         },
         {
           "id": "Cat",
-          "x": 250.859,
+          "x": 250.861,
           "y": 68.0,
-          "width": 44.438,
+          "width": 44.44,
           "height": 81.0,
           "is_cluster": false
         },
@@ -141,7 +141,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 312.139,
+        "max_x": 312.141,
         "max_y": 290.917
       }
     }

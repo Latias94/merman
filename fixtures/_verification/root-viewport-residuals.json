@@ -7,7 +7,7 @@
       "localSvgSha256": "a48f7f0a4b8e6b513fecb476d196481b1109bcb5bdb933055e41a657cf83edfa",
       "upstreamSvgSha256": "11a3106caf5254ea2122aee581f9ac87ef6415c7acff3a14fe697c24316bdfba",
       "reason": "deterministic-title-display-font-with-reviewed-filter-paint",
-      "auditSha256": "176bfd8735db49d993cb3145c6de399639d7858cbfae4b8307b18ff69b660dbc"
+      "auditSha256": "1908aca6c4fb2104cbfae63d54c9f4ff12c891b5c024bb5038a2cc1ed0131181"
     },
     {
       "fixture": "xychart/upstream_xychart_yaxis_range_without_title_jison_spec",

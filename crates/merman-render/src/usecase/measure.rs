@@ -1,7 +1,9 @@
 use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::text::{WrapMode, measure_wrapped_markdown_with_inline_styles};
+use crate::text::{
+    WrapMode, measure_html_with_inline_styles, measure_wrapped_markdown_with_inline_styles,
+};
 use merman_core::diagrams::usecase::{
     UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
     UsecaseRelationshipType,
@@ -112,6 +114,56 @@ struct LabelContext<'a> {
     styles: &'a indexmap::IndexMap<String, String>,
 }
 
+fn measure_plain_label(
+    source: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    html: bool,
+    measurer: &dyn TextMeasurer,
+) -> TextMetrics {
+    if html {
+        let fragment = format!("<p>{}</p>", source.replace('\n', "<br/>"));
+        return measure_html_with_inline_styles(
+            measurer,
+            &fragment,
+            style,
+            max_width,
+            WrapMode::HtmlLike,
+        );
+    }
+
+    // Match the writer's source tokenization before decoding each textContent payload.
+    // Decoded rows are literal tspan text, not another input to label normalization.
+    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(source);
+    let mut metrics = TextMetrics {
+        width: 0.0,
+        height: 0.0,
+        line_count: lines.len(),
+    };
+    let mut vertical_bounds: Option<(f64, f64)> = None;
+    for (index, line) in lines.iter().enumerate() {
+        let visible = crate::text::non_markdown_svg_words(line)
+            .map(crate::entities::decode_svg_text_content_entities)
+            .collect::<Vec<_>>()
+            .join(" ");
+        if visible.is_empty() {
+            continue;
+        }
+        metrics.width = metrics
+            .width
+            .max(measurer.measure_svg_tspan_text_bbox_width_px(&visible, style));
+        let top = index as f64 * style.font_size * 1.1
+            + measurer.measure_svg_create_text_bbox_y_offset_px(&visible, style);
+        let bottom = top + measurer.measure_svg_tspan_text_bbox_height_px(&visible, style);
+        vertical_bounds = Some(match vertical_bounds {
+            Some((min, max)) => (min.min(top), max.max(bottom)),
+            None => (top, bottom),
+        });
+    }
+    metrics.height = vertical_bounds.map_or(0.0, |(top, bottom)| bottom - top);
+    metrics
+}
+
 fn label(
     text: &str,
     label_type: UsecaseLabelType,
@@ -131,6 +183,12 @@ fn label(
     } else {
         WrapMode::SvgLike
     };
+    let measurement_style = if !html && label_type == UsecaseLabelType::Text {
+        // Plain createText words reset weight/style, but keep the enclosing role size/family.
+        crate::text::svg_markdown_word_style(style, crate::text::MermaidMarkdownWordType::Normal)
+    } else {
+        std::borrow::Cow::Borrowed(style)
+    };
     let source = create_text_source(text, label_type);
     let source = source.as_ref();
     let math_renderer = context
@@ -145,7 +203,7 @@ fn label(
         crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
             measurer: context.measurer,
             raw_label: source,
-            style,
+            style: &measurement_style,
             max_width_px: max_width,
             wrap_mode: mode,
             config: context.config,
@@ -156,14 +214,18 @@ fn label(
                 measure_wrapped_markdown_with_inline_styles(
                     context.measurer,
                     text,
-                    style,
+                    &measurement_style,
                     max_width,
                     mode,
                 )
             } else {
-                context
-                    .measurer
-                    .measure_wrapped(source, style, max_width, mode)
+                measure_plain_label(
+                    source,
+                    &measurement_style,
+                    max_width,
+                    html,
+                    context.measurer,
+                )
             }
         });
     // labelHelper.withMinWidth also widens the measured box for SVG labels.

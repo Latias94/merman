@@ -261,6 +261,28 @@ test("Infinite Canvas reveals visual overflow while ViewBox Frame preserves root
   );
 
   const viewport = page.locator('[data-merman-svg-viewport="true"]').first();
+  const forceTitleOverflow = async () => {
+    // Keep the viewport contract independent of renderer bugs: deliberately move a
+    // title across the root boundary, then fit using the actual mounted geometry.
+    await viewport.locator(".preview-container > div").first().evaluate((host) => {
+      const svg = host.shadowRoot?.querySelector<SVGSVGElement>("svg");
+      const title = [...(svg?.querySelectorAll<SVGTextElement>("text") ?? [])].find(
+        (text) => text.textContent?.startsWith("A diagram title that is quite long"),
+      );
+      if (!svg || !title) throw new Error("Missing Sequence title fixture.");
+      const viewBox = svg.viewBox.baseVal;
+      title.setAttribute("x", String(viewBox.x + viewBox.width * 0.75));
+    });
+    await page.getByRole("button", { name: "Fit to view", exact: true }).click();
+    if (await viewport.getAttribute("data-svg-presentation-mode") === "infinite") {
+      await expect.poll(async () => {
+        const current = await sequenceTitlePresentation(viewport);
+        return current.titleRect.left >= current.viewportRect.left - 1 &&
+          current.titleRect.right <= current.viewportRect.right + 1;
+      }).toBe(true);
+    }
+  };
+  await forceTitleOverflow();
   const infinite = await sequenceTitlePresentation(viewport);
   expect(infinite.titleBounds.right).toBeGreaterThan(infinite.viewBox.right);
   expect(infinite.rootOverflow).toBe("visible");
@@ -274,9 +296,11 @@ test("Infinite Canvas reveals visual overflow while ViewBox Frame preserves root
   await page
     .getByRole("button", { name: "ViewBox Frame", exact: true })
     .click();
+  await forceTitleOverflow();
   const framed = await sequenceTitlePresentation(viewport);
   expect(framed.viewBox).toEqual(infinite.viewBox);
-  expect(framed.titleBounds).toEqual(infinite.titleBounds);
+  expect(framed.titleMarkup).toEqual(infinite.titleMarkup);
+  expect(framed.titleBounds.right).toBeGreaterThan(framed.viewBox.right);
   expect(framed.rootOverflow).toBe("hidden");
 
   await page
@@ -798,6 +822,7 @@ async function sequenceTitlePresentation(viewport: Locator) {
     const titleRect = title.getBoundingClientRect();
     return {
       rootOverflow: getComputedStyle(svg).overflow,
+      titleMarkup: title.outerHTML,
       titleBounds: {
         left: titleBounds.x,
         right: titleBounds.x + titleBounds.width,

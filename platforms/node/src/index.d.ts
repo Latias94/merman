@@ -18,8 +18,15 @@ export interface MermanBindingOptions {
   [key: string]: unknown;
 }
 
+/** One host-loaded Iconify pack, admitted once into an immutable engine-local registry. */
+export interface MermanIconPack {
+  json: string;
+  registrationName?: string;
+}
+
 export interface CreateNodeEngineOptions {
   bindingOptions?: MermanBindingOptions;
+  iconPacks?: readonly MermanIconPack[];
   concurrency?: number;
   maxQueue?: number;
 }
@@ -252,12 +259,19 @@ export interface MermanCancellationErrorDetails {
   readonly [key: string]: unknown;
 }
 
+export interface MermanIconRegistryErrorDetails {
+  readonly kind_id: string;
+  readonly pack_index: number | null;
+  readonly registration_name: string | null;
+}
+
 export declare class MermanOperationError extends MermanError {
   readonly status: number | null;
   readonly codeName: string | null;
   readonly kind: "generic" | "unknown-operation" | "missing-capability" | string;
   readonly capabilityId: string | null;
   readonly resourceDetails: MermanResourceErrorDetails | null;
+  readonly iconRegistryDetails: MermanIconRegistryErrorDetails | null;
   readonly diagnosticDetails: MermanDiagnosticErrorDetails | null;
   readonly cancellationDetails: MermanCancellationErrorDetails | null;
 }

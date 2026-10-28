@@ -2,7 +2,6 @@ use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
 use crate::text::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownWordType, TextMeasurer, TextStyle,
-    WrapMode,
 };
 use std::fmt::Write as _;
 use std::time::Duration;
@@ -63,6 +62,8 @@ pub(super) fn render_class_note_node(
 
     let note_src = note.text.trim();
     let note_text = decode_entities_minimal_cow(note_src);
+    let svg_label =
+        (!ctx.use_html_labels).then(|| crate::class::ClassSvgNoteLabel::new(&note_text));
     let (label_w_raw, label_h_raw) = if ctx.use_html_labels {
         match (layout_node.label_width, layout_node.label_height) {
             (Some(w), Some(h)) => (w, h),
@@ -82,16 +83,10 @@ pub(super) fn render_class_note_node(
             }
         }
     } else {
-        let mut metrics =
-            ctx.measurer
-                .measure_wrapped(&note_text, ctx.text_style, None, WrapMode::SvgLike);
-        if let Some(width) = crate::class::class_svg_single_line_plain_label_width_px(
-            note_text.as_ref(),
-            ctx.measurer,
-            ctx.text_style,
-        ) {
-            metrics.width = width;
-        }
+        let metrics = svg_label
+            .as_ref()
+            .expect("SVG note label")
+            .metrics(ctx.measurer, ctx.text_style);
         (metrics.width, metrics.height)
     };
     let label_w = label_w_raw.max(1.0);
@@ -109,9 +104,10 @@ pub(super) fn render_class_note_node(
         -label_h / 2.0
     } else {
         -label_h / 2.0
-            - ctx
-                .measurer
-                .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
+            - svg_label
+                .as_ref()
+                .expect("SVG note label")
+                .bbox_y_offset(ctx.measurer, ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
     let rough_seed = class_rough_seed(
@@ -263,7 +259,11 @@ pub(super) fn render_class_note_node(
             fmt(label_x),
             fmt(label_y),
         );
-        write_class_svg_text_markdown_with_style(out, note_text.as_ref(), note_label_style);
+        write_class_svg_text_markdown_lines_with_style(
+            out,
+            svg_label.as_ref().expect("SVG note label").lines(),
+            note_label_style,
+        );
         out.push_str("</g></g></g>");
     }
 
@@ -282,18 +282,17 @@ fn class_note_sanitize_config<'a>(
         .get_or_insert_with(|| merman_core::MermaidConfig::from_value(effective_config.clone()))
 }
 
-fn write_class_svg_text_markdown_with_style(out: &mut String, markdown: &str, style: &str) {
-    let markdown = markdown
-        .strip_prefix('`')
-        .and_then(|s| s.strip_suffix('`'))
-        .unwrap_or(markdown);
+fn write_class_svg_text_markdown_lines_with_style(
+    out: &mut String,
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: &str,
+) {
     let _ = write!(
         out,
         r#"<text y="-10.1" style="{}">"#,
         escape_attr_display(style)
     );
 
-    let lines = crate::text::mermaid_markdown_to_lines(markdown, true);
     if lines.len() == 1 && lines[0].is_empty() {
         out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
         out.push_str("</text>");

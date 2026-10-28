@@ -111,39 +111,32 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
 
     // Mermaid serializes generated CSS with comma-separated font-family lists and no extra
     // whitespace around commas. Keep that spelling stable for SVG parity.
-    let mut parts: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    let mut in_single = false;
-    let mut in_double = false;
-
-    for ch in s.chars() {
-        match ch {
-            '\'' if !in_double => {
-                in_single = !in_single;
-                cur.push(ch);
-            }
-            '"' if !in_single => {
-                in_double = !in_double;
-                cur.push(ch);
-            }
-            ',' if !in_single && !in_double => {
-                let p = cur.trim();
-                if !p.is_empty() {
-                    parts.push(p.to_string());
+    let mut parts = Vec::new();
+    let mut parser = cssparser::Parser::new(s);
+    let mut start = 0;
+    loop {
+        match parser.next_including_whitespace_and_comments() {
+            Ok(cssparser::Token::Comma) => {
+                // Advancing past a function skips its block before returning this comma token.
+                // Use the returned token's end, rather than the position before that advance.
+                let end = parser.position().byte_index();
+                let part = s[start..end - 1].trim();
+                if !part.is_empty() {
+                    parts.push(part);
                 }
-                cur.clear();
+                start = end;
             }
-            _ => cur.push(ch),
+            Ok(_) => {}
+            Err(_) => break,
         }
     }
-
-    let p = cur.trim();
-    if !p.is_empty() {
-        parts.push(p.to_string());
+    let part = s[start..parser.position().byte_index()].trim();
+    if !part.is_empty() {
+        parts.push(part);
     }
 
     let normalized = parts.join(",");
-    if crate::mermaid_style::is_safe_css_font_family_value(&normalized) {
+    if crate::text::is_static_css_font_family_list(&normalized) {
         normalized
     } else {
         String::new()
@@ -443,6 +436,22 @@ mod tests {
             normalize_css_font_family(r#"'Open Sans', "IBM Plex Sans", sans-serif"#),
             r#"'Open Sans',"IBM Plex Sans",sans-serif"#
         );
+    }
+
+    #[test]
+    fn normalize_css_font_family_preserves_quoted_separators_and_rejects_declarations() {
+        assert_eq!(
+            normalize_css_font_family(r#""Budget; Face", "Comma, Face", serif;"#),
+            r#""Budget; Face","Comma, Face",serif"#
+        );
+        for malformed in [
+            "url(x)",
+            "serif; color:red",
+            "</style><svg>",
+            "inherit junk",
+        ] {
+            assert_eq!(normalize_css_font_family(malformed), "", "{malformed}");
+        }
     }
 
     #[test]

@@ -189,7 +189,6 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Playground application", labels)
         self.assertIn("Playground application lock", labels)
         self.assertIn("Playground application lock package", labels)
-        self.assertIn("Playground local Web workspace lock", labels)
         self.assertIn("Playground local Web lock @mermanjs/web", labels)
         self.assertIn("Playground license lock digest", labels)
         self.assertIn("Playground license local Web package", labels)
@@ -220,6 +219,84 @@ class ReleaseProjectionTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn(f"Cargo workspace authority: {authority}", stdout.getvalue())
+
+    def test_playground_lock_accepts_both_native_local_workspace_shapes(self) -> None:
+        original = (self.ROOT / release_projection.PLAYGROUND_LOCK).read_text(encoding="utf-8")
+        report = (self.ROOT / release_projection.PLAYGROUND_LICENSE_REPORT).read_text(
+            encoding="utf-8"
+        )
+        old_digest = hashlib.sha256(original.encode("utf-8")).hexdigest()
+        workspace = json.loads(
+            (self.ROOT / release_projection.WEB_WORKSPACE_PACKAGE).read_text(encoding="utf-8")
+        )
+        for include_workspace in (False, True):
+            with self.subTest(include_workspace=include_workspace):
+                lock = json.loads(original)
+                lock["packages"].pop("../platforms/web", None)
+                if include_workspace:
+                    lock["packages"]["../platforms/web"] = workspace
+                updated = json.dumps(lock, indent=2) + "\n"
+                new_digest = hashlib.sha256(updated.encode("utf-8")).hexdigest()
+
+                result = release_projection.verify_repository(
+                    self.ROOT,
+                    overrides={
+                        release_projection.PLAYGROUND_LOCK: updated,
+                        release_projection.PLAYGROUND_LICENSE_REPORT: replace_once(
+                            report, old_digest, new_digest
+                        ),
+                    },
+                )
+
+                self.assertTrue(result.ok, result)
+                labels = {observation.label for observation in result.observations}
+                self.assertEqual(
+                    "Playground local Web workspace lock" in labels, include_workspace
+                )
+                self.assertIn("Playground local Web lock @mermanjs/web", labels)
+                if include_workspace:
+                    lock["packages"]["../platforms/web"]["version"] = "9.9.9"
+                    drifted = release_projection.verify_repository(
+                        self.ROOT,
+                        overrides={release_projection.PLAYGROUND_LOCK: json.dumps(lock)},
+                    )
+                    observation = next(
+                        item for item in drifted.observations
+                        if item.label == "Playground local Web workspace lock"
+                    )
+                    self.assertFalse(observation.matches)
+
+    def test_playground_lock_rejects_malformed_optional_workspace_entry(self) -> None:
+        original = (self.ROOT / release_projection.PLAYGROUND_LOCK).read_text(encoding="utf-8")
+        for invalid in (None, [], "workspace"):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                release_projection.ReleaseProjectionError,
+                "Playground lock local Web workspace must be a table/object",
+            ):
+                release_projection.verify_repository(
+                    self.ROOT,
+                    overrides={
+                        release_projection.PLAYGROUND_LOCK: replace_json_path(
+                            original, ("packages", "../platforms/web"), invalid
+                        )
+                    },
+                )
+
+    def test_playground_lock_requires_local_web_package_without_workspace_entry(self) -> None:
+        lock = json.loads(
+            (self.ROOT / release_projection.PLAYGROUND_LOCK).read_text(encoding="utf-8")
+        )
+        lock["packages"].pop("../platforms/web", None)
+        del lock["packages"]["../platforms/web/packages/full"]
+
+        with self.assertRaisesRegex(
+            release_projection.ReleaseProjectionError,
+            "Playground lock local @mermanjs/web package",
+        ):
+            release_projection.verify_repository(
+                self.ROOT,
+                overrides={release_projection.PLAYGROUND_LOCK: json.dumps(lock)},
+            )
 
     def test_every_release_projection_category_fails_closed_on_drift(self) -> None:
         version = release_projection.verify_repository(self.ROOT).authority
@@ -416,18 +493,10 @@ class ReleaseProjectionTests(unittest.TestCase):
             ),
             (
                 release_projection.PLAYGROUND_LOCK,
-                lambda text: replace_once(
+                lambda text: replace_json_path(
                     text,
-                    (
-                        '"../platforms/web": {\n'
-                        '      "name": "merman-web-workspace",\n'
-                        f'      "version": "{canonical}"'
-                    ),
-                    (
-                        '"../platforms/web": {\n'
-                        '      "name": "merman-web-workspace",\n'
-                        '      "version": "9.9.9"'
-                    ),
+                    ("packages", "../platforms/web"),
+                    {"name": "merman-web-workspace", "version": "9.9.9"},
                 ),
             ),
             (

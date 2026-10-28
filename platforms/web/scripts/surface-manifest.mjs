@@ -51,6 +51,7 @@ const analysisMetadataRuntimeExportNames = ["lintRuleCatalog"];
 const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 
 const renderRuntimeExportNames = [
+  "createRenderSession",
   "renderSvg",
   "svgPlanJson",
   "edgeGeometryJson",
@@ -67,6 +68,7 @@ const renderRuntimeExportNames = [
 ];
 
 const renderWasmExportNames = [
+  "RenderSession",
   "renderSvg",
   "svgPlanJson",
   "edgeGeometryJson",
@@ -196,8 +198,15 @@ export const surfaceModules = defineSurfaceModules([
     id: "render",
     specifier: "../runtime-render.js",
     owner: "render",
-    runtimeExportNames: renderRuntimeExportNames,
+    runtimeExportNames: renderRuntimeExportNames.filter(name => name !== "createRenderSession"),
     valueExportNames: ["createBrowserTextMeasurementSession"],
+  },
+  {
+    id: "render-session",
+    specifier: "../runtime-render-session.js",
+    owner: "render",
+    runtimeExportNames: ["createRenderSession"],
+    exactValueExports: true,
   },
   {
     id: "editor",

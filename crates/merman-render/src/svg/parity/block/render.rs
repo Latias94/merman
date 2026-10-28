@@ -1,7 +1,5 @@
 use super::super::*;
-use crate::block::{
-    BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry, block_label_is_effectively_empty,
-};
+use crate::block::{BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry};
 use crate::model::LayoutPoint;
 use crate::svg::parity::roughjs_common::{closed_path_d_from_points, ops_to_svg_path_d};
 
@@ -10,15 +8,10 @@ use crate::svg::parity::roughjs_common::{closed_path_d_from_points, ops_to_svg_p
 pub(crate) fn render_block_diagram_svg_model(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    prepared_labels: &crate::block::BlockPreparedLabels,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    fn decode_block_label_html(raw: &str) -> String {
-        // Mermaid's block diagram labels are rendered via an HTML foreignObject label helper,
-        // which decodes HTML entities (notably `&nbsp;`).
-        raw.replace("&nbsp;", "\u{00A0}")
-    }
-
     fn roughjs_block_paths(
         path_data: &str,
         stroke_width: f32,
@@ -189,7 +182,6 @@ pub(crate) fn render_block_diagram_svg_model(
     #[derive(Clone)]
     struct RenderNode {
         color_index: Option<usize>,
-        label: String,
         block_type: String,
         classes: Vec<String>,
         styles: Vec<String>,
@@ -203,7 +195,6 @@ pub(crate) fn render_block_diagram_svg_model(
                 node.id.clone(),
                 RenderNode {
                     color_index: node.color_index,
-                    label: node.label.clone(),
                     block_type: node.block_type.clone(),
                     classes: node.classes.clone(),
                     styles: node.styles.clone(),
@@ -794,10 +785,12 @@ pub(crate) fn render_block_diagram_svg_model(
             }
         }
 
-        let label = decode_block_label_html(&node.label);
-        let label_effectively_empty =
-            node.label.is_empty() || block_label_is_effectively_empty(&label);
-        let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
+        let prepared_label = prepared_labels
+            .node(&n.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Block label for node `{}`", n.id),
+            })?;
+        let (label_tx, label_ty, label_w, label_h) = if prepared_label.is_empty() {
             (0.0, 0.0, 0.0, 0.0)
         } else {
             let label_w = n.label_width.unwrap_or(0.0).max(0.0);
@@ -817,11 +810,6 @@ pub(crate) fn render_block_diagram_svg_model(
         } else {
             format!(r#" style="{}""#, escape_attr(&node_text_style))
         };
-        let label_markup = if node.label.is_empty() {
-            String::new()
-        } else {
-            format!("<p>{}</p>", escape_xml(&label))
-        };
         let _ = write!(
             &mut out,
             r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
@@ -832,7 +820,7 @@ pub(crate) fn render_block_diagram_svg_model(
             fmt(label_h),
             escape_attr(&node_div_style_prefix),
             span_style_attr,
-            label_markup
+            prepared_label.xhtml
         );
 
         out.push_str("</g>");
@@ -901,17 +889,23 @@ pub(crate) fn render_block_diagram_svg_model(
         out.push_str("/>");
     }
 
-    for e in &model.edges {
+    for (edge_index, e) in model.edges.iter().enumerate() {
         let Some(le) = layout.edges.iter().find(|x| x.id == e.id) else {
             continue;
         };
         let Some(lbl) = le.label.as_ref().filter(|_| !e.label.trim().is_empty()) else {
             continue;
         };
+        let prepared_label =
+            prepared_labels
+                .edge(edge_index)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("missing prepared Block label for edge `{}`", e.id),
+                })?;
 
         let _ = write!(
             &mut out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
             fmt(lbl.x),
             fmt(lbl.y),
             escape_attr(&e.id),
@@ -919,7 +913,7 @@ pub(crate) fn render_block_diagram_svg_model(
             fmt(-lbl.height / 2.0),
             fmt(lbl.width),
             fmt(lbl.height),
-            escape_xml(&decode_block_label_html(&e.label))
+            prepared_label.xhtml
         );
     }
 
@@ -933,6 +927,97 @@ mod tests {
     use super::*;
     use crate::environment::RenderEnvironment;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn block_writer_consumes_retained_node_and_semantically_indexed_edge_fragments() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "block\n A[\"Alpha<br/>Beta\"] -- \"First &amp; edge\" --> B[\"Target\"]\n A -- \"Second<br/>edge\" --> B\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("parse Block labels")
+            .expect("detect Block");
+        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            panic!("expected Block");
+        };
+        let mut model = model.clone();
+        // A missing endpoint must not shift the later labels' semantic indexes.
+        let mut omitted = model.edges[0].clone();
+        omitted.start = "missing".to_owned();
+        omitted.label = "Omitted edge".to_owned();
+        model.edges.insert(0, omitted);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let (mut layout, prepared) = crate::block::layout_block_diagram_typed(
+            &model,
+            &parsed.metadata().effective_config,
+            &session.text_measurer(crate::environment::TextMeasurementPhase::Layout),
+            session.work_meter().as_ref(),
+        )
+        .expect("prepare Block terminals");
+        assert_eq!(layout.edges.len(), 2);
+        assert!(
+            prepared.edge(0).is_none(),
+            "filtered edges have no retained XHTML"
+        );
+        let mut empty_model = model.clone();
+        empty_model.edges[1].label = " \t ".to_owned();
+        let (_, empty_prepared) = crate::block::layout_block_diagram_typed(
+            &empty_model,
+            &parsed.metadata().effective_config,
+            &session.text_measurer(crate::environment::TextMeasurementPhase::Layout),
+            session.work_meter().as_ref(),
+        )
+        .expect("prepare with an empty semantic edge label");
+        assert!(empty_prepared.edge(0).is_none());
+        assert!(empty_prepared.edge(1).is_none());
+        assert!(empty_prepared.edge(2).is_some());
+        // Neither text nor edge IDs may become an alternate source of prepared content.
+        for node in &mut model.blocks_flat {
+            node.label = "Reparsed node".to_owned();
+        }
+        for (index, edge) in model.edges.iter_mut().enumerate() {
+            edge.id = if index == 0 { "omitted" } else { "duplicate" }.to_owned();
+            edge.label = "Reparsed edge".to_owned();
+        }
+        for edge in &mut layout.edges {
+            edge.id = "duplicate".to_owned();
+        }
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let options = SvgExecution::new(&request, &debug, &session).unwrap();
+        let render = |labels| {
+            render_block_diagram_svg_model(
+                &layout,
+                &model,
+                labels,
+                parsed.metadata().effective_config.as_value(),
+                &options,
+            )
+        };
+        let svg = render(&prepared).expect("render retained Block terminals");
+        let document = roxmltree::Document::parse(&svg).expect("valid XHTML SVG");
+        let labels = document
+            .descendants()
+            .filter(|node| node.has_tag_name("span"))
+            .map(|node| {
+                node.descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label == "AlphaBeta"));
+        let edge_labels = labels
+            .iter()
+            .filter(|label| label.contains("edge"))
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(edge_labels, ["First & edge", "Secondedge"]);
+        assert!(!svg.contains("Reparsed"));
+        let error = render(&crate::block::BlockPreparedLabels::default())
+            .expect_err("missing prepared terminals must fail rather than reinterpret text");
+        assert!(matches!(error, Error::InvalidModel { .. }));
+    }
 
     #[test]
     fn diagram_id_terminal_precedes_later_block_model_validation() {
@@ -975,9 +1060,14 @@ mod tests {
             panic!("expected Block render model");
         };
 
-        let error =
-            render_block_diagram_svg_model(&layout, model, &serde_json::json!({}), &options)
-                .expect_err("diagram-id projection must stop before missing geometry validation");
+        let error = render_block_diagram_svg_model(
+            &layout,
+            model,
+            &crate::block::BlockPreparedLabels::default(),
+            &serde_json::json!({}),
+            &options,
+        )
+        .expect_err("diagram-id projection must stop before missing geometry validation");
         let Error::ResourceLimitExceeded(details) = error else {
             panic!("expected SVG byte resource rejection");
         };

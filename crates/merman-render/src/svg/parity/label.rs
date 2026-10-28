@@ -309,22 +309,6 @@ pub(in crate::svg::parity) fn write_svg_text_markdown(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
-    out: &mut String,
-    markdown: &str,
-    include_style: bool,
-) {
-    let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
-    write_svg_text_markdown_lines(
-        out,
-        &lines,
-        include_style.then_some(""),
-        true,
-        true,
-        SvgTextEntityMode::DecodedModel,
-    );
-}
-
 pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
     out: &mut String,
     markdown: &str,
@@ -443,11 +427,11 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_style(
         style,
         max_width_px,
     );
-    if style.font_weight.as_deref() == Some("bold") {
-        for line in &mut lines {
-            for (_, is_strong, _) in line {
-                *is_strong = true;
-            }
+    if style.font_weight.as_deref() == Some("bold")
+        && let Some(first_row) = lines.first_mut()
+    {
+        for (_, is_strong, _) in first_row {
+            *is_strong = true;
         }
     }
     write_svg_text_markdown_lines(

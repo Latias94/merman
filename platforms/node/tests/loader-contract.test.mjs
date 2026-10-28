@@ -572,3 +572,72 @@ test("candidate constructors preserve bindings-core typed errors", async () => {
     });
   }
 });
+
+test("native and Node-WASM loaders forward the optional icon JSON constructor argument", async () => {
+  const packsJson = JSON.stringify([{ json: '{"prefix":"test","icons":{}}', registrationName: "fleet" }]);
+  for (const kind of ["napi", "wasm"]) {
+    for (const icons of [undefined, "[]", packsJson]) {
+      let constructorArgs;
+      class CandidateEngine {
+        constructor(...args) { constructorArgs = args; }
+        execute() {}
+        executeSync() {}
+        metadataJson() {}
+        runtimeCatalogJson() {
+          return JSON.stringify({ package_version: nodeLoaderPackageVersion() });
+        }
+        dispose() {}
+      }
+      const binding = {
+        NativeEngine: CandidateEngine,
+        WasmEngine: CandidateEngine,
+        transportIdentityJson: () => transportIdentityJson(kind),
+      };
+      const transport = kind === "napi"
+        ? await loadNativeTransport("{}", { loadPackage: () => binding }, icons)
+        : await loadNodeWasmTransport("{}", {
+          modulePath: "candidate:node-wasm", loadModule: async () => binding,
+        }, icons);
+      assert.deepEqual(constructorArgs, icons === undefined ? ["{}"] : ["{}", icons]);
+      await transport.dispose();
+    }
+  }
+});
+
+test("both candidate loaders retain structured icon constructor failures", async () => {
+  const details = {
+    resource: {
+      cause: "ceiling", limit_id: "max_icon_registry_prefix_bytes",
+      phase: "icon_registry_parse", actual: 65, max: 64, profile: "constructor-fixed",
+    },
+    icon_registry: { kind_id: "resource_limit_exceeded", pack_index: 0, registration_name: null },
+  };
+  const envelope = JSON.stringify({
+    version: 1, ok: false,
+    error: {
+      code: 10, code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED", kind: "generic",
+      capability_id: null, details, message: "registration name exceeds the fixed registry ceiling",
+    },
+  });
+  class CandidateEngine {
+    constructor() { throw new Error(envelope); }
+  }
+  for (const kind of ["napi", "wasm"]) {
+    const binding = {
+      NativeEngine: CandidateEngine, WasmEngine: CandidateEngine,
+      transportIdentityJson: () => transportIdentityJson(kind),
+    };
+    const create = () => kind === "napi"
+      ? loadNativeTransport("{}", { loadPackage: () => binding }, "[]")
+      : loadNodeWasmTransport("{}", {
+        modulePath: "candidate:node-wasm", loadModule: async () => binding,
+      }, "[]");
+    await assert.rejects(create, (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.equal(error.codeName, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+      assert.deepEqual(error.iconRegistryDetails, details.icon_registry);
+      assert.deepEqual(error.resourceDetails, details.resource);
+      return true;
+    });
+  }
+});

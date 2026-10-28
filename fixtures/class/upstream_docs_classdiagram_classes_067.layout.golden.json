@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Animal",
-          "x": 75.731,
+          "x": 75.73,
           "y": 79.5,
-          "width": 127.462,
+          "width": 127.46,
           "height": 135.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 139.462,
+        "max_x": 139.46,
         "max_y": 147.0
       }
     }

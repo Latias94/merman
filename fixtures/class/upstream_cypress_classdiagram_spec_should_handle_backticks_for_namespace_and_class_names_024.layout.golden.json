@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "A::B",
-          "x": 81.672,
+          "x": 81.67,
           "y": 220.5,
-          "width": 139.344,
+          "width": 139.34,
           "height": 155.0,
           "is_cluster": true
         },
         {
           "id": "RenderProcessHost",
-          "x": 81.672,
+          "x": 81.67,
           "y": 52.5,
-          "width": 133.484,
+          "width": 133.48,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "IPC::Sender",
-          "x": 81.672,
+          "x": 81.67,
           "y": 233.5,
-          "width": 91.344,
+          "width": 91.34,
           "height": 81.0,
           "is_cluster": false
         }
@@ -37,15 +37,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 81.672,
+              "x": 81.67,
               "y": 93.0
             },
             {
-              "x": 81.672,
+              "x": 81.67,
               "y": 133.0
             },
             {
-              "x": 81.672,
+              "x": 81.67,
               "y": 193.0
             }
           ],
@@ -62,15 +62,15 @@
       "clusters": [
         {
           "id": "A::B",
-          "x": 81.672,
+          "x": 81.67,
           "y": 220.5,
-          "width": 139.344,
+          "width": 139.34,
           "height": 155.0,
           "diff": -12.0,
           "offset_y": 15.0,
           "title": "A::B",
           "title_label": {
-            "x": 81.672,
+            "x": 81.67,
             "y": 153.5,
             "width": 24.64,
             "height": 21.0
@@ -85,7 +85,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 151.344,
+        "max_x": 151.34,
         "max_y": 298.0
       }
     }

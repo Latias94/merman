@@ -32,14 +32,20 @@ fn render_config(
     source: &str,
     config: serde_json::Value,
 ) -> (merman_core::ManagedSemanticJson, String) {
+    render_config_with_environment(source, config, RenderEnvironment::deterministic())
+}
+
+fn render_config_with_environment(
+    source: &str,
+    config: serde_json::Value,
+    environment: RenderEnvironment,
+) -> (merman_core::ManagedSemanticJson, String) {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Usecase")
         .expect("detect Usecase");
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("render session");
+    let session = environment.begin_session().expect("render session");
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Usecase");
     let projection = artifact.layout_json().expect("layout JSON");
@@ -55,6 +61,203 @@ fn render_config(
         .svg()
         .to_owned();
     (projection, svg)
+}
+
+#[test]
+fn usecase_html_markdown_measures_visible_inline_literals_without_added_spaces() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct LiteralMeasurer(Mutex<Vec<String>>);
+    impl TextMeasurer for LiteralMeasurer {
+        fn measure(&self, text: &str, _: &TextStyle) -> TextMetrics {
+            self.0.lock().unwrap().push(text.to_owned());
+            TextMetrics {
+                width: text.chars().count() as f64 * 2.0,
+                height: 20.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    for text in [
+        "x `c` [visible label](u)",
+        "pre`code`post",
+        "pre[visible label](u)`code`post",
+        "x `c` ~~visible label~~",
+        "pre~~visible~~`code`post",
+        "pre`code`[]()post",
+    ] {
+        let measurer = Arc::new(LiteralMeasurer::default());
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.usecase-inline-literals").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            measurer.clone(),
+        );
+        let (_, svg) = render_config_with_environment(
+            &format!("usecase-beta\nA(\"`{text}`\")\n"),
+            json!({"layout":"dagre", "htmlLabels":true,
+                "usecase":{"wrappingWidth":1000,"minNodeWidth":0}}),
+            RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let paragraph = document
+            .descendants()
+            .find(|node| node.has_tag_name("p"))
+            .unwrap();
+        let visible: String = paragraph
+            .descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect();
+        assert_eq!(visible, text);
+        let requests = measurer.0.lock().unwrap();
+        assert!(
+            requests.iter().any(|request| request == &visible),
+            "{text:?}: {requests:?}"
+        );
+        let foreign_object = paragraph
+            .ancestors()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            foreign_object
+                .attribute("width")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap(),
+            visible.chars().count() as f64 * 2.0,
+            "{text:?}"
+        );
+        assert_eq!(foreign_object.attribute("height"), Some("20"), "{text:?}");
+    }
+}
+
+#[test]
+fn usecase_plain_svg_word_measurement_resets_weight_without_changing_role_fonts() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::sync::Arc;
+
+    struct WeightSensitiveMeasurer;
+
+    impl TextMeasurer for WeightSensitiveMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            let weight_scale = if matches!(style.font_weight.as_deref(), Some("bold" | "700")) {
+                2.0
+            } else {
+                1.0
+            };
+            TextMetrics {
+                width: text.chars().count() as f64 * style.font_size / 2.0 * weight_scale,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+
+        // Keep the font oracle explicit for the terminal HTML line and SVG tspan operations.
+        fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).width
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).width
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).height
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _: &str, _: &TextStyle) -> f64 {
+            0.0
+        }
+    }
+
+    for html in [false, true] {
+        let config = MermaidConfig::from_value(json!({
+            "layout": "dagre", "look": "classic", "htmlLabels": html,
+            "themeVariables": {"fontSize": "40px", "fontFamily": "Root Probe"},
+            "usecase": {
+                "usecaseFontFamily": "Role Probe", "usecaseFontSize": 20,
+                "usecaseFontWeight": "bold", "minNodeWidth": 0, "wrappingWidth": 1000
+            }
+        }));
+        let parsed = Engine::new()
+            .with_site_config(config)
+            .parse_diagram_for_render_model_sync("usecase-beta\nA(Probe)\n", ParseOptions::strict())
+            .expect("parse Usecase")
+            .expect("detect Usecase");
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("usecase-terminal-weight").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(WeightSensitiveMeasurer),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+            .begin_session()
+            .expect("render session");
+        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .expect("prepare Usecase");
+        let projection = artifact.layout_json().expect("Usecase layout");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Usecase");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Usecase SVG");
+        let word = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name(if html { "p" } else { "tspan" })
+                    && node.text() == Some("Probe")
+                    && (html || node.attribute("class") == Some("text-inner-tspan"))
+            })
+            .expect("visible terminal word");
+        let group = word
+            .ancestors()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "label")
+                    })
+            })
+            .expect("role label group");
+        let style = group
+            .attribute("style")
+            .expect("maintenance role font style");
+        assert!(style.contains("font-family:Role Probe"), "{style}");
+        assert!(style.contains("font-size:20px"), "{style}");
+        assert!(style.contains("font-weight:bold"), "{style}");
+        if !html {
+            assert_eq!(word.attribute("font-weight"), Some("normal"));
+            assert_eq!(word.attribute("font-style"), Some("normal"));
+        }
+        let node = projection["layout"]["UsecaseDiagram"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "A")
+            .expect("Usecase node");
+        // Five 10px glyphs plus the ellipse's 40px; HTML inherits the doubled bold advance.
+        assert_eq!(
+            node["width"],
+            json!(if html { 140.0 } else { 90.0 }),
+            "html={html}"
+        );
+    }
 }
 
 #[test]

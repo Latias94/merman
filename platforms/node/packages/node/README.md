@@ -89,5 +89,39 @@ or transport-admission checkpoint and reports Merman's typed cancellation detail
 Use `renderSvgSync()` only for an explicitly synchronous static-site build path. It refuses to run
 while asynchronous operations are active or queued.
 
+## Loaded icon packs (unreleased)
+
+Load Iconify pack JSON in the host and pass its text as a constructor service:
+
+```js
+import { readFile } from "node:fs/promises";
+import { createNodeEngine } from "@mermanjs/node";
+
+const json = await readFile("./icons.json", "utf8");
+const engine = await createNodeEngine({
+  iconPacks: [{ json, registrationName: "app" }],
+});
+try {
+  const svg = await engine.renderSvg('flowchart TD\nA@{ icon: "app:rocket", label: "Launch" }');
+  console.log(svg);
+} finally {
+  await engine.dispose();
+}
+```
+
+The example assumes the pack contains `rocket`. `json` must be the loaded JSON string.
+Omit `registrationName` to use the pack's prefix. A registered icon takes precedence over a
+matching built-in icon in that engine. Packs are admitted once into immutable engine-local
+state; changing the original array or rendering through another engine does not change it.
+Per-request options preserve the installed registry.
+
+`iconPacks` belongs to `CreateNodeEngineOptions`, separately from `bindingOptions`.
+An omitted value or `[]` retains ordinary rendering. The constructor performs no network or
+filesystem access. The fixed pack/content limits advertised by the `icon-registry` constructor
+contract apply across native and Node-WASM. Content failures retain
+`MermanOperationError.iconRegistryDetails`, and resource failures also retain
+`resourceDetails`. A failed constructor publishes no engine. Dispose engines when their build
+or request scope ends.
+
 See the [Node.js package guide](https://github.com/Latias94/merman/blob/main/platforms/node/README.md)
 for source-checkout development, package verification, and release design.

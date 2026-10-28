@@ -936,15 +936,17 @@ def _collect_platform_versions(
         PLAYGROUND_LOCK,
         playground_lock_package.get("version"),
     )
-    playground_web_workspace = _mapping(
-        playground_packages.get("../platforms/web"),
-        "Playground lock local Web workspace",
-    )
-    observe(
-        "Playground local Web workspace lock",
-        PLAYGROUND_LOCK,
-        playground_web_workspace.get("version"),
-    )
+    # npm can omit the parent workspace when only a child package is linked.
+    if "../platforms/web" in playground_packages:
+        playground_web_workspace = _mapping(
+            playground_packages["../platforms/web"],
+            "Playground lock local Web workspace",
+        )
+        observe(
+            "Playground local Web workspace lock",
+            PLAYGROUND_LOCK,
+            playground_web_workspace.get("version"),
+        )
     for entry, package_dir in playground_web_packages:
         lock_key = f"../{package_dir.as_posix()}"
         local_package = _mapping(
@@ -1450,13 +1452,14 @@ def _prepare_npm_versions(root: Path, release: ReleaseVersion) -> None:
         run(package_root, *lock_args)
 
     playground_local_keys = {
-        "../platforms/web",
-        *(f"../{package_dir.as_posix()}" for _entry, package_dir in playground_web_packages),
+        f"../{package_dir.as_posix()}" for _entry, package_dir in playground_web_packages
     }
     playground_lock = _load_json_object(
         (root / PLAYGROUND_LOCK).read_text(encoding="utf-8"), str(PLAYGROUND_LOCK)
     )
     playground_packages = _mapping(playground_lock.get("packages"), "Playground lock packages")
+    if "../platforms/web" in playground_packages:
+        playground_local_keys.add("../platforms/web")
     for key in playground_local_keys:
         _mapping(playground_packages.get(key), f"Playground lock package {key}")["version"] = release.canonical
     playground_lock_text = json.dumps(

@@ -238,7 +238,7 @@ jobs:
 
       - name: Install pinned npm
         if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install wasm-pack
         if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}

@@ -34,6 +34,7 @@ export async function loadNodeWasmTransport(
     modulePath = process.env.MERMAN_NODE_WASM_BINDING,
     loadModule = (specifier) => import(specifier),
   } = {},
+  iconPacksJson,
 ) {
   if (!modulePath) {
     throw new MermanInvalidTransportError(
@@ -61,7 +62,9 @@ export async function loadNodeWasmTransport(
   let transport;
   try {
     transport = wrapCandidateEngine(
-      new WasmEngine(optionsJson),
+      iconPacksJson === undefined
+        ? new WasmEngine(optionsJson)
+        : new WasmEngine(optionsJson, iconPacksJson),
       "The Node-targeted WASM candidate",
       { forwardsAbortSignal: false },
     );

@@ -1,0 +1,33 @@
+{
+  "beforeCommit": "cba3033d8bd832c0a2599f8619843f9ad6ae97ee",
+  "afterCommit": "0c739e3b6ca43793c9fe7c2de23550bb88300f1f",
+  "maintenanceCommit": "ad724572711bdc48a38f2ec6300637692243eb56",
+  "baseline": "Mermaid 12.2.0",
+  "fontMeasurement": "native",
+  "fontFiles": [
+    "Arial.ttf",
+    "Arial Bold.ttf",
+    "Arial Italic.ttf"
+  ],
+  "platform": "macOS",
+  "artifacts": {
+    "architecture-after.svg": "1f7d77ac35336bde1302cd9682b031e75d8d9f1a1d4ff213bdf11c1343f64624",
+    "architecture-before.svg": "d738274eac9719c0e58620a2a3bc684309ee45c9dcf67b90c029787026993edc",
+    "architecture.json": "e408828acbd8ec6d3dcc8195375e6b261c772e312c478a739452aa33c3cb5ed3",
+    "architecture.mmd": "684df9f8bd3552dabe5ecbf146b805e361cf3a287f1ad2da0457671e91a288c7",
+    "xychart-after.svg": "7d5fb768127a63c0d7f2a5f0c559580fb5b131e4f60eaea3455163bdd012e412",
+    "xychart-before.svg": "cfc0ad368befdf95546164c2d71f92c816be0d100745c1ecfce14000370b2cae",
+    "xychart.json": "d9fab7d19269b57afa11b0873d339b77ba1cb1df6060e5b4401944ab14b70a79",
+    "xychart.mmd": "7eb81b4177ab2f71d32dbe9dde74d7b61715c9e55b2ea7129e4de98277a1413c",
+    "comparison.png": "b793de514c2ff3e065ea6c5135d84cab686420703fef7a9ae52dcc4bd03a0089"
+  },
+  "screenshot": {
+    "browser": "Chromium 156.0.8078.4",
+    "viewport": {
+      "width": 1440,
+      "height": 1200
+    },
+    "deviceScaleFactor": 1,
+    "fullPage": true
+  }
+}

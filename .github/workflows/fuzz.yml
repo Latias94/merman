@@ -29,6 +29,11 @@ on:
           - extended
           - long
   workflow_call:
+    inputs:
+      ci_only:
+        description: Run committed regressions for the central CI caller
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -57,7 +62,7 @@ jobs:
         name: Select bounded target and budget
         shell: bash
         env:
-          FUZZ_EVENT_NAME: ${{ github.event_name }}
+          FUZZ_EVENT_NAME: ${{ inputs.ci_only && 'workflow_call' || github.event_name }}
           DISPATCH_TARGET: ${{ inputs.target }}
           DISPATCH_PRESET: ${{ inputs.preset }}
         run: |

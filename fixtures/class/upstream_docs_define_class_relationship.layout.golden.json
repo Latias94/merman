@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "Animal",
-          "x": 43.602,
+          "x": 43.6,
           "y": 52.5,
-          "width": 63.203,
+          "width": 63.2,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "Vehicle",
-          "x": 147.359,
+          "x": 147.36,
           "y": 52.5,
-          "width": 64.313,
+          "width": 64.32,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "Car",
-          "x": 147.359,
+          "x": 147.36,
           "y": 173.5,
-          "width": 44.438,
+          "width": 44.44,
           "height": 81.0,
           "is_cluster": false
         }
@@ -37,11 +37,11 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 147.359,
+              "x": 147.36,
               "y": 93.0
             },
             {
-              "x": 147.359,
+              "x": 147.36,
               "y": 133.0
             }
           ],
@@ -59,7 +59,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 179.516,
+        "max_x": 179.52,
         "max_y": 214.0
       }
     }

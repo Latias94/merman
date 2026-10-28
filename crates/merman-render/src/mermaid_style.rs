@@ -14,10 +14,6 @@ pub(crate) fn parse_safe_style_decl(s: &str) -> Option<(&str, &str)> {
     Some((k, v))
 }
 
-pub(crate) fn is_safe_css_font_family_value(value: &str) -> bool {
-    is_safe_css_declaration_value(value) && !value.contains(':')
-}
-
 fn is_safe_css_property_name(key: &str) -> bool {
     !key.is_empty()
         && key

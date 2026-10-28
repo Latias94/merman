@@ -98,14 +98,6 @@ pub(super) fn write_class_svg_edge_text(out: &mut String, text: &str, include_st
     crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
 }
 
-pub(super) fn write_class_svg_edge_text_markdown(
-    out: &mut String,
-    markdown: &str,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_markdown_centered(out, markdown, include_style);
-}
-
 pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
     let max_width_px = max_width_px.max(0);
     if width >= max_width_px as f64 - 0.01 {
@@ -147,19 +139,10 @@ pub(super) fn class_html_title_metrics(
     style: &TextStyle,
     text: &str,
     max_width_px: i64,
+    span_style: &str,
 ) -> crate::text::TextMetrics {
-    let markdown = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
-        .into_iter()
-        .map(|line| format!("**{line}**"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    crate::text::measure_markdown_with_inline_styles(
-        measurer,
-        markdown.as_str(),
-        style,
-        Some(max_width_px.max(1) as f64),
-        WrapMode::HtmlLike,
-    )
+    let style = crate::class::class_html_node_text_style(style, "font-weight:bolder", span_style);
+    crate::class::class_html_measure_label_metrics(measurer, &style, text, max_width_px, "")
 }
 
 pub(super) fn class_svg_label_rect(
@@ -183,11 +166,12 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    probe_style: &TextStyle,
     wrap_probe_font_size: f64,
     bold: bool,
 ) -> String {
     let Some(wrap_width_px) =
-        mermaid_class_svg_create_text_width_px(measurer, text, style, wrap_probe_font_size)
+        mermaid_class_svg_create_text_width_px(measurer, text, probe_style, wrap_probe_font_size)
     else {
         return text.to_string();
     };

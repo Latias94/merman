@@ -268,7 +268,7 @@ fn tree_view_label_bbox_width_px(
     style: &TextStyle,
 ) -> f64 {
     measurer
-        .measure_svg_raw_text_bbox_width_px(label, style)
+        .measure_svg_preserved_raw_text_bbox_width_px(label, style)
         .max(0.0)
 }
 

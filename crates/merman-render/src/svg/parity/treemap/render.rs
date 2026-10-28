@@ -242,10 +242,10 @@ pub(crate) fn render_treemap_diagram_svg(
             font_style: None,
         };
         let w = measurer
-            .measure_svg_simple_text_bbox_width_px(t, &style)
+            .measure_svg_raw_text_bbox_width_px(t, &style)
             .max(0.0);
         let h = measurer
-            .measure_svg_simple_text_bbox_height_px(t, &style)
+            .measure_svg_raw_text_bbox_height_px(t, &style)
             .max(0.0);
         (w, h)
     });

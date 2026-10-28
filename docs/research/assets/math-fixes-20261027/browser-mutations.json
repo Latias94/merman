@@ -1,0 +1,47 @@
+[
+  {
+    "mutation": "delete-use",
+    "exitCode": 1,
+    "result": {
+      "mutation": "delete-use",
+      "changed": 2,
+      "error": "Error: 09-flowchart-resvg-safe.svg: formula 1 has no visible contribution in full SVG"
+    }
+  },
+  {
+    "mutation": "hide-foreign-object",
+    "exitCode": 1,
+    "result": {
+      "mutation": "hide-foreign-object",
+      "changed": 3,
+      "error": "Error: 09-flowchart-parity.svg: formula 0 has no visible contribution in full SVG"
+    }
+  },
+  {
+    "mutation": "translate-use",
+    "exitCode": 1,
+    "result": {
+      "mutation": "translate-use",
+      "changed": 8,
+      "error": "Error: 09 flowchart: full-SVG formula placement differs by 20px (limit 1px)"
+    }
+  },
+  {
+    "mutation": "delete-fraction-bar",
+    "exitCode": 1,
+    "result": {
+      "mutation": "delete-fraction-bar",
+      "changed": 1,
+      "error": "Error: page.evaluate: Error: fraction fixture must contain one fraction bar"
+    }
+  },
+  {
+    "mutation": "hide-fraction-bar",
+    "exitCode": 1,
+    "result": {
+      "mutation": "hide-fraction-bar",
+      "changed": 1,
+      "error": "Error: 09-sequence-resvg-safe.svg: fraction bar has no visible contribution in full SVG"
+    }
+  }
+]

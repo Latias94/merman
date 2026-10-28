@@ -125,6 +125,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     let mut source_stack: Vec<SourceElement> = Vec::new();
     let mut source_stack_overflow_depth = 0usize;
     let mut cascade_index = None;
+    let mut sequence_math = false;
     let mut i = 0usize;
     let mut iteration = 0usize;
     while let Some(lt_rel) = find_with_checkpoints(&svg[i..], "<", checkpoint)? {
@@ -257,6 +258,11 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         typography: &resolved.typography,
                         width,
                         height,
+                        layout: if sequence_math {
+                            native_math::NativeMathLayout::SequenceFitContent
+                        } else {
+                            native_math::NativeMathLayout::CenteredLabel
+                        },
                         text_measurer,
                     },
                     checkpoint,
@@ -589,6 +595,10 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
         if let Some(name) = start_name
             && !is_self_closing(tag)
         {
+            if geometry_stack.is_empty() && name.eq_ignore_ascii_case("svg") {
+                sequence_math = attribute(tag, "aria-roledescription", checkpoint)?.as_deref()
+                    == Some("sequence");
+            }
             if source_stack_overflow_depth > 0 {
                 source_stack_overflow_depth = source_stack_overflow_depth.saturating_add(1);
             } else if source_stack.len() >= cascade::MAX_SELECTOR_ANCESTRY_DEPTH {

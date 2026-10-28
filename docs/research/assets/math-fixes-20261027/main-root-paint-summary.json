@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 11,
+  "contractRevision": "browser-root-paint-containment-v11",
+  "environment": {
+    "playwright": "1.64.1",
+    "browser": "Chromium 156.0.8078.4",
+    "locale": "en-US",
+    "timezone": "UTC",
+    "platform": "darwin-arm64",
+    "localPaintAudit": "transparent Chromium screenshot alpha",
+    "upstreamPaintAudit": "collected after any local overflow or indeterminate evidence; otherwise omitted"
+  },
+  "summary": {
+    "fixtures": 3737,
+    "localContainmentFailures": 2416,
+    "blockingContainmentFailures": 0,
+    "browserOwnedPaintDiagnostics": 54,
+    "exactResidualContainmentFailures": 1,
+    "upstreamInheritedContainmentFailures": 2361,
+    "localIndeterminate": 2302,
+    "upstreamDiagnosticsMissing": 0,
+    "unusedExactResiduals": 0
+  },
+  "unusedResidualFixtures": [],
+  "fullReportSha256": "8501bfacec4b21f6315fc9de96ed90bb3d7971edec11f46a778b260190291f94",
+  "sourceCommit": "3f0c6bf9f",
+  "note": "Summary of a fresh full owner run on macOS arm64; full report is reproducible with the documented owner command. Not a claim that all SVGs are contained."
+}

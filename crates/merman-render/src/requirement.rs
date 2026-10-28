@@ -6,7 +6,7 @@ use crate::model::{
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
 use crate::resources::{ModelComplexity, OperationWorkMeter};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
@@ -339,6 +339,111 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
     crate::text::measure_mermaid_text_dimensions(measurer, text, style).width
 }
 
+/// Requirement's SVG role style is applied after the ordinary-word wrapping probe.
+struct RequirementSvgBoldMeasurer<'a>(&'a dyn TextMeasurer);
+
+impl TextMeasurer for RequirementSvgBoldMeasurer<'_> {
+    fn cancellation_requested(&self) -> bool {
+        self.0.cancellation_requested()
+    }
+
+    fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+        self.0.measure(
+            text,
+            &TextStyle {
+                font_weight: Some("bold".to_owned()),
+                ..style.clone()
+            },
+        )
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.0.measure_svg_text_computed_length_px(
+            text,
+            &TextStyle {
+                font_weight: Some("bold".to_owned()),
+                ..style.clone()
+            },
+        )
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.0.measure_svg_create_text_bbox_y_offset_px(
+            text,
+            &TextStyle {
+                font_weight: Some("bold".to_owned()),
+                ..style.clone()
+            },
+        )
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> crate::text::TextMetrics {
+        self.0.measure_wrapped(
+            text,
+            &TextStyle {
+                font_weight: Some("bold".to_owned()),
+                ..style.clone()
+            },
+            max_width,
+            wrap_mode,
+        )
+    }
+}
+
+fn measure_requirement_svg_word_lines(
+    measurer: &dyn TextMeasurer,
+    first_row_measurer: &dyn TextMeasurer,
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: &TextStyle,
+) -> TextMetrics {
+    let (first, remaining) = lines.split_at(1);
+    let mut metrics = crate::text::measure_svg_markdown_word_lines(
+        first_row_measurer,
+        first,
+        style,
+        crate::text::SvgTextEntityMode::CreateTextSource,
+    );
+    let Some(first_tail_row) = remaining.iter().position(|row| !row.is_empty()) else {
+        return metrics;
+    };
+    let remaining = &remaining[first_tail_row..];
+    let tail = crate::text::measure_svg_markdown_word_lines(
+        measurer,
+        remaining,
+        style,
+        crate::text::SvgTextEntityMode::CreateTextSource,
+    );
+    let row_style = crate::text::svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
+    let row_y = |measurer: &dyn TextMeasurer, row: &[(String, MermaidMarkdownWordType)]| {
+        let text = row
+            .iter()
+            .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+            .collect::<Vec<_>>()
+            .join(" ");
+        measurer.measure_svg_create_text_bbox_y_offset_px(&text, &row_style)
+    };
+    // createText positions each row 1.1em apart; Requirement restyles only the first row.
+    let first_y = row_y(first_row_measurer, &first[0]);
+    let tail_y =
+        (first_tail_row + 1) as f64 * style.font_size * 1.1 + row_y(measurer, &remaining[0]);
+    metrics.height = if metrics.line_count == 0 {
+        tail.height
+    } else if tail.line_count == 0 {
+        metrics.height
+    } else {
+        (first_y + metrics.height).max(tail_y + tail.height) - first_y.min(tail_y)
+    };
+    metrics.width = metrics.width.max(tail.width);
+    metrics.line_count += tail.line_count;
+    metrics
+}
+
 fn measure_requirement_label_metrics(
     measurer: &dyn TextMeasurer,
     styles: &RequirementMeasurementStyles,
@@ -375,6 +480,20 @@ fn measure_requirement_label_metrics(
             text_style,
             max_width,
             WrapMode::HtmlLike,
+        )
+    } else if is_node && bold {
+        let lines = crate::text::mermaid_markdown_to_wrapped_word_lines(
+            measurer,
+            calculation_text,
+            text_style,
+            max_width,
+            WrapMode::SvgLike,
+        );
+        measure_requirement_svg_word_lines(
+            measurer,
+            &RequirementSvgBoldMeasurer(measurer),
+            &lines,
+            text_style,
         )
     } else {
         crate::text::measure_wrapped_markdown_with_inline_styles(
@@ -1270,6 +1389,108 @@ mod tests {
         assert_eq!(layout.lines[0].y_offset, 0.0);
         assert_eq!(layout.lines[1].y_offset, layout.lines[0].metrics.height);
         assert_eq!(layout.divider_y_offset, Some(layout.lines[2].y_offset));
+    }
+
+    #[test]
+    fn requirement_svg_final_faces_do_not_change_the_prior_wrapping_probe() {
+        struct FaceSensitiveMeasurer;
+
+        impl TextMeasurer for FaceSensitiveMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                let size = if matches!(style.font_weight.as_deref(), Some("bold" | "700")) {
+                    20.0
+                } else {
+                    10.0
+                };
+                TextMetrics {
+                    width: text.chars().count() as f64 * size,
+                    height: size,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_create_text_bbox_y_offset_px(
+                &self,
+                text: &str,
+                style: &TextStyle,
+            ) -> f64 {
+                if text.is_empty() {
+                    return 0.0;
+                }
+                if matches!(style.font_weight.as_deref(), Some("bold" | "700")) {
+                    -5.0
+                } else {
+                    -2.0
+                }
+            }
+
+            fn measure_mermaid_calculate_text_dimensions(
+                &self,
+                _text: &str,
+                style: &TextStyle,
+            ) -> TextMetrics {
+                assert_eq!(style.font_weight, None, "root/config probe stays regular");
+                TextMetrics {
+                    width: 10.0,
+                    height: 10.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_wrapped(
+                &self,
+                text: &str,
+                style: &TextStyle,
+                _max_width: Option<f64>,
+                _wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                let rows = text
+                    .lines()
+                    .enumerate()
+                    .filter(|(_, row)| !row.is_empty())
+                    .collect::<Vec<_>>();
+                let mut metrics = self.measure(rows[0].1, style);
+                metrics.line_count = rows.len();
+                metrics.width = rows
+                    .iter()
+                    .map(|(_, row)| self.measure(row, style).width)
+                    .fold(0.0_f64, f64::max);
+                metrics.height +=
+                    (rows.last().unwrap().0 - rows[0].0) as f64 * style.font_size * 1.1;
+                metrics
+            }
+        }
+
+        let config = serde_json::json!({"htmlLabels": false});
+        let settings = RequirementConfigView::new(&config).layout_settings();
+        let styles = requirement_measurement_styles(&settings);
+        let row_step = styles.html_regular.font_size * 1.1;
+        for (bold, text, expected_width, expected_height) in [
+            (false, "WW WW", 50.0, 16.0),
+            (true, "WW WW", 100.0, 26.0),
+            (true, "W<br/>WW WW", 50.0, row_step + 19.0),
+            (true, "W<br/>`x`<br/>WW WW", 50.0, 2.0 * row_step + 19.0),
+            (true, "`x`<br/>WW WW", 50.0, 16.0),
+            (true, "W<br/>`x`", 20.0, 26.0),
+            (true, "W<br/>**WWW**", 60.0, row_step + 19.0),
+        ] {
+            let metrics = measure_requirement_label_metrics(
+                &FaceSensitiveMeasurer,
+                &styles,
+                text,
+                text,
+                bold,
+                true,
+            )
+            .unwrap();
+            assert_eq!(metrics.max_width_px, 60);
+            assert_eq!(metrics.width, expected_width, "{text}");
+            assert!(
+                (metrics.height - expected_height).abs() < 1e-9,
+                "{text}: {} != {expected_height}",
+                metrics.height
+            );
+        }
     }
 
     #[test]

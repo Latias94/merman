@@ -11,6 +11,9 @@ use merman_core::diagrams::git_graph::{
 };
 use std::collections::HashMap;
 
+mod typography;
+pub(crate) use typography::GitGraphLabelTypography;
+
 const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;
@@ -575,11 +578,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
 
     // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths while the
     // `drawText(...)` nodes inherit Mermaid's global font config.
-    let font_family = cfg_string(effective_config, &["fontFamily"])
-        .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
-        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
+    let font_family = crate::config::config_font_family_css(effective_config);
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
         .unwrap_or(16.0)
         .max(1.0);

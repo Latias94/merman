@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 10,
+  "contractRevision": "browser-root-paint-containment-v10",
+  "environment": {
+    "playwright": "1.64.1",
+    "browser": "Chromium 156.0.8078.4",
+    "locale": "en-US",
+    "timezone": "UTC",
+    "platform": "darwin-arm64",
+    "localPaintAudit": "transparent Chromium screenshot alpha",
+    "upstreamPaintAudit": "collected after any local overflow or indeterminate evidence; otherwise omitted"
+  },
+  "summary": {
+    "fixtures": 3720,
+    "localContainmentFailures": 2407,
+    "blockingContainmentFailures": 1,
+    "browserOwnedPaintDiagnostics": 54,
+    "exactResidualContainmentFailures": 1,
+    "upstreamInheritedContainmentFailures": 2351,
+    "localIndeterminate": 2293,
+    "upstreamDiagnosticsMissing": 0,
+    "unusedExactResiduals": 1
+  },
+  "unusedResidualFixtures": [
+    "flowchart/stress_flowchart_title_padding_subgraph_029"
+  ],
+  "fullReportSha256": "f9a62d41cc8cb0d951429ef822f58e748cd111cb910f52465647a6a647ef6013",
+  "sourceCommit": "207f5e339",
+  "blockingFixtures": [
+    {
+      "fixture": "flowchart/stress_flowchart_title_padding_subgraph_029",
+      "localSha256": "a48f7f0a4b8e6b513fecb476d196481b1109bcb5bdb933055e41a657cf83edfa",
+      "upstreamSha256": "11a3106caf5254ea2122aee581f9ac87ef6415c7acff3a14fe697c24316bdfba",
+      "sameLocalAsPrevious": true,
+      "sameUpstreamAsPrevious": true
+    }
+  ],
+  "note": "Whole-corpus macOS command exits 1 for the existing environment-bound Flowchart title receipt. No catalog or tolerance change; Linux is the owner environment."
+}

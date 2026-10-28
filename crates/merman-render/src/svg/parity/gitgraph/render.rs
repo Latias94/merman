@@ -4,7 +4,9 @@ struct GitGraphCss {
     css: String,
     defs: String,
     font_family: String,
-    commit_label_font_size_px: f64,
+    commit_label_typography: crate::gitgraph::GitGraphLabelTypography,
+    branch_label_typography: crate::gitgraph::GitGraphLabelTypography,
+    branch_label_weight_rule_count: usize,
     tag_label_font_size_px: f64,
 }
 
@@ -203,6 +205,19 @@ where
         &["themeVariables", "noteFontWeight"],
     )
     .unwrap_or_else(|| "normal".to_string());
+    let commit_label_typography = crate::gitgraph::GitGraphLabelTypography::resolve(
+        &font_family,
+        commit_label_font_size_px,
+        use_color_gen.then_some(note_font_weight.as_str()),
+    );
+    let branch_font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .unwrap_or(16.0)
+        .max(1.0);
+    let branch_label_typography = crate::gitgraph::GitGraphLabelTypography::resolve(
+        &font_family,
+        branch_font_size,
+        use_redux_geometry.then_some(note_font_weight.as_str()),
+    );
     let note_font_weight_decl = if use_redux_geometry {
         format!("font-weight:{};", note_font_weight)
     } else {
@@ -413,11 +428,10 @@ where
     } else {
         commit_label_color.as_str()
     };
-    let commit_label_weight = if use_color_gen {
-        format!("font-weight:{};", note_font_weight)
-    } else {
-        String::new()
-    };
+    let commit_label_weight = commit_label_typography
+        .font_weight_css()
+        .map(|weight| format!("font-weight:{weight};"))
+        .unwrap_or_default();
     let commit_label_bkg_fill = if use_color_gen {
         "transparent"
     } else {
@@ -499,7 +513,13 @@ where
         css: out,
         defs,
         font_family,
-        commit_label_font_size_px,
+        commit_label_typography,
+        branch_label_typography,
+        branch_label_weight_rule_count: if use_redux_geometry {
+            theme_color_limit
+        } else {
+            0
+        },
         tag_label_font_size_px,
     }
 }
@@ -775,8 +795,23 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             }
 
             let name = escape_xml(&b.name);
-            let bbox_w = b.bbox_width.max(0.0);
-            let bbox_h = b.bbox_height.max(0.0);
+            let (bbox_w, bbox_h) = if use_redux_geometry {
+                // Numbered branch classes acquire noteFontWeight only after prelayout.
+                let mut style = css.branch_label_typography.style.clone();
+                if idx < 0 || idx as usize >= css.branch_label_weight_rule_count {
+                    style.font_weight = None;
+                }
+                (
+                    measurer
+                        .measure_svg_preserved_tspan_text_bbox_width_px(&b.name, &style)
+                        .max(0.0),
+                    measurer
+                        .measure_svg_tspan_text_bbox_height_px(&b.name, &style)
+                        .max(0.0),
+                )
+            } else {
+                (b.bbox_width.max(0.0), b.bbox_height.max(0.0))
+            };
 
             let bkg_class = format!(r#"branchLabelBkg label{idx}"#);
             let label_class = format!(r#"label branch-label{idx}"#);
@@ -1055,17 +1090,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
     out.push_str("</g>");
 
-    let commit_font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
-    let commit_label_style = crate::text::TextStyle {
-        font_family: Some(commit_font_family),
-        font_size: css.commit_label_font_size_px,
-        font_weight: None,
-        font_style: None,
-    };
+    let commit_label_style = &css.commit_label_typography.style;
     let tag_label_style = crate::text::TextStyle {
         font_family: commit_label_style.font_family.clone(),
         font_size: css.tag_label_font_size_px,
@@ -1079,8 +1104,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             && c.commit_type != 4
             && layout.show_commit_label;
         if show {
-            let bbox_w = gitgraph_commit_tag_label_width_px(measurer, &c.id, &commit_label_style);
-            let bbox_h = gitgraph_commit_tag_label_height_px(measurer, &c.id, &commit_label_style);
+            let bbox_w = gitgraph_commit_tag_label_width_px(measurer, &c.id, commit_label_style);
+            let bbox_h = gitgraph_commit_tag_label_height_px(measurer, &c.id, commit_label_style);
 
             let mut wrapper_transform: Option<String> = None;
             let mut rect_transform: Option<String> = None;
@@ -1373,6 +1398,50 @@ mod tests {
         }
     }
 
+    struct FixtureBranchMeasurer;
+
+    impl crate::text::TextMeasurer for FixtureBranchMeasurer {
+        fn measure(&self, text: &str, style: &crate::text::TextStyle) -> crate::text::TextMetrics {
+            crate::text::TextMeasurer::measure(
+                &crate::text::DeterministicTextMeasurer::default(),
+                text,
+                style,
+            )
+        }
+
+        fn measure_svg_preserved_tspan_text_bbox_width_px(
+            &self,
+            text: &str,
+            style: &crate::text::TextStyle,
+        ) -> f64 {
+            if text == "main" {
+                35.25
+            } else {
+                crate::text::TextMeasurer::measure_svg_preserved_tspan_text_bbox_width_px(
+                    &crate::text::DeterministicTextMeasurer::default(),
+                    text,
+                    style,
+                )
+            }
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(
+            &self,
+            text: &str,
+            style: &crate::text::TextStyle,
+        ) -> f64 {
+            if text == "main" {
+                19.0
+            } else {
+                crate::text::TextMeasurer::measure_svg_tspan_text_bbox_height_px(
+                    &crate::text::DeterministicTextMeasurer::default(),
+                    text,
+                    style,
+                )
+            }
+        }
+    }
+
     fn render_geometry_fixture(
         layout: &crate::model::GitGraphDiagramLayout,
         config: &serde_json::Value,
@@ -1384,7 +1453,7 @@ mod tests {
                 None,
                 config,
                 None,
-                &crate::text::DeterministicTextMeasurer::default(),
+                &FixtureBranchMeasurer,
                 options,
             )
         })

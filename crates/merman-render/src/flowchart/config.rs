@@ -182,21 +182,8 @@ impl<'a> FlowchartConfigView<'a> {
 
     pub(crate) fn html_label_measurement_base_style(&self, render_style: &TextStyle) -> TextStyle {
         let mut style = render_style.clone();
-        // Mermaid serializes numeric themeVariables.fontSize into CSS without a unit
-        // (`font-size:24`), which does not affect foreignObject HTML labels in Chromium. A CSS px
-        // string (`"20px"`) is valid and does affect those labels.
-        style.font_size = self
-            .theme_variables
-            .get("fontSize")
-            .and_then(Value::as_str)
-            .and_then(|raw| {
-                let raw = raw.trim();
-                if !raw.to_ascii_lowercase().ends_with("px") {
-                    return None;
-                }
-                crate::mermaid_style::parse_css_font_size_px(raw, render_style.font_size)
-            })
-            .unwrap_or(16.0);
+        // HTML labels inherit the same px value emitted on the SVG root.
+        style.font_size = self.render_font_size();
         style
     }
 
@@ -452,7 +439,29 @@ mod tests {
         let settings = FlowchartConfigView::new(&cfg).layout_settings();
 
         assert_eq!(settings.text_style.font_size, 24.0);
-        assert_eq!(settings.html_label_text_style.font_size, 24.5);
+        assert_eq!(settings.html_label_text_style.font_size, 24.0);
+        assert_eq!(FlowchartConfigView::new(&cfg).render_font_size(), 24.0);
+    }
+
+    #[test]
+    fn flowchart_html_font_size_matches_the_emitted_root_value() {
+        for (value, expected) in [
+            (json!(24), 24.0),
+            (json!(24.5), 24.5),
+            (json!("24"), 24.0),
+            (json!("24px"), 24.0),
+            (json!("24.5px"), 24.0),
+            (json!(0), 1.0),
+        ] {
+            let cfg = json!({"themeVariables": {"fontSize": value}});
+            let config = FlowchartConfigView::new(&cfg);
+            assert_eq!(config.render_font_size(), expected, "{value}");
+            assert_eq!(
+                config.layout_settings().html_label_text_style.font_size,
+                expected,
+                "{value}"
+            );
+        }
     }
 
     #[test]

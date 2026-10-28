@@ -5,7 +5,7 @@ use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::defs::class_marker_name;
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_math_html_label, render_class_html_label,
-    write_class_svg_edge_text, write_class_svg_edge_text_markdown,
+    write_class_svg_edge_text,
 };
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::Result;
@@ -37,6 +37,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
+    pub prepared_svg_edge_labels: &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
     pub diagram_marker_class: &'a str,
     pub diagram_id: SvgDiagramId<'a>,
     pub content_tx: f64,
@@ -465,10 +466,11 @@ pub(super) fn render_class_edge_groups(
             edge_dom_id_buf.as_str(),
             label_text,
             e.label.as_ref(),
+            ctx.prepared_svg_edge_labels.get(e.id.as_str()),
             label_center.as_ref().map(|center| center.x).unwrap_or(0.0),
             label_center.as_ref().map(|center| center.y).unwrap_or(0.0),
             ctx,
-        );
+        )?;
         if ctx.uses_elk_adapter_dom {
             render_class_edge_terminals(out, e, true, content_bounds, ctx);
             render_class_edge_terminals(out, e, false, content_bounds, ctx);
@@ -525,15 +527,20 @@ pub(super) fn class_edge_label_center(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Class edge emission consumes retained words alongside source text and positioned geometry."
+)]
 fn render_class_edge_label_group(
     out: &mut String,
     dom_id: &str,
     label_text: &str,
     label: Option<&LayoutLabel>,
+    prepared_svg_label: Option<&crate::class::ClassPreparedSvgEdgeLabel>,
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) {
+) -> Result<()> {
     let normalized = if ctx.uses_elk_adapter_dom {
         crate::text::mermaid_html_breaks_to_newlines(label_text)
     } else {
@@ -591,8 +598,18 @@ fn render_class_edge_label_group(
                 escape_attr_display(empty_div_style.as_str())
             );
         }
-        return;
+        return Ok(());
     }
+
+    let prepared_svg_label = if trimmed.is_empty() {
+        None
+    } else {
+        Some(
+            prepared_svg_label.ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Class SVG relationship label for `{dom_id}`"),
+            })?,
+        )
+    };
 
     if trimmed.is_empty() {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
@@ -615,7 +632,12 @@ fn render_class_edge_label_group(
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
-        write_class_svg_edge_text_markdown(out, trimmed, true);
+        let prepared = &prepared_svg_label
+            .expect("nonempty prepared Class edge label")
+            .label;
+        out.push_str(r#"<text y="-10.1" style="" text-anchor="middle">"#);
+        super::node::write_class_svg_label_rows(out, prepared.lines(), false, false, true);
+        out.push_str("</text>");
         out.push_str("</g></g></g>");
     } else {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
@@ -624,9 +646,21 @@ fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        write_class_svg_edge_text(out, trimmed, false);
+        out.push_str(r#"<text y="-10.1" text-anchor="middle">"#);
+        super::node::write_class_svg_label_rows(
+            out,
+            prepared_svg_label
+                .expect("nonempty prepared Class edge label")
+                .label
+                .lines(),
+            false,
+            false,
+            true,
+        );
+        out.push_str("</text>");
         out.push_str("</g></g>");
     }
+    Ok(())
 }
 
 fn render_class_edge_terminals(
