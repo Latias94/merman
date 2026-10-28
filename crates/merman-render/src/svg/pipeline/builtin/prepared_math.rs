@@ -1,32 +1,60 @@
 use crate::math::{
-    BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, PREPARED_MATH_CLASS_ATTRIBUTE,
-    PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE, PREPARED_MATH_NATIVE_CLASS,
-    PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE, PREPARED_MATH_OCCURRENCE_ATTRIBUTE,
-    PREPARED_MATH_PROJECTION_TEMPLATE_OPEN, PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE,
-    PreparedMathEvidenceLease, PreparedMathProjectionFingerprint,
+    PREPARED_MATH_NATIVE_CLASS, PREPARED_MATH_OCCURRENCE_ATTRIBUTE, PreparedMathEvidenceLease,
+    PreparedMathProjectionFingerprint,
 };
+use crate::xml_dom::Node;
 use crate::{DiagramFamilyId, Error, Result};
 use std::collections::HashSet;
 
-use super::util::{extract_quoted_attr, find_tag_end};
+use super::util::{checkpoint_loop, find_tag_end_with_checkpoints};
 
-const PREPARED_MATH_NATIVE_MARKER_PREFIX: &str = "data-merman-prepared-math-native=";
+const NATIVE_ATTRIBUTE: &str = "data-merman-prepared-math-native";
+const LEGACY_NATIVE_ATTRIBUTE: &str = "data-merman-math-native";
+const PROJECTION_ATTRIBUTE: &str = "data-merman-prepared-math-projection";
+const SWITCH_ATTRIBUTE: &str = "data-merman-prepared-math-switch";
 
-pub(crate) fn project_prepared_math(
+#[cfg(test)]
+fn project_prepared_math(
     svg: &str,
     family_id: Option<DiagramFamilyId>,
     evidence: Option<&PreparedMathEvidenceLease>,
 ) -> Result<String> {
-    if svg.contains(BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE) {
-        return Err(projection_error(
-            "browser-only math has no renderer-owned native projection",
-        ));
+    project_prepared_math_with_checkpoints(svg, family_id, evidence, &mut || Ok(()))
+}
+
+pub(crate) fn project_prepared_math_with_checkpoints(
+    svg: &str,
+    family_id: Option<DiagramFamilyId>,
+    evidence: Option<&PreparedMathEvidenceLease>,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<String> {
+    checkpoint()?;
+    let document = crate::xml_dom::Document::parse(svg)
+        .map_err(|error| projection_error(format!("malformed math SVG: {error}")))?;
+    checkpoint()?;
+    let mut identifiers = HashSet::new();
+    let mut browser_occurrences = Vec::new();
+    let mut has_native_projection = false;
+    for (index, node) in document
+        .descendants()
+        .filter(|node| node.is_element())
+        .enumerate()
+    {
+        checkpoint_loop(index, checkpoint)?;
+        if attribute(node, LEGACY_NATIVE_ATTRIBUTE) == Some("unavailable") {
+            return Err(projection_error(
+                "browser-only math has no renderer-owned native projection",
+            ));
+        }
+        if attribute(node, NATIVE_ATTRIBUTE).is_some() {
+            browser_occurrences.push(node);
+        }
+        has_native_projection |= attribute(node, PREPARED_MATH_OCCURRENCE_ATTRIBUTE).is_some();
+        for identifier in node.attributes().filter(|value| value.name() == "id") {
+            identifiers.insert(identifier.value().to_owned());
+        }
     }
-    let has_browser_projection = svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
-        && svg.contains(PREPARED_MATH_NATIVE_MARKER_PREFIX);
-    let has_native_projection = svg.contains(PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE)
-        && svg.contains(PREPARED_MATH_OCCURRENCE_ATTRIBUTE);
-    if !has_browser_projection && !has_native_projection {
+    if browser_occurrences.is_empty() && !has_native_projection {
         if let Some(evidence) = evidence.filter(|evidence| !evidence.is_empty()) {
             evidence
                 .validate_unique_occurrences()
@@ -62,7 +90,7 @@ pub(crate) fn project_prepared_math(
     evidence
         .validate_unique_occurrences()
         .map_err(projection_error)?;
-    if !has_browser_projection {
+    if browser_occurrences.is_empty() {
         if evidence
             .entries()
             .iter()
@@ -75,55 +103,63 @@ pub(crate) fn project_prepared_math(
         return Ok(svg.to_owned());
     }
 
-    let document = crate::xml_dom::Document::parse(svg)
-        .map_err(|error| projection_error(format!("malformed math SVG: {error}")))?;
-    let mut identifiers: HashSet<String> = document
-        .descendants()
-        .filter_map(|node| node.attribute("id").map(str::to_owned))
-        .collect();
-    let namespace = crate::svg::parity::sanitize_svg_id(
-        document.root_element().attribute("id").unwrap_or("merman"),
-    );
-    let root_open_end = find_tag_end(svg, document.root_element().range().start)
+    let root = document.root_element();
+    let root_namespace = root.tag_name().namespace();
+    if root.tag_name().name() != "svg"
+        || root_namespace.is_some_and(|uri| uri != "http://www.w3.org/2000/svg")
+        || root.lookup_namespace_uri(None) != root_namespace
+    {
+        return Err(projection_error(
+            "prepared math requires the root SVG default namespace",
+        ));
+    }
+    let namespace = crate::svg::parity::sanitize_svg_id(attribute(root, "id").unwrap_or("merman"));
+    let root_open_end = find_tag_end_with_checkpoints(svg, root.range().start, checkpoint)?
         .ok_or_else(|| projection_error("missing root SVG start tag"))?;
     let mut definitions = String::new();
     let mut output = String::with_capacity(svg.len());
     let mut cursor = 0usize;
     let mut projected = 0usize;
+    let mut next_identifier = 0usize;
     let mut emitted = vec![0usize; evidence.entries().len()];
-    while let Some(relative_start) = svg[cursor..].find("<foreignObject") {
-        let start = cursor + relative_start;
-        let open_end = find_tag_end(svg, start)
-            .ok_or_else(|| projection_error("malformed prepared-math foreignObject start tag"))?;
-        let close_start = open_end
-            + 1
-            + svg[open_end + 1..]
-                .find("</foreignObject>")
-                .ok_or_else(|| projection_error("unclosed prepared-math foreignObject"))?;
-        let end = close_start + "</foreignObject>".len();
-        let foreign_object = &svg[start..end];
-        if !foreign_object.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
-            || !foreign_object.contains(PREPARED_MATH_NATIVE_MARKER_PREFIX)
-        {
-            output.push_str(&svg[cursor..end]);
-            cursor = end;
-            continue;
+    let browser_count = browser_occurrences.len();
+    let mut foreign_objects = HashSet::new();
+    for (index, occurrence) in browser_occurrences.into_iter().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        let mut foreign_object = None;
+        for (depth, ancestor) in occurrence.ancestors().enumerate() {
+            checkpoint_loop(depth, checkpoint)?;
+            if ancestor.is_element()
+                && ancestor.tag_name().name() == "foreignObject"
+                && ancestor.tag_name().namespace() == root_namespace
+            {
+                foreign_object = Some(ancestor);
+                break;
+            }
         }
-        if foreign_object
-            .matches(PREPARED_MATH_CLASS_ATTRIBUTE)
-            .count()
-            != 1
-        {
+        let foreign_object = foreign_object.ok_or_else(|| {
+            projection_error("prepared-math occurrence was not bound to a terminal foreignObject")
+        })?;
+        if !foreign_objects.insert(foreign_object.id()) {
             return Err(projection_error(
                 "each prepared-math foreignObject must contain exactly one occurrence",
             ));
         }
-        if !foreign_object.contains(PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE) {
+        if !attribute(occurrence, "class").is_some_and(|classes| {
+            classes
+                .split_ascii_whitespace()
+                .any(|class| class == "merman-prepared-math")
+        }) {
+            return Err(projection_error(
+                "prepared-math occurrence is missing its browser class",
+            ));
+        }
+        if attribute(occurrence, NATIVE_ATTRIBUTE) != Some("v1") {
             return Err(projection_error(
                 "native projection is unavailable for a prepared browser math occurrence",
             ));
         }
-        let occurrence_id = extract_quoted_attr(foreign_object, PREPARED_MATH_OCCURRENCE_ATTRIBUTE)
+        let occurrence_id = attribute(occurrence, PREPARED_MATH_OCCURRENCE_ATTRIBUTE)
             .ok_or_else(|| projection_error("prepared-math occurrence identity is missing"))?;
         let (expected_index, expected) = evidence
             .expectation(occurrence_id)
@@ -144,53 +180,51 @@ pub(crate) fn project_prepared_math(
                 "native projection is unavailable for prepared-math occurrence `{occurrence_id}`"
             ))
         })?;
-
-        let template_start = foreign_object
-            .find(PREPARED_MATH_PROJECTION_TEMPLATE_OPEN)
-            .ok_or_else(|| projection_error("prepared-math native projection is missing"))?
-            + PREPARED_MATH_PROJECTION_TEMPLATE_OPEN.len();
-        let template_end = template_start
-            + foreign_object[template_start..]
-                .find("</template>")
-                .ok_or_else(|| projection_error("prepared-math native projection is unclosed"))?;
-        if foreign_object[template_end + "</template>".len()..]
-            .contains(PREPARED_MATH_PROJECTION_TEMPLATE_OPEN)
-        {
+        let mut templates = occurrence.children().filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "template"
+                && attribute(*node, PROJECTION_ATTRIBUTE) == Some("v1")
+        });
+        let template = templates
+            .next()
+            .ok_or_else(|| projection_error("prepared-math native projection is missing"))?;
+        if templates.next().is_some() {
             return Err(projection_error(
                 "prepared-math occurrence contains duplicate native projections",
             ));
         }
-        let projection = &foreign_object[template_start..template_end];
+        let mut projections = template.children().filter(|node| node.is_element());
+        let projection_node = projections
+            .next()
+            .ok_or_else(|| projection_error("prepared-math native projection is missing"))?;
+        if projections.next().is_some()
+            || projection_node.tag_name().name() != "g"
+            || template.children().any(|child| child != projection_node)
+        {
+            return Err(projection_error(
+                "prepared-math native projection must be one SVG group",
+            ));
+        }
+        let projection = &svg[projection_node.range()];
         if PreparedMathProjectionFingerprint::from_projection(projection) != expected_fingerprint {
             return Err(projection_error(format!(
                 "prepared-math occurrence `{occurrence_id}` projection does not match renderer evidence"
             )));
         }
-        let projection_open_end = find_tag_end(projection, 0)
-            .ok_or_else(|| projection_error("prepared-math native projection is malformed"))?;
-        let projection_tag = &projection[..=projection_open_end];
-        if !projection_tag.starts_with("<g") || !projection.ends_with("</g>") {
-            return Err(projection_error(
-                "prepared-math native projection must be one SVG group",
-            ));
-        }
-
-        let foreign_object_tag = &foreign_object[..=open_end - start];
-        let x = parse_optional_position(foreign_object_tag, "x")?.unwrap_or(0.0);
-        let y = parse_optional_position(foreign_object_tag, "y")?.unwrap_or(0.0);
-        let width = parse_required_size(foreign_object_tag, "width")?;
-        let height = parse_required_size(foreign_object_tag, "height")?;
+        let x = parse_optional_position(foreign_object, "x")?.unwrap_or(0.0);
+        let y = parse_optional_position(foreign_object, "y")?.unwrap_or(0.0);
+        let width = parse_required_size(foreign_object, "width")?;
+        let height = parse_required_size(foreign_object, "height")?;
         let projection_width =
-            parse_required_size(projection_tag, "data-merman-prepared-math-width")?;
+            parse_required_size(projection_node, "data-merman-prepared-math-width")?;
         let projection_height =
-            parse_required_size(projection_tag, "data-merman-prepared-math-height")?;
+            parse_required_size(projection_node, "data-merman-prepared-math-height")?;
         if projection_width > width + 0.01 || projection_height > height + 0.01 {
             return Err(projection_error(
                 "prepared-math native projection exceeds its terminal foreignObject bounds",
             ));
         }
-        // Mermaid Sequence positions the fit-content HTML at the foreignObject origin.
-        // Flowchart and Swimlane use centered label shells instead.
+        // Mermaid Sequence positions fit-content HTML at the foreignObject origin.
         let (translate_x, translate_y) = if family_id == Some(DiagramFamilyId::SEQUENCE) {
             (x, y)
         } else {
@@ -199,25 +233,37 @@ pub(crate) fn project_prepared_math(
                 y + (height - projection_height) / 2.0,
             )
         };
-
-        let (replacement_start, replacement_end) =
-            prepared_math_switch_wrapper(svg, cursor, start, end).unwrap_or((start, end));
-        let mut identifier_index = projected;
+        let replacement = foreign_object
+            .parent_element()
+            .filter(|parent| {
+                parent.tag_name().name() == "switch"
+                    && parent.tag_name().namespace() == root_namespace
+                    && attribute(*parent, SWITCH_ATTRIBUTE) == Some("v1")
+            })
+            .unwrap_or(foreign_object)
+            .range();
+        if replacement.start < cursor {
+            return Err(projection_error(
+                "prepared-math terminal wrappers must not overlap",
+            ));
+        }
         let identifier = loop {
-            let identifier = format!("{namespace}-prepared-math-{identifier_index}");
-            if identifiers.insert(identifier.clone()) {
-                break identifier;
+            checkpoint_loop(next_identifier, checkpoint)?;
+            let candidate = format!("{namespace}-prepared-math-{next_identifier}");
+            next_identifier = next_identifier
+                .checked_add(1)
+                .ok_or_else(|| projection_error("prepared-math definition identifier overflow"))?;
+            if identifiers.insert(candidate.clone()) {
+                break candidate;
             }
-            identifier_index += 1;
         };
-        // Definitions keep native glyphs outside shape selectors. In particular, usvg does not
-        // give inline !important declarations browser-equivalent precedence over shape classDefs.
+        // Root definitions keep native glyphs outside diagram shape selectors.
         definitions.push_str(r#"<g id=""#);
         definitions.push_str(&identifier);
         definitions.push_str(r#"">"#);
         definitions.push_str(projection);
         definitions.push_str("</g>");
-        output.push_str(&svg[cursor..replacement_start]);
+        output.push_str(&svg[cursor..replacement.start]);
         output.push_str(r#"<use class=""#);
         output.push_str(PREPARED_MATH_NATIVE_CLASS);
         output.push_str(r#"" data-merman-prepared-math-occurrence=""#);
@@ -229,15 +275,11 @@ pub(crate) fn project_prepared_math(
         output.push_str(r##")" href="#"##);
         output.push_str(&identifier);
         output.push_str(r#""/>"#);
-        cursor = replacement_end;
-        projected = projected.saturating_add(1);
+        cursor = replacement.end;
+        projected += 1;
     }
     output.push_str(&svg[cursor..]);
-
-    if projected == 0
-        || (output.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
-            && output.contains(PREPARED_MATH_NATIVE_MARKER_PREFIX))
-    {
+    if projected != browser_count {
         return Err(projection_error(
             "prepared-math occurrence was not bound to a terminal foreignObject",
         ));
@@ -253,49 +295,37 @@ pub(crate) fn project_prepared_math(
             missing.occurrence_id().as_str()
         )));
     }
+    checkpoint()?;
     output.insert_str(root_open_end + 1, &format!("<defs>{definitions}</defs>"));
+    checkpoint()?;
     Ok(output)
 }
 
-fn prepared_math_switch_wrapper(
-    svg: &str,
-    cursor: usize,
-    foreign_object_start: usize,
-    foreign_object_end: usize,
-) -> Option<(usize, usize)> {
-    let switch_start = svg[cursor..foreign_object_start]
-        .rfind("<switch")
-        .map(|offset| cursor + offset)?;
-    let switch_open_end = find_tag_end(svg, switch_start)?;
-    if switch_open_end >= foreign_object_start
-        || !svg[switch_start..=switch_open_end].contains(PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE)
-        || svg[switch_open_end + 1..foreign_object_start].contains("</switch>")
-    {
-        return None;
-    }
-    let switch_close_start = foreign_object_end + svg[foreign_object_end..].find("</switch>")?;
-    Some((switch_start, switch_close_start + "</switch>".len()))
+fn attribute<'a>(node: Node<'a, '_>, name: &str) -> Option<&'a str> {
+    node.attributes()
+        .find(|attribute| attribute.namespace().is_none() && attribute.name() == name)
+        .map(|attribute| attribute.value())
 }
 
-fn parse_required_size(tag: &str, name: &str) -> Result<f64> {
+fn parse_required_size(tag: Node<'_, '_>, name: &str) -> Result<f64> {
     parse_optional_size(tag, name)?
         .ok_or_else(|| projection_error(format!("prepared-math terminal is missing `{name}`")))
 }
 
-fn parse_optional_position(tag: &str, name: &str) -> Result<Option<f64>> {
+fn parse_optional_position(tag: Node<'_, '_>, name: &str) -> Result<Option<f64>> {
     parse_optional_finite_length(tag, name, true)
 }
 
-fn parse_optional_size(tag: &str, name: &str) -> Result<Option<f64>> {
+fn parse_optional_size(tag: Node<'_, '_>, name: &str) -> Result<Option<f64>> {
     parse_optional_finite_length(tag, name, false)
 }
 
 fn parse_optional_finite_length(
-    tag: &str,
+    tag: Node<'_, '_>,
     name: &str,
     allow_negative: bool,
 ) -> Result<Option<f64>> {
-    let Some(raw) = extract_quoted_attr(tag, name) else {
+    let Some(raw) = attribute(tag, name) else {
         return Ok(None);
     };
     let raw = raw.strip_suffix("px").unwrap_or(raw);
@@ -589,6 +619,117 @@ mod tests {
             .expect("an unowned class name must not mint or deny renderer capability");
 
         assert_eq!(output, svg);
+    }
+
+    #[test]
+    fn projection_ignores_reserved_marker_text_inside_user_attribute_values() {
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+            r#"<foreignObject width="20" height="10"><div xmlns="http://www.w3.org/1999/xhtml">"#,
+            r#"<span class="merman-prepared-math" id="data-merman-prepared-math-native=">label</span>"#,
+            r#"</div></foreignObject></svg>"#,
+        );
+        assert_eq!(project_prepared_math(svg, None, None).unwrap(), svg);
+    }
+
+    fn crowded_projection(count: usize) -> (String, PreparedMathEvidenceLease) {
+        let projection = r#"<g data-merman-prepared-math-width="1" data-merman-prepared-math-height="1"><path d="M0 0h1"/></g>"#;
+        let (occurrence, evidence) = evidence_for_projection(
+            DiagramFamilyId::FLOWCHART,
+            "node-label",
+            0,
+            Some(projection),
+            count,
+        );
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg" id="merman">"#);
+        for index in 0..count {
+            svg.push_str(&format!(r#"<g id="merman-prepared-math-{index}"/>"#));
+        }
+        for _ in 0..count {
+            svg.push_str(&format!(
+                r#"<foreignObject width="2" height="2"><div><span class="merman-prepared-math" data-merman-prepared-math-native="v1" data-merman-prepared-math-occurrence="{}"><template data-merman-prepared-math-projection="v1">{projection}</template></span></div></foreignObject>"#,
+                occurrence.as_str(),
+            ));
+        }
+        svg.push_str("</svg>");
+        (svg, evidence)
+    }
+
+    #[test]
+    fn projection_preserves_colliding_ids_with_bounded_candidate_work() {
+        let count = 128;
+        let (svg, evidence) = crowded_projection(count);
+        let mut checkpoints = 0;
+        let output = project_prepared_math_with_checkpoints(
+            &svg,
+            Some(DiagramFamilyId::FLOWCHART),
+            Some(&evidence),
+            &mut || {
+                checkpoints += 1;
+                Ok(())
+            },
+        )
+        .unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        let ids = document
+            .descendants()
+            .filter_map(|node| attribute(node, "id"))
+            .collect::<HashSet<_>>();
+        assert_eq!(ids.len(), 2 * count + 1);
+        for index in 0..2 * count {
+            assert!(ids.contains(format!("merman-prepared-math-{index}").as_str()));
+        }
+        assert!(
+            checkpoints < 2 * count,
+            "candidate scans must stay linear: {checkpoints}"
+        );
+        crate::math::PreparedMathTerminalReceipt::from_terminal_svg(&output, &evidence).unwrap();
+    }
+
+    #[test]
+    fn projection_observes_cancellation_during_owned_work() {
+        let (svg, evidence) = crowded_projection(128);
+        for stop in [2, 10, 140] {
+            let mut checkpoints = 0;
+            let error = project_prepared_math_with_checkpoints(
+                &svg,
+                Some(DiagramFamilyId::FLOWCHART),
+                Some(&evidence),
+                &mut || {
+                    checkpoints += 1;
+                    if checkpoints == stop {
+                        Err(Error::Cancelled(merman_core::OperationCancelled {
+                            phase: merman_core::OperationPhase::Postprocess,
+                            reason: merman_core::CancelReason::Requested,
+                        }))
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .unwrap_err();
+            assert!(matches!(error, Error::Cancelled(_)), "{error}");
+            assert_eq!(checkpoints, stop);
+        }
+    }
+
+    #[test]
+    fn projection_uses_xml_attribute_values_and_ignores_user_marker_text_beside_math() {
+        let (svg, evidence) = crowded_projection(1);
+        let svg = svg.replace(
+            "</svg>",
+            r#"<foreignObject width="2" height="2"><span class="merman-prepared-math" id="data-merman-prepared-math-native=">user</span></foreignObject></svg>"#,
+        ).replace(
+            r#"data-merman-prepared-math-native="v1""#,
+            "data-merman-prepared-math-native='v&#49;'",
+        ).replace(
+            r#"data-merman-prepared-math-occurrence="flowchart/node-label/0""#,
+            "data-merman-prepared-math-occurrence='flowchart/node-label/&#48;'",
+        );
+        let output =
+            project_prepared_math(&svg, Some(DiagramFamilyId::FLOWCHART), Some(&evidence)).unwrap();
+        assert!(output.contains(">user</span>"));
+        crate::math::PreparedMathTerminalReceipt::from_terminal_svg(&output, &evidence).unwrap();
     }
 
     #[test]

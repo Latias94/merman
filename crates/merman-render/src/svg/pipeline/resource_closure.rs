@@ -6,9 +6,9 @@ const CSS_RESOURCE_NESTING_HARD_LIMIT: u8 = 64;
 /// Terminal inventory of same-document and inline resources referenced by a sealed SVG.
 ///
 /// Construction is private to the terminal validator. Therefore every public value is closed:
-/// all referenced fragments exist in the finalized document, and every non-fragment render
-/// resource has already passed either the resvg-safe inline-image policy or an exact
-/// renderer-owned typed-font embedding plan.
+/// all referenced fragments exist in their raw-use or parsed SVG ID domain, and every
+/// non-fragment render resource has already passed either the resvg-safe inline-image policy
+/// or an exact renderer-owned typed-font embedding plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SvgResourceClosure {
     available_fragment_ids: Box<[String]>,
@@ -18,10 +18,12 @@ pub struct SvgResourceClosure {
 }
 
 impl SvgResourceClosure {
+    /// Returns the union of raw-use and parsed SVG fragment IDs.
     pub fn available_fragment_ids(&self) -> &[String] {
         &self.available_fragment_ids
     }
 
+    /// Returns the union of concrete references checked in each ID domain.
     pub fn referenced_fragment_ids(&self) -> &[String] {
         &self.referenced_fragment_ids
     }
@@ -46,19 +48,29 @@ impl SvgResourceClosure {
 
 #[derive(Debug, Default)]
 pub(crate) struct SvgResourceClosureBuilder {
-    available_fragment_ids: BTreeSet<String>,
-    referenced_fragment_ids: BTreeSet<String>,
+    parsed_fragment_ids: BTreeSet<String>,
+    parsed_fragment_references: BTreeSet<String>,
+    raw_use_fragment_ids: BTreeSet<String>,
+    raw_use_fragment_references: BTreeSet<String>,
     stylesheet_fragment_ids: BTreeSet<String>,
     inline_data_resources: usize,
 }
 
 impl SvgResourceClosureBuilder {
-    pub(crate) fn observe_fragment_id(&mut self, id: &str) {
-        self.available_fragment_ids.insert(id.to_owned());
+    pub(crate) fn observe_parsed_fragment_id(&mut self, id: &str) {
+        self.parsed_fragment_ids.insert(id.to_owned());
     }
 
-    pub(crate) fn observe_fragment_reference(&mut self, id: &str) {
-        self.referenced_fragment_ids.insert(id.to_owned());
+    pub(crate) fn observe_parsed_fragment_reference(&mut self, id: &str) {
+        self.parsed_fragment_references.insert(id.to_owned());
+    }
+
+    pub(crate) fn observe_raw_use_fragment_id(&mut self, id: &str) {
+        self.raw_use_fragment_ids.insert(id.to_owned());
+    }
+
+    pub(crate) fn observe_raw_use_fragment_reference(&mut self, id: &str) {
+        self.raw_use_fragment_references.insert(id.to_owned());
     }
 
     pub(crate) fn observe_inline_data_resource(&mut self) {
@@ -86,23 +98,29 @@ impl SvgResourceClosureBuilder {
 
     pub(crate) fn finish(self) -> Result<SvgResourceClosure, String> {
         if let Some(unresolved) = self
-            .referenced_fragment_ids
-            .difference(&self.available_fragment_ids)
-            .next()
+            .parsed_fragment_references
+            .difference(&self.parsed_fragment_ids)
+            .chain(
+                self.raw_use_fragment_references
+                    .difference(&self.raw_use_fragment_ids),
+            )
+            .min()
         {
             return Err(format!(
                 "terminal SVG references missing same-document fragment #{unresolved}"
             ));
         }
 
+        let mut available_fragment_ids = self.parsed_fragment_ids;
+        available_fragment_ids.extend(self.raw_use_fragment_ids);
+        let mut referenced_fragment_ids = self.parsed_fragment_references;
+        referenced_fragment_ids.extend(self.raw_use_fragment_references);
         Ok(SvgResourceClosure {
-            available_fragment_ids: self
-                .available_fragment_ids
+            available_fragment_ids: available_fragment_ids
                 .into_iter()
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            referenced_fragment_ids: self
-                .referenced_fragment_ids
+            referenced_fragment_ids: referenced_fragment_ids
                 .into_iter()
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
@@ -190,7 +208,7 @@ fn observe_url(resources: &mut SvgResourceClosureBuilder, url: &str, scope: CssR
         .filter(|fragment| !fragment.is_empty())
     {
         match scope {
-            CssReferenceScope::Concrete => resources.observe_fragment_reference(fragment),
+            CssReferenceScope::Concrete => resources.observe_parsed_fragment_reference(fragment),
             CssReferenceScope::ConditionalStylesheet => {
                 resources
                     .stylesheet_fragment_ids
@@ -217,8 +235,8 @@ mod tests {
                 ".node{fill:url(#paint);filter:drop-shadow(0 0 2px url('#glow'));--asset:url(data:image/png;base64,AAAA)}",
             )
             .unwrap();
-        resources.observe_fragment_id("paint");
-        resources.observe_fragment_id("glow");
+        resources.observe_parsed_fragment_id("paint");
+        resources.observe_parsed_fragment_id("glow");
 
         let closure = resources.finish().unwrap();
         assert_eq!(closure.referenced_fragment_ids(), &["glow", "paint"]);
@@ -247,7 +265,7 @@ mod tests {
         );
         let mut resources = SvgResourceClosureBuilder::default();
         resources.observe_inline_css_urls(&css).unwrap();
-        resources.observe_fragment_id("paint");
+        resources.observe_parsed_fragment_id("paint");
         assert_eq!(
             resources.finish().unwrap().referenced_fragment_ids(),
             &["paint"]
@@ -266,7 +284,7 @@ mod tests {
     #[test]
     fn unresolved_fragment_cannot_become_a_closed_resource_artifact() {
         let mut resources = SvgResourceClosureBuilder::default();
-        resources.observe_fragment_reference("missing");
+        resources.observe_parsed_fragment_reference("missing");
 
         assert_eq!(
             resources.finish().unwrap_err(),

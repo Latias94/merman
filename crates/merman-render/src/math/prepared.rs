@@ -24,16 +24,11 @@ use crate::resources::{
 };
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
-pub(crate) const PREPARED_MATH_CLASS_ATTRIBUTE: &str = r#"class="merman-prepared-math""#;
-pub(crate) const PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE: &str =
-    r#"data-merman-prepared-math-native="v1""#;
 pub(crate) const BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE: &str =
     r#"data-merman-math-native="unavailable""#;
 pub(crate) const PREPARED_MATH_OCCURRENCE_ATTRIBUTE: &str = "data-merman-prepared-math-occurrence";
 pub(crate) const PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE: &str =
     r#"data-merman-prepared-math-switch="v1""#;
-pub(crate) const PREPARED_MATH_PROJECTION_TEMPLATE_OPEN: &str =
-    r#"<template data-merman-prepared-math-projection="v1">"#;
 
 #[derive(Debug)]
 struct RawPreparedMathLabel {

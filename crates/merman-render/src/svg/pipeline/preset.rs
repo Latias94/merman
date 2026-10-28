@@ -6,17 +6,14 @@ use super::builtin::{
         apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
     },
     id_suffix::apply_lower_id_suffix_selectors,
-    prepared_math::project_prepared_math,
+    prepared_math::project_prepared_math_with_checkpoints,
     quadrant_resvg_fallback::resolve_quadrant_resvg_fallbacks_with_checkpoints,
 };
 use super::context::{SvgPostprocessExecution, SvgPostprocessMetadata};
 use super::final_validation::SvgStructureMetrics;
 use crate::Result;
 use crate::environment::TextMeasurementPhase;
-use crate::math::{
-    BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, PREPARED_MATH_CLASS_ATTRIBUTE,
-    PreparedMathEvidenceLease,
-};
+use crate::math::PreparedMathEvidenceLease;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -70,17 +67,18 @@ impl BuiltinSvgStage {
         let mut checkpoint = || execution.checkpoint();
         match self {
             Self::PreparedMathProjection => {
-                if !svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
-                    && !svg.contains(BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE)
+                if !svg.contains("data-merman-prepared-math-")
+                    && !svg.contains("data-merman-math-native")
                     && prepared_math_evidence.is_none_or(PreparedMathEvidenceLease::is_empty)
                 {
                     return Ok((svg, false));
                 }
                 Ok((
-                    Cow::Owned(project_prepared_math(
+                    Cow::Owned(project_prepared_math_with_checkpoints(
                         &svg,
                         metadata.family_id(),
                         prepared_math_evidence,
+                        &mut checkpoint,
                     )?),
                     true,
                 ))
@@ -216,6 +214,22 @@ mod tests {
         .unwrap();
 
         assert_eq!(output.as_str(), expected.as_ref());
+    }
+
+    #[test]
+    fn resvg_safe_user_marker_text_does_not_claim_math_capability() {
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">"#,
+            r#"<foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">"#,
+            r#"<span class="merman-prepared-math" id="data-merman-prepared-math-native=">hello</span>"#,
+            r#"</div></foreignObject></svg>"#,
+        );
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let output = super::super::finalize_resvg_svg(svg, &session).unwrap();
+        assert!(!output.as_str().contains("<foreignObject"));
+        assert!(output.as_str().contains("hello"));
     }
 
     #[test]
