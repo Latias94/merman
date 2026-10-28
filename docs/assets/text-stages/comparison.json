@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-28T22:25:00.271538+08:00",
+  "baseline": "917d75836d8ed7ca77744d51270dec2f05e48ec2",
+  "after": "Maintenance working-tree full WASM",
+  "working_tree_head": "70eaa5fd14c2f3474d0c728aec9dc9f0d8050759",
+  "browser": "Edg/156.0.4314.50",
+  "font_family": "Arial",
+  "theme": "default",
+  "look": "classic",
+  "measurement": "deterministic fallback; no host callback",
+  "wasm_inputs_sha256": "dee0b5d96c0599755507e4652837f6d266a8cde6338c2865cc5f317beec1cd2a",
+  "wasm_sha256": "cfa69fa27c96bcf5105bd8f4e683eaca209a2d7831c9e990365e138f2f0c99fb",
+  "before_cli": {
+    "path": "/tmp/merman-deep-audit-20261028/09-cli",
+    "sha256": "69dc59a6b71d3acdc0de2d550b82892bf1480400a5dc5b82fd84cee584d3dbac",
+    "version": "merman-cli 0.9.2",
+    "audit_source_head": "613e6a0b601c28b30fcb642c10b2ae552cb7b67d",
+    "baseline_source_checks": [
+      {
+        "path": "crates/merman-render/src/kanban.rs",
+        "sha256": "e88bfb43df5d0072baee09f9c9f6a2bfcea1f268640d107fb432728a6c84e44b"
+      },
+      {
+        "path": "crates/merman-render/src/svg/parity/kanban/render.rs",
+        "sha256": "e52ff2b3716c0b95152c381dadf573046b02caf594246319e1c967d84dcf9f55"
+      },
+      {
+        "path": "crates/merman-render/src/class.rs",
+        "sha256": "4d0a6618bac905667074c68396b95f6af101151f082cb7498970f5b2ea63c6ae"
+      },
+      {
+        "path": "crates/merman-render/src/svg/parity/class/node.rs",
+        "sha256": "dd9e16d7ae6293532354389c91c33a59aa8c10d6b92d800eab342958b7b36fa2"
+      },
+      {
+        "path": "crates/merman-render/src/text.rs",
+        "sha256": "182ca6e6627bc77f6e007adb09ad35f80c13cf6d2d5382f565fb71aadea8ed2d"
+      },
+      {
+        "path": "crates/merman-core/src/sanitize.rs",
+        "sha256": "ec867880043a3e68d562c02a3d8a46207f50cab8ec26f252008c340bf9406978"
+      }
+    ]
+  },
+  "after_runtime": {
+    "worktree": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/text-stage-contracts-09-20261028",
+    "render_api": "renderSvg",
+    "served_files": [
+      {
+        "path": "platforms/web/dist/runtime-core.js",
+        "sha256": "fec626bdde1d31da3055da47fdf60d7ac3003121cbbd2c7f528a4a0d8ac69046"
+      },
+      {
+        "path": "platforms/web/dist/runtime-state.js",
+        "sha256": "9dff3ec6216c56e8e816f253581e0b0b54ddadeb87ad2245b41f3a77669dae54"
+      },
+      {
+        "path": "platforms/web/dist/generated/text-measurement-abi.js",
+        "sha256": "2b71d93505976bb555fcfdc075cd646c651e2ed14d97bc581e3f8d2a20d9cf5d"
+      },
+      {
+        "path": "platforms/web/dist/public-catalog.js",
+        "sha256": "1ff5cd032b3cb4f55b704a9d69e23a3d230a134478c5fcd3e206f59a42ed0473"
+      },
+      {
+        "path": "platforms/web/dist/generated/binding-contract.js",
+        "sha256": "91c9bc27ba3ca06bc4cd529111944730e6a5d210c3f6055feb6be9d02045e791"
+      },
+      {
+        "path": "platforms/web/dist/generated/capability-surface.js",
+        "sha256": "44161b245a57674455bb3cae83592dbc7d7458f5a63d40203e3a1392771137c3"
+      },
+      {
+        "path": "platforms/web/dist/generated/resource-contract.js",
+        "sha256": "27a8534caa2446ff3ea51d247897e568e0a67ea7e4f8813088428e1956e3e1ab"
+      },
+      {
+        "path": "platforms/web/dist/generated/diagram-catalog.js",
+        "sha256": "9eea9739bf79d75d4f7659146a0e06c5ac9a79bc66001755ddade819c3dce85b"
+      },
+      {
+        "path": "platforms/web/dist/runtime-render.js",
+        "sha256": "287e0f209afed6a519051dd42286a0bc2d3e8ed2bee2300df80b36157a29685e"
+      },
+      {
+        "path": "platforms/web/dist/svg-safety.js",
+        "sha256": "fc342c138884cf02e30a346f525a50a33b80a97b10ef80dd8ad8c11cab5eac0b"
+      },
+      {
+        "path": "platforms/web/dist/svg-safety-policy.js",
+        "sha256": "b00f956ac4ca0202e658357429b8906646f49c8b905f2f4b79064313e0449234"
+      },
+      {
+        "path": "platforms/web/pkg/full/merman_wasm.js",
+        "sha256": "6c0a512b281526b716e37e541b8ca64cfa5ec0ca7e4e9546322a528c2408396d"
+      },
+      {
+        "path": "platforms/web/pkg/full/merman_wasm_bg.wasm",
+        "sha256": "cfa69fa27c96bcf5105bd8f4e683eaca209a2d7831c9e990365e138f2f0c99fb"
+      }
+    ]
+  },
+  "build_verification": {
+    "manifest_file": "wasm-inputs.json",
+    "source_digest": "68ff98bbc5980850938cb411fef2f9617a3453290ff51dc168783874a995eb23",
+    "input_digest": "0f7a1c830f986e77d59d38cf0e354cfdfff7349cb8216e87285b46e769d6519f",
+    "manifest_digests_verified": true,
+    "artifacts_checked": 6,
+    "artifacts_matching": 6,
+    "source_inputs": {
+      "checked": 995,
+      "matching": 994,
+      "differences": [
+        {
+          "path": "crates/merman-bindings-core/src/text_measurement.rs",
+          "sha256": "44312bb9a8c1be6299c89a42993cbc2435165fe298377e3a479585c8c01b512a",
+          "actual_sha256": "1f4ebfb655cb125ca95420cfb6dd53ee08073987826d382df96827187f971b05",
+          "difference": "One added (22, \"length\") expectation inside #[cfg(test)]; removing only that line reproduces the build-input SHA-256 exactly."
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "case": "kanban",
+      "files": {
+        "kanban.mmd": "b1e61260a4d655a1f48bd925e4267e5d410166e8d726fd23e3db59610066a897",
+        "kanban-before.svg": "4759239509d593e93d629467f5cd0c8e8649dc02c4074d3dab9747e1796d185b",
+        "kanban-after.svg": "77d03d5a9c098c7ef904853a8da3de0e47633cab8f87aa7ee8a4d142a51170a7"
+      },
+      "before_cli": {
+        "command": [
+          "/tmp/merman-deep-audit-20261028/09-cli",
+          "render",
+          "/tmp/merman-text-stage-visuals-maintenance-09-20261028-g1t4pq8y/kanban.mmd",
+          "--format",
+          "svg",
+          "--svg-pipeline",
+          "parity",
+          "--font-measurement",
+          "deterministic",
+          "--runtime",
+          "deterministic",
+          "--svg-id",
+          "kanban-before",
+          "--output",
+          "/tmp/merman-text-stage-visuals-maintenance-09-20261028-g1t4pq8y/kanban-before.svg"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "output_file": "kanban-before.svg"
+      },
+      "after_options": {
+        "version": 2,
+        "svg": {
+          "diagram_id": "kanban-after"
+        }
+      },
+      "xml": {
+        "before": "valid",
+        "after": "valid"
+      },
+      "browser_checks": {
+        "before": {
+          "xml": "valid",
+          "image": {
+            "loaded": true,
+            "width": 297,
+            "height": 150
+          }
+        },
+        "after": {
+          "xml": "valid",
+          "image": {
+            "loaded": true,
+            "width": 268,
+            "height": 150
+          }
+        }
+      }
+    },
+    {
+      "case": "class-note",
+      "files": {
+        "class-note.mmd": "806328efc02c001efa4c273616cabc3c0f95f322b93bbb60d5c928e8fc53a634",
+        "class-note-before.txt": "510612eb5826dca9176799433cb7cbd0820af148a92059bc67b8eec17088f1bc",
+        "class-note-after.svg": "2d16421bc8fc0b7a237d20b87c4c68649fbd1e520c556df031a79f5e7db551b6"
+      },
+      "before_cli": {
+        "command": [
+          "/tmp/merman-deep-audit-20261028/09-cli",
+          "render",
+          "/tmp/merman-text-stage-visuals-maintenance-09-20261028-g1t4pq8y/class-note.mmd",
+          "--format",
+          "svg",
+          "--svg-pipeline",
+          "parity",
+          "--font-measurement",
+          "deterministic",
+          "--runtime",
+          "deterministic",
+          "--svg-id",
+          "class-note-before",
+          "--output",
+          "/tmp/merman-text-stage-visuals-maintenance-09-20261028-g1t4pq8y/class-note-before.svg"
+        ],
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "SVG postprocessor `validate-well-formed-svg` failed: invalid XML entity reference: unknown entity &nbsp;\n",
+        "output_file": "class-note-before.txt"
+      },
+      "after_options": {
+        "version": 2,
+        "svg": {
+          "diagram_id": "class-note-after"
+        }
+      },
+      "xml": {
+        "before": "SVG postprocessor `validate-well-formed-svg` failed: invalid XML entity reference: unknown entity &nbsp;",
+        "after": "valid"
+      },
+      "browser_checks": {
+        "before": {
+          "status": "CLI rejected invalid XML before writing SVG",
+          "stderr": "SVG postprocessor `validate-well-formed-svg` failed: invalid XML entity reference: unknown entity &nbsp;\n",
+          "image": {
+            "loaded": false,
+            "reason": "No SVG emitted"
+          }
+        },
+        "after": {
+          "xml": "valid",
+          "image": {
+            "loaded": true,
+            "width": 55,
+            "height": 150
+          }
+        }
+      }
+    }
+  ],
+  "screenshot_qa": {
+    "browser": "Edg/156.0.4314.50",
+    "desktop": {
+      "viewport": 1160,
+      "document_width": 1160,
+      "document_height": 1149,
+      "images": [
+        {
+          "alt": "Kanban metadata before",
+          "loaded": true,
+          "width": 297,
+          "height": 150
+        },
+        {
+          "alt": "Kanban metadata after",
+          "loaded": true,
+          "width": 268,
+          "height": 150
+        },
+        {
+          "alt": "Class note after",
+          "loaded": true,
+          "width": 55,
+          "height": 150
+        }
+      ],
+      "class_before_images": 0,
+      "class_before_error_matches": true,
+      "self_contained_images": true
+    },
+    "mobile": {
+      "viewport": 390,
+      "document_width": 390,
+      "pair_columns": [
+        "356px",
+        "356px"
+      ]
+    },
+    "page_errors": [],
+    "screenshot_count": 1,
+    "screenshot": "comparison.png",
+    "device_scale_factor": 1,
+    "visual_inspection": {
+      "checked": true,
+      "findings": "The three SVG images are visible; the baseline Kanban metadata shows clipped literal markup while the after image shows Li and Jill on separate lines. The class before panel shows the exact CLI XML-validation error; the after note reads A followed by a nonbreaking space and B. Page captions, panels and footer fit the desktop viewport."
+    }
+  },
+  "assets": {
+    "README.md": "4ba8dac3b2293323c29336e9f1d197fb4180be1ce85bd5e9f62f7c5fa7635dee",
+    "class-note-after.svg": "2d16421bc8fc0b7a237d20b87c4c68649fbd1e520c556df031a79f5e7db551b6",
+    "class-note-before.txt": "510612eb5826dca9176799433cb7cbd0820af148a92059bc67b8eec17088f1bc",
+    "class-note.mmd": "806328efc02c001efa4c273616cabc3c0f95f322b93bbb60d5c928e8fc53a634",
+    "comparison.png": "2b817c19b0f18b4ddfdf5b4198733a70caee49c4621b658f2cec00e9a9098463",
+    "index.html": "8100197fa3d3a3b747a9b14b2a87fc8417eba022a148e3ce4aae6f2d13bbcd43",
+    "kanban-after.svg": "77d03d5a9c098c7ef904853a8da3de0e47633cab8f87aa7ee8a4d142a51170a7",
+    "kanban-before.svg": "4759239509d593e93d629467f5cd0c8e8649dc02c4074d3dab9747e1796d185b",
+    "kanban.mmd": "b1e61260a4d655a1f48bd925e4267e5d410166e8d726fd23e3db59610066a897",
+    "wasm-inputs.json": "dee0b5d96c0599755507e4652837f6d266a8cde6338c2865cc5f317beec1cd2a"
+  }
+}

@@ -6,31 +6,31 @@
         {
           "id": "id3",
           "x": 636.0,
-          "y": 219.1,
+          "y": 221.5,
           "width": 376.0,
-          "height": 111.4,
+          "height": 113.0,
           "is_cluster": true
         },
         {
           "id": "id2",
           "x": 205.0,
-          "y": 67.7,
+          "y": 68.5,
           "width": 200.0,
-          "height": 111.4,
+          "height": 113.0,
           "is_cluster": true
         },
         {
           "id": "id1",
           "x": 200.0,
-          "y": 219.1,
+          "y": 221.5,
           "width": 376.0,
-          "height": 111.4,
+          "height": 113.0,
           "is_cluster": true
         },
         {
           "id": "C",
           "x": 548.0,
-          "y": 228.3,
+          "y": 231.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "D",
           "x": 724.0,
-          "y": 228.3,
+          "y": 231.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -46,7 +46,7 @@
         {
           "id": "E",
           "x": 205.0,
-          "y": 76.9,
+          "y": 78.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -54,7 +54,7 @@
         {
           "id": "A",
           "x": 112.0,
-          "y": 228.3,
+          "y": 231.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -62,7 +62,7 @@
         {
           "id": "B",
           "x": 288.0,
-          "y": 228.3,
+          "y": 231.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -78,19 +78,19 @@
           "points": [
             {
               "x": 364.0,
-              "y": 228.3
+              "y": 231.5
             },
             {
               "x": 398.0,
-              "y": 228.3
+              "y": 231.5
             },
             {
               "x": 438.0,
-              "y": 228.3
+              "y": 231.5
             },
             {
               "x": 472.0,
-              "y": 228.3
+              "y": 231.5
             }
           ],
           "label": null,
@@ -111,11 +111,11 @@
           "points": [
             {
               "x": 624.0,
-              "y": 228.3
+              "y": 231.5
             },
             {
               "x": 648.0,
-              "y": 228.3
+              "y": 231.5
             }
           ],
           "label": null,
@@ -136,11 +136,11 @@
           "points": [
             {
               "x": 188.0,
-              "y": 228.3
+              "y": 231.5
             },
             {
               "x": 212.0,
-              "y": 228.3
+              "y": 231.5
             }
           ],
           "label": null,
@@ -157,17 +157,17 @@
         {
           "id": "id1",
           "x": 200.0,
-          "y": 219.1,
+          "y": 221.5,
           "width": 376.0,
-          "height": 111.4,
+          "height": 113.0,
           "diff": -4.0,
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "title": "title is set",
           "title_label": {
             "x": 200.0,
-            "y": 170.1,
+            "y": 172.5,
             "width": 63.14,
-            "height": 13.4
+            "height": 15.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -178,17 +178,17 @@
         {
           "id": "id2",
           "x": 205.0,
-          "y": 67.7,
+          "y": 68.5,
           "width": 200.0,
-          "height": 111.4,
+          "height": 113.0,
           "diff": -4.0,
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "title": "title",
           "title_label": {
             "x": 205.0,
-            "y": 18.7,
+            "y": 19.5,
             "width": 25.9,
-            "height": 13.4
+            "height": 15.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -199,17 +199,17 @@
         {
           "id": "id3",
           "x": 636.0,
-          "y": 219.1,
+          "y": 221.5,
           "width": 376.0,
-          "height": 111.4,
+          "height": 113.0,
           "diff": -4.0,
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "title": "id3",
           "title_label": {
             "x": 636.0,
-            "y": 170.1,
+            "y": 172.5,
             "width": 17.78,
-            "height": 13.4
+            "height": 15.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -222,7 +222,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 824.0,
-        "max_y": 274.8
+        "max_y": 278.0
       }
     }
   }

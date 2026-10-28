@@ -64,7 +64,7 @@
           "height": 207.0,
           "diff": -4.0,
           "offset_y": 36.0,
-          "title": "title contains literal <br/> sequence",
+          "title": "title contains literal <br> sequence",
           "title_label": {
             "x": 112.0,
             "y": 32.0,

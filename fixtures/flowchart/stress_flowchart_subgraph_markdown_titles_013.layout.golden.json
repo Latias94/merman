@@ -6,23 +6,23 @@
         {
           "id": "subGraph1",
           "x": 383.297,
-          "y": 100.9,
+          "y": 102.5,
           "width": 742.594,
-          "height": 177.8,
+          "height": 181.0,
           "is_cluster": true
         },
         {
           "id": "_Child_",
           "x": 630.594,
-          "y": 110.1,
+          "y": 112.5,
           "width": 200.0,
-          "height": 111.4,
+          "height": 113.0,
           "is_cluster": true
         },
         {
           "id": "a",
           "x": 111.0,
-          "y": 119.3,
+          "y": 122.5,
           "width": 150.0,
           "height": 72.0,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "b",
           "x": 394.594,
-          "y": 119.3,
+          "y": 122.5,
           "width": 204.0,
           "height": 91.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "c",
           "x": 630.594,
-          "y": 119.3,
+          "y": 122.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -54,15 +54,15 @@
           "points": [
             {
               "x": 496.594,
-              "y": 119.3
+              "y": 122.5
             },
             {
               "x": 520.594,
-              "y": 119.3
+              "y": 122.5
             },
             {
               "x": 554.594,
-              "y": 119.3
+              "y": 122.5
             }
           ],
           "label": null,
@@ -83,18 +83,18 @@
           "points": [
             {
               "x": 186.0,
-              "y": 119.3
+              "y": 122.5
             },
             {
               "x": 292.594,
-              "y": 119.3
+              "y": 122.5
             }
           ],
           "label": {
             "x": 239.297,
-            "y": 118.5,
+            "y": 122.0,
             "width": 58.594,
-            "height": 19.4
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -109,17 +109,17 @@
         {
           "id": "_Child_",
           "x": 630.594,
-          "y": 110.1,
+          "y": 112.5,
           "width": 200.0,
-          "height": 111.4,
+          "height": 113.0,
           "diff": -4.0,
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "title": "_Child_",
           "title_label": {
             "x": 630.594,
-            "y": 61.1,
+            "y": 63.5,
             "width": 28.281,
-            "height": 13.4
+            "height": 15.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -130,17 +130,17 @@
         {
           "id": "subGraph1",
           "x": 383.297,
-          "y": 100.9,
+          "y": 102.5,
           "width": 742.594,
-          "height": 177.8,
+          "height": 181.0,
           "diff": -4.0,
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "title": "**Parent** cluster",
           "title_label": {
             "x": 383.297,
-            "y": 18.7,
+            "y": 19.5,
             "width": 83.156,
-            "height": 13.4
+            "height": 15.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -153,7 +153,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 754.594,
-        "max_y": 189.8
+        "max_y": 193.0
       }
     }
   }

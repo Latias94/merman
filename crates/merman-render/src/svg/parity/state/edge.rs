@@ -704,7 +704,7 @@ pub(super) fn render_state_edge_label(
     fn write_visible_edge_label(
         out: &mut String,
         id: &str,
-        label_text: &str,
+        label_dom: &str,
         label_pos: crate::model::LayoutPoint,
         w: f64,
         h: f64,
@@ -724,10 +724,9 @@ pub(super) fn render_state_edge_label(
                 fmt_display(w),
                 fmt_display(h),
                 edge_label_div_style(w),
-                state_edge_label_html(label_text)
+                label_dom
             );
         } else {
-            let label_dom = state_svg_text_label(label_text, true, None);
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
@@ -787,10 +786,22 @@ pub(super) fn render_state_edge_label(
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
+    let label_dom = if ctx.html_labels {
+        state_edge_label_html(label_text)
+    } else {
+        let measurement = crate::state::measure_state_markdown_label(
+            label_text,
+            ctx.measurer,
+            &ctx.text_style,
+            Some(crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX),
+            WrapMode::SvgLike,
+        );
+        state_svg_word_label(&measurement.svg_word_lines, true, None)
+    };
     write_visible_edge_label(
         out,
         &edge.id,
-        label_text,
+        &label_dom,
         label_position,
         w,
         h,

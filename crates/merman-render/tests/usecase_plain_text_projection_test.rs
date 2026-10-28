@@ -65,6 +65,11 @@ fn assert_plain_actor_visible_projection(
         .filter_map(|node| node.text())
         .collect();
     assert_eq!(visible, expected_visible);
+    assert!(
+        !label.descendants().any(|node| node.has_tag_name("br")),
+        "plain actor labels must retain literal break text: {}",
+        rendered.svg()
+    );
 
     let node = projection["layout"]["UsecaseDiagram"]["nodes"]
         .as_array()
@@ -115,10 +120,10 @@ fn usecase_svg_plain_actor_measures_visible_ampersand() {
 
 #[test]
 fn usecase_html_plain_actor_measures_literal_break_spelling() {
-    assert_plain_actor_visible_projection(true, "A<br/>B", "A<br/>B", 210.0);
+    assert_plain_actor_visible_projection(true, "A<br/>B", "A<br>B", 180.0);
 }
 
 #[test]
 fn usecase_svg_plain_actor_measures_literal_break_spelling() {
-    assert_plain_actor_visible_projection(false, "A<br/>B", "A<br/>B", 210.0);
+    assert_plain_actor_visible_projection(false, "A<br/>B", "A<br>B", 180.0);
 }

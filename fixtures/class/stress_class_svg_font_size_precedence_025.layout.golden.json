@@ -6,9 +6,9 @@
         {
           "id": "FontSizeSvgProbe",
           "x": 168.921,
-          "y": 78.45,
+          "y": 78.975,
           "width": 313.843,
-          "height": 132.9,
+          "height": 133.95,
           "is_cluster": false
         }
       ],
@@ -18,7 +18,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 325.843,
-        "max_y": 144.9
+        "max_y": 145.95
       }
     }
   }

@@ -92,22 +92,6 @@ fn kanban_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
     format!("{diagram_id}-{raw_id}")
 }
 
-fn measure_kanban_plain_label(
-    text_measurer: &dyn crate::text::TextMeasurer,
-    text: Option<&str>,
-    style: &crate::text::TextStyle,
-) -> KanbanPreparedLabelGeometry {
-    let Some(text) = text.filter(|text| !text.is_empty()) else {
-        return KanbanPreparedLabelGeometry::empty();
-    };
-    let metrics = text_measurer.measure_wrapped(text, style, None, crate::text::WrapMode::HtmlLike);
-    KanbanPreparedLabelGeometry {
-        content_height: metrics.height,
-        foreign_object_width: metrics.width,
-        wrapped: false,
-    }
-}
-
 struct KanbanLabelRenderContext {
     max_width: f64,
     min_height: f64,
@@ -137,7 +121,7 @@ fn write_kanban_label_group(
     } = group;
     let max_width = context.max_width;
     let div_style_overrides = match text {
-        Some(text) if !text.is_empty() && wrap_title && geometry.wrapped => Some(format!(
+        Some(text) if !text.is_empty() && geometry.wrapped => Some(format!(
             "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; width: {width}px;",
             width = fmt(max_width),
         )),
@@ -181,8 +165,6 @@ fn write_kanban_label_group(
     );
     if let Some(html) = html.filter(|_| text.is_some_and(|text| !text.is_empty())) {
         out.push_str(html);
-    } else if let Some(text) = text.filter(|text| !text.is_empty()) {
-        let _ = write!(out, r#"<p>{}</p>"#, escape_xml(text));
     }
     out.push_str("</span></div></foreignObject></g>");
 }
@@ -286,7 +268,6 @@ pub(crate) fn render_kanban_diagram_svg(
 
     out.push_str(r#"<g class="items">"#);
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
-    let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
     fn kanban_priority_stroke(priority: &str) -> Option<&'static str> {
         match priority.trim() {
@@ -306,10 +287,8 @@ pub(crate) fn render_kanban_diagram_svg(
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
         let title_geometry = prepared_item.title.geometry;
-        let ticket_geometry =
-            measure_kanban_plain_label(&text_measurer, n.ticket.as_deref(), &label_style);
-        let assigned_geometry =
-            measure_kanban_plain_label(&text_measurer, n.assigned.as_deref(), &label_style);
+        let ticket_geometry = prepared_item.ticket.geometry;
+        let assigned_geometry = prepared_item.assigned.geometry;
         let height_adj = ticket_geometry
             .content_height
             .max(assigned_geometry.content_height)
@@ -380,7 +359,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     KanbanLabelGroup {
                         position: (left_x, details_y),
                         text: Some(t),
-                        html: None,
+                        html: Some(prepared_item.ticket.html.as_str()),
                         geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
@@ -394,7 +373,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     KanbanLabelGroup {
                         position: (left_x, details_y),
                         text: Some(t),
-                        html: None,
+                        html: Some(prepared_item.ticket.html.as_str()),
                         geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
@@ -423,7 +402,7 @@ pub(crate) fn render_kanban_diagram_svg(
             KanbanLabelGroup {
                 position: (right_x, details_y),
                 text: n.assigned.as_deref(),
-                html: None,
+                html: Some(prepared_item.assigned.html.as_str()),
                 geometry: assigned_geometry,
                 div_class: None,
                 wrap_title: false,
@@ -1065,6 +1044,7 @@ mod tests {
             .iter()
             .map(|entry| entry.count())
             .sum();
+        assert!(measurement_count_before_render > 0);
         let svg = render_kanban_diagram_svg(&prepared, &config, &options).unwrap();
         let report = session.text_measurement_report();
         let measurement_count_after_render: u64 =
@@ -1077,9 +1057,8 @@ mod tests {
         );
         assert_eq!(attr_f64(title_fo, "height"), 40.0);
         assert_eq!(
-            measurement_count_after_render,
-            measurement_count_before_render + 2,
-            "SVG emission must measure each non-empty detail label exactly once"
+            measurement_count_after_render, measurement_count_before_render,
+            "SVG emission must reuse prepared title and metadata geometry without measuring again"
         );
         assert!(report.entries().iter().any(|entry| {
             entry.provenance().phase == TextMeasurementPhase::Wrap

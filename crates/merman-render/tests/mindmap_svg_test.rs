@@ -53,6 +53,105 @@ fn deep_mindmap_chain(depth: usize) -> String {
 }
 
 #[test]
+fn mindmap_html_entity_depth_and_attributes_share_terminal_geometry() {
+    // Mermaid 12.1 createText restores references before innerHTML consumes the fragment.
+    for (label, visible, reference, title) in [
+        ("A#60;B", "A<B", "A&lt;B", None),
+        (
+            "A#60;b#62;B#60;/b#62;C",
+            "A<b>B</b>C",
+            "A&lt;b&gt;B&lt;/b&gt;C",
+            None,
+        ),
+        ("A#60;br/#62;B", "A<br/>B", "A&lt;br/&gt;B", None),
+        (
+            "A#amp;lt;br/#amp;gt;B",
+            "A&lt;br/&gt;B",
+            "A&amp;lt;br/&amp;gt;B",
+            None,
+        ),
+        (
+            "A<span title='x#quot;y'>B</span>C",
+            "ABC",
+            "ABC",
+            Some("x\"y"),
+        ),
+    ] {
+        let source = |label| {
+            format!(
+                "---\nconfig:\n  layout: tidy-tree\n  htmlLabels: true\n  securityLevel: loose\n---\nmindmap\n  root[\"{label}\"]\n"
+            )
+        };
+        let svg = render_mindmap_svg_from_text(&source(label), "mindmap-html-entities");
+        let reference_svg =
+            render_mindmap_svg_from_text(&source(reference), "mindmap-html-entities");
+        let document = roxmltree::Document::parse(&svg).expect("final XHTML must remain XML");
+        let reference_document = roxmltree::Document::parse(&reference_svg).unwrap();
+        let terminal = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        let reference_terminal = reference_document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        let text: String = terminal
+            .descendants()
+            .filter(roxmltree::Node::is_text)
+            .filter_map(|node| node.text())
+            .collect();
+        assert_eq!(text, visible, "{label}");
+        assert!(
+            !terminal
+                .descendants()
+                .any(|node| { node.has_tag_name("b") || node.has_tag_name("br") })
+        );
+        assert_eq!(
+            terminal
+                .descendants()
+                .find_map(|node| node.attribute("title")),
+            title,
+            "{label}"
+        );
+        for attribute in ["width", "height"] {
+            assert_eq!(
+                terminal.attribute(attribute),
+                reference_terminal.attribute(attribute),
+                "{label}: terminal {attribute}"
+            );
+        }
+        assert_eq!(
+            document.root_element().attribute("viewBox"),
+            reference_document.root_element().attribute("viewBox"),
+            "{label}: layout must measure the same literal content as emission"
+        );
+    }
+}
+
+#[test]
+fn mindmap_html_recovery_and_policy_removal_share_terminal_geometry() {
+    // Markdown creates the forbidden element after the parser's source sanitization.
+    for (label, policy) in [
+        ("Alpha</div>Beta", ""),
+        (
+            "Alpha**removed**Beta",
+            "  dompurifyConfig:\n    FORBID_TAGS: [strong]\n    KEEP_CONTENT: false\n",
+        ),
+    ] {
+        let source = |label| {
+            format!(
+                "---\nconfig:\n  layout: tidy-tree\n  htmlLabels: true\n  securityLevel: loose\n{policy}---\nmindmap\n  root[\"{label}\"]\n"
+            )
+        };
+        assert_eq!(
+            render_mindmap_svg_from_text(&source(label), "mindmap-html-recovery"),
+            render_mindmap_svg_from_text(&source("AlphaBeta"), "mindmap-html-recovery"),
+            "{label}: layout and emission must consume the same recovered structure"
+        );
+    }
+}
+
+#[test]
 fn mindmap_html_label_box_uses_inherited_root_font_size() {
     let svg = render_mindmap_svg_from_text(
         "---\nconfig:\n  themeVariables:\n    fontSize: 32px\n---\nmindmap\n  root[Root]\n",

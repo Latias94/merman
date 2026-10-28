@@ -281,16 +281,32 @@ impl FlowchartSvgLabelSource {
             };
         }
 
-        let visible = flowchart_svg_source_word_lines_plain_text(wrapped);
-        let mut metrics = measurer.measure_wrapped(&visible, style, None, WrapMode::SvgLike);
-        if width_mode == FlowchartSvgWidthMode::ComputedLength {
-            metrics.width = wrapped.iter().fold(0.0_f64, |width, line| {
-                let visible =
-                    flowchart_svg_source_word_lines_plain_text(std::slice::from_ref(line));
-                width.max(measurer.measure_svg_text_computed_length_px(&visible, style))
-            });
+        let mut width = 0.0_f64;
+        let mut ink: Option<(f64, f64)> = None;
+        for (row_index, row) in wrapped.iter().enumerate() {
+            let visible = flowchart_svg_source_word_lines_plain_text(std::slice::from_ref(row));
+            if trim_html_collapsible_ascii_whitespace(&visible).is_empty() {
+                continue;
+            }
+            let row_width = match width_mode {
+                FlowchartSvgWidthMode::Bbox => {
+                    measurer.measure_svg_tspan_text_bbox_width_px(&visible, style)
+                }
+                FlowchartSvgWidthMode::ComputedLength => {
+                    measurer.measure_svg_text_computed_length_px(&visible, style)
+                }
+            };
+            width = width.max(row_width);
+            let top = measurer.measure_svg_create_text_bbox_y_offset_px(&visible, style)
+                + row_index as f64 * style.font_size * 1.1;
+            let bottom = top + measurer.measure_svg_tspan_text_bbox_height_px(&visible, style);
+            ink = Some(ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))));
         }
-        metrics
+        crate::text::TextMetrics {
+            width,
+            height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
+            line_count: wrapped.len(),
+        }
     }
 }
 

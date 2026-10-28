@@ -183,7 +183,7 @@
           "height": 249.0,
           "diff": 0.0,
           "offset_y": 0.0,
-          "title": "literal <br/> should be treated as text\nline2\\\\nline3 (escaped)",
+          "title": "literal <br> should be treated as text\nline2\\\\nline3 (escaped)",
           "title_label": {
             "x": 165.0,
             "y": 43.5,

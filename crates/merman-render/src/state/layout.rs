@@ -303,8 +303,12 @@ pub(super) fn title_label_metrics(
 ) -> (f64, f64) {
     // Mermaid state diagram cluster titles use `createLabel(...)` (nowrap) rather than
     // `createText(...)` (width constrained).
-    let decoded = decode_html_entities_once(label);
-    let metrics = measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode);
+    let metrics = if wrap_mode == WrapMode::HtmlLike {
+        let decoded = decode_html_entities_once(label);
+        measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode)
+    } else {
+        super::label::measure_state_svg_plain_label(label, measurer, text_style)
+    };
 
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
@@ -1509,14 +1513,15 @@ pub(super) fn state_node_dimensions(
                 .as_ref()
                 .map(|v| v.join("\n"))
                 .unwrap_or_default();
-            let (title_w, title_h) = title_label_metrics(
-                &label_text,
-                measurer,
-                &settings.text_style,
-                WrapMode::HtmlLike,
-            );
+            let title_wrap_mode = if settings.html_labels {
+                WrapMode::HtmlLike
+            } else {
+                WrapMode::SvgLikeSingleRun
+            };
+            let (title_w, title_h) =
+                title_label_metrics(&label_text, measurer, &settings.text_style, title_wrap_mode);
             let (desc_w, desc_h) =
-                title_label_metrics(&desc, measurer, &settings.text_style, WrapMode::HtmlLike);
+                title_label_metrics(&desc, measurer, &settings.text_style, title_wrap_mode);
 
             let geometry = super::RectWithTitleGeometry::from_metrics(
                 title_w, title_h, desc_w, desc_h, padding,
@@ -2279,9 +2284,14 @@ mod tests {
             ),
             (250.123_456_789, 17.25)
         );
+        // Keep this padding control below createText's 200px wrapping width.
+        let measurer = NonLatticeMeasurer {
+            width: 73.123_456_789,
+            height: 17.25,
+        };
         assert_eq!(
             edge_label_metrics("edge", &measurer, &style, WrapMode::SvgLike),
-            (254.123_456_789, 21.25)
+            (77.123_456_789, 21.25)
         );
     }
 

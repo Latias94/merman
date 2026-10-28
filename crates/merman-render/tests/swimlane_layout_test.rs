@@ -20,12 +20,15 @@ impl HostTextMeasurer for FixedTextMeasurer {
         Ok(Some(match request.operation {
             TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::SimpleBBoxWidth
+            | TextMeasurementOperation::TspanBBoxWidth
             | TextMeasurementOperation::ComputedLength
             | TextMeasurementOperation::CanvasMeasureTextWidth => {
                 HostTextMeasurement::Length(width)
             }
             TextMeasurementOperation::RawBBoxHeight
-            | TextMeasurementOperation::SimpleBBoxHeight => HostTextMeasurement::Length(20.0),
+            | TextMeasurementOperation::SimpleBBoxHeight
+            | TextMeasurementOperation::TspanBBoxHeight => HostTextMeasurement::Length(20.0),
+            TextMeasurementOperation::CreateTextBBoxYOffset => HostTextMeasurement::Length(0.0),
             _ => HostTextMeasurement::Metrics(merman_render::text::TextMetrics {
                 width,
                 height: 20.0,
@@ -45,12 +48,15 @@ impl HostTextMeasurer for WidthAwareTextMeasurer {
         Ok(Some(match request.operation {
             TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::SimpleBBoxWidth
+            | TextMeasurementOperation::TspanBBoxWidth
             | TextMeasurementOperation::ComputedLength
             | TextMeasurementOperation::CanvasMeasureTextWidth => {
                 HostTextMeasurement::Length(width)
             }
             TextMeasurementOperation::RawBBoxHeight
-            | TextMeasurementOperation::SimpleBBoxHeight => HostTextMeasurement::Length(20.0),
+            | TextMeasurementOperation::SimpleBBoxHeight
+            | TextMeasurementOperation::TspanBBoxHeight => HostTextMeasurement::Length(20.0),
+            TextMeasurementOperation::CreateTextBBoxYOffset => HostTextMeasurement::Length(0.0),
             _ => HostTextMeasurement::Metrics(merman_render::text::TextMetrics {
                 width,
                 height: line_count as f64 * 20.0,
@@ -388,7 +394,8 @@ A -->|"&nbsp;Edge&nbsp;"| B
         .find(|node| node.is_edge_label)
         .expect("edge label node");
     assert_eq!(edge_label.label, "\u{00a0}Edge\u{00a0}");
-    assert_eq!(edge_label.label_width, 136.0);
+    // The 120px createText limit splits the final semicolon onto a second retained row.
+    assert_eq!(edge_label.label_width, source_width("&nbsp;Edge&nbsp"));
 }
 
 #[test]

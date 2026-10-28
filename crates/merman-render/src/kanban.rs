@@ -108,6 +108,8 @@ impl KanbanPreparedLabelGeometry {
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedItem {
     pub(crate) title: KanbanPreparedMarkdownLabel,
+    pub(crate) ticket: KanbanPreparedMarkdownLabel,
+    pub(crate) assigned: KanbanPreparedMarkdownLabel,
     pub(crate) ticket_link: Option<KanbanPreparedTicketLink>,
 }
 
@@ -172,6 +174,16 @@ fn prepare_kanban_markdown_label(
     max_width: f64,
 ) -> (KanbanPreparedMarkdownLabel, TextMetrics) {
     let html = markdown.render(raw);
+    prepare_kanban_html_label(markdown, measurer, html, style, max_width)
+}
+
+fn prepare_kanban_html_label(
+    markdown: &KanbanMarkdown<'_>,
+    measurer: &dyn TextMeasurer,
+    html: String,
+    style: &TextStyle,
+    max_width: f64,
+) -> (KanbanPreparedMarkdownLabel, TextMetrics) {
     let raw_metrics = markdown.measure_html(measurer, &html, style, None);
     let wrapped = max_width > 0.0 && raw_metrics.width > max_width;
     let metrics = if wrapped {
@@ -212,6 +224,30 @@ fn prepare_kanban_title_label(
     (prepared, metrics)
 }
 
+fn prepare_kanban_metadata_label(
+    markdown: &KanbanMarkdown<'_>,
+    measurer: &dyn TextMeasurer,
+    text: Option<&str>,
+    style: &TextStyle,
+    max_width: f64,
+) -> KanbanPreparedMarkdownLabel {
+    let Some(text) = text.filter(|text| !text.is_empty()) else {
+        return KanbanPreparedMarkdownLabel {
+            html: String::new(),
+            geometry: KanbanPreparedLabelGeometry::empty(),
+        };
+    };
+    // The shared HTML5 sanitizer owns balancing and XML serialization before measurement.
+    let html = merman_core::sanitize::sanitize_xhtml(
+        &format!(
+            "<p>{}</p>",
+            text.replace("\\n", "<br/>").replace('\n', "<br/>")
+        ),
+        markdown.sanitize_config,
+    );
+    prepare_kanban_html_label(markdown, measurer, html, style, max_width).0
+}
+
 fn kanban_layout_work_units(model: &KanbanDiagramRenderModel) -> usize {
     let sections = model.nodes.iter().filter(|node| node.is_group).count();
     let items = model
@@ -219,12 +255,28 @@ fn kanban_layout_work_units(model: &KanbanDiagramRenderModel) -> usize {
         .iter()
         .filter(|node| node.parent_id.is_some())
         .count();
+    let detail_labels = model
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.is_some())
+        .fold(0usize, |count, node| {
+            count
+                .saturating_add(usize::from(
+                    node.ticket.as_deref().is_some_and(|text| !text.is_empty()),
+                ))
+                .saturating_add(usize::from(
+                    node.assigned
+                        .as_deref()
+                        .is_some_and(|text| !text.is_empty()),
+                ))
+        });
     model
         .nodes
         .len()
         .saturating_mul(2)
         .saturating_add(sections.saturating_mul(2))
         .saturating_add(items.saturating_mul(3))
+        .saturating_add(detail_labels.saturating_mul(2))
 }
 
 #[cfg(test)]
@@ -340,6 +392,20 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 inner_max_w,
             );
 
+            let prepared_ticket = prepare_kanban_metadata_label(
+                &markdown,
+                measurer,
+                item.ticket.as_deref(),
+                &legend_style,
+                inner_max_w,
+            );
+            let prepared_assigned = prepare_kanban_metadata_label(
+                &markdown,
+                measurer,
+                item.assigned.as_deref(),
+                &legend_style,
+                inner_max_w,
+            );
             let has_details_row = item.ticket.is_some() || item.assigned.is_some();
             let base_height = if has_details_row {
                 item_two_row_height
@@ -347,7 +413,12 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 item_one_row_height
             };
             let extra_title_height = (title_metrics.height - label_foreign_object_height).max(0.0);
-            let height = base_height + extra_title_height;
+            let detail_height = prepared_ticket
+                .geometry
+                .content_height
+                .max(prepared_assigned.geometry.content_height);
+            let extra_detail_height = (detail_height - label_foreign_object_height).max(0.0);
+            let height = base_height + extra_title_height + extra_detail_height / 2.0;
 
             let center_x = section.center_x;
             let center_y = y + height / 2.0;
@@ -369,6 +440,8 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
             });
             prepared_items.push(KanbanPreparedItem {
                 title: prepared_title,
+                ticket: prepared_ticket,
+                assigned: prepared_assigned,
                 ticket_link: prepare_kanban_ticket_link(
                     ticket_base_url.as_deref(),
                     item.ticket.as_deref(),
@@ -476,6 +549,20 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
             )
             .0,
+            ticket: prepare_kanban_metadata_label(
+                &markdown,
+                measurer,
+                item.ticket.as_deref(),
+                &settings.text_style,
+                (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
+            ),
+            assigned: prepare_kanban_metadata_label(
+                &markdown,
+                measurer,
+                item.assigned.as_deref(),
+                &settings.text_style,
+                (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
+            ),
             ticket_link: prepare_kanban_ticket_link(
                 ticket_base_url.as_deref(),
                 item.ticket.as_deref(),

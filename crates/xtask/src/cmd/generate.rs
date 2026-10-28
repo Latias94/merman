@@ -3659,7 +3659,7 @@ mod tests {
 
     #[test]
     fn dompurify_generated_header_uses_current_baseline_version() {
-        let rust = render_dompurify_defaults_rs(&[], &[], &[], &[]);
+        let rust = render_dompurify_defaults_rs(&[]);
 
         assert!(rust.contains(&format!("DOMPurify {PINNED_DOMPURIFY_VERSION}")));
         assert!(rust.ends_with('\n'));

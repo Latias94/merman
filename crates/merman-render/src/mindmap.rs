@@ -132,15 +132,68 @@ pub(crate) fn mindmap_label_text_for_layout(text: &str) -> &str {
     normalized.unwrap_or(text)
 }
 
+fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
+    let fragment = fragment.trim();
+    let inner = fragment.strip_prefix("<p>")?.strip_suffix("</p>")?.trim();
+    let prefix = inner.get(..4)?;
+    if !prefix.eq_ignore_ascii_case("<img") {
+        return None;
+    }
+    if inner
+        .as_bytes()
+        .get(4)
+        .is_some_and(|byte| !byte.is_ascii_whitespace() && !matches!(byte, b'/' | b'>'))
+    {
+        return None;
+    }
+
+    let mut quote = None;
+    for (index, ch) in inner.char_indices().skip(4) {
+        match (quote, ch) {
+            (Some(active), candidate) if active == candidate => quote = None,
+            (None, '\'' | '"') => quote = Some(ch),
+            (None, '>') => return inner[index + 1..].trim().is_empty().then_some(inner),
+            _ => {}
+        }
+    }
+    None
+}
+
+pub(crate) fn mindmap_html_label_fragment(text: &str, config: &MermaidConfig) -> String {
+    // Restore references before HTML consumption, never by decoding serialized XHTML.
+    let source = merman_core::entities::restore_mermaid_entity_spelling(text);
+    let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(source.as_ref(), true);
+    let html = crate::text::replace_fontawesome_icons(&html);
+    let xhtml = merman_core::sanitize::sanitize_xhtml(&html, config);
+    // Indented code can retain a trailing line box in a break-spaces container.
+    single_image_paragraph_inner(&xhtml)
+        .map(str::to_owned)
+        .unwrap_or(xhtml)
+}
+
+#[cfg(test)]
 fn mindmap_label_bbox_px(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
 ) -> (f64, f64) {
-    let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(text);
-    let text = mindmap_label_text_for_layout(decoded.as_ref());
+    mindmap_html_label_bbox_px(
+        text,
+        measurer,
+        style,
+        max_node_width_px,
+        &MermaidConfig::from_value(serde_json::json!({"securityLevel": "strict"})),
+    )
+}
 
+fn mindmap_html_label_bbox_px(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_node_width_px: f64,
+    config: &MermaidConfig,
+) -> (f64, f64) {
     // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and respect
     // `mindmap.maxNodeWidth` (default 200px). When the raw label is wider than that, Mermaid
     // switches the label container to a fixed 200px width and allows HTML-like wrapping (e.g.
@@ -149,10 +202,8 @@ fn mindmap_label_bbox_px(
     // Mirror that by measuring with an explicit max width in HTML-like mode.
     let max_node_width_px = max_node_width_px.max(1.0);
 
-    // Upstream `mindmapDb.flattenNodes()` assigns `labelType: 'markdown'` to every node. Measure
-    // the same post-Markdown HTML fragment that `createText()` inserts into the foreignObject,
-    // including raw inline HTML. SVG emission applies the configured sanitizer after rendering.
-    let html = crate::text::mermaid_markdown_to_html_label_fragment(text, true);
+    // Layout and emission share the final recovered XHTML, including entity depth and removals.
+    let html = mindmap_html_label_fragment(text, config);
     let wrapped = crate::text::measure_html_with_inline_styles(
         measurer,
         &html,
@@ -176,11 +227,12 @@ fn mindmap_label_bbox_px_with_math(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<(f64, f64)> {
     if !crate::math::contains_delimited_math(text) {
-        return Ok(mindmap_label_bbox_px(
+        return Ok(mindmap_html_label_bbox_px(
             text,
             measurer,
             style,
             max_node_width_px,
+            config,
         ));
     }
 
@@ -563,6 +615,19 @@ fn layout_mindmap_diagram_model(
 
 #[cfg(all(test, feature = "diagram-mindmap"))]
 mod tests {
+    #[test]
+    fn single_image_paragraph_is_unwrapped_from_the_final_xhtml_shape() {
+        assert_eq!(
+            super::single_image_paragraph_inner(r#"<p><img src="a>b" /></p>"#),
+            Some(r#"<img src="a>b" />"#)
+        );
+        assert_eq!(super::single_image_paragraph_inner("<p>text</p>"), None);
+        assert_eq!(
+            super::single_image_paragraph_inner("<p><img src=x><span>extra</span></p>"),
+            None
+        );
+    }
+
     struct FixedMeasurer;
 
     impl crate::text::TextMeasurer for FixedMeasurer {

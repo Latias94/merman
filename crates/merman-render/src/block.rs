@@ -46,9 +46,7 @@ fn block_label_html_fragment(raw: &str, config: &merman_core::MermaidConfig) -> 
         "<p>{}</p>",
         text.replace("\\n", "<br />").replace('\n', "<br />")
     );
-    crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
-        &html, config,
-    ))
+    merman_core::sanitize::sanitize_xhtml(&html, config)
 }
 
 fn block_label_is_effectively_empty(text: &str) -> bool {

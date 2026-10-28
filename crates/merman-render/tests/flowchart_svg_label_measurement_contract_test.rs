@@ -317,31 +317,68 @@ end
             let _artifact = family::prepare(parsed, &LayoutOptions::default(), session)
                 .expect("prepare empty subgraph");
             let requests = host.snapshot();
-            let final_title_request = requests
-                .iter()
-                .rfind(|request| request.text.contains("alpha"))
-                .expect("empty subgraph title measurement");
-
             let context = format!(
                 "backend={backend}, collapsed={collapsed}, host={}",
                 outcome.name()
             );
+            let row_requests: Vec<_> = requests
+                .iter()
+                .filter(|request| request.operation != TextMeasurementOperation::ComputedLength)
+                .collect();
+            assert!(
+                !row_requests.is_empty(),
+                "{context}: missing literal row bounds"
+            );
             assert_eq!(
-                final_title_request.operation,
-                TextMeasurementOperation::Wrapped,
-                "{context}: the final SVG title must still use getBBox measurement: {requests:#?}"
+                row_requests.len() % 3,
+                0,
+                "{context}: incomplete row bounds"
+            );
+            let mut rows = Vec::new();
+            for row in row_requests.chunks_exact(3) {
+                assert_eq!(
+                    row.iter()
+                        .map(|request| request.operation)
+                        .collect::<Vec<_>>(),
+                    [
+                        TextMeasurementOperation::TspanBBoxWidth,
+                        TextMeasurementOperation::CreateTextBBoxYOffset,
+                        TextMeasurementOperation::TspanBBoxHeight,
+                    ],
+                    "{context}: each literal row must use typed getBBox operations: {requests:#?}"
+                );
+                for request in row {
+                    assert_eq!(request.text, row[0].text, "{context}: row payload binding");
+                    assert!(
+                        !request.text.contains('\n'),
+                        "{context}: literal rows cannot rewrap"
+                    );
+                    assert_eq!(request.phase, TextMeasurementPhase::SvgBBox, "{context}");
+                    assert_eq!(
+                        request.result_kind,
+                        TextMeasurementResultKind::Length,
+                        "{context}"
+                    );
+                    assert_eq!(request.wrap_mode, WrapMode::SvgLike, "{context}");
+                    assert_eq!(
+                        request.max_width_bits, None,
+                        "{context}: measure final SVG rows without wrapping them a second time"
+                    );
+                }
+                rows.push(row[0].text.as_str());
+            }
+            assert_eq!(
+                rows.join(" "),
+                "alpha beta gamma delta epsilon zeta eta theta",
+                "{context}: row measurement must preserve the complete title"
             );
             // FlowDB keeps an ordinary empty subgraph as isGroup=true for ELK; createGraph's
             // unwrapGroupLabels therefore applies. Dagre renders the empty group as a node,
             // and an explicitly collapsed ELK group is also a leaf: both retain configured wrapping.
             assert_eq!(
-                final_title_request.text.contains('\n'),
+                rows.len() > 1,
                 wrapped,
                 "{context}: title wrapping must follow the measured node kind: {requests:#?}"
-            );
-            assert_eq!(
-                final_title_request.max_width_bits, None,
-                "{context}: measure the final SVG rows without wrapping them a second time"
             );
         }
     }

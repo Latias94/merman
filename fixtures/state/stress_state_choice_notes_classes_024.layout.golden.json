@@ -366,7 +366,7 @@
           "height": 228.0,
           "diff": 0.0,
           "offset_y": 0.0,
-          "title": "Multi-line note<br/>\nwith HTML line break.",
+          "title": "Multi-line note<br>\nwith HTML line break.",
           "title_label": {
             "x": 320.993,
             "y": 313.5,

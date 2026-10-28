@@ -142,7 +142,7 @@
           "height": 138.0,
           "diff": -4.0,
           "offset_y": 36.0,
-          "title": "<i>Child</i><br/>cluster",
+          "title": "<i>Child</i><br>cluster",
           "title_label": {
             "x": 586.0,
             "y": 101.0,
@@ -163,7 +163,7 @@
           "height": 231.0,
           "diff": -4.0,
           "offset_y": 36.0,
-          "title": "<b>Parent</b><br/>cluster",
+          "title": "<b>Parent</b><br>cluster",
           "title_label": {
             "x": 405.0,
             "y": 32.0,

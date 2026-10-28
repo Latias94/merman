@@ -137,9 +137,7 @@ fn flowchart_label_html_impl(
             let html_out =
                 crate::flowchart::flowchart_trim_html_collapsible_whitespace(&html_out).to_string();
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
-                &html_out, config,
-            ))
+            merman_core::sanitize::sanitize_xhtml(&html_out, config)
         }
         _ => {
             let can_skip_sanitizer = !label.contains('<')
@@ -166,9 +164,7 @@ fn flowchart_label_html_impl(
             } else {
                 wrapped
             };
-            crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
-                &wrapped, config,
-            ))
+            merman_core::sanitize::sanitize_xhtml(&wrapped, config)
         }
     }
 }
@@ -392,14 +388,14 @@ mod tests {
     }
 
     #[test]
-    fn html_unclosed_image_preserves_original_prefix_case() {
+    fn html_unclosed_image_is_recovered_as_balanced_xhtml() {
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "htmlLabels": true,
             "securityLevel": "strict"
         }));
         assert_eq!(
             flowchart_label_html_impl("<IMG src='x'", "string", &config, None),
-            "<p><IMG src='x' />"
+            "<p><img src=\"x\" /></p>"
         );
     }
 

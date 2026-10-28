@@ -3172,18 +3172,56 @@ Note right of B: $$x^2$$
         .expect("render Sequence artifact");
     let svg = rendered.svg();
 
-    assert!(
-        svg.contains(r#"width="0.97153em""#),
-        "expected RaTeX inline SVG sizing in sequence labels: {svg}"
+    let document = roxmltree::Document::parse(svg).expect("valid Sequence SVG");
+    let formulas = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("merman-native-math-svg"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        formulas.len(),
+        2,
+        "message and note must both render math: {svg}"
     );
-    assert!(
-        svg.contains(r#"<div style="width: fit-content;""#),
-        "expected Sequence math labels to use the KaTeX foreignObject shell: {svg}"
-    );
-    assert!(
-        svg.contains("<path"),
-        "expected RaTeX glyph paths in sequence SVG: {svg}"
-    );
+    for formula in formulas {
+        assert!(
+            formula.has_tag_name(("http://www.w3.org/2000/svg", "svg")),
+            "math embedded in XHTML must retain the SVG namespace: {svg}"
+        );
+        let width = formula
+            .attribute("width")
+            .and_then(|width| width.strip_suffix("em"))
+            .expect("inline formula width in em")
+            .parse::<f64>()
+            .expect("numeric formula width");
+        assert_eq!(width, 0.97153, "RaTeX x^2 advance: {svg}");
+        assert!(
+            formula.descendants().any(|node| {
+                node.has_tag_name(("http://www.w3.org/2000/svg", "path"))
+                    && node
+                        .attribute("d")
+                        .is_some_and(|path| !path.trim().is_empty())
+            }),
+            "each formula must retain nonempty SVG glyph paths: {svg}"
+        );
+        let shell = formula
+            .ancestors()
+            .find(|node| {
+                node.has_tag_name(("http://www.w3.org/1999/xhtml", "div"))
+                    && node.attribute("style").is_some_and(|style| {
+                        style.split(';').any(|declaration| {
+                            declaration
+                                .split_once(':')
+                                .is_some_and(|(property, value)| {
+                                    property.trim() == "width" && value.trim() == "fit-content"
+                                })
+                        })
+                    })
+            })
+            .expect("KaTeX XHTML shell with width: fit-content");
+        assert!(shell.parent().is_some_and(|node| {
+            node.has_tag_name(("http://www.w3.org/2000/svg", "foreignObject"))
+        }));
+    }
     assert!(
         !svg.contains("$$x^2$$"),
         "expected math source delimiters to be replaced by rendered SVG: {svg}"
@@ -3212,21 +3250,36 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
     let svg = rendered.svg();
 
     let document = roxmltree::Document::parse(svg).expect("valid Sequence SVG");
-    let inline_formula_count = document
+    let formulas = document
         .descendants()
         .filter(|node| {
-            node.has_tag_name(("http://www.w3.org/2000/svg", "svg"))
-                && node.attribute("class").is_some_and(|classes| {
-                    classes
-                        .split_ascii_whitespace()
-                        .any(|class| class == "merman-native-math-svg")
-                })
+            node.attribute("class").is_some_and(|classes| {
+                classes
+                    .split_ascii_whitespace()
+                    .any(|class| class == "merman-native-math-svg")
+            })
         })
-        .count();
-    assert!(
-        inline_formula_count >= 7,
-        "expected participant, message, and note math labels to render through RaTeX: {svg}"
+        .collect::<Vec<_>>();
+    assert_eq!(
+        formulas.len(),
+        7,
+        "expected four participant copies, two messages, and one note formula: {svg}"
     );
+    for formula in formulas {
+        assert!(
+            formula.has_tag_name(("http://www.w3.org/2000/svg", "svg")),
+            "math embedded in XHTML must retain the SVG namespace: {svg}"
+        );
+        assert!(
+            formula.descendants().any(|node| {
+                node.has_tag_name(("http://www.w3.org/2000/svg", "path"))
+                    && node
+                        .attribute("d")
+                        .is_some_and(|path| !path.trim().is_empty())
+            }),
+            "each formula must retain nonempty SVG glyph paths: {svg}"
+        );
+    }
     assert!(
         !svg.contains(r#"Solve: $$\sqrt{2+2}$$"#) && !svg.contains(r#"Answer: $$2$$"#),
         "expected mixed sequence message formulas to replace source delimiters: {svg}"

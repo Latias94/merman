@@ -1111,10 +1111,16 @@ fn flowchart_svg_layout_metrics_follow_the_shared_text_operation() {
     };
     let text = "synthetic node alpha";
 
-    let direct = measurer.measure_wrapped(text, &style, Some(200.0), WrapMode::SvgLike);
+    // createText measures the emitted literal row, whose ink height is independent of line spacing.
+    let direct = TextMetrics {
+        width: measurer.measure_svg_tspan_text_bbox_width_px(text, &style),
+        height: measurer.measure_svg_tspan_text_bbox_height_px(text, &style),
+        line_count: 1,
+    };
+    assert!(direct.width < 200.0, "the fixture must remain a single row");
     let extended =
-        measurer.measure_wrapped("synthetic node alpha beta", &style, None, WrapMode::SvgLike);
-    assert!(extended.width > direct.width);
+        measurer.measure_svg_tspan_text_bbox_width_px("synthetic node alpha beta", &style);
+    assert!(extended > direct.width);
 
     let cfg = merman_core::MermaidConfig::default();
     let layout =
