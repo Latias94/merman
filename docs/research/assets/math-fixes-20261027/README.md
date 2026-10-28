@@ -30,7 +30,8 @@ node docs/research/assets/math-fixes-20261027/check-browser.mjs
 ```
 
 This inspects complete committed exports, checks that each formula contributes
-visible pixels, and compares actual parity/native formula positions within one
+visible pixels, requires each known fraction bar to contribute pixels independently,
+and compares actual parity/native formula positions within one
 CSS pixel of raster-edge quantization. It separately compares reassembled
 isolated/contextual important paint screenshots byte for byte with a nonzero-ink
 reference. That limited paint control is not a placement proof. To regenerate an export, render its
@@ -40,7 +41,9 @@ actual current executable, including direct Mermaid-to-PNG.
 
 `browser-mutations.json` records negative controls from an in-memory SVG-read
 interceptor: remove native formula instances, hide real foreignObjects, or add a
-20px translation around native instances. No tracked SVG or result file was
+20px translation around native instances. The fraction controls also delete or
+hide only the Sequence fraction bar; both mutations must fail even while the
+numerator and denominator remain visible. No tracked SVG or result file was
 changed during those negative runs (`--check-only`). `fallback-bounds.json`
 records actual before/after browser geometry, including the unresolved host-text
 residual. The paint identity files bind unchanged full-corpus bytes to the
