@@ -703,7 +703,15 @@ impl PreparedFlowchartMathLabel {
     fn take_terminal_reservation(&self) -> Option<PreparedTextRetainedReservation> {
         let expectation = self.terminal_expectation()?;
         let mut reservation = self.retained_reservation.borrow_mut().take()?;
-        reservation.reconcile_downward(expectation.retained_bytes());
+        let projection = self
+            .outcome
+            .prepared()
+            .and_then(PreparedMathLabel::native_projection)
+            .map(Arc::as_ref);
+        reservation.reconcile_downward(PreparedMathEvidenceLease::retained_entry_bytes(
+            &expectation,
+            projection,
+        ));
         Some(reservation)
     }
 }
@@ -1777,14 +1785,23 @@ impl FlowchartSvgLabelSidecar {
         let entries = self
             .math
             .iter()
-            .filter_map(PreparedFlowchartMathLabel::terminal_expectation)
+            .filter_map(|entry| {
+                Some((
+                    entry.terminal_expectation()?,
+                    entry
+                        .outcome
+                        .prepared()
+                        .and_then(PreparedMathLabel::native_projection)
+                        .cloned(),
+                ))
+            })
             .collect();
         let reservations = self
             .math
             .iter()
             .filter_map(PreparedFlowchartMathLabel::take_terminal_reservation)
             .collect();
-        PreparedMathEvidenceLease::new(entries, reservations)
+        PreparedMathEvidenceLease::with_native_projections(entries, reservations)
     }
 
     pub(crate) fn node_owner(

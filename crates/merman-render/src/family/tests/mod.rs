@@ -10736,10 +10736,12 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
             .svg()
             .contains(r#"data-merman-prepared-math-native="v1""#)
     );
+    assert!(!rendered.svg().contains("<template"));
     assert!(
         rendered
-            .svg()
-            .contains(r#"<template data-merman-prepared-math-projection="v1">"#)
+            .prepared_math_evidence
+            .native_projection(0)
+            .is_some()
     );
     assert!(!rendered.svg().contains("$$x^2$$"));
 
@@ -10756,6 +10758,14 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
         "{svg}"
     );
     assert_eq!(prepared_math_native_glyph_geometry(svg), [true], "{svg}");
+    assert_eq!(
+        finalized
+            .svg()
+            .prepared_math_terminal_receipt()
+            .expect("template-free math must retain its terminal receipt")
+            .occurrence_count(),
+        1
+    );
 }
 
 #[cfg(feature = "math")]
@@ -10884,6 +10894,22 @@ fn compiled_flowchart_math_survives_user_native_class_collisions() {
 #[cfg(feature = "math")]
 #[test]
 fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
+    struct UnknownMathPostprocessor;
+
+    impl crate::svg::SvgPostprocessor for UnknownMathPostprocessor {
+        fn name(&self) -> &'static str {
+            "unknown-math-postprocessor"
+        }
+
+        fn process<'a>(
+            &self,
+            svg: std::borrow::Cow<'a, str>,
+            _ctx: &crate::svg::SvgPostprocessContext<'_>,
+        ) -> crate::Result<std::borrow::Cow<'a, str>> {
+            Ok(svg)
+        }
+    }
+
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
@@ -10898,12 +10924,33 @@ fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
     let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare compiled Flowchart math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render compiled Flowchart math")
-        .apply_pipeline(
-            &SvgPipeline::parity()
-                .with_postprocessor(crate::svg::RootBackgroundPostprocessor::new("#111827")),
-        )
+        .expect("render compiled Flowchart math");
+    let original = rendered.svg().to_owned();
+    let work_meter = std::sync::Arc::clone(rendered.session.work_meter());
+    assert!(work_meter.prepared_text_retained_bytes() > 0);
+    assert!(rendered.prepared_math_evidence_valid);
+    let rendered = rendered
+        .apply_pipeline(&SvgPipeline::parity().with_postprocessor(UnknownMathPostprocessor))
         .expect("draft output may carry invalidated math evidence");
+    assert_eq!(rendered.svg(), original);
+    assert!(!rendered.prepared_math_evidence_valid);
+    assert!(
+        rendered
+            .prepared_math_evidence
+            .native_projection(0)
+            .is_some()
+    );
+
+    let rendered = rendered
+        .apply_pipeline(&SvgPipeline::parity())
+        .expect("a later trusted identity pass may still publish draft SVG");
+    assert!(!rendered.prepared_math_evidence_valid);
+    assert!(
+        rendered
+            .prepared_math_evidence
+            .native_projection(0)
+            .is_some()
+    );
 
     let error = match rendered.finalize_resvg(&SvgPipeline::resvg_safe()) {
         Ok(_) => panic!("native projection must not reuse invalidated prepared-math evidence"),
@@ -10915,6 +10962,7 @@ fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
             .contains("prepared-math evidence was invalidated"),
         "{error}"
     );
+    assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
 }
 
 #[test]

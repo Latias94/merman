@@ -148,10 +148,11 @@ impl PreparedMathExpectation {
     }
 }
 
-/// Immutable renderer-owned expectations for one rendered family artifact.
+/// Immutable renderer-owned expectations and native payloads for one rendered family artifact.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PreparedMathEvidenceLease {
     entries: Arc<[PreparedMathExpectation]>,
+    native_projections: Arc<[Option<Arc<super::PreparedMathNativeProjection>>]>,
     duplicate_occurrence_id: Option<PreparedMathOccurrenceId>,
     _retained_reservations: Arc<[PreparedTextRetainedReservation]>,
 }
@@ -165,17 +166,33 @@ impl PartialEq for PreparedMathEvidenceLease {
 impl Eq for PreparedMathEvidenceLease {}
 
 impl PreparedMathEvidenceLease {
+    #[cfg(test)]
     pub(crate) fn new(
-        mut entries: Vec<PreparedMathExpectation>,
+        entries: Vec<PreparedMathExpectation>,
         retained_reservations: Vec<PreparedTextRetainedReservation>,
     ) -> Self {
-        entries.sort_unstable_by(|left, right| left.occurrence_id().cmp(right.occurrence_id()));
+        Self::with_native_projections(
+            entries.into_iter().map(|entry| (entry, None)).collect(),
+            retained_reservations,
+        )
+    }
+
+    pub(crate) fn with_native_projections(
+        mut entries: Vec<(
+            PreparedMathExpectation,
+            Option<Arc<super::PreparedMathNativeProjection>>,
+        )>,
+        retained_reservations: Vec<PreparedTextRetainedReservation>,
+    ) -> Self {
+        entries.sort_unstable_by(|left, right| left.0.occurrence_id().cmp(right.0.occurrence_id()));
         let duplicate_occurrence_id = entries
             .windows(2)
-            .find(|entries| entries[0].occurrence_id() == entries[1].occurrence_id())
-            .map(|entries| entries[0].occurrence_id().clone());
+            .find(|entries| entries[0].0.occurrence_id() == entries[1].0.occurrence_id())
+            .map(|entries| entries[0].0.occurrence_id().clone());
+        let (entries, native_projections): (Vec<_>, Vec<_>) = entries.into_iter().unzip();
         Self {
             entries: entries.into(),
+            native_projections: native_projections.into(),
             duplicate_occurrence_id,
             _retained_reservations: retained_reservations.into(),
         }
@@ -183,6 +200,27 @@ impl PreparedMathEvidenceLease {
 
     pub(crate) fn entries(&self) -> &[PreparedMathExpectation] {
         &self.entries
+    }
+
+    pub(crate) fn native_projection(
+        &self,
+        index: usize,
+    ) -> Option<&super::PreparedMathNativeProjection> {
+        self.native_projections.get(index)?.as_deref()
+    }
+
+    pub(crate) fn retained_entry_bytes(
+        expectation: &PreparedMathExpectation,
+        projection: Option<&super::PreparedMathNativeProjection>,
+    ) -> usize {
+        expectation
+            .retained_bytes()
+            .saturating_add(std::mem::size_of::<
+                Option<Arc<super::PreparedMathNativeProjection>>,
+            >())
+            .saturating_add(
+                projection.map_or(0, super::PreparedMathNativeProjection::retained_bytes),
+            )
     }
 
     pub(crate) fn is_empty(&self) -> bool {

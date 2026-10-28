@@ -20,6 +20,7 @@ pub(crate) use prepared::{
     BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, ConfiguredMathBackend, MathPreparationOutcome,
     MathPreparationUnavailable, PREPARED_MATH_OCCURRENCE_ATTRIBUTE,
     PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE, PrepareMathLabelRequest, PreparedMathLabel,
+    PreparedMathNativeProjection,
 };
 
 #[cfg(feature = "math")]

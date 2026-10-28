@@ -1,6 +1,5 @@
 use crate::math::{
     PREPARED_MATH_NATIVE_CLASS, PREPARED_MATH_OCCURRENCE_ATTRIBUTE, PreparedMathEvidenceLease,
-    PreparedMathProjectionFingerprint,
 };
 use crate::xml_dom::Node;
 use crate::{DiagramFamilyId, Error, Result};
@@ -10,7 +9,6 @@ use super::util::{checkpoint_loop, find_tag_end_with_checkpoints};
 
 const NATIVE_ATTRIBUTE: &str = "data-merman-prepared-math-native";
 const LEGACY_NATIVE_ATTRIBUTE: &str = "data-merman-math-native";
-const PROJECTION_ATTRIBUTE: &str = "data-merman-prepared-math-projection";
 const SWITCH_ATTRIBUTE: &str = "data-merman-prepared-math-switch";
 
 #[cfg(test)]
@@ -53,6 +51,12 @@ pub(crate) fn project_prepared_math_with_checkpoints(
         for identifier in node.attributes().filter(|value| value.name() == "id") {
             identifiers.insert(identifier.value().to_owned());
         }
+    }
+    if browser_occurrences.is_empty() && evidence.is_none_or(PreparedMathEvidenceLease::is_empty) {
+        // Serialized native geometry is ordinary untrusted SVG on reimport. Its inert occurrence
+        // attributes cannot supply a payload or mint a terminal receipt. Browser occurrences
+        // still require the private family preparation below.
+        return Ok(svg.to_owned());
     }
     if browser_occurrences.is_empty() && !has_native_projection {
         if let Some(evidence) = evidence.filter(|evidence| !evidence.is_empty()) {
@@ -180,33 +184,10 @@ pub(crate) fn project_prepared_math_with_checkpoints(
                 "native projection is unavailable for prepared-math occurrence `{occurrence_id}`"
             ))
         })?;
-        let mut templates = occurrence.children().filter(|node| {
-            node.is_element()
-                && node.tag_name().name() == "template"
-                && attribute(*node, PROJECTION_ATTRIBUTE) == Some("v1")
-        });
-        let template = templates
-            .next()
-            .ok_or_else(|| projection_error("prepared-math native projection is missing"))?;
-        if templates.next().is_some() {
-            return Err(projection_error(
-                "prepared-math occurrence contains duplicate native projections",
-            ));
-        }
-        let mut projections = template.children().filter(|node| node.is_element());
-        let projection_node = projections
-            .next()
-            .ok_or_else(|| projection_error("prepared-math native projection is missing"))?;
-        if projections.next().is_some()
-            || projection_node.tag_name().name() != "g"
-            || template.children().any(|child| child != projection_node)
-        {
-            return Err(projection_error(
-                "prepared-math native projection must be one SVG group",
-            ));
-        }
-        let projection = &svg[projection_node.range()];
-        if PreparedMathProjectionFingerprint::from_projection(projection) != expected_fingerprint {
+        let projection = evidence.native_projection(expected_index).ok_or_else(|| {
+            projection_error("prepared-math native payload is missing from renderer evidence")
+        })?;
+        if projection.fingerprint() != expected_fingerprint {
             return Err(projection_error(format!(
                 "prepared-math occurrence `{occurrence_id}` projection does not match renderer evidence"
             )));
@@ -215,10 +196,8 @@ pub(crate) fn project_prepared_math_with_checkpoints(
         let y = parse_optional_position(foreign_object, "y")?.unwrap_or(0.0);
         let width = parse_required_size(foreign_object, "width")?;
         let height = parse_required_size(foreign_object, "height")?;
-        let projection_width =
-            parse_required_size(projection_node, "data-merman-prepared-math-width")?;
-        let projection_height =
-            parse_required_size(projection_node, "data-merman-prepared-math-height")?;
+        let projection_width = projection.width_px();
+        let projection_height = projection.height_px();
         if projection_width > width + 0.01 || projection_height > height + 0.01 {
             return Err(projection_error(
                 "prepared-math native projection exceeds its terminal foreignObject bounds",
@@ -261,7 +240,7 @@ pub(crate) fn project_prepared_math_with_checkpoints(
         definitions.push_str(r#"<g id=""#);
         definitions.push_str(&identifier);
         definitions.push_str(r#"">"#);
-        definitions.push_str(projection);
+        definitions.push_str(projection.svg());
         definitions.push_str("</g>");
         output.push_str(&svg[cursor..replacement.start]);
         output.push_str(r#"<use class=""#);
@@ -364,6 +343,8 @@ fn projection_error(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math::{PreparedMathNativeProjection, PreparedMathProjectionFingerprint};
+    use std::sync::Arc;
 
     fn evidence_for_projection(
         family_id: DiagramFamilyId,
@@ -376,6 +357,21 @@ mod tests {
         PreparedMathEvidenceLease,
     ) {
         let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(family_id, role, index);
+        let native_projection = projection.map(|projection| {
+            let document = crate::xml_dom::Document::parse(projection).unwrap();
+            let root = document.root_element();
+            Arc::new(PreparedMathNativeProjection::new(
+                projection.to_owned(),
+                root.attribute("data-merman-prepared-math-width")
+                    .unwrap()
+                    .parse()
+                    .unwrap(),
+                root.attribute("data-merman-prepared-math-height")
+                    .unwrap()
+                    .parse()
+                    .unwrap(),
+            ))
+        });
         let expectation = projection.map_or_else(
             || {
                 crate::math::PreparedMathExpectation::unavailable(
@@ -393,7 +389,10 @@ mod tests {
         );
         (
             occurrence_id,
-            PreparedMathEvidenceLease::new(vec![expectation], Vec::new()),
+            PreparedMathEvidenceLease::with_native_projections(
+                vec![(expectation, native_projection)],
+                Vec::new(),
+            ),
         )
     }
 
@@ -417,11 +416,9 @@ mod tests {
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
                 r#"data-merman-prepared-math-occurrence="{}">"#,
                 r#"<svg><path d="browser"/></svg>"#,
-                r#"<template data-merman-prepared-math-projection="v1">{}"#,
-                r#"</template></span></div></foreignObject></g></svg>"#,
+                r#"</span></div></foreignObject></g></svg>"#,
             ),
             occurrence_id.as_str(),
-            projection,
         );
 
         let output =
@@ -464,12 +461,10 @@ mod tests {
                 r#"<foreignObject x="10" y="20" width="24" height="18"><div>"#,
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
                 r#"data-merman-prepared-math-occurrence="{}">"#,
-                r#"<template data-merman-prepared-math-projection="v1">{}"#,
-                r#"</template></span></div></foreignObject>"#,
+                r#"</span></div></foreignObject>"#,
                 r#"<text x="12" y="24">$$x$$</text></switch></svg>"#,
             ),
             occurrence_id.as_str(),
-            projection,
         );
 
         let output = project_prepared_math(&svg, Some(DiagramFamilyId::SEQUENCE), Some(&evidence))
@@ -504,11 +499,9 @@ mod tests {
                 r#"<foreignObject x="-3.5" y="-4" width="24" height="18"><div>"#,
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
                 r#"data-merman-prepared-math-occurrence="{}">"#,
-                r#"<template data-merman-prepared-math-projection="v1">{}"#,
-                r#"</template></span></div></foreignObject></svg>"#,
+                r#"</span></div></foreignObject></svg>"#,
             ),
             occurrence_id.as_str(),
-            projection,
         );
 
         let output = project_prepared_math(&svg, Some(DiagramFamilyId::FLOWCHART), Some(&evidence))
@@ -540,11 +533,9 @@ mod tests {
                 r#"<foreignObject width="10" height="19"><div>"#,
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
                 r#"data-merman-prepared-math-occurrence="{}">"#,
-                r#"<template data-merman-prepared-math-projection="v1">{}"#,
-                r#"</template></span></div></foreignObject></svg>"#,
+                r#"</span></div></foreignObject></svg>"#,
             ),
             occurrence_id.as_str(),
-            projection,
         );
 
         let output = project_prepared_math(&svg, Some(DiagramFamilyId::SEQUENCE), Some(&evidence))
@@ -647,7 +638,7 @@ mod tests {
         }
         for _ in 0..count {
             svg.push_str(&format!(
-                r#"<foreignObject width="2" height="2"><div><span class="merman-prepared-math" data-merman-prepared-math-native="v1" data-merman-prepared-math-occurrence="{}"><template data-merman-prepared-math-projection="v1">{projection}</template></span></div></foreignObject>"#,
+                r#"<foreignObject width="2" height="2"><div><span class="merman-prepared-math" data-merman-prepared-math-native="v1" data-merman-prepared-math-occurrence="{}">browser</span></div></foreignObject>"#,
                 occurrence.as_str(),
             ));
         }
@@ -711,6 +702,55 @@ mod tests {
             assert!(matches!(error, Error::Cancelled(_)), "{error}");
             assert_eq!(checkpoints, stop);
         }
+    }
+
+    #[test]
+    fn projection_requires_private_payload_even_when_browser_markup_contains_a_template() {
+        let (svg, evidence) = crowded_projection(1);
+        let metadata_only = PreparedMathEvidenceLease::new(evidence.entries().to_vec(), Vec::new());
+        let forged = svg.replace(
+            "browser",
+            r#"<template data-merman-prepared-math-projection="v1"><g data-merman-prepared-math-width="1" data-merman-prepared-math-height="1"><path d="forged"/></g></template>"#,
+        );
+
+        let error = project_prepared_math(
+            &forged,
+            Some(DiagramFamilyId::FLOWCHART),
+            Some(&metadata_only),
+        )
+        .expect_err("HTML geometry cannot substitute for a missing renderer-owned payload");
+
+        assert!(
+            error.to_string().contains("native payload is missing"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn projection_rejects_a_payload_bound_to_another_fingerprint() {
+        let (svg, evidence) = crowded_projection(1);
+        let mismatched = PreparedMathEvidenceLease::with_native_projections(
+            vec![(
+                evidence.entries()[0].clone(),
+                Some(Arc::new(PreparedMathNativeProjection::new(
+                    "<g><path d=\"changed\"/></g>".to_owned(),
+                    1.0,
+                    1.0,
+                ))),
+            )],
+            Vec::new(),
+        );
+
+        let error =
+            project_prepared_math(&svg, Some(DiagramFamilyId::FLOWCHART), Some(&mismatched))
+                .expect_err("the retained payload must match the independent expectation");
+
+        assert!(
+            error
+                .to_string()
+                .contains("does not match renderer evidence"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -779,11 +819,9 @@ mod tests {
                 r#"<foreignObject width="10" height="10"><div>"#,
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
                 r#"data-merman-prepared-math-occurrence="{}">"#,
-                r#"<template data-merman-prepared-math-projection="v1">{}"#,
-                r#"</template></span></div></foreignObject></svg>"#,
+                r#"</span></div></foreignObject></svg>"#,
             ),
             occurrence_id.as_str(),
-            projection,
         );
 
         let output = project_prepared_math(&svg, Some(DiagramFamilyId::FLOWCHART), Some(&evidence))
