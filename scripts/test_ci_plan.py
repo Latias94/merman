@@ -806,6 +806,55 @@ class PlannerTests(unittest.TestCase):
             )
 
 
+class TreeSitterWindowsWorkflowTests(unittest.TestCase):
+    def test_development_file_setup_is_bounded_and_separate_from_compilation(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github/workflows/tree-sitter-mermaid.yml").read_text(encoding="utf-8")
+        windows = workflow_job(workflow, "generation-windows")
+        setup = windows.split("- name: Prepare Windows Node.js development files\n", 1)[1].split(
+            "\n      - ", 1
+        )[0]
+        build = windows.split("- name: Verify Windows native binding\n", 1)[1]
+        for step in (setup, build):
+            self.assertIn(
+                "npm_package_config_node_gyp_devdir: ${{ runner.temp }}/tree-sitter-node-gyp",
+                step,
+            )
+        self.assertIn("timeout-minutes: 10", setup)
+        self.assertIn("shell: pwsh", setup)
+        self.assertIn("working-directory: distribution/tree-sitter-mermaid", setup)
+        self.assertIn("node node_modules/node-gyp/bin/node-gyp.js install --ensure", setup)
+        self.assertIn("$PSNativeCommandUseErrorActionPreference = $false", setup)
+        self.assertIn("$maxAttempts = 3", setup)
+        self.assertIn("$attempt -le $maxAttempts", setup)
+        self.assertIn("if ($exitCode -eq 0) { exit 0 }", setup)
+        self.assertIn("if ($attempt -eq $maxAttempts) { exit $exitCode }", setup)
+        self.assertIn("Start-Sleep -Seconds (5 * $attempt)", setup)
+        self.assertNotIn("rebuild", setup)
+        self.assertNotIn("build:node", setup)
+        self.assertNotIn("continue-on-error", windows)
+        self.assertLess(windows.index("Prepare Windows Node.js"), windows.index("Verify Windows native binding"))
+
+    def test_native_build_remains_single_attempt_and_uses_configured_python(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github/workflows/tree-sitter-mermaid.yml").read_text(encoding="utf-8")
+        windows = workflow_job(workflow, "generation-windows")
+        python = windows.split("- name: Install Python\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("id: python", python)
+        self.assertIn('python-version: "3.14"', python)
+        build = windows.split("- name: Verify Windows native binding\n", 1)[1]
+        self.assertIn("NODE_GYP_FORCE_PYTHON: ${{ steps.python.outputs.python-path }}", build)
+        command = "npm run build:node --prefix distribution/tree-sitter-mermaid"
+        self.assertEqual(build.split("        run: ", 1)[1].strip(), command)
+        self.assertEqual(windows.count(command), 1)
+        for command in ("npm run check:generated", "npm run test:generation-script"):
+            self.assertIn(command, windows)
+
+
 class WorkflowFontDependenciesTests(unittest.TestCase):
     def test_linux_font_query_owners_install_dependencies_before_checks(self) -> None:
         workflow = (
