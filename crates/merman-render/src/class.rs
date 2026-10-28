@@ -1490,17 +1490,14 @@ fn class_box_dimensions(
         }
     }
 
-    // Title label group (bold).
-    let mut title_text = if use_html_labels {
+    // Title parsing precedes the bolder role and the conditional literal fallback.
+    let title_text = if use_html_labels {
         node.text.trim().to_string()
     } else {
-        decode_entities_minimal(&node.text)
+        let source = node.text.trim();
+        source.strip_prefix('\\').unwrap_or(source).to_string()
     };
-    if !use_html_labels && title_text.starts_with('\\') {
-        title_text = title_text.trim_start_matches('\\').to_string();
-    }
-    // Mermaid 11.16 renders class titles with `font-weight: bolder`; preserve that CSS value for
-    // the operation-owned SVG bbox measurement below.
+    // Both pinned shapeUtil implementations apply bolder after createText wrapping.
     let title_markdown_analysis =
         (!use_html_labels).then(|| analyze_class_svg_markdown(&title_text));
     let wrapped_title_text = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
@@ -1519,16 +1516,13 @@ fn class_box_dimensions(
     } else {
         title_text.clone()
     };
-    let title_lines =
-        crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
+    let svg_title =
+        (!use_html_labels).then(|| ClassSvgTitleLabel::new(&title_text, &wrapped_title_text));
     let title_max_width_px = use_html_labels.then(|| {
         class_html_create_text_width_px(title_text.as_str(), measurer, html_calc_text_style).max(1)
     });
     let title_max_width = title_max_width_px.map(|width| width as f64);
 
-    let title_has_styled_runs = title_markdown_analysis
-        .as_ref()
-        .is_some_and(|analysis| analysis.has_styled_runs);
     let bold_title_style = if writer_uses_html_labels {
         class_html_node_text_style(text_style, "font-weight:bolder", &node_label_style).into_owned()
     } else {
@@ -1564,40 +1558,16 @@ fn class_box_dimensions(
             "",
         )
     });
-    let mut title_metrics = math_title_metrics.unwrap_or_else(|| {
+    let title_metrics = math_title_metrics.unwrap_or_else(|| {
         if let Some(prepared) = &title_prepared {
             prepared.metrics
-        } else if title_has_styled_runs {
-            crate::text::measure_markdown_with_inline_styles(
-                measurer,
-                &wrapped_title_text,
-                &bold_title_style,
-                title_max_width,
-                wrap_mode,
-            )
         } else {
-            measurer.measure_wrapped(&wrapped_title_text, &bold_title_style, None, wrap_mode)
+            svg_title
+                .as_ref()
+                .expect("prepared SVG title")
+                .metrics(measurer, text_style)
         }
     });
-
-    if !has_math_title_metrics
-        && !use_html_labels
-        && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-        && !title_has_styled_runs
-    {
-        let bold_title_style = TextStyle {
-            font_family: text_style.font_family.clone(),
-            font_size: text_style.font_size,
-            font_weight: Some("bolder".to_string()),
-            font_style: None,
-        };
-        let width = title_lines.iter().fold(0.0_f64, |width, line| {
-            width.max(measurer.measure_svg_tspan_text_bbox_width_px(line, &bold_title_style))
-        });
-        if width.is_finite() && width > 0.0 {
-            title_metrics.width = width;
-        }
-    }
     let title_rect = label_rect(title_metrics, 0.0);
     let title_group_height = title_rect.map(|r| r.height()).unwrap_or(0.0);
 
@@ -1890,37 +1860,190 @@ pub(crate) fn analyze_class_svg_markdown(text: &str) -> MermaidMarkdownAnalysis 
     analyze_mermaid_markdown(text, true)
 }
 
-pub(crate) fn class_svg_single_line_plain_label_width_px(
-    text: &str,
-    measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-) -> Option<f64> {
-    let trimmed = text.trim();
-    let analysis = analyze_class_svg_markdown(trimmed);
-    if trimmed.is_empty() || analysis.line_count != 1 || !analysis.all_runs_normal() {
-        return None;
-    }
-
-    let canonical_line = analysis.lines.into_iter().next()?.into_iter().fold(
-        String::new(),
-        |mut line, (word, _)| {
-            if !line.is_empty() {
-                line.push(' ');
-            }
-            line.push_str(&word);
-            line
-        },
-    );
-    let (left, right) = measurer.measure_svg_text_bbox_x(&canonical_line, text_style);
-    let width = left + right;
-    (width.is_finite() && width > 0.0).then_some(width)
-}
-
-pub(crate) struct ClassSvgNoteLabel {
+/// Prepared createText words shared by Class layout and SVG emission.
+pub(crate) struct ClassSvgLabel {
     analysis: MermaidMarkdownAnalysis,
 }
 
-impl ClassSvgNoteLabel {
+// Notes retain their existing family boundary and decoded-model provenance.
+pub(crate) type ClassSvgNoteLabel = ClassSvgLabel;
+
+pub(crate) struct ClassSvgTitleLabel {
+    label: ClassSvgLabel,
+    literal_first_row: bool,
+}
+
+impl ClassSvgTitleLabel {
+    pub(crate) fn new(source: &str, wrapped: &str) -> Self {
+        let mut label = ClassSvgLabel::new(wrapped);
+        for (word, _) in label.analysis.lines.iter_mut().flatten() {
+            *word = crate::entities::decode_svg_text_content_entities(word).into_owned();
+        }
+        let content = label
+            .lines()
+            .iter()
+            .flatten()
+            .map(|(word, _)| word.as_str())
+            .collect::<String>();
+        // shapeUtil.addText replaces only the first outer tspan after createText.
+        let literal_first_row = content.is_empty() || content.contains("&gt");
+        if literal_first_row {
+            let first = source.chars().next();
+            let mut fallback = first.map_or_else(String::new, |first| {
+                let tail = &source[first.len_utf8()..];
+                let rest = tail.replace("&gt;", ">").replace("&lt;", "<");
+                format!(
+                    "{first}{}{rest}",
+                    if tail.starts_with(' ') { " " } else { "" },
+                    rest = rest.trim()
+                )
+            });
+            if fallback == "undefined" {
+                fallback.clear();
+            }
+            if label.analysis.lines.is_empty() {
+                label.analysis.lines.push(Vec::new());
+            }
+            label.analysis.lines[0] =
+                vec![(fallback, crate::text::MermaidMarkdownWordType::Normal)];
+        }
+        Self {
+            label,
+            literal_first_row,
+        }
+    }
+
+    pub(crate) fn lines(&self) -> &[Vec<(String, crate::text::MermaidMarkdownWordType)>] {
+        self.label.lines()
+    }
+
+    pub(crate) fn literal_first_row(&self) -> bool {
+        self.literal_first_row
+    }
+
+    pub(crate) fn metrics(
+        &self,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> crate::text::TextMetrics {
+        let role = ClassTitleMeasurer { inner: measurer };
+        let mut metrics = crate::text::measure_svg_markdown_word_lines(
+            &role,
+            self.lines(),
+            style,
+            crate::text::SvgTextEntityMode::DecodedModel,
+        );
+        if self
+            .lines()
+            .iter()
+            .flatten()
+            .all(|(_, kind)| *kind == crate::text::MermaidMarkdownWordType::Normal)
+        {
+            let mut role_style = style.clone();
+            role_style.font_weight = Some("bolder".to_owned());
+            role_style.font_style = Some("normal".to_owned());
+            metrics.width = self
+                .lines()
+                .iter()
+                .map(|words| {
+                    let row = words
+                        .iter()
+                        .map(|(word, _)| word.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    measurer.measure_svg_tspan_text_bbox_width_px(&row, &role_style)
+                })
+                .fold(0.0_f64, f64::max);
+        }
+        if self.literal_first_row {
+            // Literal fallback text is one outer tspan, even when it spells an HTML break.
+            // Keep the remaining createText row indices when unioning the final ink.
+            let mut ink: Option<(f64, f64)> = None;
+            for (index, words) in self.lines().iter().enumerate() {
+                for (word, kind) in words {
+                    if word.is_empty() {
+                        continue;
+                    }
+                    let mut face = crate::text::svg_markdown_word_style(style, *kind).into_owned();
+                    face.font_weight = Some("bolder".to_owned());
+                    let top = measurer.measure_svg_create_text_bbox_y_offset_px(word, &face)
+                        + index as f64 * style.font_size * 1.1;
+                    let bottom = top + measurer.measure_svg_tspan_text_bbox_height_px(word, &face);
+                    ink = Some(
+                        ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))),
+                    );
+                }
+            }
+            metrics.height = ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0));
+            metrics.line_count = self.lines().len();
+        }
+        metrics
+    }
+}
+
+/// addText clears every title tspan's weight, including strong and emphasis runs.
+struct ClassTitleMeasurer<'a> {
+    inner: &'a dyn TextMeasurer,
+}
+
+impl ClassTitleMeasurer<'_> {
+    fn role_style(style: &TextStyle) -> TextStyle {
+        TextStyle {
+            font_weight: Some("bolder".to_owned()),
+            ..style.clone()
+        }
+    }
+}
+
+impl TextMeasurer for ClassTitleMeasurer<'_> {
+    fn cancellation_requested(&self) -> bool {
+        self.inner.cancellation_requested()
+    }
+
+    fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+        self.inner.measure(text, &Self::role_style(style))
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> crate::text::TextMetrics {
+        self.inner
+            .measure_wrapped(text, &Self::role_style(style), max_width, wrap_mode)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_text_computed_length_px(text, &Self::role_style(style))
+    }
+}
+
+impl ClassSvgLabel {
+    pub(crate) fn plain_text(&self) -> String {
+        self.lines()
+            .iter()
+            .map(|words| {
+                words
+                    .iter()
+                    .map(|(word, _)| word.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    pub(crate) fn edge(decoded_text: &str) -> Self {
+        let text = decoded_text
+            .strip_prefix('`')
+            .and_then(|text| text.strip_suffix('`'))
+            .unwrap_or(decoded_text);
+        Self::new(text)
+    }
+
     pub(crate) fn new(decoded_text: &str) -> Self {
         Self {
             analysis: analyze_class_svg_markdown(decoded_text),
@@ -1929,6 +2052,27 @@ impl ClassSvgNoteLabel {
 
     pub(crate) fn lines(&self) -> &[Vec<(String, MermaidMarkdownWordType)>] {
         &self.analysis.lines
+    }
+
+    fn single_line_plain_width(
+        &self,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> Option<f64> {
+        if self.analysis.line_count != 1 || !self.analysis.all_runs_normal() {
+            return None;
+        }
+        let text = self.plain_text();
+        if text.is_empty() {
+            return None;
+        }
+        let style = crate::text::svg_markdown_word_style(
+            style,
+            crate::text::MermaidMarkdownWordType::Normal,
+        );
+        let (left, right) = measurer.measure_svg_text_bbox_x(&text, &style);
+        let width = left + right;
+        (width.is_finite() && width > 0.0).then_some(width)
     }
 
     pub(crate) fn metrics(
@@ -1942,19 +2086,8 @@ impl ClassSvgNoteLabel {
             style,
             crate::text::SvgTextEntityMode::DecodedModel,
         );
-        if self.analysis.line_count == 1 && self.analysis.all_runs_normal() {
-            let text = self.lines()[0]
-                .iter()
-                .map(|(word, _)| word.as_str())
-                .collect::<Vec<_>>()
-                .join(" ");
-            let style =
-                crate::text::svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
-            let (left, right) = measurer.measure_svg_text_bbox_x(&text, &style);
-            let width = left + right;
-            if width.is_finite() && width > 0.0 {
-                metrics.width = width;
-            }
+        if let Some(width) = self.single_line_plain_width(measurer, style) {
+            metrics.width = width;
         }
         metrics
     }
@@ -2058,12 +2191,7 @@ fn edge_title_metrics(
         return (metrics.width.max(0.0), metrics.height.max(0.0));
     }
 
-    let mut metrics = measurer.measure_wrapped(&label, text_style, None, wrap_mode);
-    if let Some(width) =
-        class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
-    {
-        metrics.width = width;
-    }
+    let metrics = ClassSvgLabel::edge(label.trim()).metrics(measurer, text_style);
     (metrics.width.max(0.0) + 4.0, metrics.height.max(0.0) + 4.0)
 }
 
@@ -4240,11 +4368,8 @@ mod tests {
     #[test]
     fn class_svg_plain_underscore_uses_formatted_text_bbox_precision() {
         assert_eq!(
-            super::class_svg_single_line_plain_label_width_px(
-                "driver_license",
-                &ClassPrecisionMeasurer,
-                &default_style(),
-            ),
+            super::ClassSvgLabel::new("driver_license")
+                .single_line_plain_width(&ClassPrecisionMeasurer, &default_style()),
             Some(73.123_456_789)
         );
     }
@@ -4259,11 +4384,8 @@ mod tests {
             "plain title",
         ] {
             assert_eq!(
-                super::class_svg_single_line_plain_label_width_px(
-                    literal,
-                    &ClassPrecisionMeasurer,
-                    &style,
-                ),
+                super::ClassSvgLabel::new(literal)
+                    .single_line_plain_width(&ClassPrecisionMeasurer, &style),
                 Some(73.123_456_789),
                 "literal={literal:?}"
             );
@@ -4271,11 +4393,8 @@ mod tests {
 
         for non_plain_single_line in ["*emphasis*", "__strong__", "first<br/>second"] {
             assert_eq!(
-                super::class_svg_single_line_plain_label_width_px(
-                    non_plain_single_line,
-                    &ClassPrecisionMeasurer,
-                    &style,
-                ),
+                super::ClassSvgLabel::new(non_plain_single_line)
+                    .single_line_plain_width(&ClassPrecisionMeasurer, &style),
                 None,
                 "label={non_plain_single_line:?}"
             );
@@ -4330,5 +4449,48 @@ mod tests {
         assert_eq!(metrics.height, 37.0);
         assert_eq!(width, 131.0);
         assert_eq!(height, 45.0);
+    }
+}
+
+#[cfg(test)]
+mod class_svg_terminal_title_rows {
+    #[test]
+    fn class_svg_terminal_title_literal_fallback_replaces_only_first_row() {
+        let source = "&amp;gt;<br>**MM**";
+        let label = super::ClassSvgTitleLabel::new(source, source);
+        assert!(label.literal_first_row());
+        assert_eq!(label.lines().len(), 2);
+        assert_eq!(label.lines()[0][0].0, source);
+        assert_eq!(label.lines()[1][0].0, "MM");
+        assert_eq!(
+            label.lines()[1][0].1,
+            crate::text::MermaidMarkdownWordType::Strong
+        );
+    }
+    #[test]
+    fn class_svg_terminal_title_literal_bounds_use_retained_rows() {
+        struct LiteralRows;
+        impl crate::text::TextMeasurer for LiteralRows {
+            fn measure(&self, text: &str, _: &crate::text::TextStyle) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: text.chars().count() as f64,
+                    height: if text.contains("<br>") { 100.0 } else { 10.0 },
+                    line_count: 1,
+                }
+            }
+            fn measure_svg_tspan_text_bbox_height_px(
+                &self,
+                text: &str,
+                style: &crate::text::TextStyle,
+            ) -> f64 {
+                assert_eq!(style.font_weight.as_deref(), Some("bolder"));
+                if text == "MM" { 20.0 } else { 10.0 }
+            }
+        }
+        let source = "&amp;gt;<br>**MM**";
+        let label = super::ClassSvgTitleLabel::new(source, source);
+        let metrics = label.metrics(&LiteralRows, &crate::text::TextStyle::default());
+        assert_eq!(metrics.line_count, 2);
+        assert!((metrics.height - 37.6).abs() < 1e-9, "{metrics:?}");
     }
 }

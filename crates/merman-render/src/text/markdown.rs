@@ -351,9 +351,11 @@ fn markdown_to_lines(
         let mut skipped_inline_depth = 0usize;
         let mut skipped_block_depth = 0usize;
         let mut previous_text = None;
+        let mut escape_scan_offset = 0;
+        let mut escape_pending = false;
 
         let mut source_end = 0;
-        while let Some((event, range)) = parser.next() {
+        while let Some((event, mut range)) = parser.next() {
             let previous_source_end = source_end;
             if !matches!(event, pulldown_cmark::Event::Start(_)) {
                 source_end = range.end;
@@ -457,6 +459,28 @@ fn markdown_to_lines(
                     }
                 }
                 pulldown_cmark::Event::Text(text) if in_paragraph && skipped_inline_depth == 0 => {
+                    // SVG createText ignores Marked escape tokens, while HTML keeps their text.
+                    // Pulldown folds the escaped punctuation into a text event starting after '\\'.
+                    let text = if preserve_inline_literals {
+                        text.as_ref()
+                    } else {
+                        let mut escaped_prefix = false;
+                        while escape_scan_offset <= range.start {
+                            let byte = markdown.as_bytes()[escape_scan_offset];
+                            if escape_scan_offset == range.start {
+                                escaped_prefix = escape_pending && byte.is_ascii_punctuation();
+                            }
+                            escape_pending = byte == b'\\' && !escape_pending;
+                            escape_scan_offset += 1;
+                        }
+                        if escaped_prefix {
+                            previous_text = None;
+                            range.start += 1;
+                            &text[1..]
+                        } else {
+                            text.as_ref()
+                        }
+                    };
                     // pulldown-cmark eagerly synthesizes Unicode for HTML entities, while Marked
                     // keeps entity spellings in `node.text`. Preserve the source only when its
                     // full HTML-entity decode is exactly the emitted event; unrelated synthesized
@@ -467,9 +491,9 @@ fn markdown_to_lines(
                             raw.contains('&')
                                 && merman_core::entities::decode_html_entities_to_unicode(raw)
                                     .as_ref()
-                                    == text.as_ref()
+                                    == text
                         })
-                        .unwrap_or(text.as_ref());
+                        .unwrap_or(text);
                     let word_type = style_stack
                         .last()
                         .copied()
@@ -533,7 +557,14 @@ fn markdown_to_lines(
         out
     }
 
-    if needs_full_delimiter_resolution(&pre) {
+    // SVG escape tokens can suppress delimiters as well as visible characters. Delegate those
+    // inputs to the existing parser without changing HTML's routing or literal projection.
+    let svg_escapes = !preserve_inline_literals
+        && pre
+            .as_bytes()
+            .windows(2)
+            .any(|pair| pair[0] == b'\\' && pair[1].is_ascii_punctuation());
+    if svg_escapes || needs_full_delimiter_resolution(&pre) {
         return resolve_full_delimiter_runs(&pre, preserve_inline_literals);
     }
 
@@ -719,6 +750,80 @@ mod tests {
     }
 
     #[test]
+    fn svg_markdown_omits_marked_escape_tokens_in_plain_and_nested_text() {
+        use MermaidMarkdownWordType::{Em, Normal, Strong};
+        for (markdown, expected) in [
+            (
+                r"\longfieldname",
+                vec![vec![(r"\longfieldname".into(), Normal)]],
+            ),
+            (
+                r"\\longfieldname",
+                vec![vec![("longfieldname".into(), Normal)]],
+            ),
+            (
+                r"\\\longfieldname",
+                vec![vec![(r"\longfieldname".into(), Normal)]],
+            ),
+            (r"\\", vec![vec![]]),
+            (
+                r"a\\b",
+                vec![vec![("a".into(), Normal), ("b".into(), Normal)]],
+            ),
+            (
+                r"before \*bold\* end",
+                vec![vec![
+                    ("before".into(), Normal),
+                    ("bold".into(), Normal),
+                    ("end".into(), Normal),
+                ]],
+            ),
+            (
+                r"**_styled_ \#tag &amp; value**",
+                vec![vec![
+                    ("styled".into(), Em),
+                    ("tag".into(), Strong),
+                    ("&amp;".into(), Strong),
+                    ("value".into(), Strong),
+                ]],
+            ),
+            (r"*open\*", vec![vec![("*open".into(), Normal)]]),
+        ] {
+            assert_eq!(
+                mermaid_markdown_to_lines(markdown, true),
+                expected,
+                "{markdown}"
+            );
+        }
+    }
+
+    #[test]
+    fn html_markdown_keeps_escaped_characters_in_full_parser_projection() {
+        use MermaidMarkdownWordType::{Em, Normal, Strong};
+        for (markdown, expected) in [
+            (
+                r"**_styled_ \#tag &amp; value**",
+                vec![vec![
+                    ("styled".into(), Em),
+                    ("#tag".into(), Strong),
+                    ("&amp;".into(), Strong),
+                    ("value".into(), Strong),
+                ]],
+            ),
+            (
+                r"**\#tag** `code`",
+                vec![vec![("#tag".into(), Strong), ("`code`".into(), Normal)]],
+            ),
+        ] {
+            assert_eq!(
+                html_markdown_measurement_lines(markdown),
+                expected,
+                "{markdown}"
+            );
+        }
+    }
+
+    #[test]
     fn underscore_delimiters_match_mermaid() {
         use MermaidMarkdownWordType::*;
 
@@ -807,7 +912,7 @@ mod tests {
             mermaid_markdown_to_lines(r"`**_styled_ \#tag &amp; value**`", true),
             vec![vec![
                 ("styled".to_string(), Em),
-                ("#tag".to_string(), Strong),
+                ("tag".to_string(), Strong),
                 ("&amp;".to_string(), Strong),
                 ("value".to_string(), Strong),
             ]]

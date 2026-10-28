@@ -615,7 +615,10 @@ fn render_class_edge_label_group(
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
-        write_class_svg_edge_text_markdown(out, trimmed, true);
+        let prepared = crate::class::ClassSvgLabel::edge(trimmed);
+        out.push_str(r#"<text y="-10.1" style="" text-anchor="middle">"#);
+        super::node::write_class_svg_label_rows(out, prepared.lines(), false, false, true);
+        out.push_str("</text>");
         out.push_str("</g></g></g>");
     } else {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
@@ -624,7 +627,7 @@ fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        write_class_svg_edge_text(out, trimmed, false);
+        write_class_svg_edge_text_markdown(out, trimmed, false);
         out.push_str("</g></g>");
     }
 }

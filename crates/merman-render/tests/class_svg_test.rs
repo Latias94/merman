@@ -2173,3 +2173,206 @@ fn class_cardinality_terminals_share_measured_bounds_and_centered_inner_in_both_
         }
     }
 }
+
+mod class_svg_terminal_contracts {
+    use super::*;
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+
+    struct RoleMeasurer;
+
+    impl RoleMeasurer {
+        fn width(text: &str, style: &TextStyle) -> f64 {
+            let bold = matches!(
+                style.font_weight.as_deref(),
+                Some("bolder" | "bold" | "700")
+            );
+            let italic = style.font_style.as_deref() == Some("italic");
+            text.chars().count() as f64
+                * (1.0 + if bold { 1.0 } else { 0.0 } + if italic { 1.0 } else { 0.0 })
+        }
+    }
+
+    impl TextMeasurer for RoleMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: text
+                    .split('\n')
+                    .map(|line| Self::width(line, style))
+                    .fold(0.0_f64, f64::max),
+                height: text.split('\n').count() as f64 * 16.0,
+                line_count: text.split('\n').count(),
+            }
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            Self::width(text, style)
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> TextMetrics {
+            TextMetrics {
+                width: 1024.0,
+                height: 16.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    fn render(source: &str) -> (f64, Option<f64>, String) {
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("class-svg-terminal-roles").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            std::sync::Arc::new(RoleMeasurer),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"htmlLabels":false}),
+            ))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let json = artifact.layout_json().unwrap();
+        let layout = &json["layout"]["ClassDiagramV2"];
+        let width = layout["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "A")
+            .unwrap()["width"]
+            .as_f64()
+            .unwrap();
+        let edge_width = layout["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find_map(|edge| edge["label"]["width"].as_f64());
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        (width, edge_width, rendered.svg().to_owned())
+    }
+
+    fn text(node: roxmltree::Node<'_, '_>) -> String {
+        node.descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect()
+    }
+
+    #[test]
+    fn class_svg_terminal_title_shares_visible_words_and_bolder_emphasis() {
+        let (width, _, svg) = render("classDiagram\nclass A[\"**MM** *ii* plain\"]\n");
+        assert_eq!(width, 49.0, "25px of final title text plus two 12px insets");
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let title = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("label-group text"))
+            .unwrap();
+        assert_eq!(text(title), "MM ii plain");
+        let words = title
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .collect::<Vec<_>>();
+        assert_eq!(words.len(), 3);
+        for word in &words {
+            assert_eq!(word.attribute("font-weight"), Some(""));
+        }
+        assert_eq!(words[1].attribute("font-style"), Some("italic"));
+        assert_eq!(words[2].attribute("font-style"), Some("normal"));
+    }
+
+    #[test]
+    fn class_svg_terminal_edge_shares_markdown_words_and_final_faces() {
+        let (_, width, svg) =
+            render("classDiagram\nclass A\nclass B\nA --> B : **MM** *ii* plain\n");
+        assert_eq!(
+            width,
+            Some(20.0),
+            "16px of styled text plus 4px background padding"
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let edge = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("edgeLabel") && node.has_tag_name("g"))
+            .unwrap();
+        assert_eq!(text(edge), "MM ii plain");
+        let words = edge
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .collect::<Vec<_>>();
+        assert_eq!(words[0].attribute("font-weight"), Some("bold"));
+        assert_eq!(words[1].attribute("font-weight"), Some("normal"));
+        assert_eq!(words[1].attribute("font-style"), Some("italic"));
+        let background = edge
+            .descendants()
+            .find(|node| node.attribute("class") == Some("background"))
+            .unwrap();
+        assert_eq!(background.attribute("width"), Some("20"));
+    }
+
+    #[test]
+    fn class_svg_terminal_title_retains_conditional_literal_fallback_and_entity_depth() {
+        let slashes = [1, 2, 3, 4].map(|count| "\\".repeat(count));
+        // shapeUtil strips one leading slash, and createText omits Marked escape tokens.
+        // Three source slashes leave no words, so addText restores two as direct outer text.
+        for (source, expected, fallback) in [
+            (slashes[0].as_str(), "", true),
+            (slashes[1].as_str(), "\\", false),
+            (slashes[2].as_str(), "\\\\", true),
+            (slashes[3].as_str(), "\\", false),
+            ("&amp;gt; **MM**", "&amp;gt; **MM**", true),
+            ("A&amp;B", "A&B", false),
+            ("&quot;quoted&quot;", "&quot;quoted&quot;", false),
+        ] {
+            let (width, _, svg) = render(&format!("classDiagram\nclass A[\"{source}\"]\n"));
+            assert_eq!(
+                width,
+                expected.chars().count() as f64 * 2.0 + 24.0,
+                "{source}"
+            );
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let title = doc
+                .descendants()
+                .find(|node| node.attribute("class") == Some("label-group text"))
+                .unwrap();
+            assert_eq!(text(title), expected, "{source}");
+            let has_inner = title
+                .descendants()
+                .any(|node| node.attribute("class") == Some("text-inner-tspan"));
+            assert_eq!(has_inner, !fallback, "{source}");
+            if fallback {
+                let outer = title
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("tspan")
+                            && node.attribute("class") == Some("row text-outer-tspan")
+                    })
+                    .expect("literal fallback outer tspan");
+                assert_eq!(outer.text().unwrap_or_default(), expected, "{source}");
+                assert_eq!(
+                    outer.children().filter(|node| node.is_element()).count(),
+                    0,
+                    "shapeUtil replaces inner tspans with literal textContent: {source}"
+                );
+            }
+        }
+    }
+}
