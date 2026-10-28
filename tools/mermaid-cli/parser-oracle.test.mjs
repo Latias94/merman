@@ -27,14 +27,37 @@ async function observe(cases) {
   return runOracle(input, createHash("sha256").update(JSON.stringify(input)).digest("hex"));
 }
 
-test("protocol rejects unknown versions, duplicate IDs, unsupported lanes, and oversized input before launching", async () => {
-  const good = await request([row("a", "flowchart", "flowchart TD\n A-->B")]);
+test("protocol rejects unknown versions, duplicate IDs, unsupported lanes, and oversized input before launching", () => {
+  const good = {
+    schema_version: 1,
+    runtime: {
+      artifact_path: "unused-runtime.js",
+      artifact_sha256: "0".repeat(64),
+      browser_executable: "unused-browser",
+      decoder: {
+        artifact_path: "unused-decoder.js",
+        artifact_sha256: "0".repeat(64),
+        source_sha256: "0".repeat(64),
+      },
+    },
+    cases: [row("a", "flowchart", "flowchart TD\n A-->B")],
+  };
+  assert.equal(validateRequest(good), good);
   assert.throws(() => validateRequest({ ...good, schema_version: 2 }), /schema/);
   assert.throws(() => validateRequest({ ...good, unexpected: true }), /field/);
   assert.throws(() => validateRequest({ ...good, cases: [good.cases[0], good.cases[0]] }), /duplicate/);
   assert.throws(() => validateRequest({ ...good, cases: [row("a", "flowchart", "x", "other")] }), /lane/);
   assert.throws(() => validateRequest({ ...good, cases: [row("a", "flowchart", "x".repeat(4097))] }), /4096/);
   assert.throws(() => validateRequest({ ...good, cases: [row("a", "flowchart", "%%{init: {}}%%\nflowchart TD\n A-->B")] }), /public/);
+  assert.throws(() => validateRequest({ ...good, cases: [] }), /Invalid batch size/);
+  const scheduled = Array.from({ length: 216 + 2 * 5000 }, (_, index) => ({
+    ...good.cases[0], id: `case-${index}`,
+  }));
+  assert.throws(() => validateRequest({ ...good, cases: scheduled }), /Invalid batch size/);
+  for (let offset = 0; offset < scheduled.length; offset += 256) {
+    const batch = { ...good, cases: scheduled.slice(offset, offset + 256) };
+    assert.equal(validateRequest(batch), batch);
+  }
 });
 
 test("real Flowchart and Sequence DBs retain semantic records and reset conflicting consecutive diagrams", async () => {

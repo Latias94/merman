@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 const SCHEMA: u32 = 1;
 const MAX_SOURCE_BYTES: usize = 4096;
+const ORACLE_BATCH_CASES: usize = 256;
 const DEFAULT_SEED: u64 = 0x6d65726d616e;
 const SOURCE_FILES: &[&str] = &[
     "packages/mermaid/src/diagrams/flowchart/parser/flow.jison",
@@ -833,6 +834,44 @@ fn load_saved(path: &Path, oracle: &Oracle) -> Result<SavedMismatch, XtaskError>
     Ok(saved)
 }
 
+fn discovery_cases(
+    mut cases: Vec<Case>,
+    corpus_digest: &str,
+    options: &Options,
+) -> Result<(Vec<Case>, Vec<Origin>), XtaskError> {
+    let mut origins: Vec<_> = (0..cases.len())
+        .map(|ordinal| Origin {
+            seed: options.seed,
+            corpus_sha256: corpus_digest.into(),
+            ordinal,
+            mutations: Vec::new(),
+        })
+        .collect();
+    for family in ["flowchart", "sequence"] {
+        let bases: Vec<_> = cases
+            .iter()
+            .filter(|case| case.family == family && case.lane == "grammar")
+            .cloned()
+            .collect();
+        let mut state = options.seed;
+        for ordinal in 0..options.cases {
+            let base = &bases[(next(&mut state) as usize) % bases.len()];
+            let (case, mutation) = mutate(base, &mut state, ordinal);
+            if case.source.len() > MAX_SOURCE_BYTES {
+                return Err(failure("generator exceeded its source bound"));
+            }
+            cases.push(case);
+            origins.push(Origin {
+                seed: options.seed,
+                corpus_sha256: corpus_digest.into(),
+                ordinal,
+                mutations: vec![mutation],
+            });
+        }
+    }
+    Ok((cases, origins))
+}
+
 pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
     let options = Options::parse(args)?;
     let started = Instant::now();
@@ -976,57 +1015,37 @@ pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
         );
         return Ok(());
     }
-    let (mut cases, corpus_digest) = corpus()?;
+    let (cases, corpus_digest) = corpus()?;
     write(
         &oracle.root.join(format!("corpus-{corpus_digest}.json")),
         &serde_json::to_vec_pretty(&cases)?,
     )?;
-    let mut origins: Vec<_> = (0..cases.len())
-        .map(|ordinal| Origin {
-            seed: options.seed,
-            corpus_sha256: corpus_digest.clone(),
-            ordinal,
-            mutations: Vec::new(),
-        })
-        .collect();
-    for family in ["flowchart", "sequence"] {
-        let bases: Vec<_> = cases
-            .iter()
-            .filter(|case| case.family == family && case.lane == "grammar")
-            .cloned()
-            .collect();
-        let mut state = options.seed;
-        for ordinal in 0..options.cases {
-            let base = &bases[(next(&mut state) as usize) % bases.len()];
-            let (case, mutation) = mutate(base, &mut state, ordinal);
-            if case.source.len() > MAX_SOURCE_BYTES {
-                return Err(failure("generator exceeded its source bound"));
-            }
-            cases.push(case);
-            origins.push(Origin {
-                seed: options.seed,
-                corpus_sha256: corpus_digest.clone(),
-                ordinal,
-                mutations: vec![mutation],
-            });
-        }
-    }
-    let outcomes = oracle.batch(&cases, options.timeout.saturating_sub(started.elapsed()))?;
+    let (cases, origins) = discovery_cases(cases, &corpus_digest, &options)?;
     let mut mismatches = Vec::new();
     let mut accepted = 0;
     let mut rejected = 0;
-    for ((case, origin), upstream) in cases.iter().zip(origins).zip(outcomes) {
-        if started.elapsed() >= options.timeout {
+    for (case_batch, origin_batch) in cases
+        .chunks(ORACLE_BATCH_CASES)
+        .zip(origins.chunks(ORACLE_BATCH_CASES))
+    {
+        let remaining = options.timeout.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
             return Err(failure("parser differential command deadline exceeded"));
         }
-        if upstream.status == "accepted" {
-            accepted += 1;
-        } else {
-            rejected += 1;
-        }
-        let local = local(case)?;
-        if let Some(class) = mismatch(&local, &upstream) {
-            mismatches.push(save(&oracle, case, origin, local, upstream, class)?);
+        let outcomes = oracle.batch(case_batch, remaining)?;
+        for ((case, origin), upstream) in case_batch.iter().zip(origin_batch).zip(outcomes) {
+            if started.elapsed() >= options.timeout {
+                return Err(failure("parser differential command deadline exceeded"));
+            }
+            if upstream.status == "accepted" {
+                accepted += 1;
+            } else {
+                rejected += 1;
+            }
+            let local = local(case)?;
+            if let Some(class) = mismatch(&local, &upstream) {
+                mismatches.push(save(&oracle, case, origin.clone(), local, upstream, class)?);
+            }
         }
     }
     let report = json!({ "schema_version": SCHEMA, "identity": oracle.identity, "corpus_sha256": corpus_digest, "case_manifest_sha256": crate::util::sha256_hex(&serde_json::to_vec(&cases)?), "seed": options.seed, "mutations_per_family": options.cases, "total": cases.len(), "upstream_accepted": accepted, "upstream_rejected": rejected, "mismatches": mismatches, "elapsed_seconds": started.elapsed().as_secs_f64() });
@@ -1053,6 +1072,56 @@ pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scheduled_discovery_batches_retain_the_entire_corpus_and_both_family_budgets() {
+        let options = Options::parse(vec!["--cases".into(), "5000".into()]).unwrap();
+        let (corpus, digest) = corpus().unwrap();
+        let corpus_len = corpus.len();
+        let (cases, origins) = discovery_cases(corpus, &digest, &options).unwrap();
+        assert_eq!(cases.len(), corpus_len + 2 * options.cases);
+        assert_eq!(origins.len(), cases.len());
+        assert!(
+            cases.len() > 10_064,
+            "retain the historical oracle overflow"
+        );
+        for family in ["flowchart", "sequence"] {
+            assert_eq!(
+                cases[corpus_len..]
+                    .iter()
+                    .filter(|case| case.family == family)
+                    .count(),
+                options.cases
+            );
+        }
+        let mut visited = Vec::new();
+        for (batch, origins) in cases
+            .chunks(ORACLE_BATCH_CASES)
+            .zip(origins.chunks(ORACLE_BATCH_CASES))
+        {
+            assert!(!batch.is_empty() && batch.len() <= ORACLE_BATCH_CASES);
+            assert_eq!(batch.len(), origins.len());
+            for (case, origin) in batch.iter().zip(origins) {
+                assert_eq!(origin.corpus_sha256, digest);
+                assert!(case.source.len() <= MAX_SOURCE_BYTES);
+                visited.push(case.id.as_str());
+            }
+        }
+        assert_eq!(
+            visited,
+            cases
+                .iter()
+                .map(|case| case.id.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            visited
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            cases.len()
+        );
+    }
 
     #[test]
     fn saved_mismatch_replays_exact_source_independently_of_generator_history() {
