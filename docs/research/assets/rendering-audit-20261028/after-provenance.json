@@ -1,0 +1,129 @@
+{
+  "line": "v0.9.x",
+  "mermaid": "12.1.0",
+  "sourceCommit": "84f971b23c7aa4007b8b9657e6139a8b19b0b53c",
+  "rendererTree": "d7441bf926a62995d9388f7e98eac45eb6b0d5bd",
+  "binarySha256": "5630407e4194aa5db2b8b492d2d403708484cff5932176855c34fff22b533580",
+  "exports": [
+    {
+      "file": "09-after-unicode-smash.svg",
+      "sha256": "0314aef179779d37246cbc64f1bfdf56ea7fa9848e805dff351c52d9635c404d",
+      "inputSha256": "f717d819e81ea4d88cb96e4a25e9339c73e76b88e473a66cb717a21d128e9bda",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "file": "09-after-unicode-smash.png",
+      "sha256": "681d7e3ee3bf273bfd7175de25eb4058faccdf7b78d3009f57cf774ea3094800",
+      "inputSha256": "f717d819e81ea4d88cb96e4a25e9339c73e76b88e473a66cb717a21d128e9bda",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    },
+    {
+      "file": "09-after-native-lap.svg",
+      "sha256": "3770e906312cf0252c4faee8d2f46d563e4e1d3743f2dbc785b8d938f3ee9e4b",
+      "inputSha256": "011a491b0a1e07615bc6c5dc1bf7bd3045bec996b029f8808bac86113adf3d17",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "file": "09-after-native-lap.png",
+      "sha256": "24452e1ddf9ce6232c245d12194a35f05c7df5570a2d10fc4e0b208d6884c98a",
+      "inputSha256": "011a491b0a1e07615bc6c5dc1bf7bd3045bec996b029f8808bac86113adf3d17",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    },
+    {
+      "file": "09-after-sequence-rows.svg",
+      "sha256": "f4cb0df045390c27834d87f81ef8cea1ceefa29c315a14705b399dd1936e900c",
+      "inputSha256": "57b91195c1c12d6d38c906848293aa5c4983da69bbf67c226d69a472e1ac3a6c",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "file": "09-after-sequence-rows.png",
+      "sha256": "da734a95e9f733e712451f375285d4ca0b6a7a09e577aecccf088b4aa81dbc2f",
+      "inputSha256": "57b91195c1c12d6d38c906848293aa5c4983da69bbf67c226d69a472e1ac3a6c",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    }
+  ]
+}
