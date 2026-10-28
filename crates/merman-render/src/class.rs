@@ -1882,8 +1882,13 @@ impl ClassSvgTitleLabel {
         let content = label
             .lines()
             .iter()
-            .flatten()
-            .map(|(word, _)| word.as_str())
+            .map(|words| {
+                words
+                    .iter()
+                    .map(|(word, _)| word.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
             .collect::<String>();
         // shapeUtil.addText replaces only the first outer tspan after createText.
         let literal_first_row = content.is_empty() || content.contains("&gt");
@@ -1927,7 +1932,7 @@ impl ClassSvgTitleLabel {
         style: &TextStyle,
     ) -> crate::text::TextMetrics {
         let role = ClassTitleMeasurer { inner: measurer };
-        let mut metrics = crate::text::measure_svg_markdown_word_lines(
+        let mut metrics = crate::text::measure_svg_literal_word_lines(
             &role,
             self.lines(),
             style,
@@ -1954,28 +1959,6 @@ impl ClassSvgTitleLabel {
                     measurer.measure_svg_tspan_text_bbox_width_px(&row, &role_style)
                 })
                 .fold(0.0_f64, f64::max);
-        }
-        if self.literal_first_row {
-            // Literal fallback text is one outer tspan, even when it spells an HTML break.
-            // Keep the remaining createText row indices when unioning the final ink.
-            let mut ink: Option<(f64, f64)> = None;
-            for (index, words) in self.lines().iter().enumerate() {
-                for (word, kind) in words {
-                    if word.is_empty() {
-                        continue;
-                    }
-                    let mut face = crate::text::svg_markdown_word_style(style, *kind).into_owned();
-                    face.font_weight = Some("bolder".to_owned());
-                    let top = measurer.measure_svg_create_text_bbox_y_offset_px(word, &face)
-                        + index as f64 * style.font_size * 1.1;
-                    let bottom = top + measurer.measure_svg_tspan_text_bbox_height_px(word, &face);
-                    ink = Some(
-                        ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))),
-                    );
-                }
-            }
-            metrics.height = ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0));
-            metrics.line_count = self.lines().len();
         }
         metrics
     }
@@ -2018,6 +2001,21 @@ impl TextMeasurer for ClassTitleMeasurer<'_> {
     fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.inner
             .measure_svg_text_computed_length_px(text, &Self::role_style(style))
+    }
+
+    fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_tspan_text_bbox_width_px(text, &Self::role_style(style))
+    }
+
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_tspan_text_bbox_height_px(text, &Self::role_style(style))
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_create_text_bbox_y_offset_px(text, &Self::role_style(style))
     }
 }
 

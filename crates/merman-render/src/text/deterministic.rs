@@ -544,6 +544,15 @@ impl TextMeasurer for DeterministicTextMeasurer {
         self.measure_svg_simple_text_bbox_height_px(text, style)
     }
 
+    fn measure_html_line_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+        let factor = if self.line_height_factor == 0.0 {
+            1.5
+        } else {
+            self.line_height_factor
+        };
+        style.font_size.max(1.0) * factor
+    }
+
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         let source = if self.char_width_factor == 0.0 {
             LineWidthSource::Heuristic
@@ -675,6 +684,15 @@ impl TextMeasurer for WidthCallbackTextMeasurer {
     fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
         // A direct SVG text node has one row, even when its content spells an HTML break.
         self.measure_svg_simple_text_bbox_height_px(text, style)
+    }
+
+    fn measure_html_line_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+        let factor = if self.line_height_factor == 0.0 {
+            1.5
+        } else {
+            self.line_height_factor
+        };
+        style.font_size.max(1.0) * factor
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {

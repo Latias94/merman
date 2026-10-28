@@ -83,6 +83,24 @@ fn resolve_css_font_weight(value: &str, inherited: u16) -> Option<u16> {
 }
 
 pub(crate) fn apply_css_font_declarations(base: &TextStyle, css: &str) -> TextStyle {
+    apply_css_font_declarations_for_terminal(base, base, css, base.font_size)
+}
+
+pub(crate) fn apply_css_font_declarations_for_terminal(
+    base: &TextStyle,
+    initial: &TextStyle,
+    css: &str,
+    root_font_size: f64,
+) -> TextStyle {
+    let font_size = |value: &str| {
+        let lower = value.trim().to_ascii_lowercase();
+        let inherited = if lower.ends_with("rem") {
+            root_font_size
+        } else {
+            base.font_size
+        };
+        crate::mermaid_style::parse_css_font_size_px(value, inherited)
+    };
     let mut parser = Parser::new(css);
     let mut winners: BTreeMap<String, (bool, Option<&str>)> = BTreeMap::new();
     while !parser.is_exhausted() {
@@ -118,10 +136,7 @@ pub(crate) fn apply_css_font_declarations(base: &TextStyle, css: &str) -> TextSt
         let inherits = matches!(value.to_ascii_lowercase().as_str(), "inherit" | "unset");
         let valid = match property.as_str() {
             "font-family" => inherits || is_static_css_font_family_list(value),
-            "font-size" => {
-                inherits
-                    || crate::mermaid_style::parse_css_font_size_px(value, base.font_size).is_some()
-            }
+            "font-size" => inherits || font_size(value).is_some(),
             "font-style" => {
                 inherits
                     || matches!(
@@ -146,17 +161,24 @@ pub(crate) fn apply_css_font_declarations(base: &TextStyle, css: &str) -> TextSt
             winners.insert(property, (important, (!inherits).then_some(value)));
         }
     }
-    let mut style = base.clone();
+    let mut style = initial.clone();
     for (property, (_, value)) in winners {
-        let Some(value) = value else { continue };
+        let Some(value) = value else {
+            match property.as_str() {
+                "font-family" => style.font_family = base.font_family.clone(),
+                "font-size" => style.font_size = base.font_size,
+                "font-style" => style.font_style = base.font_style.clone(),
+                "font-weight" => style.font_weight = base.font_weight.clone(),
+                _ => {}
+            }
+            continue;
+        };
         match property.as_str() {
             "font-family" => {
                 style.font_family = Some(crate::config::normalize_css_font_family(value))
             }
             "font-size" => {
-                if let Some(size) =
-                    crate::mermaid_style::parse_css_font_size_px(value, base.font_size)
-                {
+                if let Some(size) = font_size(value) {
                     style.font_size = size;
                 }
             }

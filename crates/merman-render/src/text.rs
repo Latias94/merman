@@ -42,6 +42,10 @@ pub(crate) use measure::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
     measure_mermaid_text_dimensions_with_checkpoint,
 };
+#[cfg(feature = "diagram-class")]
+pub(crate) use metrics::measure_svg_literal_word_lines;
+#[cfg(feature = "diagram-block")]
+pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 #[doc(hidden)]
 #[cfg(any(
     feature = "diagram-flowchart",

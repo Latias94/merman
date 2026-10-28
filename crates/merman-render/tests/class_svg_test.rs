@@ -2225,20 +2225,75 @@ mod class_svg_terminal_contracts {
         }
     }
 
-    fn render(source: &str) -> (f64, Option<f64>, String) {
+    struct ExactTitleMeasurer;
+
+    impl TextMeasurer for ExactTitleMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            if text.contains("<br>") {
+                return TextMetrics {
+                    width: RoleMeasurer::width(text, style),
+                    height: 100.0,
+                    line_count: 2,
+                };
+            }
+            RoleMeasurer.measure(text, style)
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            RoleMeasurer::width(text, style)
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            RoleMeasurer::width(text, style)
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_weight.as_deref() != Some("bolder") {
+                4.0
+            } else if style.font_style.as_deref() == Some("italic") {
+                18.0
+            } else {
+                12.0
+            }
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_weight.as_deref() != Some("bolder") {
+                0.0
+            } else if style.font_style.as_deref() == Some("italic") {
+                -11.0
+            } else {
+                -3.0
+            }
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            RoleMeasurer.measure_mermaid_calculate_text_dimensions(text, style)
+        }
+    }
+
+    fn render_with_measurer(
+        source: &str,
+        layout_engine: &str,
+        measurer: impl TextMeasurer + Send + Sync + 'static,
+    ) -> (serde_json::Value, String) {
         let profile = TextMeasurementProfile::new(
             TextMeasurementProfileIdentity::new(
                 MeasurementProfileId::new("class-svg-terminal-roles").unwrap(),
                 "test",
             )
             .unwrap(),
-            std::sync::Arc::new(RoleMeasurer),
+            std::sync::Arc::new(measurer),
         );
         let environment = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
         let parsed = Engine::new()
             .with_site_config(MermaidConfig::from_value(
-                serde_json::json!({"htmlLabels":false}),
+                serde_json::json!({"htmlLabels":false,"layout":layout_engine}),
             ))
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .unwrap()
@@ -2250,6 +2305,14 @@ mod class_svg_terminal_contracts {
         )
         .unwrap();
         let json = artifact.layout_json().unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        (json.into_unmanaged_value(), rendered.svg().to_owned())
+    }
+
+    fn render(source: &str) -> (f64, Option<f64>, String) {
+        let (json, svg) = render_with_measurer(source, "dagre", RoleMeasurer);
         let layout = &json["layout"]["ClassDiagramV2"];
         let width = layout["nodes"]
             .as_array()
@@ -2264,10 +2327,7 @@ mod class_svg_terminal_contracts {
             .unwrap()
             .iter()
             .find_map(|edge| edge["label"]["width"].as_f64());
-        let rendered = artifact
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
-        (width, edge_width, rendered.svg().to_owned())
+        (width, edge_width, svg)
     }
 
     fn text(node: roxmltree::Node<'_, '_>) -> String {
@@ -2326,6 +2386,123 @@ mod class_svg_terminal_contracts {
             .find(|node| node.attribute("class") == Some("background"))
             .unwrap();
         assert_eq!(background.attribute("width"), Some("20"));
+    }
+
+    #[test]
+    fn class_svg_terminal_title_fallback_keeps_dom_word_spaces() {
+        for layout_engine in ["dagre"]
+            .into_iter()
+            .chain(cfg!(feature = "layout-elk").then_some("elk"))
+        {
+            let (json, svg) = render_with_measurer(
+                "classDiagram\nclass A[\"&g **t**\"]\n",
+                layout_engine,
+                RoleMeasurer,
+            );
+            let node = json["layout"]["ClassDiagramV2"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == "A")
+                .unwrap();
+            assert_eq!(node["width"].as_f64(), Some(32.0), "{layout_engine}");
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let title = doc
+                .descendants()
+                .find(|node| node.attribute("class") == Some("label-group text"))
+                .unwrap();
+            assert_eq!(text(title), "&g t", "{layout_engine}");
+            let rows = title
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+                .collect::<Vec<_>>();
+            assert_eq!(rows.len(), 1, "{layout_engine}");
+            let words = rows[0]
+                .children()
+                .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                .collect::<Vec<_>>();
+            assert_eq!(words.len(), 2, "{layout_engine}");
+            assert_eq!(text(words[0]), "&g");
+            assert_eq!(text(words[1]), " t");
+            assert!(
+                words
+                    .iter()
+                    .all(|word| word.attribute("font-weight") == Some(""))
+            );
+        }
+    }
+
+    #[test]
+    fn class_svg_terminal_title_measures_retained_literal_rows_and_exact_faces() {
+        for layout_engine in ["dagre"]
+            .into_iter()
+            .chain(cfg!(feature = "layout-elk").then_some("elk"))
+        {
+            for (source, expected, row_count, word_count, height) in [
+                ("A&lt;br&gt;B", "A<br>B", 1, 1, 12.0),
+                ("**A&lt;br&gt;B**", "A<br>B", 1, 1, 12.0),
+                ("*A&lt;br&gt;B*", "A<br>B", 1, 1, 18.0),
+                ("A&lt;br&gt;B *ii*", "A<br>B ii", 1, 2, 20.0),
+                ("A&lt;br&gt;B<br>*ii*", "A<br>Bii", 2, 2, 25.4),
+            ] {
+                let (json, svg) = render_with_measurer(
+                    &format!("classDiagram\nclass A[\"{source}\"]\n"),
+                    layout_engine,
+                    ExactTitleMeasurer,
+                );
+                let node = json["layout"]["ClassDiagramV2"]["nodes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|node| node["id"] == "A")
+                    .unwrap();
+                assert!(
+                    (node["height"].as_f64().unwrap() - (height + 60.0)).abs() < 1e-6,
+                    "{layout_engine}: {source}: {node}"
+                );
+                let doc = roxmltree::Document::parse(&svg).unwrap();
+                let title = doc
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label-group text"))
+                    .unwrap();
+                assert_eq!(text(title), expected, "{layout_engine}: {source}");
+                assert_eq!(
+                    title
+                        .descendants()
+                        .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+                        .count(),
+                    row_count,
+                    "{layout_engine}: {source}"
+                );
+                let words = title
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                    .collect::<Vec<_>>();
+                assert_eq!(words.len(), word_count, "{layout_engine}: {source}");
+                assert!(
+                    words
+                        .iter()
+                        .all(|word| word.attribute("font-weight") == Some(""))
+                );
+                let transform = title
+                    .children()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .unwrap()
+                    .attribute("transform")
+                    .unwrap();
+                let y = transform
+                    .strip_prefix("translate(0,")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert!(
+                    (y + height / (2.0 * row_count as f64)).abs() < 1e-6,
+                    "{layout_engine}: {source}: {transform}"
+                );
+            }
+        }
     }
 
     #[test]

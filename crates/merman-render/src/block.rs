@@ -1,5 +1,5 @@
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -68,12 +68,11 @@ fn block_html_label_metrics_px(
     style: &TextStyle,
     config: &merman_core::MermaidConfig,
 ) -> (f64, f64) {
-    let html_metrics = crate::text::measure_xhtml_label_fragment(
+    let html_metrics = crate::text::measure_unwrapped_xhtml_label_fragment(
         measurer,
         &block_label_html_fragment(text, config),
         style,
-        None,
-        WrapMode::HtmlLike,
+        crate::config::config_theme_or_root_font_size_px(config.as_value(), 16.0),
     );
     (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
 }
