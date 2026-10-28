@@ -322,6 +322,10 @@ Prefer native tools such as Cargo, nextest, actionlint, npm, and package install
 repository scripts into partial parsers for Rust, Cargo, GitHub Actions, or shell merely to prove a
 workflow row or source line is safe.
 
+Review ordinary Markdown for accuracy and working links. CI contracts validate the underlying
+manifests, commands, and artifacts; ADR titles and numbering, fuzzing command examples, and
+Homebrew documentation snippets are not machine inputs.
+
 For local workflow checks, make ShellCheck available on `PATH` or pass its executable with
 `actionlint -shellcheck <path>`. Without ShellCheck, actionlint skips the shell-script diagnostics
 that the Linux CI runner enforces.

@@ -295,6 +295,12 @@ For a future Typst submission, bind the package to the reviewed 40-character sou
 
 ## Publish Order
 
+Cargo rewrites workspace path dependencies to registry dependencies when packaging. A dependent
+crate's `cargo package` or `cargo publish --dry-run` therefore requires the matching dependency
+versions to exist on crates.io. Before they are available, use the registry-independent checks in
+the [release preflight](RELEASING.md#release-preflight); local dry runs cover only the
+registry-satisfiable batches.
+
 Cargo metadata is the publish-order authority. Inspect the current dependency-safe projection with:
 
 ```bash

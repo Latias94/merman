@@ -19,6 +19,10 @@ union, and title bbox merging all lived beside the final string emission.
 - `flowchart/viewbox.rs` prepares rendered content bounds and final viewBox bounds, including edge
   curve bbox union and diagram title bbox merging.
 
+The extraction retained edge path geometry in `edge_geom.rs`; bounds preparation asks it for
+geometry and warms the render cache. Its viewBox result owned the trimmed title as a `String` so
+short mutable details/cache borrows did not extend into later SVG emission.
+
 ## In Scope
 
 - Add `crates/merman-render/src/svg/parity/flowchart/render_config.rs`.

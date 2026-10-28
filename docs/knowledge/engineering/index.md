@@ -11,13 +11,16 @@ When a capture tool's default title slug is too long, use a concise title or its
 option. Run `python scripts/check_path_lengths.py` after staging new records or renames. This
 protects Windows consumers that fetch the entire repository as a Cargo Git dependency.
 
-## Core
+## Current guidance
 
-* [Current State](current-state.md) - Short durable summary of the active engineering state.
-* [Update Log](log.md) - Chronological history of meaningful memory updates.
+Use the [documentation index](../../README.md) for maintained guides and the
+[alignment dashboard](../../alignment/STATUS.md) for the current Mermaid target. Dated records
+below preserve the revision and scope of their observations; they do not select today's baseline
+or advertise an active agent session.
 
 ## Concepts
 
 * [Decisions](decisions/) - Durable engineering choices and rationale.
 * [Verification](verification/) - Test, build, lint, benchmark, and manual evidence.
-* [Conventions](conventions/) - Local repo rules and reusable agent contracts.
+* [Implementation checkpoints](progress/) - Dated progress and integration evidence.
+* [Investigations](subagents/) - Focused findings and source audits.

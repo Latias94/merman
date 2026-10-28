@@ -2,7 +2,7 @@
 
 This guide describes Rust embedding against the current development source. Build against the
 same revision as the APIs below; the dependency examples use a sibling checkout, so adjust `path`
-to your local source. Use the [0.8.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for
+to your local source. Use the [0.8.0 to 0.9.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for
 published managed JSON and canonical record migrations, the
 [versioned upgrade index](../release/README.md) for other releases, and
 [package surfaces](../release/PACKAGE_SURFACES.md) to choose a binding or artifact.

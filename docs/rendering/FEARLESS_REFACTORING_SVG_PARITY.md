@@ -21,7 +21,8 @@ complete; ADR-0073 is the authoritative ownership decision.
 
 ## Refactoring Rules
 
-- Preserve the pinned Mermaid 11.16 grammar, semantic, layout, and observable SVG behavior.
+- Preserve grammar, semantics, layout, and observable SVG behavior from the
+  [selected upstream sources](../alignment/README.md#machine-authorities).
 - Keep family behavior in the owning vertical family module. Shared code must own a genuinely
   cross-family operation, not provide a pass-through wrapper.
 - Do not introduce a JSON-first built-in render path or independently pair typed semantics and

@@ -82,60 +82,21 @@ configuration precedence, and export limitations.
 
 A `Renderer` stores defaults. Each `RenderRequest` describes one independent operation.
 
-| Type | Role | Typical lifetime |
-| --- | --- | --- |
-| `Renderer` | Holds the engine and shared defaults | One call or many calls |
-| `RenderRequest` | Borrows the source and selects a target, overrides, and control | One operation |
-| `OperationControl` | Carries cooperative cancellation and an optional deadline | One operation; clone it for the cancelling task or thread |
-| `SemanticArtifact` | Pairs canonical meaning with its operation context, without presentation | Inspect it or consume it into terminal output |
-| `PresentationArtifact` | Pairs the full render model, configuration, and theme with its operation | Consume it into an output or hand it to a reusable source |
-| `PreparedSource` (current source) | Shares frozen parse facts across independently controlled outputs | Retain while the same source/configuration needs new layout or measurement |
-
-The quick start is the one-shot form: create a renderer, issue one request, and drop it. Reusing
-that renderer for different sources uses the same `Renderer::render()` operation.
-
 For a batch or service, keep one configured `Renderer` when inputs share parse options, runtime
 policy, site config, or resource limits. It shares settings, not parsed state: every call parses its
 own source and carries a fresh `RenderRequest` and, normally, a fresh `OperationControl`.
 
 If several SVGs will share one DOM, give every request a `diagram_id` that remains unique after
-`merman::svg::sanitize_svg_id()` normalization. If an editor needs to retain analysis between
-queries, use a host-owned snapshot from `merman::editor`; a reused renderer is not an editor
-session.
+`merman::svg::sanitize_svg_id()` normalization. See the maintained examples for
+[one-shot rendering](crates/merman/examples/render_svg.rs),
+[renderer reuse](crates/merman/examples/render_many.rs), and
+[embedding several SVGs](crates/merman/examples/embed_multiple_svgs.rs).
 
-The self-contained [Rust examples] cover these cases: [`render_svg.rs`] is one-shot,
-[`render_many.rs`] reuses a configured renderer, and [`embed_multiple_svgs.rs`] assigns stable IDs
-for a shared document.
-
-For redraws of unchanged source, current source builds also expose `Renderer::prepare_source()`
-and `render_prepared()`. They reuse canonical semantics while each output receives fresh controls,
-budgets, runtime state and layout. Parse-affecting changes require a new preparation. See the
-[redraw example](crates/merman/examples/redraw_prepared.rs) and
-[development migration](docs/migrations/render-reuse-host-integration.md). Rendering-capable Web
-packages provide [prepared sources and persistent mounts](platforms/web/README.md#reuse-a-parsed-source)
-for width/font refreshes and safe publication.
-
-## Output targets
-
-Choose one typed target for each request:
-
-| Need | Start with | Cargo feature |
-| --- | --- | --- |
-| Parse canonical Mermaid meaning | `SemanticParser` | Required `diagram-*` selectors, or `all-diagrams` |
-| Inspect a controlled semantic artifact | `Renderer::parse_semantic()` or `RenderTarget::Semantic` | Required family selectors; no presentation needed |
-| Prepare full presentation for later output | `Renderer::prepare_presentation()` or `RenderTarget::Presentation` | `presentation` and required family selectors |
-| Export Mermaid compatibility JSON | `PresentationArtifact::compatibility_json()` or `MermaidEngine` | `compat-json` and required family selectors |
-| Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
-| Complete one document for several graphical targets | `RenderRequest::document()` | `svg` plus each output feature used |
-| Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
-| Render terminal text for supported families | `RenderRequest::ascii()` | `ascii` |
-| Export one-shot PNG, JPEG, or PDF | `RenderRequest::png()`, `jpeg()`, or `pdf()` | matching output feature |
-| Produce diagnostics or analyze Markdown and MDX fences | `merman::analysis::Analyzer` | `analysis` |
-| Build parser-backed editor snapshots | APIs under `merman::editor` | `editor` |
-
-Cargo features remove unavailable target types at compile time. Within a compiled target, a
-missing layout engine or runtime adapter returns a typed `missing-capability` error instead of
-silently choosing a different result.
+For redraws of unchanged source, current source builds expose `Renderer::prepare_source()` and
+`render_prepared()`. Each output receives fresh controls, budgets, runtime state, and layout.
+The [Rust embedding guide] covers semantic and presentation artifacts, output targets, editor
+snapshots, and prepared rendering; the [development migration](docs/migrations/render-reuse-host-integration.md)
+also covers Web prepared sources and persistent mounts.
 
 ## Cargo features
 
@@ -154,11 +115,6 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 merman = { version = "0.9.2", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
-Default Rust features include all built-in diagram families, SVG, Cytoscape and ELK layouts.
-Math labels require `math`. Other outputs and analysis/editor APIs are opt-in. See the [capability guide]
-for smaller builds, including how to omit ELK, and the [Rust examples] for renderer reuse,
-cancellation, and host integration.
-
 For command-line use, follow the [CLI installation guide][CLI install], then render a Mermaid file:
 
 ```sh
@@ -171,16 +127,6 @@ In the current source, positive `diagram-*` features select built-in families in
 outputs and engines. Low-level crates and facade consumers disabling defaults must select
 `all-diagrams` or their required families explicitly. Packages at alpha.6 and earlier predate this
 feature/API migration; see the [capability guide] for current-source recipes.
-
-| Goal | Cargo selection |
-| --- | --- |
-| Complete deterministic SVG with ELK | defaults, or `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]` |
-| SVG, Cytoscape, and math without ELK | `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"]` |
-| Basic SVG without optional layout engines or math | `default-features = false, features = ["all-diagrams", "svg"]` |
-| Diagnostics and editor APIs | `default-features = false, features = ["all-diagrams", "analysis", "editor"]` |
-| Terminal output | `default-features = false, features = ["all-diagrams", "ascii"]` |
-| Flowchart + Gantt SVG only | `default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt"]` |
-| Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
 
 Themes select font-family names and typography values. Browsers and native export backends resolve
 host fonts. Caller-supplied font bytes in theme recipes are rejected; no fonts are bundled.
@@ -223,16 +169,6 @@ Mermaid source
 The two parsers have different contracts. Tree-sitter keeps useful syntax structure while a document
 is incomplete; Merman remains the strict semantic and rendering authority. The semantic model is
 shared by analysis and rendering. Binary export starts from validated SVG, not a browser screenshot.
-
-## Rendered output
-
-| Architecture | Mindmap | Sankey |
-| :-: | :-: | :-: |
-| <img width="280" alt="Architecture diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture.png"> | <img width="280" alt="Mindmap rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap.png"> | <img width="280" alt="Sankey diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/sankey.png"> |
-
-These examples were rendered headlessly by `merman-cli`, which uses the same Rust parser and
-rendering pipeline. The source-checkout Playground covers all 37 built-in diagram types, including
-Agentflow and Usecase. The hosted [Playground] reflects its deployed package version.
 
 ## Ecosystem
 
@@ -286,6 +222,7 @@ project or its maintainers.
 [Playground]: https://frankorz.com/merman/
 [Rust API]: https://docs.rs/merman
 [Rust examples]: https://github.com/Latias94/merman/tree/main/crates/merman/examples
+[resource and options guide]: https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md
 [Rust embedding guide]: https://github.com/Latias94/merman/blob/main/docs/rendering/RUST_EMBEDDING.md
 [capability guide]: https://github.com/Latias94/merman/blob/main/docs/FEATURES.md
 [alignment dashboard]: https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md

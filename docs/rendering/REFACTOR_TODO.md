@@ -79,11 +79,8 @@ Related docs:
       `svg/parity/state/node.rs` via `docs/workstreams/state-node-renderer-extraction/`).
 - [ ] Create a consistent naming convention for “Stage B” parity render entry points across diagrams.
 
-### P2: Measurement-profile tooling
+### P2: Generated-artifact verification
 
-- [ ] Validate the generated Mermaid 11.16 glyph, kerning, trigram, fallback-font, and endpoint
-      overhang profile against an independent fixture corpus without emitting fixture ids or
-      complete-label answers.
 - [x] Remove generated root pins, exact-label text/SVG tables, override budgets, and their
       generator/audit commands. Root parity now verifies computed family and emitted-content
       bounds directly.
@@ -92,7 +89,7 @@ Related docs:
       whether missing optional `repo-ref/*` build artifacts should be bootstrap failures or
       optional-gate failures. 2026-05-31: completed in
       `docs/workstreams/generated-default-config-parity/`; `verify-default-config` now regenerates
-      both the upstream value and key-shape planes from the content-pinned Mermaid 11.16 runtime.
+      both the upstream value and key-shape planes from the selected content-pinned runtime.
       DOMPurify remains pinned to the resolved `dompurify@3.4.0` with actionable
       reference-checkout remediation.
 
