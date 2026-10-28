@@ -1,0 +1,123 @@
+{
+  "line": "v0.9.x",
+  "mermaid": "12.1.0",
+  "binarySha256": "e96baedc8f773d7da6d3a07f82e56fe8f64ecb919d321f560a2bc2cb58983863",
+  "binarySourceCommit": "5fa43519a",
+  "note": "Binary identity matches the preceding checked-in review provenance; intervening branch commits before this audit did not alter renderer source. Only these three math cases are before/after controls. The captured binary does not include diagram-block.",
+  "exports": [
+    {
+      "file": "09-before-unicode-smash.svg",
+      "sha256": "7f9e0e8270e1d482270127016eb1e7e5024148733c2d2c45c84fea928af0750c",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "file": "09-before-unicode-smash.png",
+      "sha256": "f5e8a81324f4e9e4322fa1c38327845c7dd55914ad2502a470287d120283ef18",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    },
+    {
+      "file": "09-before-native-lap.svg",
+      "sha256": "7f3665fbae0dff0d2cfa36eda4fb29ab8b04627f3a8a85d579a98cd28ea454af",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "file": "09-before-native-lap.png",
+      "sha256": "148934cb3835b058ef813bedd46fca1dbb2a782836a4453259f355a29c71304f",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    },
+    {
+      "file": "09-before-sequence-rows.svg",
+      "sha256": "3d65b10a55e4136bc1aeafe4161367979b25d9935bfc6974f3ec95e413bed8bc",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "svg",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white",
+        "--svg-pipeline",
+        "resvg-safe"
+      ]
+    },
+    {
+      "file": "09-before-sequence-rows.png",
+      "sha256": "904508216acd6448a2ea39b4ccb330cca5cecc6b2cf80b12417885a19ce0f263",
+      "command": [
+        "render",
+        "-",
+        "--format",
+        "png",
+        "--output",
+        "-",
+        "--math-renderer",
+        "ratex",
+        "--font-measurement",
+        "native",
+        "--background",
+        "white"
+      ]
+    }
+  ]
+}
