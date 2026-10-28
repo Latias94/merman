@@ -76,14 +76,7 @@ fn extract_dompurify_array_definition(
     Ok(values)
 }
 
-pub(crate) fn extract_string_array_at(
-    src: &str,
-    bracket_start: usize,
-) -> Result<Vec<String>, XtaskError> {
-    parse_literal_string_array(src, bracket_start).map(|(values, _)| values)
-}
-
-// Read the nonempty literal lists used by DOMPurify and Mermaid's ELK registry.
+// Read the nonempty literal lists used by DOMPurify.
 // Deliberately reject other JavaScript syntax instead of evaluating or skipping it.
 fn parse_literal_string_array(
     src: &str,
@@ -160,7 +153,7 @@ fn parse_literal_string_array(
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_add_to_set_string_array, extract_frozen_string_array, extract_string_array_at,
+        extract_add_to_set_string_array, extract_frozen_string_array, parse_literal_string_array,
         sha256_hex,
     };
 
@@ -209,8 +202,9 @@ mod tests {
     #[test]
     fn literal_arrays_preserve_unicode_quotes_escapes_and_string_delimiters() {
         assert_eq!(
-            extract_string_array_at(r#"['café😀', "a'b", 'a"b', '\\', '\'', "\"", '],)']"#, 0)
-                .expect("supported literal strings"),
+            parse_literal_string_array(r#"['café😀', "a'b", 'a"b', '\\', '\'', "\"", '],)']"#, 0)
+                .expect("supported literal strings")
+                .0,
             ["café😀", "a'b", "a\"b", "\\", "'", "\"", "],)"],
         );
     }
@@ -247,12 +241,12 @@ mod tests {
             r"['\q']",
         ] {
             assert!(
-                extract_string_array_at(source, 0).is_err(),
+                parse_literal_string_array(source, 0).is_err(),
                 "accepted {source:?}"
             );
         }
-        assert!(extract_string_array_at("é['a']", 1).is_err());
-        assert!(extract_string_array_at("['a']", usize::MAX).is_err());
+        assert!(parse_literal_string_array("é['a']", 1).is_err());
+        assert!(parse_literal_string_array("['a']", usize::MAX).is_err());
     }
 
     #[test]
@@ -275,17 +269,6 @@ mod tests {
                 "SAFE",
             )
             .is_err()
-        );
-    }
-
-    #[test]
-    fn literal_arrays_preserve_mermaid_elk_algorithm_format() {
-        let source =
-            "export const ELK_ALGORITHMS = [\n  'elk.stress',\n  'elk.force',\n] as const;";
-        assert_eq!(
-            extract_string_array_at(source, source.find('[').expect("array start"))
-                .expect("ELK algorithm list"),
-            ["elk.stress", "elk.force"],
         );
     }
 }
