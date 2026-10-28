@@ -22,8 +22,14 @@ pub(super) struct NativeMathRequest<'a> {
     pub(super) typography: &'a ResolvedFallbackTypography,
     pub(super) width: f64,
     pub(super) height: f64,
-    pub(super) align_to_start: bool,
+    pub(super) layout: NativeMathLayout,
     pub(super) text_measurer: &'a dyn TextMeasurer,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum NativeMathLayout {
+    CenteredLabel,
+    SequenceFitContent,
 }
 
 enum Run<'a> {
@@ -50,10 +56,18 @@ impl Run<'_> {
 }
 
 #[derive(Default)]
+enum RowLayout {
+    #[default]
+    PlainText,
+    CenteredFormula,
+}
+
+#[derive(Default)]
 struct Row<'a> {
     runs: Vec<Run<'a>>,
     width: f64,
     height: f64,
+    layout: RowLayout,
 }
 
 struct OpenSvg {
@@ -372,6 +386,10 @@ fn parse_rows<'a, E>(
                             invalid,
                         );
                     }
+                    // The producer emits every formula row as a centered nowrap flex row;
+                    // rows containing only prose are ordinary blocks. This is a finite producer
+                    // contract, not a request to interpret arbitrary HTML layout declarations.
+                    current_row.layout = RowLayout::CenteredFormula;
                     flush_text(&mut text, current_row, checkpoint)?;
                     let open = OpenSvg {
                         body_start: reader.buffer_position() as usize,
@@ -473,7 +491,7 @@ pub(super) fn project_native_math<E>(
         typography,
         width,
         height,
-        align_to_start,
+        layout,
         text_measurer,
     } = request;
     checkpoint()?;
@@ -502,6 +520,7 @@ pub(super) fn project_native_math<E>(
     }
     let style = typography.text_style();
     let mut total_height = 0.0;
+    let mut content_width = 0.0_f64;
     for row in &mut rows {
         checkpoint()?;
         let mut has_text = false;
@@ -540,6 +559,7 @@ pub(super) fn project_native_math<E>(
         if !row.width.is_finite() || !total_height.is_finite() {
             return reject("native math row dimensions overflowed", invalid);
         }
+        content_width = content_width.max(row.width);
     }
 
     let fill = escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
@@ -565,17 +585,17 @@ pub(super) fn project_native_math<E>(
         &mut elements,
         preflight,
     )?;
-    let mut y = if align_to_start {
-        0.0
-    } else {
-        (height - total_height) / 2.0
+    // Sequence anchors the fit-content container at the foreignObject origin. Its formula
+    // rows still center within that container, while ordinary prose blocks start at its left.
+    let (row_container_width, mut y) = match layout {
+        NativeMathLayout::CenteredLabel => (width, (height - total_height) / 2.0),
+        NativeMathLayout::SequenceFitContent => (content_width, 0.0),
     };
     for row in rows {
         checkpoint()?;
-        let mut x = if align_to_start {
-            0.0
-        } else {
-            (width - row.width) / 2.0
+        let mut x = match (layout, row.layout) {
+            (NativeMathLayout::SequenceFitContent, RowLayout::PlainText) => 0.0,
+            _ => (row_container_width - row.width) / 2.0,
         };
         for run in row.runs {
             checkpoint()?;
@@ -612,10 +632,11 @@ pub(super) fn project_native_math<E>(
                 } => {
                     let view_box = escape_xml_attr_with_checkpoints(&view_box, checkpoint)?;
                     generated_depth = generated_depth.max(if svg_elements > 1 { 3 } else { 2 });
+                    // Preserve the producer viewport clip, including lap ink outside its advance.
                     super::push_generated_fmt(
                         &mut output,
                         format_args!(
-                            r#"<svg class="merman-native-math-svg" x="{x}" y="{top}" width="{run_width}" height="{run_height}" viewBox="{view_box}" overflow="visible">{body}</svg>"#
+                            r#"<svg class="merman-native-math-svg" x="{x}" y="{top}" width="{run_width}" height="{run_height}" viewBox="{view_box}" overflow="hidden">{body}</svg>"#
                         ),
                         svg_elements,
                         0,
@@ -697,13 +718,20 @@ mod tests {
     }
 
     fn project(inner: &str) -> Result<Option<NativeMathProjection>, &'static str> {
+        project_with_layout(inner, NativeMathLayout::CenteredLabel)
+    }
+
+    fn project_with_layout(
+        inner: &str,
+        layout: NativeMathLayout,
+    ) -> Result<Option<NativeMathProjection>, &'static str> {
         project_native_math(
             NativeMathRequest {
                 inner,
                 typography: &typography(),
                 width: 100.0,
                 height: 60.0,
-                align_to_start: false,
+                layout,
                 text_measurer: &Measurer,
             },
             &mut || Ok(()),
@@ -728,7 +756,7 @@ mod tests {
                 typography: &typography(),
                 width: f64::NAN,
                 height: -1.0,
-                align_to_start: false,
+                layout: NativeMathLayout::CenteredLabel,
                 text_measurer: &Measurer,
             },
             &mut || Ok::<_, ()>(()),
@@ -746,7 +774,7 @@ mod tests {
         );
         let result = project(&inner).unwrap().unwrap();
         assert!(result.svg.contains(
-            r#"x="40" y="25" width="20" height="10" viewBox="0 0 2 1" overflow="visible""#
+            r#"x="40" y="25" width="20" height="10" viewBox="0 0 2 1" overflow="hidden""#
         ));
         assert!(result.svg.contains("d='M0 0L1 1'"));
         assert_eq!(result.elements, 3);
@@ -778,6 +806,177 @@ mod tests {
             svg.contains(r#"x="0" y="0" width="32" height="16""#),
             "{svg}"
         );
+    }
+
+    #[test]
+    fn sequence_pure_formula_rows_center_inside_the_fit_content_container() {
+        let wide = formula()
+            .replace("0 0 2 1", "0 0 6 1")
+            .replace("width='2em'", "width='6em'");
+        let input = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' aria-roledescription='sequence'><foreignObject x='5' y='7' width='120' height='80'><div xmlns='http://www.w3.org/1999/xhtml' style='width: fit-content;'><div class='{ROW_CLASS}'>{}</div><div class='{ROW_CLASS}'>{wide}</div></div></foreignObject></svg>",
+            formula(),
+        );
+        let output = super::super::foreign_object_label_fallback_svg_text(&input, &Measurer);
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let formulas: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.attribute("class") == Some(SVG_CLASS)
+                    && !node
+                        .ancestors()
+                        .any(|ancestor| ancestor.has_tag_name("foreignObject"))
+            })
+            .collect();
+        assert_eq!(formulas.len(), 2);
+        assert_eq!(formulas[0].attribute("x"), Some("32"));
+        assert_eq!(formulas[0].attribute("y"), Some("0"));
+        assert_eq!(formulas[1].attribute("x"), Some("0"));
+        assert_eq!(formulas[1].attribute("y"), Some("16"));
+        let instance = document
+            .descendants()
+            .find(|node| node.has_tag_name("use"))
+            .unwrap();
+        assert_eq!(instance.attribute("x"), Some("5"));
+        assert_eq!(instance.attribute("y"), Some("7"));
+    }
+
+    #[test]
+    fn sequence_mixed_formula_rows_center_while_plain_blocks_start_at_the_origin() {
+        let wide = formula()
+            .replace("0 0 2 1", "0 0 6 1")
+            .replace("width='2em'", "width='6em'");
+        let inner = format!(
+            "<div class='{ROW_CLASS}'>a {} b</div><div class='{ROW_CLASS}'>{wide}</div><div class='{ROW_CLASS}'>123456789012345678</div><div class='{ROW_CLASS}'>plain</div>",
+            formula(),
+        );
+        for (layout, first_text_x, first_formula_x, wide_formula_x, plain_x) in [
+            (NativeMathLayout::SequenceFitContent, "30", "35", "15", "0"),
+            (NativeMathLayout::CenteredLabel, "35", "40", "20", "37.5"),
+        ] {
+            let output = project_with_layout(&inner, layout).unwrap().unwrap();
+            let document = roxmltree::Document::parse(&output.svg).unwrap();
+            let formulas: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some(SVG_CLASS))
+                .collect();
+            assert_eq!(formulas.len(), 2);
+            assert_eq!(formulas[0].attribute("x"), Some(first_formula_x));
+            assert_eq!(formulas[1].attribute("x"), Some(wide_formula_x));
+            let text = |value| {
+                document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some(value))
+                    .unwrap()
+            };
+            assert_eq!(text("a").attribute("x"), Some(first_text_x));
+            assert_eq!(text("plain").attribute("x"), Some(plain_x));
+        }
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn sequence_producer_centers_pure_and_mixed_formula_rows_without_moving_plain_blocks() {
+        use crate::math::MathRenderer as _;
+
+        let renderer = crate::math::RatexMathRenderer;
+        for label in ["$$x$$<br>$$x+x+x+x$$", "a $$x$$ b<br>$$x+x+x+x$$<br>plain"] {
+            let html = renderer
+                .render_sequence_html_label(label, &merman_core::MermaidConfig::default())
+                .unwrap();
+            let output = project_with_layout(&html, NativeMathLayout::SequenceFitContent)
+                .unwrap()
+                .unwrap();
+            let document = roxmltree::Document::parse(&output.svg).unwrap();
+            let formulas: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some(SVG_CLASS))
+                .collect();
+            assert_eq!(formulas.len(), 2);
+            let center = |node: roxmltree::Node<'_, '_>| {
+                node.attribute("x").unwrap().parse::<f64>().unwrap()
+                    + node.attribute("width").unwrap().parse::<f64>().unwrap() / 2.0
+            };
+            assert!((center(formulas[0]) - center(formulas[1])).abs() < 1e-9);
+            assert_eq!(formulas[1].attribute("x"), Some("0"));
+            if label.contains("plain") {
+                let plain = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("plain"))
+                    .unwrap();
+                assert_eq!(plain.attribute("x"), Some("0"));
+            }
+        }
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn producer_lap_formulas_keep_their_viewport_clip_and_exact_primitive_payload() {
+        use crate::math::MathRenderer as _;
+
+        let renderer = crate::math::RatexMathRenderer;
+        for formula in [
+            r"x\rlap{yyyyyyyy}",
+            r"\llap{yyyyyyyy}x",
+            r"x\rlap{\text{😀😀}}",
+            r"\llap{\text{😀😀}}x",
+        ] {
+            for label in [
+                format!("$${formula}$$"),
+                format!("before $${formula}$$ after"),
+            ] {
+                let html = renderer
+                    .render_html_label(&label, &merman_core::MermaidConfig::default())
+                    .unwrap();
+                let source = format!("<div>{html}</div>");
+                let document = roxmltree::Document::parse(&source).unwrap();
+                let original = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some(SVG_CLASS))
+                    .unwrap();
+                let first = original.first_child().unwrap().range().start;
+                let last = original.last_child().unwrap().range().end;
+                let body = &source[first..last];
+                for layout in [
+                    NativeMathLayout::CenteredLabel,
+                    NativeMathLayout::SequenceFitContent,
+                ] {
+                    let output = project_with_layout(&html, layout).unwrap().unwrap();
+                    let projected = roxmltree::Document::parse(&output.svg).unwrap();
+                    let native = projected
+                        .descendants()
+                        .find(|node| node.attribute("class") == Some(SVG_CLASS))
+                        .unwrap();
+                    assert_eq!(native.attribute("overflow"), Some("hidden"), "{label}");
+                    assert_eq!(native.attribute("viewBox"), original.attribute("viewBox"));
+                    assert!(output.svg.contains(body), "preserve producer ink: {label}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bitmap_overhangs_keep_the_formula_clip_at_both_edges() {
+        for x in ["-1", "2"] {
+            let bitmap = image_formula().replace("x='-0.25'", &format!("x='{x}'"));
+            for inner in [
+                format!("<div class='{ROW_CLASS}'>{bitmap}</div>"),
+                format!("<div class='{ROW_CLASS}'>before {bitmap} after</div>"),
+            ] {
+                let output = project(&inner).unwrap().unwrap();
+                let document = roxmltree::Document::parse(&output.svg).unwrap();
+                let image = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("image"))
+                    .unwrap();
+                let viewport = image.parent_element().unwrap();
+                assert_eq!(viewport.attribute("overflow"), Some("hidden"));
+                assert_eq!(viewport.attribute("viewBox"), Some("0 0 2 1"));
+                assert_eq!(image.attribute("x"), Some(x));
+                assert_eq!(image.attribute("href"), Some(PNG_HREF));
+                assert_eq!(image.attribute("opacity"), Some("0.5"));
+            }
+        }
     }
 
     #[test]
@@ -940,7 +1139,7 @@ mod tests {
                 typography: &typography(),
                 width: 100.0,
                 height: 60.0,
-                align_to_start: false,
+                layout: NativeMathLayout::CenteredLabel,
                 text_measurer: &Measurer,
             },
             &mut || Ok(()),
@@ -1065,7 +1264,7 @@ mod tests {
                 typography: &typography(),
                 width: 100.0,
                 height: 60.0,
-                align_to_start: false,
+                layout: NativeMathLayout::CenteredLabel,
                 text_measurer: &Measurer,
             },
             &mut || Err::<(), _>("cancelled"),
@@ -1079,7 +1278,7 @@ mod tests {
                 typography: &typography(),
                 width: -1.0,
                 height: 60.0,
-                align_to_start: false,
+                layout: NativeMathLayout::CenteredLabel,
                 text_measurer: &Measurer,
             },
             &mut || Ok::<_, ()>(()),
@@ -1104,7 +1303,7 @@ mod tests {
                 typography: &typography,
                 width: 100.0,
                 height: 60.0,
-                align_to_start: false,
+                layout: NativeMathLayout::CenteredLabel,
                 text_measurer: &Measurer,
             },
             &mut || Ok(()),

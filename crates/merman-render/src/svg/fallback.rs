@@ -258,7 +258,11 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         typography: &resolved.typography,
                         width,
                         height,
-                        align_to_start: sequence_math,
+                        layout: if sequence_math {
+                            native_math::NativeMathLayout::SequenceFitContent
+                        } else {
+                            native_math::NativeMathLayout::CenteredLabel
+                        },
                         text_measurer,
                     },
                     checkpoint,
