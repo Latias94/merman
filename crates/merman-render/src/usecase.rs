@@ -44,7 +44,8 @@ pub(crate) struct UsecaseLabelPlan {
     pub style: TextStyle,
     pub max_width: Option<f64>,
     pub styles: indexmap::IndexMap<String, String>,
-    pub math_html: Option<String>,
+    /// Final HTML terminal shared by measurement and emission, including effective Markdown config.
+    pub html: Option<Arc<measure::UsecasePreparedHtmlLabel>>,
 }
 
 #[derive(Debug, Clone)]

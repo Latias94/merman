@@ -25,8 +25,9 @@ impl MermaidNavigationSecurity {
 }
 
 /// A navigation URL serialized exactly once for insertion between SVG attribute quotes.
+/// Immutable terminal storage has no spare capacity beyond its serialized byte length.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SerializedMermaidNavigationHref(String);
+pub struct SerializedMermaidNavigationHref(Box<str>);
 
 impl SerializedMermaidNavigationHref {
     pub fn as_serialized_str(&self) -> &str {
@@ -48,7 +49,7 @@ pub fn prepare_mermaid_navigation_href(
 
     if security == MermaidNavigationSecurity::Loose {
         return Some(SerializedMermaidNavigationHref(
-            cleaned_serialized.into_owned(),
+            cleaned_serialized.into_owned().into_boxed_str(),
         ));
     }
 
@@ -57,7 +58,7 @@ pub fn prepare_mermaid_navigation_href(
         MermaidSvgUriRepresentation::SerializedSvg,
     )?;
     Some(SerializedMermaidNavigationHref(
-        serialize_svg_attribute_value(&normalized_dom),
+        serialize_svg_attribute_value(&normalized_dom).into_boxed_str(),
     ))
 }
 

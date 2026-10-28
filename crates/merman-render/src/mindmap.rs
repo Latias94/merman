@@ -167,8 +167,10 @@ impl MindmapPreparedLabel {
             &parse_work,
             merman_core::OperationPhase::Layout,
         );
+        // createText restores entity references before HTML consumption, not after serialization.
+        let source = merman_core::entities::restore_mermaid_entity_spelling(text);
         let html = crate::text::replace_fontawesome_icons(
-            &crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true),
+            &crate::text::mermaid_markdown_to_xhtml_label_fragment(source.as_ref(), true),
         );
         let xhtml =
             match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink)
@@ -193,8 +195,6 @@ impl MindmapPreparedLabel {
         let xhtml = single_image_paragraph_inner(&xhtml)
             .map(str::to_owned)
             .unwrap_or(xhtml);
-        let decoded = crate::entities::decode_mermaid_entities_for_render_text(&xhtml);
-        let xhtml = crate::xml::normalize_html_entities_for_xml(decoded.as_ref()).into_owned();
         let retained_bytes = owner_bytes.saturating_add(xhtml.capacity());
         let reservation = work_meter.reserve_prepared_text_retained_bytes(retained_bytes)?;
         Ok(Self {

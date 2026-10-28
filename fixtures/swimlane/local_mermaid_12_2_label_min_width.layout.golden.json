@@ -3,10 +3,10 @@
   "layout": {
     "SwimlaneDiagram": {
       "bounds": {
-        "max_x": 2021.231,
-        "max_y": 148.7,
+        "max_x": 2003.581,
+        "max_y": 149.5,
         "min_x": -115.0,
-        "min_y": -148.7
+        "min_y": -149.5
       },
       "direction": "LR",
       "edges": [
@@ -21,7 +21,7 @@
               "y": 0.0
             },
             {
-              "x": 504.593,
+              "x": 495.598,
               "y": 0.0
             }
           ],
@@ -35,11 +35,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 885.433,
+              "x": 876.438,
               "y": 0.0
             },
             {
-              "x": 1258.502,
+              "x": 1241.238,
               "y": 0.0
             }
           ],
@@ -53,11 +53,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 1483.902,
+              "x": 1468.238,
               "y": 0.0
             },
             {
-              "x": 1754.173,
+              "x": 1734.872,
               "y": 0.0
             }
           ],
@@ -71,11 +71,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 1786.715,
+              "x": 1768.834,
               "y": 0.0
             },
             {
-              "x": 1953.69,
+              "x": 1934.619,
               "y": 0.0
             }
           ],
@@ -85,33 +85,33 @@
       ],
       "lanes": [
         {
-          "content_top": -112.7,
-          "height": 297.4,
+          "content_top": -113.5,
+          "height": 299.0,
           "id": "Shapes",
           "padding": 8.0,
           "parent_id": null,
           "requested_dir": "LR",
           "title": "Label-derived dimensions",
-          "title_label_height": 15.4,
+          "title_label_height": 17.0,
           "title_label_width": 140.563,
           "title_rect": {
-            "bottom": 148.7,
+            "bottom": 149.5,
             "left": -115.0,
             "right": -79.0,
-            "top": -148.7
+            "top": -149.5
           },
-          "width": 2136.231,
-          "x": 953.116,
+          "width": 2118.581,
+          "x": 944.291,
           "y": 0.0
         }
       ],
       "nodes": [
         {
-          "height": 45.4,
+          "height": 47.0,
           "id": "R",
           "is_edge_label": false,
           "label": "X",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "text",
           "label_width": 180.0,
           "layer": 0.0,
@@ -124,11 +124,11 @@
           "y": 0.0
         },
         {
-          "height": 45.4,
+          "height": 47.0,
           "id": "L",
           "is_edge_label": false,
           "label": "This label remains wider than the configured minimum width",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "text",
           "label_width": 350.84,
           "layer": 1.0,
@@ -137,15 +137,15 @@
           "shape": "roundedRect",
           "top_lane_id": "Shapes",
           "width": 380.84,
-          "x": 695.013,
+          "x": 686.018,
           "y": 0.0
         },
         {
-          "height": 225.4,
+          "height": 227.0,
           "id": "D",
           "is_edge_label": false,
           "label": "X",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "text",
           "label_width": 180.0,
           "layer": 2.0,
@@ -153,16 +153,16 @@
           "parent_id": "Shapes",
           "shape": "diamond",
           "top_lane_id": "Shapes",
-          "width": 225.4,
-          "x": 1371.202,
+          "width": 227.0,
+          "x": 1354.738,
           "y": 0.0
         },
         {
-          "height": 32.542,
+          "height": 33.962,
           "id": "C",
           "is_edge_label": false,
           "label": "X",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "text",
           "label_width": 8.4,
           "layer": 3.0,
@@ -170,16 +170,16 @@
           "parent_id": "Shapes",
           "shape": "circle",
           "top_lane_id": "Shapes",
-          "width": 32.542,
-          "x": 1770.444,
+          "width": 33.962,
+          "x": 1751.853,
           "y": 0.0
         },
         {
-          "height": 57.542,
+          "height": 58.962,
           "id": "B",
           "is_edge_label": false,
           "label": "X",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "text",
           "label_width": 8.4,
           "layer": 4.0,
@@ -187,8 +187,8 @@
           "parent_id": "Shapes",
           "shape": "doublecircle",
           "top_lane_id": "Shapes",
-          "width": 57.542,
-          "x": 1982.461,
+          "width": 58.962,
+          "x": 1964.1,
           "y": 0.0
         }
       ]

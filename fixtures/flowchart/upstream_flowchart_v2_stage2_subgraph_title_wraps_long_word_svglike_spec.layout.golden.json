@@ -4,7 +4,7 @@
     "FlowchartV2": {
       "bounds": {
         "max_x": 298.06,
-        "max_y": 181.2,
+        "max_y": 186.0,
         "min_x": 98.06,
         "min_y": 12.0
       },
@@ -12,23 +12,23 @@
         {
           "diff": 82.06,
           "effective_dir": "TB",
-          "height": 169.2,
+          "height": 174.0,
           "id": "wrap",
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "padding": 8.0,
           "requested_dir": null,
           "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
           "title_label": {
-            "height": 13.4,
+            "height": 15.0,
             "width": 372.12,
             "x": 198.06,
-            "y": 18.7
+            "y": 19.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
           "width": 200.0,
           "x": 198.06,
-          "y": 96.6
+          "y": 99.0
         }
       ],
       "edges": [
@@ -43,11 +43,11 @@
           "points": [
             {
               "x": 198.06,
-              "y": 93.8
+              "y": 97.0
             },
             {
               "x": 198.06,
-              "y": 117.8
+              "y": 121.0
             }
           ],
           "start_label_left": null,
@@ -60,28 +60,28 @@
       ],
       "nodes": [
         {
-          "height": 169.2,
+          "height": 174.0,
           "id": "wrap",
           "is_cluster": true,
           "width": 200.0,
           "x": 198.06,
-          "y": 96.6
+          "y": 99.0
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "A",
           "is_cluster": false,
           "width": 152.0,
           "x": 198.06,
-          "y": 74.1
+          "y": 76.5
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "B",
           "is_cluster": false,
           "width": 152.0,
           "x": 198.06,
-          "y": 137.5
+          "y": 141.5
         }
       ]
     }

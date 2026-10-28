@@ -1947,12 +1947,14 @@ fn class_box_dimensions(
                 annotation: annotation_prepared,
                 members: members_prepared_out.unwrap_or_default(),
                 methods: methods_prepared_out.unwrap_or_default(),
+                _retained_reservation: None,
             },
         ))
     } else if capture_row_metrics {
         Some(ClassNodeLabelPlan::RowMetrics(ClassNodeRowMetrics {
             members: members_metrics_out.unwrap_or_default(),
             methods: methods_metrics_out.unwrap_or_default(),
+            _retained_reservation: None,
         }))
     } else {
         None
@@ -2103,7 +2105,7 @@ pub(crate) fn class_note_html_fragment(
     mermaid_config: &merman_core::presentation::PresentationConfig,
 ) -> String {
     let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-    let note_html = merman_core::sanitize::sanitize_text(&note_html, mermaid_config.as_config());
+    let note_html = merman_core::sanitize::sanitize_xhtml(&note_html, mermaid_config.as_config());
     class_normalize_xhtml_br_tags(&note_html)
 }
 
@@ -2154,6 +2156,49 @@ pub(crate) struct ClassPreparedLabels {
 pub(crate) struct ClassPreparedSvgEdgeLabel {
     pub(crate) label: ClassSvgLabel,
     _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
+}
+
+impl ClassNodeLabelPlan {
+    fn reserve_retained_bytes(
+        &mut self,
+        id_capacity: usize,
+        work_control: &OperationLayoutWorkControl,
+    ) -> Result<()> {
+        let (heap_bytes, reservation) = match self {
+            Self::RowMetrics(rows) => (
+                rows.members
+                    .capacity()
+                    .saturating_add(rows.methods.capacity())
+                    .saturating_mul(std::mem::size_of::<crate::text::TextMetrics>()),
+                &mut rows._retained_reservation,
+            ),
+            Self::PreparedHtml(labels) => {
+                let row_bytes = labels
+                    .members
+                    .capacity()
+                    .saturating_add(labels.methods.capacity())
+                    .saturating_mul(std::mem::size_of::<ClassPreparedHtmlLabel>());
+                let heap_bytes = std::iter::once(&labels.title)
+                    .chain(labels.annotation.iter())
+                    .chain(labels.members.iter())
+                    .chain(labels.methods.iter())
+                    .fold(row_bytes, |bytes, label| {
+                        bytes.saturating_add(label.xhtml.capacity())
+                    });
+                (heap_bytes, &mut labels._retained_reservation)
+            }
+        };
+        // Include the map entry/control allowance, key, and Arc allocation with both counters.
+        // The lease lives inside that allocation, so every layout/plan Arc shares its lifetime.
+        let bytes = std::mem::size_of::<(String, Arc<Self>)>()
+            .saturating_add(std::mem::size_of::<usize>())
+            .saturating_add(id_capacity)
+            .saturating_add(std::mem::size_of::<Self>())
+            .saturating_add(2 * std::mem::size_of::<usize>())
+            .saturating_add(heap_bytes);
+        *reservation = Some(work_control.reserve_prepared_text_retained_bytes(bytes)?);
+        Ok(())
+    }
 }
 
 impl ClassPreparedSvgTitle {
@@ -2235,7 +2280,7 @@ impl ClassSvgTitleLabel {
         style: &TextStyle,
     ) -> crate::text::TextMetrics {
         let role = ClassTitleMeasurer { inner: measurer };
-        let mut metrics = crate::text::measure_svg_literal_word_lines(
+        let mut metrics = crate::text::measure_svg_markdown_word_lines(
             &role,
             self.lines(),
             style,
@@ -2686,8 +2731,12 @@ fn measure_class_diagram(
             }
             let (w, h, label_plan, style_facts, svg_title) =
                 class_box_dimensions(c, &class_box_measure_ctx);
-            if let Some(label_plan) = label_plan {
-                class_label_plans_by_id.insert(c.id.clone(), Arc::new(label_plan));
+            if let Some(mut label_plan) = label_plan {
+                let id = c.id.clone();
+                if let Some(work_control) = work_control {
+                    label_plan.reserve_retained_bytes(id.capacity(), work_control)?;
+                }
+                class_label_plans_by_id.insert(id, Arc::new(label_plan));
             }
             if let Some(mut prepared) = svg_title {
                 if let Some(work_control) = work_control {
@@ -3898,6 +3947,344 @@ mod tests {
     use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
+
+    #[test]
+    fn class_html_prepared_labels_follow_public_layout_and_plan_owners() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        use std::sync::Arc;
+
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass A {\n<<interface>>\n+value: String\n+call()\n}\n",
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let config = merman_core::presentation::PresentationConfig::from_value(
+            serde_json::json!({"htmlLabels":true}),
+        );
+        let typography = super::ClassTextThemePlan::resolve(None, &config);
+        let render_config = super::ClassRenderConfig::resolve(&config, &typography);
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let mut work = super::OperationLayoutWorkControl::new(Arc::clone(&meter));
+        let (layout, sidecar) = super::layout_class_diagram_typed_with_config(
+            model,
+            &config,
+            &DeterministicTextMeasurer::default(),
+            None,
+            &typography,
+            &render_config,
+            &mut work,
+        )
+        .unwrap();
+        assert!(sidecar.titles_by_id.is_empty());
+        assert!(sidecar.edges_by_id.is_empty());
+        let retained = meter.prepared_text_retained_bytes();
+        assert!(retained > 0);
+        let plan = Arc::clone(&layout.class_label_plans_by_id["A"]);
+        let super::ClassNodeLabelPlan::PreparedHtml(labels) = plan.as_ref() else {
+            panic!("expected prepared HTML labels");
+        };
+        assert!(labels.annotation.is_some());
+        assert_eq!(labels.members.len(), 1);
+        assert_eq!(labels.methods.len(), 1);
+        assert_eq!(
+            labels
+                ._retained_reservation
+                .as_ref()
+                .unwrap()
+                .retained_bytes(),
+            retained
+        );
+        assert!(
+            serde_json::to_value(&layout)
+                .unwrap()
+                .get("class_label_plans_by_id")
+                .is_none()
+        );
+
+        let cloned_layout = layout.clone();
+        assert!(Arc::ptr_eq(
+            &layout.class_label_plans_by_id["A"],
+            &cloned_layout.class_label_plans_by_id["A"]
+        ));
+        drop(sidecar);
+        drop(work);
+        drop(layout);
+        assert_eq!(meter.prepared_text_retained_bytes(), retained);
+        drop(cloned_layout);
+        assert_eq!(meter.prepared_text_retained_bytes(), retained);
+        drop(plan);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn class_html_and_fallback_plans_enforce_retained_limits_and_release_partial_preparation() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use std::sync::Arc;
+
+        for (source, prepared_html) in [
+            (
+                "classDiagram\nclass A {\n<<interface>>\n+value: String\n+call()\n}\nclass B\n",
+                true,
+            ),
+            (
+                "classDiagram\nclass A[\"$$x$$\"]\nclass A {\n+value\n+call()\n}\nclass B[\"$$y$$\"]\n",
+                false,
+            ),
+        ] {
+            let parsed = MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Class(model) = parsed.model() else {
+                panic!("expected Class model");
+            };
+            let config = merman_core::presentation::PresentationConfig::from_value(
+                serde_json::json!({"htmlLabels":true}),
+            );
+            let typography = super::ClassTextThemePlan::resolve(None, &config);
+            let render_config = super::ClassRenderConfig::resolve(&config, &typography);
+            let measurer = DeterministicTextMeasurer::default();
+            for uses_elk_adapter in [false, true] {
+                let measure = |policy| {
+                    let meter = Arc::new(OperationWorkMeter::new(policy));
+                    let work = super::OperationLayoutWorkControl::new(Arc::clone(&meter));
+                    let result = super::measure_class_diagram(
+                        model,
+                        &config,
+                        &measurer,
+                        None,
+                        &render_config,
+                        uses_elk_adapter,
+                        &typography,
+                        Some(&work),
+                    );
+                    (result, meter)
+                };
+                let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+                let (measured, meter) = measure(policy);
+                let measured = measured.unwrap();
+                assert_eq!(measured.class_label_plans_by_id.len(), 2);
+                assert_eq!(
+                    matches!(
+                        measured.class_label_plans_by_id["A"].as_ref(),
+                        super::ClassNodeLabelPlan::PreparedHtml(_)
+                    ),
+                    prepared_html
+                );
+                let retained = meter.prepared_text_retained_bytes();
+                assert!(retained > 0);
+                drop(measured);
+                assert_eq!(meter.prepared_text_retained_bytes(), 0);
+
+                let (exact, meter) = measure(
+                    policy
+                        .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, retained)
+                        .unwrap(),
+                );
+                assert!(exact.is_ok());
+                assert_eq!(meter.prepared_text_retained_bytes(), retained);
+                drop(exact);
+                assert_eq!(meter.prepared_text_retained_bytes(), 0);
+
+                let (rejected, meter) = measure(
+                    policy
+                        .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, retained - 1)
+                        .unwrap(),
+                );
+                let Some(crate::Error::ResourceLimitExceeded(limit)) = rejected.err() else {
+                    panic!("expected partial Class plan preparation to exceed the retained limit");
+                };
+                assert_eq!(limit.limit, "max_prepared_text_retained_bytes");
+                assert!(meter.prepared_text_retained_bytes_peak() > 0);
+                assert_eq!(meter.prepared_text_retained_bytes(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn class_html_plan_accounts_for_spare_xhtml_and_container_capacity() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        use std::sync::Arc;
+
+        let label = || {
+            let mut xhtml = String::with_capacity(4096);
+            xhtml.push_str("<p>x</p>");
+            super::ClassPreparedHtmlLabel {
+                metrics: TextMetrics {
+                    width: 1.0,
+                    height: 1.0,
+                    line_count: 1,
+                },
+                max_width_px: 100,
+                xhtml,
+            }
+        };
+        let mut labels = super::ClassPreparedHtmlNodeLabels {
+            title: label(),
+            annotation: Some(label()),
+            members: Vec::with_capacity(32),
+            methods: Vec::with_capacity(64),
+            _retained_reservation: None,
+        };
+        labels.members.push(label());
+        labels.methods.push(label());
+        let xhtml_capacity = std::iter::once(&labels.title)
+            .chain(labels.annotation.iter())
+            .chain(labels.members.iter())
+            .chain(labels.methods.iter())
+            .map(|label| label.xhtml.capacity())
+            .sum::<usize>();
+        let row_capacity = (labels.members.capacity() + labels.methods.capacity())
+            * std::mem::size_of::<super::ClassPreparedHtmlLabel>();
+        let mut id = String::with_capacity(2048);
+        id.push('A');
+        let payload_bytes = xhtml_capacity + row_capacity + id.capacity();
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, payload_bytes)
+                .unwrap(),
+        ));
+        let work = super::OperationLayoutWorkControl::new(Arc::clone(&meter));
+        let mut plan = super::ClassNodeLabelPlan::PreparedHtml(labels);
+        let Err(crate::Error::ResourceLimitExceeded(limit)) =
+            plan.reserve_retained_bytes(id.capacity(), &work)
+        else {
+            panic!("the plan and Arc/map owners must also fit after admitting payload capacities");
+        };
+        assert_eq!(limit.limit, "max_prepared_text_retained_bytes");
+        assert!(limit.actual > payload_bytes);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn class_html_prepared_plans_release_on_mid_preparation_cancellation() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        use std::sync::Arc;
+
+        struct CancellingMeasurer {
+            meter: Arc<OperationWorkMeter>,
+            control: merman_core::OperationControl,
+        }
+
+        impl TextMeasurer for CancellingMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+            }
+
+            fn measure_wrapped(
+                &self,
+                text: &str,
+                style: &TextStyle,
+                max_width: Option<f64>,
+                wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                if self.meter.prepared_text_retained_bytes() > 0 {
+                    self.control.cancel();
+                }
+                DeterministicTextMeasurer::default()
+                    .measure_wrapped(text, style, max_width, wrap_mode)
+            }
+        }
+
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass A\nclass B\n",
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let config = merman_core::presentation::PresentationConfig::from_value(
+            serde_json::json!({"htmlLabels":true}),
+        );
+        let typography = super::ClassTextThemePlan::resolve(None, &config);
+        let render_config = super::ClassRenderConfig::resolve(&config, &typography);
+        let control = merman_core::OperationControl::new();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        ));
+        let work = super::OperationLayoutWorkControl::new(Arc::clone(&meter));
+        let measurer = CancellingMeasurer {
+            meter: Arc::clone(&meter),
+            control,
+        };
+        let result = super::measure_class_diagram(
+            model,
+            &config,
+            &measurer,
+            None,
+            &render_config,
+            false,
+            &typography,
+            Some(&work),
+        );
+        assert!(matches!(result, Err(crate::Error::Cancelled(_))));
+        assert!(meter.prepared_text_retained_bytes_peak() > 0);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn class_html_family_releases_plans_after_svg_failure_or_cancellation() {
+        use crate::environment::RenderEnvironment;
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+        use std::sync::Arc;
+
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  htmlLabels: true\n---\nclassDiagram\nclass A[\"MMMM\"]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        for cancel in [false, true] {
+            let control = merman_core::OperationControl::new();
+            let session = RenderEnvironment::deterministic()
+                .with_resource_policy(
+                    RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+                        .unwrap(),
+                )
+                .begin_session_with_control(control.clone())
+                .unwrap();
+            let meter = Arc::clone(session.work_meter());
+            let artifact = crate::family::prepare(
+                &parsed,
+                &crate::LayoutOptions::headless_svg_defaults(),
+                session,
+            )
+            .unwrap();
+            assert!(meter.prepared_text_retained_bytes() > 0);
+            if cancel {
+                control.cancel();
+            }
+            let error = match artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            {
+                Err(error) => error,
+                Ok(_) => panic!("expected SVG failure or cancellation"),
+            };
+            if cancel {
+                assert!(matches!(error, crate::Error::Cancelled(_)));
+            } else {
+                let crate::Error::ResourceLimitExceeded(limit) = error else {
+                    panic!("expected the SVG output ceiling");
+                };
+                assert_eq!(limit.limit, "max_svg_bytes");
+            }
+            assert_eq!(meter.prepared_text_retained_bytes(), 0);
+        }
+    }
 
     #[test]
     fn class_svg_prepared_labels_own_retained_bytes_and_release_partial_preparation() {

@@ -2024,6 +2024,7 @@ pub(crate) struct EventModelingFamilyArtifact<'parsed> {
         EventModelingDiagramLayout,
     >,
     text_theme: crate::eventmodeling::EventModelingTextThemePlan,
+    prepared_labels: crate::eventmodeling::EventModelingPreparedLabels,
 }
 
 #[derive(Debug)]
@@ -2055,6 +2056,12 @@ impl<'parsed> EventModelingFamilyArtifact<'parsed> {
         EventModelingDiagramLayout,
     > {
         &self.pair
+    }
+
+    pub(crate) const fn prepared_labels(
+        &self,
+    ) -> &crate::eventmodeling::EventModelingPreparedLabels {
+        &self.prepared_labels
     }
 
     pub(crate) const fn text_theme(&self) -> &crate::eventmodeling::EventModelingTextThemePlan {

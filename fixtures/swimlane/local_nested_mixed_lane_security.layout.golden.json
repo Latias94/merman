@@ -3,10 +3,10 @@
   "layout": {
     "SwimlaneDiagram": {
       "bounds": {
-        "max_x": 718.396,
-        "max_y": 307.7,
+        "max_x": 695.512,
+        "max_y": 308.5,
         "min_x": -96.0,
-        "min_y": -55.7
+        "min_y": -56.5
       },
       "direction": "LR",
       "edges": [
@@ -21,7 +21,7 @@
               "y": 252.0
             },
             {
-              "x": 546.396,
+              "x": 523.512,
               "y": 252.0
             }
           ],
@@ -35,12 +35,12 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 622.396,
-              "y": 232.3
+              "x": 599.512,
+              "y": 231.5
             },
             {
-              "x": 622.396,
-              "y": 19.7
+              "x": 599.512,
+              "y": 20.5
             }
           ],
           "reversed_for_layout": false,
@@ -49,43 +49,43 @@
       ],
       "lanes": [
         {
-          "content_top": 232.3,
-          "height": 181.7,
+          "content_top": 231.5,
+          "height": 182.5,
           "id": "Outer",
           "padding": 8.0,
           "parent_id": null,
           "requested_dir": "LR",
           "title": "Outer & < lane",
-          "title_label_height": 15.4,
+          "title_label_height": 17.0,
           "title_label_width": 85.125,
           "title_rect": {
-            "bottom": 307.7,
+            "bottom": 308.5,
             "left": -96.0,
             "right": -60.0,
             "top": 126.0
           },
-          "width": 814.396,
-          "x": 311.198,
-          "y": 216.85
+          "width": 791.512,
+          "x": 299.756,
+          "y": 217.25
         },
         {
           "content_top": null,
-          "height": 47.4,
+          "height": 49.0,
           "id": "Inner",
           "padding": 8.0,
           "parent_id": "Outer",
           "requested_dir": null,
           "title": "Inner & < group",
-          "title_label_height": 15.4,
+          "title_label_height": 17.0,
           "title_label_width": 89.047,
           "title_rect": null,
-          "width": 746.396,
-          "x": 329.198,
+          "width": 723.512,
+          "x": 317.756,
           "y": 252.0
         },
         {
-          "content_top": -19.7,
-          "height": 181.7,
+          "content_top": -20.5,
+          "height": 182.5,
           "id": "__swimlane_default__",
           "padding": 20.0,
           "parent_id": null,
@@ -97,20 +97,20 @@
             "bottom": 126.0,
             "left": -96.0,
             "right": -60.0,
-            "top": -55.7
+            "top": -56.5
           },
-          "width": 814.396,
-          "x": 311.198,
-          "y": 35.15
+          "width": 791.512,
+          "x": 299.756,
+          "y": 34.75
         }
       ],
       "nodes": [
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "A",
           "is_edge_label": false,
           "label": "A &amp; &lt; node",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "string",
           "label_width": 120.0,
           "layer": 0.0,
@@ -123,11 +123,11 @@
           "y": 252.0
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "B",
           "is_edge_label": false,
           "label": "B &amp; &lt; node",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "string",
           "label_width": 120.0,
           "layer": 1.0,
@@ -136,15 +136,15 @@
           "shape": "squareRect",
           "top_lane_id": "Outer",
           "width": 152.0,
-          "x": 622.396,
+          "x": 599.512,
           "y": 252.0
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "C",
           "is_edge_label": false,
           "label": "Loose &amp; &lt; node",
-          "label_height": 15.4,
+          "label_height": 17.0,
           "label_type": "string",
           "label_width": 120.0,
           "layer": 1.0,
@@ -153,7 +153,7 @@
           "shape": "squareRect",
           "top_lane_id": "__swimlane_default__",
           "width": 152.0,
-          "x": 622.396,
+          "x": 599.512,
           "y": 0.0
         }
       ]

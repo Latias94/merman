@@ -312,6 +312,11 @@ impl TextMeasurer for RequirementNodeMeasurer<'_> {
             .measure_svg_text_computed_length_px(text, &self.final_style(style))
     }
 
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_tspan_text_bbox_height_px(text, &self.final_style(style))
+    }
+
     fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.inner
             .measure_svg_create_text_bbox_y_offset_px(text, &self.final_style(style))

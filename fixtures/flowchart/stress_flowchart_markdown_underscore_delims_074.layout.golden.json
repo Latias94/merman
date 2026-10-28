@@ -4,7 +4,7 @@
     "FlowchartV2": {
       "bounds": {
         "max_x": 740.0,
-        "max_y": 51.4,
+        "max_y": 53.0,
         "min_x": 12.0,
         "min_y": 12.0
       },
@@ -21,11 +21,11 @@
           "points": [
             {
               "x": 164.0,
-              "y": 31.7
+              "y": 32.5
             },
             {
               "x": 204.0,
-              "y": 31.7
+              "y": 32.5
             }
           ],
           "start_label_left": null,
@@ -46,11 +46,11 @@
           "points": [
             {
               "x": 356.0,
-              "y": 31.7
+              "y": 32.5
             },
             {
               "x": 396.0,
-              "y": 31.7
+              "y": 32.5
             }
           ],
           "start_label_left": null,
@@ -71,11 +71,11 @@
           "points": [
             {
               "x": 548.0,
-              "y": 31.7
+              "y": 32.5
             },
             {
               "x": 588.0,
-              "y": 31.7
+              "y": 32.5
             }
           ],
           "start_label_left": null,
@@ -88,36 +88,36 @@
       ],
       "nodes": [
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "A",
           "is_cluster": false,
           "width": 152.0,
           "x": 88.0,
-          "y": 31.7
+          "y": 32.5
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "B",
           "is_cluster": false,
           "width": 152.0,
           "x": 280.0,
-          "y": 31.7
+          "y": 32.5
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "C",
           "is_cluster": false,
           "width": 152.0,
           "x": 472.0,
-          "y": 31.7
+          "y": 32.5
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "D",
           "is_cluster": false,
           "width": 152.0,
           "x": 664.0,
-          "y": 31.7
+          "y": 32.5
         }
       ]
     }

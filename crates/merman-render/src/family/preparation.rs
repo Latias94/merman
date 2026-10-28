@@ -1285,11 +1285,14 @@ fn prepare_eventmodeling_family<'parsed>(
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let css_binding =
         crate::eventmodeling::EventModelingCssBinding::resolve(meta.effective_config.as_value());
-    let layout = crate::eventmodeling::layout_eventmodeling_diagram_typed_with_binding(
-        model,
-        &css_binding,
-        execution.text_measurer(),
-    )?;
+    let (layout, prepared_labels) =
+        crate::eventmodeling::prepare_eventmodeling_diagram_typed_with_binding(
+            model,
+            &css_binding,
+            &meta.effective_config,
+            execution.text_measurer(),
+            &execution.work_meter(),
+        )?;
     let text_theme = crate::eventmodeling::EventModelingTextThemePlan::resolve_with_binding(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -1301,6 +1304,7 @@ fn prepare_eventmodeling_family<'parsed>(
         EventModelingFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             text_theme,
+            prepared_labels,
         },
     )))
 }
@@ -1465,7 +1469,8 @@ pub(super) fn prepare_non_class_render<'parsed>(
                     execution.text_measurer(),
                     execution.work_meter_ref(),
                     options,
-                )
+                )?
+                .with_retained_text_accounting(&execution.work_meter())
             })?)
         }
         #[cfg(feature = "diagram-gantt")]

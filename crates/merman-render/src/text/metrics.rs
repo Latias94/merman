@@ -3857,41 +3857,6 @@ pub(crate) fn measure_svg_markdown_word_lines(
             line_count: 0,
         };
     }
-    let mut plain_lines = Vec::with_capacity(lines.len());
-    let mut width = 0.0_f64;
-    for line in lines {
-        let (plain, line_width) = markdown_word_line_plain_text_and_width_px(
-            measurer,
-            line,
-            style,
-            WrapMode::SvgLike,
-            entity_mode,
-        );
-        plain_lines.push(plain);
-        width = width.max(line_width);
-    }
-    let row_style = svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
-    let mut metrics =
-        measurer.measure_wrapped(&plain_lines.join("\n"), &row_style, None, WrapMode::SvgLike);
-    metrics.width = round_to_1_64_px(width);
-    metrics
-}
-
-/// Measures Class title words at their retained createText row positions without reparsing.
-#[cfg(feature = "diagram-class")]
-pub(crate) fn measure_svg_literal_word_lines(
-    measurer: &dyn TextMeasurer,
-    lines: &[Vec<(String, MermaidMarkdownWordType)>],
-    style: &TextStyle,
-    entity_mode: super::SvgTextEntityMode,
-) -> TextMetrics {
-    if lines.iter().all(Vec::is_empty) {
-        return TextMetrics {
-            width: 0.0,
-            height: 0.0,
-            line_count: 0,
-        };
-    }
     let mut width = 0.0_f64;
     let mut ink: Option<(f64, f64)> = None;
     for (row_index, line) in lines.iter().enumerate() {
@@ -3914,8 +3879,7 @@ pub(crate) fn measure_svg_literal_word_lines(
                 std::borrow::Cow::Owned(format!(" {visible}"))
             };
             let face = svg_markdown_word_style(style, *kind);
-            // Retained words are literal tspan content, including entity-decoded angle brackets.
-            // Empty rows keep their DOM positions without contributing any ink.
+            // Literal word content cannot introduce rows; only retained row indices do that.
             let top = measurer.measure_svg_create_text_bbox_y_offset_px(&text, &face)
                 + row_index as f64 * style.font_size * 1.1;
             let height = measurer.measure_svg_tspan_text_bbox_height_px(&text, &face);
@@ -4127,11 +4091,22 @@ fn measure_markdown_with_inline_styles_impl(
     } else {
         0
     };
-    let parsed = if manually_wrap_words {
+    let parsed = if manually_wrap_words || wrap_mode != WrapMode::HtmlLike {
         wrap_markdown_word_lines(measurer, &raw_parsed, style, max_width, wrap_mode, true)
     } else {
         raw_parsed.clone()
     };
+
+    if wrap_mode != WrapMode::HtmlLike {
+        // The SVG writer consumes these retained rows through textContent assignments.
+        // A decoded literal must never re-enter the generic label parser for its height.
+        return measure_svg_markdown_word_lines(
+            measurer,
+            &parsed,
+            style,
+            super::SvgTextEntityMode::CreateTextSource,
+        );
+    }
 
     let mut plain_lines: Vec<String> = Vec::with_capacity(parsed.len().max(1));
     let mut styled_width_px_by_line: Vec<f64> = Vec::with_capacity(parsed.len().max(1));
@@ -4147,20 +4122,11 @@ fn measure_markdown_with_inline_styles_impl(
         styled_width_px_by_line.push(width);
     }
 
-    let plain = plain_lines.join("\n");
-    let plain = match wrap_mode {
-        WrapMode::HtmlLike => trim_html_collapsible_ascii_whitespace(&plain).to_string(),
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => plain,
-    };
-    let row_style = if wrap_mode == WrapMode::HtmlLike {
-        std::borrow::Cow::Borrowed(style)
-    } else {
-        svg_markdown_word_style(style, MermaidMarkdownWordType::Normal)
-    };
+    let plain = trim_html_collapsible_ascii_whitespace(&plain_lines.join("\n")).to_string();
     let base = if manually_wrap_words {
-        measurer.measure_wrapped(&plain, &row_style, None, wrap_mode)
+        measurer.measure_wrapped(&plain, style, None, wrap_mode)
     } else {
-        measurer.measure_wrapped(&plain, &row_style, max_width, wrap_mode)
+        measurer.measure_wrapped(&plain, style, max_width, wrap_mode)
     };
 
     let max_line_width = styled_width_px_by_line
@@ -4168,18 +4134,9 @@ fn measure_markdown_with_inline_styles_impl(
         .copied()
         .fold(0.0_f64, f64::max);
 
-    // Mermaid's upstream baselines land on a power-of-two lattice:
-    // - DOM-measured HTML labels tend to snap to 1/64px.
-    // - SVG-label markdown `getBBox()` tends to snap to 1/64px in our upstream baselines.
-    //
-    // Quantize accordingly so strict-XML layout remains stable.
-    let mut width = match wrap_mode {
-        WrapMode::HtmlLike => round_to_1_64_px(max_line_width),
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => round_to_1_64_px(max_line_width),
-    };
-    if wrap_mode == WrapMode::HtmlLike
-        && let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0)
-    {
+    // DOM-measured HTML label widths snap to a 1/64px lattice.
+    let mut width = round_to_1_64_px(max_line_width);
+    if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
         let raw_w = raw_parsed
             .iter()
             .map(|words| {
