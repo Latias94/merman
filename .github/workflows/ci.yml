@@ -1220,6 +1220,8 @@ jobs:
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
     uses: ./.github/workflows/fuzz.yml
+    with:
+      ci_only: true
 
   grammar-owner:
     name: grammar-owner
