@@ -104,7 +104,7 @@ uniffi = { version = "0.32.2", default-features = false }
 futures = { version = "0.3.34", default-features = false }
 hashbrown = { version = "0.17.1", default-features = false, features = ["equivalent"] }
 hickory-resolver = { version = "0.26.3", default-features = false, features = ["tokio", "system-config"] }
-lol_html = "3.0.1"
+html5ever = "0.40.1"
 url = "2.5.8"
 cssparser = "0.38.0"
 jiff = { version = "0.2.38", default-features = false }

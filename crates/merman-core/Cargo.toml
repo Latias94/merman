@@ -122,7 +122,7 @@ thiserror.workspace = true
 unicode-general-category = { workspace = true, optional = true }
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
-lol_html.workspace = true
+html5ever.workspace = true
 url.workspace = true
 jiff = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
