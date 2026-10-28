@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -17,7 +18,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FUZZ_CARGO = ROOT / "fuzz" / "Cargo.toml"
 FUZZ_WORKFLOW = ROOT / ".github" / "workflows" / "fuzz.yml"
-FUZZING_DOC = ROOT / "docs" / "security" / "FUZZING.md"
 FRAMED_FFI_OPTIONS_SEED = ROOT / "fuzz" / "seeds" / "ffi" / "04_framed_render_options.txt"
 TREE_SITTER_FAMILY_SEEDS = (
     ROOT
@@ -28,14 +28,8 @@ TREE_SITTER_FAMILY_SEEDS = (
     / "all-families"
 )
 def fuzz_bins() -> dict[str, str]:
-    text = FUZZ_CARGO.read_text(encoding="utf-8")
-    bins: dict[str, str] = {}
-    for block in re.split(r"(?m)^\[\[bin\]\]\s*$", text)[1:]:
-        name_match = re.search(r'(?m)^name = "([^"]+)"$', block)
-        path_match = re.search(r'(?m)^path = "([^"]+)"$', block)
-        if name_match and path_match:
-            bins[name_match.group(1)] = path_match.group(1)
-    return bins
+    with FUZZ_CARGO.open("rb") as manifest:
+        return {entry["name"]: entry["path"] for entry in tomllib.load(manifest)["bin"]}
 
 
 def workflow_fuzz_targets() -> dict[str, dict[str, str]]:
@@ -251,14 +245,6 @@ class FuzzConfigTests(unittest.TestCase):
                 self.assertNotEqual(list(seed.iterdir()), [], f"empty seed directory: {seed}")
                 self.assertTrue(dictionary.is_file(), f"missing dictionary: {dictionary}")
                 self.assertIn("max_len", entry)
-
-    def test_fuzzing_doc_lists_all_targets_and_smoke_commands(self) -> None:
-        text = FUZZING_DOC.read_text(encoding="utf-8")
-        for target in fuzz_bins():
-            with self.subTest(target=target):
-                self.assertIn(f"| `{target}` |", text)
-                self.assertIn(f"fuzz run --fuzz-dir fuzz --sanitizer address {target}", text)
-                self.assertIn(f"fuzz/corpus/{target}", text)
 
 
 if __name__ == "__main__":

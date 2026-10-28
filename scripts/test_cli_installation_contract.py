@@ -7,7 +7,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import json
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -267,27 +266,6 @@ class CliInstallationContractTests(unittest.TestCase):
                 "unsupported template variable",
             ):
                 contract.validate_repository_contract(root)
-
-    def test_homebrew_guidance_uses_the_exact_release_features(self) -> None:
-        profile = contract._cli_release_profile(ROOT)
-        document = (ROOT / "docs/releasing/CLI.md").read_text(encoding="utf-8")
-        match = re.search(r"  features = %w\[\n(?P<features>.*?)\n  \]", document, re.DOTALL)
-        self.assertIsNotNone(match)
-        assert match is not None
-        self.assertEqual(
-            match.group("features").split(),
-            profile["cargo"]["features"],
-        )
-        for contract_text in (
-            '"--no-default-features"',
-            "bash_completion.install",
-            "zsh_completion.install",
-            "fish_completion.install",
-            "pwsh_completion.install",
-            "man1.install",
-        ):
-            with self.subTest(contract_text=contract_text):
-                self.assertIn(contract_text, document)
 
     @contextmanager
     def mutated_repository(

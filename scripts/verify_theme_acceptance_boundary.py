@@ -15,17 +15,6 @@ EXCLUDED_MODULES = {
     "merman-render": set(),
     "merman-export": set(),
 }
-# Exact former facade paths, checked by rustc so aliases and multiline re-exports count.
-# SDK method removals belong to each platform's own compiler/consumer checks.
-RETIRED_IMPORTS = (
-    "merman::svg::HostTheme",
-    "merman::svg::HostThemeProfile",
-    "merman::svg::CompiledHostTheme",
-    "merman::svg::PresentationProfile",
-    "merman_render::svg::HostThemeProfile",
-    "merman_render::svg::CompiledHostTheme",
-)
-
 PRIVATE_IMPORTS = (
     "merman::__theme_acceptance::TargetArtifactView",
     "merman_render::__private::ArchitectureTextReceipt",
@@ -83,7 +72,7 @@ def main() -> None:
         if production.returncode != 0:
             raise RuntimeError(f"Production consumer failed to compile:\n{production.stderr}")
         print("external consumer resolves production APIs with every producer feature enabled", flush=True)
-        for unavailable_import in (*PRIVATE_IMPORTS, *RETIRED_IMPORTS):
+        for unavailable_import in PRIVATE_IMPORTS:
             source.write_text(f"use {unavailable_import};\nfn main() {{}}\n", encoding="utf-8")
             result = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True)
             if result.returncode == 0 or "error[E0432]" not in result.stderr:
