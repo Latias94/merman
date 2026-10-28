@@ -652,15 +652,14 @@ def parse_postflight_receipts(text: str) -> set[str]:
     return receipts
 
 
-def _criterion_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | None:
+def _criterion_preflight_contract(
+    corpus: Any, *, recipe: RunnerRecipe
+) -> dict[str, Any] | None:
     expected_contract = _PREFLIGHT_CONTRACT_BY_RECIPE.get(
         (recipe.package, recipe.bench)
     )
     if expected_contract is None:
         return None
-    expected_groups = frozenset(
-        _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT[expected_contract]
-    )
     native_lanes = {
         lane_selector_group(lane.selector): lane
         for lane in corpus.lanes
@@ -668,21 +667,25 @@ def _criterion_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str |
     }
     if not native_lanes:
         return None
+    declared = {lane.evidence_contract for lane in native_lanes.values()}
+    description = None
+    output_kinds = _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT[expected_contract]
+    if declared != {None}:
+        if declared != {expected_contract}:
+            raise ContractViolation(
+                f"{recipe.package}/{recipe.bench} native Criterion lanes must uniformly declare "
+                f"{expected_contract!r}"
+            )
+        description = _describe_preflight_contract(recipe.checkout / expected_contract)
+        output_kinds = description["output_kinds"]
+    expected_groups = frozenset(output_kinds)
     if frozenset(native_lanes) != expected_groups:
         raise ContractViolation(
             f"{recipe.package}/{recipe.bench} native Criterion lane groups differ "
             "from the preflight contract: "
             f"expected={sorted(expected_groups)}, actual={sorted(native_lanes)}"
         )
-    declared = {lane.evidence_contract for lane in native_lanes.values()}
-    if declared == {None}:
-        return None
-    if declared != {expected_contract}:
-        raise ContractViolation(
-            f"{recipe.package}/{recipe.bench} native Criterion lanes must uniformly declare "
-            f"{expected_contract!r}"
-        )
-    return expected_contract
+    return description
 
 
 def _registered_preflight_contract(path: Path) -> tuple[str, dict[str, str]]:
@@ -709,6 +712,16 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
     except (json.JSONDecodeError, ContractViolation) as error:
         raise ContractViolation(f"invalid native Criterion preflight contract: {error}") from error
     contract, output_kinds = _registered_preflight_contract(path)
+    # Before editor snapshots, the same v1 receipt format covered seven pipeline groups.
+    historical_output_kinds = {
+        group: kind for group, kind in output_kinds.items() if group != "editor_snapshot"
+    }
+    if (
+        contract == _NATIVE_CRITERION_PREFLIGHT_CONTRACT
+        and isinstance(value, dict)
+        and value.get("output_kinds") == historical_output_kinds
+    ):
+        output_kinds = historical_output_kinds
     contract_id = Path(contract).stem
     expected = {
         "schema_version": 1,
@@ -734,21 +747,17 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
         "sha256": hashlib.sha256(raw).hexdigest(),
         "id": expected["id"],
         "schema_version": expected["schema_version"],
+        "output_kinds": output_kinds,
     }
 
 
 def _describe_corpus(path: Path, *, recipe: RunnerRecipe) -> dict[str, Any]:
     corpus = load_corpus(path)
-    preflight_contract = _criterion_preflight_contract(corpus, recipe=recipe)
-    contract_description = None
-    if preflight_contract is not None:
-        contract_description = _describe_preflight_contract(
-            recipe.checkout / preflight_contract
-        )
+    contract_description = _criterion_preflight_contract(corpus, recipe=recipe)
     return {
         **_describe_required_file(path),
         "schema_version": corpus.schema_version,
-        "preflight_receipts_required": preflight_contract is not None,
+        "preflight_receipts_required": contract_description is not None,
         "preflight_contract": contract_description,
     }
 
