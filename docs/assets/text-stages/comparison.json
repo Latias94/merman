@@ -41,5 +41,6 @@
       "build_sha256": "0ed2fe9887f01ce1b0742c926b0d1554a9d91f9fd4c39371afc07bb6a4f032d1",
       "current_sha256": "2060663e7b3cd6994bfcfad6f71c6bd3bf57602e3e9186d1f5b82cfbe8721ab5"
     }
-  ]
+  ],
+  "comparison_png_sha256": "a0f093972307aff70106b3736ffff8c04b4aa1178f88dc29e605e04350fe620e"
 }
