@@ -1542,11 +1542,11 @@ fn prepare_resvg_target(
     semantic: PresentationArtifact,
     request: &SvgRequest,
 ) -> Result<
-    Option<(
+    (
         merman_render::family::FamilyRenderCompletion<merman_render::svg::ResvgCompatibleSvg>,
         Vec<merman_render::RenderCapability>,
         OperationExecution,
-    )>,
+    ),
     RenderError,
 > {
     #[cfg(feature = "native-fonts")]
@@ -1560,7 +1560,6 @@ fn prepare_resvg_target(
         .into_resvg_safe();
     let result = merman_render::__private::finalize_resvg_for_target_admission(rendered, &pipeline)
         .map(|sealed| (sealed.into_completion(), required_capabilities, operation))
-        .map(Some)
         .map_err(RenderError::from);
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
@@ -1591,11 +1590,7 @@ fn render_document_target(
     semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<RenderedDocument>, RenderError> {
-    let Some((completion, required_capabilities, operation)) =
-        prepare_resvg_target(semantic, &request)?
-    else {
-        unreachable!("semantic artifact always produces a finalized SVG or an error")
-    };
+    let (completion, required_capabilities, operation) = prepare_resvg_target(semantic, &request)?;
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
     let document = RenderedDocument::new(
         completion,
@@ -1713,11 +1708,8 @@ fn render_png_target(
     semantic: PresentationArtifact,
     request: PngRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let Some((completion, required_capabilities, operation)) =
-        prepare_resvg_target(semantic, &request.svg)?
-    else {
-        unreachable!("semantic artifact always produces a sealed SVG or an error")
-    };
+    let (completion, required_capabilities, operation) =
+        prepare_resvg_target(semantic, &request.svg)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
@@ -1738,11 +1730,8 @@ fn render_jpeg_target(
     semantic: PresentationArtifact,
     request: JpegRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let Some((completion, required_capabilities, operation)) =
-        prepare_resvg_target(semantic, &request.svg)?
-    else {
-        unreachable!("semantic artifact always produces a sealed SVG or an error")
-    };
+    let (completion, required_capabilities, operation) =
+        prepare_resvg_target(semantic, &request.svg)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
@@ -1763,11 +1752,8 @@ fn render_pdf_target(
     semantic: PresentationArtifact,
     request: PdfRequest,
 ) -> Result<Option<PdfOutput>, RenderError> {
-    let Some((completion, required_capabilities, operation)) =
-        prepare_resvg_target(semantic, &request.svg)?
-    else {
-        unreachable!("semantic artifact always produces a sealed SVG or an error")
-    };
+    let (completion, required_capabilities, operation) =
+        prepare_resvg_target(semantic, &request.svg)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
