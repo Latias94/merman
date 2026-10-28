@@ -4,7 +4,7 @@
     "ClassDiagramV2": {
       "bounds": {
         "max_x": 358.317,
-        "max_y": 327.6,
+        "max_y": 330.0,
         "min_x": 12.0,
         "min_y": 12.0
       },
@@ -12,12 +12,12 @@
       "edges": [],
       "nodes": [
         {
-          "height": 315.6,
+          "height": 318.0,
           "id": "Foo",
           "is_cluster": false,
           "width": 346.317,
           "x": 185.158,
-          "y": 169.8
+          "y": 171.0
         }
       ]
     }

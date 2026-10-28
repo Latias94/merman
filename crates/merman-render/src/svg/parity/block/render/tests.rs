@@ -82,11 +82,22 @@ fn render_block_direct_with_edge_theme(
     let RenderSemanticModel::Block(model) = parsed.model() else {
         panic!("expected a typed Block render model");
     };
-    let effective_config = parsed.metadata().effective_config.as_value();
-    let mut layout = crate::block::layout_block_diagram_typed(
+    let effective_config = &parsed.metadata().effective_config;
+    let mut typography_theme = BlockTypographyThemePlan::resolve(None, effective_config).unwrap();
+    typography_theme.prepare_class_definitions(&model.class_defs);
+    // Keep this helper's resource policy targeted at emission, as before.
+    let layout_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    ));
+    let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
-        effective_config,
+        typography_theme.padding(),
+        crate::block::BlockShapeSettings::resolve(effective_config.as_value()),
+        typography_theme.css_binding().html_labels,
+        typography_theme.text_style().clone(),
         &DeterministicTextMeasurer::default(),
+        effective_config,
+        &layout_meter,
     )?;
     change_layout(&mut layout);
     let session = crate::environment::RenderEnvironment::deterministic()
@@ -98,13 +109,6 @@ fn render_block_direct_with_edge_theme(
     let execution =
         SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
             .expect("SVG execution");
-    let mut typography_theme = BlockTypographyThemePlan::resolve(
-        None,
-        &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
-    )
-    .unwrap();
-    typography_theme.prepare_class_definitions(&model.class_defs);
-
     let labels = crate::block::BlockNodeLabelPaintPlan::resolve(
         None,
         &parsed.metadata().effective_config,
@@ -136,7 +140,7 @@ fn render_block_direct_with_edge_theme(
         &labels,
         &crate::block::BlockEdgePaintPlan::resolve(
             resolved.as_ref(),
-            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
+            effective_config,
             model,
             &layout,
             execution.work_meter(),
@@ -144,7 +148,7 @@ fn render_block_direct_with_edge_theme(
         .expect("edge paint theme"),
         &crate::block::BlockMarkerPaintPlan::resolve(
             resolved.as_ref(),
-            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
+            effective_config,
             model,
             &layout,
             execution.work_meter(),
@@ -152,12 +156,13 @@ fn render_block_direct_with_edge_theme(
         .expect("marker paint theme"),
         &BlockLabelBackgroundPlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
+            effective_config,
             &typography_theme.css_binding().edge_label_background,
             execution.work_meter(),
         )
         .expect("background theme"),
         &typography_theme,
+        &prepared_labels,
         &execution,
     )
 }
@@ -397,6 +402,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         &markers,
         &background,
         &typography,
+        &crate::block::BlockPreparedLabels::default(),
         &options,
     )
     .expect_err("diagram-id projection must stop before missing geometry validation");

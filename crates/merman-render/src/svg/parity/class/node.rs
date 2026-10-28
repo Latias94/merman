@@ -1,3 +1,4 @@
+use crate::class::ClassPreparedSvgTitle;
 use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
@@ -757,6 +758,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     position: ClassNodeRenderPosition,
     node: ClassSvgNode<'_>,
     geometry: ClassNodeBoxGeometry,
+    prepared_title: &ClassPreparedSvgTitle,
     ctx: &ClassSvgNodeBodyContext<'_>,
 ) -> ClassNodeRenderStats {
     let out = &mut *state.out;
@@ -765,67 +767,8 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     let gap = padding;
     let text_padding = 3.0;
 
-    let title_text = node.title_text_for_render();
-    let title_markdown_analysis = crate::class::analyze_class_svg_markdown(&title_text);
-    let wrapped_title_text = if title_markdown_analysis.all_runs_normal() {
-        wrap_class_svg_text_like_mermaid(
-            &title_text,
-            ctx.measurer,
-            ctx.text_style,
-            ctx.html_calc_text_style,
-            ctx.wrap_probe_font_size,
-            false,
-        )
-    } else {
-        title_text.clone()
-    };
-    let title_lines =
-        crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
-    let title_has_styled_runs = title_markdown_analysis.has_styled_runs;
-    let mut title_metrics = if title_has_styled_runs {
-        let title_md = title_lines
-            .iter()
-            .map(|l| format!("**{l}**"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        crate::text::measure_markdown_with_inline_styles(
-            ctx.measurer,
-            &title_md,
-            ctx.text_style,
-            None,
-            WrapMode::SvgLike,
-        )
-    } else {
-        let bold_title_style = TextStyle {
-            font_family: ctx.text_style.font_family.clone(),
-            font_size: ctx.text_style.font_size,
-            font_weight: Some("bolder".to_string()),
-            font_style: ctx.text_style.font_style.clone(),
-        };
-        ctx.measurer.measure_wrapped(
-            &wrapped_title_text,
-            &bold_title_style,
-            None,
-            WrapMode::SvgLike,
-        )
-    };
-    if !title_has_styled_runs {
-        let bold_title_style = TextStyle {
-            font_family: ctx.text_style.font_family.clone(),
-            font_size: ctx.text_style.font_size,
-            font_weight: Some("bolder".to_string()),
-            font_style: None,
-        };
-        let width = title_lines.iter().fold(0.0_f64, |width, line| {
-            width.max(
-                ctx.measurer
-                    .measure_svg_tspan_text_bbox_width_px(line, &bold_title_style),
-            )
-        });
-        if width.is_finite() && width > 0.0 {
-            title_metrics.width = width;
-        }
-    }
+    let title_label = &prepared_title.label;
+    let title_metrics = prepared_title.metrics;
     // Annotation group: Mermaid only renders the first annotation.
     let mut annotation_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
     let mut annotation_rect: Option<Rect> = None;
@@ -984,7 +927,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         out,
         adjusted_label_group_x,
         label_new_y,
-        &title_lines,
+        title_label,
         &title_metrics,
         ctx.node_label_style_attr,
     );
@@ -1298,7 +1241,7 @@ pub(super) fn render_class_svg_title_group(
     out: &mut impl SvgOutput,
     group_x: f64,
     group_y: f64,
-    title_lines: &[String],
+    title: &crate::class::ClassSvgTitleLabel,
     title_metrics: &crate::text::TextMetrics,
     group_style: &str,
 ) {
@@ -1315,27 +1258,7 @@ pub(super) fn render_class_svg_title_group(
         fmt(t_y),
         escape_attr_display(group_style),
     );
-    for (idx, line) in title_lines.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(
-                r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight="">"#,
-            );
-        } else {
-            let y_em = if idx == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em" font-weight="">"#,
-                y_em
-            );
-        }
-        out.push_str(r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="">"#);
-        escape_xml_into(out, line);
-        out.push_str("</tspan></tspan>");
-    }
+    write_class_svg_label_rows(out, title.lines(), true, title.literal_first_row(), false);
     out.push_str("</text></g></g></g>");
 }
 
@@ -1570,5 +1493,78 @@ mod typography_tests {
             .filter_map(|child| child.text())
             .collect();
         assert_eq!(visible, "\\\\<span style='font-size:99px'> owner </span>");
+    }
+}
+
+/// Emit retained createText words; title role and literal fallback are applied after parsing.
+pub(super) fn write_class_svg_label_rows(
+    out: &mut impl SvgOutput,
+    lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+    title: bool,
+    literal_first_row: bool,
+    centered: bool,
+) {
+    if !title && lines.len() == 1 && lines[0].is_empty() {
+        let _ = write!(
+            out,
+            r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"{}/>"#,
+            if centered {
+                r#" text-anchor="middle""#
+            } else {
+                ""
+            }
+        );
+        return;
+    }
+    for (index, words) in lines.iter().enumerate() {
+        let y_em = if index == 0 {
+            "-0.1em".to_owned()
+        } else if index == 1 {
+            "1em".to_owned()
+        } else {
+            format!("{:.1}em", 1.0 + (index as f64 - 1.0) * 1.1)
+        };
+        let _ = write!(
+            out,
+            r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em"{}{}>"#,
+            y_em,
+            if title { r#" font-weight="""# } else { "" },
+            if centered {
+                r#" text-anchor="middle""#
+            } else {
+                ""
+            }
+        );
+        if literal_first_row && index == 0 {
+            if let Some((literal, _)) = words.first() {
+                escape_xml_into(out, literal);
+            }
+        } else {
+            for (word_index, (word, kind)) in words.iter().enumerate() {
+                let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
+                    "italic"
+                } else {
+                    "normal"
+                };
+                let font_weight = if title {
+                    ""
+                } else if *kind == crate::text::MermaidMarkdownWordType::Strong {
+                    "bold"
+                } else {
+                    "normal"
+                };
+                let _ = write!(
+                    out,
+                    r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                    font_style, font_weight
+                );
+                if word_index > 0 {
+                    out.push(' ');
+                }
+                escape_xml_into(out, word);
+                out.push_str("</tspan>");
+            }
+        }
+        out.push_str("</tspan>");
     }
 }

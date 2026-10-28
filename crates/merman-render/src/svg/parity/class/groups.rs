@@ -25,6 +25,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub(super) relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
+    pub(super) prepared_svg_edge_labels:
+        &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
     pub(super) diagram_marker_class: &'a str,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) content_tx: f64,
@@ -132,6 +134,7 @@ fn local_edge_context<'a>(
         line_hop_paths: ctx.line_hop_paths,
         relations_by_id: ctx.relations_by_id,
         relation_index_by_id: ctx.relation_index_by_id,
+        prepared_svg_edge_labels: ctx.prepared_svg_edge_labels,
         diagram_marker_class: ctx.diagram_marker_class,
         diagram_id: ctx.diagram_id,
         content_tx: ctx.content_tx,

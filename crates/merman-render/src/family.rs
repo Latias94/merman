@@ -1798,6 +1798,7 @@ fn flowchart_artifact_theme_evidence<L>(
 #[cfg(feature = "diagram-class")]
 pub(crate) struct ClassFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed ClassDiagram, ClassDiagramLayout>,
+    prepared_labels: crate::class::ClassPreparedLabels,
     relation_theme: crate::class::ClassRelationThemePlan,
     typography_theme: crate::class::ClassTextThemePlan,
     render_config: crate::class::ClassRenderConfig,
@@ -1836,6 +1837,10 @@ impl<'parsed> C4FamilyArtifact<'parsed> {
 
 #[cfg(feature = "diagram-class")]
 impl<'parsed> ClassFamilyArtifact<'parsed> {
+    pub(crate) const fn prepared_labels(&self) -> &crate::class::ClassPreparedLabels {
+        &self.prepared_labels
+    }
+
     pub(crate) const fn render_config(&self) -> &crate::class::ClassRenderConfig {
         &self.render_config
     }
@@ -2083,6 +2088,7 @@ impl<'parsed> VennFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-block")]
 pub(crate) struct BlockFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
+    prepared_labels: crate::block::BlockPreparedLabels,
     node_paint_theme: crate::block::BlockNodePaintThemePlan,
     node_label_paint_theme: crate::block::BlockNodeLabelPaintPlan,
     edge_paint_theme: crate::block::BlockEdgePaintPlan,
@@ -2093,6 +2099,10 @@ pub(crate) struct BlockFamilyArtifact<'parsed> {
 
 #[cfg(feature = "diagram-block")]
 impl<'parsed> BlockFamilyArtifact<'parsed> {
+    pub(crate) const fn prepared_labels(&self) -> &crate::block::BlockPreparedLabels {
+        &self.prepared_labels
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout> {

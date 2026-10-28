@@ -92,6 +92,16 @@ pub trait TextMeasurer {
             .width
     }
 
+    /// Measures the height of one already-decoded HTML text line without parsing markup.
+    ///
+    /// The compatibility default preserves custom profile behavior. Built-in profiles and the
+    /// routed fallback specialize this operation so literal angle brackets remain text.
+    #[doc(hidden)]
+    fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+            .height
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
 
     /// Measures SVG `<tspan>.getComputedTextLength()`-like widths (advance length along the

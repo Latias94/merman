@@ -141,9 +141,13 @@ impl HostTextMeasurer for RecordingSequenceHost {
                 let height = if bold { 17.0 } else { 9.0 };
                 Ok(Some(match request.operation {
                     TextMeasurementOperation::RawBBoxWidth
-                    | TextMeasurementOperation::TspanBBoxWidth => HostTextMeasurement::Length(width),
+                    | TextMeasurementOperation::TspanBBoxWidth => {
+                        HostTextMeasurement::Length(width)
+                    }
                     TextMeasurementOperation::RawBBoxHeight
-                    | TextMeasurementOperation::TspanBBoxHeight => HostTextMeasurement::Length(height),
+                    | TextMeasurementOperation::TspanBBoxHeight => {
+                        HostTextMeasurement::Length(height)
+                    }
                     _ => HostTextMeasurement::Metrics(TextMetrics {
                         width,
                         height,

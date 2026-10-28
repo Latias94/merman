@@ -403,23 +403,6 @@ pub(in crate::svg::parity) fn write_svg_markdown_word_lines_with_style<'a>(
     write_svg_text_markdown_lines_with_style(out, lines, style, false, true, entity_mode, None)
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_centered_with_style<'a>(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    style: Option<&'a str>,
-) -> Option<&'a str> {
-    let lines = crate::text::mermaid_markdown_to_lines(normalized_markdown_label(markdown), true);
-    write_svg_text_markdown_lines_with_style(
-        out,
-        &lines,
-        style,
-        true,
-        true,
-        SvgTextEntityMode::DecodedModel,
-        None,
-    )
-}
-
 pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,

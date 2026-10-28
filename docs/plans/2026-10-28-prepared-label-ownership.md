@@ -49,7 +49,9 @@ flowchart LR
 2. Retain Class SVG title and relationship label preparation in a private family
    sidecar. Remove reconstruction in the SVG writer. Keep the existing public
    label-plan enum and layout wire format unchanged; preserve HTML, note paths,
-   and wrapping checkpoints.
+   and wrapping checkpoints. Class terminal row geometry uses literal SVG bbox
+   operations. Other families keep their established wrapping and host callback
+   contracts rather than inheriting a new vertical composition rule implicitly.
 3. Retain Block sanitized label fragments for nodes and edges within the family
    preparation lifecycle. Measurement and emission consume the same fragment.
    Reuse the resolved presentation configuration.
@@ -62,7 +64,10 @@ flowchart LR
    parsing for actual occurrence placement and validation. Preserve extension
    invalidation, independent expected occurrence counts, clipping, fingerprint
    validation, cancellation, and retained-memory accounting. Do not migrate this
-   main-only evidence architecture into the maintenance line.
+   main-only evidence architecture into the maintenance line. Reimported native
+   SVG remains ordinary vector content: inert occurrence attributes confer no
+   preparation authority or receipt; browser projection still requires the
+   private payload and family evidence.
 
 ## Verification and delivery
 

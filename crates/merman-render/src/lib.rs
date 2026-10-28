@@ -1192,7 +1192,7 @@ pub(crate) fn layout_class_typed_by_engine(
     options: &LayoutExecution<'_>,
     typography_theme: &crate::class::ClassTextThemePlan,
     render_config: &crate::class::ClassRenderConfig,
-) -> Result<model::ClassDiagramLayout> {
+) -> Result<(model::ClassDiagramLayout, class::ClassPreparedLabels)> {
     options
         .work_meter_ref()
         .preflight_class_complexity(model, OperationPhase::Layout)?;
@@ -1395,6 +1395,7 @@ mod tests {
             &render_config,
         )
         .expect("class layout")
+        .0
     }
 
     fn render_source(

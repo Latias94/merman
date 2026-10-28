@@ -147,18 +147,6 @@ pub(super) fn write_class_svg_edge_text_with_style<'a>(
     }
 }
 
-pub(super) fn write_class_svg_edge_text_markdown_with_style<'a>(
-    out: &mut impl SvgOutput,
-    markdown: &str,
-    style: Option<&'a str>,
-) -> Option<&'a str> {
-    crate::svg::parity::label::write_svg_text_markdown_centered_with_style(
-        out,
-        markdown,
-        Some(style.unwrap_or("")),
-    )
-}
-
 pub(super) fn write_class_diagram_title<'a>(
     out: &mut impl SvgOutput,
     x: f64,

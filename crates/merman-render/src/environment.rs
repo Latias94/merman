@@ -1157,6 +1157,20 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         .and_then(|carrier| carrier.into_html_line_width(style))
     }
 
+    fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::Wrapped,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            ),
+            |measurement| decode_host_metrics(measurement).map(|metrics| metrics.height),
+            |profile| profile.measure_html_line_height_px(text, style),
+        )
+    }
+
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         // A candidate is already decoded, single-line text. Use its raw advance without
         // normalizing it as a complete HTML label, while retaining the Wrap route and callbacks.

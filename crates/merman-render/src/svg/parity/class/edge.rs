@@ -34,6 +34,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
+    pub prepared_svg_edge_labels: &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
     pub diagram_marker_class: &'a str,
     pub diagram_id: SvgDiagramId<'a>,
     pub content_tx: f64,
@@ -602,6 +603,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
             edge_dom_id_buf.as_str(),
             label_text,
             e.label.as_ref(),
+            ctx.prepared_svg_edge_labels.get(e.id.as_str()),
             label_center.as_ref().map(|center| center.x).unwrap_or(0.0),
             label_center.as_ref().map(|center| center.y).unwrap_or(0.0),
             ctx,
@@ -610,7 +612,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
                 .get(e.id.as_str())
                 .copied()
                 .and_then(|index| index.checked_sub(1)),
-        );
+        )?;
         out.checkpoint()?;
         if ctx.relation_index_by_id.contains_key(e.id.as_str()) {
             theme_receipt.record_edge_label_background(background_visible);
@@ -686,12 +688,13 @@ fn render_class_edge_label_group(
     dom_id: &str,
     label_text: &str,
     label: Option<&LayoutLabel>,
+    prepared_svg_label: Option<&crate::class::ClassPreparedSvgEdgeLabel>,
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
     receipt: &mut crate::class::ClassThemeOutcomes,
     relation_index: Option<usize>,
-) -> (crate::class::ClassTextTerminalFacts, bool) {
+) -> crate::Result<(crate::class::ClassTextTerminalFacts, bool)> {
     let normalized = if ctx.uses_elk_adapter_dom {
         crate::text::mermaid_html_breaks_to_newlines(label_text)
     } else {
@@ -780,8 +783,18 @@ fn render_class_edge_label_group(
         let typography = ctx
             .text_paint
             .map_or(typography, |paint| paint.observe(typography, emitted_style));
-        return (typography, background_visible);
+        return Ok((typography, background_visible));
     }
+
+    let prepared_svg_label = if trimmed.is_empty() {
+        None
+    } else {
+        Some(
+            prepared_svg_label.ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Class SVG relationship label for `{dom_id}`"),
+            })?,
+        )
+    };
 
     if trimmed.is_empty() {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
@@ -790,7 +803,7 @@ fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        write_class_svg_edge_text(out, "", false);
+        emitted_style = super::label::write_class_svg_edge_text_with_style(out, "", None);
         out.push_str("</g></g>");
     } else if let Some(lbl) = label {
         let background_style = background
@@ -808,11 +821,17 @@ fn render_class_edge_label_group(
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
-        emitted_style = super::label::write_class_svg_edge_text_markdown_with_style(
+        let prepared = &prepared_svg_label
+            .expect("nonempty prepared Class edge label")
+            .label;
+        out.push_str(r#"<text y="-10.1""#);
+        emitted_style = super::super::util::write_style_attribute(
             out,
-            trimmed,
             ctx.text_paint.map(|paint| paint.style()),
         );
+        out.push_str(r#" text-anchor="middle">"#);
+        super::node::write_class_svg_label_rows(out, prepared.lines(), false, false, true);
+        out.push_str("</text>");
         out.push_str("</g></g></g>");
         if relation_index.is_some() && background_visible {
             receipt.record_edge_label_background_paint(background.map(|(rule, _)| rule));
@@ -824,23 +843,38 @@ fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        emitted_style = super::label::write_class_svg_edge_text_with_style(
+        out.push_str(r#"<text y="-10.1""#);
+        emitted_style = super::super::util::write_style_attribute(
             out,
-            trimmed,
             ctx.text_paint.map(|paint| paint.style()),
         );
+        out.push_str(r#" text-anchor="middle">"#);
+        super::node::write_class_svg_label_rows(
+            out,
+            prepared_svg_label
+                .expect("nonempty prepared Class edge label")
+                .label
+                .lines(),
+            false,
+            false,
+            true,
+        );
+        out.push_str("</text>");
         out.push_str("</g></g>");
     }
     let typography = if !ctx.capture_text_facts || trimmed.is_empty() {
         crate::class::ClassTextTerminalFacts::default()
     } else {
-        let facts = crate::class::class_svg_label_visible_style_facts(trimmed);
+        let facts = prepared_svg_label
+            .expect("nonempty prepared Class edge label")
+            .label
+            .visible_style_facts();
         crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts)
     };
     let typography = ctx
         .text_paint
         .map_or(typography, |paint| paint.observe(typography, emitted_style));
-    (typography, background_visible)
+    Ok((typography, background_visible))
 }
 
 fn render_class_edge_terminals(

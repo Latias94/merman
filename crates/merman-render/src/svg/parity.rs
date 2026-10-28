@@ -1351,6 +1351,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Class(artifact) => {
             class::render_class_diagram_svg_model_with_config(
                 artifact.pair().layout(),
+                artifact.prepared_labels(),
                 artifact.pair().semantic(),
                 artifact.relation_theme(),
                 artifact.typography_theme(),
@@ -1512,6 +1513,7 @@ fn render_builtin_family_artifact_raw(
             artifact.marker_paint_theme(),
             artifact.label_background_theme(),
             artifact.typography_theme(),
+            artifact.prepared_labels(),
             options,
         ),
         #[cfg(feature = "diagram-er")]

@@ -314,6 +314,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     marker_paint_theme: &crate::block::BlockMarkerPaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
     typography_theme: &BlockTypographyThemePlan,
+    prepared_labels: &crate::block::BlockPreparedLabels,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     fn decode_block_label_html(raw: &str) -> String {
@@ -1034,17 +1035,21 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             } else {
                 format!(r#" style="{}""#, escape_attr(node_text_style))
             };
-            let label_markup = if node.label.is_empty() {
-                String::new()
-            } else {
-                match typed_label_color {
-                    Some(color) => format!(
-                        r#"<p style="color:{};">{}</p>"#,
-                        escape_attr(color),
-                        escape_xml(&label)
-                    ),
-                    None => format!("<p>{}</p>", escape_xml(&label)),
+            let label_markup =
+                prepared_labels
+                    .node_xhtml(&n.id)
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!("missing prepared Block HTML label for node `{}`", n.id),
+                    })?;
+            let label_markup = match typed_label_color {
+                Some(color) if label_markup.starts_with("<p>") => {
+                    std::borrow::Cow::Owned(label_markup.replacen(
+                        "<p>",
+                        &format!(r#"<p style="color:{};">"#, escape_attr(color)),
+                        1,
+                    ))
                 }
+                _ => std::borrow::Cow::Borrowed(label_markup),
             };
             let _ = write!(
                 &mut out,
@@ -1149,7 +1154,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
     }
 
-    for e in &model.edges {
+    for (edge_index, e) in model.edges.iter().enumerate() {
         let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
@@ -1172,7 +1177,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         if html_labels {
             let _ = write!(
                 &mut out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
                 fmt(lbl.x),
                 fmt(lbl.y),
                 escape_attr(&e.id),
@@ -1180,7 +1185,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 fmt(-lbl.height / 2.0),
                 fmt(lbl.width),
                 fmt(lbl.height),
-                escape_xml(&decode_block_label_html(&e.label))
+                prepared_labels
+                    .edge_xhtml(edge_index)
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!("missing prepared Block HTML label for edge `{}`", e.id),
+                    })?
             );
         } else {
             let label_text = crate::graph_label::flowchart_label_plain_text_for_layout(

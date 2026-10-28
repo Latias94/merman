@@ -47,6 +47,7 @@ pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
 
 pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) layout: &'a ClassDiagramLayout,
+    pub(super) prepared_svg_titles: &'a FxHashMap<String, crate::class::ClassPreparedSvgTitle>,
     pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, ClassSvgNode<'a>>,
     pub(super) class_color_indices: &'a FxHashMap<&'a str, usize>,
     pub(super) note_by_id: &'a FxHashMap<&'a str, ClassSvgNote<'a>>,
@@ -625,6 +626,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         line_hop_paths: edge_ctx.line_hop_paths,
         relations_by_id: edge_ctx.relations_by_id,
         relation_index_by_id: edge_ctx.relation_index_by_id,
+        prepared_svg_edge_labels: edge_ctx.prepared_svg_edge_labels,
         diagram_marker_class: edge_ctx.diagram_marker_class,
         diagram_id: edge_ctx.diagram_id,
         content_tx: if in_namespace_root {
@@ -866,6 +868,11 @@ fn render_class_node_id<O: SvgOutput>(
         detail.path_bounds += html_stats.path_bounds;
         detail.path_bounds_calls += html_stats.path_bounds_calls;
     } else {
+        let Some(prepared_title) = ctx.prepared_svg_titles.get(n.id.as_str()) else {
+            return Err(crate::Error::InvalidModel {
+                message: format!("missing prepared Class SVG title for `{}`", n.id),
+            });
+        };
         let svg_stats = render_class_svg_node_body(
             ClassNodeRenderState {
                 out,
@@ -874,6 +881,7 @@ fn render_class_node_id<O: SvgOutput>(
             position,
             node,
             basic_container.geometry,
+            prepared_title,
             &ClassSvgNodeBodyContext {
                 measurer: ctx.measurer,
                 text_style: settings.text_style(),
