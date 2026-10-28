@@ -131,6 +131,15 @@ pub(super) fn measure_svg_like_with_html_br(
     Ok((dimensions.width as f64, dimensions.height as f64))
 }
 
+/// Prepare one final SVG text node after splitting or wrapping the authored label.
+///
+/// Mermaid 12.1/12.2 restore placeholders after serializing `drawText`'s text nodes;
+/// the browser then decodes one entity layer. Encoded markup remains literal text,
+/// and nested references must not be decoded again by the XML writer.
+pub(crate) fn prepare_sequence_text_line(raw: &str) -> std::borrow::Cow<'_, str> {
+    merman_core::entities::decode_mermaid_entities_to_unicode(raw)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SequenceDrawnTextNode {
     Direct,
@@ -151,9 +160,7 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
     let mut width = 0.0_f64;
     let mut height = 0.0_f64;
     for line in lines {
-        // Match the writer: split actual break tags before decoding each SVG text node.
-        // Entity-encoded markup stays literal text rather than creating extra rows.
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
+        let decoded = prepare_sequence_text_line(line);
         let measured_line = if decoded.is_empty() {
             "\u{200b}"
         } else {
@@ -1029,65 +1036,161 @@ mod tests {
     }
 
     #[test]
-    fn sequence_drawn_dimensions_measure_decoded_entities_without_resplitting_markup() {
+    fn sequence_drawn_entities_use_exact_terminal_text_and_weight() {
         #[derive(Default)]
-        struct EntityLineProbe(RefCell<Vec<String>>);
+        struct EntityLineProbe(RefCell<Vec<(&'static str, String, Option<String>)>>);
 
-        impl TextMeasurer for EntityLineProbe {
-            fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
-                self.0.borrow_mut().push(text.to_owned());
-                let size = if text == "😀" { 40.0 } else { 8.0 };
-                TextMetrics {
-                    width: size,
-                    height: size,
-                    line_count: 1,
+        impl EntityLineProbe {
+            fn record(&self, operation: &'static str, text: &str, style: &TextStyle) -> f64 {
+                self.0
+                    .borrow_mut()
+                    .push((operation, text.to_owned(), style.font_weight.clone()));
+                let size = match text {
+                    "😀" => 40.0,
+                    "&#128512;" => 90.0,
+                    "&😀" => 48.0,
+                    "<br/>" => 50.0,
+                    "&lt;br/&gt;" => 100.0,
+                    "\u{200b}" => 0.0,
+                    "W" => 8.0,
+                    _ => panic!("unexpected terminal text: {text:?}"),
+                };
+                if operation.ends_with("height") {
+                    if style.font_weight.as_deref() == Some("700") {
+                        17.0
+                    } else {
+                        9.0
+                    }
+                } else if style.font_weight.as_deref() == Some("700") {
+                    size * 2.0
+                } else {
+                    size
                 }
             }
+        }
 
+        impl TextMeasurer for EntityLineProbe {
+            fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
+                panic!("drawn entities require the exact DOM measurement operation")
+            }
             fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
-                self.measure(text, style).width
+                self.record("raw-width", text, style)
+            }
+            fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.record("raw-height", text, style)
+            }
+            fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.record("tspan-width", text, style)
+            }
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.record("tspan-height", text, style)
             }
         }
 
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let style = default_sequence_style();
-        let config = drawn_text_config();
         for node in [
             super::SequenceDrawnTextNode::Direct,
             super::SequenceDrawnTextNode::Tspan,
         ] {
-            for encoded in ["#128512;", "&#128512;", "ﬂ°°128512¶ß"] {
-                let probe = EntityLineProbe::default();
-                let dimensions = super::measure_drawn_svg_like_with_html_br(
-                    &probe,
-                    &format!("{encoded}<br/>W"),
-                    &style,
-                    node,
-                    &config,
-                    checkpoints(&meter, OperationPhase::Layout),
-                )
-                .unwrap();
-                assert_eq!(dimensions, (40.0, 48.0), "{encoded}: {node:?}");
-                assert!(
-                    probe
-                        .0
-                        .borrow()
-                        .iter()
-                        .all(|line| line == "😀" || line == "W")
-                );
+            let operations = match node {
+                super::SequenceDrawnTextNode::Direct => ["raw-width", "raw-height"],
+                super::SequenceDrawnTextNode::Tspan => ["tspan-width", "tspan-height"],
+            };
+            for weight in ["400", "700"] {
+                let mut style = default_sequence_style();
+                style.font_weight = Some(weight.to_owned());
+                for (encoded, visible, width) in [
+                    ("#128512;", "😀", 40.0),
+                    ("&#128512;", "😀", 40.0),
+                    ("ﬂ°°128512¶ß", "😀", 40.0),
+                    ("#38;#35;128512#59;", "&#128512;", 90.0),
+                    ("&amp;#128512;", "&😀", 48.0),
+                    ("ﬂ°°38¶ßﬂ°°35¶ß128512ﬂ°°59¶ß", "&#128512;", 90.0),
+                    ("#lt;br/#gt;", "<br/>", 50.0),
+                    ("#38;lt#59;br/#38;gt#59;", "&lt;br/&gt;", 100.0),
+                ] {
+                    let probe = EntityLineProbe::default();
+                    let dimensions = super::measure_drawn_svg_like_with_html_br(
+                        &probe,
+                        &format!("{encoded}<br/><br/>W"),
+                        &style,
+                        node,
+                        &drawn_text_config(),
+                        checkpoints(&meter, OperationPhase::Layout),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        dimensions,
+                        if weight == "700" {
+                            (width * 2.0, 51.0)
+                        } else {
+                            (width, 27.0)
+                        },
+                        "{encoded}/{node:?}/{weight}"
+                    );
+                    let expected: Vec<_> = [visible, "\u{200b}", "W"]
+                        .into_iter()
+                        .flat_map(|line| {
+                            operations.map(|operation| {
+                                (operation, line.to_owned(), Some(weight.to_owned()))
+                            })
+                        })
+                        .collect();
+                    assert_eq!(*probe.0.borrow(), expected, "{encoded}/{node:?}/{weight}");
+                }
             }
-            let probe = EntityLineProbe::default();
-            let dimensions = super::measure_drawn_svg_like_with_html_br(
+        }
+    }
+
+    #[test]
+    fn sequence_entities_preserve_calculate_and_wrap_input() {
+        #[derive(Default)]
+        struct UpstreamProbe(RefCell<Vec<String>>);
+        impl TextMeasurer for UpstreamProbe {
+            fn measure(&self, _: &str, _: &TextStyle) -> TextMetrics {
+                panic!("upstream probes must keep their calculateTextDimensions operation")
+            }
+            fn measure_mermaid_calculate_text_dimensions(
+                &self,
+                text: &str,
+                _: &TextStyle,
+            ) -> TextMetrics {
+                self.0.borrow_mut().push(text.to_owned());
+                TextMetrics {
+                    width: 8.0,
+                    height: 9.0,
+                    line_count: 1,
+                }
+            }
+        }
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let style = default_sequence_style();
+        for raw in [
+            "#38;#35;128512#59;",
+            "#lt;br/#gt;",
+            "#38;lt#59;br/#38;gt#59;",
+        ] {
+            let probe = UpstreamProbe::default();
+            super::measure_svg_like_with_html_br(
                 &probe,
-                "#lt;br#gt;",
+                raw,
                 &style,
-                node,
-                &config,
                 checkpoints(&meter, OperationPhase::Layout),
             )
             .unwrap();
-            assert_eq!(dimensions, (8.0, 8.0), "decoded markup is literal SVG text");
-            assert!(probe.0.borrow().iter().all(|line| line == "<br>"));
+            assert_eq!(*probe.0.borrow(), [raw, raw]);
+            probe.0.borrow_mut().clear();
+            let lines = super::wrap_sequence_label_like_mermaid_lines(
+                raw,
+                &probe,
+                &style,
+                1000.0,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .unwrap();
+            assert_eq!(lines, [raw]);
+            // wrapLabel probes each word with its trailing space in both font families.
+            assert_eq!(*probe.0.borrow(), [format!("{raw} "), format!("{raw} ")]);
         }
     }
 

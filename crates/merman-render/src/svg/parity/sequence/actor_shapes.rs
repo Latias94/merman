@@ -652,7 +652,7 @@ fn write_actor_label_lines<'a>(
     let n = line_count.max(1) as f64;
     for (i, raw) in raw_lines.into_iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(i)?;
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
+        let decoded = crate::sequence::prepare_sequence_text_line(raw);
         let dy = if n <= 1.0 {
             0.0
         } else {
@@ -688,7 +688,7 @@ fn write_actor_label_lines<'a>(
             y = fmt(cy),
             style = escape_attr_display(&inline_style),
             dy = fmt(dy),
-            text = escape_xml_display(decoded.as_ref())
+            text = super::escape_prepared_text(decoded.as_ref())
         );
         out.checkpoint()?;
         if record_receipt {

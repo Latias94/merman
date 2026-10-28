@@ -69,9 +69,9 @@ pub(crate) use math_artifact::{
 pub(crate) use metrics::measure_prepared_sequence_math_label;
 pub(crate) use metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
-    prepared_sequence_math_terminal_geometry, sequence_drawn_text_first_y,
-    sequence_drawn_text_style, sequence_drawn_text_y, sequence_inline_font_family,
-    wrap_sequence_label_like_mermaid_lines,
+    prepare_sequence_text_line, prepared_sequence_math_terminal_geometry,
+    sequence_drawn_text_first_y, sequence_drawn_text_style, sequence_drawn_text_y,
+    sequence_inline_font_family, wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 

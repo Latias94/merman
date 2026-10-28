@@ -261,7 +261,7 @@ fn render_sequence_note_lines<'a>(
     let mut preceding_height = 0.0;
     for (i, line) in lines.into_iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(i)?;
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
+        let decoded = crate::sequence::prepare_sequence_text_line(line);
         let text = if decoded.as_ref().is_empty() {
             "\u{200B}"
         } else {
@@ -297,7 +297,7 @@ fn render_sequence_note_lines<'a>(
             x = fmt(cx),
             y = fmt(y),
             style = escape_attr_display(&style),
-            text = escape_xml(text)
+            text = super::escape_prepared_text(text)
         );
         ctx.typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::NoteLabel);
