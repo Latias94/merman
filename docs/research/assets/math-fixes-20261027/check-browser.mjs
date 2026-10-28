@@ -44,7 +44,7 @@ try {
     const svg = await fs.readFile(`${dir}/${entry.file}`, 'utf8');
     await page.setContent(`<!doctype html><body style="margin:20px;background:white">${svg}</body>`);
     await page.evaluate(() => document.fonts.ready);
-    const check = await page.evaluate(() => {
+    const check = await page.evaluate(expectsFractionBar => {
       const root = document.querySelector('body > svg');
       const formulas = [...root.querySelectorAll('svg')].map((math, index) => ({math, index}))
         .filter(({math}) => math.querySelector(':scope > path, :scope > image') && !math.closest('template'));
@@ -64,10 +64,16 @@ try {
         }
       }
       return {viewBox: root.getAttribute('viewBox'), primitiveCount,
-        formulas: formulas.map(({math, index}) => ({index, style: math.getAttribute('style')}))};
-    });
+        formulas: formulas.map(({math, index}) => {
+          const bars = [...math.querySelectorAll(':scope > rect')];
+          if (expectsFractionBar && bars.length !== 1) throw Error('fraction fixture must contain one fraction bar');
+          return {index, style: math.getAttribute('style'),
+            ...(expectsFractionBar ? {fractionBarStyle: bars[0].getAttribute('style')} : {})};
+        })};
+    }, ['fraction-styled', 'sequence'].includes(entry.case));
     const original = await page.locator('body > svg').screenshot();
     const visibleFormulas = [];
+    const visibleFractionBars = [];
     for (const formula of check.formulas) {
       await page.evaluate(index => {
         document.querySelector('body > svg').querySelectorAll('svg')[index]
@@ -81,10 +87,28 @@ try {
       const contribution = await visibleContribution(original, hidden);
       if (!contribution.pixels) throw Error(`${entry.file}: formula ${formula.index} has no visible contribution in full SVG`);
       visibleFormulas.push(contribution);
+      // These fixtures contain exactly one fraction. Its numerator and denominator
+      // can preserve the whole-formula bounds even when the fraction bar disappears.
+      if (Object.hasOwn(formula, 'fractionBarStyle')) {
+        await page.evaluate(index => {
+          document.querySelector('body > svg').querySelectorAll('svg')[index]
+            .querySelector(':scope > rect').style.setProperty('opacity', '0', 'important');
+        }, formula.index);
+        const withoutBar = await page.locator('body > svg').screenshot();
+        await page.evaluate(({index, fractionBarStyle}) => {
+          const bar = document.querySelector('body > svg').querySelectorAll('svg')[index]
+            .querySelector(':scope > rect');
+          if (fractionBarStyle === null) bar.removeAttribute('style');
+          else bar.setAttribute('style', fractionBarStyle);
+        }, formula);
+        const barContribution = await visibleContribution(original, withoutBar);
+        if (!barContribution.pixels) throw Error(`${entry.file}: fraction bar has no visible contribution in full SVG`);
+        visibleFractionBars.push(barContribution);
+      }
     }
     results.push({...entry, check: 'full-svg-visible-formula-contribution',
       viewBox: check.viewBox, formulaCount: visibleFormulas.length,
-      primitiveCount: check.primitiveCount, visibleFormulas});
+      primitiveCount: check.primitiveCount, visibleFormulas, visibleFractionBars});
   }
 
   // These pure-formula fixtures share layout across pipelines. Compare independent full-SVG
@@ -151,6 +175,7 @@ try {
   }
   console.log(JSON.stringify({browser: report.browser, source: report.source, checks: results.length,
     visibleFormulas: results.reduce((n, x) => n + (x.formulaCount || 0), 0),
+    visibleFractionBars: results.reduce((n, x) => n + (x.visibleFractionBars?.length || 0), 0),
     placementPairs: results.filter(x => x.check === 'parity-native-visible-ink-placement').length,
     passed: true}));
 } finally {

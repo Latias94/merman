@@ -25,5 +25,23 @@
       "changed": 6,
       "error": "Error: main flowchart: full-SVG formula placement differs by 20px (limit 1px)"
     }
+  },
+  {
+    "mutation": "delete-fraction-bar",
+    "exitCode": 1,
+    "result": {
+      "mutation": "delete-fraction-bar",
+      "changed": 1,
+      "error": "Error: page.evaluate: Error: fraction fixture must contain one fraction bar"
+    }
+  },
+  {
+    "mutation": "hide-fraction-bar",
+    "exitCode": 1,
+    "result": {
+      "mutation": "hide-fraction-bar",
+      "changed": 1,
+      "error": "Error: main-sequence-resvg-safe.svg: fraction bar has no visible contribution in full SVG"
+    }
   }
 ]
