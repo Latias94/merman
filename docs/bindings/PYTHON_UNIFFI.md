@@ -196,7 +196,7 @@ failing the reusable render/layout call. Merman does not catch arbitrary foreign
 bypass that generated boundary. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
-Text-measurement protocol 1 exposes 22 operations with contiguous codes 0 through 21.
+Text-measurement protocol 1 exposes 23 operations with contiguous codes 0 through 22.
 `CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` returns the signed `length` for Architecture's
 `createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
 `CREATE_TEXT_B_BOX_Y_OFFSET` remains the ordinary createText probe; the two operations are not

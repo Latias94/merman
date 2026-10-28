@@ -27,6 +27,7 @@ object MermanTextMeasurementOperation {
     const val RAW_BBOX_Y_OFFSET: Int = 19
     const val RAW_MIDDLE_BBOX_Y_OFFSET: Int = 20
     const val RAW_HANGING_BBOX_Y_OFFSET: Int = 21
+    const val HTML_LINE_HEIGHT: Int = 22
 
     val ALL: IntArray = intArrayOf(
         MEASURE,
@@ -51,6 +52,7 @@ object MermanTextMeasurementOperation {
         RAW_BBOX_Y_OFFSET,
         RAW_MIDDLE_BBOX_Y_OFFSET,
         RAW_HANGING_BBOX_Y_OFFSET,
+        HTML_LINE_HEIGHT,
     )
 
     fun externalName(code: Int): String? = when (code) {
@@ -76,6 +78,7 @@ object MermanTextMeasurementOperation {
         RAW_BBOX_Y_OFFSET -> "raw-bbox-y-offset"
         RAW_MIDDLE_BBOX_Y_OFFSET -> "raw-middle-bbox-y-offset"
         RAW_HANGING_BBOX_Y_OFFSET -> "raw-hanging-bbox-y-offset"
+        HTML_LINE_HEIGHT -> "html-line-height"
         else -> null
     }
 
@@ -102,6 +105,7 @@ object MermanTextMeasurementOperation {
         RAW_BBOX_Y_OFFSET -> MermanTextMeasurementResultKind.LENGTH
         RAW_MIDDLE_BBOX_Y_OFFSET -> MermanTextMeasurementResultKind.LENGTH
         RAW_HANGING_BBOX_Y_OFFSET -> MermanTextMeasurementResultKind.LENGTH
+        HTML_LINE_HEIGHT -> MermanTextMeasurementResultKind.LENGTH
         else -> null
     }
 

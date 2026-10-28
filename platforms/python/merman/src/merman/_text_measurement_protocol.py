@@ -56,6 +56,7 @@ TEXT_MEASUREMENT_OPERATIONS = (
     (19, "raw-bbox-y-offset", "length", True),
     (20, "raw-middle-bbox-y-offset", "length", True),
     (21, "raw-hanging-bbox-y-offset", "length", True),
+    (22, "html-line-height", "length", False),
 )
 
 class TextMeasurementProtocolVersionMismatch(RuntimeError):

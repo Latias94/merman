@@ -505,3 +505,33 @@ fn routed_prepared_svg_fragments_preserve_spaces_against_native_export() {
         );
     }
 }
+
+#[test]
+fn native_html_line_height_keeps_literal_breaks_and_subpixel_sizes() {
+    let context = context(&["Cousine-Regular.ttf"]);
+    for font_size in [0.5, 16.0] {
+        let style = TextStyle {
+            font_size,
+            ..style("Cousine")
+        };
+        for text in ["A<br>B", "A&amp;B", "AB", "", " \t\r\n", "\u{00a0}"] {
+            let measured = context
+                .measure(HostTextMeasurementRequest {
+                    operation: TextMeasurementOperation::HtmlLineHeight,
+                    phase: TextMeasurementPhase::Wrap,
+                    text,
+                    style: &style,
+                    max_width: None,
+                    wrap_mode: WrapMode::HtmlLike,
+                })
+                .unwrap()
+                .expect("explicit native font covers literal text");
+            let expected = if matches!(text, "" | " \t\r\n") {
+                0.0
+            } else {
+                font_size * 1.5
+            };
+            assert!(matches!(measured, HostTextMeasurement::Length(height) if height == expected));
+        }
+    }
+}

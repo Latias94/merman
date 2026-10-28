@@ -58,7 +58,7 @@ pub fn host_text_measurement_transport_fields(
     };
 
     HostTextMeasurementTransportFields {
-        line_height: request.style.font_size.max(1.0) * line_height_factor,
+        line_height: request.style.font_size * line_height_factor,
         wrap_mode: wrap_mode.external_code(),
         direction: HostTextDirectionCode::Auto.external_code(),
         white_space: white_space.external_code(),
@@ -204,6 +204,27 @@ mod tests {
                 (3, "wrapped-with-raw-width"),
             ]
         );
+    }
+
+    #[test]
+    fn host_transport_preserves_zero_and_subpixel_line_advances() {
+        for font_size in [0.0, 0.5] {
+            let style = TextStyle {
+                font_size,
+                ..TextStyle::default()
+            };
+            for (wrap_mode, factor) in [(WrapMode::SvgLike, 1.1), (WrapMode::HtmlLike, 1.5)] {
+                let fields = host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                    operation: TextMeasurementOperation::Measure,
+                    phase: TextMeasurementPhase::Layout,
+                    text: "A\nB",
+                    style: &style,
+                    max_width: None,
+                    wrap_mode,
+                });
+                assert_eq!(fields.line_height, font_size * factor);
+            }
+        }
     }
 
     #[test]
@@ -380,6 +401,7 @@ mod tests {
                 (19, "length"),
                 (20, "length"),
                 (21, "length"),
+                (22, "length"),
             ]
         );
     }

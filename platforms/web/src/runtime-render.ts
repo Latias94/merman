@@ -303,12 +303,21 @@ function measureWithBrowserProbes(
       };
     }
     case "simple-bbox-width":
+      return { kind: "length", length: Math.max(0, svgBBox(probes, simpleTextRequest(request), "tspan").width) };
     case "wrap-probe-bbox-width":
       return { kind: "length", length: Math.max(0, svgBBox(probes, request, "tspan").width) };
     case "raw-bbox-width":
       return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").width) };
     case "raw-bbox-height":
       return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").height) };
+    case "html-line-height": {
+      applyHtmlTextMeasureStyle(probes.html, request);
+      Object.assign(probes.html.style, {
+        display: "inline-block", width: "auto", maxWidth: "none", whiteSpace: "nowrap",
+      });
+      probes.html.textContent = request.text;
+      return { kind: "length", length: Math.max(0, probes.html.getBoundingClientRect().height) };
+    }
     case "raw-bbox-y-offset":
       return { kind: "length", length: svgBBox(probes, request, "direct").y };
     case "raw-middle-bbox-y-offset":
@@ -337,7 +346,7 @@ function measureWithBrowserProbes(
     case "canvas-measure-text-width":
       return canvasTextWidth(probes, request);
     case "simple-bbox-height":
-      return { kind: "length", length: Math.max(0, svgBBox(probes, request, "tspan").height) };
+      return { kind: "length", length: Math.max(0, svgBBox(probes, simpleTextRequest(request), "tspan").height) };
     case "wrapped":
       return request.wrap_mode === "html-like"
         ? htmlWrappedMetrics(probes.html, request).metrics
@@ -359,6 +368,7 @@ function emptyMeasurement(request: HostTextMeasureRequest): HostTextMeasureResul
     case "bbox-x-with-ascii-overhang":
     case "title-bbox-x":
       return { kind: "horizontal-extents", bbox_left: 0, bbox_right: 0 };
+    case "html-line-height":
     case "tspan-bbox-height":
     case "simple-bbox-height":
     case "raw-bbox-height":
@@ -385,6 +395,12 @@ function emptyMeasurement(request: HostTextMeasureRequest): HostTextMeasureResul
   }
 }
 
+function simpleTextRequest(request: HostTextMeasureRequest): HostTextMeasureRequest {
+  // Pinned drawSimpleText uses common.lineBreakRegex before assigning tspan text.
+  // Keep raw, tspan, and incremental wrap probes on their literal request text.
+  return { ...request, text: request.text.replace(/<\/?br\s*\/?>/gi, " ") };
+}
+
 function mermaidCalculateTextDimensions(
   probes: BrowserTextMeasureProbes,
   request: HostTextMeasureRequest
@@ -401,7 +417,7 @@ function mermaidCalculateTextDimensions(
   setTextMeasureStyle(text.style, "fontWeight", request.font_weight ?? "400");
   setTextMeasureStyle(text.style, "fontFamily", request.font_family ?? "Arial");
   tspan.setAttribute("x", "0");
-  tspan.textContent = request.text;
+  tspan.textContent = simpleTextRequest(request).text;
   text.appendChild(tspan);
   const bbox = text.getBBox();
   if (bbox.width === 0 && bbox.height === 0) {
@@ -427,6 +443,9 @@ function canvasTextWidth(
   probes: BrowserTextMeasureProbes,
   request: HostTextMeasureRequest
 ): HostTextMeasureResult | undefined {
+  if (!Number.isFinite(request.font_size) || request.font_size < 0) {
+    return undefined;
+  }
   if (probes.canvasContext === undefined) {
     probes.canvasContext = probes.html.ownerDocument.createElement("canvas").getContext("2d");
   }
@@ -437,7 +456,7 @@ function canvasTextWidth(
 
   const fontStyle = request.font_style;
   const fontWeight = request.font_weight ?? "normal";
-  const fontSize = Number.isFinite(request.font_size) ? request.font_size : 16;
+  const fontSize = request.font_size;
   const fontFamily = request.font_family ?? "sans-serif";
   const font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
   context.save();
@@ -511,6 +530,9 @@ function svgWrappedMetrics(
   probes: BrowserTextMeasureProbes,
   request: HostTextMeasureRequest
 ): HostTextMetricsResult {
+  if (!Number.isFinite(request.line_height) || request.line_height < 0) {
+    throw new Error("Invalid SVG text measurement line height.");
+  }
   const maxWidth = normalizeMeasureMaxWidth(request);
   const breakLongWords = request.wrap_mode === "svg-like";
   const lines = splitExplicitLines(request.text).flatMap((line) =>
@@ -527,7 +549,7 @@ function svgWrappedMetrics(
   for (const [index, line] of lines.entries()) {
     const tspan = probes.svg.ownerDocument.createElementNS(SVG_NAMESPACE, "tspan");
     tspan.setAttribute("x", "0");
-    tspan.setAttribute("dy", index === 0 ? "0" : `${Math.max(1, request.line_height)}px`);
+    tspan.setAttribute("dy", index === 0 ? "0" : `${request.line_height}px`);
     tspan.textContent = line || "\u200b";
     probes.wrappedText.appendChild(tspan);
   }
@@ -691,7 +713,7 @@ function applyHtmlTextMeasureStyle(
   setTextMeasureStyle(
     probe.style,
     "lineHeight",
-    `${Math.max(1, request.line_height ?? request.font_size)}px`
+    `${request.line_height ?? request.font_size}px`
   );
   probe.dir = request.direction;
 }
@@ -703,7 +725,7 @@ function applySvgTextStyle(element: SVGTextElement, request: HostTextMeasureRequ
 
 function applyTextMeasureStyle(style: CSSStyleDeclaration, request: HostTextMeasureRequest): void {
   setTextMeasureStyle(style, "fontFamily", request.font_family ?? "sans-serif");
-  setTextMeasureStyle(style, "fontSize", `${Math.max(1, request.font_size)}px`);
+  setTextMeasureStyle(style, "fontSize", `${request.font_size}px`);
   setTextMeasureStyle(style, "fontWeight", request.font_weight ?? "normal");
   setTextMeasureStyle(style, "fontStyle", request.font_style);
   setTextMeasureStyle(style, "letterSpacing", `${request.letter_spacing ?? 0}px`);
@@ -744,8 +766,12 @@ function measureHtmlProbe(
   probe.style.whiteSpace = styleOverride.whiteSpace;
   setHtmlProbeText(probe, text);
   const rect = probe.getBoundingClientRect();
-  const lineHeight = Math.max(1, parseFloat(probe.style.lineHeight) || 1);
-  const height = Math.max(lineHeight, rect.height);
+  const lineHeight = parseFloat(probe.style.lineHeight);
+  // Zero line height cannot provide a reliable wrapped line count from the rect.
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+    throw new Error("Unsupported HTML text measurement line height.");
+  }
+  const height = Math.max(0, rect.height);
   return {
     kind: "metrics",
     width: Math.max(0, rect.width),
