@@ -459,13 +459,14 @@ fn validate_well_formed_element<const REFERENCES: bool>(
                 first_namespaced_attribute = Some(expanded_name);
             }
         }
-        if let Some(references) = references.as_mut().filter(|value| value.is_svg_element) {
+        if let Some(references) = references.as_mut() {
             let (namespace, local_name) = resolver.resolve_attribute(attribute.key);
             let is_unbound = matches!(&namespace, ResolveResult::Unbound);
             let is_xlink = matches!(
                 &namespace,
                 ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
             );
+            references.observe_raw_attribute(local_name.as_ref(), is_xlink, &value);
             if usvg_consumes_attribute_namespace(namespace)? {
                 // This is the same normalized value whose XML validity was just checked.
                 references.observe(
@@ -762,6 +763,36 @@ fn check_svg_resource_budget_with_controls(
     check_structure(summary.structure.elements, summary.structure.max_tree_depth)
 }
 
+impl SvgReferencePlan {
+    /// Reuses the ordinary XML reference collector for occurrence validation. This does not
+    /// certify native compatibility or replace the finalizer's resource-policy checks.
+    pub(crate) fn for_occurrence_receipt(svg: &str) -> Result<Self> {
+        let mut facts = SvgReferenceFacts::default();
+        let mut stack = Vec::new();
+        let mut checkpoint = || Ok(());
+        let structure = visit_well_formed_svg_with_controls::<true>(
+            svg,
+            &mut checkpoint,
+            &mut |_, _| Ok(()),
+            &mut |element, depth| {
+                stack.truncate(depth);
+                let index = facts.append(stack.last().copied(), element);
+                stack.push(index);
+                Ok(())
+            },
+        )?;
+        match analyze_svg_reference_facts_with_checkpoints::<true, _>(
+            facts,
+            structure,
+            &mut checkpoint,
+        ) {
+            Ok(analysis) => Ok(analysis.into_detailed_plan()),
+            Err(ReferencePlanningError::Invalid(error)) => Err(validation_error(error)),
+            Err(ReferencePlanningError::Checkpoint(error)) => Err(error),
+        }
+    }
+}
+
 #[inline(never)]
 fn validate_resvg_compatible_svg_after_xml_with_structure(
     svg: &str,
@@ -1038,16 +1069,16 @@ enum RawElementId {
 }
 
 impl ElementIds {
-    fn observe(&mut self, value: &str, unqualified: bool) {
+    fn observe_raw(&mut self, value: &str) {
+        if matches!(self.raw, RawElementId::Absent) {
+            self.raw = RawElementId::Other(value.to_owned());
+        }
+    }
+
+    fn observe(&mut self, value: &str) {
         let parsed = self.parsed.get_or_insert_with(|| value.to_owned());
-        if unqualified {
-            // Both values have passed XML normalization. Namespace aliases can select a
-            // different first parsed ID, so sharing is based on the actual selected values.
-            self.raw = if parsed.as_str() == value {
-                RawElementId::Parsed
-            } else {
-                RawElementId::Other(value.to_owned())
-            };
+        if matches!(&self.raw, RawElementId::Other(raw) if raw == parsed) {
+            self.raw = RawElementId::Parsed;
         }
     }
 
@@ -1085,7 +1116,7 @@ impl SvgReferenceFacts {
     fn append(&mut self, parent: Option<usize>, element: ValidatedElement) -> usize {
         let index = self.parents.len();
         self.parents.push(parent.unwrap_or(usize::MAX));
-        if element.ids.parsed.is_some() {
+        if element.ids.parsed.is_some() || element.ids.raw_value().is_some() {
             self.identities.push(ReferenceIdentity {
                 element: index,
                 is_marker: element.is_marker,
@@ -1240,6 +1271,7 @@ fn validate_element_after_xml(
         );
         let consumes_namespace = usvg_consumes_attribute_namespace(attribute_namespace);
         checkpoint()?;
+        reference_attributes.observe_raw_attribute(local_name.as_ref(), is_xlink_attribute, &value);
         if !consumes_namespace? {
             continue;
         }
@@ -1315,7 +1347,9 @@ fn validate_element_after_xml(
             &value,
             checkpoint,
         )?;
-        if (semantic_name == "href" && !element_name.eq_ignore_ascii_case("a"))
+        if (semantic_name == "href"
+            && !element_name.eq_ignore_ascii_case("a")
+            && !(is_svg_element && element_name.eq_ignore_ascii_case("use")))
             || semantic_name == "src"
         {
             observe_terminal_resource_url(resource_closure, &value);
@@ -1327,7 +1361,17 @@ fn validate_element_after_xml(
     let mut validated = reference_attributes.finish();
     validated.fallback_css_residual = fallback_css_residual;
     if let Some(id) = &validated.ids.parsed {
-        resource_closure.observe_fragment_id(id);
+        resource_closure.observe_parsed_fragment_id(id);
+    }
+    if let Some(id) = validated.ids.raw_value() {
+        resource_closure.observe_raw_use_fragment_id(id);
+    }
+    // Only the effective raw <use> target is a closure obligation. Presentation resources
+    // resolve against parsed IDs, which may differ from the first local-name XML ID.
+    for reference in validated.references.iter().flatten() {
+        if matches!(reference.target_kind, ReferenceTargetKind::UseElement) {
+            resource_closure.observe_raw_use_fragment_reference(&reference.target);
+        }
     }
     Ok(validated)
 }
@@ -1373,16 +1417,33 @@ impl<'a> ReferenceAttributes<'a> {
     }
 
     #[inline]
+    fn observe_raw_attribute(&mut self, name: &str, is_xlink: bool, value: &str) {
+        // usvg resolves raw XML use links before presentation attributes are projected. The
+        // fallback selects the first local name in any namespace, just like roxmltree::attribute.
+        match name {
+            "id" => self.ids.observe_raw(value),
+            "href" if self.is_svg_element && self.element_name.eq_ignore_ascii_case("use") => {
+                self.use_href.get_or_insert_with(|| value.to_owned());
+                if is_xlink {
+                    self.use_xlink_href.get_or_insert_with(|| value.to_owned());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[inline]
     fn observe(
         &mut self,
         semantic_name: &str,
-        is_unbound_attribute: bool,
+        _is_unbound_attribute: bool,
         is_xlink_attribute: bool,
         value: &str,
         checkpoint: &mut dyn FnMut() -> Result<()>,
     ) -> Result<()> {
+        self.observe_raw_attribute(semantic_name, is_xlink_attribute, value);
         match semantic_name {
-            "id" if self.is_svg_element => self.ids.observe(value, is_unbound_attribute),
+            "id" if self.is_svg_element => self.ids.observe(value),
             "d" if self.is_svg_element && self.element_name == "path" => {
                 self.geometry_source_len.get_or_insert(value.len());
             }
@@ -1392,7 +1453,7 @@ impl<'a> ReferenceAttributes<'a> {
                 self.geometry_source_len.get_or_insert(value.len());
             }
             "href" if self.is_svg_element => {
-                self.observe_href(is_unbound_attribute, is_xlink_attribute, value);
+                self.observe_href(value);
             }
             "marker-start" | "marker-mid" | "marker-end" => {
                 self.observe_marker(semantic_name, value, checkpoint)?;
@@ -1403,14 +1464,7 @@ impl<'a> ReferenceAttributes<'a> {
     }
 
     #[inline(never)]
-    fn observe_href(&mut self, is_unbound_attribute: bool, is_xlink_attribute: bool, value: &str) {
-        if self.element_name.eq_ignore_ascii_case("use") {
-            if is_xlink_attribute {
-                self.use_xlink_href.get_or_insert_with(|| value.to_owned());
-            } else if is_unbound_attribute {
-                self.use_href.get_or_insert_with(|| value.to_owned());
-            }
-        }
+    fn observe_href(&mut self, value: &str) {
         if self.element_name.eq_ignore_ascii_case("feImage") {
             self.fe_image_href.get_or_insert_with(|| value.to_owned());
         }
@@ -1533,7 +1587,7 @@ fn observe_terminal_resource_url(resources: &mut SvgResourceClosureBuilder, valu
         .strip_prefix('#')
         .filter(|fragment| !fragment.is_empty())
     {
-        resources.observe_fragment_reference(fragment);
+        resources.observe_parsed_fragment_reference(fragment);
     } else if value
         .get(..5)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
@@ -1752,7 +1806,7 @@ fn build_reference_fact_dependencies<E>(
     for (iteration, identity) in identities.iter().enumerate() {
         checkpoint_loop(iteration, checkpoint)?;
         if let Some(id) = identity.ids.raw_value() {
-            // Raw use expansion selects the first unqualified ID in document order.
+            // Raw XML lookup selects the first local-name ID in document order.
             use_ids.entry(id).or_insert(identity.element);
         }
         if let Some(id) = identity.ids.parsed.as_deref() {
@@ -2213,15 +2267,31 @@ mod tests {
             }
         }
 
+        fn observe_raw_attribute(&mut self, name: &str, xlink: bool, value: &str) {
+            if name == "id" {
+                self.use_id.get_or_insert_with(|| value.to_owned());
+            }
+            if self.is_svg_element
+                && self.element_name.eq_ignore_ascii_case("use")
+                && name == "href"
+            {
+                self.use_href.get_or_insert_with(|| value.to_owned());
+                if xlink {
+                    self.use_xlink_href.get_or_insert_with(|| value.to_owned());
+                }
+            }
+        }
+
         #[inline(never)]
         fn observe(
             &mut self,
             semantic_name: &str,
-            is_unbound_attribute: bool,
+            _is_unbound_attribute: bool,
             is_xlink_attribute: bool,
             value: &str,
             checkpoint: &mut dyn FnMut() -> Result<()>,
         ) -> Result<()> {
+            self.observe_raw_attribute(semantic_name, is_xlink_attribute, value);
             if self.is_svg_element
                 && ((self.element_name == "path" && semantic_name == "d")
                     || (matches!(self.element_name, "polyline" | "polygon")
@@ -2231,21 +2301,12 @@ mod tests {
             }
             if self.is_svg_element && semantic_name == "id" {
                 self.parsed_id.get_or_insert_with(|| value.to_owned());
-                if is_unbound_attribute {
-                    self.use_id = Some(value.to_owned());
-                }
             }
-            if self.is_svg_element && semantic_name == "href" {
-                if self.element_name.eq_ignore_ascii_case("use") {
-                    if is_xlink_attribute {
-                        self.use_xlink_href.get_or_insert_with(|| value.to_owned());
-                    } else if is_unbound_attribute {
-                        self.use_href.get_or_insert_with(|| value.to_owned());
-                    }
-                }
-                if self.element_name.eq_ignore_ascii_case("feImage") {
-                    self.fe_image_href.get_or_insert_with(|| value.to_owned());
-                }
+            if self.is_svg_element
+                && semantic_name == "href"
+                && self.element_name.eq_ignore_ascii_case("feImage")
+            {
+                self.fe_image_href.get_or_insert_with(|| value.to_owned());
             }
             let marker_slot = if semantic_name == "marker-start" && !self.marker_start_seen {
                 self.marker_start_seen = true;
@@ -2498,9 +2559,6 @@ mod tests {
         let element_name = local_name.as_ref();
         let mut references =
             LegacyReferenceAttributes::new(element_name, is_svg_element_namespace(&namespace));
-        if !references.is_svg_element {
-            return Ok(references.finish());
-        }
         // The caller already validated this exact immutable SVG, including lexical and expanded
         // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
         for attribute in element.attributes().with_checks(false) {
@@ -2516,14 +2574,16 @@ mod tests {
                 &namespace,
                 ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
             );
-            if !usvg_consumes_attribute_namespace(namespace)? {
-                continue;
-            }
+            let consumes_namespace = usvg_consumes_attribute_namespace(namespace)?;
             let value = attribute.normalized_value(XmlVersion::Implicit1_0);
             checkpoint()?;
             let value = value.map_err(|error| {
                 xml_validation_error(format!("invalid XML attribute value: {error}"))
             })?;
+            references.observe_raw_attribute(local_name.as_ref(), is_xlink, &value);
+            if !consumes_namespace {
+                continue;
+            }
             references.observe(
                 local_name.as_ref(),
                 is_unbound,
@@ -2612,7 +2672,7 @@ mod tests {
         for (index, node) in nodes.iter().enumerate() {
             checkpoint_loop(index, checkpoint)?;
             if let Some(id) = node.use_id.as_deref() {
-                // Raw `<use>` expansion resolves the first unqualified XML `id`.
+                // Raw XML lookup selects the first local-name ID in document order.
                 use_ids.entry(id).or_insert(index);
             }
             if let Some(id) = node.parsed_id.as_deref() {
@@ -3944,6 +4004,172 @@ mod tests {
     }
 
     #[test]
+    fn use_local_name_fallback_charges_the_selected_native_target() {
+        for href in [
+            r##"href="#source""##,
+            r##"xml:href="#source""##,
+            r##"s:href="#source""##,
+            r##"q:href="#source""##,
+            r##"xml:href="#source" href="#other""##,
+            r##"href="#other" x:href="#source""##,
+            r##"x:href="#source" xml:href="#other""##,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" xmlns:q="urn:other"><defs><g id="source"><rect/><rect/><rect/><rect/></g><g id="other"/></defs><use {href}/></svg>"##,
+            );
+            let plan = validate_resvg_compatible_svg(
+                &svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            assert_eq!(plan.expanded_elements(), 14, "{href}");
+            assert_eq!(plan.raw_element_occurrences()[3], 2, "{href}");
+            check_budget(&svg, 14).unwrap();
+            assert!(check_budget(&svg, 13).is_err(), "{href}");
+        }
+    }
+
+    #[test]
+    fn use_id_resolution_keeps_the_first_local_name_across_namespaces() {
+        for id in [
+            r#"id="source""#,
+            r#"xml:id="source""#,
+            r#"q:id="source""#,
+            r#"q:id="source" id="other""#,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other"><defs><g {id}><rect/><rect/><rect/><rect/></g></defs><use href="#source"/></svg>"##,
+            );
+            let plan = validate_resvg_compatible_svg(
+                &svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            assert_eq!(plan.expanded_elements(), 13, "{id}");
+            check_budget(&svg, 13).unwrap();
+            assert!(check_budget(&svg, 12).is_err(), "{id}");
+        }
+    }
+
+    #[test]
+    fn resource_closure_accepts_raw_only_use_targets() {
+        for href in [
+            r##"href="#source""##,
+            r##"xml:href="#source""##,
+            r##"q:href="#source""##,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other"><defs><g q:id="source" id="parsed-source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
+            );
+            let terminal = validate_resvg_compatible_svg(
+                &svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            assert_eq!(
+                terminal.resource_closure.available_fragment_ids(),
+                &["parsed-source", "source"],
+                "{href}",
+            );
+            assert_eq!(
+                terminal.resource_closure.referenced_fragment_ids(),
+                &["source"],
+                "{href}",
+            );
+            assert!(terminal.resource_closure.is_closed());
+        }
+    }
+
+    #[test]
+    fn resource_closure_rejects_raw_only_paint_targets() {
+        for id in [r#"q:id="paint""#, r#"q:id="paint" id="other""#] {
+            for paint in [r##"fill="url(#paint)""##, r##"style="fill:url(#paint)""##] {
+                let svg = format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" width="20" height="20"><defs><linearGradient {id}><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs><rect width="20" height="20" {paint}/></svg>"##,
+                );
+                let error = validate(&svg).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("missing same-document fragment #paint"),
+                    "{id} {paint}: {error}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resource_closure_checks_same_named_targets_in_each_id_domain() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other"><defs><g q:id="shared" id="raw-group"><rect width="1" height="1"/></g><linearGradient q:id="raw-gradient" id="shared"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs><use href="#shared"/><rect width="20" height="20" fill="url(#shared)"/></svg>"##;
+        let terminal =
+            validate_resvg_compatible_svg(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+                .unwrap();
+        assert_eq!(
+            terminal.resource_closure.available_fragment_ids(),
+            &["raw-gradient", "raw-group", "shared"],
+        );
+        assert_eq!(
+            terminal.resource_closure.referenced_fragment_ids(),
+            &["shared"],
+        );
+        for missing in [
+            svg.replace(r#"q:id="shared""#, r#"q:id="missing-raw""#),
+            svg.replace(r#" id="shared""#, r#" id="missing-parsed""#),
+        ] {
+            let error = validate(&missing).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("missing same-document fragment #shared"),
+                "{missing}: {error}",
+            );
+        }
+    }
+
+    #[test]
+    fn resource_closure_observes_only_selected_use_targets() {
+        for href in [
+            r##"href="#missing" x:href="#source""##,
+            r##"x:href="#source" href="#missing""##,
+            r##"xml:href="#missing" x:href="#source""##,
+            r##"q:href="#missing" href="#also-missing" x:href="#source""##,
+            r##"xml:href="#source" href="#missing""##,
+            r##"q:href="#source" href="#missing""##,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
+            );
+            let terminal = validate_resvg_compatible_svg(
+                &svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            assert_eq!(
+                terminal.resource_closure.referenced_fragment_ids(),
+                &["source"],
+                "{href}",
+            );
+        }
+        for href in [
+            r##"href="#source" x:href="#missing""##,
+            r##"x:href="#missing" href="#source""##,
+            r##"xml:href="#missing" href="#source""##,
+            r##"q:href="#missing" href="#source""##,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
+            );
+            let error = validate(&svg).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("missing same-document fragment #missing"),
+                "{href}: {error}",
+            );
+        }
+    }
+
+    #[test]
     fn second_passes_preserve_xml_duplicate_attribute_rejection() {
         for svg in [
             r#"<svg width="10" height="10" width="20"/>"#,
@@ -4226,7 +4452,7 @@ mod tests {
 
         assert_eq!(
             occurrences[2], 2,
-            "<use> must resolve the first unqualified XML id"
+            "<use> must resolve the first local-name XML id"
         );
         assert!(
             occurrences[4] > 4,

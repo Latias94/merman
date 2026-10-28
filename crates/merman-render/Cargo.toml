@@ -103,6 +103,7 @@ system-timing = ["merman-core/system-timing"]
 layout-cytoscape = ["dep:manatee"]
 layout-elk = ["dep:merman-layout-elk"]
 math = [
+  "dep:ratex-font",
   "dep:ratex-layout",
   "dep:ratex-parser",
   "dep:ratex-svg",
@@ -126,6 +127,7 @@ merman-layout-elk = { workspace = true, optional = true }
 merman-core = { workspace = true, features = ["presentation", "compat-json"] }
 merman-theme-contract.workspace = true
 pulldown-cmark.workspace = true
+ratex-font = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }

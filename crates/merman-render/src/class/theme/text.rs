@@ -12,11 +12,10 @@ use crate::family::{
 };
 use crate::text::TextStyle;
 
-/// Class keeps Mermaid's two configured font winners until a typed stack owns both layers.
+/// Class separates Mermaid's wrapping probe from the font inherited by displayed labels.
 ///
-/// Layout measurement reads root `fontFamily` first. The stylesheet reads
-/// `themeVariables.fontFamily` first. A directly owned FontStack intentionally replaces both;
-/// inactive, config-owned, and unsupported routes preserve the upstream split.
+/// The probe reads root `fontFamily` first; final measurement follows the stylesheet's
+/// `themeVariables.fontFamily` winner. A directly owned FontStack replaces both families.
 #[derive(Debug)]
 pub(crate) struct ClassTextThemePlan {
     css_binding: super::ClassCssThemeBinding,
@@ -379,9 +378,8 @@ impl ClassTextThemePlan {
         text_style: &mut TextStyle,
         html_calc_text_style: &mut TextStyle,
     ) {
-        let font_family = Some(self.layout_font_family_css().to_string());
-        text_style.font_family = font_family.clone();
-        html_calc_text_style.font_family = font_family;
+        text_style.font_family = Some(self.common_css.font_family().to_owned());
+        html_calc_text_style.font_family = Some(self.layout_font_family_css().to_owned());
         if self.typed_font_size_active() {
             text_style.font_size = self.font_size_px();
         }
@@ -418,6 +416,53 @@ impl ClassTextThemePlan {
         if let Some(outcomes) = outcomes {
             let _ = self.outcomes.set(outcomes);
         }
+    }
+
+    /// Source-owned font sizes need portability evidence even without a typed theme.
+    pub(crate) fn root_dependent_source_residuals(
+        model: &merman_core::models::class_diagram::ClassDiagram,
+        diagram_use_html_labels: bool,
+        control: &merman_core::OperationControl,
+    ) -> merman_core::OperationControlResult<Vec<crate::diagram_theme::SourceStyleResidual>> {
+        use crate::diagram_theme::{
+            SourceStyleChannel, SourceStyleDeclaration, SourceStyleProvenance, SourceStyleResidual,
+            SourceStyleResidualReason,
+        };
+
+        let mut residuals = Vec::new();
+        for (id, class) in model.classes() {
+            control.checkpoint()?;
+            // Members are separate elements: a px declaration on one member cannot clear a
+            // root-dependent declaration on another. Node styles already include parser copies.
+            let node_uses_html =
+                diagram_use_html_labels || crate::class::class_node_requires_math(class.node);
+            let scopes = node_uses_html
+                .then_some(class.node.styles.as_slice())
+                .into_iter()
+                .chain(
+                    class
+                        .members
+                        .iter()
+                        .chain(&class.methods)
+                        .map(|member| std::slice::from_ref(&member.css_style)),
+                );
+            for styles in scopes {
+                if let Some((ordinal, raw)) = crate::mermaid_style::root_dependent_font_size(
+                    styles.iter().map(String::as_str),
+                    control,
+                )? {
+                    let provenance =
+                        SourceStyleProvenance::label_style(id, SourceStyleChannel::Label, ordinal);
+                    if let Ok(declaration) = SourceStyleDeclaration::parse(raw, provenance) {
+                        residuals.push(SourceStyleResidual::from_declaration(
+                            &declaration,
+                            SourceStyleResidualReason::UnsupportedSurface,
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(residuals)
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
@@ -880,6 +925,56 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn root_size_residuals_follow_the_actual_class_label_transport() {
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass A\nstyle A font-size:2rem\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("Class model");
+        };
+        let control = merman_core::OperationControl::new();
+        assert!(
+            ClassTextThemePlan::root_dependent_source_residuals(model, false, &control)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            ClassTextThemePlan::root_dependent_source_residuals(model, true, &control)
+                .unwrap()
+                .len(),
+            1,
+        );
+    }
+
+    #[test]
+    fn unconsumed_class_definition_does_not_manufacture_a_root_size_residual() {
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass A\nclassDef big font-size:2rem\ncssClass \"A\" big\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("Class model");
+        };
+        assert!(model.class("A").unwrap().styles.is_empty());
+        assert!(
+            ClassTextThemePlan::root_dependent_source_residuals(
+                model,
+                true,
+                &merman_core::OperationControl::new(),
+            )
+            .unwrap()
+            .is_empty()
+        );
+    }
+
+    #[test]
     fn node_style_fact_projection_preserves_independent_color_and_typography_counts() {
         let source = ClassNodeLabelStyleFacts {
             visible_runs: 11,
@@ -1002,7 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn inactive_plan_preserves_class_layout_font_precedence() {
+    fn inactive_plan_separates_class_probe_and_displayed_font_precedence() {
         let config = merman_core::presentation::PresentationConfig::from_value(json!({
             "fontFamily": "Class Root, monospace",
             "themeVariables": {
@@ -1015,6 +1110,10 @@ mod tests {
 
         assert_eq!(
             render_config.text_style().font_family.as_deref(),
+            Some("Class Theme,sans-serif")
+        );
+        assert_eq!(
+            render_config.html_calc_text_style().font_family.as_deref(),
             Some("Class Root,monospace")
         );
         assert!(!plan.inherited_font_stack.typed_font_stack_active());

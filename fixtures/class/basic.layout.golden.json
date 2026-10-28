@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 131.902,
+        "max_x": 131.9,
         "max_y": 307.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -20,11 +20,11 @@
           "label": null,
           "points": [
             {
-              "x": 71.951,
+              "x": 71.95,
               "y": 147.0
             },
             {
-              "x": 71.951,
+              "x": 71.95,
               "y": 187.0
             }
           ],
@@ -41,16 +41,16 @@
           "height": 135.0,
           "id": "Animal",
           "is_cluster": false,
-          "width": 119.902,
-          "x": 71.951,
+          "width": 119.9,
+          "x": 71.95,
           "y": 79.5
         },
         {
           "height": 120.0,
           "id": "Dog",
           "is_cluster": false,
-          "width": 75.519,
-          "x": 71.951,
+          "width": 75.52,
+          "x": 71.95,
           "y": 247.0
         }
       ]

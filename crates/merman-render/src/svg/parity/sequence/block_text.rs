@@ -44,8 +44,8 @@ impl<'a> LoopTextRenderContext<'a> {
 }
 
 pub(super) fn display_block_label(raw_label: &str, always_show: bool) -> Option<String> {
-    let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw_label);
-    let t = decoded.as_ref().trim();
+    // Keep entity spelling intact through wrapping and break splitting.
+    let t = raw_label.trim();
     if t.is_empty() {
         if always_show {
             // Mermaid renders empty block labels as a zero-width space inside `<tspan>`.
@@ -130,10 +130,11 @@ pub(super) fn write_loop_text_lines(
         let first_y = sequence_drawn_text_first_y(placement.y0, ctx.margin);
         let y = sequence_drawn_text_y(first_y, ctx.margin, preceding_height);
         let dy = block_text_dy(i, ctx.margin, ctx.style.font_size);
-        let line = if line.is_empty() {
+        let prepared = crate::sequence::prepare_sequence_text_line(&line);
+        let line = if prepared.is_empty() {
             "\u{200b}"
         } else {
-            line.as_str()
+            prepared.as_ref()
         };
         let style = ctx.typography.terminal_style("", css.clone());
         let paintless = ctx.text_shadow.is_paintless(line);
@@ -165,7 +166,7 @@ pub(super) fn write_loop_text_lines(
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
-                text = escape_xml(line)
+                text = super::escape_prepared_text(line)
             );
         } else {
             let _ = write!(
@@ -174,7 +175,7 @@ pub(super) fn write_loop_text_lines(
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
-                text = escape_xml(line)
+                text = super::escape_prepared_text(line)
             );
         }
         ctx.typography_receipt
@@ -248,10 +249,11 @@ pub(super) fn write_section_title_lines(
         let first_y = sequence_drawn_text_first_y(y0, ctx.margin);
         let y = sequence_drawn_text_y(first_y, ctx.margin, preceding_height);
         let dy = block_text_dy(i, ctx.margin, ctx.style.font_size);
-        let line = if line.is_empty() {
+        let prepared = crate::sequence::prepare_sequence_text_line(&line);
+        let line = if prepared.is_empty() {
             "\u{200b}"
         } else {
-            line.as_str()
+            prepared.as_ref()
         };
         let style = ctx.typography.terminal_style("", css.clone());
         let paintless = ctx.text_shadow.is_paintless(line);
@@ -282,7 +284,7 @@ pub(super) fn write_section_title_lines(
             x = fmt(x),
             y = fmt(y),
             style = escape_attr_display(&style),
-            text = escape_xml(line)
+            text = super::escape_prepared_text(line)
         );
         ctx.typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::ControlSectionTitle);

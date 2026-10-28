@@ -1,0 +1,15 @@
+{
+  "fontFamily": "Arial",
+  "themeVariables": {
+    "fontFamily": "Arial",
+    "fontSize": "16px"
+  },
+  "architecture": {
+    "fontSize": 16,
+    "padding": 0,
+    "iconSize": 80,
+    "useMaxWidth": false,
+    "numIter": 1,
+    "randomize": false
+  }
+}

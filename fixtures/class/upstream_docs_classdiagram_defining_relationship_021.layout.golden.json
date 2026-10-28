@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 775.25,
+        "max_x": 775.2,
         "max_y": 214.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -20,11 +20,11 @@
           "label": null,
           "points": [
             {
-              "x": 42.203,
+              "x": 42.2,
               "y": 93.0
             },
             {
-              "x": 42.203,
+              "x": 42.2,
               "y": 133.0
             }
           ],
@@ -45,11 +45,11 @@
           "label": null,
           "points": [
             {
-              "x": 142.609,
+              "x": 142.6,
               "y": 93.0
             },
             {
-              "x": 142.609,
+              "x": 142.6,
               "y": 133.0
             }
           ],
@@ -70,11 +70,11 @@
           "label": null,
           "points": [
             {
-              "x": 243.016,
+              "x": 243.0,
               "y": 93.0
             },
             {
-              "x": 243.016,
+              "x": 243.0,
               "y": 133.0
             }
           ],
@@ -95,11 +95,11 @@
           "label": null,
           "points": [
             {
-              "x": 343.422,
+              "x": 343.4,
               "y": 93.0
             },
             {
-              "x": 343.422,
+              "x": 343.4,
               "y": 133.0
             }
           ],
@@ -120,11 +120,11 @@
           "label": null,
           "points": [
             {
-              "x": 443.828,
+              "x": 443.8,
               "y": 93.0
             },
             {
-              "x": 443.828,
+              "x": 443.8,
               "y": 133.0
             }
           ],
@@ -145,11 +145,11 @@
           "label": null,
           "points": [
             {
-              "x": 544.234,
+              "x": 544.2,
               "y": 93.0
             },
             {
-              "x": 544.234,
+              "x": 544.2,
               "y": 133.0
             }
           ],
@@ -170,11 +170,11 @@
           "label": null,
           "points": [
             {
-              "x": 644.641,
+              "x": 644.6,
               "y": 93.0
             },
             {
-              "x": 644.641,
+              "x": 644.6,
               "y": 133.0
             }
           ],
@@ -195,11 +195,11 @@
           "label": null,
           "points": [
             {
-              "x": 745.047,
+              "x": 745.0,
               "y": 93.0
             },
             {
-              "x": 745.047,
+              "x": 745.0,
               "y": 133.0
             }
           ],
@@ -216,128 +216,128 @@
           "height": 81.0,
           "id": "classA",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 42.203,
+          "width": 60.4,
+          "x": 42.2,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classB",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 42.203,
+          "width": 60.4,
+          "x": 42.2,
           "y": 173.5
         },
         {
           "height": 81.0,
           "id": "classC",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 142.609,
+          "width": 60.4,
+          "x": 142.6,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classD",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 142.609,
+          "width": 60.4,
+          "x": 142.6,
           "y": 173.5
         },
         {
           "height": 81.0,
           "id": "classE",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 243.016,
+          "width": 60.4,
+          "x": 243.0,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classF",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 243.016,
+          "width": 60.4,
+          "x": 243.0,
           "y": 173.5
         },
         {
           "height": 81.0,
           "id": "classG",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 343.422,
+          "width": 60.4,
+          "x": 343.4,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classH",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 343.422,
+          "width": 60.4,
+          "x": 343.4,
           "y": 173.5
         },
         {
           "height": 81.0,
           "id": "classI",
           "is_cluster": false,
-          "width": 56.203,
-          "x": 443.828,
+          "width": 56.2,
+          "x": 443.8,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classJ",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 443.828,
+          "width": 60.4,
+          "x": 443.8,
           "y": 173.5
         },
         {
           "height": 81.0,
           "id": "classK",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 544.234,
+          "width": 60.4,
+          "x": 544.2,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classL",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 544.234,
+          "width": 60.4,
+          "x": 544.2,
           "y": 173.5
         },
         {
           "height": 81.0,
           "id": "classM",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 644.641,
+          "width": 60.4,
+          "x": 644.6,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classN",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 644.641,
+          "width": 60.4,
+          "x": 644.6,
           "y": 173.5
         },
         {
           "height": 81.0,
           "id": "classO",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 745.047,
+          "width": 60.4,
+          "x": 745.0,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "classP",
           "is_cluster": false,
-          "width": 60.406,
-          "x": 745.047,
+          "width": 60.4,
+          "x": 745.0,
           "y": 173.5
         }
       ]

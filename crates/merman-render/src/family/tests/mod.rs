@@ -10665,7 +10665,7 @@ fn prepared_math_native_glyph_geometry(svg: &str) -> Vec<bool> {
     document
         .descendants()
         .filter(|node| {
-            node.has_tag_name("g")
+            (node.has_tag_name("g") || node.has_tag_name("use"))
                 && node.attribute("class").is_some_and(|class| {
                     class
                         .split_ascii_whitespace()
@@ -10673,7 +10673,24 @@ fn prepared_math_native_glyph_geometry(svg: &str) -> Vec<bool> {
                 })
         })
         .map(|group| {
-            group.descendants().any(|node| {
+            let geometry = if group.has_tag_name("use") {
+                let Some(target) = group
+                    .attribute("href")
+                    .and_then(|href| href.strip_prefix('#'))
+                else {
+                    return false;
+                };
+                let Some(definition) = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(target))
+                else {
+                    return false;
+                };
+                definition
+            } else {
+                group
+            };
+            geometry.descendants().any(|node| {
                 node.has_tag_name("path")
                     && node
                         .attribute("d")
@@ -10719,10 +10736,12 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
             .svg()
             .contains(r#"data-merman-prepared-math-native="v1""#)
     );
+    assert!(!rendered.svg().contains("<template"));
     assert!(
         rendered
-            .svg()
-            .contains(r#"<template data-merman-prepared-math-projection="v1">"#)
+            .prepared_math_evidence
+            .native_projection(0)
+            .is_some()
     );
     assert!(!rendered.svg().contains("$$x^2$$"));
 
@@ -10739,6 +10758,14 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
         "{svg}"
     );
     assert_eq!(prepared_math_native_glyph_geometry(svg), [true], "{svg}");
+    assert_eq!(
+        finalized
+            .svg()
+            .prepared_math_terminal_receipt()
+            .expect("template-free math must retain its terminal receipt")
+            .occurrence_count(),
+        1
+    );
 }
 
 #[cfg(feature = "math")]
@@ -10785,7 +10812,104 @@ fn compiled_flowchart_math_survives_the_canonical_resvg_output_policy() {
 
 #[cfg(feature = "math")]
 #[test]
+fn compiled_flowchart_math_survives_user_native_class_collisions() {
+    for source in [
+        "flowchart LR\nA[\"$$x$$\"]:::merman-prepared-math-native\n",
+        "flowchart LR\nA[\"$$x$$\"] --> B[Done]:::merman-prepared-math-native\n",
+    ] {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_compiled_math_renderer()
+            .begin_session()
+            .unwrap();
+        let rendered = prepare(&parsed, &LayoutOptions::default(), session)
+            .expect("prepare compiled Flowchart math with user classes")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render compiled Flowchart math with user classes");
+        let pipeline = crate::svg::SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            ..crate::svg::SvgOutputPolicy::default()
+        }
+        .pipeline();
+
+        let finalized = rendered
+            .finalize_resvg(&pipeline)
+            .expect("user classes must not interfere with canonical native math finalization");
+        let svg = finalized.svg().as_str();
+        let document = crate::xml_dom::Document::parse(svg).expect("well-formed native math SVG");
+        let marked: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "merman-prepared-math-native")
+                })
+            })
+            .collect();
+        assert_eq!(marked.len(), 2, "the user class must survive: {source}");
+        let instances: Vec<_> = marked
+            .iter()
+            .filter(|node| {
+                node.attribute("data-merman-prepared-math-occurrence")
+                    .is_some()
+            })
+            .collect();
+        assert_eq!(instances.len(), 1, "only the formula is owned: {source}");
+        let instance = instances[0];
+        assert!(instance.has_tag_name("use"), "{svg}");
+        assert_eq!(
+            instance.attribute("data-merman-prepared-math-occurrence"),
+            Some("flowchart/node-label/0"),
+        );
+        let target = instance
+            .attribute("href")
+            .and_then(|href| href.strip_prefix('#'))
+            .expect("native formula must reference its definition");
+        let definition = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(target))
+            .expect("native formula definition must exist");
+        assert!(definition.descendants().any(|node| {
+            node.has_tag_name("path")
+                && node
+                    .attribute("d")
+                    .is_some_and(|data| !data.trim().is_empty())
+        }));
+        assert_eq!(
+            finalized
+                .svg()
+                .prepared_math_terminal_receipt()
+                .expect("the formula must retain its terminal receipt")
+                .occurrence_count(),
+            1,
+        );
+        assert!(!svg.contains("<foreignObject"), "{svg}");
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
 fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
+    struct UnknownMathPostprocessor;
+
+    impl crate::svg::SvgPostprocessor for UnknownMathPostprocessor {
+        fn name(&self) -> &'static str {
+            "unknown-math-postprocessor"
+        }
+
+        fn process<'a>(
+            &self,
+            svg: std::borrow::Cow<'a, str>,
+            _ctx: &crate::svg::SvgPostprocessContext<'_>,
+        ) -> crate::Result<std::borrow::Cow<'a, str>> {
+            Ok(svg)
+        }
+    }
+
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
             "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
@@ -10800,12 +10924,33 @@ fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
     let rendered = prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare compiled Flowchart math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render compiled Flowchart math")
-        .apply_pipeline(
-            &SvgPipeline::parity()
-                .with_postprocessor(crate::svg::RootBackgroundPostprocessor::new("#111827")),
-        )
+        .expect("render compiled Flowchart math");
+    let original = rendered.svg().to_owned();
+    let work_meter = std::sync::Arc::clone(rendered.session.work_meter());
+    assert!(work_meter.prepared_text_retained_bytes() > 0);
+    assert!(rendered.prepared_math_evidence_valid);
+    let rendered = rendered
+        .apply_pipeline(&SvgPipeline::parity().with_postprocessor(UnknownMathPostprocessor))
         .expect("draft output may carry invalidated math evidence");
+    assert_eq!(rendered.svg(), original);
+    assert!(!rendered.prepared_math_evidence_valid);
+    assert!(
+        rendered
+            .prepared_math_evidence
+            .native_projection(0)
+            .is_some()
+    );
+
+    let rendered = rendered
+        .apply_pipeline(&SvgPipeline::parity())
+        .expect("a later trusted identity pass may still publish draft SVG");
+    assert!(!rendered.prepared_math_evidence_valid);
+    assert!(
+        rendered
+            .prepared_math_evidence
+            .native_projection(0)
+            .is_some()
+    );
 
     let error = match rendered.finalize_resvg(&SvgPipeline::resvg_safe()) {
         Ok(_) => panic!("native projection must not reuse invalidated prepared-math evidence"),
@@ -10817,6 +10962,7 @@ fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
             .contains("prepared-math evidence was invalidated"),
         "{error}"
     );
+    assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
 }
 
 #[test]

@@ -47,6 +47,20 @@ pub(crate) fn mermaid_markdown_to_lines(
     markdown: &str,
     markdown_auto_wrap: bool,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    markdown_to_lines(markdown, markdown_auto_wrap, false)
+}
+
+pub(super) fn html_markdown_measurement_lines(
+    markdown: &str,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    markdown_to_lines(markdown, true, true)
+}
+
+fn markdown_to_lines(
+    markdown: &str,
+    markdown_auto_wrap: bool,
+    preserve_inline_literals: bool,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
     fn preprocess_mermaid_markdown(markdown: &str, markdown_auto_wrap: bool) -> String {
         let markdown = markdown.replace("\r\n", "\n");
 
@@ -209,7 +223,8 @@ pub(crate) fn mermaid_markdown_to_lines(
 
     // Mermaid wraps SVG-label Markdown strings in single backticks; strip to avoid inline-code
     // suppressing `**`/`_` formatting.
-    let markdown = if markdown.len() >= 2
+    let markdown = if !preserve_inline_literals
+        && markdown.len() >= 2
         && markdown.starts_with('`')
         && markdown.ends_with('`')
         && !markdown.starts_with("``")
@@ -223,9 +238,9 @@ pub(crate) fn mermaid_markdown_to_lines(
     let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
 
     fn needs_full_delimiter_resolution(markdown: &str) -> bool {
-        // The lightweight SVG word scanner does not parse images. Marked's markdownToLines
-        // skips their tokens, so use the full parser to resume correctly at following text.
-        if markdown.contains("![") {
+        // Code spans and images are omitted by the pinned SVG token allowlist. Keep their
+        // delimiter handling in the full parser instead of a second partial implementation.
+        if markdown.contains("![") || markdown.contains('`') {
             return true;
         }
         let chars: Vec<char> = markdown.chars().collect();
@@ -263,7 +278,10 @@ pub(crate) fn mermaid_markdown_to_lines(
         })
     }
 
-    fn resolve_full_delimiter_runs(markdown: &str) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    fn resolve_full_delimiter_runs(
+        markdown: &str,
+        preserve_inline_literals: bool,
+    ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
         fn line_mut(
             out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
             line_idx: usize,
@@ -305,13 +323,40 @@ pub(crate) fn mermaid_markdown_to_lines(
             }
         }
 
-        let parser = pulldown_cmark::Parser::new_ext(
+        fn append_source_text(
+            out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
+            line_idx: &mut usize,
+            text: &str,
+            range: std::ops::Range<usize>,
+            word_type: MermaidMarkdownWordType,
+            previous_text: &mut Option<(usize, bool)>,
+        ) {
+            if text.is_empty() {
+                return;
+            }
+            let join_first_word = previous_text
+                .is_some_and(|(end, can_join)| end == range.start && can_join)
+                && text
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| !is_ecmascript_whitespace(ch));
+            append_text(out, line_idx, text, word_type, join_first_word);
+            *previous_text = Some((
+                range.end,
+                text.chars()
+                    .last()
+                    .is_some_and(|ch| !is_ecmascript_whitespace(ch)),
+            ));
+        }
+
+        let mut parser = pulldown_cmark::Parser::new_ext(
             markdown,
             pulldown_cmark::Options::ENABLE_TABLES
                 | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
                 | pulldown_cmark::Options::ENABLE_TASKLISTS,
         )
-        .into_offset_iter();
+        .into_offset_iter()
+        .peekable();
         let mut out = vec![Vec::new()];
         let mut line_idx = 0;
         let mut style_stack = Vec::new();
@@ -322,7 +367,12 @@ pub(crate) fn mermaid_markdown_to_lines(
         let mut escape_scan_offset = 0;
         let mut escape_pending = false;
 
-        for (event, mut range) in parser {
+        let mut source_end = 0;
+        while let Some((event, mut range)) = parser.next() {
+            let previous_source_end = source_end;
+            if !matches!(event, pulldown_cmark::Event::Start(_)) {
+                source_end = range.end;
+            }
             if skipped_block_depth > 0 {
                 match event {
                     pulldown_cmark::Event::Start(_) => skipped_block_depth += 1,
@@ -346,6 +396,32 @@ pub(crate) fn mermaid_markdown_to_lines(
                             }
                             pulldown_cmark::Tag::Emphasis => {
                                 style_stack.push(MermaidMarkdownWordType::Em);
+                            }
+                            _ if preserve_inline_literals => {
+                                // HTML keeps unsupported inline syntax, but still formats its
+                                // children. Emit the source prefix/suffix around those children.
+                                let prefix_end =
+                                    parser.peek().map_or(range.end, |(event, next)| {
+                                        if matches!(event, pulldown_cmark::Event::End(_)) {
+                                            range.end
+                                        } else {
+                                            next.start
+                                        }
+                                    });
+                                let prefix = range.start..prefix_end;
+                                let kind = style_stack
+                                    .last()
+                                    .copied()
+                                    .unwrap_or(MermaidMarkdownWordType::Normal);
+                                append_source_text(
+                                    &mut out,
+                                    &mut line_idx,
+                                    &markdown[prefix.clone()],
+                                    prefix,
+                                    kind,
+                                    &mut previous_text,
+                                );
+                                source_end = prefix_end;
                             }
                             _ => {
                                 skipped_inline_depth = 1;
@@ -379,6 +455,20 @@ pub(crate) fn mermaid_markdown_to_lines(
                         pulldown_cmark::TagEnd::Strong | pulldown_cmark::TagEnd::Emphasis
                     ) {
                         let _ = style_stack.pop();
+                    } else if preserve_inline_literals {
+                        let suffix = previous_source_end..range.end;
+                        let kind = style_stack
+                            .last()
+                            .copied()
+                            .unwrap_or(MermaidMarkdownWordType::Normal);
+                        append_source_text(
+                            &mut out,
+                            &mut line_idx,
+                            &markdown[suffix.clone()],
+                            suffix,
+                            kind,
+                            &mut previous_text,
+                        );
                     }
                 }
                 pulldown_cmark::Event::Text(text) if in_paragraph && skipped_inline_depth == 0 => {
@@ -417,30 +507,32 @@ pub(crate) fn mermaid_markdown_to_lines(
                         .last()
                         .copied()
                         .unwrap_or(MermaidMarkdownWordType::Normal);
-                    let join_first_word =
-                        previous_text.is_some_and(|(end, can_join): (usize, bool)| {
-                            end == range.start && can_join
-                        }) && source_text
-                            .chars()
-                            .next()
-                            .is_some_and(|character| !is_ecmascript_whitespace(character));
-                    append_text(
+                    append_source_text(
                         &mut out,
                         &mut line_idx,
                         source_text,
+                        range,
                         word_type,
-                        join_first_word,
+                        &mut previous_text,
                     );
-                    previous_text = Some((
-                        range.end,
-                        source_text
-                            .chars()
-                            .last()
-                            .is_some_and(|character| !is_ecmascript_whitespace(character)),
-                    ));
                 }
                 pulldown_cmark::Event::Code(_) if in_paragraph && skipped_inline_depth == 0 => {
-                    previous_text = None;
+                    if preserve_inline_literals && let Some(raw) = markdown.get(range.clone()) {
+                        let kind = style_stack
+                            .last()
+                            .copied()
+                            .unwrap_or(MermaidMarkdownWordType::Normal);
+                        append_source_text(
+                            &mut out,
+                            &mut line_idx,
+                            raw,
+                            range,
+                            kind,
+                            &mut previous_text,
+                        );
+                    } else {
+                        previous_text = None;
+                    }
                 }
                 pulldown_cmark::Event::Html(html) | pulldown_cmark::Event::InlineHtml(html)
                     if skipped_inline_depth == 0 =>
@@ -475,7 +567,7 @@ pub(crate) fn mermaid_markdown_to_lines(
     }
 
     if needs_full_delimiter_resolution(&pre) {
-        return resolve_full_delimiter_runs(&pre);
+        return resolve_full_delimiter_runs(&pre, preserve_inline_literals);
     }
 
     let chars: Vec<char> = pre.chars().collect();
@@ -486,7 +578,6 @@ pub(crate) fn mermaid_markdown_to_lines(
     let mut stack: Vec<MermaidMarkdownWordType> = vec![MermaidMarkdownWordType::Normal];
     let mut word = String::new();
     let mut word_ty = MermaidMarkdownWordType::Normal;
-    let mut in_code_span = false;
 
     fn line_mut(
         out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
@@ -518,7 +609,7 @@ pub(crate) fn mermaid_markdown_to_lines(
 
         // The pinned Mermaid SVG Markdown projection omits Marked's escape nodes,
         // rather than printing their escaped punctuation as a generic Markdown renderer would.
-        if !in_code_span && ch == '\\' && chars.get(i + 1).is_some_and(char::is_ascii_punctuation) {
+        if ch == '\\' && chars.get(i + 1).is_some_and(char::is_ascii_punctuation) {
             flush_word(&mut out, &mut line_idx, &mut word, word_ty);
             word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
             i += 2;
@@ -565,26 +656,7 @@ pub(crate) fn mermaid_markdown_to_lines(
             continue;
         }
 
-        if ch == '`' {
-            if word.is_empty() {
-                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-            }
-            word.push(ch);
-            in_code_span = !in_code_span;
-            i += 1;
-            continue;
-        }
-
         if ch == '*' || ch == '_' {
-            if in_code_span {
-                if word.is_empty() {
-                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-                }
-                word.push(ch);
-                i += 1;
-                continue;
-            }
-
             let prev = i.checked_sub(1).map(|index| chars[index]);
             let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
                 2
@@ -688,6 +760,24 @@ pub(crate) fn mermaid_markdown_is_plain_text(markdown: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn html_inline_literal_projection_keeps_child_styles_and_code_adjacency() {
+        use MermaidMarkdownWordType::*;
+        assert_eq!(
+            html_markdown_measurement_lines("**pre`code`post**"),
+            vec![vec![("pre`code`post".to_owned(), Strong)]],
+        );
+        assert_eq!(
+            html_markdown_measurement_lines("`x` [**bold** label](u)"),
+            vec![vec![
+                ("`x`".to_owned(), Normal),
+                ("[".to_owned(), Normal),
+                ("bold".to_owned(), Strong),
+                ("label](u)".to_owned(), Normal),
+            ]],
+        );
+    }
 
     #[test]
     fn svg_markdown_omits_marked_escape_nodes_in_plain_and_nested_delimiters() {
@@ -870,18 +960,20 @@ mod tests {
     }
 
     #[test]
-    fn inline_code_suppresses_emphasis_delimiters() {
+    fn svg_markdown_code_spans_match_the_full_parser_projection() {
         use MermaidMarkdownWordType::*;
 
-        // Mermaid CLI baselines (class diagram HTML labels) preserve backticks and do not
-        // interpret `**...**` inside them as strong/emphasis.
         assert_eq!(
             mermaid_markdown_to_lines("inline: `**not bold**`", true),
-            vec![vec![
-                ("inline:".to_string(), Normal),
-                ("`**not".to_string(), Normal),
-                ("bold**`".to_string(), Normal),
-            ]]
+            vec![vec![("inline:".to_string(), Normal)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`a ``x`` b`", true),
+            vec![vec![("a".to_string(), Normal), ("b".to_string(), Normal)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`a ``x`` ***b***`", true),
+            vec![vec![("a".to_string(), Normal), ("b".to_string(), Strong)]]
         );
     }
 

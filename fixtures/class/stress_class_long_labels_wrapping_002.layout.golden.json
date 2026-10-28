@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 640.449,
+        "max_x": 640.45,
         "max_y": 389.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -46,7 +46,7 @@
           "height": 135.0,
           "id": "VeryLongClassName_With_Dashes-And_Underscores",
           "is_cluster": false,
-          "width": 628.449,
+          "width": 628.45,
           "x": 326.225,
           "y": 79.5
         },
@@ -54,7 +54,7 @@
           "height": 120.0,
           "id": "AnotherExtremelyLongNamedClass",
           "is_cluster": false,
-          "width": 334.311,
+          "width": 334.31,
           "x": 326.225,
           "y": 329.0
         }

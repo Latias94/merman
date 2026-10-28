@@ -15,6 +15,7 @@ use super::*;
 )]
 pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
+    prepared_labels: &crate::class::ClassPreparedLabels,
     model: &ClassSvgModel,
     relation_theme: &crate::class::ClassRelationThemePlan,
     typography_theme: &crate::class::ClassTextThemePlan,
@@ -198,6 +199,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         line_hop_paths: &line_hop_paths,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
+        prepared_svg_edge_labels: &prepared_labels.edges_by_id,
         diagram_marker_class: aria_roledescription,
         diagram_id,
         content_tx,
@@ -229,6 +231,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     let nodes_ctx = ClassNodesRenderContext {
         layout,
+        prepared_svg_titles: &prepared_labels.titles_by_id,
         class_nodes_by_id: &class_nodes_by_id,
         class_color_indices: &class_color_indices,
         note_by_id: &note_by_id,

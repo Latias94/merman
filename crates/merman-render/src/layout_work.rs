@@ -1,4 +1,4 @@
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::{Error, Result};
 #[cfg(test)]
 use std::cell::Cell;
@@ -40,6 +40,20 @@ impl OperationLayoutWorkControl {
         #[cfg(test)]
         self.adapter_work.set(next_adapter_work);
         Ok(())
+    }
+
+    /// Keeps prepared-text accounting attached to the artifact that owns the retained bytes.
+    pub(crate) fn reserve_prepared_text_retained_bytes(
+        &self,
+        bytes: usize,
+    ) -> Result<PreparedTextRetainedReservation> {
+        if let Some(error) = self.rejection.borrow().clone() {
+            return Err(error.into());
+        }
+        self.meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        self.meter
+            .reserve_prepared_text_retained_bytes(bytes)
+            .map_err(Error::from)
     }
 
     pub(crate) fn checked_add(&self, left: usize, right: usize) -> Result<usize> {

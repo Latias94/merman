@@ -2,8 +2,8 @@
 //!
 //! Family layout owns occurrence identity and terminal style resolution. This module performs one
 //! backend preparation for that resolved request. The retained XHTML payload always feeds the
-//! browser/Parity writer; backends that can produce native geometry also embed that projection for
-//! the ResvgSafe pipeline.
+//! browser/Parity writer; native geometry stays in a separate private payload transported by the
+//! evidence lease to the ResvgSafe pipeline.
 
 #[cfg(feature = "math")]
 use std::borrow::Cow;
@@ -24,16 +24,11 @@ use crate::resources::{
 };
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
-pub(crate) const PREPARED_MATH_CLASS_ATTRIBUTE: &str = r#"class="merman-prepared-math""#;
-pub(crate) const PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE: &str =
-    r#"data-merman-prepared-math-native="v1""#;
 pub(crate) const BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE: &str =
     r#"data-merman-math-native="unavailable""#;
 pub(crate) const PREPARED_MATH_OCCURRENCE_ATTRIBUTE: &str = "data-merman-prepared-math-occurrence";
 pub(crate) const PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE: &str =
     r#"data-merman-prepared-math-switch="v1""#;
-pub(crate) const PREPARED_MATH_PROJECTION_TEMPLATE_OPEN: &str =
-    r#"<template data-merman-prepared-math-projection="v1">"#;
 
 #[derive(Debug)]
 struct RawPreparedMathLabel {
@@ -41,7 +36,7 @@ struct RawPreparedMathLabel {
     metrics: TextMetrics,
     max_line_height_px: f64,
     max_math_height_px: Option<f64>,
-    native_svg: Option<String>,
+    native_projection: Option<Arc<PreparedMathNativeProjection>>,
 }
 
 impl RawPreparedMathLabel {
@@ -62,34 +57,72 @@ impl RawPreparedMathLabel {
             metrics,
             max_line_height_px,
             max_math_height_px,
-            native_svg: None,
+            native_projection: None,
         }
     }
 
-    fn with_native_svg(
+    fn with_native_projection(
         html: impl Into<String>,
         metrics: TextMetrics,
         max_line_height_px: f64,
         max_math_height_px: f64,
-        native_svg: impl Into<String>,
+        native_projection: PreparedMathNativeProjection,
     ) -> Self {
         Self {
             html: html.into(),
             metrics,
             max_line_height_px,
             max_math_height_px: Some(max_math_height_px),
-            native_svg: Some(native_svg.into()),
+            native_projection: Some(Arc::new(native_projection)),
+        }
+    }
+}
+
+/// Native geometry owned by preparation, never recovered from browser XHTML.
+///
+/// The fragment retains the producer's nested SVG viewports, clipping and paint. Dimensions use
+/// the same serialized precision as the fragment so placement does not reinterpret its markup.
+#[derive(Debug)]
+pub(crate) struct PreparedMathNativeProjection {
+    svg: String,
+    width_px: f64,
+    height_px: f64,
+    fingerprint: super::PreparedMathProjectionFingerprint,
+}
+
+impl PreparedMathNativeProjection {
+    #[cfg(any(feature = "math", test))]
+    pub(crate) fn new(svg: String, width_px: f64, height_px: f64) -> Self {
+        Self {
+            fingerprint: super::PreparedMathProjectionFingerprint::from_projection(&svg),
+            svg,
+            width_px: format_number(width_px)
+                .parse()
+                .expect("formatted math width"),
+            height_px: format_number(height_px)
+                .parse()
+                .expect("formatted math height"),
         }
     }
 
-    fn into_parts(self) -> (String, TextMetrics, f64, Option<f64>, Option<String>) {
-        (
-            self.html,
-            self.metrics,
-            self.max_line_height_px,
-            self.max_math_height_px,
-            self.native_svg,
-        )
+    pub(crate) fn svg(&self) -> &str {
+        &self.svg
+    }
+
+    pub(crate) const fn width_px(&self) -> f64 {
+        self.width_px
+    }
+
+    pub(crate) const fn height_px(&self) -> f64 {
+        self.height_px
+    }
+
+    pub(crate) const fn fingerprint(&self) -> super::PreparedMathProjectionFingerprint {
+        self.fingerprint
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.svg.len())
     }
 }
 
@@ -186,7 +219,7 @@ pub(crate) struct PreparedMathLabel {
     browser_xhtml: Arc<str>,
     style_assurance: super::PreparedMathStyleAssurance,
     occurrence_id: Option<super::PreparedMathOccurrenceId>,
-    projection_fingerprint: Option<super::PreparedMathProjectionFingerprint>,
+    native_projection: Option<Arc<PreparedMathNativeProjection>>,
 }
 
 impl PreparedMathLabel {
@@ -199,7 +232,7 @@ impl PreparedMathLabel {
             browser_xhtml: Arc::from("<span/>"),
             style_assurance: super::PreparedMathStyleAssurance::opaque_html("", 16.0),
             occurrence_id: None,
-            projection_fingerprint: None,
+            native_projection: None,
         }
     }
 
@@ -219,6 +252,10 @@ impl PreparedMathLabel {
         &self.browser_xhtml
     }
 
+    pub(crate) fn native_projection(&self) -> Option<&Arc<PreparedMathNativeProjection>> {
+        self.native_projection.as_ref()
+    }
+
     pub(crate) const fn style_assurance(&self) -> &super::PreparedMathStyleAssurance {
         &self.style_assurance
     }
@@ -228,10 +265,10 @@ impl PreparedMathLabel {
         expected_emissions: usize,
     ) -> Option<super::PreparedMathExpectation> {
         let occurrence_id = self.occurrence_id.clone()?;
-        Some(match self.projection_fingerprint {
-            Some(fingerprint) => super::PreparedMathExpectation::available(
+        Some(match &self.native_projection {
+            Some(projection) => super::PreparedMathExpectation::available(
                 occurrence_id,
-                fingerprint,
+                projection.fingerprint(),
                 expected_emissions,
             ),
             None => super::PreparedMathExpectation::unavailable(occurrence_id, expected_emissions),
@@ -242,6 +279,13 @@ impl PreparedMathLabel {
     pub(crate) fn retained_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             .checked_add(self.browser_xhtml.len())
+            .and_then(|bytes| {
+                bytes.checked_add(
+                    self.native_projection
+                        .as_ref()
+                        .map_or(0, |projection| projection.retained_bytes()),
+                )
+            })
             .and_then(|bytes| bytes.checked_add(self.style_assurance.retained_heap_bytes()))
             .and_then(|bytes| {
                 bytes.checked_add(
@@ -589,7 +633,13 @@ fn finish_external_preparation(
     style_assurance: super::PreparedMathStyleAssurance,
     work_meter: &Arc<OperationWorkMeter>,
 ) -> Result<Option<PreparedMathLabel>, OperationWorkError> {
-    let (html, metrics, max_line_height_px, max_math_height_px, native_svg) = prepared.into_parts();
+    let RawPreparedMathLabel {
+        html,
+        metrics,
+        max_line_height_px,
+        max_math_height_px,
+        native_projection,
+    } = prepared;
     if !valid_metrics(&metrics)
         || !max_line_height_px.is_finite()
         || max_line_height_px < 0.0
@@ -599,13 +649,11 @@ fn finish_external_preparation(
     {
         return Ok(None);
     }
-    let Some(browser_xhtml) = browser_payload(&html, native_svg.as_deref(), request, work_meter)?
+    let Some(browser_xhtml) =
+        browser_payload(&html, native_projection.as_deref(), request, work_meter)?
     else {
         return Ok(None);
     };
-    let projection_fingerprint = native_svg
-        .as_deref()
-        .map(super::PreparedMathProjectionFingerprint::from_projection);
     let artifact = PreparedMathLabel {
         metrics,
         max_line_height_px,
@@ -613,7 +661,7 @@ fn finish_external_preparation(
         browser_xhtml: Arc::from(browser_xhtml),
         style_assurance,
         occurrence_id: request.occurrence_id.cloned(),
-        projection_fingerprint,
+        native_projection,
     };
     work_meter.preflight_prepared_text_retained_bytes(
         request
@@ -664,7 +712,7 @@ fn resolve_output_error(
 
 fn browser_payload(
     rendered: &str,
-    native_svg: Option<&str>,
+    native_projection: Option<&PreparedMathNativeProjection>,
     request: PrepareMathLabelRequest<'_>,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<String>, OperationWorkError> {
@@ -672,19 +720,19 @@ fn browser_payload(
         r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" style=""#;
     const PREFIX_UNAVAILABLE: &str = r#"<span class="merman-prepared-math" data-merman-prepared-math-native="unavailable" style=""#;
     const BODY: &str = "\">";
-    const NATIVE_PREFIX: &str = r#"<template data-merman-prepared-math-projection="v1">"#;
-    const NATIVE_SUFFIX: &str = "</template>";
     const SUFFIX: &str = "</span>";
     const OCCURRENCE_PREFIX: &str = r#"" data-merman-prepared-math-occurrence=""#;
 
-    let prefix = if native_svg.is_some() {
+    let prefix = if native_projection.is_some() {
         PREFIX_AVAILABLE
     } else {
         PREFIX_UNAVAILABLE
     };
 
-    let retained_prefix = prepared_math_retained_prefix(request);
-    preflight_raw_math_output(request, work_meter, rendered.len())?;
+    let retained_prefix = prepared_math_retained_prefix(request)
+        .saturating_add(native_projection.map_or(0, PreparedMathNativeProjection::retained_bytes));
+    work_meter
+        .preflight_prepared_text_retained_bytes(retained_prefix.saturating_add(rendered.len()))?;
     let max_browser_bytes = work_meter
         .remaining_prepared_text_retained_bytes()
         .map_or(usize::MAX, |remaining| {
@@ -715,14 +763,6 @@ fn browser_payload(
                 bytes
                     .checked_add(OCCURRENCE_PREFIX.len())
                     .and_then(|bytes| bytes.checked_add(occurrence_id.as_str().len()))
-            })
-        })
-        .and_then(|bytes| {
-            native_svg.map_or(Some(bytes), |native_svg| {
-                bytes
-                    .checked_add(NATIVE_PREFIX.len())
-                    .and_then(|bytes| bytes.checked_add(native_svg.len()))
-                    .and_then(|bytes| bytes.checked_add(NATIVE_SUFFIX.len()))
             })
         })
         .and_then(|bytes| bytes.checked_add(SUFFIX.len()))
@@ -776,11 +816,6 @@ fn browser_payload(
     }
     payload.push_str(BODY);
     payload.push_str(&rendered);
-    if let Some(native_svg) = native_svg {
-        payload.push_str(NATIVE_PREFIX);
-        payload.push_str(native_svg);
-        payload.push_str(NATIVE_SUFFIX);
-    }
     payload.push_str(SUFFIX);
     debug_assert_eq!(payload.len(), final_len);
     Ok(Some(payload))
@@ -891,39 +926,12 @@ pub(super) struct CompiledRatexFormula {
 }
 
 #[cfg(feature = "math")]
-struct CompiledRatexLayout {
-    display_list: ratex_types::DisplayList,
-    width_em: f64,
-    height_em: f64,
-}
-
-#[cfg(feature = "math")]
-fn layout_compiled_ratex_formula(
-    latex: &str,
-    color: ratex_types::Color,
-) -> Option<CompiledRatexLayout> {
-    let ast = ratex_parser::parse(latex).ok()?;
-    let layout_options = ratex_layout::LayoutOptions::default()
-        .with_style(ratex_types::MathStyle::Display)
-        .with_color(color);
-    let layout_box = ratex_layout::layout(&ast, &layout_options);
-    let display_list = ratex_layout::to_display_list(&layout_box);
-    let width_em = emitted_em_dimension(display_list.width.max(0.0));
-    let height_em = emitted_em_dimension(display_list.total_height().max(0.0));
-    Some(CompiledRatexLayout {
-        display_list,
-        width_em,
-        height_em,
-    })
-}
-
-#[cfg(feature = "math")]
 pub(super) fn measure_compiled_ratex_formula(
     latex: &str,
     color: ratex_types::Color,
 ) -> Option<(f64, f64)> {
-    let layout = layout_compiled_ratex_formula(latex, color)?;
-    Some((layout.width_em, layout.height_em))
+    let formula = render_compiled_ratex_formula(latex, color)?;
+    Some((formula.width_em, formula.height_em))
 }
 
 #[cfg(feature = "math")]
@@ -931,21 +939,17 @@ pub(super) fn render_compiled_ratex_formula(
     latex: &str,
     color: ratex_types::Color,
 ) -> Option<CompiledRatexFormula> {
-    let layout = layout_compiled_ratex_formula(latex, color)?;
-    let svg = ratex_svg::render_to_svg(
-        &layout.display_list,
-        &ratex_svg::SvgOptions {
-            font_size: 1.0,
-            padding: 0.0,
-            stroke_width: 0.04,
-            embed_glyphs: true,
-            font_dir: String::new(),
-        },
-    );
+    let ast = ratex_parser::parse(latex).ok()?;
+    let layout_options = ratex_layout::LayoutOptions::default()
+        .with_style(ratex_types::MathStyle::Display)
+        .with_color(color);
+    let layout_box = ratex_layout::layout(&ast, &layout_options);
+    let display_list = ratex_layout::to_display_list(&layout_box);
+    let rendered = super::glyph_svg::render(&display_list, layout_box.width)?;
     Some(CompiledRatexFormula {
-        svg: svg_with_em_size(svg, layout.width_em, layout.height_em),
-        width_em: layout.width_em,
-        height_em: layout.height_em,
+        svg: rendered.svg,
+        width_em: rendered.width_em,
+        height_em: rendered.height_em,
     })
 }
 
@@ -1078,18 +1082,20 @@ fn prepare_compiled_ratex_pure_html_label(
         height: height_px,
         line_count: line_count.max(1),
     };
-    let native_svg = native_math_projection(width_px, height_px, native_lines);
+    let native_projection = native_math_projection(width_px, height_px, native_lines);
     preflight_raw_math_output(
         request,
         work_meter,
-        browser_html.len().saturating_add(native_svg.len()),
+        browser_html
+            .len()
+            .saturating_add(native_projection.retained_bytes()),
     )?;
-    Ok(Some(RawPreparedMathLabel::with_native_svg(
+    Ok(Some(RawPreparedMathLabel::with_native_projection(
         browser_html,
         metrics,
         max_line_height_px,
         max_math_height_px,
-        native_svg,
+        native_projection,
     )))
 }
 
@@ -1103,14 +1109,14 @@ fn positioned_ratex_svg(
 ) -> Option<String> {
     let open_end = rendered.svg.find('>')?;
     let body = rendered.svg.get(open_end + 1..)?.strip_suffix("</svg>")?;
+    let document = crate::xml_dom::Document::parse(&rendered.svg).ok()?;
+    let view_box = document.root_element().attribute("viewBox")?;
     Some(format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" x="{}" y="{}" width="{}" height="{}" viewBox="0 0 {} {}">{body}</svg>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" x="{}" y="{}" width="{}" height="{}" viewBox="{view_box}">{body}</svg>"#,
         format_number(x_px),
         format_number(y_px),
         format_number(width_px),
         format_number(height_px),
-        format_number(rendered.width_em),
-        format_number(rendered.height_em),
     ))
 }
 
@@ -1119,7 +1125,7 @@ fn native_math_projection(
     width_px: f64,
     height_px: f64,
     native_lines: Vec<(f64, String)>,
-) -> String {
+) -> PreparedMathNativeProjection {
     let mut projection = format!(
         r#"<g data-merman-prepared-math-width="{}" data-merman-prepared-math-height="{}">"#,
         format_number(width_px),
@@ -1134,7 +1140,7 @@ fn native_math_projection(
         );
     }
     projection.push_str("</g>");
-    projection
+    PreparedMathNativeProjection::new(projection, width_px, height_px)
 }
 
 #[cfg(feature = "math")]
@@ -1292,30 +1298,7 @@ pub(super) fn compiled_ratex_math_only_lines(text: &str) -> Option<Vec<Classifie
     Some(lines)
 }
 
-#[cfg(feature = "math")]
-pub(super) fn svg_with_em_size(svg: String, width_em: f64, height_em: f64) -> String {
-    let Some(open_end) = svg.find('>') else {
-        return svg;
-    };
-    let Some(body_with_close) = svg.get(open_end + 1..) else {
-        return svg;
-    };
-    let Some(body) = body_with_close.strip_suffix("</svg>") else {
-        return svg;
-    };
-    let width = fmt_num(width_em);
-    let height = fmt_num(height_em);
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
-    )
-}
-
-#[cfg(feature = "math")]
-pub(super) fn emitted_em_dimension(value: f64) -> f64 {
-    fmt_num(value).parse().unwrap_or(0.0)
-}
-
-#[cfg(feature = "math")]
+#[cfg(all(feature = "math", test))]
 pub(super) fn fmt_num(n: f64) -> String {
     format_number(n)
 }
@@ -1408,6 +1391,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn browser_payload_reserves_room_for_the_separate_native_payload_before_sanitizing() {
+        let config = PresentationConfig::default();
+        let style = TextStyle::default();
+        let request = PrepareMathLabelRequest::sequence("$$x$$", &config, &style, "#334155");
+        let native = PreparedMathNativeProjection::new(
+            format!("<g>{}</g>", "<path d=\"M0 0h1\"/>".repeat(64)),
+            1.0,
+            1.0,
+        );
+        let rendered = "<b>x</b>";
+        let attempted =
+            prepared_math_retained_prefix(request) + native.retained_bytes() + rendered.len();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, attempted - 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        let error = browser_payload(rendered, Some(&native), request, &meter)
+            .expect_err("native retention must leave less room for browser sanitization");
+        let OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("expected prepared-math retention limit");
+        };
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.actual, attempted);
+        assert_eq!(meter.used(), 0, "reject before HTML recovery starts");
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
     #[cfg(feature = "math")]
     #[test]
     fn compiled_artifact_carries_browser_and_native_projections_with_terminal_style() {
@@ -1442,10 +1454,22 @@ mod tests {
                 .browser_xhtml()
                 .contains(r#"data-merman-prepared-math-native="v1""#)
         );
-        assert!(
-            artifact
-                .browser_xhtml()
-                .contains(r#"<template data-merman-prepared-math-projection="v1">"#)
+        assert!(!artifact.browser_xhtml().contains("<template"));
+        let native = artifact
+            .native_projection()
+            .expect("private native payload");
+        assert!(native.svg().contains("<path"));
+        assert_eq!(
+            native.width_px(),
+            format_number(artifact.metrics().width)
+                .parse::<f64>()
+                .unwrap()
+        );
+        assert_eq!(
+            native.height_px(),
+            format_number(artifact.metrics().height)
+                .parse::<f64>()
+                .unwrap()
         );
         assert!(artifact.browser_xhtml().contains("<path"));
         assert!(!artifact.browser_xhtml().contains("$$"));
@@ -1453,6 +1477,7 @@ mod tests {
             artifact.retained_bytes(),
             std::mem::size_of::<PreparedMathLabel>()
                 + artifact.browser_xhtml().len()
+                + native.retained_bytes()
                 + "#e5e7eb".len()
         );
     }
@@ -1505,49 +1530,46 @@ mod tests {
                             .split(';')
                             .any(|declaration| declaration == format!("color:{foreground}"))
                     );
-                    let mut painted_glyphs = 0;
-                    let mut browser_glyphs = 0;
-                    let mut native_glyphs = 0;
-                    for glyph in wrapper.descendants().filter(|node| {
-                        matches!(node.tag_name().name(), "path" | "line" | "rect" | "text")
-                    }) {
-                        for paint in ["fill", "stroke"] {
-                            let Some(value) =
-                                glyph.attribute(paint).filter(|value| *value != "none")
-                            else {
-                                continue;
-                            };
-                            let actual = merman_core::theme_color::ThemeColor::parse(value)
-                                .unwrap()
-                                .rgba_channels();
-                            for (actual, expected) in
-                                [actual.red, actual.green, actual.blue, actual.alpha]
-                                    .into_iter()
-                                    .zip(expected)
-                            {
-                                assert!(
-                                    (actual - expected).abs() < 0.00001,
-                                    "{foreground} {text} {shell:?} glyph {paint}: {value}"
-                                );
-                            }
-                            painted_glyphs += 1;
-                            if glyph.ancestors().any(|node| node.has_tag_name("template")) {
-                                native_glyphs += 1;
-                            } else {
-                                browser_glyphs += 1;
+                    let painted_glyphs = |svg: &str| {
+                        let document = crate::xml_dom::Document::parse(svg).unwrap();
+                        let mut painted = 0;
+                        for glyph in document.descendants().filter(|node| {
+                            matches!(node.tag_name().name(), "path" | "line" | "rect" | "text")
+                        }) {
+                            for paint in ["fill", "stroke"] {
+                                let Some(value) =
+                                    glyph.attribute(paint).filter(|value| *value != "none")
+                                else {
+                                    continue;
+                                };
+                                let actual = merman_core::theme_color::ThemeColor::parse(value)
+                                    .unwrap()
+                                    .rgba_channels();
+                                for (actual, expected) in
+                                    [actual.red, actual.green, actual.blue, actual.alpha]
+                                        .into_iter()
+                                        .zip(expected)
+                                {
+                                    assert!(
+                                        (actual - expected).abs() < 0.00001,
+                                        "{foreground} {text} {shell:?} glyph {paint}: {value}"
+                                    );
+                                }
+                                painted += 1;
                             }
                         }
-                    }
-                    assert!(
-                        painted_glyphs > 0 && browser_glyphs > 0,
-                        "{foreground} {text} {shell:?}: browser={browser_glyphs}, native={native_glyphs}, payload={}",
-                        artifact.browser_xhtml(),
-                    );
+                        painted
+                    };
+                    assert!(painted_glyphs(artifact.browser_xhtml()) > 0);
+                    assert!(!artifact.browser_xhtml().contains("<template"));
                     assert_eq!(
-                        native_glyphs > 0,
+                        artifact.native_projection().is_some(),
                         text.starts_with("$$"),
                         "only pure formulas provide native projection"
                     );
+                    if let Some(native) = artifact.native_projection() {
+                        assert!(painted_glyphs(native.svg()) > 0);
+                    }
                 }
             }
         }

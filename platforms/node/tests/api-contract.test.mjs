@@ -26,6 +26,7 @@ import {
   BINDING_OPTIONS_SCHEMA_VERSION,
   BINDING_OPTION_GROUP_SPECS,
   BINDING_OPERATION_EXPECTATIONS,
+  CONSTRUCTOR_SERVICE_SPECS,
   METADATA_SPECS,
   TEXT_MEASUREMENT_PROTOCOL_VERSION,
 } from "../src/generated/binding-contract.mjs";
@@ -295,8 +296,15 @@ function runtimeCatalog(overrides = {}) {
       ["layout-cytoscape", "layout-elk", "svg"],
       { usesSvgPipeline: true },
     ),
-    constructor_service_ids: [],
-    constructor_service_contracts: [],
+    constructor_service_ids: [...NODE_WIRE_CONTRACT.artifact.constructor_service_ids],
+    constructor_service_contracts: NODE_WIRE_CONTRACT.artifact.constructor_service_ids.map((id) => {
+      const spec = CONSTRUCTOR_SERVICE_SPECS.find((spec) => spec.id === id);
+      return {
+        id,
+        provided_text_measurement_provider_ids: [...spec.provided_text_measurement_provider_ids],
+        resource_limits: structuredClone(spec.resource_limits),
+      };
+    }),
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
       output_ids: ["svg"],
@@ -583,6 +591,7 @@ test("runtime catalog output contracts fail closed on ID and nested-shape drift"
 function transportFactory(overrides = {}) {
   const calls = [];
   const createdWith = [];
+  const createdIconPacks = [];
   const transportCalls = [];
   const transport = {
     async execute(requestJson, signal, timeoutMs) {
@@ -609,14 +618,44 @@ function transportFactory(overrides = {}) {
   return {
     calls,
     createdWith,
-    loadTransport: async (optionsJson) => {
+    createdIconPacks,
+    loadTransport: async (optionsJson, iconPacksJson) => {
       createdWith.push(JSON.parse(optionsJson));
+      createdIconPacks.push(iconPacksJson);
       return transport;
     },
     transport,
     transportCalls,
   };
 }
+
+test("icon packs use a separate immutable constructor argument, including empty arrays", async () => {
+  const packs = [{ json: '{"prefix":"test","icons":{}}', registrationName: "fleet" }];
+  for (const iconPacks of [undefined, [], packs]) {
+    const factory = transportFactory();
+    const engine = await createNodeEngine({ iconPacks }, { loadTransport: factory.loadTransport });
+    assert.equal(Object.hasOwn(factory.createdWith[0], "iconPacks"), false);
+    assert.equal(factory.createdIconPacks[0], iconPacks === undefined ? undefined : JSON.stringify(iconPacks));
+    if (iconPacks?.length) {
+      iconPacks[0].json = "changed after admission";
+      assert.match(factory.createdIconPacks[0], /prefix/);
+    }
+    await engine.dispose();
+  }
+});
+
+test("icon pack wire shape rejects host acquisition and non-string content before loading", async () => {
+  for (const iconPacks of [
+    null, {}, [{ json: {} }], [{ url: "https://example.invalid/pack.json" }],
+    [{ json: "{}", registrationName: 1 }], [{ json: "{}", load: () => "{}" }],
+  ]) {
+    const factory = transportFactory();
+    await assert.rejects(
+      createNodeEngine({ iconPacks }, { loadTransport: factory.loadTransport }), TypeError,
+    );
+    assert.equal(factory.createdWith.length, 0);
+  }
+});
 
 test("default construction is explicit deterministic interactive policy", async () => {
   const factory = transportFactory();
@@ -1350,8 +1389,8 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   additive.metadata_ids.splice(1, 0, "future-metadata");
   additive.option_group_ids.push("future-option-group");
   additive.option_group_ids.sort();
-  additive.constructor_service_ids = ["future-constructor-service"];
-  additive.constructor_service_contracts = [{
+  additive.constructor_service_ids.unshift("future-constructor-service");
+  additive.constructor_service_contracts.unshift({
     id: "future-constructor-service",
     provided_text_measurement_provider_ids: ["future-provider"],
     resource_limits: [{
@@ -1363,7 +1402,7 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
       future_limit_metadata: true,
     }],
     future_service_metadata: true,
-  }];
+  });
   additive.capabilities.text_measurement.provider_ids = ["deterministic", "future-provider"];
   additive.future_root = { preserved: true };
   const additiveFactory = transportFactory({
@@ -1738,6 +1777,8 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.match(declarations, /readonly fallback_reason\?:\s*string \| null/);
   assert.match(declarations, /\breadonly runtimeCatalog:/);
   assert.match(declarations, /\boptionsJson\?: string;/);
+  assert.match(declarations, /\biconPacks\?: readonly MermanIconPack\[\];/);
+  assert.match(declarations, /interface MermanIconPack\s*{\s*json: string;\s*registrationName\?: string;/);
   assert.match(declarations, /provider_ids:\s*string\[\]/);
   assert.match(declarations, /options_schema_versions:\s*number\[\]/);
   assert.match(declarations, /option_group_ids:\s*string\[\]/);

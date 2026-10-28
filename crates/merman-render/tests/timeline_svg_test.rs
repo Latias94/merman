@@ -1327,6 +1327,57 @@ impl HostTextMeasurer for RecordingTimelineHost {
 }
 
 #[test]
+fn timeline_unresolved_section_weight_cannot_certify_typed_typography() {
+    let theme = timeline_typography_theme_with_font_size(
+        FontStack::single("TimelineWeight").unwrap(),
+        Some(24.0),
+    );
+    for weight in ["var(--section-weight)", "calc(400 + 300)", "unknown-weight"] {
+        for requirement in [
+            ThemePortabilityRequirement::RequirePortable,
+            ThemePortabilityRequirement::BestEffort,
+        ] {
+            let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "theme": "redux",
+                    "themeVariables": {"fontWeight": weight}
+                }),
+            ));
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(
+                    "timeline\nsection Release\nPlan : Build\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(requirement)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let result = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                .and_then(|artifact| {
+                    artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                });
+            if requirement == ThemePortabilityRequirement::RequirePortable {
+                let error = result.err().expect("unresolved weight must fail closed");
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((merman_render::DiagramFamilyId::TIMELINE, 2)),
+                    "{weight}: {error:?}"
+                );
+            } else {
+                let rendered = result.expect("best effort retains the source CSS");
+                assert!(rendered.svg().contains(&format!("font-weight:{weight};")));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.theme_residual_count(), 2);
+                assert_eq!(evidence.applied_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn timeline_typed_typography_reaches_layout_css_and_terminal_receipt() {
     let font_stack =
         FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");

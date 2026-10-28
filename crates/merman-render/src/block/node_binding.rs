@@ -42,19 +42,47 @@ fn source_style_winners(
     winners
 }
 
-pub(super) fn source_font_weight(
+pub(super) fn source_text_style(
     styles: &[String],
     inherited: &crate::text::TextStyle,
-) -> Option<u16> {
-    let inherited = inherited
-        .font_weight
-        .as_deref()
-        .and_then(|value| crate::text::resolve_css_font_weight(value, 400))
-        .unwrap_or(400);
-    source_style_winners(styles)
-        .into_iter()
-        .find(|(_, parsed)| parsed.property() == "font-weight")
-        .and_then(|(_, parsed)| crate::text::resolve_css_font_weight(parsed.value(), inherited))
+    html: bool,
+) -> crate::text::TextStyle {
+    let declarations = source_style_winners(styles);
+    let mut style = inherited.clone();
+    // HTML repeats source declarations on g/div/span; SVG repeats them on g/text.
+    // Each element resolves relative values against its own inherited font.
+    let has_font = declarations.iter().any(|(_, declaration)| {
+        matches!(
+            declaration.property(),
+            "font-family" | "font-size" | "font-weight" | "font-style"
+        )
+    });
+    let styled_elements = if !has_font {
+        0
+    } else if html {
+        3
+    } else {
+        2
+    };
+    for _ in 0..styled_elements {
+        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+            &style,
+            crate::mermaid_style::CssFontSizeContext::new(style.font_size, inherited.font_size),
+        );
+        for (_, declaration) in &declarations {
+            cascade.observe_declaration(declaration);
+        }
+        style = cascade.finish().into_owned();
+    }
+    if !html {
+        // createText's inner word resets inherited weight/style, not size/family.
+        style = crate::text::svg_markdown_word_style(
+            &style,
+            crate::text::MermaidMarkdownWordType::Normal,
+        )
+        .into_owned();
+    }
+    style
 }
 
 #[cfg(test)]

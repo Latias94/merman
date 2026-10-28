@@ -7,7 +7,10 @@ import {
 export { MermanEngine };
 
 export function createNodeEngine(options) {
-  return createEngineWithTransport(options, { loadTransport: loadNativeTransport });
+  return createEngineWithTransport(options, {
+    loadTransport: (optionsJson, iconPacksJson) =>
+      loadNativeTransport(optionsJson, {}, iconPacksJson),
+  });
 }
 
 export {

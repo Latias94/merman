@@ -544,19 +544,24 @@ fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves
     };
     use std::sync::Arc;
 
-    struct FixedRelationshipBounds;
-    impl TextMeasurer for FixedRelationshipBounds {
+    struct FixedFixtureBounds;
+    impl TextMeasurer for FixedFixtureBounds {
         fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            // Freeze the deterministic profile's actual text bboxes. Source createText adds
-            // 2px per side before these SVG labels enter the provider and terminal guard.
-            let width = match text {
-                "approved" => 48.160000000000004,
-                "changes" => 42.14,
+            // Freeze the complete scenario: 12px node text and 14px boundary/edge text.
+            // Ordinary SVG nodes now inherit the root font, so usecaseFontSize alone cannot
+            // preserve these routes. Source createText adds 2px per side to edge labels.
+            let (width, height) = match text {
+                "Draft" => (27.839999999999996, 13.200000000000001),
+                "Review" => (35.400000000000006, 13.200000000000001),
+                "Published" => (44.88, 13.200000000000001),
+                "Group" => (32.48, 15.400000000000002),
+                "approved" => (48.160000000000004, 15.400000000000002),
+                "changes" => (42.14, 15.400000000000002),
                 _ => return DeterministicTextMeasurer::default().measure(text, style),
             };
             TextMetrics {
                 width,
-                height: 15.400000000000002,
+                height,
                 line_count: 1,
             }
         }
@@ -568,7 +573,10 @@ fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves
             max_width: Option<f64>,
             wrap_mode: WrapMode,
         ) -> TextMetrics {
-            if matches!(text, "approved" | "changes") {
+            if matches!(
+                text,
+                "Draft" | "Review" | "Published" | "Group" | "approved" | "changes"
+            ) {
                 self.measure(text, style)
             } else {
                 DeterministicTextMeasurer::default()
@@ -604,7 +612,7 @@ fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves
             "fixture",
         )
         .unwrap(),
-        Arc::new(FixedRelationshipBounds),
+        Arc::new(FixedFixtureBounds),
     );
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
@@ -621,7 +629,23 @@ fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves
         };
         let original = render(false);
         let guarded = render(true);
+        assert_eq!(original.edges.len(), 3);
+        assert_eq!(guarded.edges.len(), 3);
+        assert_eq!(original.labels.len(), 2);
         assert_eq!(original.layout["nodes"], guarded.layout["nodes"]);
+        for id in ["A", "B", "C"] {
+            let node = original.layout["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == id)
+                .unwrap();
+            assert_eq!(
+                (node["width"].as_f64(), node["height"].as_f64()),
+                (Some(160.0), Some(33.2)),
+                "{direction}: fixed node geometry for {id}"
+            );
+        }
         assert_eq!(
             provider_points(&original.layout),
             provider_points(&guarded.layout)
@@ -640,10 +664,19 @@ fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves
             assert_eq!(before.points.last(), after.points.last(), "target port");
             assert_eq!(before.start_marker, after.start_marker);
             assert_eq!(before.end_marker, after.end_marker);
+            assert_eq!(after.start_marker, None);
+            assert_eq!(
+                after.end_marker.as_deref(),
+                Some("url(#elk-12-1_usecase-pointEnd)")
+            );
         }
         if direction == "TB" {
             assert_eq!(original.edges, guarded.edges);
-            assert!(original.edges.iter().all(|edge| edge.points.len() == 3));
+            assert!(
+                original.edges.iter().all(|edge| edge.points.len() == 3),
+                "TB fixture has no eligible terminal jogs: {:#?}",
+                original.edges
+            );
             continue;
         }
 
@@ -657,11 +690,8 @@ fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves
                 .clone()
         };
         let moved = edge(&guarded, "edge-0");
-        assert_ne!(
-            moved,
-            edge(&original, "edge-0"),
-            "earlier route must actually move"
-        );
+        let unmoved = edge(&original, "edge-0");
+        assert_ne!(moved, unmoved, "earlier route must actually move");
         let rejected = edge(&original, "edge-2");
         assert_eq!(rejected, edge(&guarded, "edge-2"));
         assert_eq!(rejected.len(), 6);
@@ -710,6 +740,10 @@ fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves
         assert!(
             covers(&moved, &candidate_label),
             "candidate adds label-over-edge coverage"
+        );
+        assert!(
+            !covers(&unmoved, &candidate_label),
+            "a stale provider route misses the overlap created by the earlier move"
         );
 
         let nodes = guarded.layout["nodes"].as_array().unwrap();

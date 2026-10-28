@@ -60,6 +60,10 @@ class FakeMeasureElement {
   children = [];
   _textContent = "";
 
+  get isConnected() {
+    return this.parentElement?.isConnected ?? false;
+  }
+
   get textContent() {
     return this.children.length > 0
       ? this.children.map((child) => child.textContent || "").join("")
@@ -114,6 +118,7 @@ class FakeMeasureElement {
         siblings.splice(index, 1);
       }
     }
+    this.parentElement = undefined;
   }
 
   getContext(kind) {
@@ -188,19 +193,56 @@ class FakeMeasureElement {
   }
 }
 
+class FakeCanvasContext {
+  _font = "10px sans-serif";
+  canonicalFonts = new Map();
+  rejectedFonts = new Set();
+  savedFonts = [];
+  calls = [];
+  saveCalls = 0;
+  restoreCalls = 0;
+
+  get font() {
+    return this._font;
+  }
+
+  set font(value) {
+    if (value === this.throwOnFont) {
+      throw new Error("synthetic font assignment failure");
+    }
+    if (!this.rejectedFonts.has(value)) {
+      this._font = this.canonicalFonts.get(value) ?? value;
+    }
+  }
+
+  save() {
+    this.saveCalls += 1;
+    this.savedFonts.push(this.font);
+  }
+
+  restore() {
+    this.restoreCalls += 1;
+    assert.ok(this.savedFonts.length > 0);
+    this._font = this.savedFonts.pop();
+  }
+
+  measureText(text) {
+    this.calls.push({ font: this.font, text });
+    if (this.throwOnMeasure) {
+      throw new Error("synthetic measureText failure");
+    }
+    return { width: this.width ?? text.length * 7.25 };
+  }
+}
+
 test("browser text measurement session routes exact operations to their DOM primitives", () => {
   const originalDocument = globalThis.document;
   let canvasCreates = 0;
-  const canvasCalls = [];
-  const canvasContext = {
-    font: "",
-    measureText(text) {
-      canvasCalls.push({ font: this.font, text });
-      return { width: text.length * 7.25 };
-    },
-  };
+  const canvasContext = new FakeCanvasContext();
+  const canvasCalls = canvasContext.calls;
   const body = {
     tagName: "body",
+    isConnected: true,
     children: [],
     appended: [],
     appendChild(child) {
@@ -353,7 +395,7 @@ test("browser text measurement session routes exact operations to their DOM prim
 
     const mermaidDimensions = measure({
       ...request("Body attached", null, "mermaid-calculate-text-dimensions", "svg-like"),
-      font_family: "Configured Serif;",
+      font_family: '"Configured Serif;", serif',
       font_size: 18,
       font_weight: "700",
       font_style: "italic",
@@ -371,7 +413,7 @@ test("browser text measurement session routes exact operations to their DOM prim
     const mermaidText = mermaidSvg.children[0];
     const mermaidTspan = mermaidText.children[0];
     assert.equal(mermaidText.tagName, "text");
-    assert.equal(mermaidText.style.fontFamily, "Configured Serif;");
+    assert.equal(mermaidText.style.fontFamily, '"Configured Serif;", serif');
     assert.equal(mermaidText.style.fontSize, "18px");
     assert.equal(mermaidText.style.fontWeight, "700");
     assert.equal(mermaidText.style.fontStyle, undefined);
@@ -488,6 +530,208 @@ test("browser text measurement session routes exact operations to their DOM prim
   }
 });
 
+test("canvas accepts canonicalized weights and preserves quoted family punctuation", () => {
+  const context = new FakeCanvasContext();
+  const cases = [
+    ["bolder", 16, "sans-serif", "bold 16px sans-serif"],
+    ["lighter", 16, "sans-serif", "100 16px sans-serif"],
+    ["normal", 18, '"A; B, C", sans-serif', '18px "A; B, C", sans-serif'],
+    ["normal", 18, '"A\\"; B", serif', '18px "A\\"; B", serif'],
+    ["normal", 10, "sans-serif", "10px sans-serif"],
+    ["normal", 12, "serif", "12px serif"],
+  ];
+  for (const [weight, size, family, canonical] of cases) {
+    context.canonicalFonts.set(`normal ${weight} ${size}px ${family}`, canonical);
+  }
+  context.font = "italic 700 31px serif";
+  const originalFont = context.font;
+
+  withMeasurementSession(context, (session) => {
+    for (const [weight, size, family, canonical] of cases) {
+      assert.deepEqual(session.measure({
+        ...request("Vehicle", null, "canvas-measure-text-width", "svg-like"),
+        font_weight: weight,
+        font_size: size,
+        font_family: family,
+      }), { kind: "length", length: "Vehicle".length * 7.25 });
+      assert.equal(context.calls.at(-1).font, canonical);
+      assert.equal(context.font, originalFont);
+      assert.equal(context.savedFonts.length, 0);
+    }
+    assert.equal(context.saveCalls, cases.length);
+    assert.equal(context.restoreCalls, cases.length);
+  });
+});
+
+test("canvas rejects malformed assignment without measuring default or previous fonts", () => {
+  const context = new FakeCanvasContext();
+  const invalidFamilies = ["sans-serif;", "sans-serif; font-size: 1px", ""];
+  for (const family of invalidFamilies) {
+    context.rejectedFonts.add(`normal normal 16px ${family}`);
+  }
+
+  withMeasurementSession(context, (session) => {
+    for (const family of invalidFamilies) {
+      const invalid = {
+        ...request("Vehicle", null, "canvas-measure-text-width", "svg-like"),
+        font_family: family,
+      };
+      for (const previousFont of ["10px sans-serif", "italic 700 31px serif"]) {
+        context.font = previousFont;
+        const callsBefore = context.calls.length;
+        assert.equal(session.measure(invalid), undefined);
+        assert.equal(context.calls.length, callsBefore, "rejected fonts must not be measured");
+        assert.equal(context.font, previousFont);
+        assert.equal(context.savedFonts.length, 0);
+      }
+      const valid = {
+        ...invalid,
+        font_size: 24,
+        font_family: "monospace",
+      };
+      assert.ok(session.measure(valid));
+      assert.equal(context.calls.at(-1).font, "normal normal 24px monospace");
+      const callsBefore = context.calls.length;
+      assert.equal(session.measure(invalid), undefined);
+      assert.equal(context.calls.length, callsBefore);
+      assert.equal(context.font, "italic 700 31px serif");
+    }
+    assert.equal(context.saveCalls, context.restoreCalls);
+  });
+});
+
+test("canvas restores saved state on invalid metrics and throwing browser primitives", () => {
+  const context = new FakeCanvasContext();
+  context.font = "italic 700 31px serif";
+  const originalFont = context.font;
+  const canvasRequest = request("Vehicle", null, "canvas-measure-text-width", "svg-like");
+
+  withMeasurementSession(context, (session) => {
+    for (const width of [NaN, Infinity, -Infinity]) {
+      context.width = width;
+      assert.equal(session.measure(canvasRequest), undefined);
+      assert.equal(context.font, originalFont);
+      assert.equal(context.savedFonts.length, 0);
+    }
+    delete context.width;
+
+    context.throwOnMeasure = true;
+    assert.equal(session.measure(canvasRequest), undefined);
+    assert.equal(context.font, originalFont);
+    assert.equal(context.savedFonts.length, 0);
+    context.throwOnMeasure = false;
+
+    context.throwOnFont = "normal normal 16px Trebuchet MS, sans-serif";
+    assert.equal(session.measure(canvasRequest), undefined);
+    assert.equal(context.font, originalFont);
+    assert.equal(context.savedFonts.length, 0);
+    delete context.throwOnFont;
+
+    assert.deepEqual(session.measure(canvasRequest), {
+      kind: "length",
+      length: "Vehicle".length * 7.25,
+    });
+    assert.equal(context.font, originalFont);
+    assert.equal(context.saveCalls, 6);
+    assert.equal(context.restoreCalls, 6);
+  });
+});
+
+test("DOM probes reject ignored CSSOM assignments and accept canonicalized values", () => {
+  withMeasurementSession(null, (session, body) => {
+    const inputs = [
+      request("Typography", null, "raw-bbox-width", "svg-like"),
+      request("Typography", null, "wrapped", "html-like"),
+    ];
+    assert.ok(session.measure(inputs[0]));
+    for (const style of [body.children[0].style, body.children[1].children[0].style]) {
+      for (const property of ["fontFamily", "fontWeight", "fontStyle"]) {
+        let current = style[property];
+        Object.defineProperty(style, property, {
+          get() { return current; },
+          set(value) {
+            if (value !== "invalid-css") current = value.trim();
+          },
+        });
+      }
+    }
+    for (const input of inputs) {
+      for (const field of ["font_family", "font_weight", "font_style"]) {
+        assert.ok(session.measure(input));
+        assert.equal(session.measure({ ...input, [field]: "invalid-css" }), undefined);
+        assert.ok(session.measure({
+          ...input,
+          font_family: "  serif  ",
+          font_weight: " 700 ",
+          font_style: " italic ",
+        }));
+      }
+    }
+    for (const style of [body.children[0].style, body.children[1].children[0].style]) {
+      assert.equal(style.fontFamily, "serif");
+      assert.equal(style.fontWeight, "700");
+      assert.equal(style.fontStyle, "italic");
+    }
+  });
+});
+
+function withMeasurementSession(context, run) {
+  const originalDocument = globalThis.document;
+  const body = {
+    isConnected: true,
+    children: [],
+    appendChild(child) {
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    },
+  };
+  globalThis.document = {
+    body,
+    createElement(tagName) {
+      return new FakeMeasureElement(tagName, tagName === "canvas" ? context : null);
+    },
+    createElementNS(namespace, tagName) {
+      assert.equal(namespace, "http://www.w3.org/2000/svg");
+      return new FakeMeasureElement(tagName);
+    },
+  };
+  const session = createBrowserTextMeasurementSession();
+  try {
+    run(session, body);
+  } finally {
+    session.dispose();
+    if (originalDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+  }
+}
+
+test("browser session replaces detached probes and falls back while the body is disconnected", () => {
+  withMeasurementSession(null, (session, body) => {
+    const input = request("Reattached", null, "measure", "svg-like");
+    const expected = session.measure(input);
+    assert.ok(expected.width > 0);
+
+    for (const index of [0, 1, 2]) {
+      const retired = [...body.children];
+      retired[index].remove();
+      assert.deepEqual(session.measure(input), expected);
+      assert.equal(body.children.length, 3);
+      assert.ok(retired.every((probe) => !probe.isConnected));
+      assert.ok(body.children.every((probe) => !retired.includes(probe)));
+    }
+
+    body.isConnected = false;
+    assert.equal(session.measure(input), undefined);
+    body.isConnected = true;
+    assert.deepEqual(session.measure(input), expected);
+    assert.equal(body.children.length, 3);
+  });
+});
+
 test("browser text measurement session can be disposed before first use", () => {
   const originalDocument = globalThis.document;
   let elementCreates = 0;
@@ -523,6 +767,7 @@ test("browser text measurement session rolls back partially constructed probes",
   let svgCreates = 0;
   let failConstruction = true;
   const body = {
+    isConnected: true,
     children: [],
     appendChild(child) {
       child.parentElement = this;
@@ -583,6 +828,7 @@ test("browser text measurement session falls back without a DOM", () => {
 test("browser text measurement session preserves fallback on browser primitive failure", () => {
   const originalDocument = globalThis.document;
   const body = {
+    isConnected: true,
     children: [],
     appendChild(child) {
       child.parentElement = this;

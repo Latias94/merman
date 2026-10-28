@@ -1,0 +1,359 @@
+{
+  "browser": "156.0.8078.4",
+  "source": "committed-svg-exports",
+  "results": [
+    {
+      "line": "main",
+      "case": "flowchart",
+      "pipeline": "parity",
+      "file": "main-flowchart-parity.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 370 61",
+      "formulaCount": 1,
+      "primitiveCount": 5,
+      "visibleFormulas": [
+        {
+          "pixels": 196,
+          "boundsPx": [
+            57,
+            24,
+            110,
+            37
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "flowchart",
+      "pipeline": "resvg-safe",
+      "file": "main-flowchart-resvg-safe.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 370 61",
+      "formulaCount": 1,
+      "primitiveCount": 5,
+      "visibleFormulas": [
+        {
+          "pixels": 200,
+          "boundsPx": [
+            57,
+            24,
+            110,
+            37
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "fraction-styled",
+      "pipeline": "parity",
+      "file": "main-fraction-styled-parity.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 168 65.10984",
+      "formulaCount": 1,
+      "primitiveCount": 3,
+      "visibleFormulas": [
+        {
+          "pixels": 95,
+          "boundsPx": [
+            80,
+            20,
+            89,
+            45
+          ]
+        }
+      ],
+      "visibleFractionBars": [
+        {
+          "pixels": 18,
+          "boundsPx": [
+            80,
+            31,
+            89,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "line": "main",
+      "case": "fraction-styled",
+      "pipeline": "resvg-safe",
+      "file": "main-fraction-styled-resvg-safe.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 168 65.10984",
+      "formulaCount": 1,
+      "primitiveCount": 3,
+      "visibleFormulas": [
+        {
+          "pixels": 88,
+          "boundsPx": [
+            80,
+            20,
+            88,
+            45
+          ]
+        }
+      ],
+      "visibleFractionBars": [
+        {
+          "pixels": 16,
+          "boundsPx": [
+            80,
+            31,
+            88,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "line": "main",
+      "case": "sequence",
+      "pipeline": "parity",
+      "file": "main-sequence-parity.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "-50 -10 450 230",
+      "formulaCount": 1,
+      "primitiveCount": 3,
+      "visibleFormulas": [
+        {
+          "pixels": 117,
+          "boundsPx": [
+            217,
+            94,
+            227,
+            123
+          ]
+        }
+      ],
+      "visibleFractionBars": [
+        {
+          "pixels": 19,
+          "boundsPx": [
+            217,
+            107,
+            227,
+            109
+          ]
+        }
+      ]
+    },
+    {
+      "line": "main",
+      "case": "sequence",
+      "pipeline": "resvg-safe",
+      "file": "main-sequence-resvg-safe.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "-50 -10 450 230",
+      "formulaCount": 1,
+      "primitiveCount": 3,
+      "visibleFormulas": [
+        {
+          "pixels": 107,
+          "boundsPx": [
+            217,
+            94,
+            227,
+            123
+          ]
+        }
+      ],
+      "visibleFractionBars": [
+        {
+          "pixels": 19,
+          "boundsPx": [
+            217,
+            107,
+            227,
+            109
+          ]
+        }
+      ]
+    },
+    {
+      "line": "main",
+      "case": "swimlane",
+      "pipeline": "parity",
+      "file": "main-swimlane-parity.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "-94 -66.5 224 133",
+      "formulaCount": 1,
+      "primitiveCount": 5,
+      "visibleFormulas": [
+        {
+          "pixels": 204,
+          "boundsPx": [
+            12,
+            40,
+            24,
+            93
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "swimlane",
+      "pipeline": "resvg-safe",
+      "file": "main-swimlane-resvg-safe.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "-94 -66.5 224 133",
+      "formulaCount": 1,
+      "primitiveCount": 5,
+      "visibleFormulas": [
+        {
+          "pixels": 220,
+          "boundsPx": [
+            12,
+            40,
+            25,
+            93
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "cjk-smash",
+      "pipeline": "parity",
+      "file": "main-cjk-smash-parity.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 168 52.530280000000005",
+      "formulaCount": 1,
+      "primitiveCount": 2,
+      "visibleFormulas": [
+        {
+          "pixels": 166,
+          "boundsPx": [
+            71,
+            20,
+            98,
+            33
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "cjk-smash",
+      "pipeline": "resvg-safe",
+      "file": "main-cjk-smash-resvg-safe.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 168 52.530280000000005",
+      "formulaCount": 1,
+      "primitiveCount": 2,
+      "visibleFormulas": [
+        {
+          "pixels": 158,
+          "boundsPx": [
+            71,
+            20,
+            98,
+            33
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "emoji",
+      "pipeline": "parity",
+      "file": "main-emoji-parity.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 168 54",
+      "formulaCount": 1,
+      "primitiveCount": 1,
+      "visibleFormulas": [
+        {
+          "pixels": 172,
+          "boundsPx": [
+            77,
+            20,
+            91,
+            34
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "emoji",
+      "pipeline": "resvg-safe",
+      "file": "main-emoji-resvg-safe.svg",
+      "check": "full-svg-visible-formula-contribution",
+      "viewBox": "0 0 168 54",
+      "formulaCount": 1,
+      "primitiveCount": 1,
+      "visibleFormulas": [
+        {
+          "pixels": 172,
+          "boundsPx": [
+            77,
+            20,
+            91,
+            34
+          ]
+        }
+      ],
+      "visibleFractionBars": []
+    },
+    {
+      "line": "main",
+      "case": "flowchart",
+      "check": "parity-native-visible-ink-placement",
+      "placementTolerancePx": 1,
+      "maxEdgeDeltaPx": 0
+    },
+    {
+      "line": "main",
+      "case": "fraction-styled",
+      "check": "parity-native-visible-ink-placement",
+      "placementTolerancePx": 1,
+      "maxEdgeDeltaPx": 1
+    },
+    {
+      "line": "main",
+      "case": "sequence",
+      "check": "parity-native-visible-ink-placement",
+      "placementTolerancePx": 1,
+      "maxEdgeDeltaPx": 0
+    },
+    {
+      "line": "main",
+      "case": "swimlane",
+      "check": "parity-native-visible-ink-placement",
+      "placementTolerancePx": 1,
+      "maxEdgeDeltaPx": 1
+    },
+    {
+      "line": "main",
+      "case": "cjk-smash",
+      "check": "parity-native-visible-ink-placement",
+      "placementTolerancePx": 1,
+      "maxEdgeDeltaPx": 0
+    },
+    {
+      "line": "main",
+      "case": "emoji",
+      "check": "parity-native-visible-ink-placement",
+      "placementTolerancePx": 1,
+      "maxEdgeDeltaPx": 0
+    },
+    {
+      "line": "main",
+      "case": "fraction-styled",
+      "check": "reassembled-glyph-classDef-important-paint",
+      "exactScreenshotMatch": true,
+      "referenceInkPixels": 1057
+    }
+  ]
+}

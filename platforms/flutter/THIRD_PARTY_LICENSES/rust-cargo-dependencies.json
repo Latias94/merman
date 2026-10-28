@@ -286,7 +286,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "228beabb5fdf675e26eaa50186ca066a0c18d77a499f14ef4e7b322e133aa2a7",
+    "cargo_lock_sha256": "5889ca06b3a15f51c89dec56315baf14a025882e01ce7ed49298dabddcde3909",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "08753e7fd596312c817b27841a86f9d8648689bbf0dedd1fd6603a9d30f6d1a1"
   },
@@ -295,72 +295,72 @@
       "artifact_profile_id": "flutter-android-native",
       "target": "aarch64-linux-android",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "armv7-linux-androideabi",
       "package_count": 112,
-      "packages_sha256": "41bb16ad7d284221009d5cf36c4efc0eb671df4a404329f698a022e59eaa99af"
+      "packages_sha256": "6a4b18917072353ca8ce1b7a3c4a9c34e508fa4c6fa595b89c6f9e44f028a58f"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "x86_64-linux-android",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-apple-darwin",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-unknown-linux-gnu",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-apple-darwin",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-pc-windows-gnu",
       "package_count": 113,
-      "packages_sha256": "a6fb6835e761ac1bb27953787df5cf4f3c206fa5f790bb80b7491197445e9b8d"
+      "packages_sha256": "fcb31176234fd925be52f336d4ccddb135f37cf50bac41171d3aff4f28b7203e"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-unknown-linux-gnu",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios-sim",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "x86_64-apple-ios",
       "package_count": 113,
-      "packages_sha256": "d24ec125857c6d9db851beb9ca1f60fe4df2c02b35b3e621408d89303cff10d9"
+      "packages_sha256": "a925227a0b68e329f47fc3af8e84865b250d2d2848606e174345143913b76772"
     }
   ],
   "dependency_closure": {
     "package_count": 114,
-    "packages_sha256": "1539904f34ea14f2b0c6d5912941fea4d73bdf5a80556248e54d0b16ee525840"
+    "packages_sha256": "f0c30bdd13cf2ba3c2ab327e0eff8102db802206ba5eeee66e0c479c2df32d7d"
   },
   "licenses": [
     {
@@ -391,7 +391,7 @@
         },
         {
           "name": "granit-parser",
-          "version": "1.3.0",
+          "version": "2.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -414,7 +414,7 @@
         },
         {
           "name": "libc",
-          "version": "0.2.190",
+          "version": "0.2.191",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -486,7 +486,7 @@
         },
         {
           "name": "serde-saphyr",
-          "version": "1.3.0",
+          "version": "2.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -534,7 +534,7 @@
         },
         {
           "name": "syn",
-          "version": "3.0.8",
+          "version": "3.0.9",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -668,7 +668,7 @@
         },
         {
           "name": "equivalent",
-          "version": "1.0.2",
+          "version": "1.0.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
@@ -752,7 +752,7 @@
         },
         {
           "name": "lalrpop-util",
-          "version": "0.23.1",
+          "version": "0.23.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [
@@ -872,7 +872,7 @@
         },
         {
           "name": "smallvec",
-          "version": "1.16.3",
+          "version": "1.16.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1052,7 +1052,7 @@
         },
         {
           "name": "sha2",
-          "version": "0.11.0",
+          "version": "0.11.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1346,7 +1346,7 @@
       "packages": [
         {
           "name": "serde_json_canonicalizer",
-          "version": "0.3.2",
+          "version": "0.4.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1362,7 +1362,7 @@
       "packages": [
         {
           "name": "pulldown-cmark",
-          "version": "0.13.4",
+          "version": "0.13.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -1381,7 +1381,7 @@
       "packages": [
         {
           "name": "json5",
-          "version": "1.3.1",
+          "version": "1.3.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -1480,7 +1480,7 @@
       "packages": [
         {
           "name": "icu_collections",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1490,7 +1490,7 @@
         },
         {
           "name": "icu_locale_core",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1500,7 +1500,7 @@
         },
         {
           "name": "icu_normalizer",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1510,7 +1510,7 @@
         },
         {
           "name": "icu_normalizer_data",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1520,7 +1520,7 @@
         },
         {
           "name": "icu_properties",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1530,7 +1530,7 @@
         },
         {
           "name": "icu_properties_data",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1540,7 +1540,7 @@
         },
         {
           "name": "icu_provider",
-          "version": "2.3.1",
+          "version": "2.4.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1570,7 +1570,7 @@
         },
         {
           "name": "tinystr",
-          "version": "0.8.4",
+          "version": "0.8.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1590,7 +1590,7 @@
         },
         {
           "name": "yoke",
-          "version": "0.8.3",
+          "version": "0.8.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1640,7 +1640,7 @@
         },
         {
           "name": "zerovec",
-          "version": "0.11.8",
+          "version": "0.11.9",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -1650,7 +1650,7 @@
         },
         {
           "name": "zerovec-derive",
-          "version": "0.11.6",
+          "version": "0.11.7",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [

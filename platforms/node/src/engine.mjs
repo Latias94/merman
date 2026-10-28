@@ -93,6 +93,7 @@ const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 export async function createNodeEngine(
   {
     bindingOptions = {},
+    iconPacks,
     concurrency = 1,
     maxQueue = 64,
   } = {},
@@ -107,7 +108,8 @@ export async function createNodeEngine(
     "binding options",
     NODE_TRANSPORT_LIMITS.binding_options,
   );
-  const transport = await loadTransport(optionsJson);
+  const iconPacksJson = encodeIconPacks(iconPacks);
+  const transport = await loadTransport(optionsJson, iconPacksJson);
   try {
     assertTransport(transport);
     const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson());
@@ -121,6 +123,28 @@ export async function createNodeEngine(
     await disposeUnusableTransport(transport);
     throw error;
   }
+}
+
+function encodeIconPacks(packs) {
+  if (packs === undefined) return undefined;
+  if (!Array.isArray(packs)) throw new TypeError("iconPacks must be an array.");
+  const normalized = [];
+  for (const pack of packs) {
+    if (!isPlainObject(pack) || typeof pack.json !== "string") {
+      throw new TypeError("iconPacks entries must contain an already loaded JSON string.");
+    }
+    if (Object.keys(pack).some((key) => key !== "json" && key !== "registrationName")) {
+      throw new TypeError("iconPacks entries only accept json and registrationName.");
+    }
+    if (pack.registrationName !== undefined && typeof pack.registrationName !== "string") {
+      throw new TypeError("iconPacks registrationName must be a string.");
+    }
+    normalized.push({
+      json: pack.json,
+      ...(pack.registrationName === undefined ? {} : { registrationName: pack.registrationName }),
+    });
+  }
+  return JSON.stringify(normalized);
 }
 
 export function normalizeBindingOptions(value = {}) {

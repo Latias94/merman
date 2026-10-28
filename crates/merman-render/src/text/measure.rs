@@ -92,6 +92,16 @@ pub trait TextMeasurer {
             .width
     }
 
+    /// Measures the height of one already-decoded HTML text line without parsing markup.
+    ///
+    /// The compatibility default preserves custom profile behavior. Built-in profiles and the
+    /// routed fallback specialize this operation so literal angle brackets remain text.
+    #[doc(hidden)]
+    fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+            .height
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
 
     /// Measures SVG `<tspan>.getComputedTextLength()`-like widths (advance length along the
@@ -159,6 +169,13 @@ pub trait TextMeasurer {
     /// directly and does not inherit `drawSimpleText(...)`-specific behavior.
     fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.measure_svg_simple_text_bbox_width_px(text, style)
+    }
+
+    /// Measures direct SVG text whose emitted CSS preserves consecutive spaces.
+    ///
+    /// Exact hosts receive RawBBoxWidth with HtmlLike whitespace preservation, without wrapping.
+    fn measure_svg_preserved_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_raw_text_bbox_width_px(text, style)
     }
 
     /// Measures raw SVG `<text>.getBBox().height` for direct text content.

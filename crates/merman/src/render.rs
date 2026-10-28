@@ -1558,8 +1558,7 @@ fn prepare_resvg_target(
         .clone()
         .unwrap_or_else(SvgPipeline::resvg_safe)
         .into_resvg_safe();
-    let result = rendered
-        .finalize_resvg(&pipeline)
+    let result = merman_render::__private::finalize_resvg_for_target_admission(rendered, &pipeline)
         .map(|sealed| (sealed.into_completion(), required_capabilities, operation))
         .map(Some)
         .map_err(RenderError::from);

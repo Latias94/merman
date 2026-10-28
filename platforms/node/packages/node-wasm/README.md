@@ -66,3 +66,18 @@ support. Use `executeOperation()` or `executeOperationSync()` with operation IDs
 shared definition JSON, support queries and preset export. Materialization returns a complete
 spec that can be passed as `theme: { spec }`; no intermediate file is required. Replace old
 `presentation.theme` inputs and `presentation-catalog` metadata calls when upgrading.
+
+## Loaded icon packs (unreleased)
+
+The native and Node-WASM packages accept the same
+`createNodeEngine({ iconPacks: [{ json, registrationName? }] })` constructor argument. `json` is
+an already loaded Iconify pack JSON string; the host owns acquisition. `registrationName`
+optionally replaces the pack prefix. The registry is immutable and scoped to that engine;
+per-request options preserve it, and `dispose()` releases it after queued work settles.
+An omitted argument or `[]` preserves ordinary rendering.
+
+Use the [native package example](https://github.com/Latias94/merman/blob/main/platforms/node/packages/node/README.md#loaded-icon-packs-unreleased)
+with the import changed to `@mermanjs/node-wasm`. Keep packs outside `bindingOptions`.
+The `icon-registry` constructor catalog exposes the same fixed resource ceilings on both
+transports. Construction errors preserve `MermanOperationError.iconRegistryDetails` and,
+for resource failures, `resourceDetails`.

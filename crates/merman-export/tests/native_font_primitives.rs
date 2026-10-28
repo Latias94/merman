@@ -309,7 +309,11 @@ fn routed_context(context: &NativeFontContext) -> (RenderSession, Arc<RecordingN
         .with_text_measurement_policy(TextMeasurementPolicy::host_display(
             identity,
             host.clone(),
-            [TextMeasurementPhase::Wrap, TextMeasurementPhase::SvgBBox],
+            [
+                TextMeasurementPhase::Wrap,
+                TextMeasurementPhase::SvgBBox,
+                TextMeasurementPhase::ComputedLength,
+            ],
         ))
         .begin_session()
         .unwrap();
@@ -471,6 +475,33 @@ fn native_html_fallback_routes_literal_markup_preserved_spaces_and_soft_hyphens(
                 .entries()
                 .iter()
                 .all(|entry| { entry.provenance().source == TextMeasurementSource::Host })
+        );
+    }
+}
+
+#[test]
+fn routed_prepared_svg_fragments_preserve_spaces_against_native_export() {
+    let context = context(&["Cousine-Regular.ttf"]);
+    let style = style("Cousine");
+    let (session, _) = routed_context(&context);
+    let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
+    for text in [" A  B ", "A<br/>B"] {
+        let drawn = probe(&context, text, &style);
+        let expected_advance = svg_advance(&drawn);
+        let actual_advance = measurer.measure_svg_text_computed_length_px(text, &style);
+        assert!(
+            (actual_advance - expected_advance).abs() < 0.001,
+            "prepared advance {text:?}: measured={actual_advance}, drawn={expected_advance}"
+        );
+        let Some(usvg::Node::Text(drawn_text)) = drawn.node_by_id("left") else {
+            panic!("native export retains the text probe");
+        };
+        let expected_width = f64::from(drawn_text.bounding_box().width());
+        let (left, right) = measurer.measure_svg_text_bbox_x(text, &style);
+        assert!(
+            (left + right - expected_width).abs() < 0.001,
+            "prepared bbox {text:?}: measured={}, drawn={expected_width}",
+            left + right
         );
     }
 }

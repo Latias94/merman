@@ -148,16 +148,27 @@ fn prepare_diagram_title_geometry(
         .measurer
         .measure_svg_title_bbox_x(text, ctx.base_text_style);
     ctx.checkpoints.checkpoint()?;
-    let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(ctx.base_text_style);
+    // TitleBBoxX is center-relative; the pinned title has the default start anchor.
+    let center = x + ctx
+        .measurer
+        .measure_svg_text_computed_length_px(text, ctx.base_text_style)
+        / 2.0;
+    ctx.checkpoints.checkpoint()?;
+    let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+        ctx.measurer,
+        text,
+        ctx.base_text_style,
+        crate::text::svg_title_bbox_vertical_extents_px(ctx.base_text_style),
+    );
 
     Ok(Some(SequenceDiagramTitleGeometry {
         text: text.to_owned(),
         x,
         y,
         bounds: Bounds {
-            min_x: x - left,
+            min_x: center - left,
             min_y: y - ascent,
-            max_x: x + right,
+            max_x: center + right,
             max_y: y + descent,
         },
     }))

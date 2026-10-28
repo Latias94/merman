@@ -601,7 +601,9 @@ const Map<String, MermanBindingTransportExposureSpec>
       "binding-result",
       "operation-metadata",
     },
-    constructorServiceCandidateIds: <String>{},
+    constructorServiceCandidateIds: <String>{
+      "icon-registry",
+    },
   ),
   "rust": MermanBindingTransportExposureSpec(
     id: "rust",
@@ -648,6 +650,7 @@ const Map<String, MermanBindingTransportExposureSpec>
     },
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
+      "icon-registry",
     },
   ),
 };

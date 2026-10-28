@@ -163,37 +163,12 @@ impl<'a> SequenceConfigView<'a> {
         parser.is_exhausted().then_some(css)
     }
 
-    #[cfg(test)]
-    pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
-        // sequenceRenderer.setConf selects a truthy global value before CSSOM validation.
-        // A rejected global value must not reveal the overridden family setting.
-        let selected = self.font_value("fontWeight", key);
-        match selected {
-            Some(value) => Self::parse_font_weight(value),
-            None => Some("400".to_string()),
-        }
-    }
-
-    pub(crate) fn font_size(&self, key: &str) -> f64 {
-        self.font_value("fontSize", key)
-            .and_then(crate::config::json_f64_css_px)
-            .unwrap_or(16.0)
-    }
-
     fn sequence_compat_f64(&self, key: &str, default: f64) -> f64 {
         crate::config::config_f64(self.sequence_config, &[key]).unwrap_or(default)
     }
 
     fn sequence_compat_f64_min(&self, key: &str, default: f64, min: f64) -> f64 {
         self.sequence_compat_f64(key, default).max(min)
-    }
-
-    fn font_value(&self, root_key: &str, sequence_key: &str) -> Option<&Value> {
-        // sequenceRenderer.setConf overrides each family only for a truthy global value.
-        self.effective_config
-            .get(root_key)
-            .filter(|value| crate::config::json_value_is_truthy(value))
-            .or_else(|| self.sequence_config.get(sequence_key))
     }
 
     #[cfg(test)]
@@ -567,7 +542,10 @@ mod tests {
             let view = SequenceConfigView::new(&config);
             let settings = sequence_layout_settings(config.clone());
             for weight in [
-                view.font_weight("actorFontWeight"),
+                view.resolve_role_typography(SequenceTypographyConfigRole::Actor)
+                    .measurement_style()
+                    .font_weight
+                    .clone(),
                 settings.actor_text_style.font_weight,
                 settings.note_text_style.font_weight,
                 settings.msg_text_style.font_weight,

@@ -98,6 +98,29 @@ impl LineWidthModel<'_> {
     }
 }
 
+fn literal_svg_text_width_px(
+    text: &str,
+    style: &TextStyle,
+    source: LineWidthSource<'_>,
+    preserve_spaces: bool,
+) -> f64 {
+    let collapsed;
+    let visible = if preserve_spaces {
+        text
+    } else {
+        collapsed = DeterministicTextMeasurer::collapse_svg_text_whitespace(text);
+        &collapsed
+    };
+    LineWidthModel {
+        font_size: style.font_size.max(1.0),
+        source,
+        style,
+        html_text: false,
+    }
+    .width_px(visible)
+    .max(0.0)
+}
+
 trait LineWidthProvider {
     type Error;
 
@@ -505,6 +528,70 @@ impl DeterministicTextMeasurer {
 }
 
 impl TextMeasurer for DeterministicTextMeasurer {
+    fn measure_svg_preserved_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_preserved_tspan_text_bbox_width_px(text, style)
+    }
+
+    fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+        let half = self.measure_svg_preserved_tspan_text_bbox_width_px(text, style) / 2.0;
+        (half, half)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // Inline tspan fragments own their leading spaces; callers normalize whole SVG rows.
+        self.measure_svg_preserved_tspan_text_bbox_width_px(text, style)
+    }
+
+    fn measure_canvas_text_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let canvas_text = text.replace(['\t', '\r', '\n', '\x0c'], " ");
+        self.measure_html_line_width_px(&canvas_text, style)
+    }
+
+    fn measure_svg_simple_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // Retain the legacy drawSimpleText approximation, separate from direct SVG content.
+        self.measure(text, style).width.max(0.0)
+    }
+
+    fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        literal_svg_text_width_px(
+            text,
+            style,
+            if self.char_width_factor == 0.0 {
+                LineWidthSource::Heuristic
+            } else {
+                LineWidthSource::UniformAdvanceEm(self.char_width_factor)
+            },
+            false,
+        )
+    }
+
+    fn measure_svg_preserved_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        literal_svg_text_width_px(
+            text,
+            style,
+            if self.char_width_factor == 0.0 {
+                LineWidthSource::Heuristic
+            } else {
+                LineWidthSource::UniformAdvanceEm(self.char_width_factor)
+            },
+            true,
+        )
+    }
+
+    fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // A direct SVG text node has one row, even when its content spells an HTML break.
+        self.measure_svg_simple_text_bbox_height_px(text, style)
+    }
+
+    fn measure_html_line_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+        let factor = if self.line_height_factor == 0.0 {
+            1.5
+        } else {
+            self.line_height_factor
+        };
+        style.font_size.max(1.0) * factor
+    }
+
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         let source = if self.char_width_factor == 0.0 {
             LineWidthSource::Heuristic
@@ -596,6 +683,57 @@ impl TextMeasurer for DeterministicTextMeasurer {
 }
 
 impl TextMeasurer for WidthCallbackTextMeasurer {
+    fn measure_svg_preserved_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_preserved_tspan_text_bbox_width_px(text, style)
+    }
+
+    fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+        let half = self.measure_svg_preserved_tspan_text_bbox_width_px(text, style) / 2.0;
+        (half, half)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // Inline tspan fragments own their leading spaces; callers normalize whole SVG rows.
+        self.measure_svg_preserved_tspan_text_bbox_width_px(text, style)
+    }
+
+    fn measure_canvas_text_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let canvas_text = text.replace(['\t', '\r', '\n', '\x0c'], " ");
+        self.measure_html_line_width_px(&canvas_text, style)
+    }
+
+    fn measure_svg_simple_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // Retain the legacy drawSimpleText approximation, separate from direct SVG content.
+        self.measure(text, style).width.max(0.0)
+    }
+
+    fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        literal_svg_text_width_px(
+            text,
+            style,
+            LineWidthSource::Callback(&self.width_px),
+            false,
+        )
+    }
+
+    fn measure_svg_preserved_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        literal_svg_text_width_px(text, style, LineWidthSource::Callback(&self.width_px), true)
+    }
+
+    fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // A direct SVG text node has one row, even when its content spells an HTML break.
+        self.measure_svg_simple_text_bbox_height_px(text, style)
+    }
+
+    fn measure_html_line_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+        let factor = if self.line_height_factor == 0.0 {
+            1.5
+        } else {
+            self.line_height_factor
+        };
+        style.font_size.max(1.0) * factor
+    }
+
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         (self.width_px)(text, style)
     }
@@ -1346,6 +1484,85 @@ mod tests {
         });
         assert_eq!(callback.measure_html_line_width_px("a<br>b", &style), 23.5);
         assert_eq!(&*calls.lock().unwrap(), &["a<br>b"]);
+    }
+
+    #[test]
+    fn svg_computed_length_preserves_inline_fragment_spaces() {
+        let style = TextStyle {
+            font_size: 10.0,
+            ..Default::default()
+        };
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..Default::default()
+        };
+        assert_eq!(
+            measurer.measure_svg_text_computed_length_px("A", &style)
+                + measurer.measure_svg_text_computed_length_px(" B", &style),
+            30.0
+        );
+        assert_eq!(
+            measurer.measure_svg_text_computed_length_px("A<br/>B", &style),
+            70.0
+        );
+        let callback = measurer.with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
+        assert_eq!(
+            callback.measure_svg_text_computed_length_px(" B", &style),
+            20.0
+        );
+    }
+
+    #[test]
+    fn raw_svg_probes_preserve_literal_markup_and_collapse_only_svg_whitespace() {
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..Default::default()
+        };
+        let style = TextStyle {
+            font_size: 10.0,
+            ..Default::default()
+        };
+        let text = "  A<br/>\n B  ";
+        let visible = "A<br/> B";
+        assert_eq!(
+            measurer.measure_svg_raw_text_bbox_width_px(text, &style),
+            visible.len() as f64 * 10.0
+        );
+        assert_eq!(
+            measurer.measure_svg_raw_text_bbox_height_px(text, &style),
+            11.0
+        );
+        assert_eq!(
+            measurer.measure_svg_text_bbox_x(" A<br/> B ", &style),
+            (50.0, 50.0)
+        );
+        assert_eq!(
+            measurer.measure_svg_text_computed_length_px(" A<br/> B ", &style),
+            100.0
+        );
+        assert_eq!(
+            measurer.measure_canvas_text_width_px("  A<br/>\n B  ", &style),
+            130.0
+        );
+        assert_eq!(
+            measurer.measure_canvas_text_width_px("a\u{00ad}b", &style),
+            20.0
+        );
+        assert_eq!(
+            measurer.measure_svg_preserved_tspan_text_bbox_width_px("A  B", &style),
+            40.0
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::clone(&seen);
+        let callback = measurer.with_width_callback(move |text, _| {
+            calls.lock().unwrap().push(text.to_owned());
+            text.len() as f64 * 10.0
+        });
+        assert_eq!(
+            callback.measure_svg_raw_text_bbox_width_px(text, &style),
+            visible.len() as f64 * 10.0
+        );
+        assert_eq!(&*seen.lock().unwrap(), &[visible]);
     }
 
     #[test]

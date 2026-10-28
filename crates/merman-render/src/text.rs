@@ -40,6 +40,10 @@ pub(crate) use measure::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
     measure_mermaid_text_dimensions_with_checkpoint,
 };
+#[cfg(feature = "diagram-class")]
+pub(crate) use metrics::measure_svg_literal_word_lines;
+#[cfg(feature = "diagram-block")]
+pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 #[doc(hidden)]
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -51,7 +55,7 @@ pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_
 pub(crate) use metrics::{
     measure_svg_markdown_word_lines, measure_wrapped_markdown_with_inline_styles,
     measure_xhtml_label_fragment, mermaid_markdown_to_wrapped_word_lines,
-    style_requests_bold_font_weight, style_requests_italic_font_style,
+    style_requests_bold_font_weight, style_requests_italic_font_style, svg_markdown_word_style,
 };
 
 pub(crate) use css_font::{ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight};
@@ -61,6 +65,7 @@ pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
     svg_wrapped_first_line_bbox_height_px,
 };
+pub(crate) use types::SvgTextEntityMode;
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{
     is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, trim_ecmascript_whitespace,

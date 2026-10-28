@@ -38,7 +38,10 @@ pub fn host_text_measurement_transport_fields(
             if request.max_width.is_some()
                 || matches!(
                     request.operation,
-                    merman::svg::TextMeasurementOperation::TspanBBoxWidth
+                    merman::svg::TextMeasurementOperation::ComputedLength
+                        | merman::svg::TextMeasurementOperation::BBoxX
+                        | merman::svg::TextMeasurementOperation::RawBBoxWidth
+                        | merman::svg::TextMeasurementOperation::TspanBBoxWidth
                         | merman::svg::TextMeasurementOperation::TspanBBoxHeight
                 ) =>
         {
@@ -284,6 +287,29 @@ mod tests {
         };
         let fields = host_text_measurement_transport_fields(preserved);
         assert_eq!(fields.operation, 7);
+        let raw = host_text_measurement_transport_fields(HostTextMeasurementRequest {
+            operation: TextMeasurementOperation::RawBBoxWidth,
+            ..preserved
+        });
+        assert_eq!(raw.operation, 6);
+        for operation in [
+            TextMeasurementOperation::ComputedLength,
+            TextMeasurementOperation::BBoxX,
+        ] {
+            let fields = host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                operation,
+                ..preserved
+            });
+            assert_eq!(fields.operation, operation.external_code());
+            assert_eq!(
+                fields.white_space,
+                HostTextWhiteSpaceCode::BreakSpaces.external_code()
+            );
+        }
+        assert_eq!(
+            raw.white_space,
+            HostTextWhiteSpaceCode::BreakSpaces.external_code()
+        );
         assert_eq!(
             host_text_measurement_transport_fields(HostTextMeasurementRequest {
                 operation: TextMeasurementOperation::TspanBBoxHeight,

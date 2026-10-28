@@ -79,24 +79,24 @@ fn static_font_size_px(value: &str) -> Option<f64> {
 }
 
 impl RequirementNodeTypography {
-    pub(crate) fn node_measurer<'a>(
+    pub(super) fn svg_terminal_measurer<'a>(
         &'a self,
         measurer: &'a dyn TextMeasurer,
-        wrap_mode: WrapMode,
+        bold: bool,
     ) -> RequirementNodeMeasurer<'a> {
         RequirementNodeMeasurer {
             inner: measurer,
             source: self.source.as_deref().filter(|source| {
-                wrap_mode == WrapMode::SvgLike
-                    && (source
-                        .font_weight
+                source
+                    .font_weight
+                    .as_deref()
+                    .is_some_and(static_font_weight)
+                    || source
+                        .font_style
                         .as_deref()
-                        .is_some_and(static_font_weight)
-                        || source
-                            .font_style
-                            .as_deref()
-                            .is_some_and(is_supported_css_font_style_value))
+                        .is_some_and(is_supported_css_font_style_value)
             }),
+            bold,
         }
     }
 
@@ -245,16 +245,17 @@ impl RequirementNodeTypography {
     }
 }
 
-/// SVG source styles are emitted on each word, above Markdown presentation attributes.
-/// HTML children retain their own faces; calculation probes retain their root/config style.
+/// SVG first-row styles override Markdown attributes after createText has wrapped its words.
+/// HTML and wrapping retain their original probes.
 pub(crate) struct RequirementNodeMeasurer<'a> {
     inner: &'a dyn TextMeasurer,
     source: Option<&'a SourceTypography>,
+    bold: bool,
 }
 
 impl RequirementNodeMeasurer<'_> {
     pub(crate) fn as_measurer(&self) -> &dyn TextMeasurer {
-        if self.source.is_some() {
+        if self.source.is_some() || self.bold {
             self
         } else {
             self.inner
@@ -263,6 +264,9 @@ impl RequirementNodeMeasurer<'_> {
 
     fn final_style(&self, style: &TextStyle) -> TextStyle {
         let mut style = style.clone();
+        if self.bold {
+            style.font_weight = Some("bold".to_owned());
+        }
         if let Some(source) = self.source {
             if let Some(weight) = source
                 .font_weight
@@ -306,6 +310,11 @@ impl TextMeasurer for RequirementNodeMeasurer<'_> {
     fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.inner
             .measure_svg_text_computed_length_px(text, &self.final_style(style))
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_create_text_bbox_y_offset_px(text, &self.final_style(style))
     }
 
     fn measure_mermaid_calculate_text_dimensions(

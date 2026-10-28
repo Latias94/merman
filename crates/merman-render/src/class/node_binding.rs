@@ -249,7 +249,7 @@ impl ClassNodeVisualBinding {
     }
 }
 
-struct ClassInlineStyles<'a> {
+pub(super) struct ClassInlineStyles<'a> {
     pub style_attr: String,
     pub color: Option<&'a str>,
     pub fill: Option<&'a str>,
@@ -274,7 +274,7 @@ impl ClassNodeLabelTerminalTruth {
     }
 }
 
-fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineStyles<'a> {
+pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineStyles<'a> {
     let mut style_attr = String::new();
     let mut color: Option<&str> = None;
     let mut fill: Option<&str> = None;

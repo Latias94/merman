@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-08-27
+Last updated: 2026-10-26
 
 This guide explains how native hosts should use Merman's text-measurement callback and where the
 remaining headless-rendering limits are. It complements the exact C ABI contract in
@@ -21,10 +21,12 @@ the identity used to validate later native painting. Typed PNG/JPEG/PDF
 requests normalize it across layout and painting: an options-only context is
 installed into a default measurement environment, different contexts are rejected,
 and explicit host measurement is never silently replaced. Direct raw-SVG exports
-remain painting-only. Native binding codec builds without a native font service
-still use compatibility layout and legacy system painting; a future shared
-binding-core font service must address this rather than duplicating transport
-logic. Browser hosts should keep measuring through their display stack.
+remain painting-only. C artifacts with `native-fonts` also expose the independent
+`engine_new_with_fonts` constructor for caller-supplied font bytes. Its retained
+context serves both measurement and painting without system discovery. Other
+bindings need an admitted constructor before acquiring that service; the
+underlying Rust capability alone does not expose it. Browser hosts should keep
+measuring through their display stack.
 
 ## Problem
 
@@ -76,7 +78,7 @@ Merman uses a layered strategy instead of pretending there is one universal font
 
 1. The default renderer uses a deterministic, font-agnostic approximation based on stable
    character classes, Unicode display width, spacing, line height, and width-based wrapping. This
-   keeps the CLI, CI, documentation builds, and server-side batch rendering dependency-light and
+   keeps explicit deterministic rendering, CI, and server-side batch rendering dependency-light and
    reproducible without claiming to measure a named font.
 2. Flowchart HTML labels are made non-clipping by default so small browser/font differences are less
    likely to hide trailing punctuation.
@@ -121,7 +123,7 @@ For each platform, answer these questions before installing a callback:
 | Deterministic fallback | CLI output, docs generation, CI, simple previews | No host dependency, small and reproducible, works everywhere | Does not measure named fonts or know host shaping, fallback, or browser rounding |
 | Host callback | Editors, design tools, WebView previews, native previews where clipping is unacceptable | Best fidelity when measurement and display share the same text stack | Requires callback lifecycle, threading, caching, and platform text APIs |
 | Browser/WebView measurement service | Hosts that display Merman SVG in a browser surface | Closest to Mermaid's DOM/canvas behavior | UI-thread and async font-loading constraints need careful orchestration |
-| Built-in platform font engine in Merman | Future optional feature for hosts without their own measuring stack | Could improve no-callback estimates | Adds dependencies and still cannot exactly match every platform fallback chain |
+| Native font context | Rust and C hosts with admitted font assets and a capable artifact | Uses a retained font context for layout and painting | Requires font assets; SVG viewers still need matching fonts; does not reproduce every browser primitive |
 
 The callback is a seam, not a promise that all output becomes browser-identical. It is exact only to
 the extent that the host measures with the same fonts, line wrapping, white-space behavior, and
@@ -162,6 +164,20 @@ The request includes:
   or `MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH`.
 - `operation`, which identifies the exact browser/platform primitive and therefore the required
   result shape.
+
+The current core supplies actual family, size, weight, style, wrapping width,
+phase, and operation values. The remaining transport fields have a narrower
+contract: letter and word spacing are currently zero, direction is `auto`, and
+line height and white-space are derived from the requested wrapping operation.
+Their presence in a platform record does not imply that arbitrary CSS spacing,
+line-height, or direction has already been resolved and propagated from source.
+An adapter must not invent missing typography or report guessed geometry as an
+exact measurement.
+
+Callbacks are synchronous. Prepare fonts before rendering; returning a Promise,
+waiting for a UI thread, or starting a font download inside the callback cannot
+complete that measurement. A reusable host cache must include the complete
+request and invalidate when its font environment changes.
 
 The stable operation mapping is:
 

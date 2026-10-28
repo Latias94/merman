@@ -923,7 +923,7 @@ jobs:
                 install = steps[setup + 1]
                 self.assertTrue(install.startswith("Install npm toolchain\n"))
                 self.assertIn(
-                    "npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2",
+                    "npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1",
                     install,
                 )
                 setup_if = re.findall(r"(?m)^        if: (.+)$", steps[setup])

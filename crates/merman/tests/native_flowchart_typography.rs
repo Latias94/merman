@@ -62,6 +62,43 @@ fn native_flowchart_admits_px_size_and_node_font_weight() {
 }
 
 #[test]
+fn native_source_font_sizes_reject_rem_only_when_it_wins_within_the_style_list() {
+    let families = [
+        "flowchart LR\nA[Measured label]\n",
+        #[cfg(feature = "diagram-class")]
+        "classDiagram\nclass A\n",
+    ];
+    for family in families {
+        for (style, accepted) in [
+            ("font-size:2rem", false),
+            ("font-size:2rem,font-size:24px", true),
+            ("font-size:2rem !important,font-size:24px", false),
+            ("font-size:2rem !important,font-size:24px !important", true),
+        ] {
+            let source = format!("{family}style A {style}\n");
+            let result = Renderer::new().render(RenderRequest::new(
+                &source,
+                RenderTarget::Svg(request(true)),
+                OperationControl::new(),
+            ));
+            if accepted {
+                assert!(result.is_ok(), "{source}: {:?}", result.err());
+            } else {
+                let error = result.expect_err("native measurement cannot infer the document root");
+                assert!(error.to_string().contains("font-size"), "{error}");
+                assert!(error.to_string().contains("document-root"), "{error}");
+            }
+            let compatibility = Renderer::new().render(RenderRequest::new(
+                &source,
+                RenderTarget::Svg(request(false)),
+                OperationControl::new(),
+            ));
+            assert!(compatibility.is_ok(), "{source}: {:?}", compatibility.err());
+        }
+    }
+}
+
+#[test]
 fn native_flowchart_rejects_unmeasured_inline_html_typography() {
     for (style, property) in [
         ("font-size:64px", "font-size"),

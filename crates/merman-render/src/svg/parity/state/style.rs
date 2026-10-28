@@ -912,14 +912,7 @@ pub(crate) fn state_measured_svg_text_label(
     center_text: bool,
     style_attr: Option<&str>,
 ) -> String {
-    state_native_svg_text_label_lines(
-        geometry
-            .measured_lines()
-            .expect("measured State label geometry retains emitted rows"),
-        geometry,
-        center_text,
-        style_attr,
-    )
+    state_native_svg_text_label_lines(geometry, center_text, style_attr)
 }
 
 pub(crate) fn state_native_svg_text_label(
@@ -935,8 +928,7 @@ pub(crate) fn state_native_svg_text_label(
     }
 }
 
-fn state_native_svg_text_label_lines<'a>(
-    lines: impl IntoIterator<Item = &'a str>,
+fn state_native_svg_text_label_lines(
     geometry: &crate::state::StateNativeLabelGeometry,
     center_text: bool,
     style_attr: Option<&str>,
@@ -946,27 +938,62 @@ fn state_native_svg_text_label_lines<'a>(
     } else {
         ""
     };
+    let baseline_x_px = if center_text {
+        0.0
+    } else {
+        geometry.baseline_x_px()
+    };
     let svg_style_attr = style_attr
         .map(state_svg_text_style_attr)
         .filter(|style| !style.is_empty())
         .map(|style| format!(r#" style="{}""#, escape_attr(&style)))
         .unwrap_or_default();
     let mut out = format!(r#"<text{text_anchor}{svg_style_attr}>"#);
-    let mut line_count = 0usize;
-    for (line_index, line) in lines.into_iter().enumerate() {
+    for line_index in 0..geometry.line_count() {
         let baseline_y_px = geometry
             .baseline_y_px(line_index)
             .expect("State native geometry covers every emitted line");
         let _ = write!(
             &mut out,
-            r#"<tspan class="text-outer-tspan row" x="0" y="{}"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"{}>{}</tspan></tspan>"#,
+            r#"<tspan class="text-outer-tspan row" x="{}" y="{}">"#,
+            fmt_display(baseline_x_px),
             fmt_display(baseline_y_px),
-            svg_style_attr,
-            escape_xml_display(line)
         );
-        line_count += 1;
+        if let Some(words) = geometry.measured_word_line(line_index) {
+            for (index, (word, kind)) in words.iter().enumerate() {
+                let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
+                    "italic"
+                } else {
+                    "normal"
+                };
+                let font_weight = if *kind == crate::text::MermaidMarkdownWordType::Strong {
+                    "bold"
+                } else {
+                    "normal"
+                };
+                let word = crate::entities::decode_svg_text_content_entities(word);
+                let _ = write!(
+                    &mut out,
+                    r#"<tspan font-style="{font_style}" class="text-inner-tspan" font-weight="{font_weight}"{svg_style_attr}>"#,
+                );
+                if index > 0 {
+                    out.push(' ');
+                }
+                let _ = write!(&mut out, "{}</tspan>", escape_xml_display(&word));
+            }
+        } else {
+            let line = geometry
+                .measured_line(line_index)
+                .expect("measured State label geometry retains emitted rows");
+            let _ = write!(
+                &mut out,
+                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal"{}>{}</tspan>"#,
+                svg_style_attr,
+                escape_xml_display(line)
+            );
+        }
+        out.push_str("</tspan>");
     }
-    debug_assert_eq!(line_count, geometry.line_count());
     out.push_str("</text>");
     out
 }

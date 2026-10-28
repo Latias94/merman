@@ -108,7 +108,15 @@ impl SequencePreparedMathEntry {
     fn take_terminal_reservation(&self) -> Option<PreparedTextRetainedReservation> {
         let expectation = self.terminal_expectation()?;
         let mut reservation = self.retained_reservation.borrow_mut().take()?;
-        reservation.reconcile_downward(expectation.retained_bytes());
+        let projection = self
+            .outcome
+            .prepared()
+            .and_then(PreparedMathLabel::native_projection)
+            .map(Arc::as_ref);
+        reservation.reconcile_downward(PreparedMathEvidenceLease::retained_entry_bytes(
+            &expectation,
+            projection,
+        ));
         Some(reservation)
     }
 }
@@ -155,14 +163,23 @@ impl SequenceMathSidecar {
         let entries = self
             .entries
             .values()
-            .filter_map(SequencePreparedMathEntry::terminal_expectation)
+            .filter_map(|entry| {
+                Some((
+                    entry.terminal_expectation()?,
+                    entry
+                        .outcome
+                        .prepared()
+                        .and_then(PreparedMathLabel::native_projection)
+                        .cloned(),
+                ))
+            })
             .collect();
         let reservations = self
             .entries
             .values()
             .filter_map(SequencePreparedMathEntry::take_terminal_reservation)
             .collect();
-        PreparedMathEvidenceLease::new(entries, reservations)
+        PreparedMathEvidenceLease::with_native_projections(entries, reservations)
     }
 
     #[cfg(test)]
@@ -710,6 +727,52 @@ mod tests {
         assert_eq!(evidence.entries()[0].expected_emissions(), 2);
         drop(sidecar);
         drop(evidence);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn native_payload_and_its_reservation_survive_the_sidecar_until_the_last_lease() {
+        let backend = ConfiguredMathBackend::compiled_ratex();
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let text_measurer = DeterministicTextMeasurer::default();
+        let builder = SequenceMathSidecarBuilder::new(
+            Some(&backend),
+            &merman_core::presentation::PresentationConfig::default(),
+            &text_measurer,
+            Arc::clone(&meter),
+        )
+        .with_actor_terminal_emissions(2);
+        let prepared = builder
+            .prepare(
+                SequenceMathOccurrence::Actor(0),
+                "$$x$$",
+                terminal(&TextStyle::default()),
+            )
+            .expect("prepare native actor math");
+        let payload = Arc::downgrade(prepared.native_projection().unwrap());
+        let sidecar = builder.finish().expect("native actor sidecar");
+        let evidence = sidecar.prepared_math_evidence();
+        let retained = PreparedMathEvidenceLease::retained_entry_bytes(
+            &evidence.entries()[0],
+            evidence.native_projection(0),
+        );
+        assert_eq!(evidence.entries()[0].expected_emissions(), 2);
+        assert_eq!(meter.prepared_text_retained_bytes(), retained);
+
+        drop(prepared);
+        drop(sidecar);
+        assert!(payload.upgrade().is_some());
+        assert_eq!(meter.prepared_text_retained_bytes(), retained);
+        let cloned = evidence.clone();
+        drop(evidence);
+        assert!(payload.upgrade().is_some());
+        assert_eq!(meter.prepared_text_retained_bytes(), retained);
+
+        drop(cloned);
+        assert!(payload.upgrade().is_none());
         assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 }

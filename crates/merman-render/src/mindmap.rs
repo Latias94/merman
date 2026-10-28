@@ -243,12 +243,10 @@ pub(crate) fn mindmap_text_style_with_font_family(
     effective_config: &Value,
     font_family_css: &str,
 ) -> TextStyle {
-    // HTML labels retain their 16px measurement baseline; SVG labels inherit root CSS size.
-    let font_size = if crate::config::config_effective_html_labels(effective_config) {
-        16.0
-    } else {
-        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0).max(1.0)
-    };
+    // HTML labels and SVG text inherit the same root CSS font size.
+    let font_size =
+        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+            .max(1.0);
     TextStyle {
         font_family: Some(font_family_css.to_owned()),
         font_size,
@@ -336,7 +334,12 @@ fn mindmap_label_bbox_px_with_math(
             Some(max_node_width_px.max(1.0)),
             WrapMode::SvgLike,
         );
-        let metrics = crate::text::measure_svg_markdown_word_lines(measurer, &lines, style);
+        let metrics = crate::text::measure_svg_markdown_word_lines(
+            measurer,
+            &lines,
+            style,
+            crate::text::SvgTextEntityMode::CreateTextSource,
+        );
         return Ok((metrics.width.max(0.0), metrics.height.max(0.0)));
     }
 
@@ -1181,7 +1184,7 @@ mod tests {
             "Typed font,monospace",
         );
         assert_eq!(html_style.font_family, typed_style.font_family);
-        assert_eq!(html_style.font_size, 16.0);
+        assert_eq!(html_style.font_size, 24.0);
         assert_eq!(
             super::mindmap_text_style(&serde_json::json!({ "htmlLabels": false, "fontSize": 18 }))
                 .font_size,

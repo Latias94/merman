@@ -580,9 +580,19 @@ pub(in crate::svg::parity::flowchart) fn node_source_text_style<'a>(
     } else {
         &ctx.text_style
     };
+    let label_base_style = ctx
+        .svg_label_sidecar
+        .map_or_else(
+            crate::flowchart::FlowchartLabelWeights::default,
+            |sidecar| sidecar.label_weights(),
+        )
+        .parent_style(
+            crate::diagram_theme::ThemeTarget::NodeLabel,
+            label_base_style,
+        );
     std::borrow::Cow::Owned(
         crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            label_base_style,
+            label_base_style.as_ref(),
             ctx.class_defs,
             node_classes,
             node_styles,

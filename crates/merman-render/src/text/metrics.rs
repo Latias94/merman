@@ -15,6 +15,36 @@ use crate::environment::{
     TextMeasurementOperation,
 };
 
+mod unwrapped_xhtml;
+
+#[cfg(feature = "diagram-block")]
+pub(crate) fn measure_unwrapped_xhtml_label_fragment(
+    measurer: &dyn TextMeasurer,
+    fragment: &str,
+    style: &TextStyle,
+    root_font_size: f64,
+) -> TextMetrics {
+    if fragment.starts_with("<p>")
+        && let Some(plain) = mermaid_xhtml_label_plain_text(fragment)
+        && !plain.contains('<')
+    {
+        return measurer.measure_wrapped(&plain, style, None, WrapMode::HtmlLike);
+    }
+    let carrier = measurer
+        .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)
+        .and_then(BuiltinTextMeasurementOperationCarrier::into_inline_html)
+        .unwrap_or_else(InlineHtmlMeasurementCarrier::opaque);
+    measure_html_with_inline_styles_and_terminal_fonts(
+        measurer,
+        carrier,
+        fragment,
+        style,
+        None,
+        WrapMode::HtmlLike,
+        Some(unwrapped_xhtml::TerminalFonts::new(style, root_font_size)),
+    )
+}
+
 // This input has already passed through the lightweight HTML parser. Do not use the generic text
 // normalizer here: its Unicode trim would erase a final NBSP-only line before inline measurement.
 fn normalized_preparsed_html_text_lines(text: &str) -> Vec<String> {
@@ -83,6 +113,7 @@ struct InlineTextRun {
     bold: bool,
     italic: bool,
     code: bool,
+    terminal_style: Option<std::sync::Arc<TextStyle>>,
 }
 
 fn push_inline_text_char(
@@ -92,10 +123,26 @@ fn push_inline_text_char(
     italic: bool,
     code: bool,
 ) {
-    if let Some(run) = runs
-        .last_mut()
-        .filter(|run| run.bold == bold && run.italic == italic && run.code == code)
-    {
+    push_inline_text_char_with_terminal_style(runs, ch, bold, italic, code, None);
+}
+
+fn push_inline_text_char_with_terminal_style(
+    runs: &mut Vec<InlineTextRun>,
+    ch: char,
+    bold: bool,
+    italic: bool,
+    code: bool,
+    terminal_style: Option<&std::sync::Arc<TextStyle>>,
+) {
+    if let Some(run) = runs.last_mut().filter(|run| {
+        run.bold == bold
+            && run.italic == italic
+            && run.code == code
+            && unwrapped_xhtml::same_font(
+                run.terminal_style.as_deref(),
+                terminal_style.map(|s| s.as_ref()),
+            )
+    }) {
         run.text.push(ch);
     } else {
         runs.push(InlineTextRun {
@@ -103,6 +150,7 @@ fn push_inline_text_char(
             bold,
             italic,
             code,
+            terminal_style: terminal_style.cloned(),
         });
     }
 }
@@ -119,6 +167,32 @@ fn inline_text_style(base: &TextStyle, bold: bool, italic: bool, code: bool) -> 
         style.font_family = Some("monospace".to_string());
     }
     style
+}
+
+/// Matches createText's explicit word attributes, not the enclosing text's inheritance.
+pub(crate) fn svg_markdown_word_style(
+    base: &TextStyle,
+    kind: MermaidMarkdownWordType,
+) -> std::borrow::Cow<'_, TextStyle> {
+    let bold = kind == MermaidMarkdownWordType::Strong;
+    let italic = kind == MermaidMarkdownWordType::Em;
+    let weight_matches = match base.font_weight.as_deref() {
+        None | Some("normal" | "400") => !bold,
+        Some("bold" | "700") => bold,
+        _ => false,
+    };
+    let style_matches = match base.font_style.as_deref() {
+        None | Some("normal") => !italic,
+        Some("italic") => italic,
+        _ => false,
+    };
+    if weight_matches && style_matches {
+        return std::borrow::Cow::Borrowed(base);
+    }
+    let mut style = base.clone();
+    style.font_weight = Some(if bold { "700" } else { "normal" }.to_owned());
+    style.font_style = Some(if italic { "italic" } else { "normal" }.to_owned());
+    std::borrow::Cow::Owned(style)
 }
 
 fn measure_inline_run_width_px<M: TextMeasurer + ?Sized>(
@@ -147,7 +221,20 @@ fn measure_inline_runs_width_px<M: TextMeasurer + ?Sized>(
     runs.iter()
         .filter(|run| !run.text.is_empty())
         .map(|run| {
-            let run_style = inline_text_style(style, run.bold, run.italic, run.code);
+            let run_style = if let Some(terminal) = &run.terminal_style {
+                std::borrow::Cow::Borrowed(terminal.as_ref())
+            } else if svg_advance && wrap_mode != WrapMode::HtmlLike {
+                let kind = if run.bold {
+                    MermaidMarkdownWordType::Strong
+                } else if run.italic {
+                    MermaidMarkdownWordType::Em
+                } else {
+                    MermaidMarkdownWordType::Normal
+                };
+                svg_markdown_word_style(style, kind)
+            } else {
+                std::borrow::Cow::Owned(inline_text_style(style, run.bold, run.italic, run.code))
+            };
             measure_inline_run_width_px(measurer, &run.text, &run_style, wrap_mode, svg_advance)
         })
         .sum()
@@ -1395,6 +1482,7 @@ mod inline_planning_tests {
             bold: variant == 1,
             italic: variant == 2,
             code: variant == 3,
+            terminal_style: None,
         }
     }
 
@@ -1511,6 +1599,54 @@ mod inline_planning_tests {
                 line_count: 1,
             }
         }
+    }
+
+    #[test]
+    fn svg_markdown_resets_parent_weight_without_changing_html_inheritance() {
+        let measurer = SoftHyphenMeasurer::default();
+        let style = TextStyle {
+            font_weight: Some("700".to_owned()),
+            font_style: Some("italic".to_owned()),
+            ..TextStyle::default()
+        };
+        let svg = measure_markdown_with_inline_styles(
+            &measurer,
+            "plain **bold**",
+            &style,
+            None,
+            WrapMode::SvgLike,
+        );
+        assert_eq!(svg.width, 150.0);
+        let calls = measurer.calls.borrow();
+        assert!(
+            calls.iter().any(|(text, weight, italic, _)| {
+                text == "plain"
+                    && weight.as_deref() == Some("normal")
+                    && italic.as_deref() == Some("normal")
+            }),
+            "{calls:?}"
+        );
+        drop(calls);
+        let html = measure_markdown_with_inline_styles(
+            &measurer,
+            "plain **bold**",
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(html.width, 200.0);
+    }
+
+    #[test]
+    fn html_markdown_measurement_keeps_code_span_literals() {
+        let metrics = measure_markdown_with_inline_styles(
+            &SoftHyphenMeasurer::default(),
+            "inline: `**not bold**`",
+            &TextStyle::default(),
+            None,
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(metrics.width, 220.0);
     }
 
     #[test]
@@ -2816,6 +2952,95 @@ impl InlineHtmlMeasurementCarrier {
     }
 }
 
+/// Consumes markup after `<`, leaving literal comparison signs in the text stream.
+///
+/// This only finds boundaries: the existing label logic still owns tag names, fonts, and icons.
+/// An empty tag represents a skipped comment or an unfinished tag discarded at EOF.
+fn take_inline_html_tag(input: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<String> {
+    let mut lookahead = input.clone();
+    let first = lookahead.next()?;
+    let name_start = if first == '/' {
+        lookahead.next()?
+    } else {
+        first
+    };
+    if matches!(first, '!' | '?') || (first == '/' && !name_start.is_ascii_alphabetic()) {
+        let is_comment =
+            first == '!' && lookahead.next() == Some('-') && lookahead.next() == Some('-');
+        if is_comment {
+            // Consume `!--`; quotes and tag-like text in comments have no attribute semantics.
+            input.next();
+            input.next();
+            input.next();
+            let mut at_start = true;
+            let mut hyphens = 0_u8;
+            let mut end_bang = false;
+            for ch in input.by_ref() {
+                if ch == '>' && (at_start || hyphens == 2 || end_bang) {
+                    break;
+                }
+                end_bang = ch == '!' && hyphens == 2;
+                hyphens = if ch == '-' { (hyphens + 1).min(2) } else { 0 };
+                at_start = at_start && ch == '-' && hyphens == 1;
+            }
+        } else {
+            // Bogus declarations, end tags, and processing instructions ignore attribute quotes.
+            for ch in input.by_ref() {
+                if ch == '>' {
+                    break;
+                }
+            }
+        }
+        return Some(String::new());
+    }
+
+    if !name_start.is_ascii_alphabetic() {
+        return None;
+    }
+
+    #[derive(Clone, Copy)]
+    enum Boundary {
+        TagName,
+        BeforeAttribute,
+        AttributeName,
+        AfterAttribute,
+        BeforeValue,
+        UnquotedValue,
+        QuotedValue(char),
+    }
+    use Boundary::*;
+
+    let mut tag = String::new();
+    if first == '/' {
+        tag.push(input.next()?);
+    }
+    let mut boundary = TagName;
+    for ch in input.by_ref() {
+        if ch == '>' && !matches!(boundary, QuotedValue(_)) {
+            return Some(tag);
+        }
+        tag.push(ch);
+        boundary = match boundary {
+            QuotedValue(quote) if ch == quote => BeforeAttribute,
+            QuotedValue(_) => boundary,
+            TagName | BeforeAttribute if is_html_collapsible_ascii_whitespace(ch) || ch == '/' => {
+                BeforeAttribute
+            }
+            BeforeAttribute => AttributeName,
+            AttributeName | AfterAttribute if ch == '=' => BeforeValue,
+            AttributeName if is_html_collapsible_ascii_whitespace(ch) => AfterAttribute,
+            AttributeName | AfterAttribute if ch == '/' => BeforeAttribute,
+            AfterAttribute if !is_html_collapsible_ascii_whitespace(ch) => AttributeName,
+            BeforeValue if is_html_collapsible_ascii_whitespace(ch) => BeforeValue,
+            BeforeValue if matches!(ch, '"' | '\'') => QuotedValue(ch),
+            BeforeValue => UnquotedValue,
+            UnquotedValue if is_html_collapsible_ascii_whitespace(ch) => BeforeAttribute,
+            _ => boundary,
+        };
+    }
+    Some(String::new())
+}
+
 fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     measurer: &M,
     carrier: InlineHtmlMeasurementCarrier,
@@ -2823,6 +3048,21 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     style: &TextStyle,
     max_width: Option<f64>,
     wrap_mode: WrapMode,
+) -> TextMetrics {
+    measure_html_with_inline_styles_and_terminal_fonts(
+        measurer, carrier, html, style, max_width, wrap_mode, None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
+    measurer: &M,
+    carrier: InlineHtmlMeasurementCarrier,
+    html: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+    mut terminal_fonts: Option<unwrapped_xhtml::TerminalFonts>,
 ) -> TextMetrics {
     fn html_tag_class_attr(tag: &str) -> Option<String> {
         let lower = tag.to_ascii_lowercase();
@@ -2890,14 +3130,9 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     let mut it = html.chars().peekable();
     let mut entity_reference = String::new();
     while let Some(ch) = it.next() {
-        if ch == '<' {
-            let mut tag = String::new();
-            for c in it.by_ref() {
-                if c == '>' {
-                    break;
-                }
-                tag.push(c);
-            }
+        if ch == '<'
+            && let Some(tag) = take_inline_html_tag(&mut it)
+        {
             let tag = trim_html_collapsible_ascii_whitespace(&tag);
             let tag_lower = tag.to_ascii_lowercase();
             let tag_trim = trim_html_collapsible_ascii_whitespace(&tag_lower);
@@ -2912,8 +3147,17 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                 .find(|part| !part.is_empty())
                 .unwrap_or("");
 
+            if let Some(fonts) = terminal_fonts.as_mut() {
+                fonts.observe_tag(name, tag, is_closing);
+            }
+
             let fontawesome_icon_width = if name == "i" && !is_closing {
-                fontawesome_icon_width_px(tag, style.font_size)
+                fontawesome_icon_width_px(
+                    tag,
+                    terminal_fonts
+                        .as_ref()
+                        .map_or(style.font_size, |fonts| fonts.current().font_size),
+                )
             } else {
                 None
             };
@@ -2962,12 +3206,20 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                     }
                 }
                 "img" if !is_closing => {
+                    if terminal_fonts.is_some()
+                        && let Some(runs) = inline_runs_by_line.last_mut()
+                    {
+                        runs.push(InlineTextRun::default());
+                    }
                     if let Some(slot) = image_on_line.last_mut() {
                         *slot = true;
                     }
                     inline_replaced_boundary = true;
                 }
                 "br" => {
+                    if let Some(fonts) = terminal_fonts.as_mut() {
+                        fonts.new_line();
+                    }
                     plain.push('\n');
                     icon_width_px_by_line.push(0.0);
                     icon_on_line.push(false);
@@ -2983,6 +3235,9 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                     // Reusing the `<br>` branch here would append a phantom row after
                     // `<p><br></p>` and make blank-only labels impossible to count exactly.
                     if !plain.ends_with('\n') && !plain.is_empty() {
+                        if let Some(fonts) = terminal_fonts.as_mut() {
+                            fonts.new_line();
+                        }
                         plain.push('\n');
                         icon_width_px_by_line.push(0.0);
                         icon_on_line.push(false);
@@ -3019,12 +3274,13 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                 if decoded == '\n' || decoded == '\r' {
                     lines.push(Vec::new());
                 } else if let Some(runs) = lines.last_mut() {
-                    push_inline_text_char(
+                    push_inline_text_char_with_terminal_style(
                         runs,
                         decoded,
                         strong_depth > 0,
                         em_depth > 0,
                         code_depth > 0,
+                        terminal_fonts.as_ref().map(|fonts| fonts.current()),
                     );
                 }
             }
@@ -3045,12 +3301,13 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
             }
             plain.push(decoded);
             if let Some(runs) = inline_runs_by_line.last_mut() {
-                push_inline_text_char(
+                push_inline_text_char_with_terminal_style(
                     runs,
                     decoded,
                     strong_depth > 0,
                     em_depth > 0,
                     code_depth > 0,
+                    terminal_fonts.as_ref().map(|fonts| fonts.current()),
                 );
             }
             *inline_replaced_boundary = false;
@@ -3124,6 +3381,57 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
             .to_string()
     };
     let has_inline_icons = icon_on_line.iter().any(|has_icon| *has_icon);
+
+    if let Some(fonts) = terminal_fonts {
+        if fonts.has_font_declarations() {
+            debug_assert!(max_width.is_none() && wrap_mode == WrapMode::HtmlLike);
+            let explicit_line_boxes =
+                explicit_inline_html_line_boxes(&inline_runs_by_line, &image_on_line);
+            let lines = normalized_preparsed_html_text_lines(&plain);
+            inline_runs_by_line.resize_with(lines.len(), Vec::new);
+            // Keep collapsed tails out of styled widths; empty runs mark replaced elements.
+            for runs in &mut inline_runs_by_line {
+                for run in runs.iter_mut().rev() {
+                    if run.text.is_empty() {
+                        break;
+                    }
+                    let end = run
+                        .text
+                        .trim_end_matches(is_html_collapsible_ascii_whitespace)
+                        .len();
+                    run.text.truncate(end);
+                    if end > 0 {
+                        break;
+                    }
+                }
+            }
+            // Preserve the opaque host's complete paragraph request before styled probes.
+            if !carrier.is_builtin() {
+                measurer.measure_wrapped(
+                    trim_html_collapsible_ascii_whitespace(&plain),
+                    style,
+                    None,
+                    wrap_mode,
+                );
+            }
+            return fonts.measure(
+                measurer,
+                &inline_runs_by_line,
+                &icon_width_px_by_line,
+                style,
+                explicit_line_boxes,
+            );
+        }
+        // Unstyled Block markup retains the existing callback and primitive-font behavior.
+        for run in inline_runs_by_line.iter_mut().flatten() {
+            run.terminal_style = None;
+        }
+        if let Some(lines) = break_spaces_runs_by_line.as_mut() {
+            for run in lines.iter_mut().flatten() {
+                run.terminal_style = None;
+            }
+        }
+    }
 
     if wrap_mode == WrapMode::HtmlLike && !has_inline_icons && carrier.is_builtin() {
         let explicit_line_boxes =
@@ -3368,6 +3676,7 @@ fn markdown_word_line_plain_text_and_width_px(
     words: &[(String, MermaidMarkdownWordType)],
     style: &TextStyle,
     wrap_mode: WrapMode,
+    entity_mode: super::SvgTextEntityMode,
 ) -> (String, f64) {
     let mut plain = String::new();
     let mut runs = Vec::new();
@@ -3375,16 +3684,16 @@ fn markdown_word_line_plain_text_and_width_px(
     for (word_idx, (word, ty)) in words.iter().enumerate() {
         let visible_word = match wrap_mode {
             WrapMode::HtmlLike => merman_core::entities::decode_html_entities_to_unicode(word),
-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
-                crate::entities::decode_svg_text_content_entities(word)
-            }
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => entity_mode.visible_word(word),
         };
         let bold = *ty == MermaidMarkdownWordType::Strong;
         let italic = *ty == MermaidMarkdownWordType::Em;
 
         if word_idx > 0 {
             plain.push(' ');
-            push_inline_text_char(&mut runs, ' ', false, false, false);
+            // Each SVG word tspan owns its leading space and its font attributes.
+            let svg = wrap_mode != WrapMode::HtmlLike;
+            push_inline_text_char(&mut runs, ' ', svg && bold, svg && italic, false);
         }
         for ch in visible_word.chars() {
             plain.push(ch);
@@ -3402,7 +3711,14 @@ fn measure_markdown_word_line_width_px(
     style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> f64 {
-    markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
+    markdown_word_line_plain_text_and_width_px(
+        measurer,
+        words,
+        style,
+        wrap_mode,
+        super::SvgTextEntityMode::CreateTextSource,
+    )
+    .1
 }
 
 fn split_markdown_word_to_width_px(
@@ -3532,6 +3848,7 @@ pub(crate) fn measure_svg_markdown_word_lines(
     measurer: &dyn TextMeasurer,
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: &TextStyle,
+    entity_mode: super::SvgTextEntityMode,
 ) -> TextMetrics {
     if lines.iter().all(Vec::is_empty) {
         return TextMetrics {
@@ -3543,15 +3860,76 @@ pub(crate) fn measure_svg_markdown_word_lines(
     let mut plain_lines = Vec::with_capacity(lines.len());
     let mut width = 0.0_f64;
     for line in lines {
-        let (plain, line_width) =
-            markdown_word_line_plain_text_and_width_px(measurer, line, style, WrapMode::SvgLike);
+        let (plain, line_width) = markdown_word_line_plain_text_and_width_px(
+            measurer,
+            line,
+            style,
+            WrapMode::SvgLike,
+            entity_mode,
+        );
         plain_lines.push(plain);
         width = width.max(line_width);
     }
+    let row_style = svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
     let mut metrics =
-        measurer.measure_wrapped(&plain_lines.join("\n"), style, None, WrapMode::SvgLike);
+        measurer.measure_wrapped(&plain_lines.join("\n"), &row_style, None, WrapMode::SvgLike);
     metrics.width = round_to_1_64_px(width);
     metrics
+}
+
+/// Measures Class title words at their retained createText row positions without reparsing.
+#[cfg(feature = "diagram-class")]
+pub(crate) fn measure_svg_literal_word_lines(
+    measurer: &dyn TextMeasurer,
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: &TextStyle,
+    entity_mode: super::SvgTextEntityMode,
+) -> TextMetrics {
+    if lines.iter().all(Vec::is_empty) {
+        return TextMetrics {
+            width: 0.0,
+            height: 0.0,
+            line_count: 0,
+        };
+    }
+    let mut width = 0.0_f64;
+    let mut ink: Option<(f64, f64)> = None;
+    for (row_index, line) in lines.iter().enumerate() {
+        let (_, line_width) = markdown_word_line_plain_text_and_width_px(
+            measurer,
+            line,
+            style,
+            WrapMode::SvgLike,
+            entity_mode,
+        );
+        width = width.max(line_width);
+        for (word_index, (word, kind)) in line.iter().enumerate() {
+            let visible = entity_mode.visible_word(word);
+            if trim_html_collapsible_ascii_whitespace(&visible).is_empty() {
+                continue;
+            }
+            let text = if word_index == 0 {
+                visible
+            } else {
+                std::borrow::Cow::Owned(format!(" {visible}"))
+            };
+            let face = svg_markdown_word_style(style, *kind);
+            // Retained words are literal tspan content, including entity-decoded angle brackets.
+            // Empty rows keep their DOM positions without contributing any ink.
+            let top = measurer.measure_svg_create_text_bbox_y_offset_px(&text, &face)
+                + row_index as f64 * style.font_size * 1.1;
+            let height = measurer.measure_svg_tspan_text_bbox_height_px(&text, &face);
+            if height > 0.0 {
+                let bottom = top + height;
+                ink = Some(ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))));
+            }
+        }
+    }
+    TextMetrics {
+        width: round_to_1_64_px(width),
+        height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
+        line_count: lines.len(),
+    }
 }
 
 fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {
@@ -3739,7 +4117,11 @@ fn measure_markdown_with_inline_styles_impl(
         }
     }
 
-    let raw_parsed = mermaid_markdown_to_lines(markdown, true);
+    let raw_parsed = if wrap_mode == WrapMode::HtmlLike {
+        super::markdown::html_markdown_measurement_lines(markdown)
+    } else {
+        mermaid_markdown_to_lines(markdown, true)
+    };
     let html_paragraph_gap_lines = if wrap_mode == WrapMode::HtmlLike {
         html_markdown_paragraph_gap_lines(markdown)
     } else {
@@ -3754,8 +4136,13 @@ fn measure_markdown_with_inline_styles_impl(
     let mut plain_lines: Vec<String> = Vec::with_capacity(parsed.len().max(1));
     let mut styled_width_px_by_line: Vec<f64> = Vec::with_capacity(parsed.len().max(1));
     for words in &parsed {
-        let (plain, width) =
-            markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode);
+        let (plain, width) = markdown_word_line_plain_text_and_width_px(
+            measurer,
+            words,
+            style,
+            wrap_mode,
+            super::SvgTextEntityMode::CreateTextSource,
+        );
         plain_lines.push(plain);
         styled_width_px_by_line.push(width);
     }
@@ -3765,10 +4152,15 @@ fn measure_markdown_with_inline_styles_impl(
         WrapMode::HtmlLike => trim_html_collapsible_ascii_whitespace(&plain).to_string(),
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => plain,
     };
-    let base = if manually_wrap_words {
-        measurer.measure_wrapped(&plain, style, None, wrap_mode)
+    let row_style = if wrap_mode == WrapMode::HtmlLike {
+        std::borrow::Cow::Borrowed(style)
     } else {
-        measurer.measure_wrapped(&plain, style, max_width, wrap_mode)
+        svg_markdown_word_style(style, MermaidMarkdownWordType::Normal)
+    };
+    let base = if manually_wrap_words {
+        measurer.measure_wrapped(&plain, &row_style, None, wrap_mode)
+    } else {
+        measurer.measure_wrapped(&plain, &row_style, max_width, wrap_mode)
     };
 
     let max_line_width = styled_width_px_by_line
@@ -3791,7 +4183,14 @@ fn measure_markdown_with_inline_styles_impl(
         let raw_w = raw_parsed
             .iter()
             .map(|words| {
-                markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
+                markdown_word_line_plain_text_and_width_px(
+                    measurer,
+                    words,
+                    style,
+                    wrap_mode,
+                    super::SvgTextEntityMode::CreateTextSource,
+                )
+                .1
             })
             .fold(0.0_f64, f64::max);
         let needs_wrap = raw_w > w;

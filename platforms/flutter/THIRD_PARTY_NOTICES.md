@@ -352,10 +352,10 @@ dugong-graphlib is a modified Rust translation of the graph model used by Dagre.
 
 The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are licensed under OFL-1.1 rather than RaTeX's MIT code license.
 
-- Version: `ratex-katex-fonts@0.1.14`
+- Version: `ratex-katex-fonts@0.1.15`
 - Source: <https://github.com/erweixin/RaTeX.git>
-- Source ref: `crates.io:ratex-katex-fonts@0.1.14`
-- Source commit: `ae391d727ac615437c63c308f4538d971a84bede`
+- Source ref: `crates.io:ratex-katex-fonts@0.1.15`
+- Source commit: `7d9f9a39218914bead8ffdf39b79028a01d12c22`
 - Source path: `crates/ratex-katex-fonts/fonts`
 - Relationship: `embedded`
 - License expression: `OFL-1.1`
@@ -495,12 +495,12 @@ The language package modifies selected grammar helpers and Flowchart/Mindmap see
 
 ### RaTeX (`ratex`)
 
-Optional math rendering links the RaTeX 0.1.14 crate family; its separately licensed embedded fonts are recorded as their own component.
+Optional math rendering links the RaTeX 0.1.15 crate family; its separately licensed embedded fonts are recorded as their own component.
 
-- Version: `0.1.14`
+- Version: `0.1.15`
 - Source: <https://github.com/erweixin/RaTeX.git>
-- Source ref: `crates.io:ratex-*@0.1.14`
-- Source commit: `ae391d727ac615437c63c308f4538d971a84bede`
+- Source ref: `crates.io:ratex-*@0.1.15`
+- Source commit: `7d9f9a39218914bead8ffdf39b79028a01d12c22`
 - Source path: `crates`
 - Relationship: `linked`
 - License expression: `MIT`

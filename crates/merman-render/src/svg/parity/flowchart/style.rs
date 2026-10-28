@@ -522,13 +522,16 @@ impl FlowchartCompiledStyles {
         &self,
         base: &'a crate::text::TextStyle,
     ) -> crate::flowchart::FlowchartTextStyleResolution<'a> {
-        let mut style = std::borrow::Cow::Borrowed(base);
+        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+            base,
+            crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
+        );
         let mut terminal_foreground = None;
         for declaration in &self.label_sources {
-            crate::flowchart::flowchart_apply_text_style_decl(
-                &mut style,
+            cascade.observe(
                 declaration.prepared.property(),
                 declaration.prepared.value(),
+                declaration.prepared.important(),
             );
             if declaration.prepared.property().trim() == "color" {
                 terminal_foreground = Some(crate::flowchart::FlowchartTerminalForeground::new(
@@ -538,7 +541,7 @@ impl FlowchartCompiledStyles {
             }
         }
         crate::flowchart::FlowchartTextStyleResolution {
-            style,
+            style: cascade.finish(),
             terminal_foreground,
         }
     }
@@ -1989,9 +1992,16 @@ fn label_source_residual_reason(
 
     let valid = match declaration.property() {
         "font-family" => crate::mermaid_style::is_safe_css_font_family_value(declaration.value()),
-        "font-size" => declaration
-            .resolve_font_size_px(crate::mermaid_style::CssFontSizeContext::uniform(16.0))
-            .is_some(),
+        "font-size" => {
+            if crate::mermaid_style::CssValueAnalysis::font_size_depends_on_root(
+                declaration.value(),
+            ) {
+                return Some(SourceStyleResidualReason::UnsupportedSurface);
+            }
+            declaration
+                .resolve_font_size_px(crate::mermaid_style::CssFontSizeContext::uniform(16.0))
+                .is_some()
+        }
         "font-weight" => {
             crate::mermaid_style::is_supported_css_font_weight_value(declaration.value())
         }
@@ -2471,7 +2481,8 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
                         .resolve_font_size_px(crate::mermaid_style::CssFontSizeContext::uniform(
                             16.0,
                         ))
-                        .is_some(),
+                        .is_some()
+                        && !crate::mermaid_style::CssValueAnalysis::font_size_depends_on_root(v),
                 });
             }
             _ => {}

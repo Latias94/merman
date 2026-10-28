@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 215.281,
+        "max_x": 215.28,
         "max_y": 465.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -21,13 +21,13 @@
           "title_label": {
             "height": 21.0,
             "width": 51.1,
-            "x": 113.641,
+            "x": 113.64,
             "y": 22.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 203.281,
-          "x": 113.641,
+          "width": 203.28,
+          "x": 113.64,
           "y": 238.5
         },
         {
@@ -42,13 +42,13 @@
           "title_label": {
             "height": 21.0,
             "width": 44.52,
-            "x": 113.641,
+            "x": 113.64,
             "y": 72.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 155.281,
-          "x": 113.641,
+          "width": 155.28,
+          "x": 113.64,
           "y": 251.5
         },
         {
@@ -63,13 +63,13 @@
           "title_label": {
             "height": 21.0,
             "width": 36.4,
-            "x": 113.641,
+            "x": 113.64,
             "y": 122.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 107.281,
-          "x": 113.641,
+          "width": 107.28,
+          "x": 113.64,
           "y": 264.5
         }
       ],
@@ -84,16 +84,16 @@
           "label": {
             "height": 21.0,
             "width": 47.04,
-            "x": 113.161,
+            "x": 113.16,
             "y": 277.5
           },
           "points": [
             {
-              "x": 113.641,
+              "x": 113.64,
               "y": 243.0
             },
             {
-              "x": 113.641,
+              "x": 113.64,
               "y": 312.0
             }
           ],
@@ -110,40 +110,40 @@
           "height": 453.0,
           "id": "Company",
           "is_cluster": true,
-          "width": 203.281,
-          "x": 113.641,
+          "width": 203.28,
+          "x": 113.64,
           "y": 238.5
         },
         {
           "height": 379.0,
           "id": "Company.Project",
           "is_cluster": true,
-          "width": 155.281,
-          "x": 113.641,
+          "width": 155.28,
+          "x": 113.64,
           "y": 251.5
         },
         {
           "height": 305.0,
           "id": "Company.Project.Module",
           "is_cluster": true,
-          "width": 107.281,
-          "x": 113.641,
+          "width": 107.28,
+          "x": 113.64,
           "y": 264.5
         },
         {
           "height": 81.0,
           "id": "User",
           "is_cluster": false,
-          "width": 50.453,
-          "x": 113.641,
+          "width": 50.46,
+          "x": 113.64,
           "y": 352.5
         },
         {
           "height": 81.0,
           "id": "Admin",
           "is_cluster": false,
-          "width": 59.281,
-          "x": 113.641,
+          "width": 59.28,
+          "x": 113.64,
           "y": 202.5
         }
       ]

@@ -742,12 +742,9 @@ impl SvgPipeline {
             Err(error) => return Err(error),
         };
         if self.inline_contract.is_some() {
-            // Prepared math is emitted as a renderer-owned `<template>` projection inside a
-            // browser fallback. It must be materialized before inline publication and
-            // admission runs; otherwise the internal evidence marker is rejected as unsupported
-            // XHTML before the renderer-owned projection can consume it. The projection is
-            // bounded by an opaque renderer evidence fingerprint, so untrusted or forged native
-            // geometry still fails closed before the general admission pass.
+            // Materialize the private prepared-math payload before inline publication and
+            // admission. Browser XHTML supplies occurrence placement only; native geometry comes
+            // from the renderer-owned evidence lease and never from browser markup.
             execution.checkpoint()?;
             current = preset::BuiltinSvgStage::PreparedMathProjection
                 .apply(
@@ -1474,11 +1471,19 @@ mod tests {
             "node-label",
             0,
         );
-        let evidence = PreparedMathEvidenceLease::new(
-            vec![crate::math::PreparedMathExpectation::available(
-                occurrence_id.clone(),
-                crate::math::PreparedMathProjectionFingerprint::from_projection(projection),
-                1,
+        let native = Arc::new(crate::math::PreparedMathNativeProjection::new(
+            projection.to_owned(),
+            8.0,
+            9.0,
+        ));
+        let evidence = PreparedMathEvidenceLease::with_native_projections(
+            vec![(
+                crate::math::PreparedMathExpectation::available(
+                    occurrence_id.clone(),
+                    native.fingerprint(),
+                    1,
+                ),
+                Some(native),
             )],
             Vec::new(),
         );
@@ -1488,11 +1493,9 @@ mod tests {
                 r#"<foreignObject width="10" height="11"><div xmlns="http://www.w3.org/1999/xhtml">"#,
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
                 r#"data-merman-prepared-math-occurrence="{}">browser"#,
-                r#"<template data-merman-prepared-math-projection="v1">{}</template>"#,
                 r#"</span></div></foreignObject></svg>"#,
             ),
             occurrence_id.as_str(),
-            projection,
         );
         let session = render_session();
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
@@ -1540,8 +1543,8 @@ mod tests {
         let svg = format!(
             concat!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
-                r#"<g class="merman-prepared-math-native" data-merman-prepared-math-occurrence="{}">"#,
-                r#"<g><path d="M0 0h2"/></g></g>"#,
+                r#"<defs><g id="math"><g><path d="M0 0h2"/></g></g></defs>"#,
+                r##"<use class="merman-prepared-math-native" data-merman-prepared-math-occurrence="{}" href="#math"/>"##,
                 r##"<path fill="url(#missing)"/></svg>"##,
             ),
             occurrence_id.as_str(),
@@ -1564,6 +1567,22 @@ mod tests {
             ),
             "{error}"
         );
+    }
+
+    #[test]
+    fn serialized_native_math_reimports_as_svg_without_minting_a_receipt() {
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">"#,
+            r#"<defs><g id="math"><path d="M0 0h1v1z"/></g></defs>"#,
+            r##"<use class="merman-prepared-math-native" data-merman-prepared-math-occurrence="flowchart/node-label/0" href="#math"/>"##,
+            "</svg>",
+        );
+        let finalized = finalize_resvg_svg(svg, &render_session())
+            .expect("native vector geometry remains valid on raw SVG reimport");
+
+        assert!(finalized.as_str().contains(r#"d="M0 0h1v1z""#));
+        assert_eq!(finalized.prepared_math_evidence_count(), 0);
+        assert!(finalized.prepared_math_terminal_receipt().is_none());
     }
 
     #[test]

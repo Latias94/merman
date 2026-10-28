@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 223.808,
+        "max_x": 223.81,
         "max_y": 189.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -15,8 +15,8 @@
           "height": 177.0,
           "id": "BankAccount",
           "is_cluster": false,
-          "width": 211.808,
-          "x": 117.904,
+          "width": 211.81,
+          "x": 117.905,
           "y": 100.5
         }
       ]

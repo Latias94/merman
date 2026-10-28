@@ -47,7 +47,7 @@ jobs:
           cache-dependency-path: platforms/web/package-lock.json
 
       - name: Install npm toolchain
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
@@ -190,7 +190,7 @@ jobs:
             playground/tests/package-lock.json
 
       - name: Install npm toolchain
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked

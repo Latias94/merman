@@ -118,7 +118,7 @@ pub use service_contract::{
 };
 pub use services::BindingEngineServices;
 #[cfg(feature = "svg")]
-pub use services::{BindingIconRegistry, build_icon_registry};
+pub use services::{BindingIconRegistry, build_icon_registry, build_icon_registry_from_json};
 pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
 pub use theme_execution_evidence::{
     BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,

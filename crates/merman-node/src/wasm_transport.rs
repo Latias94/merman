@@ -18,8 +18,11 @@ impl WasmEngine {
 #[wasm_bindgen]
 impl WasmEngine {
     #[wasm_bindgen(constructor)]
-    pub fn new(options_json: String) -> Result<WasmEngine, JsValue> {
-        wire::create_engine(&options_json)
+    pub fn new(
+        options_json: String,
+        icon_packs_json: Option<String>,
+    ) -> Result<WasmEngine, JsValue> {
+        wire::create_engine_with_icon_packs(&options_json, icon_packs_json.as_deref())
             .map(|engine| Self {
                 engine: Some(engine),
             })
@@ -83,7 +86,7 @@ mod tests {
 
     #[test]
     fn dispose_is_idempotent_and_removes_the_engine() {
-        let mut engine = WasmEngine::new(String::new()).expect("construct WasmEngine");
+        let mut engine = WasmEngine::new(String::new(), None).expect("construct WasmEngine");
         engine.dispose();
         engine.dispose();
         assert!(engine.engine.is_none());

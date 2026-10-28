@@ -1,9 +1,12 @@
 //! Shared native State label geometry for layout and SVG emission.
 
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use crate::entities::decode_mermaid_entities_for_render_text;
-use crate::text::{TextMetrics, WrapMode};
+use crate::text::{
+    MermaidMarkdownWordType, TextMetrics, WrapMode, measure_svg_markdown_word_lines,
+    svg_markdown_word_style,
+};
 
 use super::StateLabelMeasurement;
 use super::label_artifact::{StateLabelMetricsRequest, StateLabelOwner, StateLabelSourceKind};
@@ -42,13 +45,46 @@ fn symmetric_edge_width_px(
     (width_px.is_finite() && width_px >= 0.0).then_some(width_px)
 }
 
-fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> Vec<String> {
+#[derive(Debug, Clone, PartialEq)]
+enum StateNativeLabelLines {
+    Plain(Arc<[Box<str>]>),
+    Markdown(Arc<[Vec<(String, MermaidMarkdownWordType)>]>),
+}
+
+impl StateNativeLabelLines {
+    fn len(&self) -> usize {
+        match self {
+            Self::Plain(lines) => lines.len(),
+            Self::Markdown(lines) => lines.len(),
+        }
+    }
+
+    fn plain_text(&self, index: usize) -> Cow<'_, str> {
+        match self {
+            Self::Plain(lines) => Cow::Borrowed(&lines[index]),
+            Self::Markdown(lines) => Cow::Owned(
+                lines[index]
+                    .iter()
+                    .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ),
+        }
+    }
+}
+
+fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> StateNativeLabelLines {
     let simple_text = match request.source_kind {
+        StateLabelSourceKind::Markdown if request.text.contains('`') => None,
         StateLabelSourceKind::Markdown => super::state_markdown_label_plain_text(request.text),
         StateLabelSourceKind::Plain => Some(decode_mermaid_entities_for_render_text(request.text)),
     };
     if let Some(measured_text) = simple_text {
-        return crate::text::DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(
+        let style = svg_markdown_word_style(
+            request.typography.text_style(),
+            MermaidMarkdownWordType::Normal,
+        );
+        let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(
             measured_text.as_ref(),
             request.wrap_mode,
         )
@@ -57,35 +93,110 @@ fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> Vec<String> 
             crate::text::wrap_text_lines_measurer(
                 &line,
                 request.measurer,
-                request.typography.text_style(),
+                &style,
                 request.max_width_px,
             )
         })
-        .collect();
+        .map(String::into_boxed_str)
+        .collect::<Vec<_>>();
+        return StateNativeLabelLines::Plain(lines.into());
     }
 
     let decoded = decode_mermaid_entities_for_render_text(request.text);
-    crate::text::mermaid_markdown_to_wrapped_word_lines(
+    let lines = crate::text::mermaid_markdown_to_wrapped_word_lines(
         request.measurer,
         decoded.as_ref(),
         request.typography.text_style(),
         request.max_width_px,
         request.wrap_mode,
-    )
-    .into_iter()
-    .map(|words| {
-        words
-            .into_iter()
-            .map(|(word, _)| crate::entities::decode_svg_text_content_entities(&word).into_owned())
-            .collect::<Vec<_>>()
-            .join(" ")
-    })
-    .collect()
+    );
+    if lines
+        .iter()
+        .flatten()
+        .all(|(_, kind)| *kind == MermaidMarkdownWordType::Normal)
+    {
+        return StateNativeLabelLines::Plain(
+            lines
+                .into_iter()
+                .map(|words| {
+                    words
+                        .iter()
+                        .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .into_boxed_str()
+                })
+                .collect::<Vec<_>>()
+                .into(),
+        );
+    }
+    StateNativeLabelLines::Markdown(lines.into())
+}
+
+struct MarkdownLineBbox {
+    advance_px: f64,
+    left_px: f64,
+    right_px: f64,
+    height_px: f64,
+    y_px: f64,
+}
+
+fn markdown_line_bbox(
+    request: StateLabelMetricsRequest<'_>,
+    words: &[(String, MermaidMarkdownWordType)],
+) -> MarkdownLineBbox {
+    let mut advance = 0.0;
+    let mut left = f64::INFINITY;
+    let mut right = f64::NEG_INFINITY;
+    let mut top = f64::INFINITY;
+    let mut bottom = f64::NEG_INFINITY;
+    for (index, (word, kind)) in words.iter().enumerate() {
+        let visible = crate::entities::decode_svg_text_content_entities(word);
+        let text = if index == 0 {
+            visible
+        } else {
+            Cow::Owned(format!(" {visible}"))
+        };
+        let style = svg_markdown_word_style(request.typography.text_style(), *kind);
+        let width = request
+            .measurer
+            .measure_svg_text_computed_length_px(&text, &style);
+        let (word_left, word_right) = request.measurer.measure_svg_text_bbox_x(&text, &style);
+        let center = advance + width / 2.0;
+        left = left.min(center - word_left);
+        right = right.max(center + word_right);
+        let y = request
+            .measurer
+            .measure_svg_create_text_bbox_y_offset_px(&text, &style);
+        let height = request
+            .measurer
+            .measure_svg_tspan_text_bbox_height_px(&text, &style);
+        top = top.min(y);
+        bottom = bottom.max(y + height);
+        advance += width;
+    }
+    if words.is_empty() {
+        return MarkdownLineBbox {
+            advance_px: 0.0,
+            left_px: 0.0,
+            right_px: 0.0,
+            height_px: 0.0,
+            y_px: 0.0,
+        };
+    }
+    MarkdownLineBbox {
+        advance_px: advance,
+        left_px: left,
+        right_px: right,
+        height_px: bottom - top,
+        y_px: top,
+    }
 }
 
 /// Operation-local geometry shared by State native-text layout and terminal SVG emission.
 ///
-/// Baselines are retained in SVG user-space pixels relative to the top of the layout box.
+/// Vertical baselines are retained in SVG user-space pixels relative to the layout box's top.
+/// Start-anchored rows also retain their horizontal baseline origin relative to its left edge.
 /// Labels retain the wrapped rows and the
 /// operation-selected SVG bbox profile after their first layout measurement, so the writer does not
 /// segment the semantic label independently.
@@ -95,10 +206,11 @@ pub(crate) struct StateNativeLabelGeometry {
     height_px: f64,
     ink_left_from_anchor_px: f64,
     ink_right_from_anchor_px: f64,
+    baseline_x_px: f64,
     first_baseline_y_px: f64,
     line_height_px: f64,
     line_count: usize,
-    measured_lines: Option<Arc<[Box<str>]>>,
+    measured_lines: StateNativeLabelLines,
 }
 
 impl StateNativeLabelGeometry {
@@ -114,41 +226,42 @@ impl StateNativeLabelGeometry {
         }
 
         let lines = measured_wrapped_lines(request);
-        let metrics = measurement.metrics;
+        if matches!(&lines, StateNativeLabelLines::Markdown(rows) if rows.iter().all(Vec::is_empty))
+        {
+            // Preserve an empty SVG projection instead of falling back to the literal source.
+            return Some(Self {
+                width_px: 0.0,
+                height_px: native_padding_px(request.owner) * 2.0,
+                ink_left_from_anchor_px: 0.0,
+                ink_right_from_anchor_px: 0.0,
+                baseline_x_px: 0.0,
+                first_baseline_y_px: 0.0,
+                line_height_px: 0.0,
+                line_count: lines.len(),
+                measured_lines: lines,
+            });
+        }
+        let metrics = match &lines {
+            StateNativeLabelLines::Plain(_) => measurement.metrics,
+            StateNativeLabelLines::Markdown(words) => measure_svg_markdown_word_lines(
+                request.measurer,
+                words,
+                request.typography.text_style(),
+                crate::text::SvgTextEntityMode::CreateTextSource,
+            ),
+        };
         if metrics.line_count == 0 || lines.len() != metrics.line_count {
             return None;
         }
 
-        let first_line = lines.first()?.as_str();
-        let mut ink_left_from_anchor_px = 0.0_f64;
-        let mut ink_right_from_anchor_px = 0.0_f64;
-        for line in &lines {
-            let (left, right) = request
-                .measurer
-                .measure_svg_text_bbox_x(line, request.typography.text_style());
-            if !left.is_finite() || !right.is_finite() || left < 0.0 || right < 0.0 {
-                return None;
-            }
-            ink_left_from_anchor_px = ink_left_from_anchor_px.max(left);
-            ink_right_from_anchor_px = ink_right_from_anchor_px.max(right);
-        }
-
-        let padding_px = native_padding_px(request.owner);
-        let width_px = match request.owner {
-            StateLabelOwner::Edge(_) => symmetric_edge_width_px(
-                ink_left_from_anchor_px,
-                ink_right_from_anchor_px,
-                metrics.width / 2.0,
-            )?,
-            StateLabelOwner::Node(_)
-            | StateLabelOwner::NodeTitle(_)
-            | StateLabelOwner::NodeDescription(_)
-            | StateLabelOwner::ClusterTitle(_) => metrics.width,
-        };
-        let height_px = metrics.height + padding_px * 2.0;
+        let first_line = lines.plain_text(0);
+        let row_style = svg_markdown_word_style(
+            request.typography.text_style(),
+            MermaidMarkdownWordType::Normal,
+        );
         let first_line_bbox_height_px = request
             .measurer
-            .measure_svg_tspan_text_bbox_height_px(first_line, request.typography.text_style());
+            .measure_svg_tspan_text_bbox_height_px(&first_line, &row_style);
         let line_height_px = if metrics.line_count == 1 {
             metrics.height.max(first_line_bbox_height_px)
         } else {
@@ -161,9 +274,79 @@ impl StateNativeLabelGeometry {
                 metrics.height / metrics.line_count as f64
             }
         };
-        let bbox_y_px = request
+        let mut bbox_y_px = request
             .measurer
-            .measure_svg_create_text_bbox_y_offset_px(first_line, request.typography.text_style());
+            .measure_svg_create_text_bbox_y_offset_px(&first_line, &row_style);
+        drop(first_line);
+        let mut content_height_px = metrics.height;
+        let mut ink_left_from_anchor_px = 0.0_f64;
+        let mut ink_right_from_anchor_px = 0.0_f64;
+        let mut styled_left = f64::INFINITY;
+        let mut styled_right = f64::NEG_INFINITY;
+        let mut styled_top = f64::INFINITY;
+        let mut styled_bottom = f64::NEG_INFINITY;
+        for index in 0..lines.len() {
+            let (left, right) = match &lines {
+                StateNativeLabelLines::Plain(lines) => request
+                    .measurer
+                    .measure_svg_text_bbox_x(&lines[index], &row_style),
+                StateNativeLabelLines::Markdown(lines) => {
+                    let bbox = markdown_line_bbox(request, &lines[index]);
+                    if !bbox.advance_px.is_finite()
+                        || !bbox.left_px.is_finite()
+                        || !bbox.right_px.is_finite()
+                        || bbox.advance_px < 0.0
+                        || bbox.right_px < bbox.left_px
+                    {
+                        return None;
+                    }
+                    styled_left = styled_left.min(bbox.left_px);
+                    styled_right = styled_right.max(bbox.right_px);
+                    let row_y = index as f64 * line_height_px;
+                    styled_top = styled_top.min(row_y + bbox.y_px);
+                    styled_bottom = styled_bottom.max(row_y + bbox.y_px + bbox.height_px);
+                    (
+                        bbox.advance_px / 2.0 - bbox.left_px,
+                        bbox.right_px - bbox.advance_px / 2.0,
+                    )
+                }
+            };
+            if !left.is_finite()
+                || !right.is_finite()
+                || ((left < 0.0 || right < 0.0)
+                    && (matches!(&lines, StateNativeLabelLines::Plain(_))
+                        || matches!(request.owner, StateLabelOwner::Edge(_))))
+            {
+                return None;
+            }
+            ink_left_from_anchor_px = ink_left_from_anchor_px.max(left);
+            ink_right_from_anchor_px = ink_right_from_anchor_px.max(right);
+        }
+        if matches!(&lines, StateNativeLabelLines::Markdown(_)) {
+            bbox_y_px = styled_top;
+            content_height_px = styled_bottom - styled_top;
+        }
+
+        let padding_px = native_padding_px(request.owner);
+        let (width_px, baseline_x_px) = match request.owner {
+            StateLabelOwner::Edge(_) => (
+                symmetric_edge_width_px(
+                    ink_left_from_anchor_px,
+                    ink_right_from_anchor_px,
+                    metrics.width / 2.0,
+                )?,
+                0.0,
+            ),
+            _ if matches!(&lines, StateNativeLabelLines::Markdown(_)) => {
+                // Node rows share a start anchor, unlike independently centered edge rows.
+                (styled_right - styled_left, -styled_left)
+            }
+            StateLabelOwner::Node(_)
+            | StateLabelOwner::NodeTitle(_)
+            | StateLabelOwner::NodeDescription(_)
+            | StateLabelOwner::ClusterTitle(_) => (metrics.width, 0.0),
+        };
+        let height_px = content_height_px + padding_px * 2.0;
         // Mermaid's native createText recipe places its first alphabetic baseline one font-size
         // below the text origin. Retain the selected DOM bbox offset, then express that same
         // baseline directly from the layout box top instead of replaying y/dy declarations.
@@ -171,6 +354,7 @@ impl StateNativeLabelGeometry {
             padding_px + request.typography.text_style().font_size.max(1.0) - bbox_y_px;
         if !width_px.is_finite()
             || !height_px.is_finite()
+            || !baseline_x_px.is_finite()
             || !first_baseline_y_px.is_finite()
             || !line_height_px.is_finite()
             || width_px < 0.0
@@ -185,16 +369,11 @@ impl StateNativeLabelGeometry {
             height_px,
             ink_left_from_anchor_px,
             ink_right_from_anchor_px,
+            baseline_x_px,
             first_baseline_y_px,
             line_height_px,
             line_count: metrics.line_count,
-            measured_lines: Some(
-                lines
-                    .into_iter()
-                    .map(String::into_boxed_str)
-                    .collect::<Vec<_>>()
-                    .into(),
-            ),
+            measured_lines: lines,
         })
     }
 
@@ -210,6 +389,10 @@ impl StateNativeLabelGeometry {
         self.line_count
     }
 
+    pub(crate) const fn baseline_x_px(&self) -> f64 {
+        self.baseline_x_px
+    }
+
     pub(crate) fn baseline_y_px(&self, line_index: usize) -> Option<f64> {
         if line_index < self.line_count {
             Some(self.first_baseline_y_px + self.line_height_px * line_index as f64)
@@ -218,10 +401,21 @@ impl StateNativeLabelGeometry {
         }
     }
 
-    pub(crate) fn measured_lines(&self) -> Option<impl ExactSizeIterator<Item = &str> + '_> {
-        self.measured_lines
-            .as_ref()
-            .map(|lines| lines.iter().map(|line| line.as_ref()))
+    pub(crate) fn measured_line(&self, index: usize) -> Option<&str> {
+        match &self.measured_lines {
+            StateNativeLabelLines::Plain(lines) => lines.get(index).map(AsRef::as_ref),
+            StateNativeLabelLines::Markdown(_) => None,
+        }
+    }
+
+    pub(crate) fn measured_word_line(
+        &self,
+        index: usize,
+    ) -> Option<&[(String, MermaidMarkdownWordType)]> {
+        match &self.measured_lines {
+            StateNativeLabelLines::Plain(_) => None,
+            StateNativeLabelLines::Markdown(lines) => lines.get(index).map(Vec::as_slice),
+        }
     }
 
     pub(crate) fn layout_metrics(&self) -> TextMetrics {

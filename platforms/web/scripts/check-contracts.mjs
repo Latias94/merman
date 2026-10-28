@@ -40,10 +40,11 @@ if (diagnostics.length > 0) {
   process.exit(1);
 }
 
-const wasmGlueExports = new Set(["default", "EditorSession", "PreparedSource", "initSync", "start"]);
+const wasmGlueExports = new Set(["default", "EditorSession", "PreparedSource", "RenderSession", "initSync", "start"]);
 const runtimeWrapperOnlyExports = new Set([
   "mountDiagram",
   "prepareSource",
+  "createRenderSession",
   "createEditorSession",
   "initMerman",
   "getMerman",
@@ -73,6 +74,7 @@ const stablePublicTypes = new Set([
 
 const rawWasmExports = contract.exportedValueNames(fullWasmTypes);
 const rawPreparedSourceProperties = contract.exportedTypePropertyNames(fullWasmTypes, "PreparedSource");
+const rawRenderSessionProperties = contract.exportedTypePropertyNames(fullWasmTypes, "RenderSession");
 const rawEditorSessionProperties = contract.exportedTypePropertyNames(
   fullWasmTypes,
   "EditorSession",
@@ -124,6 +126,7 @@ const requiredTypeProperties = new Map([
     ],
   ],
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
+  ["BrowserRenderSession", ["renderSvg", "renderSvgResult", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "renderSvgResultWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "dispose"]],
   ["BrowserPreparedSource", ["renderSvg", "renderSvgResult", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "renderSvgResultWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "dispose"]],
   ["ResourceOptions", ["profile", "limits"]],
   ["EditorResourceOptions", ["profile", "limits"]],
@@ -231,6 +234,10 @@ const requiredTypePropertyAnnotations = [
 ];
 
 let failed = false;
+failed ||= reportMissing(
+  "check-contracts: wasm-bindgen RenderSession is missing scoped outputs",
+  ["renderSvg", "renderSvgResult", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "renderSvgResultWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "free"].filter(name => !rawRenderSessionProperties.has(name)),
+);
 failed ||= reportMissing(
   "check-contracts: wasm-bindgen PreparedSource is missing retained outputs",
   ["renderSvg", "renderSvgResult", "layoutJson", "edgeGeometryJson", "renderSvgWithTextMeasurer", "renderSvgResultWithTextMeasurer", "layoutJsonWithTextMeasurer", "edgeGeometryJsonWithTextMeasurer", "free"].filter(name => !rawPreparedSourceProperties.has(name)),

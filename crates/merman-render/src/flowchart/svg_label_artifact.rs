@@ -703,7 +703,15 @@ impl PreparedFlowchartMathLabel {
     fn take_terminal_reservation(&self) -> Option<PreparedTextRetainedReservation> {
         let expectation = self.terminal_expectation()?;
         let mut reservation = self.retained_reservation.borrow_mut().take()?;
-        reservation.reconcile_downward(expectation.retained_bytes());
+        let projection = self
+            .outcome
+            .prepared()
+            .and_then(PreparedMathLabel::native_projection)
+            .map(Arc::as_ref);
+        reservation.reconcile_downward(PreparedMathEvidenceLease::retained_entry_bytes(
+            &expectation,
+            projection,
+        ));
         Some(reservation)
     }
 }
@@ -807,6 +815,10 @@ impl FlowchartSvgLabelSidecarBuilder {
     pub(crate) fn with_base_typography(mut self, plan: super::FlowchartBaseTypographyPlan) -> Self {
         self.base_typography = Some(plan);
         self
+    }
+
+    pub(crate) fn label_weights(&self) -> super::FlowchartLabelWeights {
+        self.label_weights
     }
 
     pub(crate) fn layout_settings(
@@ -1150,6 +1162,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     request.measurer,
                     &markdown_lines,
                     metrics_style,
+                    crate::text::SvgTextEntityMode::CreateTextSource,
                 )
             } else {
                 source.metrics_from_wrapped(
@@ -1772,14 +1785,23 @@ impl FlowchartSvgLabelSidecar {
         let entries = self
             .math
             .iter()
-            .filter_map(PreparedFlowchartMathLabel::terminal_expectation)
+            .filter_map(|entry| {
+                Some((
+                    entry.terminal_expectation()?,
+                    entry
+                        .outcome
+                        .prepared()
+                        .and_then(PreparedMathLabel::native_projection)
+                        .cloned(),
+                ))
+            })
             .collect();
         let reservations = self
             .math
             .iter()
             .filter_map(PreparedFlowchartMathLabel::take_terminal_reservation)
             .collect();
-        PreparedMathEvidenceLease::new(entries, reservations)
+        PreparedMathEvidenceLease::with_native_projections(entries, reservations)
     }
 
     pub(crate) fn node_owner(

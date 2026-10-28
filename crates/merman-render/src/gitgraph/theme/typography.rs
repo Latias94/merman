@@ -80,6 +80,48 @@ impl GitGraphRoleFontSize {
     }
 }
 
+#[derive(Debug)]
+struct GitGraphRoleFontWeight {
+    css: Option<Box<str>>,
+    measured: Option<String>,
+    measurable: bool,
+}
+
+impl GitGraphRoleFontWeight {
+    fn resolve(raw: Option<&str>) -> Self {
+        let Some(raw) = raw else {
+            return Self {
+                css: None,
+                measured: None,
+                measurable: true,
+            };
+        };
+        let declaration = format!("font-weight:{raw}");
+        let parsed = crate::mermaid_style::parse_style_declaration(&declaration);
+        let measurable = parsed.as_ref().is_some_and(|declaration| {
+            declaration.inherits_property_value()
+                || crate::mermaid_style::is_supported_css_font_weight_value(declaration.value())
+        });
+        let measured = if measurable {
+            let base = TextStyle::default();
+            let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+                &base,
+                crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
+            );
+            cascade.observe_declaration(parsed.as_ref().expect("validated font weight"));
+            cascade.finish().font_weight.clone()
+        } else {
+            // Preserve unresolved CSS for capable hosts without certifying its geometry.
+            Some(raw.to_owned())
+        };
+        Self {
+            css: Some(raw.into()),
+            measured,
+            measurable,
+        }
+    }
+}
+
 /// Final GitGraph typography shared by preparation, layout, stylesheet emission, and text probes.
 #[derive(Debug)]
 pub(crate) struct GitGraphTypographyThemePlan {
@@ -88,6 +130,7 @@ pub(crate) struct GitGraphTypographyThemePlan {
     font_size_css: Box<str>,
     font_size_px: f64,
     commit_label_font_size: GitGraphRoleFontSize,
+    commit_label_font_weight: GitGraphRoleFontWeight,
     tag_label_font_size: GitGraphRoleFontSize,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
@@ -144,12 +187,21 @@ impl GitGraphTypographyThemePlan {
             inherited_font_stack.font_family_css(),
             &font_size_css,
         );
+        // Mermaid attaches .commit-label before getBBox(); branch prelayout and tags
+        // use different classes and must keep their inherited measurement weight.
+        let commit_label_font_weight = GitGraphRoleFontWeight::resolve(
+            css_binding
+                .sources
+                .use_color_gen
+                .then_some(css_binding.note_font_weight.as_str()),
+        );
         Self {
             css_binding,
             inherited_font_stack,
             font_size_css,
             font_size_px,
             commit_label_font_size,
+            commit_label_font_weight,
             tag_label_font_size,
             typed_font_size_requested,
             typed_font_size_active,
@@ -174,12 +226,27 @@ impl GitGraphTypographyThemePlan {
         self.text_style(self.font_size_px)
     }
 
+    pub(crate) fn rendered_branch_label_style(&self, slot: usize) -> TextStyle {
+        let mut style = self.branch_label_style();
+        if self.css_binding.use_redux_geometry && slot < self.css_binding.theme_color_limit {
+            style.font_weight = self.commit_label_font_weight.measured.clone();
+        }
+        style
+    }
+
     pub(crate) fn commit_label_font_size_css(&self) -> &str {
         self.commit_label_font_size.css()
     }
 
     pub(crate) fn commit_label_style(&self) -> TextStyle {
-        self.text_style(self.commit_label_font_size.measured_px)
+        TextStyle {
+            font_weight: self.commit_label_font_weight.measured.clone(),
+            ..self.text_style(self.commit_label_font_size.measured_px)
+        }
+    }
+
+    pub(crate) fn commit_label_font_weight_css(&self) -> Option<&str> {
+        self.commit_label_font_weight.css.as_deref()
     }
 
     pub(crate) fn tag_label_font_size_css(&self) -> &str {
@@ -254,7 +321,8 @@ impl GitGraphTypographyThemePlan {
                 self.inherited_font_stack.typed_font_stack_requested(),
                 self.inherited_font_stack.typed_font_stack_active()
                     && receipt.has_visible_font_stack_terminal,
-                false,
+                self.inherited_font_stack.typed_font_stack_active()
+                    && receipt.has_visible_unmeasurable_role_font_weight,
             ),
             (
                 ThemeTypographyProperty::FontSize,
@@ -263,7 +331,8 @@ impl GitGraphTypographyThemePlan {
                     && (receipt.has_visible_branch_label
                         || receipt.has_visible_base_dependent_role_font_size_terminal),
                 self.typed_font_size_active
-                    && receipt.has_visible_unmeasurable_role_font_size_terminal,
+                    && (receipt.has_visible_unmeasurable_role_font_size_terminal
+                        || receipt.has_visible_unmeasurable_role_font_weight),
             ),
         ];
         for (property, requested, applied, unmeasurable) in statuses {
@@ -352,7 +421,10 @@ pub(crate) struct GitGraphTypographyThemeReceipt<'a> {
     has_visible_branch_label: bool,
     has_visible_base_dependent_role_font_size_terminal: bool,
     has_visible_unmeasurable_role_font_size_terminal: bool,
+    has_visible_unmeasurable_role_font_weight: bool,
     commit_label_font_size_dependency: GitGraphRoleFontSizeDependency,
+    role_font_weight_measurable: bool,
+    branch_role_weight_rule_count: usize,
     tag_label_font_size_dependency: GitGraphRoleFontSizeDependency,
     valid: bool,
 }
@@ -363,6 +435,7 @@ struct GitGraphTypographyTerminalSeal {
     has_visible_branch_label: bool,
     has_visible_base_dependent_role_font_size_terminal: bool,
     has_visible_unmeasurable_role_font_size_terminal: bool,
+    has_visible_unmeasurable_role_font_weight: bool,
 }
 
 impl<'a> GitGraphTypographyThemeReceipt<'a> {
@@ -392,7 +465,14 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
             has_visible_branch_label: false,
             has_visible_base_dependent_role_font_size_terminal: false,
             has_visible_unmeasurable_role_font_size_terminal: false,
+            has_visible_unmeasurable_role_font_weight: false,
             commit_label_font_size_dependency: plan.commit_label_font_size.dependency,
+            role_font_weight_measurable: plan.commit_label_font_weight.measurable,
+            branch_role_weight_rule_count: if plan.css_binding.use_redux_geometry {
+                plan.css_binding.theme_color_limit
+            } else {
+                0
+            },
             tag_label_font_size_dependency: plan.tag_label_font_size.dependency,
             valid: true,
         }
@@ -415,7 +495,14 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
                     && self.layout.branches.get(index).map(|branch| branch.name.as_str())
                         == Some(text)
         );
-        self.record_text_event(matched, !text.trim().is_empty(), true);
+        let visible = !text.trim().is_empty();
+        self.record_text_event(matched, visible, true);
+        let has_weight_rule = self.layout.branches.get(index).is_some_and(|branch| {
+            super::super::palette_slot(branch.index) < self.branch_role_weight_rule_count
+        });
+        if matched && visible && has_weight_rule {
+            self.has_visible_unmeasurable_role_font_weight |= !self.role_font_weight_measurable;
+        }
     }
 
     pub(crate) fn record_commit_label(&mut self, index: usize, text: &str) {
@@ -429,6 +516,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
         self.record_text_event(matched, visible, false);
         if matched && visible {
             self.record_role_font_size(self.commit_label_font_size_dependency);
+            self.has_visible_unmeasurable_role_font_weight |= !self.role_font_weight_measurable;
         }
     }
 
@@ -510,6 +598,8 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
                     .has_visible_base_dependent_role_font_size_terminal,
                 has_visible_unmeasurable_role_font_size_terminal: self
                     .has_visible_unmeasurable_role_font_size_terminal,
+                has_visible_unmeasurable_role_font_weight: self
+                    .has_visible_unmeasurable_role_font_weight,
             })
     }
 }

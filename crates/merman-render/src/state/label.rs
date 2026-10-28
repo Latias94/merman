@@ -258,7 +258,15 @@ pub(crate) fn measure_state_markdown_label(
     let max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
     let decoded = decode_mermaid_entities_for_render_text(text);
     let fragment = state_label_xhtml(text);
-    let simple_text = simple_xhtml_text(&fragment);
+    // Entity-produced markup spellings are literal HTML text. Keep their prepared fragment
+    // on the structured path instead of passing decoded `<br/>` back to label normalization.
+    let simple_text = simple_xhtml_text(&fragment).filter(|plain| {
+        if wrap_mode == WrapMode::HtmlLike {
+            !plain.contains('<')
+        } else {
+            !text.contains('`')
+        }
+    });
     let measure = |width: Option<f64>| match simple_text.as_deref() {
         Some(plain) if wrap_mode == WrapMode::HtmlLike => {
             let natural = measurer.measure_wrapped(plain, style, None, WrapMode::HtmlLike);

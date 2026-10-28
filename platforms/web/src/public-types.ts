@@ -903,6 +903,45 @@ interface SvgBindingFields {
 
 export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
 
+/** Already loaded Iconify JSON; acquisition and credentials belong to the host. */
+export interface LoadedIconPack {
+  json: string;
+  registrationName?: string;
+}
+
+export interface RenderSessionOptions {
+  iconPacks?: readonly LoadedIconPack[];
+}
+
+/** Immutable constructor services, scoped to this session and its creating package runtime. */
+export interface BrowserRenderSession {
+  renderSvg(source: string, options?: SvgBindingOptions | string): string;
+  renderSvgResult(source: string, options?: SvgBindingOptions | string): SvgRenderResult;
+  layoutJson(source: string, options?: SvgBindingOptions | string): string;
+  edgeGeometryJson(source: string, options?: SvgBindingOptions | string): string;
+  renderSvgWithTextMeasurer(source: string, measurer: HostTextMeasurer, options?: HostTextMeasurerSvgBindingOptions | string): string;
+  renderSvgResultWithTextMeasurer(source: string, measurer: HostTextMeasurer, options?: HostTextMeasurerSvgBindingOptions | string): SvgRenderResult;
+  layoutJsonWithTextMeasurer(source: string, measurer: HostTextMeasurer, options?: HostTextMeasurerSvgBindingOptions | string): string;
+  edgeGeometryJsonWithTextMeasurer(source: string, measurer: HostTextMeasurer, options?: HostTextMeasurerSvgBindingOptions | string): string;
+  dispose(): void;
+}
+
+export interface WasmRenderSessionBinding {
+  renderSvg(source: string, optionsJson?: string | null): string;
+  renderSvgResult(source: string, optionsJson?: string | null): SvgRenderResult;
+  layoutJson(source: string, optionsJson?: string | null): string;
+  edgeGeometryJson(source: string, optionsJson?: string | null): string;
+  renderSvgWithTextMeasurer(source: string, optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  renderSvgResultWithTextMeasurer(source: string, optionsJson: string | null | undefined, measurer: HostTextMeasurer): SvgRenderResult;
+  layoutJsonWithTextMeasurer(source: string, optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  edgeGeometryJsonWithTextMeasurer(source: string, optionsJson: string | null | undefined, measurer: HostTextMeasurer): string;
+  free(): void;
+}
+
+export interface WasmRenderSessionConstructor {
+  new (iconPacksJson?: string | null): WasmRenderSessionBinding;
+}
+
 /** Redraw settings for frozen parse facts. Prepare again to change configuration or theme. */
 export type PreparedSourceOutputOptions = BindingVersionOptions & {
   /** Relative deadline for this output, in milliseconds. */
@@ -1600,6 +1639,7 @@ export interface MermanWasmModuleBase {
 export interface MermanWasmModule extends MermanWasmModuleBase {
   EditorSession?: WasmEditorSessionConstructor;
   PreparedSource?: WasmPreparedSourceConstructor;
+  RenderSession?: WasmRenderSessionConstructor;
   transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;

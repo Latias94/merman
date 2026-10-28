@@ -48,6 +48,96 @@ where
     ))
 }
 
+#[test]
+fn flowchart_text_measurement_matches_compiled_terminal_declarations() {
+    for (html, label, declarations) in [
+        (true, "MMMM", "font-size:32px,font-size:invalid"),
+        (
+            false,
+            "`plain **bold**`",
+            "font-weight:bold,font-style:italic",
+        ),
+    ] {
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed = requests.clone();
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(move |text, style| {
+                observed
+                    .lock()
+                    .unwrap()
+                    .push((text.to_owned(), style.clone()));
+                text.chars().count() as f64 * style.font_size
+            });
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("flowchart-terminal-contract").unwrap(),
+            "test",
+        )
+        .unwrap();
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer)),
+        );
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({"htmlLabels": html, "themeVariables": {"fontSize": "16px"}}),
+        ));
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                &format!("flowchart LR\nA[\"{label}\"]\nstyle A {declarations}\n"),
+                ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let svg = render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let requests = requests.lock().unwrap();
+        if html {
+            assert!(requests.iter().any(|(text, _)| text == "MMMM"));
+            assert!(
+                requests
+                    .iter()
+                    .filter(|(text, _)| text == "MMMM")
+                    .all(|(_, style)| style.font_size == 16.0),
+                "{requests:?}"
+            );
+            let terminal = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel")
+                })
+                .unwrap();
+            let css = terminal.attribute("style").unwrap();
+            assert!(css.contains("font-size:invalid"), "{css}");
+            assert!(!css.contains("32px"), "{css}");
+        } else {
+            for (word, weight) in [("plain", "normal"), ("bold", "bold")] {
+                let terminal = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some("text-inner-tspan")
+                            && node.text().is_some_and(|text| text.trim() == word)
+                    })
+                    .unwrap();
+                assert_eq!(terminal.attribute("font-style"), Some("normal"));
+                assert_eq!(terminal.attribute("font-weight"), Some(weight));
+                assert!(
+                    requests.iter().any(|(text, style)| {
+                        text.trim() == word
+                            && style.font_style.as_deref() == Some("normal")
+                            && style.font_weight.as_deref()
+                                == Some(if weight == "bold" { "700" } else { "normal" })
+                    }),
+                    "{requests:?}"
+                );
+            }
+        }
+    }
+}
+
 fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
     let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         panic!("expected Flowchart render model");
@@ -7423,8 +7513,18 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
     )
     .expect("render svg");
 
-    let inline_formula_count = svg
-        .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let inline_formula_count = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("svg")
+                && node
+                    .attribute("width")
+                    .is_some_and(|value| value.ends_with("em"))
+                && !node
+                    .ancestors()
+                    .any(|ancestor| ancestor.has_tag_name("template"))
+        })
         .count();
     assert_eq!(
         inline_formula_count, 7,

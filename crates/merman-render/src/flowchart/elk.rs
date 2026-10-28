@@ -1176,6 +1176,15 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     } else {
         &text_style
     };
+    let node_label_base_style = svg_label_sidecar
+        .map_or_else(
+            super::FlowchartLabelWeights::default,
+            FlowchartSvgLabelSidecarBuilder::label_weights,
+        )
+        .parent_style(
+            crate::diagram_theme::ThemeTarget::NodeLabel,
+            node_label_base_style,
+        );
     let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1248,7 +1257,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         effective_config,
         measurer,
         math_renderer,
-        node_label_base_style,
+        node_label_base_style: node_label_base_style.as_ref(),
         wrapping_width,
         node_direction: diagram_direction,
         node_padding,
@@ -1603,8 +1612,21 @@ fn subgraph_label(
     let title = ctx.model.subgraph_title_for_render(declaration_ordinal, sg);
     let owner = FlowchartSvgLabelOwner::SubgraphTitle(declaration_ordinal);
     let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
+    let base_style = if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
+        ctx.svg_label_sidecar
+            .map_or_else(
+                super::FlowchartLabelWeights::default,
+                FlowchartSvgLabelSidecarBuilder::label_weights,
+            )
+            .parent_style(
+                crate::diagram_theme::ThemeTarget::NodeLabel,
+                ctx.cluster_label_base_style,
+            )
+    } else {
+        std::borrow::Cow::Borrowed(ctx.cluster_label_base_style)
+    };
     let text_style = flowchart_effective_text_style_for_classes_with_provenance(
-        ctx.cluster_label_base_style,
+        base_style.as_ref(),
         &ctx.model.class_defs,
         classes,
         styles,

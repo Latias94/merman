@@ -83,8 +83,11 @@ impl SequenceBaseTypography {
         }
 
         let configured_font_family = compat.font_family.clone();
-        let config = super::config::SequenceConfigView::new(effective_config.as_value());
-        let configured_font_size = config.font_size("messageFontSize").max(1.0);
+        // Diagram titles inherit root CSS, not the message role's inline font size.
+        let configured_font_size =
+            crate::mermaid_style::parse_svg_number_or_px(&compat.font_size_css)
+                .unwrap_or(16.0)
+                .max(1.0);
         let mut font_family_css = configured_font_family.clone();
         let mut font_size_px = configured_font_size;
         let mut typed_properties = BTreeSet::new();

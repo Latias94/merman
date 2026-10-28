@@ -878,12 +878,17 @@ mod tests {
 
     #[test]
     fn serde_saphyr_rewrite_preserves_yaml_values_order_and_document_shape() {
+        assert_eq!(
+            serde_saphyr::from_str::<serde_json::Value>("value: \u{a0}42").unwrap(),
+            serde_json::json!({ "value": "\u{a0}42" })
+        );
         let source = "flowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
         let config = serde_json::json!({
             "quoted_true": "true",
             "quoted_null": "null",
             "quoted_number": "001",
+            "nbsp_number": "\u{a0}42",
             "null_value": null,
             "multiline": "first line\nsecond line",
             "ordered_first": "first",
@@ -930,6 +935,7 @@ mod tests {
             "quoted_true:",
             "quoted_null:",
             "quoted_number:",
+            "nbsp_number:",
             "null_value:",
             "multiline:",
             "ordered_first:",

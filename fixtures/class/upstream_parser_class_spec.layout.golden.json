@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 375.656,
+        "max_x": 375.654,
         "max_y": 167.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -21,13 +21,13 @@
           "title_label": {
             "height": 21.0,
             "width": 24.64,
-            "x": 81.672,
+            "x": 81.67,
             "y": 22.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 139.344,
-          "x": 81.672,
+          "width": 139.34,
+          "x": 81.67,
           "y": 89.5
         }
       ],
@@ -37,8 +37,8 @@
           "height": 155.0,
           "id": "A::B",
           "is_cluster": true,
-          "width": 139.344,
-          "x": 81.672,
+          "width": 139.34,
+          "x": 81.67,
           "y": 89.5
         },
         {
@@ -46,23 +46,23 @@
           "id": "__proto__",
           "is_cluster": false,
           "width": 54.094,
-          "x": 218.391,
+          "x": 218.387,
           "y": 89.5
         },
         {
           "height": 81.0,
           "id": "constructor",
           "is_cluster": false,
-          "width": 90.219,
-          "x": 330.547,
+          "width": 90.22,
+          "x": 330.544,
           "y": 89.5
         },
         {
           "height": 81.0,
           "id": "IPC::Sender",
           "is_cluster": false,
-          "width": 91.344,
-          "x": 81.672,
+          "width": 91.34,
+          "x": 81.67,
           "y": 102.5
         }
       ]

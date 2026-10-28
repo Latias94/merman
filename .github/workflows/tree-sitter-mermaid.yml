@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -60,7 +60,7 @@ jobs:
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install Python
         uses: actions/setup-python@v7.0.0
@@ -96,7 +96,7 @@ jobs:
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install grammar toolchain
         run: |
@@ -147,7 +147,7 @@ jobs:
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

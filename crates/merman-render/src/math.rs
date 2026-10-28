@@ -7,19 +7,20 @@
 //! remain renderer-internal until their resource and evidence contracts are complete.
 
 mod evidence;
+#[cfg(feature = "math")]
+mod glyph_svg;
 mod prepared;
 
 pub(crate) use evidence::{
-    PREPARED_MATH_NATIVE_CLASS, PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE, PreparedMathEvidenceLease,
-    PreparedMathExpectation, PreparedMathOccurrenceId, PreparedMathProjectionFingerprint,
-    PreparedMathStyleAssurance, PreparedMathTerminalReceipt,
+    PREPARED_MATH_NATIVE_CLASS, PreparedMathEvidenceLease, PreparedMathExpectation,
+    PreparedMathOccurrenceId, PreparedMathProjectionFingerprint, PreparedMathStyleAssurance,
+    PreparedMathTerminalReceipt,
 };
 pub(crate) use prepared::{
     BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, ConfiguredMathBackend, MathPreparationOutcome,
-    MathPreparationUnavailable, PREPARED_MATH_CLASS_ATTRIBUTE,
-    PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE, PREPARED_MATH_OCCURRENCE_ATTRIBUTE,
-    PREPARED_MATH_PROJECTION_TEMPLATE_OPEN, PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE,
-    PrepareMathLabelRequest, PreparedMathLabel,
+    MathPreparationUnavailable, PREPARED_MATH_OCCURRENCE_ATTRIBUTE,
+    PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE, PrepareMathLabelRequest, PreparedMathLabel,
+    PreparedMathNativeProjection,
 };
 
 #[cfg(feature = "math")]

@@ -191,13 +191,27 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
         let w = if trimmed.is_empty() {
             0.0
         } else {
-            measurer.measure_svg_text_bounding_client_rect_width_px(trimmed, &legend_style)
+            let width =
+                measurer.measure_svg_text_bounding_client_rect_width_px(trimmed, &legend_style);
+            if legend_style.font_size == 0.0 {
+                0.0
+            } else {
+                width
+            }
         };
         max_legend_width = max_legend_width.max(w);
     }
 
     let title_width = title
-        .map(|title| measurer.measure_svg_text_bounding_client_rect_width_px(title, &title_style))
+        .map(|title| {
+            let width =
+                measurer.measure_svg_text_bounding_client_rect_width_px(title, &title_style);
+            if title_style.font_size == 0.0 {
+                0.0
+            } else {
+                width
+            }
+        })
         .unwrap_or(0.0);
 
     let base_w: f64 = center * 2.0;
@@ -322,6 +336,73 @@ mod tests {
     fn pie_legend_geometry_constants_match_mermaid() {
         assert_eq!(super::PIE_LEGEND_RECT_SIZE_PX, 18.0);
         assert_eq!(super::PIE_LEGEND_SPACING_PX, 4.0);
+    }
+
+    #[test]
+    fn pie_configured_text_sizes_reach_client_rect_measurement_and_bounds() {
+        struct SizeSensitiveMeasurer(Mutex<Vec<(String, TextStyle)>>);
+
+        impl TextMeasurer for SizeSensitiveMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                panic!("Pie must retain its client-rect measurement primitive")
+            }
+
+            fn measure_svg_text_bounding_client_rect_width_px(
+                &self,
+                text: &str,
+                style: &TextStyle,
+            ) -> f64 {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((text.to_owned(), style.clone()));
+                text.chars().count() as f64 * style.font_size
+            }
+        }
+
+        let title = "TitleTitleTitleTitle";
+        let mut model = PieDiagramRenderModel::default();
+        model.title = Some(title.to_owned());
+        model.sections = vec![PieSection {
+            label: "Legend".to_owned(),
+            value: 1.0,
+        }];
+        for (title_css, legend_css, title_size, legend_size) in [
+            ("60px", "40px", 60.0, 40.0),
+            ("2em", "150%", 40.0, 30.0),
+            ("0", "0px", 0.0, 0.0),
+            ("60", "invalid", 20.0, 20.0),
+            ("inherit", "unset", 20.0, 20.0),
+        ] {
+            let measurer = SizeSensitiveMeasurer(Mutex::new(Vec::new()));
+            let config = serde_json::json!({"themeVariables": {
+                "fontFamily": "Bound Pie",
+                "fontSize": "20px",
+                "pieTitleTextSize": title_css,
+                "pieLegendTextSize": legend_css
+            }});
+            let layout = super::layout_pie_diagram_typed(&model, None, &config, &measurer)
+                .expect("configured Pie");
+            let calls = measurer.0.lock().unwrap();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].0, "Legend");
+            assert_eq!(calls[0].1.font_size, legend_size, "{legend_css}");
+            assert_eq!(calls[1].0, title);
+            assert_eq!(calls[1].1.font_size, title_size, "{title_css}");
+            assert!(
+                calls
+                    .iter()
+                    .all(|(_, style)| { style.font_family.as_deref() == Some("Bound Pie") })
+            );
+            let bounds = layout.bounds.unwrap();
+            let title_width = title.len() as f64 * title_size;
+            let legend_width = "Legend".len() as f64 * legend_size;
+            assert_eq!(bounds.min_x, (225.0 - title_width / 2.0).min(0.0));
+            assert_eq!(
+                bounds.max_x,
+                (512.0 + legend_width).max(225.0 + title_width / 2.0)
+            );
+        }
     }
 
     #[test]

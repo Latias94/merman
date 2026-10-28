@@ -1650,18 +1650,12 @@ impl FamilyRenderContext {
     }
 
     fn ensure_portable(&self) -> Result<()> {
-        let portability = self
-            .session
-            .theme_portability_requirement()
-            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        let portability = self.session.portability_requirement();
         self.style_plan.ensure_portable(portability)
     }
 
     fn ensure_portable_before_svg(&self) -> Result<()> {
-        let portability = self
-            .session
-            .theme_portability_requirement()
-            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        let portability = self.session.portability_requirement();
         self.style_plan.ensure_portable_before_svg(portability)
     }
 
@@ -1804,6 +1798,7 @@ fn flowchart_artifact_theme_evidence<L>(
 #[cfg(feature = "diagram-class")]
 pub(crate) struct ClassFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed ClassDiagram, ClassDiagramLayout>,
+    prepared_labels: crate::class::ClassPreparedLabels,
     relation_theme: crate::class::ClassRelationThemePlan,
     typography_theme: crate::class::ClassTextThemePlan,
     render_config: crate::class::ClassRenderConfig,
@@ -1842,6 +1837,10 @@ impl<'parsed> C4FamilyArtifact<'parsed> {
 
 #[cfg(feature = "diagram-class")]
 impl<'parsed> ClassFamilyArtifact<'parsed> {
+    pub(crate) const fn prepared_labels(&self) -> &crate::class::ClassPreparedLabels {
+        &self.prepared_labels
+    }
+
     pub(crate) const fn render_config(&self) -> &crate::class::ClassRenderConfig {
         &self.render_config
     }
@@ -2089,6 +2088,7 @@ impl<'parsed> VennFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-block")]
 pub(crate) struct BlockFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
+    prepared_labels: crate::block::BlockPreparedLabels,
     node_paint_theme: crate::block::BlockNodePaintThemePlan,
     node_label_paint_theme: crate::block::BlockNodeLabelPaintPlan,
     edge_paint_theme: crate::block::BlockEdgePaintPlan,
@@ -2099,6 +2099,10 @@ pub(crate) struct BlockFamilyArtifact<'parsed> {
 
 #[cfg(feature = "diagram-block")]
 impl<'parsed> BlockFamilyArtifact<'parsed> {
+    pub(crate) const fn prepared_labels(&self) -> &crate::block::BlockPreparedLabels {
+        &self.prepared_labels
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout> {
@@ -2925,6 +2929,12 @@ impl BuiltinFamilyArtifact<'_> {
             Self::State(_) => return Ok(()),
             #[cfg(feature = "diagram-class")]
             Self::Class(artifact) => {
+                style_plan.source_style_residuals =
+                    crate::class::ClassTextThemePlan::root_dependent_source_residuals(
+                        artifact.pair().semantic(),
+                        artifact.render_config().diagram_use_html_labels,
+                        session.work_meter().control(),
+                    )?;
                 let outcomes = artifact.theme_evidence().finish(
                     theme,
                     artifact.relation_theme(),
@@ -3445,14 +3455,9 @@ impl RenderedFamilySvg {
             self.style_report = self.style_report.invalidate_for_output_mutation();
         }
         if enforce_portability {
-            ensure_root_theme_portable(
-                &self.root_theme,
-                self.session
-                    .theme_portability_requirement()
-                    .unwrap_or(ThemePortabilityRequirement::BestEffort),
-            )?;
-            if self.session.theme_portability_requirement()
-                == Some(ThemePortabilityRequirement::RequirePortable)
+            ensure_root_theme_portable(&self.root_theme, self.session.portability_requirement())?;
+            if self.session.portability_requirement()
+                == ThemePortabilityRequirement::RequirePortable
             {
                 self.style_report.ensure_portable()?;
             }
@@ -3466,16 +3471,20 @@ impl RenderedFamilySvg {
         self.finalize_resvg_with_portability(pipeline, true)
     }
 
+    pub(crate) fn finalize_resvg_for_target_admission(
+        self,
+        pipeline: &SvgPipeline,
+    ) -> Result<RenderedResvgCompatibleSvg> {
+        self.finalize_resvg_with_portability(pipeline, false)
+    }
+
     fn finalize_resvg_with_portability(
         self,
         pipeline: &SvgPipeline,
         enforce_portability: bool,
     ) -> Result<RenderedResvgCompatibleSvg> {
         self.session.checkpoint(OperationPhase::Export)?;
-        let portability = self
-            .session
-            .theme_portability_requirement()
-            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        let portability = self.session.portability_requirement();
         let output_metadata = self.output_metadata()?;
         let prepared_math_evidence_valid = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
@@ -3966,12 +3975,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         }
         context.ensure_portable()?;
         let (session, style_report) = context.into_session_and_style_report();
-        ensure_root_theme_portable(
-            &root_theme,
-            session
-                .theme_portability_requirement()
-                .unwrap_or(ThemePortabilityRequirement::BestEffort),
-        )?;
+        ensure_root_theme_portable(&root_theme, session.portability_requirement())?;
         session.checkpoint(OperationPhase::Emit)?;
 
         if let Some((destination, staging, _)) = trace_stage {

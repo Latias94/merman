@@ -127,3 +127,4 @@ export {
 } from "./runtime-editor.js";
 
 export { mountDiagram } from "./runtime-mount.js";
+export { createRenderSession } from "./runtime-render-session.js";

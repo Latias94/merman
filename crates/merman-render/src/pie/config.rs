@@ -6,6 +6,39 @@ const DEFAULT_DONUT_HOLE: f64 = 0.0;
 const DEFAULT_LEGEND_POSITION: &str = "right";
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 
+/// Resolve stylesheet sizes whose geometry does not depend on the host document.
+pub(super) fn pie_font_size_px(css: &str, inherited_px: f64) -> f64 {
+    let mut parser = cssparser::Parser::new(css);
+    let size = match parser.next() {
+        Ok(cssparser::Token::Number { value, .. }) if *value == 0.0 => Some(0.0),
+        Ok(cssparser::Token::Dimension { value, unit, .. }) => {
+            let scale = if unit.eq_ignore_ascii_case("px") {
+                Some(1.0)
+            } else if unit.eq_ignore_ascii_case("em") {
+                Some(inherited_px)
+            } else {
+                None
+            };
+            scale.map(|scale| f64::from(*value) * scale)
+        }
+        Ok(cssparser::Token::Percentage { unit_value, .. }) => {
+            Some(f64::from(*unit_value) * inherited_px)
+        }
+        Ok(cssparser::Token::Ident(value))
+            if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") =>
+        {
+            Some(inherited_px)
+        }
+        _ => None,
+    };
+    let _ = parser.try_parse(cssparser::parse_important);
+    if parser.expect_exhausted().is_err() {
+        return inherited_px;
+    }
+    size.filter(|size| size.is_finite() && *size >= 0.0)
+        .unwrap_or(inherited_px)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PieLegendPosition {
     Top,

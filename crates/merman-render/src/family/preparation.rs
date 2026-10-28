@@ -214,13 +214,15 @@ fn prepare_block_family<'parsed>(
         &typography_theme.css_binding().edge_label_background,
         execution.work_meter_ref(),
     )?;
-    let layout = crate::block::layout_block_diagram_typed_with_text_style(
+    let (layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
         typography_theme.padding(),
         crate::block::BlockShapeSettings::resolve(meta.effective_config.as_value()),
         typography_theme.css_binding().html_labels,
         typography_theme.text_style().clone(),
         execution.text_measurer(),
+        &meta.effective_config,
+        &execution.work_meter(),
     )?;
     let edge_paint_theme = crate::block::BlockEdgePaintPlan::resolve(
         execution.resolved_theme(),
@@ -254,6 +256,7 @@ fn prepare_block_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Block(Box::new(
         BlockFamilyArtifact {
             pair: FamilyPair::new(model, layout),
+            prepared_labels,
             node_paint_theme,
             node_label_paint_theme,
             edge_paint_theme,
@@ -1147,7 +1150,7 @@ fn prepare_class_family<'parsed>(
     );
     let render_config =
         crate::class::ClassRenderConfig::resolve(&meta.effective_config, &typography_theme);
-    let layout = crate::layout_class_typed_by_engine(
+    let (layout, prepared_labels) = crate::layout_class_typed_by_engine(
         model,
         &meta.effective_config,
         execution,
@@ -1171,6 +1174,7 @@ fn prepare_class_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Class(Box::new(
         ClassFamilyArtifact {
             pair: FamilyPair::new(model, layout),
+            prepared_labels,
             relation_theme,
             typography_theme,
             render_config,

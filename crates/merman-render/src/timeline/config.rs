@@ -49,8 +49,11 @@ impl<'a> TimelineConfigView<'a> {
 
     pub(crate) fn layout_settings(&self) -> TimelineLayoutSettings {
         let text_style = self.text_style();
+        let node_text_style =
+            super::TimelineCssBinding::resolve(self.effective_config).node_text_style(&text_style);
         TimelineLayoutSettings {
             text_style: text_style.clone(),
+            node_text_style,
             layout_font_size: config_f64_css_px(self.effective_config, &["fontSize"])
                 .unwrap_or(text_style.font_size)
                 .max(1.0),
@@ -77,9 +80,11 @@ impl<'a> TimelineConfigView<'a> {
         let mut settings = self.layout_settings();
         if let Some(font_family_css) = resolved_font_family_css {
             settings.text_style.font_family = Some(font_family_css.to_owned());
+            settings.node_text_style.font_family = Some(font_family_css.to_owned());
         }
         if let Some(font_size_px) = resolved_font_size_px {
             settings.text_style.font_size = font_size_px.max(1.0);
+            settings.node_text_style.font_size = font_size_px.max(1.0);
         }
         settings
     }
@@ -104,7 +109,9 @@ impl<'a> TimelineConfigView<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TimelineLayoutSettings {
+    // getVirtualNodeHeight() has no section class; drawNode() attaches it before wrap()/getBBox().
     pub(crate) text_style: TextStyle,
+    pub(crate) node_text_style: TextStyle,
     pub(crate) layout_font_size: f64,
     pub(crate) theme_color_limit: usize,
     pub(crate) is_neo: bool,
@@ -118,6 +125,74 @@ pub(crate) struct TimelineLayoutSettings {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn timeline_section_weight_keeps_virtual_probes_normal() {
+        for look in ["classic", "neo"] {
+            for theme in [
+                "default",
+                "redux",
+                "redux-color",
+                "redux-dark",
+                "redux-dark-color",
+            ] {
+                let cfg = json!({
+                    "theme": theme, "look": look,
+                    "themeVariables": {"fontWeight": 900}
+                });
+                let settings = TimelineConfigView::new(&cfg).layout_settings();
+                assert_eq!(settings.text_style.font_weight, None);
+                assert_eq!(
+                    settings.node_text_style.font_weight.as_deref(),
+                    theme.contains("redux").then_some("900"),
+                    "{theme}/{look}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn timeline_section_weight_requires_an_emitted_section_rule() {
+        let cfg = json!({
+            "theme": "redux",
+            "themeVariables": {"THEME_COLOR_LIMIT": 0, "fontWeight": 900}
+        });
+        let settings = TimelineConfigView::new(&cfg).layout_settings();
+        assert_eq!(settings.node_text_style.font_weight, None);
+    }
+
+    #[test]
+    fn timeline_section_weight_priority_is_not_part_of_the_measured_face() {
+        for (raw, expected) in [
+            ("900 !important", Some("900")),
+            ("bold!important", Some("700")),
+            ("inherit !important", None),
+            ("unset!important", None),
+        ] {
+            let config = json!({"theme": "redux", "themeVariables": {"fontWeight": raw}});
+            let settings = TimelineConfigView::new(&config).layout_settings();
+            assert_eq!(settings.text_style.font_weight, None);
+            assert_eq!(
+                settings.node_text_style.font_weight.as_deref(),
+                expected,
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn timeline_dynamic_section_weight_remains_an_unresolved_css_input() {
+        let cfg = json!({
+            "theme": "redux",
+            "themeVariables": {"fontWeight": "var(--section-weight)"}
+        });
+        let settings = TimelineConfigView::new(&cfg).layout_settings();
+        assert_eq!(settings.text_style.font_weight, None);
+        assert_eq!(
+            settings.node_text_style.font_weight.as_deref(),
+            Some("var(--section-weight)")
+        );
+    }
 
     #[test]
     fn timeline_layout_settings_preserve_defaults() {

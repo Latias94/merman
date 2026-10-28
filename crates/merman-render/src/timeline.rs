@@ -398,6 +398,7 @@ fn layout_timeline_horizontal(
 
     let cfg = settings.clone();
     let text_style = cfg.text_style;
+    let node_text_style = cfg.node_text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
     let theme_color_limit = cfg.theme_color_limit;
@@ -492,7 +493,7 @@ fn layout_timeline_horizontal(
                     content_width,
                     padding: NODE_PADDING,
                     max_height: max_section_height,
-                    style: &text_style,
+                    style: &node_text_style,
                     layout_font_size,
                 },
                 measurer,
@@ -502,6 +503,8 @@ fn layout_timeline_horizontal(
             let mut tasks: Vec<TimelineTaskLayout> = Vec::new();
             let mut task_x = master_x;
             let task_y = section_y + max_section_height + 50.0;
+            // drawTasks() carries the real node height within this section only.
+            let mut max_task_height = max_task_height;
 
             for &task in tasks_for_section {
                 let full_section = section_number;
@@ -516,12 +519,13 @@ fn layout_timeline_horizontal(
                         content_width: task_content_width,
                         padding: NODE_PADDING,
                         max_height: max_task_height,
-                        style: &text_style,
+                        style: &node_text_style,
                         layout_font_size,
                     },
                     measurer,
                 );
                 all_nodes_pre_title.push(task_node.clone());
+                max_task_height = max_task_height.max(task_node.height);
 
                 let connector = TimelineLineLayout {
                     kind: "task-events".to_string(),
@@ -546,7 +550,7 @@ fn layout_timeline_horizontal(
                             content_width: task_content_width,
                             padding: NODE_PADDING,
                             max_height: 50.0,
-                            style: &text_style,
+                            style: &node_text_style,
                             layout_font_size,
                         },
                         measurer,
@@ -575,6 +579,7 @@ fn layout_timeline_horizontal(
     } else {
         let mut orphan_x = base_x;
         let mut orphan_section_color = 0;
+        let mut max_task_height = max_task_height;
 
         for &task in task_index.orphan_tasks() {
             let task_node = compute_node(
@@ -588,12 +593,13 @@ fn layout_timeline_horizontal(
                     content_width: task_content_width,
                     padding: NODE_PADDING,
                     max_height: max_task_height,
-                    style: &text_style,
+                    style: &node_text_style,
                     layout_font_size,
                 },
                 measurer,
             );
             all_nodes_pre_title.push(task_node.clone());
+            max_task_height = max_task_height.max(task_node.height);
 
             let connector = TimelineLineLayout {
                 kind: "task-events".to_string(),
@@ -618,7 +624,7 @@ fn layout_timeline_horizontal(
                         content_width: task_content_width,
                         padding: NODE_PADDING,
                         max_height: 50.0,
-                        style: &text_style,
+                        style: &node_text_style,
                         layout_font_size,
                     },
                     measurer,
@@ -652,7 +658,7 @@ fn layout_timeline_horizontal(
             &mut pre_max_x,
             &mut pre_max_y,
             &all_nodes_pre_title,
-            &text_style,
+            &node_text_style,
             measurer,
         );
     }
@@ -727,7 +733,7 @@ fn layout_timeline_horizontal(
         &mut full_max_x,
         &mut full_max_y,
         &all_nodes_full,
-        &text_style,
+        &node_text_style,
         measurer,
     );
 
@@ -765,7 +771,7 @@ fn layout_vertical_tasks<'a>(
     timeline_x: f64,
     start_y: f64,
     task_spacing: f64,
-    max_task_height: f64,
+    mut max_task_height: f64,
     mut section_color: i64,
     advance_section_color: bool,
     theme_color_limit: usize,
@@ -799,6 +805,7 @@ fn layout_vertical_tasks<'a>(
             measurer,
         );
         all_nodes.push(task_node.clone());
+        max_task_height = max_task_height.max(task_node.height);
 
         let mut events = Vec::new();
         let mut connectors = Vec::new();
@@ -859,6 +866,7 @@ fn layout_timeline_vertical(
 
     let cfg = settings.clone();
     let text_style = cfg.text_style;
+    let node_text_style = cfg.node_text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
     let theme_color_limit = cfg.theme_color_limit;
@@ -941,7 +949,7 @@ fn layout_timeline_vertical(
                     content_width: section_content_width,
                     padding: VERTICAL_NODE_PADDING,
                     max_height: max_section_height,
-                    style: &text_style,
+                    style: &node_text_style,
                     layout_font_size,
                 },
                 measurer,
@@ -957,7 +965,7 @@ fn layout_timeline_vertical(
                 section_number,
                 false,
                 theme_color_limit,
-                &text_style,
+                &node_text_style,
                 layout_font_size,
                 measurer,
                 &mut all_nodes_pre_title,
@@ -989,7 +997,7 @@ fn layout_timeline_vertical(
             0,
             !cfg.disable_multicolor,
             theme_color_limit,
-            &text_style,
+            &node_text_style,
             layout_font_size,
             measurer,
             &mut all_nodes_pre_title,
@@ -1008,7 +1016,7 @@ fn layout_timeline_vertical(
             &mut pre_max_x,
             &mut pre_max_y,
             &all_nodes_pre_title,
-            &text_style,
+            &node_text_style,
             measurer,
         );
     }
@@ -1071,7 +1079,7 @@ fn layout_timeline_vertical(
         &mut full_max_x,
         &mut full_max_y,
         &all_nodes_full,
-        &text_style,
+        &node_text_style,
         measurer,
     );
     let padding = cfg.viewbox_padding;

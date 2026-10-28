@@ -3424,12 +3424,75 @@ Animal <|-- Duck
 #[test]
 fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
     use base64::Engine as _;
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    };
+
+    // Keep this routing fixture independent of displayed-font and XHTML measurement changes.
+    // Its single-letter titles use 16px text metrics, snapped like the original Markdown path.
+    struct RoutingMeasurer;
+    impl TextMeasurer for RoutingMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.measure_wrapped(text, style, None, WrapMode::SvgLike)
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            _style: &TextStyle,
+            max_width: Option<f64>,
+            wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            let mut metrics = DeterministicTextMeasurer::default().measure_wrapped(
+                text,
+                &TextStyle {
+                    font_size: 16.0,
+                    ..TextStyle::default()
+                },
+                max_width,
+                wrap_mode,
+            );
+            if matches!(text, "A" | "B" | "C" | "D" | "E") {
+                // 0.6em at 16px, rounded to the 1/64px Markdown measurement lattice.
+                metrics.width = 9.59375;
+            }
+            metrics
+        }
+    }
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("class-elk-terminal-routing").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        std::sync::Arc::new(RoutingMeasurer),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let render = |source: &str, straighten: bool| {
+        render_class_svg_from_text_with_session(
+            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                serde_json::json!({
+                    "layout": "elk",
+                    "fontSize": 16,
+                    "themeVariables": { "fontSize": "16px" },
+                    "elk": { "straightenEdges": straighten },
+                }),
+            )),
+            source,
+            &LayoutOptions::headless_svg_defaults(),
+            &SvgRenderOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+    };
 
     let source = include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
-    let straight = render_class_svg_from_text(source);
-    let original = render_class_svg_from_text(&format!(
-        "---\nconfig:\n  elk:\n    straightenEdges: false\n---\n{source}"
-    ));
+    let straight = render(source, true);
+    let original = render(source, false);
     let edge_points = |svg: &str, edge_id: &str| {
         let document = roxmltree::Document::parse(svg).unwrap();
         let edge = document
@@ -3451,12 +3514,33 @@ fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
         let mut after = edge_points(&straight, edge_id);
         assert_eq!(after.first(), before.first());
         assert_eq!(after.last(), before.last());
-        assert_eq!(after.len() + 2, before.len(), "{edge_id}");
         if !source_terminal {
             before.reverse();
             after.reverse();
         }
-        assert!((before[0].1 - before[2].1).abs() > 0.01);
+        assert!(before.len() >= 5, "{edge_id}: terminal staircase");
+        assert_eq!(before[0].1, before[1].1, "{edge_id}: port run");
+        assert_eq!(before[1].0, before[2].0, "{edge_id}: terminal jog");
+        assert_eq!(before[2].1, before[3].1, "{edge_id}: channel run");
+        let jog = (before[0].1 - before[2].1).abs();
+        assert!((0.01..=16.0).contains(&jog), "{edge_id}: eligible jog");
+        let port_run = before[1].0 - before[0].0;
+        assert!(
+            port_run.abs() > 0.01 && port_run.abs() <= 30.0,
+            "{edge_id}: short port run"
+        );
+        assert_eq!(
+            port_run.signum(),
+            (before[3].0 - before[2].0).signum(),
+            "{edge_id}: forward terminal channel"
+        );
+        assert_eq!(
+            after.len() + 2,
+            before.len(),
+            "{edge_id}: before={before:?}, after={after:?}"
+        );
+        assert_eq!(after[1].0, before[3].0, "{edge_id}: channel x preserved");
+        assert_eq!(after[2].0, before[4].0, "{edge_id}: channel x preserved");
         assert_eq!(after[0].1, after[1].1);
         assert_eq!(after[0].1, after[2].1);
     }
@@ -6675,5 +6759,385 @@ fn class_svg_empty_markdown_members_restore_source_row_for_layout_and_emission()
             widths[2] > widths[1] + 90.0,
             "fallback row must measure both visible slashes: {widths:?}"
         );
+    }
+}
+
+mod class_svg_terminal_contracts {
+    use super::*;
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+
+    struct RoleMeasurer;
+
+    impl RoleMeasurer {
+        fn width(text: &str, style: &TextStyle) -> f64 {
+            let bold = matches!(
+                style.font_weight.as_deref(),
+                Some("bolder" | "bold" | "700")
+            );
+            let italic = style.font_style.as_deref() == Some("italic");
+            text.chars().count() as f64
+                * (1.0 + if bold { 1.0 } else { 0.0 } + if italic { 1.0 } else { 0.0 })
+        }
+    }
+
+    impl TextMeasurer for RoleMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: text
+                    .split('\n')
+                    .map(|line| Self::width(line, style))
+                    .fold(0.0_f64, f64::max),
+                height: text.split('\n').count() as f64 * 16.0,
+                line_count: text.split('\n').count(),
+            }
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            Self::width(text, style)
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> TextMetrics {
+            TextMetrics {
+                width: 1024.0,
+                height: 16.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    struct ExactTitleMeasurer;
+
+    impl TextMeasurer for ExactTitleMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            if text.contains("<br>") {
+                return TextMetrics {
+                    width: RoleMeasurer::width(text, style),
+                    height: 100.0,
+                    line_count: 2,
+                };
+            }
+            RoleMeasurer.measure(text, style)
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            RoleMeasurer::width(text, style)
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            RoleMeasurer::width(text, style)
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_weight.as_deref() != Some("bolder") {
+                4.0
+            } else if style.font_style.as_deref() == Some("italic") {
+                18.0
+            } else {
+                12.0
+            }
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_weight.as_deref() != Some("bolder") {
+                0.0
+            } else if style.font_style.as_deref() == Some("italic") {
+                -11.0
+            } else {
+                -3.0
+            }
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            RoleMeasurer.measure_mermaid_calculate_text_dimensions(text, style)
+        }
+    }
+
+    fn render_with_measurer(
+        source: &str,
+        layout_engine: &str,
+        measurer: impl TextMeasurer + Send + Sync + 'static,
+    ) -> (serde_json::Value, String) {
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("class-svg-terminal-roles").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            std::sync::Arc::new(measurer),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let parsed = MermaidEngine::new()
+            .with_site_config(PresentationConfig::from_value(
+                serde_json::json!({"htmlLabels":false,"layout":layout_engine}),
+            ))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let json = artifact.layout_json().unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        (json.into_unmanaged_value(), rendered.svg().to_owned())
+    }
+
+    fn render(source: &str) -> (f64, Option<f64>, String) {
+        let (json, svg) = render_with_measurer(source, "dagre", RoleMeasurer);
+        let layout = &json["layout"]["ClassDiagramV2"];
+        let width = layout["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "A")
+            .unwrap()["width"]
+            .as_f64()
+            .unwrap();
+        let edge_width = layout["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find_map(|edge| edge["label"]["width"].as_f64());
+        (width, edge_width, svg)
+    }
+
+    fn text(node: roxmltree::Node<'_, '_>) -> String {
+        node.descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect()
+    }
+
+    #[test]
+    fn class_svg_terminal_title_shares_visible_words_and_bolder_emphasis() {
+        let (width, _, svg) = render("classDiagram\nclass A[\"**MM** *ii* plain\"]\n");
+        assert_eq!(width, 49.0, "25px of final title text plus two 12px insets");
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let title = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("label-group text"))
+            .unwrap();
+        assert_eq!(text(title), "MM ii plain");
+        let words = title
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .collect::<Vec<_>>();
+        assert_eq!(words.len(), 3);
+        for word in &words {
+            assert_eq!(word.attribute("font-weight"), Some(""));
+        }
+        assert_eq!(words[1].attribute("font-style"), Some("italic"));
+        assert_eq!(words[2].attribute("font-style"), Some("normal"));
+    }
+
+    #[test]
+    fn class_svg_terminal_edge_shares_markdown_words_and_final_faces() {
+        let (_, width, svg) =
+            render("classDiagram\nclass A\nclass B\nA --> B : **MM** *ii* plain\n");
+        assert_eq!(
+            width,
+            Some(20.0),
+            "16px of styled text plus 4px background padding"
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let edge = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("edgeLabel") && node.has_tag_name("g"))
+            .unwrap();
+        assert_eq!(text(edge), "MM ii plain");
+        let words = edge
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .collect::<Vec<_>>();
+        assert_eq!(words[0].attribute("font-weight"), Some("bold"));
+        assert_eq!(words[1].attribute("font-weight"), Some("normal"));
+        assert_eq!(words[1].attribute("font-style"), Some("italic"));
+        let background = edge
+            .descendants()
+            .find(|node| node.attribute("class") == Some("background"))
+            .unwrap();
+        assert_eq!(background.attribute("width"), Some("20"));
+    }
+
+    #[test]
+    fn class_svg_terminal_title_fallback_keeps_dom_word_spaces() {
+        for layout_engine in ["dagre"]
+            .into_iter()
+            .chain(cfg!(feature = "layout-elk").then_some("elk"))
+        {
+            let (json, svg) = render_with_measurer(
+                "classDiagram\nclass A[\"&g **t**\"]\n",
+                layout_engine,
+                RoleMeasurer,
+            );
+            let node = json["layout"]["ClassDiagramV2"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == "A")
+                .unwrap();
+            assert_eq!(node["width"].as_f64(), Some(32.0), "{layout_engine}");
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let title = doc
+                .descendants()
+                .find(|node| node.attribute("class") == Some("label-group text"))
+                .unwrap();
+            assert_eq!(text(title), "&g t", "{layout_engine}");
+            let rows = title
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+                .collect::<Vec<_>>();
+            assert_eq!(rows.len(), 1, "{layout_engine}");
+            let words = rows[0]
+                .children()
+                .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                .collect::<Vec<_>>();
+            assert_eq!(words.len(), 2, "{layout_engine}");
+            assert_eq!(text(words[0]), "&g");
+            assert_eq!(text(words[1]), " t");
+            assert!(
+                words
+                    .iter()
+                    .all(|word| word.attribute("font-weight") == Some(""))
+            );
+        }
+    }
+
+    #[test]
+    fn class_svg_terminal_title_measures_retained_literal_rows_and_exact_faces() {
+        for layout_engine in ["dagre"]
+            .into_iter()
+            .chain(cfg!(feature = "layout-elk").then_some("elk"))
+        {
+            for (source, expected, row_count, word_count, height) in [
+                ("A&lt;br&gt;B", "A<br>B", 1, 1, 12.0),
+                ("**A&lt;br&gt;B**", "A<br>B", 1, 1, 12.0),
+                ("*A&lt;br&gt;B*", "A<br>B", 1, 1, 18.0),
+                ("A&lt;br&gt;B *ii*", "A<br>B ii", 1, 2, 20.0),
+                ("A&lt;br&gt;B<br>*ii*", "A<br>Bii", 2, 2, 25.4),
+            ] {
+                let (json, svg) = render_with_measurer(
+                    &format!("classDiagram\nclass A[\"{source}\"]\n"),
+                    layout_engine,
+                    ExactTitleMeasurer,
+                );
+                let node = json["layout"]["ClassDiagramV2"]["nodes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|node| node["id"] == "A")
+                    .unwrap();
+                assert!(
+                    (node["height"].as_f64().unwrap() - (height + 60.0)).abs() < 1e-6,
+                    "{layout_engine}: {source}: {node}"
+                );
+                let doc = roxmltree::Document::parse(&svg).unwrap();
+                let title = doc
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label-group text"))
+                    .unwrap();
+                assert_eq!(text(title), expected, "{layout_engine}: {source}");
+                assert_eq!(
+                    title
+                        .descendants()
+                        .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+                        .count(),
+                    row_count,
+                    "{layout_engine}: {source}"
+                );
+                let words = title
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                    .collect::<Vec<_>>();
+                assert_eq!(words.len(), word_count, "{layout_engine}: {source}");
+                assert!(
+                    words
+                        .iter()
+                        .all(|word| word.attribute("font-weight") == Some(""))
+                );
+                let transform = title
+                    .children()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .unwrap()
+                    .attribute("transform")
+                    .unwrap();
+                let y = transform
+                    .strip_prefix("translate(0,")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert!(
+                    (y + height / (2.0 * row_count as f64)).abs() < 1e-6,
+                    "{layout_engine}: {source}: {transform}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn class_svg_terminal_title_retains_conditional_literal_fallback_and_entity_depth() {
+        let slashes = [1, 2, 3, 4].map(|count| "\\".repeat(count));
+        // shapeUtil strips one leading slash, and createText omits Marked escape tokens.
+        // Three source slashes leave no words, so addText restores two as direct outer text.
+        for (source, expected, fallback) in [
+            (slashes[0].as_str(), "", true),
+            (slashes[1].as_str(), "\\", false),
+            (slashes[2].as_str(), "\\\\", true),
+            (slashes[3].as_str(), "\\", false),
+            ("&amp;gt; **MM**", "&amp;gt; **MM**", true),
+            ("A&amp;B", "A&B", false),
+            ("&quot;quoted&quot;", "&quot;quoted&quot;", false),
+        ] {
+            let (width, _, svg) = render(&format!("classDiagram\nclass A[\"{source}\"]\n"));
+            assert_eq!(
+                width,
+                expected.chars().count() as f64 * 2.0 + 24.0,
+                "{source}"
+            );
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let title = doc
+                .descendants()
+                .find(|node| node.attribute("class") == Some("label-group text"))
+                .unwrap();
+            assert_eq!(text(title), expected, "{source}");
+            let has_inner = title
+                .descendants()
+                .any(|node| node.attribute("class") == Some("text-inner-tspan"));
+            assert_eq!(has_inner, !fallback, "{source}");
+            if fallback {
+                let outer = title
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("tspan")
+                            && node.attribute("class") == Some("row text-outer-tspan")
+                    })
+                    .expect("literal fallback outer tspan");
+                assert_eq!(outer.text().unwrap_or_default(), expected, "{source}");
+                assert_eq!(
+                    outer.children().filter(|node| node.is_element()).count(),
+                    0,
+                    "shapeUtil replaces inner tspans with literal textContent: {source}"
+                );
+            }
+        }
     }
 }

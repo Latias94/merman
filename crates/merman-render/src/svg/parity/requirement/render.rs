@@ -1065,19 +1065,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     ..html_style_regular.clone()
                 };
                 let text_style = rendered_node.typography.resolve_text_style(&base_style);
-                let node_measurer = rendered_node
-                    .typography
-                    .node_measurer(measurer, crate::text::WrapMode::SvgLike);
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                super::super::label::write_svg_text_markdown_wrapped_with_row_style(
+                super::super::label::write_svg_text_markdown_wrapped_with_first_row_style(
                     &mut out,
                     &source,
                     &svg_style,
-                    super::super::label::SvgTextRowStyle {
+                    super::super::label::SvgTextFirstRowStyle {
                         style: &style,
                         first_row_start: render_settings.body_text_start && !line.keep_centered,
                     },
-                    node_measurer.as_measurer(),
+                    measurer,
                     &text_style,
                     Some(metrics.max_width_px as f64),
                 );

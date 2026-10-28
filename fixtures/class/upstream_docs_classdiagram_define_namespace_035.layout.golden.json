@@ -45,16 +45,16 @@
           "height": 81.0,
           "id": "Triangle",
           "is_cluster": false,
-          "width": 70.344,
-          "x": 71.172,
+          "width": 70.34,
+          "x": 71.17,
           "y": 129.5
         },
         {
           "height": 135.0,
           "id": "Rectangle",
           "is_cluster": false,
-          "width": 123.887,
-          "x": 218.287,
+          "width": 123.89,
+          "x": 218.285,
           "y": 129.5
         }
       ]

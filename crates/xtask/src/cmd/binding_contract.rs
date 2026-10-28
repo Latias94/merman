@@ -298,6 +298,7 @@ fn node_artifact_profile_projection(target: TargetKey) -> BindingArtifactProfile
             .with_operations(NODE_STATIC_SVG_OPERATIONS)
             .with_supplemental_capabilities(NODE_STATIC_SVG_SUPPLEMENTAL_CAPABILITIES)
             .with_all_available_metadata()
+            .with_constructor_services(&[ConstructorServiceKey::IconRegistry])
             .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
             .materialize(),
     )

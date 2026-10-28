@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 44.406,
+        "max_x": 44.4,
         "max_y": 214.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -20,11 +20,11 @@
           "label": null,
           "points": [
             {
-              "x": 28.203,
+              "x": 28.2,
               "y": 93.0
             },
             {
-              "x": 28.203,
+              "x": 28.2,
               "y": 133.0
             }
           ],
@@ -41,16 +41,16 @@
           "height": 81.0,
           "id": "A",
           "is_cluster": false,
-          "width": 32.406,
-          "x": 28.203,
+          "width": 32.4,
+          "x": 28.2,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "B",
           "is_cluster": false,
-          "width": 32.406,
-          "x": 28.203,
+          "width": 32.4,
+          "x": 28.2,
           "y": 173.5
         }
       ]

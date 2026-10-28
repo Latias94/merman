@@ -64,6 +64,7 @@ enum SequenceHostResponse {
     Missing,
     StatefulMetrics,
     WeightSensitiveMetrics,
+    EntitySensitiveMetrics,
     Error,
 }
 
@@ -127,6 +128,32 @@ impl HostTextMeasurer for RecordingSequenceHost {
                     height: 24.0,
                     line_count: 1,
                 })))
+            }
+            SequenceHostResponse::EntitySensitiveMetrics => {
+                let bold = request.style.font_weight.as_deref() == Some("700");
+                let width = match request.text {
+                    "😀" => 40.0,
+                    "&#128512;" => 90.0,
+                    "\u{200b}" => 0.0,
+                    text => text.chars().count() as f64 * 8.0,
+                };
+                let width = width * if bold { 2.0 } else { 1.0 };
+                let height = if bold { 17.0 } else { 9.0 };
+                Ok(Some(match request.operation {
+                    TextMeasurementOperation::RawBBoxWidth
+                    | TextMeasurementOperation::TspanBBoxWidth => {
+                        HostTextMeasurement::Length(width)
+                    }
+                    TextMeasurementOperation::RawBBoxHeight
+                    | TextMeasurementOperation::TspanBBoxHeight => {
+                        HostTextMeasurement::Length(height)
+                    }
+                    _ => HostTextMeasurement::Metrics(TextMetrics {
+                        width,
+                        height,
+                        line_count: 1,
+                    }),
+                }))
             }
             SequenceHostResponse::Error => Err(HostTextMeasurementError::new(
                 "recorded Sequence host failure",
@@ -2065,6 +2092,269 @@ fn sequence_diagram_title_expands_the_root_for_typed_base_font_size() {
         view_box[1] <= title_y - f64::from(font_size) * 0.8,
         "typed base font size must expand the root above the title baseline: viewBox={view_box:?}, title={title:?}"
     );
+}
+
+#[test]
+fn sequence_title_bounds_use_the_emitted_start_anchor() {
+    struct TitleMeasurer;
+    impl TextMeasurer for TitleMeasurer {
+        fn measure(&self, text: &str, style: &merman_render::text::TextStyle) -> TextMetrics {
+            DeterministicTextMeasurer::default().measure(text, style)
+        }
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+            width: Option<f64>,
+            mode: WrapMode,
+        ) -> TextMetrics {
+            DeterministicTextMeasurer::default().measure_wrapped(text, style, width, mode)
+        }
+        fn measure_svg_title_bbox_x(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+        ) -> (f64, f64) {
+            if text == "Wide title" {
+                (210.0, 220.0)
+            } else {
+                DeterministicTextMeasurer::default().measure_svg_title_bbox_x(text, style)
+            }
+        }
+        fn measure_svg_text_computed_length_px(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+        ) -> f64 {
+            if text == "Wide title" {
+                400.0
+            } else {
+                DeterministicTextMeasurer::default()
+                    .measure_svg_text_computed_length_px(text, style)
+            }
+        }
+    }
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("sequence-title-start-anchor").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        Arc::new(TitleMeasurer),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let observation = render_sequence_with_environment(
+        "sequenceDiagram\ntitle Wide title\nA->>B: hello",
+        &environment,
+    );
+    let document = roxmltree::Document::parse(&observation.svg).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Wide title"))
+        .unwrap();
+    assert_eq!(title.attribute("text-anchor"), None);
+    let x = title.attribute("x").unwrap().parse::<f64>().unwrap();
+    let (view_box, _) = root_view_box_and_max_width(&observation.svg);
+    assert!(view_box[0] <= x - 10.0, "{view_box:?}");
+    assert!(view_box[0] + view_box[2] >= x + 420.0, "{view_box:?}");
+}
+
+#[test]
+fn sequence_configured_root_font_sizes_title_without_changing_role_fonts() {
+    let source = r#"---
+config:
+  fontSize: ''
+  fontFamily: ''
+  themeVariables:
+    fontSize: 40px
+  sequence:
+    actorFontSize: 19
+    actorFontFamily: serif
+    messageFontSize: 12
+    messageFontFamily: monospace
+---
+sequenceDiagram
+title Configured Diagram Title
+participant A as probe-actor
+A->>A: probe-message
+"#;
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::Missing,
+        "sequence-configured-title-font",
+        RenderEnvironment::deterministic(),
+    );
+    let document = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+    let root_id = document.root_element().attribute("id").expect("root id");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Sequence stylesheet");
+    let root_rule = stylesheet
+        .strip_prefix(&format!("#{root_id}{{"))
+        .and_then(|rule| rule.split_once('}'))
+        .expect("Sequence root typography rule")
+        .0;
+    assert_eq!(inline_style_value(root_rule, "font-size"), Some("40px"));
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Configured Diagram Title"))
+        .expect("Sequence diagram title");
+    assert_eq!(title.attribute("class"), None);
+    assert_eq!(title.attribute("style"), None);
+    assert_eq!(title.attribute("font-size"), None);
+    let title_requests = observation
+        .requests
+        .iter()
+        .filter(|request| {
+            request.text == "Configured Diagram Title"
+                && request.operation == TextMeasurementOperation::TitleBBoxX
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !title_requests.is_empty(),
+        "the final title bbox must be measured"
+    );
+    assert!(
+        title_requests
+            .iter()
+            .all(|request| request.font_size_bits == 40.0_f64.to_bits())
+    );
+    let title_y = title.attribute("y").unwrap().parse::<f64>().unwrap();
+    let (view_box, _) = root_view_box_and_max_width(&observation.render.svg);
+    assert!(
+        view_box[1] <= title_y - 32.0,
+        "the root must contain the 40px title ascent: {view_box:?}"
+    );
+    for (probe, size, family) in [
+        ("probe-actor", 19.0_f64, "serif"),
+        ("probe-message", 12.0_f64, "monospace"),
+    ] {
+        let requests = observation
+            .requests
+            .iter()
+            .filter(|request| request.text == probe)
+            .collect::<Vec<_>>();
+        assert!(!requests.is_empty(), "{probe} must be measured");
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.font_size_bits == size.to_bits())
+        );
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node
+                        .descendants()
+                        .any(|child| child.is_text() && child.text() == Some(probe))
+            })
+            .expect("Sequence role text");
+        let style = text.attribute("style").expect("role typography");
+        let expected_size = format!("{size}px");
+        assert_eq!(
+            inline_style_value(style, "font-size"),
+            Some(expected_size.as_str())
+        );
+        assert_eq!(inline_style_value(style, "font-family"), Some(family));
+    }
+}
+
+#[test]
+fn sequence_title_measurement_and_css_share_root_font_size_precedence() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                DiagramFamilyId::SEQUENCE,
+                ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
+            ),
+        ))
+        .unwrap();
+    for (config, untyped_size, typed_size) in [
+        (serde_json::json!({}), 14.0_f64, 24.0_f64),
+        (serde_json::json!({"fontSize": 40}), 14.0, 14.0),
+        (serde_json::json!({"fontSize": "40"}), 14.0, 14.0),
+        (serde_json::json!({"fontSize": "40px"}), 14.0, 14.0),
+        (
+            serde_json::json!({"themeVariables": {"fontSize": "40px"}}),
+            40.0,
+            24.0,
+        ),
+        (
+            serde_json::json!({"fontSize": 20, "themeVariables": {"fontSize": "40px"}}),
+            40.0,
+            40.0,
+        ),
+    ] {
+        for (typed, expected_size) in [(false, untyped_size), (true, typed_size)] {
+            let source = format!(
+                "---\nconfig: {config}\n---\nsequenceDiagram\ntitle Configured root title\nA->>B: hello\n"
+            );
+            let host = Arc::new(RecordingSequenceHost::default());
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("sequence-title-root-precedence").unwrap(),
+                "1",
+            )
+            .unwrap();
+            let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                TextMeasurementPolicy::host_display(
+                    identity,
+                    host.clone(),
+                    TextMeasurementPhase::ALL,
+                ),
+            );
+            let (engine, session) = if typed {
+                (
+                    merman_render::__private::install_parse_compatibility(
+                        &theme,
+                        MermaidEngine::new(),
+                    ),
+                    environment.begin_session_with_theme(&theme).unwrap(),
+                )
+            } else {
+                (MermaidEngine::new(), environment.begin_session().unwrap())
+            };
+            let parsed = parse_sequence_for_render(&engine, &source);
+            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let root_id = document.root_element().attribute("id").unwrap();
+            let stylesheet = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap();
+            let root_rule = stylesheet
+                .strip_prefix(&format!("#{root_id}{{"))
+                .and_then(|rule| rule.split_once('}'))
+                .unwrap()
+                .0;
+            let expected_css = format!("{expected_size}px");
+            assert_eq!(
+                inline_style_value(root_rule, "font-size"),
+                Some(expected_css.as_str()),
+                "config={config}, typed={typed}"
+            );
+            let title_sizes = host
+                .snapshot()
+                .into_iter()
+                .filter(|exchange| {
+                    exchange.request.text == "Configured root title"
+                        && exchange.request.operation == TextMeasurementOperation::TitleBBoxX
+                })
+                .map(|exchange| f64::from_bits(exchange.request.font_size_bits))
+                .collect::<Vec<_>>();
+            assert!(!title_sizes.is_empty());
+            assert!(
+                title_sizes.iter().all(|size| *size == expected_size),
+                "config={config}, typed={typed}, title sizes={title_sizes:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -4039,6 +4329,18 @@ end"#;
 
 #[cfg(feature = "math")]
 fn assert_sequence_math_glyph_color(root: roxmltree::Node<'_, '_>, expected: [f64; 4]) {
+    let root = if root.has_tag_name("use") {
+        let target = root
+            .attribute("href")
+            .and_then(|href| href.strip_prefix('#'))
+            .expect("native math instance references a local definition");
+        root.document()
+            .descendants()
+            .find(|node| node.attribute("id") == Some(target))
+            .expect("native math definition exists")
+    } else {
+        root
+    };
     let mut painted_glyphs = 0;
     for glyph in root.descendants().filter(|node| {
         matches!(node.tag_name().name(), "path" | "line" | "rect" | "text")
@@ -5986,8 +6288,18 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         .expect("render Sequence artifact");
     let svg = rendered.svg();
 
-    let inline_formula_count = svg
-        .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let inline_formula_count = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("svg")
+                && node
+                    .attribute("width")
+                    .is_some_and(|value| value.ends_with("em"))
+                && !node
+                    .ancestors()
+                    .any(|ancestor| ancestor.has_tag_name("template"))
+        })
         .count();
     assert!(
         inline_formula_count >= 7,
@@ -9652,4 +9964,157 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
         !svg.contains("font-size: 18px"),
         "expected sequence.messageFontSize (18px) to not affect SVG output under the pinned upstream baselines"
     );
+}
+
+#[test]
+fn sequence_entities_emit_one_layer_without_creating_markup_or_extra_rows() {
+    // Both pinned Mermaid 12.1/12.2 packages produce these final textContent values.
+    for (encoded, visible) in [
+        ("#128512;", "😀"),
+        ("#38;#35;128512#59;", "&#128512;"),
+        ("#lt;br/#gt;", "<br/>"),
+        ("#38;lt#59;br/#38;gt#59;", "&lt;br/&gt;"),
+    ] {
+        let label = format!("{encoded}<br/><br/>W");
+        let source = format!(
+            "---\nconfig:\n  sequence:\n    wrap: false\n    mirrorActors: false\n---\nsequenceDiagram\nbox transparent {label}\nparticipant A as {label}\nend\nparticipant B\nA->>B: {label}\nNote over A,B: {label}\nalt {label}\nA->>B: ok\nelse {label}\nA->>B: ok\nend"
+        );
+        let svg = render_sequence_svg_from_text(&source);
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence entity SVG");
+        assert!(
+            !doc.descendants().any(|node| node.has_tag_name("br")),
+            "{encoded}"
+        );
+        let rows = |class: &str| -> Vec<String> {
+            doc.descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            if class == "actor" {
+                                classes.split_whitespace().any(|part| part == "actor")
+                            } else {
+                                classes == class
+                            }
+                        })
+                })
+                .map(|node| {
+                    node.descendants()
+                        .filter(|child| child.is_text())
+                        .filter_map(|child| child.text())
+                        .collect::<String>()
+                })
+                .filter(|text| text != "B" && text != "ok")
+                .collect()
+        };
+        for class in ["actor", "text"] {
+            assert_eq!(rows(class), [visible, "", "W"], "{encoded}/{class}");
+        }
+        for class in ["messageText", "noteText"] {
+            assert_eq!(rows(class), [visible, "\u{200b}", "W"], "{encoded}/{class}");
+        }
+        for class in ["loopText", "sectionTitle"] {
+            assert_eq!(
+                rows(class),
+                [
+                    format!("[{visible}"),
+                    "\u{200b}".to_owned(),
+                    "W]".to_owned()
+                ],
+                "{encoded}/{class}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_entities_measure_the_emitted_text_with_resolved_weight() {
+    for weight in ["400", "700"] {
+        for (encoded, visible) in [
+            ("#38;#35;128512#59;", "&#128512;"),
+            ("#lt;br/#gt;", "<br/>"),
+            ("#38;lt#59;br/#38;gt#59;", "&lt;br/&gt;"),
+        ] {
+            let label = format!("{encoded}<br/><br/>W");
+            let source = format!(
+                "---\nconfig:\n  sequence:\n    mirrorActors: false\n    wrap: false\n    messageFontWeight: '{weight}'\n    noteFontWeight: '{weight}'\n---\nsequenceDiagram\nparticipant A\nparticipant B\nA->>B: {label}\nNote over A,B: {label}"
+            );
+            let observation = render_sequence_with_host_environment(
+                &source,
+                SequenceHostResponse::EntitySensitiveMetrics,
+                "sequence-entity-terminal-probe",
+                RenderEnvironment::deterministic(),
+            );
+            let expected = [visible, "\u{200b}", "W"];
+            for operation in [
+                TextMeasurementOperation::RawBBoxHeight,
+                TextMeasurementOperation::TspanBBoxHeight,
+            ] {
+                let requests: Vec<_> = observation
+                    .requests
+                    .iter()
+                    .filter(|request| {
+                        request.phase == TextMeasurementPhase::SvgBBox
+                            && request.operation == operation
+                            && expected.contains(&request.text.as_str())
+                    })
+                    .collect();
+                assert!(!requests.is_empty(), "{encoded}/{weight}/{operation:?}");
+                for rows in requests.chunks(3) {
+                    assert_eq!(
+                        rows.iter()
+                            .map(|request| request.text.as_str())
+                            .collect::<Vec<_>>(),
+                        expected,
+                        "{encoded}/{weight}/{operation:?}"
+                    );
+                }
+                assert!(
+                    requests
+                        .iter()
+                        .all(|request| request.font_weight.as_deref() == Some(weight)),
+                    "{requests:?}"
+                );
+            }
+            let layout_requests: Vec<_> = observation
+                .requests
+                .iter()
+                .filter(|request| {
+                    request.phase == TextMeasurementPhase::SvgBBox
+                        && request.operation == TextMeasurementOperation::TspanBBoxWidth
+                })
+                .collect();
+            assert!(
+                layout_requests.iter().any(|request| request.text == visible
+                    && request.font_weight.as_deref() == Some(weight)),
+                "{layout_requests:?}"
+            );
+            let doc = roxmltree::Document::parse(&observation.render.svg)
+                .expect("Sequence entity host SVG");
+            for class in ["messageText", "noteText"] {
+                let rows: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("text") && node.attribute("class") == Some(class)
+                    })
+                    .collect();
+                let text: Vec<String> = rows
+                    .iter()
+                    .map(|node| {
+                        node.descendants()
+                            .filter(|child| child.is_text())
+                            .filter_map(|child| child.text())
+                            .collect()
+                    })
+                    .collect();
+                assert_eq!(text, expected, "{encoded}/{weight}/{class}");
+                let ys: Vec<f64> = rows
+                    .iter()
+                    .map(|node| node.attribute("y").unwrap().parse().unwrap())
+                    .collect();
+                let height = if weight == "700" { 17.0 } else { 9.0 };
+                assert_eq!(ys[1] - ys[0], height, "{encoded}/{weight}/{class}");
+                assert_eq!(ys[2] - ys[1], height, "{encoded}/{weight}/{class}");
+            }
+        }
+    }
 }

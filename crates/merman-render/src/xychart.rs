@@ -266,12 +266,10 @@ fn max_text_dimension(
     // These metrics and the chart dimensions already share SVG user units. Mermaid 12.1
     // divides browser screen measurements by the SVG's CTM; no display scale enters this path.
     for t in texts {
-        let m = measurer.measure(t, &style);
-        max_w = max_w.max(m.width);
-        // Mermaid XYChart uses `computeDimensionOfText(...)` which probes a `<tspan>`'s
-        // `getBoundingClientRect().height`. That tends to be closer to "simple text bbox height"
-        // than the slightly taller wrapped SVG `<text>.getBBox().height` heuristic.
-        max_h = max_h.max(measurer.measure_svg_simple_text_bbox_height_px(t, &style));
+        max_w = max_w.max(measurer.measure_svg_text_bounding_client_rect_width_px(t, &style));
+        // computeDimensionOfText() inserts one literal run, not a wrapped HTML label.
+        // The raw-height route is this profile's existing single-row approximation.
+        max_h = max_h.max(measurer.measure_svg_raw_text_bbox_height_px(t, &style));
     }
     Dimension {
         width: max_w,
@@ -289,23 +287,13 @@ fn single_text_height(
     if text.trim().is_empty() {
         return 0.0;
     }
-    if text.contains('\n') || text.contains("<br") {
-        return max_text_dimension(
-            &[text.to_string()],
-            font_size,
-            font_family,
-            font_weight,
-            measurer,
-        )
-        .height;
-    }
     let style = TextStyle {
         font_family: Some(font_family.to_string()),
         font_size,
         font_weight: font_weight.map(str::to_owned),
         ..Default::default()
     };
-    measurer.measure_svg_simple_text_bbox_height_px(text, &style)
+    measurer.measure_svg_raw_text_bbox_height_px(text, &style)
 }
 
 const LEGEND_MARKER_TO_FONT_RATIO: f64 = 0.75;
@@ -2101,6 +2089,18 @@ mod tests {
         );
         assert_eq!(dimensions.width, 42.0);
         assert_eq!(dimensions.height, 14.0);
+    }
+
+    #[test]
+    fn xychart_dimension_probe_keeps_literal_markup_in_one_svg_run() {
+        let measurer = crate::text::DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..Default::default()
+        };
+        let text = "AAAAAA<br/>BBBBBB";
+        let dimensions = max_text_dimension(&[text.to_owned()], 10.0, "serif", None, &measurer);
+        assert_eq!(dimensions.width, text.len() as f64 * 10.0);
+        assert_eq!(dimensions.height, 11.0);
     }
 
     #[test]

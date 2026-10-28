@@ -450,10 +450,10 @@ pub(crate) fn render_treemap_diagram_svg(
             .charge(measurement_work.saturating_mul(2))?;
         let style = title_text_style.style();
         let w = measurer
-            .measure_svg_simple_text_bbox_width_px(title, style)
+            .measure_svg_raw_text_bbox_width_px(title, style)
             .max(0.0);
         let h = measurer
-            .measure_svg_simple_text_bbox_height_px(title, style)
+            .measure_svg_raw_text_bbox_height_px(title, style)
             .max(0.0);
         (Some(title_text_style), Some((w, h)))
     } else {

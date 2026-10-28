@@ -118,7 +118,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
             let count = lines.len().max(1) as f64;
             for (index, raw) in lines.into_iter().enumerate() {
                 checkpoints.checkpoint_loop(index)?;
-                let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
+                let decoded = crate::sequence::prepare_sequence_text_line(raw);
                 let name = decoded.as_ref();
                 let dy = (index as f64 - (count - 1.0) / 2.0) * options.actor_text_style.font_size;
                 let application = label_ctx.write_shadow(
@@ -147,7 +147,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
                     y = fmt(text_y),
                     dy = fmt(dy),
                     style = escape_attr_display(&style),
-                    text = escape_xml_display(name)
+                    text = super::escape_prepared_text(name)
                 );
                 out.checkpoint()?;
                 label_ctx.record_shadow(

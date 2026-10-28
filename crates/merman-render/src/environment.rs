@@ -1157,6 +1157,20 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         .and_then(|carrier| carrier.into_html_line_width(style))
     }
 
+    fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::Wrapped,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            ),
+            |measurement| decode_host_metrics(measurement).map(|metrics| metrics.height),
+            |profile| profile.measure_html_line_height_px(text, style),
+        )
+    }
+
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         // A candidate is already decoded, single-line text. Use its raw advance without
         // normalizing it as a complete HTML label, while retaining the Wrap route and callbacks.
@@ -1195,7 +1209,7 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
                 text,
                 style,
                 None,
-                WrapMode::SvgLike,
+                WrapMode::HtmlLike,
             ),
             decode_host_length,
             |profile| profile.measure_svg_text_computed_length_px(text, style),
@@ -1209,7 +1223,7 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
                 text,
                 style,
                 None,
-                WrapMode::SvgLike,
+                WrapMode::HtmlLike,
             ),
             decode_host_extents,
             |profile| profile.measure_svg_text_bbox_x(text, style),
@@ -1273,6 +1287,20 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_raw_text_bbox_width_px(text, style),
+        )
+    }
+
+    fn measure_svg_preserved_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_preserved_raw_text_bbox_width_px(text, style),
         )
     }
 
@@ -2714,37 +2742,71 @@ mod tests {
     }
 
     #[test]
-    fn preserved_tspan_width_reuses_operation_seven_with_explicit_whitespace_mode() {
-        struct PreservedTspanHost;
+    fn preserved_svg_width_reuses_existing_operations_with_explicit_whitespace_mode() {
+        struct PreservedTspanHost(TextMeasurementOperation);
 
         impl HostTextMeasurer for PreservedTspanHost {
             fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
-                assert_eq!(request.operation, TextMeasurementOperation::TspanBBoxWidth);
-                assert_eq!(request.operation.external_code(), 7);
-                assert_eq!(request.phase, TextMeasurementPhase::SvgBBox);
+                assert_eq!(request.operation, self.0);
+
+                assert_eq!(
+                    request.phase,
+                    if self.0 == TextMeasurementOperation::ComputedLength {
+                        TextMeasurementPhase::ComputedLength
+                    } else {
+                        TextMeasurementPhase::SvgBBox
+                    }
+                );
                 assert_eq!(request.text, "a  b");
                 assert_eq!(request.max_width, None);
                 assert_eq!(request.wrap_mode, WrapMode::HtmlLike);
-                Ok(Some(HostTextMeasurement::Length(37.5)))
+                Ok(Some(if self.0 == TextMeasurementOperation::BBoxX {
+                    HostTextMeasurement::HorizontalExtents {
+                        left: 18.0,
+                        right: 19.5,
+                    }
+                } else {
+                    HostTextMeasurement::Length(37.5)
+                }))
             }
         }
 
-        let policy = TextMeasurementPolicy::host_display_with_fallback(
-            identity("test.preserved-tspan-host", "v1", &[]),
-            Arc::new(PreservedTspanHost),
-            [TextMeasurementPhase::SvgBBox],
-            deterministic_profile(),
-        );
-        let session = RenderEnvironment::deterministic()
-            .with_text_measurement_policy(policy)
-            .begin_session()
-            .expect("begin render session");
-        assert_eq!(
-            session
-                .text_measurer(TextMeasurementPhase::Layout)
-                .measure_svg_preserved_tspan_text_bbox_width_px("a  b", &TextStyle::default()),
-            37.5,
-        );
+        for operation in [
+            TextMeasurementOperation::ComputedLength,
+            TextMeasurementOperation::BBoxX,
+            TextMeasurementOperation::RawBBoxWidth,
+            TextMeasurementOperation::TspanBBoxWidth,
+        ] {
+            let policy = TextMeasurementPolicy::host_display_with_fallback(
+                identity("test.preserved-tspan-host", "v1", &[]),
+                Arc::new(PreservedTspanHost(operation)),
+                [
+                    TextMeasurementPhase::SvgBBox,
+                    TextMeasurementPhase::ComputedLength,
+                ],
+                deterministic_profile(),
+            );
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(policy)
+                .begin_session()
+                .expect("begin render session");
+            let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+            let actual = match operation {
+                TextMeasurementOperation::ComputedLength => {
+                    measurer.measure_svg_text_computed_length_px("a  b", &TextStyle::default())
+                }
+                TextMeasurementOperation::BBoxX => {
+                    let (left, right) =
+                        measurer.measure_svg_text_bbox_x("a  b", &TextStyle::default());
+                    left + right
+                }
+                TextMeasurementOperation::RawBBoxWidth => measurer
+                    .measure_svg_preserved_raw_text_bbox_width_px("a  b", &TextStyle::default()),
+                _ => measurer
+                    .measure_svg_preserved_tspan_text_bbox_width_px("a  b", &TextStyle::default()),
+            };
+            assert_eq!(actual, 37.5);
+        }
     }
 
     impl HostTextMeasurer for OperationAwareHost {
@@ -3196,6 +3258,10 @@ mod tests {
             ("1️⃣", &["1", "\u{fe0f}", "\u{20e3}"]),
             ("😀\u{fe0e}", &["😀", "\u{fe0e}"]),
             ("k中A+", &["k中", "A+"]),
+            (" A  B ", &[" ", "A ", " B", " "]),
+            ("A\tB", &["A", "\t", "B"]),
+            ("A\nB", &["A", "\n", "B"]),
+            ("A<br/>B", &["A<", "br", "/>", "B"]),
         ];
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),

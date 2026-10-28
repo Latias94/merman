@@ -3,7 +3,7 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 260.703,
+        "max_x": 260.72,
         "max_y": 272.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -21,13 +21,13 @@
           "title_label": {
             "height": 21.0,
             "width": 69.3,
-            "x": 56.117,
+            "x": 56.12,
             "y": 22.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 88.234,
-          "x": 56.117,
+          "width": 88.24,
+          "x": 56.12,
           "y": 142.0
         }
       ],
@@ -42,11 +42,11 @@
           "label": null,
           "points": [
             {
-              "x": 56.117,
+              "x": 56.12,
               "y": 143.0
             },
             {
-              "x": 56.117,
+              "x": 56.12,
               "y": 167.0
             }
           ],
@@ -63,40 +63,40 @@
           "height": 260.0,
           "id": "Namespace1",
           "is_cluster": true,
-          "width": 88.234,
-          "x": 56.117,
+          "width": 88.24,
+          "x": 56.12,
           "y": 142.0
         },
         {
           "height": 81.0,
           "id": "C3",
           "is_cluster": false,
-          "width": 40.234,
-          "x": 160.352,
+          "width": 40.24,
+          "x": 160.36,
           "y": 142.0
         },
         {
           "height": 81.0,
           "id": "C4",
           "is_cluster": false,
-          "width": 40.234,
-          "x": 240.586,
+          "width": 40.24,
+          "x": 240.6,
           "y": 142.0
         },
         {
           "height": 81.0,
           "id": "C1",
           "is_cluster": false,
-          "width": 40.234,
-          "x": 56.117,
+          "width": 40.24,
+          "x": 56.12,
           "y": 102.5
         },
         {
           "height": 81.0,
           "id": "C2",
           "is_cluster": false,
-          "width": 40.234,
-          "x": 56.117,
+          "width": 40.24,
+          "x": 56.12,
           "y": 207.5
         }
       ]
