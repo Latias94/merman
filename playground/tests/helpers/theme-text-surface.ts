@@ -220,23 +220,86 @@ export async function observeMountedThemeTextSurfaces(
   for (const [index, probe] of probes.entries()) {
     const text = svgLocator.locator(probe.textSelector);
     const surface = probe.surfaceSelector === ":scope" ? svgLocator : svgLocator.locator(probe.surfaceSelector);
+    // Reuse transformed character geometry: WebKit's SVG text boundingBox can omit x/y.
+    const measured = observations[index].textBounds;
+    const textBounds = {
+      x: measured.xMilliPx / 1_000, y: measured.yMilliPx / 1_000,
+      width: measured.widthMilliPx / 1_000, height: measured.heightMilliPx / 1_000,
+    };
+    const x = Math.max(0, Math.min(rootBounds.x, textBounds.x));
+    const y = Math.max(0, Math.min(rootBounds.y, textBounds.y));
+    const captureBounds = {
+      x, y,
+      width: Math.max(rootBounds.x + rootBounds.width, textBounds.x + textBounds.width) - x,
+      height: Math.max(rootBounds.y + rootBounds.height, textBounds.y + textBounds.height) - y,
+    };
+    if (Math.ceil(captureBounds.width) * Math.ceil(captureBounds.height) > MAX_OBSERVATION_PIXELS) {
+      throw new Error("Theme text/surface observation exceeds the bounded pixel area.");
+    }
+    const capture = () => svgLocator.page().screenshot({
+      clip: captureBounds, animations: "disabled", caret: "hide", scale: "css",
+    });
     const textStyle = await text.getAttribute("style");
     const surfaceStyle = await surface.getAttribute("style");
-    const visible = await svgLocator.screenshot({ animations: "disabled", caret: "hide", scale: "css" });
+    // Capture the text's layout box, including any part clipped by the SVG viewport.
+    // A root-only screenshot would silently exclude that missing ink from both controls.
+    const visible = await capture();
     let textSuppressed: Buffer;
     let bothSuppressed: Buffer;
+    let unclipped: Buffer;
+    let unclippedTextSuppressed: Buffer;
+    let clippingStyles;
     try {
       await text.evaluate((element) => {
         (element as SVGElement | HTMLElement).style.setProperty("opacity", "0", "important");
       });
-      textSuppressed = await svgLocator.screenshot({ animations: "disabled", caret: "hide", scale: "css" });
+      textSuppressed = await capture();
       await surface.evaluate((element, paintProperty) => {
         const property = paintProperty === "background-color" || element instanceof HTMLElement
           ? "background-color" : "fill";
         (element as SVGElement | HTMLElement).style.setProperty(property, "transparent", "important");
       }, probe.surfacePaintProperty);
-      bothSuppressed = await svgLocator.screenshot({ animations: "disabled", caret: "hide", scale: "css" });
+      bothSuppressed = await capture();
+
+      for (const [terminal, style] of [[surface, surfaceStyle], [text, textStyle]] as const) {
+        await terminal.evaluate((element, authoredStyle) => {
+          if (authoredStyle === null) element.removeAttribute("style");
+          else element.setAttribute("style", authoredStyle);
+        }, style);
+      }
+      // Let the same browser lay out and rasterize the same glyphs without clipping.
+      // Comparing ink avoids treating font whitespace or italic overhang as missing text.
+      clippingStyles = await text.evaluateHandle((element) => {
+        const elements = new Set<Element>([element, ...element.querySelectorAll("*")]);
+        for (let ancestor: Element | null = element; ancestor;) {
+          elements.add(ancestor);
+          const root = ancestor.getRootNode();
+          ancestor = ancestor.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+        }
+        return [...elements].map((terminal) => {
+          const style = terminal.getAttribute("style");
+          const declaration = (terminal as SVGElement | HTMLElement).style;
+          declaration.setProperty("clip-path", "none", "important");
+          declaration.setProperty("clip", "auto", "important");
+          declaration.setProperty("overflow", "visible", "important");
+          return { terminal, style };
+        });
+      });
+      unclipped = await capture();
+      await text.evaluate((element) => {
+        (element as SVGElement | HTMLElement).style.setProperty("opacity", "0", "important");
+      });
+      unclippedTextSuppressed = await capture();
     } finally {
+      if (clippingStyles) {
+        await clippingStyles.evaluate((entries) => {
+          for (const { terminal, style } of entries) {
+            if (style === null) terminal.removeAttribute("style");
+            else terminal.setAttribute("style", style);
+          }
+        });
+        await clippingStyles.dispose();
+      }
       for (const [terminal, style] of [[surface, surfaceStyle], [text, textStyle]] as const) {
         await terminal.evaluate((element, authoredStyle) => {
           if (authoredStyle === null) element.removeAttribute("style");
@@ -269,28 +332,45 @@ export async function observeMountedThemeTextSurfaces(
           bitmap.close();
         }
       }
-      const [original, withoutText, withoutBoth] = pixels;
+      const [original, withoutText, withoutBoth, complete, withoutCompleteText] = pixels;
       const samePixel = (left: Uint8ClampedArray, right: Uint8ClampedArray, offset: number) =>
         left[offset] === right[offset] && left[offset + 1] === right[offset + 1] &&
         left[offset + 2] === right[offset + 2] && left[offset + 3] === right[offset + 3];
+      const contribution = (left: Uint8ClampedArray, right: Uint8ClampedArray, offset: number) =>
+        Math.max(
+          Math.abs(left[offset] - right[offset]),
+          Math.abs(left[offset + 1] - right[offset + 1]),
+          Math.abs(left[offset + 2] - right[offset + 2]),
+          Math.abs(left[offset + 3] - right[offset + 3]),
+        );
       let inkPixels = 0;
+      let missingInkPixels = 0;
+      let backgroundProven = true;
       for (let offset = 0; offset < original.length; offset += 4) {
+        // One RGB8 level absorbs rounding at antialiased edges, not a missing glyph pixel.
+        if (contribution(complete, withoutCompleteText, offset) > contribution(original, withoutText, offset) + 1) {
+          missingInkPixels += 1;
+        }
         if (samePixel(original, withoutText, offset)) continue;
         inkPixels += 1;
         if (withoutText[offset + 3] !== 255 ||
           input.backgroundPaint.some((channel, component) => Math.abs(channel - withoutText[offset + component]) > 1) ||
           samePixel(withoutText, withoutBoth, offset)) {
-          return { inkPixels, backgroundProven: false };
+          backgroundProven = false;
         }
       }
-      return { inkPixels, backgroundProven: true };
+      return { inkPixels, missingInkPixels, backgroundProven };
     }, {
-      images: [visible, textSuppressed, bothSuppressed].map((bytes) => bytes.toString("base64")),
+      images: [visible, textSuppressed, bothSuppressed, unclipped, unclippedTextSuppressed]
+        .map((bytes) => bytes.toString("base64")),
       backgroundPaint: observations[index].backgroundPaint,
       maxPixels: MAX_OBSERVATION_PIXELS,
     });
     if (evidence.inkPixels === 0) {
       throw new Error(`Terminal text must contribute visible pixels: ${probe.textSelector}`);
+    }
+    if (evidence.missingInkPixels > 0) {
+      throw new Error(`Terminal text must retain its complete visible ink: ${probe.textSelector}`);
     }
     if (!evidence.backgroundProven) {
       throw new Error(`Terminal surface must supply the opaque background at every visible text pixel: ${probe.surfaceSelector}`);
