@@ -80,11 +80,13 @@ Refreshing that single local-package relation leaves every registry package
 version and checksum unchanged. Both branches now pass the workflow's pinned
 `nightly-2026-07-01` workspace check with `--locked --offline`.
 
-The maintenance performance owner contracts already match their current inputs.
+Maintenance also refreshes the three current owner contracts' stale bench,
+manifest and root-lock input hashes, and backports main's current-input check.
+The backported check reproduces all nine stale hashes before the refresh.
 Only the current source-input hashes change; thresholds, semantic digests,
 candidate-admission rules and historical evidence remain intact. The complete
 performance-owner Python checks pass locally on both branches (157 focused
-contracts on main, 121 on maintenance).
+contracts on main, 122 on maintenance).
 
 Local verification also exposed macOS `/var` versus `/private/var` aliases in
 test fixtures. Canonicalizing fixture paths fixes command-provenance assertions
