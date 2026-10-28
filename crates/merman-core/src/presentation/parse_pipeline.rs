@@ -19,13 +19,11 @@ use crate::operation::OperationPhase;
 use crate::preprocess::{
     DirectiveRecoveryMode, PreprocessedSource,
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
 };
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::preprocess::{
-    PreprocessCaptureOutcome, SourceConfigEvidence,
+    SourceConfigEvidence,
     preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
 use crate::presentation::PresentationConfig;
 use crate::{
@@ -43,12 +41,6 @@ use serde_json::Value;
 pub(crate) enum ParseSource<'a> {
     Detect,
     KnownType(&'a str),
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum PreprocessPath {
-    PublicParse,
-    Render,
 }
 
 #[cfg(feature = "compat-json")]
@@ -294,7 +286,8 @@ impl<'a> ParsePipeline<'a> {
     }
 
     fn metadata_in_context(&self) -> Result<PresentationMetadata> {
-        let (_, metadata) = self.preprocess_strict(PreprocessPath::PublicParse)?;
+        let (_, metadata) =
+            self.preprocess_with_directive_recovery(DirectiveRecoveryMode::Strict)?;
         Ok(metadata)
     }
 
@@ -302,7 +295,6 @@ impl<'a> ParsePipeline<'a> {
     pub(crate) fn parse_json(&self, timing: ParseTiming) -> Result<Option<ParsedDiagram>> {
         self.parse_model(
             timing,
-            PreprocessPath::PublicParse,
             Self::parse_compatibility_semantic,
             |parsed, config| {
                 common_db::apply_common_db_sanitization(parsed.model.as_value_mut(), config);
@@ -403,11 +395,8 @@ impl<'a> ParsePipeline<'a> {
         let operation_timing = timing.operation_timing(operation_context);
         let total_start = operation_timing.map(runtime::OperationTiming::start);
         let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
-        let preprocessed = self.preprocess_with_evidence_controlled(
-            PreprocessPath::PublicParse,
-            DirectiveRecoveryMode::RecoverLine,
-            control,
-        )?;
+        let preprocessed =
+            self.preprocess_with_evidence_controlled(DirectiveRecoveryMode::RecoverLine, control)?;
         let PreparedPreprocessCapture {
             outcome,
             source_config,
@@ -618,7 +607,6 @@ impl<'a> ParsePipeline<'a> {
     pub(crate) fn parse_render_model(&self) -> Result<Option<ParsedDiagramRender>> {
         self.parse_model(
             ParseTiming::Render,
-            PreprocessPath::Render,
             Self::parse_render_semantic_model,
             |output, config| output.model_mut().sanitize_common_db_fields(config),
             error_diagram::suppressed_error_render_diagram,
@@ -676,11 +664,8 @@ impl<'a> ParsePipeline<'a> {
                 DirectiveRecoveryMode::Strict
             };
             let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
-            let preprocessed = self.preprocess_for_with_directive_recovery_controlled(
-                PreprocessPath::Render,
-                directive_recovery,
-                &control,
-            )?;
+            let preprocessed = self
+                .preprocess_for_with_directive_recovery_controlled(directive_recovery, &control)?;
             let Some((code, meta)) = (match preprocessed {
                 Ok(preprocessed) => preprocessed,
                 Err(error) => return Ok(Err(error)),
@@ -747,7 +732,6 @@ impl<'a> ParsePipeline<'a> {
     fn parse_model<T, O>(
         &self,
         timing: ParseTiming,
-        preprocess_path: PreprocessPath,
         parse: impl FnOnce(&Self, &str, &PresentationMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
         suppressed: impl FnOnce(&PresentationMetadata, &Error) -> O,
@@ -758,7 +742,6 @@ impl<'a> ParsePipeline<'a> {
         self.with_operation_context(|operation_context| {
             self.parse_model_in_context(
                 timing,
-                preprocess_path,
                 operation_context,
                 parse,
                 sanitize,
@@ -774,7 +757,6 @@ impl<'a> ParsePipeline<'a> {
     fn parse_model_in_context<T, O>(
         &self,
         timing: ParseTiming,
-        preprocess_path: PreprocessPath,
         operation_context: &runtime::OperationContext,
         parse: impl FnOnce(&Self, &str, &PresentationMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
@@ -787,7 +769,7 @@ impl<'a> ParsePipeline<'a> {
         let total_start = operation_timing.map(runtime::OperationTiming::start);
 
         let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
-        let Some((code, meta)) = self.preprocess_for(preprocess_path)? else {
+        let Some((code, meta)) = self.preprocess_for()? else {
             return Ok(None);
         };
         let source_map = ParserSourceMap::new(&code);
@@ -1011,84 +993,66 @@ impl<'a> ParsePipeline<'a> {
         }))
     }
 
-    fn preprocess_for(
-        &self,
-        path: PreprocessPath,
-    ) -> Result<Option<(PreprocessedSource, PresentationMetadata)>> {
+    fn preprocess_for(&self) -> Result<Option<(PreprocessedSource, PresentationMetadata)>> {
         let directive_recovery = if self.options.suppress_errors {
             DirectiveRecoveryMode::RecoverLine
         } else {
             DirectiveRecoveryMode::Strict
         };
-        self.preprocess_for_with_directive_recovery(path, directive_recovery)
-    }
-
-    fn preprocess_for_with_directive_recovery(
-        &self,
-        path: PreprocessPath,
-        directive_recovery: DirectiveRecoveryMode,
-    ) -> Result<Option<(PreprocessedSource, PresentationMetadata)>> {
         let control = OperationControl::new();
-        self.preprocess_for_with_directive_recovery_controlled(path, directive_recovery, &control)
+        self.preprocess_for_with_directive_recovery_controlled(directive_recovery, &control)
             .expect("a private parse control cannot be cancelled")
     }
 
     fn preprocess_for_with_directive_recovery_controlled(
         &self,
-        path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Option<(PreprocessedSource, PresentationMetadata)>>> {
         let preprocessed =
-            self.preprocess_with_directive_recovery_controlled(path, directive_recovery, control)?;
+            self.preprocess_with_directive_recovery_controlled(directive_recovery, control)?;
         Ok(match preprocessed {
             Err(Error::DetectType(_)) if self.options.suppress_errors => Ok(None),
             result => result.map(Some),
         })
     }
 
-    fn preprocess_strict(
-        &self,
-        path: PreprocessPath,
-    ) -> Result<(PreprocessedSource, PresentationMetadata)> {
-        self.preprocess_with_directive_recovery(path, DirectiveRecoveryMode::Strict)
-    }
-
     fn preprocess_with_directive_recovery(
         &self,
-        path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
     ) -> Result<(PreprocessedSource, PresentationMetadata)> {
         let control = OperationControl::new();
-        self.preprocess_with_directive_recovery_controlled(path, directive_recovery, &control)
+        self.preprocess_with_directive_recovery_controlled(directive_recovery, &control)
             .expect("a private parse control cannot be cancelled")
     }
 
     fn preprocess_with_directive_recovery_controlled(
         &self,
-        path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
         control: &OperationControl,
     ) -> OperationControlResult<Result<(PreprocessedSource, PresentationMetadata)>> {
         control.checkpoint()?;
-        match self.source {
-            ParseSource::Detect => {
-                self.preprocess_and_detect_strict_controlled(path, directive_recovery, control)
-            }
-            ParseSource::KnownType(diagram_type) => self.preprocess_and_assume_type_controlled(
-                diagram_type,
-                path,
-                directive_recovery,
-                control,
-            ),
-        }
+        let known_type = match self.source {
+            ParseSource::Detect => None,
+            ParseSource::KnownType(diagram_type) => Some(diagram_type),
+        };
+        let pre = match preprocess_diagram_with_known_type_and_directive_recovery_controlled(
+            self.text,
+            &self.engine.registry,
+            known_type,
+            directive_recovery,
+            control,
+        )? {
+            Ok(pre) => pre,
+            Err(error) => return Ok(Err(error)),
+        };
+        self.finish_preprocessed_controlled(pre, known_type, control)
     }
 
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
     fn preprocess_with_evidence_controlled(
         &self,
-        path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
         control: &OperationControl,
     ) -> OperationControlResult<PreparedPreprocessCapture> {
@@ -1097,12 +1061,14 @@ impl<'a> ParsePipeline<'a> {
             ParseSource::Detect => None,
             ParseSource::KnownType(diagram_type) => Some(diagram_type),
         };
-        let captured = self.preprocess_input_with_evidence_controlled(
-            path,
-            known_type,
-            directive_recovery,
-            control,
-        )?;
+        let captured =
+            preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled(
+                self.text,
+                &self.engine.registry,
+                known_type,
+                directive_recovery,
+                control,
+            )?;
         let outcome = match captured.outcome {
             crate::preprocess::PreprocessCaptureResult::Ready(preprocessed) => {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1130,43 +1096,6 @@ impl<'a> ParsePipeline<'a> {
             outcome,
             source_config: captured.source_config,
         })
-    }
-
-    fn preprocess_and_detect_strict_controlled(
-        &self,
-        path: PreprocessPath,
-        directive_recovery: DirectiveRecoveryMode,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<(PreprocessedSource, PresentationMetadata)>> {
-        let pre = match self.preprocess_input_with_directive_recovery_controlled(
-            path,
-            None,
-            directive_recovery,
-            control,
-        )? {
-            Ok(pre) => pre,
-            Err(error) => return Ok(Err(error)),
-        };
-        self.finish_preprocessed_controlled(pre, None, control)
-    }
-
-    fn preprocess_and_assume_type_controlled(
-        &self,
-        diagram_type: &str,
-        path: PreprocessPath,
-        directive_recovery: DirectiveRecoveryMode,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<(PreprocessedSource, PresentationMetadata)>> {
-        let pre = match self.preprocess_input_with_directive_recovery_controlled(
-            path,
-            Some(diagram_type),
-            directive_recovery,
-            control,
-        )? {
-            Ok(pre) => pre,
-            Err(error) => return Ok(Err(error)),
-        };
-        self.finish_preprocessed_controlled(pre, Some(diagram_type), control)
     }
 
     fn finish_preprocessed_controlled(
@@ -1239,98 +1168,6 @@ impl<'a> ParsePipeline<'a> {
                 title,
             },
         )))
-    }
-
-    #[cfg(test)]
-    fn preprocess_input(
-        &self,
-        path: PreprocessPath,
-        diagram_type: Option<&str>,
-    ) -> Result<crate::PreprocessResult> {
-        self.preprocess_input_with_directive_recovery(
-            path,
-            diagram_type,
-            DirectiveRecoveryMode::Strict,
-        )
-    }
-
-    #[cfg(test)]
-    fn preprocess_input_with_directive_recovery(
-        &self,
-        path: PreprocessPath,
-        diagram_type: Option<&str>,
-        directive_recovery: DirectiveRecoveryMode,
-    ) -> Result<crate::PreprocessResult> {
-        let control = OperationControl::new();
-        self.preprocess_input_with_directive_recovery_controlled(
-            path,
-            diagram_type,
-            directive_recovery,
-            &control,
-        )
-        .expect("a private parse control cannot be cancelled")
-    }
-
-    fn preprocess_input_with_directive_recovery_controlled(
-        &self,
-        path: PreprocessPath,
-        diagram_type: Option<&str>,
-        directive_recovery: DirectiveRecoveryMode,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<crate::PreprocessResult>> {
-        control.checkpoint()?;
-        match path {
-            PreprocessPath::PublicParse => {
-                preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
-                    self.text,
-                    &self.engine.registry,
-                    diagram_type,
-                    directive_recovery,
-                    control,
-                )
-            }
-            PreprocessPath::Render => {
-                preprocess_diagram_with_known_type_and_directive_recovery_controlled(
-                    self.text,
-                    &self.engine.registry,
-                    diagram_type,
-                    directive_recovery,
-                    control,
-                )
-            }
-        }
-    }
-
-    #[cfg(feature = "compat-json")]
-    #[cfg(feature = "editor-facts")]
-    fn preprocess_input_with_evidence_controlled(
-        &self,
-        path: PreprocessPath,
-        diagram_type: Option<&str>,
-        directive_recovery: DirectiveRecoveryMode,
-        control: &OperationControl,
-    ) -> OperationControlResult<PreprocessCaptureOutcome> {
-        control.checkpoint()?;
-        match path {
-            PreprocessPath::PublicParse => {
-                preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
-                    self.text,
-                    &self.engine.registry,
-                    diagram_type,
-                    directive_recovery,
-                    control,
-                )
-            }
-            PreprocessPath::Render => {
-                preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled(
-                    self.text,
-                    &self.engine.registry,
-                    diagram_type,
-                    directive_recovery,
-                    control,
-                )
-            }
-        }
     }
 
     fn with_operation_context<R>(
@@ -1452,10 +1289,10 @@ mod editor_parse_source_map_tests {
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     use std::time::Duration;
 
+    use super::CustomJsonRenderModel;
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
-    use super::ParserSourceMap;
-    use super::{CustomJsonRenderModel, ParsePipeline, PreprocessPath};
+    use super::{ParsePipeline, ParserSourceMap};
     use crate::{
         CancelReason, DetectorRegistry, Error, MermaidEngine, OperationCancelled, OperationControl,
         OperationControlResult, OperationPhase, ParseOptions, PresentationConfig,
@@ -1861,7 +1698,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
-    fn public_and_render_preprocessing_share_one_frontmatter_pass() {
+    fn public_and_render_entrypoints_do_not_reprocess_late_frontmatter() {
         let input = concat!(
             "   ---\n",
             "title: only-visible-after-trimming\n",
@@ -1870,17 +1707,28 @@ mod editor_parse_source_map_tests {
             "A-->B\n",
         );
         let engine = MermaidEngine::new();
-        let pipeline = ParsePipeline::detect(&engine, input, ParseOptions::strict());
-
-        let render = pipeline
-            .preprocess_input(PreprocessPath::Render, None)
-            .expect("single render preprocess");
-        let public_parse = pipeline
-            .preprocess_input(PreprocessPath::PublicParse, None)
-            .expect("public parse preprocess");
-
-        assert!(render.code().starts_with("---"));
-        assert_eq!(public_parse.code(), render.code());
+        let preprocessed = crate::preprocess::preprocess_diagram(input, &engine.registry)
+            .expect("single preprocess");
+        assert!(preprocessed.code().starts_with("---"));
+        assert!(preprocessed.title.is_none());
+        assert!(matches!(
+            engine.parse_metadata_sync(input),
+            Err(Error::MalformedFrontMatter)
+        ));
+        for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+            assert!(matches!(
+                engine.parse_diagram_for_render_model_sync(input, options),
+                Err(Error::MalformedFrontMatter)
+            ));
+            assert!(matches!(
+                engine.parse_diagram_for_render_model_with_type_sync(
+                    "flowchart-v2",
+                    input,
+                    options
+                ),
+                Err(Error::MalformedFrontMatter)
+            ));
+        }
     }
 
     #[test]
@@ -1910,13 +1758,10 @@ mod editor_parse_source_map_tests {
     fn fact_remap_drops_only_the_fact_crossing_a_deleted_span() {
         let original = "flowchart TD\nA%%{wrap}%%B\nC\n";
         let engine = MermaidEngine::new();
-        let preprocessed = crate::preprocess::preprocess_mermaid_public_parse_pipeline(
-            original,
-            &engine.registry,
-            None,
-        )
-        .unwrap()
-        .source;
+        let preprocessed =
+            crate::preprocess::preprocess_diagram_with_known_type(original, &engine.registry, None)
+                .unwrap()
+                .source;
         let map = ParserSourceMap::new(&preprocessed);
         let mut facts = EditorSemanticFacts::new();
         let joined_start = preprocessed.text().find("AB").unwrap();
@@ -1965,13 +1810,10 @@ mod editor_parse_source_map_tests {
     fn fact_remap_observes_cancellation_during_large_fact_batches() {
         let original = "flowchart TD\nA\n";
         let engine = MermaidEngine::new();
-        let preprocessed = crate::preprocess::preprocess_mermaid_public_parse_pipeline(
-            original,
-            &engine.registry,
-            None,
-        )
-        .unwrap()
-        .source;
+        let preprocessed =
+            crate::preprocess::preprocess_diagram_with_known_type(original, &engine.registry, None)
+                .unwrap()
+                .source;
         let map = ParserSourceMap::new(&preprocessed);
         let mut facts = EditorSemanticFacts::new();
         let offset = preprocessed.text().find('A').unwrap();

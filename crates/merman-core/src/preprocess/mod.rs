@@ -1,20 +1,12 @@
 #[cfg(feature = "presentation")]
 mod full;
 
-#[cfg(all(test, feature = "presentation"))]
-pub(crate) use full::preprocess_mermaid_public_parse_pipeline;
+#[cfg(feature = "presentation")]
+pub(crate) use full::preprocess_diagram_with_known_type_and_directive_recovery_controlled;
+#[cfg(all(feature = "presentation", feature = "editor-facts"))]
+pub(crate) use full::preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled;
 #[cfg(feature = "presentation")]
 pub use full::{preprocess_diagram, preprocess_diagram_with_known_type};
-#[cfg(feature = "presentation")]
-pub(crate) use full::{
-    preprocess_diagram_with_known_type_and_directive_recovery_controlled,
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
-};
-#[cfg(all(feature = "presentation", feature = "editor-facts"))]
-pub(crate) use full::{
-    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
-};
 
 #[cfg(feature = "editor-facts")]
 mod editor;
@@ -48,17 +40,17 @@ use std::cell::Cell;
 
 #[cfg(test)]
 thread_local! {
-    static PUBLIC_PARSE_PREPROCESS_COUNT: Cell<usize> = const { Cell::new(0) };
+    static PREPROCESS_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(all(test, feature = "all-diagrams"))]
-pub(crate) fn reset_public_parse_preprocess_count() {
-    PUBLIC_PARSE_PREPROCESS_COUNT.set(0);
+pub(crate) fn reset_preprocess_count() {
+    PREPROCESS_COUNT.set(0);
 }
 
 #[cfg(all(test, feature = "all-diagrams"))]
-pub(crate) fn public_parse_preprocess_count() -> usize {
-    PUBLIC_PARSE_PREPROCESS_COUNT.get()
+pub(crate) fn preprocess_count() -> usize {
+    PREPROCESS_COUNT.get()
 }
 
 #[derive(Debug, Clone)]
@@ -211,18 +203,16 @@ pub(crate) fn preprocess_builtin_semantic_with_directive_recovery_controlled(
     let detector = |text: &str, control: &OperationControl| {
         Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
     };
-    Ok(
-        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
-            input,
-            &detector,
-            diagram_type,
-            directive_recovery,
-            #[cfg(feature = "editor-facts")]
-            SourceConfigCaptureMode::Omit,
-            control,
-        )?
-        .into_result(),
-    )
+    Ok(preprocess_source_capture_controlled(
+        input,
+        &detector,
+        diagram_type,
+        directive_recovery,
+        #[cfg(feature = "editor-facts")]
+        SourceConfigCaptureMode::Omit,
+        control,
+    )?
+    .into_result())
 }
 
 #[cfg(feature = "editor-facts")]
@@ -235,7 +225,7 @@ pub(crate) fn preprocess_builtin_semantic_with_evidence_controlled(
     let detector = |text: &str, control: &OperationControl| {
         Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
     };
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+    preprocess_source_capture_controlled(
         input,
         &detector,
         diagram_type,
@@ -249,40 +239,7 @@ pub(crate) fn preprocess_builtin_semantic_with_evidence_controlled(
     )
 }
 
-fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
-    input: &str,
-    detector: &DiagramTypeDetector<'_>,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessCaptureOutcome> {
-    let captured = preprocess_single_pass_controlled(
-        PreprocessedSource::new_controlled(input, control)?,
-        detector,
-        diagram_type,
-        directive_recovery,
-        #[cfg(feature = "editor-facts")]
-        capture_mode,
-        control,
-    )?;
-    control.checkpoint()?;
-    let outcome = match captured.outcome {
-        PreprocessCaptureResult::Ready(preprocessed) => PreprocessCaptureResult::Ready(Box::new(
-            prepare_parser_code_controlled(*preprocessed, control)?,
-        )),
-        PreprocessCaptureResult::Failed(error) => PreprocessCaptureResult::Failed(error),
-        PreprocessCaptureResult::Panicked(panic) => PreprocessCaptureResult::Panicked(panic),
-    };
-    control.checkpoint()?;
-    Ok(PreprocessCaptureOutcome {
-        outcome,
-        #[cfg(feature = "editor-facts")]
-        source_config: captured.source_config,
-    })
-}
-
-fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+fn preprocess_source_capture_controlled(
     input: &str,
     detector: &DiagramTypeDetector<'_>,
     diagram_type: Option<&str>,
@@ -291,28 +248,10 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
     control: &OperationControl,
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
     #[cfg(test)]
-    PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
+    PREPROCESS_COUNT.set(PREPROCESS_COUNT.get() + 1);
 
     // Mermaid 12 passes the complete DiagramCode to Diagram.fromText on both public paths.
-    preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
-        input,
-        detector,
-        diagram_type,
-        directive_recovery,
-        #[cfg(feature = "editor-facts")]
-        capture_mode,
-        control,
-    )
-}
-
-fn preprocess_single_pass_controlled(
-    mut source: PreprocessedSource,
-    detector: &DiagramTypeDetector<'_>,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-    #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessCaptureOutcome> {
+    let mut source = PreprocessedSource::new_controlled(input, control)?;
     control.checkpoint()?;
     #[cfg(feature = "editor-facts")]
     let capture_editor_evidence = capture_mode.collects_editor();
@@ -342,6 +281,7 @@ fn preprocess_single_pass_controlled(
     let (title, mut frontmatter_config) = match frontmatter.result {
         Ok(processed) => (processed.title, processed.config),
         Err(error) => {
+            control.checkpoint()?;
             #[cfg(feature = "editor-facts")]
             {
                 source_config.mark_rewrite_unsafe();
@@ -390,6 +330,7 @@ fn preprocess_single_pass_controlled(
         append_directive_evidence(&source, &processed_directives, &mut source_config, control)?;
     }
     if let Some(panic) = processed_directives.panic {
+        control.checkpoint()?;
         return Ok(PreprocessCaptureOutcome {
             outcome: PreprocessCaptureResult::Panicked(panic),
             #[cfg(feature = "editor-facts")]
@@ -467,6 +408,9 @@ fn preprocess_single_pass_controlled(
     if let Some(with_comments) = &mut with_comments {
         with_comments.copy_global_editor_evidence_from(&source);
     }
+    control.checkpoint()?;
+    let source = prepare_parser_text_controlled(source, control)?;
+    control.checkpoint()?;
     Ok(PreprocessCaptureOutcome {
         outcome: PreprocessCaptureResult::Ready(Box::new(PreprocessResult {
             source,
@@ -603,14 +547,6 @@ fn append_directive_evidence(
         evidence.mark_rewrite_unsafe();
     }
     control.checkpoint()
-}
-
-fn prepare_parser_code_controlled(
-    mut preprocessed: PreprocessResult,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessResult> {
-    preprocessed.source = prepare_parser_text_controlled(preprocessed.source, control)?;
-    Ok(preprocessed)
 }
 
 pub(crate) fn prepare_parser_text_controlled(
@@ -1151,27 +1087,6 @@ fn process_frontmatter_controlled(
     let mut keys = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut rewrite_safe = true;
-
-    if config_nesting_exceeds_limit_controlled(yaml_body, control)? {
-        return Ok(FrontmatterCapture {
-            result: Err(Error::InvalidFrontMatterYaml {
-                message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
-            }),
-            full: Some(location.full),
-            #[cfg(feature = "editor-facts")]
-            body: Some(location.body),
-            #[cfg(feature = "editor-facts")]
-            indent: location.indent.to_string(),
-            #[cfg(feature = "editor-facts")]
-            keys,
-            #[cfg(feature = "editor-facts")]
-            has_config: false,
-            #[cfg(feature = "editor-facts")]
-            rewrite_safe: false,
-            #[cfg(feature = "editor-facts")]
-            fields: None,
-        });
-    }
 
     control.checkpoint()?;
     let parsed = {
@@ -3003,6 +2918,46 @@ mod tests {
     use serde_json::{Map, json};
 
     #[test]
+    fn preprocess_keeps_entity_encoding_and_source_maps_on_both_parser_buffers() {
+        for (header, diagram_type) in [
+            ("agentflow-beta", "agentflow"),
+            ("eventmodeling", "eventmodeling"),
+        ] {
+            let input = format!(
+                "---\r\ntitle: Encoding\r\n---\r\n%% comment #35;\r\n{header}\r\nA[\"<span title=\"😀\">#35;</span>\"]\r\n"
+            );
+            for known_type in [None, Some(diagram_type)] {
+                let control = OperationControl::new();
+                let result = preprocess_builtin_semantic_controlled(&input, known_type, &control)
+                    .expect("active operation")
+                    .expect("built-in preprocessing");
+                assert_eq!(result.title.as_deref(), Some("Encoding"));
+                assert!(!result.code().contains("%% comment"));
+                assert!(result.code().contains("title='😀'>ﬂ°°35¶ß</span>"));
+                let with_comments = result.with_comments.as_ref().expect("family parser input");
+                assert!(with_comments.text().contains("%% comment #35;"));
+                assert!(with_comments.text().contains("title='😀'>#35;</span>"));
+
+                let selected = select_family_parser_source_controlled(
+                    result.source,
+                    result.with_comments,
+                    diagram_type,
+                    &MermaidConfig::empty_object(),
+                    &control,
+                )
+                .expect("active operation");
+                assert!(selected.text().contains("%% comment ﬂ°°35¶ß"));
+                assert!(selected.text().contains("title='😀'>ﬂ°°35¶ß</span>"));
+                let emoji = selected.text().find('😀').expect("attribute value");
+                let mapped = selected
+                    .try_map_span(crate::SourceSpan::new(emoji, emoji + '😀'.len_utf8()))
+                    .expect("original attribute span");
+                assert_eq!(&input[mapped.start..mapped.end], "😀");
+            }
+        }
+    }
+
+    #[test]
     fn builtin_preprocess_preserves_family_comments_without_a_full_registry() {
         for (header, diagram_type) in [
             ("agentflow-beta", "agentflow"),
@@ -3038,7 +2993,7 @@ mod tests {
             control.cancel();
             panic!("detector cancelled before panicking");
         };
-        let result = preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
+        let result = preprocess_source_capture_controlled(
             "%%{init: {config: {htmlLabels: false}}}%%\nflowchart TD\nA-->B",
             &detector,
             None,
@@ -3053,6 +3008,61 @@ mod tests {
         let mut source = PreprocessedSource::new(input);
         transform(&mut source);
         source.into_text()
+    }
+
+    #[test]
+    fn frontmatter_depth_ignores_brackets_in_yaml_comments_and_block_scalars() {
+        let brackets = "[".repeat(MAX_CONFIG_NESTING_DEPTH + 1);
+        for (body, expected_css) in [
+            (format!("# {brackets}\nconfig:\n  theme: dark\n"), None),
+            (
+                format!("config:\n  theme: dark\n  themeCSS: |-\n    {brackets}\n"),
+                Some(brackets.as_str()),
+            ),
+        ] {
+            let input = format!("---\n{body}---\nerror\n");
+            let result = preprocess_builtin_semantic_controlled(
+                &input,
+                Some("error"),
+                &OperationControl::new(),
+            )
+            .expect("active operation")
+            .expect("brackets in comments and scalars do not add YAML collections");
+
+            assert_eq!(result.config.get_str("theme"), Some("dark"));
+            assert_eq!(result.config.get_str("themeCSS"), expected_css);
+            assert_eq!(result.code(), "error\n");
+        }
+    }
+
+    #[test]
+    fn frontmatter_depth_rejects_actual_flow_and_block_collections() {
+        let depth = MAX_CONFIG_NESTING_DEPTH + 1;
+        for body in [
+            format!(
+                "config:\n  values: {}0{}\n",
+                "[".repeat(depth),
+                "]".repeat(depth)
+            ),
+            format!("config:\n  values:\n    {}0\n", "- ".repeat(depth)),
+        ] {
+            let input = format!("---\n{body}---\nerror\n");
+            let error = preprocess_builtin_semantic_controlled(
+                &input,
+                Some("error"),
+                &OperationControl::new(),
+            )
+            .expect("active operation")
+            .expect_err("real collection depth remains bounded by the YAML parser");
+            let Error::InvalidFrontMatterYaml { message } = error else {
+                panic!("unexpected frontmatter error: {error}");
+            };
+            assert!(
+                message.contains("recursion limit exceeded")
+                    || message.contains("config nesting exceeds"),
+                "unexpected YAML error: {message}"
+            );
+        }
     }
 
     #[test]
@@ -3307,7 +3317,7 @@ mod tests {
         let detector = |text: &str, control: &OperationControl| {
             Ok(crate::detect::detect_builtin_controlled(text, control)?.map(|fact| fact.id))
         };
-        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+        preprocess_source_capture_controlled(
             input,
             &detector,
             Some("flowchart-v2"),
