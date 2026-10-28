@@ -1013,98 +1013,49 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
     }
 }
 
-#[cfg(not(feature = "layout-elk"))]
 /// Lays out an ER model with an optional renderer-owned inherited typography override.
 pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     model: &merman_core::diagrams::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    #[cfg(feature = "layout-elk")] operation_seed: elk::ElkOperationSeed,
     font_family_css: Option<&str>,
     font_size_px: Option<f64>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
     let mut work_control = OperationLayoutWorkControl::new(work_meter);
-    layout_er_diagram_typed_with_elk_authority(
-        model,
-        effective_config,
-        measurer,
-        ErElkAuthority::Raw,
-        font_family_css,
-        font_size_px,
-        &mut work_control,
-    )
-}
-
-#[cfg(feature = "layout-elk")]
-/// Lays out an ER model through ELK with renderer-owned inherited typography.
-pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed_and_resolved_typography(
-    model: &merman_core::diagrams::er::ErDiagramModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    operation_seed: elk::ElkOperationSeed,
-    font_family_css: Option<&str>,
-    font_size_px: Option<f64>,
-    work_meter: Arc<crate::resources::OperationWorkMeter>,
-) -> Result<ErDiagramLayout> {
-    let mut work_control = OperationLayoutWorkControl::new(work_meter);
-    layout_er_diagram_typed_with_elk_authority(
-        model,
-        effective_config,
-        measurer,
-        ErElkAuthority::Operation(operation_seed),
-        font_family_css,
-        font_size_px,
-        &mut work_control,
-    )
-}
-
-#[derive(Debug, Clone, Copy)]
-enum ErElkAuthority {
-    #[cfg(not(feature = "layout-elk"))]
-    Raw,
-    #[cfg(feature = "layout-elk")]
-    Operation(elk::ElkOperationSeed),
-}
-
-fn layout_er_diagram_typed_with_elk_authority(
-    model: &merman_core::diagrams::er::ErDiagramModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    elk_authority: ErElkAuthority,
-    font_family_css: Option<&str>,
-    font_size_px: Option<f64>,
-    work_control: &mut OperationLayoutWorkControl,
-) -> Result<ErDiagramLayout> {
     let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
         &model.direction,
         font_family_css,
         font_size_px,
     );
-    let adapter_work = er_layout_adapter_work(model, work_control)?;
+    let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
     let prepared_labels = Arc::new(ErPreparedLabels::prepare(model, measurer, &settings));
-    crate::layout_backend::resolve_graph_layout(effective_config).validate_rootless_graph()?;
+    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
+    selection.validate_rootless_graph()?;
 
-    #[cfg(not(feature = "layout-elk"))]
-    let _ = elk_authority;
     #[cfg(feature = "layout-elk")]
-    if crate::layout_backend::resolve_graph_layout(effective_config).backend
-        == GraphLayoutBackend::Elk
-    {
-        let ErElkAuthority::Operation(operation_seed) = elk_authority;
+    if selection.backend == GraphLayoutBackend::Elk {
         return layout_er_diagram_elk_typed(
             model,
             effective_config,
             measurer,
             settings,
             Arc::clone(&prepared_labels),
-            Some(operation_seed),
-            work_control,
+            operation_seed,
+            &mut work_control,
         );
     }
 
-    layout_er_diagram_dagre_typed(model, measurer, settings, prepared_labels, work_control)
+    layout_er_diagram_dagre_typed(
+        model,
+        measurer,
+        settings,
+        prepared_labels,
+        &mut work_control,
+    )
 }
 
 fn validate_er_relationship_endpoints(
@@ -1736,7 +1687,7 @@ fn layout_er_diagram_elk_typed(
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
     prepared_labels: Arc<ErPreparedLabels>,
-    operation_seed: Option<elk::ElkOperationSeed>,
+    operation_seed: elk::ElkOperationSeed,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let mut elk_graph = er_elk_graph(
@@ -1771,14 +1722,11 @@ fn layout_er_diagram_elk_typed(
         effective_config,
         &mut Some(&mut *work_control),
     )?;
-    let mut elk_layout = match operation_seed {
-        Some(operation_seed) => elk::layout_with_operation_seed_and_work_control(
-            oriented.graph(),
-            operation_seed,
-            work_control,
-        ),
-        None => elk::layout_with_work_control(oriented.graph(), work_control),
-    }
+    let mut elk_layout = elk::layout_with_operation_seed_and_work_control(
+        oriented.graph(),
+        operation_seed,
+        work_control,
+    )
     .map_err(|error| work_control.map_elk_error_with_context(error, "ER ELK"))?;
     oriented.restore(&mut elk_layout, &mut Some(&mut *work_control))?;
     let source_edge_by_id = elk_graph

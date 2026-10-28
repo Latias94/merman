@@ -1,6 +1,7 @@
 use crate::model::Bounds;
 use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
 use crate::text::TextMeasurer;
+use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureNodeKind};
 
 use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
 use super::ArchitectureEmitCheckpoints;
@@ -12,13 +13,12 @@ use super::labels::{
     ArchitectureTextAnchor, ArchitectureTextBaseline, architecture_svg_text_terminal_bounds,
     wrap_svg_words_to_lines, write_architecture_service_title, write_svg_text_lines,
 };
-use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
 
-pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, O: SvgOutput> {
+pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) diagram_id: SvgDiagramId<'a>,
-    pub(super) model: &'a M,
+    pub(super) model: &'a ArchitectureDiagramModel,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) text_measurer: &'a dyn TextMeasurer,
@@ -78,8 +78,8 @@ fn write_diagram_node_id(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>,
     escape_xml_into(out, node_id);
 }
 
-pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAccess, O: SvgOutput>(
-    ctx: &mut ArchitectureNodeRenderContext<'_, M, O>,
+pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
+    ctx: &mut ArchitectureNodeRenderContext<'_, O>,
 ) -> crate::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
@@ -96,19 +96,21 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     let work_meter = ctx.work_meter;
     let icon_scope_root = &mut ctx.icon_scope_root;
     let service_icon_scope_prefix = &mut ctx.service_icon_scope_prefix;
-    let service_count = model.services().count();
-    let junction_count = model.junctions().count();
-
-    if service_count == 0 && junction_count == 0 {
+    if model.nodes.is_empty() {
         out.push_str(r#"<g class="architecture-services"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
-        for (service_index, svc) in model.services().enumerate() {
+        for (service_index, svc) in model
+            .nodes
+            .iter()
+            .filter(|node| node.node_type == ArchitectureNodeKind::Service)
+            .enumerate()
+        {
             checkpoints.checkpoint()?;
-            let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
+            let (x, y) = node_xy.get(svc.id.as_str()).copied().unwrap_or((0.0, 0.0));
 
             out.push_str(r#"<g id=""#);
-            write_diagram_service_id(out, diagram_id, svc.id);
+            write_diagram_service_id(out, diagram_id, &svc.id);
             checkpoints.checkpoint()?;
             let _ = write!(
                 out,
@@ -117,36 +119,40 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 y = fmt(y)
             );
 
-            let has_icon_text =
-                svc.icon.is_none() && svc.icon_text.is_some_and(|text| !text.trim().is_empty());
+            let has_icon_text = svc.icon.is_none()
+                && svc
+                    .icon_text
+                    .as_deref()
+                    .is_some_and(|text| !text.trim().is_empty());
             let service_title_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.service_title_style(service_index));
             let service_background_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.service_background_style(service_index));
-            let service_title_emission =
-                svc.title
-                    .map(str::trim)
-                    .filter(|t| !t.is_empty())
-                    .map(|title| {
-                        // Mermaid uses `width = iconSize * 1.5` for service titles.
-                        write_architecture_service_title(
-                            out,
-                            title,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            x,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            y,
-                            settings.icon_size_px,
-                            settings.icon_size_px * 1.5,
-                            text_measurer,
-                            &settings.text_style,
-                            service_title_style,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            surface_styles.is_some(),
-                        )
-                    });
+            let service_title_emission = svc
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .map(|title| {
+                    // Mermaid uses `width = iconSize * 1.5` for service titles.
+                    write_architecture_service_title(
+                        out,
+                        title,
+                        #[cfg(merman_internal_theme_acceptance)]
+                        x,
+                        #[cfg(merman_internal_theme_acceptance)]
+                        y,
+                        settings.icon_size_px,
+                        settings.icon_size_px * 1.5,
+                        text_measurer,
+                        &settings.text_style,
+                        service_title_style,
+                        #[cfg(merman_internal_theme_acceptance)]
+                        surface_styles.is_some(),
+                    )
+                });
             let has_title = service_title_emission.is_some();
             #[cfg(merman_internal_theme_acceptance)]
             let service_title_bounds = service_title_emission
@@ -154,7 +160,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 .and_then(|emission| emission.bounds.as_ref());
 
             out.push_str("<g>");
-            match (svc.icon, svc.icon_text) {
+            match (svc.icon.as_deref(), svc.icon_text.as_deref()) {
                 (Some(icon), _) => {
                     out.push_str("<g>");
                     if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
@@ -163,7 +169,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                             service_icon_scope_prefix,
                             diagram_id,
                             "-service-",
-                            svc.id,
+                            &svc.id,
                             work_meter,
                         )?;
                         write_arch_icon_svg_with_registry(
@@ -221,7 +227,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 }
                 (None, None) => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
-                    write_diagram_node_id(out, diagram_id, svc.id);
+                    write_diagram_node_id(out, diagram_id, &svc.id);
                     checkpoints.checkpoint()?;
                     out.push('"');
                     if let Some(style) = service_background_style {
@@ -252,7 +258,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     crate::architecture::ArchitectureServiceTerminalEmission {
                         index: service_index,
                         #[cfg(merman_internal_theme_acceptance)]
-                        id: svc.id.into(),
+                        id: svc.id.as_str().into(),
                         background: crate::architecture::ArchitecturePaintTerminalEmission {
                             emitted: background_emitted,
                         },
@@ -274,9 +280,16 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             }
         }
 
-        for junction in model.junctions() {
+        for junction in model
+            .nodes
+            .iter()
+            .filter(|node| node.node_type == ArchitectureNodeKind::Junction)
+        {
             checkpoints.checkpoint()?;
-            let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
+            let (x, y) = node_xy
+                .get(junction.id.as_str())
+                .copied()
+                .unwrap_or((0.0, 0.0));
 
             let _ = write!(
                 out,
@@ -284,7 +297,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 x = fmt(x),
                 y = fmt(y),
             );
-            write_diagram_node_id(out, diagram_id, junction.id);
+            write_diagram_node_id(out, diagram_id, &junction.id);
             checkpoints.checkpoint()?;
             let _ = write!(
                 out,
@@ -301,8 +314,8 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     Ok(())
 }
 
-pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOutput>(
-    ctx: &mut ArchitectureNodeRenderContext<'a, M, O>,
+pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
+    ctx: &mut ArchitectureNodeRenderContext<'a, O>,
     group_rects: &[GroupRect<'a>],
     group_inline_style: Option<&str>,
     group_style_emitted: &mut bool,
@@ -320,7 +333,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     let icon_scope_root = &mut ctx.icon_scope_root;
     let group_icon_scope_prefix = &mut ctx.group_icon_scope_prefix;
 
-    if ctx.model.groups_len() == 0 {
+    if ctx.model.groups.is_empty() {
         out.push_str(r#"<g class="architecture-groups"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-groups">"#);

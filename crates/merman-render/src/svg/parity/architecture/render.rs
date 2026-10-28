@@ -1,12 +1,14 @@
 use super::super::*;
 use crate::architecture_metrics::architecture_estimate_service_bounds;
 use crate::model::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
+use merman_core::diagrams::architecture::{
+    ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
+};
 
 use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
-use super::model::{ArchitectureModelAccess, ArchitectureServiceRef};
 use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_groups,
     push_architecture_services_and_junctions,
@@ -27,13 +29,13 @@ fn architecture_bounds_match_icon_rect(bounds: &Bounds, x: f64, y: f64, icon_siz
 
 fn architecture_cached_service_child_bounds<'a>(
     service_bounds_by_id: &'a rustc_hash::FxHashMap<&str, &'a ArchitectureCytoscapeServiceBounds>,
-    service: ArchitectureServiceRef<'_>,
+    service: &ArchitectureNodeModel,
     x: f64,
     y: f64,
     icon_size_px: f64,
 ) -> Option<&'a ArchitectureCytoscapeServiceBounds> {
-    let cached = service_bounds_by_id.get(service.id).copied()?;
-    if cached.in_group.as_deref() != service.in_group {
+    let cached = service_bounds_by_id.get(service.id.as_str()).copied()?;
+    if cached.in_group.as_deref() != service.in_group.as_deref() {
         return None;
     }
     if !architecture_bounds_match_icon_rect(&cached.body_bounds, x, y, icon_size_px) {
@@ -42,23 +44,9 @@ fn architecture_cached_service_child_bounds<'a>(
     Some(cached)
 }
 
-struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
-    layout: &'a ArchitectureDiagramLayout,
-    model: &'a M,
-    sanitize_config: &'a merman_core::presentation::PresentationConfig,
-    group_theme: &'a crate::architecture::ArchitectureGroupThemePlan,
-    options: &'a SvgExecution<'a>,
-}
-
-struct ArchitectureTimingState<'a> {
-    timing: super::super::timing::RenderTiming,
-    timings: &'a mut super::super::timing::RenderTimings,
-    total_timer: Option<merman_core::runtime::OperationTimer>,
-}
-
 pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
-    model: &merman_core::diagrams::architecture::ArchitectureDiagramModel,
+    model: &ArchitectureDiagramModel,
     effective_config: &merman_core::presentation::PresentationConfig,
     group_theme: &crate::architecture::ArchitectureGroupThemePlan,
     options: &SvgExecution<'_>,
@@ -69,43 +57,6 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     let timing = options.timing();
     let mut timings = super::super::timing::RenderTimings::default();
     let total_timer = timing.start();
-
-    render_architecture_diagram_svg_with_model(
-        ArchitectureRenderRequest {
-            layout,
-            model,
-            sanitize_config: effective_config,
-            group_theme,
-            options,
-        },
-        ArchitectureTimingState {
-            timing,
-            timings: &mut timings,
-            total_timer,
-        },
-    )
-}
-
-fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
-    req: ArchitectureRenderRequest<'_, M>,
-    timing: ArchitectureTimingState<'_>,
-) -> Result<(
-    root_svg::RootedSvg,
-    crate::architecture::ArchitectureThemeOutcome,
-)> {
-    let ArchitectureRenderRequest {
-        layout,
-        model,
-        sanitize_config,
-        group_theme,
-        options,
-    } = req;
-    let ArchitectureTimingState {
-        timing,
-        timings,
-        total_timer,
-    } = timing;
-
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let diagram_id = options.diagram_id_or("architecture");
@@ -124,7 +75,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let compound_text_style = &settings.compound_text_style;
     let mut typography_emission = group_theme.typography_theme().begin_emission();
 
-    let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
+    let a11y = architecture_a11y_nodes(
+        diagram_id,
+        model.acc_title.as_deref(),
+        model.acc_descr.as_deref(),
+    );
     checkpoints.checkpoint()?;
 
     let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
@@ -153,8 +108,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     }
 
     let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
-    for svc in model.services() {
-        let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
+    for svc in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Service)
+    {
+        let (x, y) = node_xy.get(svc.id.as_str()).copied().unwrap_or((0.0, 0.0));
         if svc.in_group.is_some()
             && let Some(cached) = architecture_cached_service_child_bounds(
                 &cached_service_bounds_by_id,
@@ -164,7 +123,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 icon_size_px,
             )
         {
-            service_bounds.insert(svc.id, cached.union_bounds.clone());
+            service_bounds.insert(svc.id.as_str(), cached.union_bounds.clone());
             extend_bounds(&mut content_bounds, cached.body_bounds.clone());
             continue;
         }
@@ -174,7 +133,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             y,
             icon_size_px,
             arch_font_size_px,
-            svc.title,
+            svc.title.as_deref(),
             text_measurer,
             compound_text_style,
             |title| {
@@ -197,7 +156,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         //
         // Keep full label bounds for group sizing, but only union label extents into the root
         // viewport bounds when the service is not inside a group.
-        service_bounds.insert(svc.id, b_full.clone());
+        service_bounds.insert(svc.id.as_str(), b_full.clone());
         if svc.in_group.is_none() {
             extend_bounds(&mut content_bounds, estimate.svg_root_bounds);
         } else {
@@ -206,18 +165,25 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     }
 
     let mut junction_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
-    for junction in model.junctions() {
-        let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
+    for junction in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Junction)
+    {
+        let (x, y) = node_xy
+            .get(junction.id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
         let b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
-        junction_bounds.insert(junction.id, b.clone());
+        junction_bounds.insert(junction.id.as_str(), b.clone());
         extend_bounds(&mut content_bounds, b);
     }
 
     // Groups (outer rects, including nested groups).
     let mut child_groups: rustc_hash::FxHashMap<&str, Vec<&str>> = rustc_hash::FxHashMap::default();
-    for g in model.groups() {
-        if let Some(parent) = g.in_group {
-            child_groups.entry(parent).or_default().push(g.id);
+    for g in &model.groups {
+        if let Some(parent) = g.in_group.as_deref() {
+            child_groups.entry(parent).or_default().push(g.id.as_str());
         }
     }
     for v in child_groups.values_mut() {
@@ -226,9 +192,16 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let mut services_in_group: rustc_hash::FxHashMap<&str, Vec<&str>> =
         rustc_hash::FxHashMap::default();
-    for svc in model.services() {
-        if let Some(parent) = svc.in_group {
-            services_in_group.entry(parent).or_default().push(svc.id);
+    for svc in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Service)
+    {
+        if let Some(parent) = svc.in_group.as_deref() {
+            services_in_group
+                .entry(parent)
+                .or_default()
+                .push(svc.id.as_str());
         }
     }
     for v in services_in_group.values_mut() {
@@ -237,12 +210,16 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let mut junctions_in_group: rustc_hash::FxHashMap<&str, Vec<&str>> =
         rustc_hash::FxHashMap::default();
-    for junction in model.junctions() {
-        if let Some(parent) = junction.in_group {
+    for junction in model
+        .nodes
+        .iter()
+        .filter(|node| node.node_type == ArchitectureNodeKind::Junction)
+    {
+        if let Some(parent) = junction.in_group.as_deref() {
             junctions_in_group
                 .entry(parent)
                 .or_default()
-                .push(junction.id);
+                .push(junction.id.as_str());
         }
     }
     for v in junctions_in_group.values_mut() {
@@ -258,30 +235,27 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         &service_bounds,
         &junction_bounds,
     );
-    for g in model.groups() {
-        let _ = group_rects_computer.compute(g.id);
+    for g in &model.groups {
+        let _ = group_rects_computer.compute(g.id.as_str());
     }
 
-    let mut group_rects: Vec<GroupRect<'_>> = Vec::with_capacity(model.groups_len());
-    for g in model.groups() {
-        if let Some(b) = group_rects_computer.get(g.id) {
+    let mut group_rects: Vec<GroupRect<'_>> = Vec::with_capacity(model.groups.len());
+    for g in &model.groups {
+        if let Some(b) = group_rects_computer.get(g.id.as_str()) {
             group_rects.push(GroupRect {
-                id: g.id,
+                id: g.id.as_str(),
                 x: b.min_x,
                 y: b.min_y,
                 w: (b.max_x - b.min_x).max(1.0),
                 h: (b.max_y - b.min_y).max(1.0),
-                icon: g.icon,
-                title: g.title,
+                icon: g.icon.as_deref(),
+                title: g.title.as_deref(),
             });
             extend_bounds(&mut content_bounds, b.clone());
         }
     }
 
-    let is_empty = model.services().next().is_none()
-        && model.junctions().next().is_none()
-        && model.groups_len() == 0
-        && model.edges_len() == 0;
+    let is_empty = model.nodes.is_empty() && model.groups.is_empty() && model.edges.is_empty();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_viewport =
@@ -298,23 +272,37 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let edge_stroke = group_theme.edge_stroke();
     let edge_inline_style = edge_stroke.map(|stroke| format!("stroke:{stroke};"));
     let mut surface_styles = group_theme.prepare_surface_styles(
-        model.services().enumerate().map(|(index, service)| {
-            crate::architecture::ArchitectureServiceTerminal {
-                index,
-                has_background: service.icon.is_none() && service.icon_text.is_none(),
-                has_title: service.title.is_some_and(|title| !title.trim().is_empty()),
-            }
-        }),
-        model.groups().enumerate().map(|(index, group)| {
+        model
+            .nodes
+            .iter()
+            .filter(|node| node.node_type == ArchitectureNodeKind::Service)
+            .enumerate()
+            .map(
+                |(index, service)| crate::architecture::ArchitectureServiceTerminal {
+                    index,
+                    has_background: service.icon.is_none() && service.icon_text.is_none(),
+                    has_title: service
+                        .title
+                        .as_deref()
+                        .is_some_and(|title| !title.trim().is_empty()),
+                },
+            ),
+        model.groups.iter().enumerate().map(|(index, group)| {
             crate::architecture::ArchitectureGroupTerminal {
                 index,
-                has_title: group.title.is_some_and(|title| !title.trim().is_empty()),
+                has_title: group
+                    .title
+                    .as_deref()
+                    .is_some_and(|title| !title.trim().is_empty()),
             }
         }),
-        model.edges().enumerate().map(|(index, edge)| {
+        model.edges.iter().enumerate().map(|(index, edge)| {
             crate::architecture::ArchitectureEdgeTerminal {
                 index,
-                has_label: edge.title.is_some_and(|title| !title.trim().is_empty()),
+                has_label: edge
+                    .title
+                    .as_deref()
+                    .is_some_and(|title| !title.trim().is_empty()),
                 has_lhs_arrow: edge.lhs_into == Some(true),
                 has_rhs_arrow: edge.rhs_into == Some(true),
             }
@@ -354,7 +342,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             node_xy: &node_xy,
             settings: &settings,
             text_measurer,
-            sanitize_config,
+            sanitize_config: effective_config,
             icon_registry: options.icon_registry(),
             work_meter: options.work_meter(),
             icon_scope_root: None,
