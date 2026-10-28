@@ -45,12 +45,22 @@ fixed default URI and treats the remaining bytes as Mermaid source.
 `parse_mermaid` compares the semantic-JSON and typed-render parse paths using the same fixed
 runtime/configuration, in both strict and paired lenient modes. It checks result categories,
 diagram identity, title, authored/effective configuration and the complete lossless managed
-semantic projection. Each input also exercises one catalog-selected known-type entrypoint, so
-malformed headers and empty sources reach family parsers independently of type detection.
+semantic projection. Detected family identities also exercise semantic/typed known-type parity
+independently in each mode, retaining the original family when suppression produces `error`.
+Each input additionally exercises one catalog-selected known-type entrypoint, so malformed headers
+and empty sources reach family parsers independently of type detection.
 Editor snapshots must retain parser-backed facts with source-bounded, UTF-8-aligned spans. Their
-semantic acceptance and model match strict parsing, except when the snapshot explicitly records
-editor-only incomplete-directive recovery; parser panics always fail. A semantic failure can still
-carry recovered symbols, diagnostics, and completion context.
+preprocessing uses the same `RecoverLine` policy as lenient models: parsed snapshots must match
+their complete metadata/model, and retained family failures must match suppressed error metadata
+and messages. Without an incomplete-directive recovery receipt, snapshots also match strict
+parsing. Recovery never bypasses these snapshot checks; parser panics always fail. A semantic
+failure can still carry recovered symbols, diagnostics, and completion context. The fuzz package's
+default `editor-facts` feature forwards `merman/editor-facts` and enables these shared snapshot
+assertions; `--no-default-features` omits them.
+Strict and lenient results are not universally equal: strict preprocessing removes an unfinished
+directive through EOF, while `RecoverLine` retains later statements. Explicit policy regressions
+cover both a recovered family error and two accepted models with different semantics, alongside
+typed-path acceptance/projection negative controls.
 Acceptance disagreement fails even when one side returns no diagram.
 Catalog-derived family/alias checks and extension, recovery and cancellation boundaries live in
 `crates/merman-core/tests/parse_projection_contract.rs` and related core parse tests; custom

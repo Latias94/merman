@@ -7,6 +7,10 @@ edition = "2024"
 [package.metadata]
 cargo-fuzz = true
 
+[features]
+default = ["editor-facts"]
+editor-facts = ["merman/editor-facts"]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 merman = { path = "../crates/merman", default-features = false, features = ["all-diagrams", "compat-json", "svg", "layout-cytoscape", "layout-elk", "math"] }
