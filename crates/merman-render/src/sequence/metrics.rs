@@ -151,7 +151,14 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
     let mut width = 0.0_f64;
     let mut height = 0.0_f64;
     for line in lines {
-        let measured_line = if line.is_empty() { "\u{200b}" } else { line };
+        // Match the writer: split actual break tags before decoding each SVG text node.
+        // Entity-encoded markup stays literal text rather than creating extra rows.
+        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
+        let measured_line = if decoded.is_empty() {
+            "\u{200b}"
+        } else {
+            decoded.as_ref()
+        };
         checkpoints.checkpoint()?;
         let line_width = match node {
             SequenceDrawnTextNode::Direct => {
@@ -1019,6 +1026,69 @@ mod tests {
             metrics.is_some(),
             "an unmatched delimiter on a plain line must not discard complete formulas"
         );
+    }
+
+    #[test]
+    fn sequence_drawn_dimensions_measure_decoded_entities_without_resplitting_markup() {
+        #[derive(Default)]
+        struct EntityLineProbe(RefCell<Vec<String>>);
+
+        impl TextMeasurer for EntityLineProbe {
+            fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+                self.0.borrow_mut().push(text.to_owned());
+                let size = if text == "😀" { 40.0 } else { 8.0 };
+                TextMetrics {
+                    width: size,
+                    height: size,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.measure(text, style).width
+            }
+        }
+
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let style = default_sequence_style();
+        let config = drawn_text_config();
+        for node in [
+            super::SequenceDrawnTextNode::Direct,
+            super::SequenceDrawnTextNode::Tspan,
+        ] {
+            for encoded in ["#128512;", "&#128512;", "ﬂ°°128512¶ß"] {
+                let probe = EntityLineProbe::default();
+                let dimensions = super::measure_drawn_svg_like_with_html_br(
+                    &probe,
+                    &format!("{encoded}<br/>W"),
+                    &style,
+                    node,
+                    &config,
+                    checkpoints(&meter, OperationPhase::Layout),
+                )
+                .unwrap();
+                assert_eq!(dimensions, (40.0, 48.0), "{encoded}: {node:?}");
+                assert!(
+                    probe
+                        .0
+                        .borrow()
+                        .iter()
+                        .all(|line| line == "😀" || line == "W")
+                );
+            }
+            let probe = EntityLineProbe::default();
+            let dimensions = super::measure_drawn_svg_like_with_html_br(
+                &probe,
+                "#lt;br#gt;",
+                &style,
+                node,
+                &config,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .unwrap();
+            assert_eq!(dimensions, (8.0, 8.0), "decoded markup is literal SVG text");
+            assert!(probe.0.borrow().iter().all(|line| line == "<br>"));
+        }
     }
 
     #[test]
