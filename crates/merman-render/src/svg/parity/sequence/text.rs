@@ -27,7 +27,7 @@ pub(super) fn write_centered_tspan_text(
     }
     for (i, raw) in lines.into_iter().enumerate() {
         checkpoints.checkpoint_loop(i)?;
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
+        let decoded = crate::sequence::prepare_sequence_text_line(raw);
         let dy = (i as f64 - (count - 1.0) / 2.0) * text_style.font_size;
         let _ = write!(
             out,
@@ -37,7 +37,7 @@ pub(super) fn write_centered_tspan_text(
             class = escape_attr(class),
             style = escape_attr(&style),
             dy = fmt(dy),
-            text = escape_xml_display(decoded.as_ref())
+            text = super::escape_prepared_text(decoded.as_ref())
         );
     }
     checkpoints.checkpoint()
