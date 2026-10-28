@@ -35,6 +35,26 @@ fn decode_block_label_html(raw: &str) -> String {
     raw.replace("&nbsp;", "\u{00A0}")
 }
 
+pub(crate) fn block_label_html_fragment(raw: &str, config: &merman_core::MermaidConfig) -> String {
+    if raw.is_empty() {
+        return String::new();
+    }
+    // Match labelHelper -> nonMarkdownToHTML -> addHtmlSpan. Entity-authored angle brackets
+    // remain text until the HTML parser consumes them; decoding them first would create tags.
+    let mut config = config.clone();
+    if config.get_str("securityLevel").is_none() {
+        config.set_value("securityLevel", serde_json::json!("strict"));
+    }
+    let text = merman_core::sanitize::sanitize_text(raw, &config);
+    let html = format!(
+        "<p>{}</p>",
+        text.replace("\\n", "<br />").replace('\n', "<br />")
+    );
+    crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
+        &html, &config,
+    ))
+}
+
 pub(crate) fn block_label_is_effectively_empty(text: &str) -> bool {
     !text.is_empty()
         && text
@@ -46,8 +66,15 @@ fn block_html_label_metrics_px(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    config: &merman_core::MermaidConfig,
 ) -> (f64, f64) {
-    let html_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    let html_metrics = crate::text::measure_xhtml_label_fragment(
+        measurer,
+        &block_label_html_fragment(text, config),
+        style,
+        None,
+        WrapMode::HtmlLike,
+    );
     (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
 }
 
@@ -528,6 +555,7 @@ fn to_sized_block_shallow(
     padding: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    config: &merman_core::MermaidConfig,
 ) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
     let width_in_columns = node.width_in_columns.unwrap_or(1).max(1);
@@ -535,18 +563,15 @@ fn to_sized_block_shallow(
     let mut width = 0.0;
     let mut height = 0.0;
 
-    // Mermaid renders block diagram labels via `labelHelper(...)`, which decodes HTML entities
-    // and measures the resulting HTML content (`getBoundingClientRect()` for width/height).
-    //
-    // Block diagrams frequently use `&nbsp;` placeholders (notably for block arrows), so we must
-    // decode those before measuring; otherwise node widths drift drastically.
+    // HTML measurement and emission share the sanitized XHTML projection, including breaks,
+    // inline formatting, and entities.
     let label_decoded = decode_block_label_html(&node.label);
     let label_effectively_empty = block_label_is_effectively_empty(&label_decoded);
     let (label_width, label_height) = if label_effectively_empty {
         (0.0, 0.0)
     } else {
         let label_style = block_source_label_text_style(node, text_style);
-        block_html_label_metrics_px(&label_decoded, measurer, &label_style)
+        block_html_label_metrics_px(&label_decoded, measurer, &label_style, config)
     };
     let shape_label_height = label_height;
 
@@ -905,6 +930,7 @@ pub(crate) fn layout_block_diagram_typed(
         padding,
         text_style,
     } = BlockConfigView::new(effective_config).layout_settings();
+    let label_config = merman_core::MermaidConfig::from_value(effective_config.clone());
 
     let root = model
         .blocks_flat
@@ -919,7 +945,7 @@ pub(crate) fn layout_block_diagram_typed(
     let mut records = model
         .blocks_flat
         .iter()
-        .map(|block| to_sized_block_shallow(block, padding, measurer, &text_style))
+        .map(|block| to_sized_block_shallow(block, padding, measurer, &text_style, &label_config))
         .collect::<Vec<_>>();
     set_block_sizes(root, &mut records, padding);
     layout_blocks(root, &mut records, padding)?;
@@ -987,7 +1013,7 @@ pub(crate) fn layout_block_diagram_typed(
         } else {
             let edge_label = decode_block_label_html(&e.label);
             let (label_width, label_height) =
-                block_html_label_metrics_px(&edge_label, measurer, &text_style);
+                block_html_label_metrics_px(&edge_label, measurer, &text_style, &label_config);
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,
@@ -1125,6 +1151,7 @@ mod tests {
             "Font size precedence should widen this block",
             &SelectedMeasurer,
             &style,
+            &merman_core::MermaidConfig::from_value(serde_json::json!({})),
         );
 
         assert_eq!(width, 321.25);
