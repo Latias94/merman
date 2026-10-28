@@ -907,9 +907,9 @@ impl RoutedTextMeasurer<'_> {
             | TextMeasurementOperation::SimpleBBoxHeight => TextMeasurementPhase::SvgBBox,
             TextMeasurementOperation::CanvasMeasureTextWidth => TextMeasurementPhase::Layout,
             TextMeasurementOperation::WrapProbeBBoxWidth => TextMeasurementPhase::Wrap,
-            TextMeasurementOperation::Wrapped | TextMeasurementOperation::WrappedWithRawWidth => {
-                TextMeasurementPhase::Wrap
-            }
+            TextMeasurementOperation::Wrapped
+            | TextMeasurementOperation::WrappedWithRawWidth
+            | TextMeasurementOperation::HtmlLineHeight => TextMeasurementPhase::Wrap,
             TextMeasurementOperation::Measure => self.default_phase,
         }
     }
@@ -1063,13 +1063,13 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
     fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
             self.request(
-                TextMeasurementOperation::Wrapped,
+                TextMeasurementOperation::HtmlLineHeight,
                 text,
                 style,
                 None,
                 WrapMode::HtmlLike,
             ),
-            |measurement| decode_host_metrics(measurement).map(|metrics| metrics.height),
+            decode_host_length,
             |profile| profile.measure_html_line_height_px(text, style),
         )
     }
@@ -1959,6 +1959,7 @@ mod tests {
                 (19, "raw-bbox-y-offset"),
                 (20, "raw-middle-bbox-y-offset"),
                 (21, "raw-hanging-bbox-y-offset"),
+                (22, "html-line-height"),
             ]
         );
     }
@@ -2183,6 +2184,41 @@ mod tests {
                 )
                 .is_err()
             );
+        }
+    }
+
+    #[test]
+    fn literal_html_line_height_preserves_payload_phase_and_routed_fallback() {
+        struct LineHost(bool);
+        impl HostTextMeasurer for LineHost {
+            fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+                assert_eq!(request.operation, TextMeasurementOperation::HtmlLineHeight);
+                assert_eq!(request.phase, TextMeasurementPhase::Wrap);
+                assert_eq!(request.text, "A<br>B&amp;C");
+                assert_eq!(request.wrap_mode, WrapMode::HtmlLike);
+                assert_eq!(request.max_width, None);
+                Ok(self.0.then_some(HostTextMeasurement::Length(31.5)))
+            }
+        }
+        for handled in [false, true] {
+            let policy = TextMeasurementPolicy::host_display_with_fallback(
+                identity("test.literal-html-line-height", "v1", &[]),
+                Arc::new(LineHost(handled)),
+                [TextMeasurementPhase::Wrap],
+                deterministic_profile(),
+            );
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(policy)
+                .begin_session()
+                .unwrap();
+            let style = TextStyle {
+                font_size: 16.0,
+                ..TextStyle::default()
+            };
+            let height = session
+                .text_measurer(TextMeasurementPhase::Layout)
+                .measure_html_line_height_px("A<br>B&amp;C", &style);
+            assert_eq!(height, if handled { 31.5 } else { 24.0 });
         }
     }
 

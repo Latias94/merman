@@ -28,6 +28,7 @@ const OPERATION_CONTRACTS = new Map([
     { kind: "length", wrapMode: "svg-like", signed: true },
   ],
   ["raw-bbox-height", { kind: "length", wrapMode: "svg-like" }],
+  ["html-line-height", { kind: "length", wrapMode: "html-like" }],
   ["raw-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
   ["raw-middle-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
   ["raw-hanging-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
@@ -127,7 +128,8 @@ class FakeMeasureElement {
   }
 
   fontSize() {
-    return parseFloat(this.style.fontSize) || parseFloat(this.parentElement?.style?.fontSize) || 16;
+    const size = parseFloat(this.style.fontSize);
+    return Number.isFinite(size) ? size : this.parentElement?.fontSize?.() ?? 16;
   }
 
   getBBox() {
@@ -467,7 +469,7 @@ test("browser text measurement session routes exact operations to their DOM prim
       },
     ]);
 
-    assert.equal(OPERATION_CONTRACTS.size, 22);
+    assert.equal(OPERATION_CONTRACTS.size, 23);
     for (const [operation, contract] of OPERATION_CONTRACTS) {
       const result = measure(request("Contract value", 80, operation, contract.wrapMode));
       assert.ok(result, `${operation} should be handled`);
@@ -674,6 +676,93 @@ test("DOM probes reject ignored CSSOM assignments and accept canonicalized value
   });
 });
 
+test("canvas preserves zero and subpixel sizes and rejects invalid sizes without a default", () => {
+  const context = new FakeCanvasContext();
+  withMeasurementSession(context, session => {
+    const input = request("MMMMMMMM", null, "canvas-measure-text-width", "svg-like");
+    for (const size of [0, 0.5, 1]) {
+      assert.ok(session.measure({ ...input, font_size: size }));
+      assert.equal(context.calls.at(-1).font, `normal normal ${size}px Trebuchet MS, sans-serif`);
+    }
+    const before = context.calls.length;
+    for (const size of [-1, NaN, Infinity]) {
+      assert.equal(session.measure({ ...input, font_size: size }), undefined);
+    }
+    assert.equal(context.calls.length, before, "invalid sizes must not measure a substituted font");
+  });
+});
+
+test("DOM operations preserve zero and subpixel font sizes", () => {
+  withMeasurementSession(null, (session, body) => {
+    for (const size of [0, 0.5, 1, 20]) {
+      for (const operation of ["measure", "computed-length", "raw-bbox-width", "tspan-bbox-width",
+        "simple-bbox-width", "simple-bbox-height", "bounding-client-rect-width",
+        "raw-bbox-height", "raw-bbox-y-offset", "raw-middle-bbox-y-offset",
+        "raw-hanging-bbox-y-offset", "create-text-bbox-y-offset", "create-text-middle-bbox-y-offset"]) {
+        const result = session.measure({
+          ...request("MMMMMMMM", null, operation, "svg-like"), font_size: size,
+        });
+        assert.ok(result, `${operation}: ${size}px is supported`);
+        const svg = body.children[1];
+        const index = operation.startsWith("create-text") ? 3
+          : ["computed-length", "tspan-bbox-width", "simple-bbox-width", "simple-bbox-height"].includes(operation) ? 1 : 0;
+        const text = index === 3 ? svg.children[index].children[0] : svg.children[index];
+        assert.equal(text.style.fontSize, `${size}px`, `${operation}: preserve CSS pixels`);
+        if (operation === "raw-bbox-width") assert.equal(result.length, 8 * size * 0.6);
+      }
+    }
+  });
+});
+
+test("simple and dimensions probes replace only pinned HTML breaks", () => {
+  withMeasurementSession(null, (session, body) => {
+    for (const [text, expected] of [
+      ["A<br>B<BR />C</br>D", "A B C D"],
+      ["A\nB", "A\nB"],
+      ["A&lt;br&gt;B", "A&lt;br&gt;B"],
+    ]) {
+      for (const operation of ["simple-bbox-width", "simple-bbox-height", "mermaid-calculate-text-dimensions"]) {
+        const input = request(text, null, operation, "svg-like");
+        assert.deepEqual(session.measure(input), session.measure({ ...input, text: expected }));
+        session.measure(input);
+        const svg = body.children[operation === "mermaid-calculate-text-dimensions" ? 2 : 1];
+        const probe = svg.children[operation === "mermaid-calculate-text-dimensions" ? 0 : 1];
+        assert.equal(probe.children[0].textContent, expected, operation);
+      }
+      for (const operation of ["raw-bbox-width", "tspan-bbox-width", "wrap-probe-bbox-width"]) {
+        assert.ok(session.measure(request(text, null, operation, "svg-like")));
+        const index = operation === "raw-bbox-width" ? 0 : 1;
+        assert.equal(body.children[1].children[index].textContent, text, `${operation}: literal probe`);
+      }
+    }
+  });
+});
+
+test("wrapped probes preserve subpixel line height and leave zero HTML line height unhandled", () => {
+  withMeasurementSession(null, (session, body) => {
+    for (const operation of ["wrapped", "wrapped-with-raw-width"]) {
+      for (const wrapMode of ["svg-like", "html-like"]) {
+        const input = { ...request("A\nB", null, operation, wrapMode), font_size: 0.5, line_height: 0.25 };
+        const result = session.measure(input);
+        assert.equal(result.line_count, 2);
+        if (wrapMode === "html-like") {
+          assert.equal(body.children[0].style.lineHeight, "0.25px");
+          assert.equal(result.height, 0.5);
+          assert.equal(session.measure({ ...input, line_height: 0 }), undefined);
+        } else {
+          assert.equal(body.children[1].children[2].children[1].attributes.get("dy"), "0.25px");
+          assert.ok(session.measure({ ...input, line_height: 0 }));
+          assert.equal(body.children[1].children[2].children[1].attributes.get("dy"), "0px");
+        }
+        for (const lineHeight of [-1, NaN, Infinity]) {
+          assert.equal(session.measure({ ...input, line_height: lineHeight }), undefined);
+        }
+        assert.deepEqual(session.measure(input), result, "recover after an unsupported line height");
+      }
+    }
+  });
+});
+
 function withMeasurementSession(context, run) {
   const originalDocument = globalThis.document;
   const body = {
@@ -689,6 +778,11 @@ function withMeasurementSession(context, run) {
     body,
     createElement(tagName) {
       return new FakeMeasureElement(tagName, tagName === "canvas" ? context : null);
+    },
+    createTextNode(text) {
+      const node = new FakeMeasureElement("#text");
+      node.textContent = text;
+      return node;
     },
     createElementNS(namespace, tagName) {
       assert.equal(namespace, "http://www.w3.org/2000/svg");
