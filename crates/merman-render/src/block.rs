@@ -1,7 +1,7 @@
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
+use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
@@ -35,45 +35,105 @@ fn decode_block_label_html(raw: &str) -> String {
     raw.replace("&nbsp;", "\u{00A0}")
 }
 
-pub(crate) fn block_label_html_fragment(raw: &str, config: &merman_core::MermaidConfig) -> String {
+fn block_label_html_fragment(raw: &str, config: &merman_core::MermaidConfig) -> String {
     if raw.is_empty() {
         return String::new();
     }
     // Match labelHelper -> nonMarkdownToHTML -> addHtmlSpan. Entity-authored angle brackets
     // remain text until the HTML parser consumes them; decoding them first would create tags.
-    let mut config = config.clone();
-    if config.get_str("securityLevel").is_none() {
-        config.set_value("securityLevel", serde_json::json!("strict"));
-    }
-    let text = merman_core::sanitize::sanitize_text(raw, &config);
+    let text = merman_core::sanitize::sanitize_text(raw, config);
     let html = format!(
         "<p>{}</p>",
         text.replace("\\n", "<br />").replace('\n', "<br />")
     );
     crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
-        &html, &config,
+        &html, config,
     ))
 }
 
-pub(crate) fn block_label_is_effectively_empty(text: &str) -> bool {
+fn block_label_is_effectively_empty(text: &str) -> bool {
     !text.is_empty()
         && text
             .chars()
             .all(|ch| ch != '\u{00A0}' && ch.is_whitespace())
 }
 
+/// Final HTML terminals owned by one Block preparation operation.
+#[derive(Debug, Default)]
+pub(crate) struct BlockPreparedLabels {
+    nodes: HashMap<String, BlockPreparedHtmlLabel>,
+    edges: Vec<Option<BlockPreparedHtmlLabel>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct BlockPreparedHtmlLabel {
+    pub(crate) xhtml: String,
+    empty: bool,
+    whitespace_only: bool,
+    has_shape_label: bool,
+}
+
+impl BlockPreparedHtmlLabel {
+    fn prepare(raw: &str, config: &merman_core::MermaidConfig) -> Self {
+        let decoded = decode_block_label_html(raw);
+        let whitespace_only = block_label_is_effectively_empty(&decoded);
+        Self {
+            xhtml: block_label_html_fragment(raw, config),
+            empty: raw.is_empty() || whitespace_only,
+            whitespace_only,
+            has_shape_label: !whitespace_only && !decoded.trim().is_empty(),
+        }
+    }
+
+    pub(crate) const fn is_empty(&self) -> bool {
+        self.empty
+    }
+}
+
+impl BlockPreparedLabels {
+    fn prepare(
+        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        sources: &HashMap<&str, &BlockNode>,
+        config: &merman_core::MermaidConfig,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self> {
+        let mut prepared = Self {
+            edges: (0..model.edges.len()).map(|_| None).collect(),
+            ..Self::default()
+        };
+        for node in &model.blocks_flat {
+            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+            if prepared.nodes.contains_key(&node.id) {
+                continue;
+            }
+            // The existing SVG writer resolves repeated source IDs to their last record.
+            let source = sources[node.id.as_str()];
+            prepared.nodes.insert(
+                node.id.clone(),
+                BlockPreparedHtmlLabel::prepare(&source.label, config),
+            );
+        }
+        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        Ok(prepared)
+    }
+
+    pub(crate) fn node(&self, node_id: &str) -> Option<&BlockPreparedHtmlLabel> {
+        self.nodes.get(node_id)
+    }
+
+    pub(crate) fn edge(&self, edge_index: usize) -> Option<&BlockPreparedHtmlLabel> {
+        self.edges.get(edge_index).and_then(Option::as_ref)
+    }
+}
+
 fn block_html_label_metrics_px(
-    text: &str,
+    xhtml: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
-    config: &merman_core::MermaidConfig,
+    root_font_size: f64,
 ) -> (f64, f64) {
-    let html_metrics = crate::text::measure_unwrapped_xhtml_label_fragment(
-        measurer,
-        &block_label_html_fragment(text, config),
-        style,
-        crate::config::config_theme_or_root_font_size_px(config.as_value(), 16.0),
-    );
+    let html_metrics =
+        crate::text::measure_unwrapped_xhtml_label_fragment(measurer, xhtml, style, root_font_size);
     (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
 }
 
@@ -553,8 +613,9 @@ fn to_sized_block_shallow(
     node: &BlockNode,
     padding: f64,
     measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-    config: &merman_core::MermaidConfig,
+    label_style: &TextStyle,
+    root_font_size: f64,
+    label: &BlockPreparedHtmlLabel,
 ) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
     let width_in_columns = node.width_in_columns.unwrap_or(1).max(1);
@@ -562,15 +623,11 @@ fn to_sized_block_shallow(
     let mut width = 0.0;
     let mut height = 0.0;
 
-    // HTML measurement and emission share the sanitized XHTML projection, including breaks,
-    // inline formatting, and entities.
-    let label_decoded = decode_block_label_html(&node.label);
-    let label_effectively_empty = block_label_is_effectively_empty(&label_decoded);
-    let (label_width, label_height) = if label_effectively_empty {
+    // Measure the exact retained terminal later consumed by the SVG writer.
+    let (label_width, label_height) = if label.whitespace_only {
         (0.0, 0.0)
     } else {
-        let label_style = block_source_label_text_style(node, text_style);
-        block_html_label_metrics_px(&label_decoded, measurer, &label_style, config)
+        block_html_label_metrics_px(&label.xhtml, measurer, label_style, root_font_size)
     };
     let shape_label_height = label_height;
 
@@ -580,7 +637,7 @@ fn to_sized_block_shallow(
         label_width,
         shape_label_height,
         padding,
-        !label_effectively_empty && !label_decoded.trim().is_empty(),
+        label.has_shape_label,
     ) {
         width = computed_width;
         height = computed_height;
@@ -922,14 +979,17 @@ fn collect_shape_source(block: &BlockNode, out: &mut HashMap<String, BlockShapeS
 
 pub(crate) fn layout_block_diagram_typed(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
-    effective_config: &Value,
+    effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
-) -> Result<BlockDiagramLayout> {
+    work_meter: &OperationWorkMeter,
+) -> Result<(BlockDiagramLayout, BlockPreparedLabels)> {
+    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
     let BlockLayoutSettings {
         padding,
         text_style,
-    } = BlockConfigView::new(effective_config).layout_settings();
-    let label_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    } = BlockConfigView::new(effective_config.as_value()).layout_settings();
+    let root_font_size =
+        crate::config::config_theme_or_root_font_size_px(effective_config.as_value(), 16.0);
 
     let root = model
         .blocks_flat
@@ -941,10 +1001,34 @@ pub(crate) fn layout_block_diagram_typed(
 
     validate_block_columns(root, &model.blocks_flat)?;
 
+    // Resolve the absent sanitizer default once, rather than cloning config for every label.
+    let mut label_config = effective_config.clone();
+    if label_config.get_str("securityLevel").is_none() {
+        label_config.set_value("securityLevel", serde_json::json!("strict"));
+    }
+    let sources = model
+        .blocks_flat
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect::<HashMap<_, _>>();
+    let mut prepared_labels =
+        BlockPreparedLabels::prepare(model, &sources, &label_config, work_meter)?;
     let mut records = model
         .blocks_flat
         .iter()
-        .map(|block| to_sized_block_shallow(block, padding, measurer, &text_style, &label_config))
+        .map(|block| {
+            let source = sources[block.id.as_str()];
+            to_sized_block_shallow(
+                block,
+                padding,
+                measurer,
+                &block_source_label_text_style(source, &text_style),
+                root_font_size,
+                prepared_labels
+                    .node(&block.id)
+                    .expect("prepared Block node"),
+            )
+        })
         .collect::<Vec<_>>();
     set_block_sizes(root, &mut records, padding);
     layout_blocks(root, &mut records, padding)?;
@@ -989,7 +1073,8 @@ pub(crate) fn layout_block_diagram_typed(
         nodes.iter().cloned().map(|n| (n.id.clone(), n)).collect();
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
-    for e in &model.edges {
+    for (edge_index, e) in model.edges.iter().enumerate() {
+        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
         let Some(from) = nodes_by_id.get(&e.start) else {
             continue;
         };
@@ -1010,9 +1095,15 @@ pub(crate) fn layout_block_diagram_typed(
         let label = if e.label.trim().is_empty() {
             None
         } else {
-            let edge_label = decode_block_label_html(&e.label);
-            let (label_width, label_height) =
-                block_html_label_metrics_px(&edge_label, measurer, &text_style, &label_config);
+            // Preserve semantic positions without retaining terminals for filtered labels.
+            let edge_label = prepared_labels.edges[edge_index]
+                .insert(BlockPreparedHtmlLabel::prepare(&e.label, &label_config));
+            let (label_width, label_height) = block_html_label_metrics_px(
+                &edge_label.xhtml,
+                measurer,
+                &text_style,
+                root_font_size,
+            );
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,
@@ -1039,12 +1130,16 @@ pub(crate) fn layout_block_diagram_typed(
         });
     }
 
-    Ok(BlockDiagramLayout {
-        nodes,
-        edges,
-        shape_geometries,
-        bounds,
-    })
+    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+    Ok((
+        BlockDiagramLayout {
+            nodes,
+            edges,
+            shape_geometries,
+            bounds,
+        },
+        prepared_labels,
+    ))
 }
 
 #[cfg(test)]
@@ -1147,10 +1242,10 @@ mod tests {
         let style = default_style(24.0);
 
         let (width, height) = super::block_html_label_metrics_px(
-            "Font size precedence should widen this block",
+            "<p>Font size precedence should widen this block</p>",
             &SelectedMeasurer,
             &style,
-            &merman_core::MermaidConfig::from_value(serde_json::json!({})),
+            style.font_size,
         );
 
         assert_eq!(width, 321.25);

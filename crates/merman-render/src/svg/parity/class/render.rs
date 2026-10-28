@@ -13,6 +13,7 @@ use super::*;
 pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
+    prepared_labels: &crate::class::ClassPreparedLabels,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -21,6 +22,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     render_class_diagram_svg_model_inner(
         layout,
         model,
+        prepared_labels,
         effective_config.as_value(),
         Some(effective_config),
         diagram_title,
@@ -29,9 +31,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Class emission consumes retained labels alongside geometry and operation inputs."
+)]
 fn render_class_diagram_svg_model_inner(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
+    prepared_labels: &crate::class::ClassPreparedLabels,
     effective_config: &serde_json::Value,
     borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
     diagram_title: Option<&str>,
@@ -199,6 +206,7 @@ fn render_class_diagram_svg_model_inner(
         line_hop_paths: &line_hop_paths,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
+        prepared_svg_edge_labels: &prepared_labels.edges_by_id,
         diagram_marker_class: aria_roledescription,
         diagram_id,
         content_tx,
@@ -228,6 +236,7 @@ fn render_class_diagram_svg_model_inner(
     let nodes_ctx = ClassNodesRenderContext {
         layout,
         class_nodes_by_id: &class_nodes_by_id,
+        prepared_svg_titles: &prepared_labels.titles_by_id,
         class_color_indices: &class_color_indices,
         note_by_id: &note_by_id,
         iface_by_id: &iface_by_id,

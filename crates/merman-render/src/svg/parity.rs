@@ -1249,14 +1249,17 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-class")]
-        BuiltinFamilyArtifact::Class(pair) => class::render_class_diagram_svg_model_with_config(
-            pair.layout(),
-            pair.semantic(),
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
+        BuiltinFamilyArtifact::Class(artifact) => {
+            class::render_class_diagram_svg_model_with_config(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.prepared_labels(),
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         #[cfg(feature = "diagram-sequence")]
         BuiltinFamilyArtifact::Sequence(pair) => {
             sequence::render_sequence_diagram_svg_model_with_config(
@@ -1369,9 +1372,10 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-block")]
-        BuiltinFamilyArtifact::Block(pair) => block::render_block_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.prepared_labels(),
             effective_config_value,
             options,
         ),

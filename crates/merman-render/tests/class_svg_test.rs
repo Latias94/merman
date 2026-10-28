@@ -2553,3 +2553,200 @@ mod class_svg_terminal_contracts {
         }
     }
 }
+
+mod prepared_svg_label_ownership {
+    use super::*;
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    #[derive(Default)]
+    struct PreparationOnlyMeasurer {
+        reject: AtomicBool,
+        calls: AtomicUsize,
+    }
+
+    impl PreparationOnlyMeasurer {
+        fn record(&self, text: &str) {
+            assert!(
+                !self.reject.load(Ordering::SeqCst),
+                "Class writer remeasured a prepared label: {text:?}"
+            );
+            self.calls.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    impl TextMeasurer for PreparationOnlyMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.record(text);
+            let lines = text.split('\n').collect::<Vec<_>>();
+            TextMetrics {
+                width: lines
+                    .iter()
+                    .map(|line| line.chars().count() as f64 * style.font_size / 2.0)
+                    .fold(0.0, f64::max),
+                height: lines.len() as f64 * style.font_size,
+                line_count: lines.len(),
+            }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.measure(text, style)
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            self.record(text);
+            // Force actual title wrapping while keeping every label measurable before prepare.
+            TextMetrics {
+                width: 10.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, _style: &TextStyle) -> f64 {
+            self.record(text);
+            -8.0
+        }
+    }
+
+    fn layout_engines() -> &'static [&'static str] {
+        #[cfg(feature = "layout-elk")]
+        {
+            &["dagre", "elk"]
+        }
+        #[cfg(not(feature = "layout-elk"))]
+        {
+            &["dagre"]
+        }
+    }
+
+    #[test]
+    fn class_svg_writer_reuses_prepared_title_words_metrics_and_center_relationship_words() {
+        for layout in layout_engines() {
+            for title in ["PreparedLongTitle", "**PreparedBold** *PreparedItalic*"] {
+                let source = format!(
+                    "classDiagram\nclass A[\"{title}\"]\nclass B[\"PreparedOther\"]\nA --> B : `**PreparedEdge** *PreparedRelation* &amp; Literal`\n"
+                );
+                let measurer = Arc::new(PreparationOnlyMeasurer::default());
+                let profile = TextMeasurementProfile::new(
+                    TextMeasurementProfileIdentity::new(
+                        MeasurementProfileId::new("class-preparation-only").unwrap(),
+                        "test",
+                    )
+                    .unwrap(),
+                    measurer.clone(),
+                );
+                let environment = RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+                let parsed = Engine::new()
+                    .with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "htmlLabels": false,
+                        "layout": layout,
+                    })))
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                    .unwrap()
+                    .unwrap();
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::headless_svg_defaults(),
+                    environment.begin_session().unwrap(),
+                )
+                .expect("Class layout prepares labels");
+                let prepared_calls = measurer.calls.load(Ordering::SeqCst);
+                assert!(prepared_calls > 0, "preparation must actually measure text");
+                measurer.reject.store(true, Ordering::SeqCst);
+
+                let first = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .expect("writer consumes prepared Class labels");
+                assert_eq!(measurer.calls.load(Ordering::SeqCst), prepared_calls);
+                let document = roxmltree::Document::parse(first.svg()).unwrap();
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    "the test must exercise the real SVG label writer"
+                );
+                let title_group = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label-group text"))
+                    .expect("rendered Class title");
+                let rows = title_group
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+                    .count();
+                if title == "PreparedLongTitle" {
+                    assert!(rows > 1, "the retained title must contain wrapped rows");
+                }
+                for (text, weight, style) in [
+                    ("PreparedEdge", "bold", "normal"),
+                    ("PreparedRelation", "normal", "italic"),
+                ] {
+                    let word = document
+                        .descendants()
+                        .find(|node| {
+                            node.attribute("class") == Some("text-inner-tspan")
+                                && node.text().is_some_and(|value| value.trim() == text)
+                        })
+                        .expect("retained styled relationship word");
+                    assert_eq!(word.attribute("font-weight"), Some(weight));
+                    assert_eq!(word.attribute("font-style"), Some(style));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn class_public_layout_projection_excludes_private_prepared_label_data() {
+        for layout in layout_engines() {
+            for html in [false, true] {
+                let parsed = Engine::new()
+                    .with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "htmlLabels": html,
+                        "layout": layout,
+                    })))
+                    .parse_diagram_for_render_model_sync(
+                        "classDiagram\nclass A[\"PreparedTitle\"]\nclass B\nA --> B : `**PreparedEdge**`\n",
+                        ParseOptions::default(),
+                    )
+                    .unwrap()
+                    .unwrap();
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::headless_svg_defaults(),
+                    RenderEnvironment::deterministic().begin_session().unwrap(),
+                )
+                .unwrap();
+                let projection = artifact.layout_json().expect("public layout projection");
+                let layout = &projection["layout"]["ClassDiagramV2"];
+                let mut keys = layout
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>();
+                keys.sort_unstable();
+                assert_eq!(keys, ["bounds", "clusters", "edges", "nodes"]);
+                let decoded: merman_render::model::ClassDiagramLayout =
+                    serde_json::from_value(layout.clone()).expect("compatible public layout JSON");
+                assert!(decoded.class_label_plans_by_id.is_empty());
+                assert_eq!(serde_json::to_value(decoded).unwrap(), *layout);
+            }
+        }
+    }
+}

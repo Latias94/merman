@@ -258,6 +258,44 @@ impl<L> FlowchartFamilyArtifact<L> {
 }
 
 #[derive(Debug)]
+#[cfg(feature = "diagram-class")]
+pub(crate) struct ClassFamilyArtifact {
+    pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
+    prepared_labels: crate::class::ClassPreparedLabels,
+}
+
+#[cfg(feature = "diagram-class")]
+impl ClassFamilyArtifact {
+    pub(crate) const fn pair(&self) -> &FamilyPair<ClassDiagram, ClassDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn prepared_labels(&self) -> &crate::class::ClassPreparedLabels {
+        &self.prepared_labels
+    }
+}
+
+#[derive(Debug)]
+#[cfg(feature = "diagram-block")]
+pub(crate) struct BlockFamilyArtifact {
+    pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
+    prepared_labels: crate::block::BlockPreparedLabels,
+}
+
+#[cfg(feature = "diagram-block")]
+impl BlockFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn prepared_labels(&self) -> &crate::block::BlockPreparedLabels {
+        &self.prepared_labels
+    }
+}
+
+#[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     #[cfg(feature = "diagram-agentflow")]
     Agentflow {
@@ -302,7 +340,7 @@ pub(crate) enum BuiltinFamilyArtifact {
         >,
     ),
     #[cfg(feature = "diagram-class")]
-    Class(Box<FamilyPair<ClassDiagram, ClassDiagramLayout>>),
+    Class(Box<ClassFamilyArtifact>),
     #[cfg(feature = "diagram-c4")]
     C4(Box<FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>>),
     #[cfg(feature = "diagram-cynefin")]
@@ -352,7 +390,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     #[cfg(feature = "diagram-treemap")]
     Treemap(Box<FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>>),
     #[cfg(feature = "diagram-block")]
-    Block(Box<FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>>),
+    Block(Box<BlockFamilyArtifact>),
     #[cfg(feature = "diagram-er")]
     Er(Box<FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout>>),
     #[cfg(feature = "diagram-quadrant-chart")]
@@ -575,7 +613,7 @@ impl BuiltinFamilyArtifact {
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-class")]
-            Self::Class(pair) => pair.compatibility_json(metadata),
+            Self::Class(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-c4")]
             Self::C4(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-cynefin")]
@@ -607,7 +645,7 @@ impl BuiltinFamilyArtifact {
             #[cfg(feature = "diagram-treemap")]
             Self::Treemap(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-block")]
-            Self::Block(pair) => pair.compatibility_json(metadata),
+            Self::Block(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-er")]
             Self::Er(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-quadrant-chart")]
@@ -650,7 +688,7 @@ impl BuiltinFamilyArtifact {
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
             #[cfg(feature = "diagram-class")]
-            Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
+            Self::Class(artifact) => LayoutProjection::ClassDiagram(artifact.pair.layout()),
             #[cfg(feature = "diagram-c4")]
             Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
             #[cfg(feature = "diagram-cynefin")]
@@ -682,7 +720,7 @@ impl BuiltinFamilyArtifact {
             #[cfg(feature = "diagram-treemap")]
             Self::Treemap(pair) => LayoutProjection::TreemapDiagram(pair.layout()),
             #[cfg(feature = "diagram-block")]
-            Self::Block(pair) => LayoutProjection::BlockDiagram(pair.layout()),
+            Self::Block(artifact) => LayoutProjection::BlockDiagram(artifact.pair.layout()),
             #[cfg(feature = "diagram-er")]
             Self::Er(pair) => LayoutProjection::ErDiagram(pair.layout()),
             #[cfg(feature = "diagram-quadrant-chart")]
@@ -1548,10 +1586,14 @@ fn prepare_class_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    Ok(BuiltinFamilyArtifact::Class(prepare_pair(
-        model,
-        |model| crate::layout_class_typed_by_engine(model, &meta.effective_config, execution),
-    )?))
+    let (layout, prepared_labels) =
+        crate::layout_class_typed_by_engine(&model, &meta.effective_config, execution)?;
+    Ok(BuiltinFamilyArtifact::Class(Box::new(
+        ClassFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            prepared_labels,
+        },
+    )))
 }
 
 #[inline(never)]
@@ -1968,13 +2010,16 @@ fn prepare_non_class_render(
         }
         #[cfg(feature = "diagram-block")]
         RenderSemanticModel::Block(model) => {
-            BuiltinFamilyArtifact::Block(prepare_pair(model, |model| {
-                crate::block::layout_block_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let (layout, prepared_labels) = crate::block::layout_block_diagram_typed(
+                &model,
+                &meta.effective_config,
+                execution.text_measurer(),
+                execution.work_meter_ref(),
+            )?;
+            BuiltinFamilyArtifact::Block(Box::new(BlockFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                prepared_labels,
+            }))
         }
         #[cfg(feature = "diagram-er")]
         RenderSemanticModel::Er(model) => {

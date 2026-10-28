@@ -309,22 +309,6 @@ pub(in crate::svg::parity) fn write_svg_text_markdown(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
-    out: &mut String,
-    markdown: &str,
-    include_style: bool,
-) {
-    let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
-    write_svg_text_markdown_lines(
-        out,
-        &lines,
-        include_style.then_some(""),
-        true,
-        true,
-        SvgTextEntityMode::DecodedModel,
-    );
-}
-
 pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
     out: &mut String,
     markdown: &str,

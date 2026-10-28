@@ -129,6 +129,7 @@ pub(crate) fn class_member_create_text_input(
 struct MeasuredClassDiagram {
     graph: MeasuredGraph,
     class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+    prepared_labels: ClassPreparedLabels,
     node_label_metrics_by_id: HashMap<String, (f64, f64)>,
     namespace_label_metrics_by_id: HashMap<String, (f64, f64)>,
 }
@@ -1244,7 +1245,12 @@ pub(crate) fn class_math_label_metrics(
 fn class_box_dimensions(
     node: &ClassNode,
     ctx: &ClassBoxMeasureCtx<'_>,
-) -> (f64, f64, Option<ClassNodeLabelPlan>) {
+) -> (
+    f64,
+    f64,
+    Option<ClassNodeLabelPlan>,
+    Option<ClassPreparedSvgTitle>,
+) {
     let measurer = ctx.measurer;
     let mermaid_config = ctx.mermaid_config;
     let math_renderer = ctx.math_renderer;
@@ -1714,7 +1720,11 @@ fn class_box_dimensions(
         })
     };
 
-    (rect_w.max(1.0), rect_h.max(1.0), label_plan)
+    let svg_title = svg_title.map(|label| ClassPreparedSvgTitle {
+        label,
+        metrics: title_metrics,
+    });
+    (rect_w.max(1.0), rect_h.max(1.0), label_plan, svg_title)
 }
 
 pub(crate) fn class_calculate_text_width_like_mermaid_px(
@@ -1861,6 +1871,7 @@ pub(crate) fn analyze_class_svg_markdown(text: &str) -> MermaidMarkdownAnalysis 
 }
 
 /// Prepared createText words shared by Class layout and SVG emission.
+#[derive(Debug)]
 pub(crate) struct ClassSvgLabel {
     analysis: MermaidMarkdownAnalysis,
 }
@@ -1868,9 +1879,28 @@ pub(crate) struct ClassSvgLabel {
 // Notes retain their existing family boundary and decoded-model provenance.
 pub(crate) type ClassSvgNoteLabel = ClassSvgLabel;
 
+#[derive(Debug)]
 pub(crate) struct ClassSvgTitleLabel {
     label: ClassSvgLabel,
     literal_first_row: bool,
+}
+
+/// SVG-only preparations belong to the family operation, not its public layout projection.
+#[derive(Debug, Default)]
+pub(crate) struct ClassPreparedLabels {
+    pub(crate) titles_by_id: FxHashMap<String, ClassPreparedSvgTitle>,
+    pub(crate) edges_by_id: FxHashMap<String, ClassPreparedSvgEdgeLabel>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ClassPreparedSvgTitle {
+    pub(crate) label: ClassSvgTitleLabel,
+    pub(crate) metrics: crate::text::TextMetrics,
+}
+
+#[derive(Debug)]
+pub(crate) struct ClassPreparedSvgEdgeLabel {
+    pub(crate) label: ClassSvgLabel,
 }
 
 impl ClassSvgTitleLabel {
@@ -2154,17 +2184,17 @@ fn label_metrics(
     (m.width.max(0.0), m.height.max(0.0))
 }
 
-fn edge_title_metrics(
+fn prepare_edge_title(
     text: &str,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
     mermaid_config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> (f64, f64) {
+) -> (f64, f64, Option<ClassSvgLabel>) {
     let trimmed = text.trim();
     if trimmed.is_empty() {
-        return (0.0, 0.0);
+        return (0.0, 0.0, None);
     }
 
     let label = decode_entities_minimal(text);
@@ -2176,7 +2206,7 @@ fn edge_title_metrics(
         mermaid_config,
         math_renderer,
     ) {
-        return (metrics.width.max(0.0), metrics.height.max(0.0));
+        return (metrics.width.max(0.0), metrics.height.max(0.0), None);
     }
     if matches!(wrap_mode, WrapMode::HtmlLike) {
         let metrics = class_html_measure_label_metrics(
@@ -2186,11 +2216,16 @@ fn edge_title_metrics(
             MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64,
             "",
         );
-        return (metrics.width.max(0.0), metrics.height.max(0.0));
+        return (metrics.width.max(0.0), metrics.height.max(0.0), None);
     }
 
-    let metrics = ClassSvgLabel::edge(label.trim()).metrics(measurer, text_style);
-    (metrics.width.max(0.0) + 4.0, metrics.height.max(0.0) + 4.0)
+    let prepared = ClassSvgLabel::edge(label.trim());
+    let metrics = prepared.metrics(measurer, text_style);
+    (
+        metrics.width.max(0.0) + 4.0,
+        metrics.height.max(0.0) + 4.0,
+        (!crate::math::contains_delimited_math(label.trim())).then_some(prepared),
+    )
 }
 
 fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: f64, h: f64) {
@@ -2211,9 +2246,9 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_control: &mut OperationLayoutWorkControl,
-) -> Result<ClassDiagramLayout> {
+) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
     let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
-    let measured = measure_class_diagram(
+    let mut measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
@@ -2221,7 +2256,9 @@ pub(crate) fn layout_class_diagram_typed_with_config(
         &settings,
         false,
     )?;
-    layout_class_diagram_dagre(model, measured, &settings, work_control)
+    let prepared_labels = std::mem::take(&mut measured.prepared_labels);
+    let layout = layout_class_diagram_dagre(model, measured, &settings, work_control)?;
+    Ok((layout, prepared_labels))
 }
 
 #[cfg(feature = "layout-elk")]
@@ -2236,9 +2273,9 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
     work_control: &mut OperationLayoutWorkControl,
-) -> Result<ClassDiagramLayout> {
+) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
     let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
-    let measured = measure_class_diagram(
+    let mut measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
@@ -2246,7 +2283,8 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         &settings,
         true,
     )?;
-    layout_class_diagram_elk_from_measured(
+    let prepared_labels = std::mem::take(&mut measured.prepared_labels);
+    let layout = layout_class_diagram_elk_from_measured(
         model,
         measured,
         ClassElkLayoutSettings {
@@ -2259,7 +2297,8 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         },
         operation_seed,
         work_control,
-    )
+    )?;
+    Ok((layout, prepared_labels))
 }
 
 fn measure_class_diagram(
@@ -2292,6 +2331,7 @@ fn measure_class_diagram(
     let note_html_config = capture_note_label_metrics.then_some(mermaid_config);
     let mut class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>> =
         FxHashMap::default();
+    let mut prepared_labels = ClassPreparedLabels::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
     let namespace_ids = class_namespace_ids_in_decl_order(model);
 
@@ -2321,8 +2361,12 @@ fn measure_class_diagram(
     let insert_class_node =
         |g: &mut MeasuredGraph,
          c: &ClassNode,
-         class_label_plans_by_id: &mut FxHashMap<String, Arc<ClassNodeLabelPlan>>| {
-            let (w, h, label_plan) = class_box_dimensions(c, &class_box_measure_ctx);
+         class_label_plans_by_id: &mut FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+         prepared_labels: &mut ClassPreparedLabels| {
+            let (w, h, label_plan, svg_title) = class_box_dimensions(c, &class_box_measure_ctx);
+            if let Some(prepared) = svg_title {
+                prepared_labels.titles_by_id.insert(c.id.clone(), prepared);
+            }
             if let Some(label_plan) = label_plan {
                 class_label_plans_by_id.insert(c.id.clone(), Arc::new(label_plan));
             }
@@ -2404,7 +2448,12 @@ fn measure_class_diagram(
     }
 
     for c in model.classes.values() {
-        insert_class_node(&mut g, c, &mut class_label_plans_by_id);
+        insert_class_node(
+            &mut g,
+            c,
+            &mut class_label_plans_by_id,
+            &mut prepared_labels,
+        );
         if let Some(parent) = c
             .parent
             .as_ref()
@@ -2493,7 +2542,7 @@ fn measure_class_diagram(
         } else {
             std::borrow::Cow::Borrowed(rel.title.as_str())
         };
-        let (lw, lh) = edge_title_metrics(
+        let (lw, lh, prepared) = prepare_edge_title(
             &title,
             measurer,
             text_style,
@@ -2501,6 +2550,11 @@ fn measure_class_diagram(
             mermaid_config,
             math_renderer,
         );
+        if let Some(label) = prepared {
+            prepared_labels
+                .edges_by_id
+                .insert(rel.id.clone(), ClassPreparedSvgEdgeLabel { label });
+        }
         let start_text = rel.relation_title_1.clone().unwrap_or_default();
         let end_text = rel.relation_title_2.clone().unwrap_or_default();
 
@@ -2562,6 +2616,7 @@ fn measure_class_diagram(
     Ok(MeasuredClassDiagram {
         graph: g,
         class_label_plans_by_id,
+        prepared_labels,
         node_label_metrics_by_id,
         namespace_label_metrics_by_id,
     })
@@ -2580,6 +2635,7 @@ fn layout_class_diagram_dagre(
     let MeasuredClassDiagram {
         graph,
         class_label_plans_by_id,
+        prepared_labels: _,
         node_label_metrics_by_id,
         namespace_label_metrics_by_id,
     } = measured;
@@ -4241,7 +4297,7 @@ mod tests {
             hide_empty_members_box: false,
             capture_row_metrics: true,
         };
-        let (_, _, plan) = super::class_box_dimensions(&node, &context);
+        let (_, _, plan, _) = super::class_box_dimensions(&node, &context);
         let Some(super::ClassNodeLabelPlan::RowMetrics(rows)) = plan else {
             panic!("expected SVG row metrics");
         };
@@ -4313,7 +4369,7 @@ mod tests {
             hide_empty_members_box: false,
             capture_row_metrics: true,
         };
-        let (_, _, plan) = super::class_box_dimensions(&node, &context);
+        let (_, _, plan, _) = super::class_box_dimensions(&node, &context);
         let Some(super::ClassNodeLabelPlan::PreparedHtml(labels)) = plan else {
             panic!("expected prepared HTML labels");
         };
@@ -4423,7 +4479,7 @@ mod tests {
             capture_row_metrics: false,
         };
 
-        let (width, _, _) = super::class_box_dimensions(&node, &context);
+        let (width, _, _, _) = super::class_box_dimensions(&node, &context);
 
         assert_eq!(width, 139.0);
     }

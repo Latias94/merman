@@ -90,6 +90,108 @@ fn assert_same_size(actual: &HtmlLabel, expected: &HtmlLabel) {
 }
 
 #[test]
+fn block_prepared_terminals_stay_private_and_need_no_emission_measurements() {
+    struct LayoutOnlyMeasurer {
+        emitting: std::sync::atomic::AtomicBool,
+    }
+
+    impl TextMeasurer for LayoutOnlyMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            assert!(
+                !self.emitting.load(std::sync::atomic::Ordering::Relaxed),
+                "Block emission must consume retained fragments and layout geometry: {text:?}"
+            );
+            merman_render::text::DeterministicTextMeasurer::default().measure(text, style)
+        }
+    }
+
+    let measurer = Arc::new(LayoutOnlyMeasurer {
+        emitting: std::sync::atomic::AtomicBool::new(false),
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("block-retained-terminals").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer.clone())),
+    );
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "block\n A[\"<b>Alpha</b><br/>Beta\"] -- \"A&amp;B\" --> B[\"Target\"]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(
+        parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let layout = &projection["layout"]["BlockDiagram"];
+    let fields = layout.as_object().expect("existing public Block layout");
+    assert!(fields.contains_key("nodes"));
+    assert!(fields.contains_key("edges"));
+    assert!(!fields.contains_key("prepared_labels"));
+    assert!(!layout.to_string().contains("xhtml"));
+    let _: merman_render::model::BlockDiagramLayout =
+        serde_json::from_value(layout.clone()).expect("unchanged Block layout schema");
+    measurer
+        .emitting
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    let output = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("emit retained Block terminals");
+    assert!(output.svg().contains("<b>Alpha</b>"));
+    let document = roxmltree::Document::parse(output.svg()).expect("well-formed Block SVG");
+    assert!(document.descendants().any(|node| node.has_tag_name("br")));
+    assert!(output.svg().contains("A&amp;B"));
+}
+
+#[test]
+fn block_retained_label_preparation_preserves_host_cancellation() {
+    struct CancellingMeasurer(merman_core::OperationControl);
+
+    impl TextMeasurer for CancellingMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.0.cancel();
+            merman_render::text::DeterministicTextMeasurer::default().measure(text, style)
+        }
+    }
+
+    let control = merman_core::OperationControl::new();
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("block-retained-cancellation").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(CancellingMeasurer(control.clone())),
+        )),
+    );
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "block\n A[\"<b>Cancel</b>\"]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let result = family::prepare(
+        parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        environment.begin_session_with_control(control).unwrap(),
+    );
+    let Err(merman_render::Error::Cancelled(error)) = result else {
+        panic!("Block preparation must retain host cancellation");
+    };
+    assert_eq!(error.phase, merman_core::OperationPhase::Layout);
+}
+
+#[test]
 fn block_html_node_and_edge_breaks_measure_the_emitted_lines() {
     let first = render_labels("AAAAAA", serde_json::json!({}));
     let second = render_labels("BBBBBB", serde_json::json!({}));

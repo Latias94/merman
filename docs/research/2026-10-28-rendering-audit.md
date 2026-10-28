@@ -77,8 +77,10 @@ math geometry out of browser templates into the existing prepared evidence
 transport. It does not introduce a universal text IR, scene graph, or CSS engine.
 Terminal SVG parsing still owns actual placement and final validation.
 
-Maintenance receives the independently reproduced correctness repairs. It does
-not receive main's prepared math evidence transport or family artifact redesign.
+Maintenance initially receives the independently reproduced correctness repairs.
+The subsequent ownership adaptation below also retains Class and Block terminals
+using maintenance's own family artifacts. It does not receive main's prepared
+math evidence transport or theme architecture.
 A Class backslash control also exposed a missing SVG Markdown escape-token rule
 in maintenance; the upstream browser controls retain the literal fallback and
 require a direct outer tspan without an inner styled word.
@@ -108,3 +110,45 @@ The final maintenance SVG comparison passes all 37 registered families in
 structure, parity and parity-root modes. The final CLI rebuild supplies the
 adjacent after exports; those files bind the exact committed renderer source and
 binary rather than relying on the earlier staged working copy.
+
+## Maintenance retained label ownership
+
+The later maintenance adaptation removes the remaining duplicate preparation of
+Class SVG titles/central relationship words and Block XHTML labels. Private
+family artifacts retain terminals alongside the existing semantic/layout pair.
+Class titles carry their measured geometry through Dagre and ELK; the writer
+consumes the retained words and metrics. Block sanitizes each source terminal
+once, measures that fragment, and emits the same fragment. Semantic edge indexes
+retain their association when some edges have no layout; repeated source node
+IDs use the existing writer's last-record ownership.
+
+This adaptation supersedes the earlier decision to limit maintenance to shared
+preparation rules. Public layout JSON and `ClassNodeLabelPlan` remain unchanged;
+no main theme machinery, math transport redesign, public resource limits or wire
+operations are introduced. Missing private preparations fail explicitly instead
+of silently rebuilding content during emission. The earlier direct CLI images
+remain bound to their recorded source revision and are not new-head exports.
+
+Independent Class and Block reviews cover HTML/math dispatch, namespace edge
+splitting, literal fallback, source ID ownership, semantic edge positions, and
+the existing cancellation/resource paths. The Block review identifies unused
+edge XHTML retention; preparation now occurs only after endpoint and nonempty
+label admission, with absent slots preserving the original semantic positions.
+
+All 1,819 final renderer library, Class layout/HTML/SVG/typography/DOM, Block
+HTML/SVG, and layout snapshot tests pass. Ownership controls forbid Class or
+Block text measurement during real SVG emission, verify retained Block content
+after source text mutation, and require missing preparations to fail explicitly.
+Class public projection checks cover Dagre/ELK and HTML/SVG; Block projection and
+host cancellation checks also pass. Existing exact Class layout-work budgets
+pass. No golden, residual receipt, comparator or tolerance changes are needed.
+
+Final all-target renderer Clippy passes with all diagrams, ELK, Cytoscape, and
+math under `-D warnings`. Class-only and Block-only library builds and cargo fmt
+also pass.
+
+The rebuilt release-mode SVG gate passes all 37 registered families in structure,
+parity, and parity-root modes at the existing three-decimal precision and exact
+browser-text residual policy. No fixture, golden, receipt or comparison rule is
+updated by this ownership adaptation. Remote CI remains separate qualification
+for the subsequently pushed revision.

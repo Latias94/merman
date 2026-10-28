@@ -619,7 +619,7 @@ pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
-) -> Result<model::ClassDiagramLayout> {
+) -> Result<(model::ClassDiagramLayout, class::ClassPreparedLabels)> {
     options
         .work_meter_ref()
         .preflight_class_complexity(model, OperationPhase::Layout)?;
@@ -797,6 +797,7 @@ mod tests {
             &LayoutExecution::new(options, session),
         )
         .expect("class layout")
+        .0
     }
 
     fn render_source(

@@ -754,6 +754,7 @@ pub(super) fn render_class_svg_node_body(
     position: ClassNodeRenderPosition,
     node: &ClassSvgNode,
     geometry: ClassNodeBoxGeometry,
+    prepared_title: &crate::class::ClassPreparedSvgTitle,
     ctx: &ClassSvgNodeBodyContext<'_>,
 ) -> ClassNodeRenderStats {
     let out = &mut *state.out;
@@ -762,23 +763,8 @@ pub(super) fn render_class_svg_node_body(
     let gap = padding;
     let text_padding = 3.0;
 
-    let source = node.text.trim();
-    let title_text = source.strip_prefix('\\').unwrap_or(source).to_string();
-    let title_markdown_analysis = crate::class::analyze_class_svg_markdown(&title_text);
-    let wrapped_title_text = if title_markdown_analysis.all_runs_normal() {
-        wrap_class_svg_text_like_mermaid(
-            &title_text,
-            ctx.measurer,
-            ctx.text_style,
-            ctx.html_calc_text_style,
-            ctx.wrap_probe_font_size,
-            false,
-        )
-    } else {
-        title_text.clone()
-    };
-    let title_label = crate::class::ClassSvgTitleLabel::new(&title_text, &wrapped_title_text);
-    let title_metrics = title_label.metrics(ctx.measurer, ctx.text_style);
+    let title_label = &prepared_title.label;
+    let title_metrics = prepared_title.metrics;
     // Annotation group: Mermaid only renders the first annotation.
     let mut annotation_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
     let mut annotation_rect: Option<Rect> = None;
@@ -937,7 +923,7 @@ pub(super) fn render_class_svg_node_body(
         out,
         adjusted_label_group_x,
         label_new_y,
-        &title_label,
+        title_label,
         &title_metrics,
     );
 
