@@ -1,10 +1,10 @@
 # Documentation Archive Index
 
 This index separates durable history from current guidance without turning documentation cleanup
-into a mass path migration. Public migration targets, CE plans, accepted ADRs, and useful
-historical evidence remain in the tree. A completed implementation journal may be removed only
-when it is explicitly complete, has no current inbound link, and its conclusion already has a
-current owner; Git history remains the archive for any such removed journal.
+into a mass path migration. Public migration targets, accepted ADRs, and useful historical
+evidence remain in the tree. Git history retains removed execution checklists, duplicate
+handoffs, and superseded status summaries. The current documentation map is
+[`README.md`](README.md).
 
 ## Current Destinations
 

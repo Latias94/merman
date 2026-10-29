@@ -30,6 +30,8 @@ pub(super) struct SequenceTextShadowApplication {
 #[derive(Clone, Copy)]
 pub(super) enum TextShadowBaseline {
     NoteMiddle,
+    NoteStart,
+    NoteEnd,
     Middle,
     MiddleStart,
     Alphabetic,
@@ -72,7 +74,7 @@ impl<'a> SequenceTextShadow<'a> {
         self.applications.get()
     }
 
-    /// These writers use middle anchors with distinct baselines. One em of
+    /// These writers use distinct text anchors and baselines. One em of
     /// additional paint space bounds the allocation, not arbitrary host font ink;
     /// native export independently checks actual glyph containment.
     #[allow(clippy::too_many_arguments)]
@@ -105,14 +107,16 @@ impl<'a> SequenceTextShadow<'a> {
         let x = crate::number_format::canonicalize_number(x);
         let y = crate::number_format::canonicalize_number(y);
         let center_y = match baseline {
-            TextShadowBaseline::NoteMiddle => y + em,
+            TextShadowBaseline::NoteMiddle
+            | TextShadowBaseline::NoteStart
+            | TextShadowBaseline::NoteEnd => y + em,
             TextShadowBaseline::Middle | TextShadowBaseline::MiddleStart => y,
             TextShadowBaseline::Alphabetic => y - height / 2.0,
         };
-        let left = if matches!(baseline, TextShadowBaseline::MiddleStart) {
-            x
-        } else {
-            x - width / 2.0
+        let left = match baseline {
+            TextShadowBaseline::MiddleStart | TextShadowBaseline::NoteStart => x,
+            TextShadowBaseline::NoteEnd => x - width,
+            _ => x - width / 2.0,
         };
         // A native fallback face can change advances across the whole line. Allocate one
         // additional measured line width on each side, rather than a fixed em allowance that

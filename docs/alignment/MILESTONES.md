@@ -133,4 +133,4 @@ For the prioritized gap list and execution plan, see:
 ## Release notes
 
 - The cross-channel workflow is [`../release/RELEASING.md`](../release/RELEASING.md).
-- The Cargo-specific gate summary is [`../releasing/PUBLISHING.md`](../releasing/PUBLISHING.md).
+- Cargo dependency ordering and package checks are in [Publish order](../release/PUBLISH_ORDER.md#publish-order).

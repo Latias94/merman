@@ -1,26 +1,16 @@
 # ASCII Architecture Deepening — Evidence And Gates
 
-Status: Active
-Last updated: 2026-06-02
+Status: Completed
+Last updated: 2026-10-29
 
-## Smallest Current Repro
+AAD-010 through AAD-100 are complete. The commands and results below preserve the implementation
+checks recorded through 2026-06-26; they are not fresh checks of the current source. The
+[design](DESIGN.md) retains the architectural rationale, and the dated [journal](JOURNAL/) retains
+the detailed investigations. Current support and remaining gaps belong to the
+[ASCII crate documentation](../../../crates/merman-ascii/README.md) and
+[gap registry](../../../crates/merman-ascii/ASCII_GAP_REGISTRY.md).
 
-```bash
-cargo nextest run -p merman-ascii canvas color
-```
-
-This is the first gate because the styled text/cell module should preserve role-aware rendering
-before higher-level families migrate to it.
-
-## Gate Set
-
-### Workstream Document Gate
-
-```bash
-git diff --check -- docs/workstreams/ascii-architecture-deepening
-```
-
-Proves the lane docs are syntactically clean before implementation starts.
+## Recorded Gate Set
 
 ### Styled Text/Cell Gate
 
@@ -53,8 +43,8 @@ Proves the shipped local-direction subset and copied-fixture inventory stay cons
 cargo nextest run -p merman-ascii flowchart subgraph
 ```
 
-Proves cross-boundary mixed-direction routing slices with parser-backed subgraph fixtures and
-targeted route-plan tests once M8 work lands.
+Recorded for cross-boundary mixed-direction routing slices with parser-backed subgraph fixtures
+and targeted route-plan tests in AAD-090.
 
 ### Relation Graph Gate
 
@@ -90,19 +80,6 @@ git diff --check
 
 Proves formatting, lint cleanliness, and whitespace hygiene.
 
-### Review Gate
-
-Run `review-workstream` before accepting lane completion. Record blocking findings, missing gates,
-and residual risks in this file or a journal note.
-
-## Evidence Anchors
-
-- `docs/workstreams/ascii-architecture-deepening/DESIGN.md`
-- `docs/workstreams/ascii-architecture-deepening/TODO.md`
-- `docs/workstreams/ascii-architecture-deepening/MILESTONES.md`
-- `docs/workstreams/ascii-architecture-deepening/HANDOFF.md`
-- `docs/workstreams/ascii-architecture-deepening/WORKSTREAM.json`
-
 ## Evidence Log
 
 - 2026-05-30 — AAD-010 started. Workstream opened for the five ASCII architecture deepening targets.
@@ -136,11 +113,16 @@ and residual risks in this file or a journal note.
 - 2026-06-01 — AAD-080 resumed the lane to ship the first honest `FlowSubgraph.dir` subset:
   canonical `LR` subgraphs inside canonical `TD` roots for fully internal routed edges.
   Passed `cargo nextest run -p merman-ascii flowchart subgraph`,
-  `cargo nextest run -p merman-ascii graph_fixture`, and `git diff --check`.
+  `cargo nextest run -p merman-ascii graph_fixture`, and `git diff --check`. The subset landed in
+  commit `3dbd5a3b0`.
 - 2026-06-02 — Investigated cross-boundary mixed-direction routing against
   `repo-ref/beautiful-mermaid/src/layout-engine.ts`. Confirmed the next durable step is a boundary
   routing seam rather than more layout heuristics. Experimental layout-only attempts were discarded
   instead of being kept as unstable debt.
+- AAD-090's completed routing seam uses explicit `DrawEdgeRequest` and `GridRouteOptions` request
+  objects, boundary classification and segment markers, parser-backed boundary fixtures, and
+  planned canvas extents. The completed task record describes this bounded scope; it does not
+  establish unrestricted mixed-direction parity.
 - 2026-06-02 — Added route-plan coverage for TD same-rank merge edges and Unicode turn-glyph
   direction correctness after a reported flowchart branch/merge regression. Added parser-backed
   coverage for `flowchart TD` branch merging so the `B -->|No| D` bend uses a connected `┐` and
@@ -167,10 +149,12 @@ and residual risks in this file or a journal note.
   emits node `labelType=markdown` while the checked-in golden still expects `text`.
 - 2026-06-26 — AAD-100 removed the duplicate graph route extent helper. `RoutePlan` now owns the
   canvas extent derived from selected route cells, planned labels, and explicit route-family minimum
-  extents for back-lane width contracts. Passed `cargo nextest run -p merman-ascii`,
+  extents for back-lane width contracts, rather than global right padding. Commit `a48417a8e`.
+  Passed `cargo nextest run -p merman-ascii`,
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`, and `git diff --check`.
 - 2026-06-26 — AAD-100 introduced `graph::topology::GraphGroupTopology` so routing boundary
   classification and group layout share group id, node membership, recursive member, and nesting
-  depth lookup instead of rebuilding local parent/member maps. Passed `cargo nextest run -p
+  depth lookup instead of rebuilding local parent/member maps. Commit `3c1ee58c1`.
+  Passed `cargo nextest run -p
   merman-ascii`, `cargo clippy -p merman-ascii --all-targets -- -D warnings`, and
   `git diff --check`.

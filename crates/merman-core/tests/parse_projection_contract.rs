@@ -281,6 +281,118 @@ fn every_catalog_family_and_alias_has_paired_lossless_projection_or_unavailable_
 }
 
 #[test]
+fn every_catalog_family_and_alias_admits_configuration_with_the_same_precedence() {
+    use merman_core::presentation::PresentationConfig;
+    use merman_core::{OperationControl, PresentationMetadata};
+    use serde_json::json;
+
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
+    for fact in diagram_family_capabilities() {
+        let fixture = std::fs::read_to_string(
+            fixtures.join(fixture_for(fact.diagram_type, fact.logical_family_kind)),
+        )
+        .expect("read legal family sample");
+        let body = merman_core::preprocess::split_frontmatter_block(&fixture)
+            .map_or(fixture.as_str(), |block| block.stripped);
+        let mut site = json!({
+            "theme": "dark", "fontFamily": "SiteFamily", "securityLevel": "strict",
+            "secure": ["securityLevel", "maxTextSize"]
+        });
+        let mut init = json!({
+            "theme": "neutral", "fontFamily": "InitFamily", "securityLevel": "loose",
+            "secure": [], "maxTextSize": 1
+        });
+        let mut frontmatter = String::from(
+            "---\nconfig:\n  theme: forest\n  fontFamily: FrontFamily\n  securityLevel: loose\n  secure: []\n  maxTextSize: 1\n",
+        );
+        if let Some(namespace) = fact.config_namespace {
+            site[namespace] = json!({"useMaxWidth": true, "padding": 11});
+            init[namespace] = json!({"useMaxWidth": false});
+            frontmatter.push_str(&format!(
+                "  {namespace}:\n    useMaxWidth: true\n    padding: 23\n"
+            ));
+        }
+        let source = format!("{frontmatter}---\n%%{{init: {init}}}%%\n{body}");
+        let engine = deterministic_engine().with_site_config(PresentationConfig::from_value(site));
+        let assert_config = |meta: &PresentationMetadata| {
+            let authored = meta.config.as_value();
+            let effective = meta.effective_config.as_value();
+            assert_eq!(authored["theme"], "neutral", "{}", fact.diagram_type);
+            assert_eq!(
+                authored["fontFamily"], "InitFamily",
+                "{}",
+                fact.diagram_type
+            );
+            assert!(authored.get("secure").is_none(), "{}", fact.diagram_type);
+            assert!(
+                authored.get("securityLevel").is_none(),
+                "{}",
+                fact.diagram_type
+            );
+            assert!(
+                authored.get("maxTextSize").is_none(),
+                "{}",
+                fact.diagram_type
+            );
+            assert_eq!(effective["theme"], "neutral", "{}", fact.diagram_type);
+            assert_eq!(
+                effective["fontFamily"], "InitFamily",
+                "{}",
+                fact.diagram_type
+            );
+            assert_eq!(
+                effective["securityLevel"], "strict",
+                "{}",
+                fact.diagram_type
+            );
+            if let Some(namespace) = fact.config_namespace {
+                // Selected Mermaid filters these init namespaces; their frontmatter survives.
+                let use_max_width = matches!(namespace, "zenuml" | "wardley-beta");
+                assert_eq!(
+                    authored[namespace]["useMaxWidth"], use_max_width,
+                    "{}",
+                    fact.diagram_type
+                );
+                assert_eq!(
+                    effective[namespace]["useMaxWidth"], use_max_width,
+                    "{}",
+                    fact.diagram_type
+                );
+                assert_eq!(effective[namespace]["padding"], 23, "{}", fact.diagram_type);
+            }
+        };
+        assert_config(
+            &engine
+                .parse_metadata_sync(&source)
+                .expect("detected metadata"),
+        );
+        assert_config(
+            &engine
+                .parse_metadata_with_type_sync(fact.diagram_type, &source)
+                .expect("known metadata"),
+        );
+        if fact.has_semantic_parser {
+            let semantic = engine
+                .parse_diagram_with_type_sync(fact.diagram_type, &source, ParseOptions::strict())
+                .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram_type))
+                .expect("legal sample");
+            assert_config(&semantic.meta);
+            let render = engine
+                .parse_diagram_for_render_model_with_type_controlled_sync(
+                    fact.diagram_type,
+                    &source,
+                    ParseOptions::strict(),
+                    &OperationControl::new(),
+                )
+                .expect("active operation")
+                .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram_type))
+                .expect("legal sample");
+            assert_config(render.metadata());
+        }
+    }
+}
+
+#[test]
 fn authored_configuration_labels_accessibility_links_styles_and_warnings_are_lossless() {
     let engine = deterministic_engine();
     let sources = [

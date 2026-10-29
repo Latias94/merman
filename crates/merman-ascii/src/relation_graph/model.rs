@@ -9,8 +9,6 @@ use crate::safe_text::{
     NormalizedLabelPlan, try_plan_normalized_label_lines,
 };
 use crate::text::StyledLine;
-#[cfg(test)]
-use crate::text::display_width_with_profile;
 use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -544,30 +542,6 @@ impl RelationGraphLine {
         Ok(Self::from_styled(line))
     }
 
-    #[cfg(test)]
-    pub(crate) fn box_content(
-        text: &str,
-        content_width: usize,
-        padding: usize,
-        style: RelationGraphBoxStyle,
-        width_profile: TerminalWidthProfile,
-        resources: &ResourceContext,
-    ) -> Result<Self> {
-        let text_width = display_width_with_profile(text, width_profile);
-        let used_width = resources.checked_grid_add(padding, text_width)?;
-        let trailing = content_width
-            .checked_sub(used_width)
-            .ok_or_else(|| grid_overflow(resources))?;
-
-        let mut line = StyledLine::with_resources(width_profile, resources);
-        line.try_push_role_char(style.vertical, style.border_role)?;
-        line.try_push_spaces(padding)?;
-        line.try_push_role_text(text, style.text_role)?;
-        line.try_push_spaces(trailing)?;
-        line.try_push_role_char(style.vertical, style.border_role)?;
-        Ok(Self::from_styled(line))
-    }
-
     pub(crate) fn deferred_box_content(
         text: &DeferredTextLine,
         content_width: usize,
@@ -669,78 +643,6 @@ impl RelationGraphBox {
         let width = lines.iter().map(line_char_width).max().unwrap_or(0);
         let extent = resources.grid_extent(width, lines.len())?;
         resources.charge_layout_work(extent.cells())?;
-        Ok(Self::new_with_lines(id, lines, width, width_profile))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_sections(
-        id: String,
-        sections: &[Vec<String>],
-        padding: usize,
-        style: RelationGraphBoxStyle,
-        width_profile: TerminalWidthProfile,
-        resources: &mut ResourceContext,
-    ) -> Result<Self> {
-        let content_width =
-            sectioned_box_content_width(sections, padding, width_profile, resources)?;
-        let separator_count = sections.len().saturating_sub(1);
-        let text_line_count = sections.iter().try_fold(0usize, |total, section| {
-            resources.checked_grid_add(total, section.len())
-        })?;
-        let height = resources.checked_grid_add(
-            resources.checked_grid_add(text_line_count, separator_count)?,
-            2,
-        )?;
-        let width = resources.checked_grid_add(content_width, 2)?;
-        let extent = resources.grid_extent(width, height)?;
-        resources.charge_layout_work(extent.cells())?;
-        let mut lines = Vec::new();
-        lines
-            .try_reserve_exact(height)
-            .map_err(|_| layout_allocation_failed())?;
-
-        lines.push(RelationGraphLine::try_box_border(
-            style.top_left,
-            style.top_right,
-            style.horizontal,
-            content_width,
-            style.border_role,
-            width_profile,
-            resources,
-        )?);
-        for (section_index, section) in sections.iter().enumerate() {
-            if section_index > 0 {
-                lines.push(RelationGraphLine::try_box_border(
-                    style.separator_left,
-                    style.separator_right,
-                    style.horizontal,
-                    content_width,
-                    style.border_role,
-                    width_profile,
-                    resources,
-                )?);
-            }
-            for line in section {
-                lines.push(RelationGraphLine::box_content(
-                    line,
-                    content_width,
-                    padding,
-                    style,
-                    width_profile,
-                    resources,
-                )?);
-            }
-        }
-        lines.push(RelationGraphLine::try_box_border(
-            style.bottom_left,
-            style.bottom_right,
-            style.horizontal,
-            content_width,
-            style.border_role,
-            width_profile,
-            resources,
-        )?);
-
         Ok(Self::new_with_lines(id, lines, width, width_profile))
     }
 
@@ -866,24 +768,6 @@ impl RelationGraphBox {
         }
         Ok(())
     }
-}
-
-#[cfg(test)]
-fn sectioned_box_content_width(
-    sections: &[Vec<String>],
-    padding: usize,
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-) -> Result<usize> {
-    let max_line_width = sections
-        .iter()
-        .flat_map(|section| section.iter())
-        .map(|line| display_width_with_profile(line, width_profile))
-        .max()
-        .unwrap_or(0)
-        .max(1);
-    let total_padding = resources.checked_grid_mul(padding, 2)?;
-    resources.checked_grid_add(max_line_width, total_padding)
 }
 
 fn line_char_width(line: &RelationGraphLine) -> usize {

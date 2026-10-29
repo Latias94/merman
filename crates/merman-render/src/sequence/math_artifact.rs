@@ -18,6 +18,7 @@ use super::SequenceTerminalTextStyle;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum SequenceMathOccurrence {
     Actor(usize),
+    HiddenActor(usize),
     Message(usize),
     Note(usize),
     BlockLabel(String),
@@ -27,7 +28,7 @@ impl SequenceMathOccurrence {
     fn retained_bytes(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(match self {
             Self::BlockLabel(label) => label.len(),
-            Self::Actor(_) | Self::Message(_) | Self::Note(_) => 0,
+            Self::Actor(_) | Self::HiddenActor(_) | Self::Message(_) | Self::Note(_) => 0,
         })
     }
 
@@ -36,6 +37,11 @@ impl SequenceMathOccurrence {
             Self::Actor(index) => PreparedMathOccurrenceId::indexed(
                 crate::DiagramFamilyId::SEQUENCE,
                 "actor-label",
+                *index,
+            ),
+            Self::HiddenActor(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::SEQUENCE,
+                "hidden-actor-label",
                 *index,
             ),
             Self::Message(index) => PreparedMathOccurrenceId::indexed(
@@ -352,6 +358,7 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
         // the occurrence marker; they must not be able to manufacture their own expectation.
         let expected_terminal_emissions = match &occurrence {
             SequenceMathOccurrence::Actor(_) => self.actor_terminal_emissions,
+            SequenceMathOccurrence::HiddenActor(_) => 0,
             SequenceMathOccurrence::Message(_)
             | SequenceMathOccurrence::Note(_)
             | SequenceMathOccurrence::BlockLabel(_) => 1,
@@ -714,6 +721,15 @@ mod tests {
         assert!(
             builder
                 .prepare(
+                    SequenceMathOccurrence::HiddenActor(0),
+                    "$$hidden$$",
+                    terminal(&TextStyle::default()),
+                )
+                .is_none()
+        );
+        assert!(
+            builder
+                .prepare(
                     SequenceMathOccurrence::Actor(0),
                     "$$x$$",
                     terminal(&TextStyle::default()),
@@ -722,6 +738,10 @@ mod tests {
         );
 
         let sidecar = builder.finish().expect("declined mirrored actor sidecar");
+        assert_eq!(
+            sidecar.entries[&SequenceMathOccurrence::HiddenActor(0)].expected_terminal_emissions,
+            0
+        );
         let evidence = sidecar.prepared_math_evidence();
         assert_eq!(evidence.entries().len(), 1);
         assert_eq!(evidence.entries()[0].expected_emissions(), 2);

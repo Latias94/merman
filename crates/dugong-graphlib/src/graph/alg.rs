@@ -244,16 +244,18 @@ where
     }
 
     let mut cycles: Vec<Vec<String>> = Vec::new();
+    let mut node_order: Option<BTreeMap<&str, usize>> = None;
     for mut scc in tarjan.sccs {
         if scc.len() > 1 {
-            // Deterministic node order: use original insertion order.
-            let order: BTreeMap<String, usize> = node_ids
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (v, i))
-                .collect();
-            scc.sort_by_key(|v| order.get(v).copied().unwrap_or(usize::MAX));
+            // Share the original node order across SCCs; singleton components need no index.
+            let order = node_order.get_or_insert_with(|| {
+                node_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (v.as_str(), i))
+                    .collect()
+            });
+            scc.sort_by_key(|v| order.get(v.as_str()).copied().unwrap_or(usize::MAX));
             cycles.push(scc);
         } else {
             let v = &scc[0];

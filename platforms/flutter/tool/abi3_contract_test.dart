@@ -1583,6 +1583,47 @@ void decodesTypedOperationMetadata() {
     'generated metadata decoder must project PDF filter-image plans',
   );
 
+  for (final field in const [
+    'byte_length',
+    'filtered_groups',
+    'requested_image_pixels',
+    'effective_image_pixels',
+  ]) {
+    for (final (value, accepted) in const [
+      (-1, false),
+      (1.5, false),
+      (0x100000000, true),
+    ]) {
+      final metadata = jsonDecode(pdf.rawJson) as Map<String, Object?>;
+      final fields = field == 'byte_length'
+          ? metadata
+          : metadata['output_plan'] as Map<String, Object?>;
+      fields[field] = value;
+      if (!accepted) {
+        _expectThrows<FormatException>(
+          () => binding.decodeMermanOperationMetadata(jsonEncode(metadata)),
+        );
+        continue;
+      }
+
+      final decoded = binding.decodeMermanOperationMetadata(
+        jsonEncode(metadata),
+      );
+      final plan = decoded.outputPlan as MermanPdfFilterImagesOutputPlan;
+      final actual = switch (field) {
+        'byte_length' => decoded.byteLength,
+        'filtered_groups' => plan.filteredGroups,
+        'requested_image_pixels' => plan.requestedImagePixels,
+        'effective_image_pixels' => plan.effectiveImagePixels,
+        _ => throw StateError('unexpected metadata field: $field'),
+      };
+      _expect(
+        actual == value,
+        '$field must retain integers above uint32 range',
+      );
+    }
+  }
+
   final unknown = binding.decodeMermanOperationMetadata(
     jsonEncode({
       'version': 1,
@@ -1614,27 +1655,23 @@ void decodesTypedOperationMetadata() {
       '{"version":1,"operation_id":"png"}',
     ),
   );
-  _expectThrows<FormatException>(
-    () => binding.decodeMermanOperationMetadata(
-      jsonEncode({
-        'version': 1,
-        'operation_id': 'png',
-        'media_type': 'image/png',
-        'runtime_policy': 'deterministic',
-        'byte_length': 1,
-        'output_plan': {
-          'kind': 'raster',
-          'requested_width_px': 1.0,
-          'requested_height_px': 1.0,
-          'width_px': 0x100000000,
-          'height_px': 1,
-          'requested_scale': 1.0,
-          'effective_scale': 1.0,
-          'limited': false,
-        },
-      }),
-    ),
-  );
+  for (final field in const ['version', 'width_px', 'height_px']) {
+    final metadata = jsonDecode(raster.rawJson) as Map<String, Object?>;
+    final fields = field == 'version'
+        ? metadata
+        : metadata['output_plan'] as Map<String, Object?>;
+    fields[field] = 0x100000000;
+    try {
+      binding.decodeMermanOperationMetadata(jsonEncode(metadata));
+      throw StateError('$field must reject integers above uint32 range');
+    } on FormatException catch (error) {
+      _expect(
+        error.message ==
+            'operation metadata field `$field` exceeds unsigned 32-bit range',
+        '$field must report uint32 overflow from its integer decoder',
+      );
+    }
+  }
 }
 
 void preservesCompleteRuntimeResourceContract() {

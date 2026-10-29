@@ -185,6 +185,7 @@ pub(crate) struct SequenceBoxLayout {
 #[derive(Debug)]
 pub(crate) struct SequencePreparedArtifact {
     layout: SequenceDiagramLayout,
+    visible_model: Option<Box<SequenceDiagramModel>>,
     actor_popup_widths: HashMap<String, f64>,
     message_metrics: SequenceMessageMetricSidecar,
     box_layouts: Vec<SequenceBoxLayout>,
@@ -204,6 +205,13 @@ pub(crate) struct SequencePreparedArtifact {
 }
 
 impl SequencePreparedArtifact {
+    pub(crate) fn model_for_render<'a>(
+        &'a self,
+        source: &'a SequenceDiagramModel,
+    ) -> &'a SequenceDiagramModel {
+        self.visible_model.as_deref().unwrap_or(source)
+    }
+
     pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
         &self.effect_evidence
     }
@@ -567,6 +575,15 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
     work_meter.charge(work_units)?;
 
+    let source_actor_order = model.actor_order.as_slice();
+    let visible_model =
+        if effective_config.get_bool("sequence.hideUnusedParticipants") == Some(true) {
+            sequence_visible_model(model, checkpoints)?
+        } else {
+            None
+        };
+    let model = visible_model.as_deref().unwrap_or(model);
+
     let typography = Arc::new(SequenceTypographyPlan::resolve(
         effective_config,
         resolved_theme,
@@ -618,6 +635,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         message_metrics,
     } = plan_sequence_actors(SequenceActorLayoutPlanContext {
         model,
+        source_actor_order,
         measurer,
         actor_text_style: &settings.actor_text_style,
         note_text_style: &settings.note_text_style,
@@ -769,6 +787,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
 
     let css = SequencePreparedCss::resolve(&typography, &terminal_theme);
     Ok(SequencePreparedArtifact {
+        visible_model,
         layout: SequenceDiagramLayout {
             nodes,
             edges,
@@ -793,6 +812,45 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         box_title_height,
         box_height,
     })
+}
+
+fn sequence_visible_model(
+    model: &SequenceDiagramModel,
+    checkpoints: SequenceLayoutCheckpoints<'_>,
+) -> Result<Option<Box<SequenceDiagramModel>>> {
+    // Mermaid counts endpoints from every message, including notes and activation records.
+    let mut used = rustc_hash::FxHashSet::default();
+    for (index, message) in model.messages.iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        used.extend(message.from.as_deref());
+        used.extend(message.to.as_deref());
+    }
+    let mut hidden = false;
+    for (index, id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        hidden |= !used.contains(id.as_str());
+    }
+    if !hidden {
+        return Ok(None);
+    }
+
+    // Retain the message allocation with its metric sidecar through layout and SVG emission.
+    // Source actor order and parser-owned lifecycle data remain untouched.
+    let mut visible = Box::new(model.clone());
+    visible.actor_order.retain(|id| used.contains(id.as_str()));
+    if let Some(lifecycles) = &mut visible.actor_lifecycles {
+        let mut index = 0;
+        lifecycles.retain(|_| {
+            let keep = model
+                .actor_order
+                .get(index)
+                .is_some_and(|id| used.contains(id.as_str()));
+            index += 1;
+            keep
+        });
+    }
+    checkpoints.checkpoint()?;
+    Ok(Some(visible))
 }
 
 pub(crate) fn sequence_render_title<'a>(

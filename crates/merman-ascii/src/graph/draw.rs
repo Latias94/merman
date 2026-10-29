@@ -332,14 +332,7 @@ fn paint_graph_render_controlled(
         }
         for layout in &graph_layout.nodes {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            draw_node_with_execution(
-                &mut surface,
-                layout,
-                &charset,
-                options,
-                &layout_policy,
-                execution,
-            )?;
+            draw_node_with_execution(&mut surface, layout, &charset, &layout_policy, execution)?;
         }
     }
 
@@ -417,60 +410,50 @@ fn draw_node_with_execution(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
     layout_policy: &GraphLayoutPolicy,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     paint_node_background_with_execution(canvas, layout, execution)?;
     let mut surface = CooperativeSurface::new(canvas, execution);
-    draw_node_foreground(&mut surface, layout, charset, options, layout_policy)
+    draw_node_foreground(&mut surface, layout, charset, layout_policy)
 }
 
 fn draw_node_foreground(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
     layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     match layout.shape {
-        GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
-        GraphNodeShape::StateWithTitle => draw_rect_node(canvas, layout, charset, options),
-        GraphNodeShape::Rounded => draw_rounded_node(canvas, layout, charset, options),
-        GraphNodeShape::Circle => draw_circle_node(canvas, layout, charset, options),
-        GraphNodeShape::Stadium => draw_stadium_node(canvas, layout, charset, options),
-        GraphNodeShape::DoubleCircle => draw_double_circle_node(canvas, layout, charset, options),
-        GraphNodeShape::Diamond => draw_diamond_node(canvas, layout, charset, options),
-        GraphNodeShape::Subroutine => {
-            draw_subroutine_node(canvas, layout, charset, options, layout_policy)
-        }
-        GraphNodeShape::Cylinder => {
-            draw_cylinder_node(canvas, layout, charset, options, layout_policy)
-        }
-        GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset, options),
-        GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options),
+        GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset),
+        GraphNodeShape::StateWithTitle => draw_rect_node(canvas, layout, charset),
+        GraphNodeShape::Rounded => draw_rounded_node(canvas, layout, charset),
+        GraphNodeShape::Circle => draw_circle_node(canvas, layout, charset),
+        GraphNodeShape::Stadium => draw_stadium_node(canvas, layout, charset),
+        GraphNodeShape::DoubleCircle => draw_double_circle_node(canvas, layout, charset),
+        GraphNodeShape::Diamond => draw_diamond_node(canvas, layout, charset),
+        GraphNodeShape::Subroutine => draw_subroutine_node(canvas, layout, charset, layout_policy),
+        GraphNodeShape::Cylinder => draw_cylinder_node(canvas, layout, charset, layout_policy),
+        GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset),
+        GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset),
         GraphNodeShape::ManualInput => draw_manual_input_node(canvas, layout, charset),
-        GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset, options),
+        GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset),
         GraphNodeShape::BowTie => draw_bow_tie_node(canvas, layout, charset),
-        GraphNodeShape::Document => draw_document_node(canvas, layout, charset, options),
-        GraphNodeShape::StackedDocument => {
-            draw_stacked_document_node(canvas, layout, charset, options)
-        }
-        GraphNodeShape::LinedDocument => draw_lined_document_node(canvas, layout, charset, options),
-        GraphNodeShape::TaggedDocument => {
-            draw_tagged_document_node(canvas, layout, charset, options)
-        }
-        GraphNodeShape::StackedRect => draw_stacked_rect_node(canvas, layout, charset, options),
-        GraphNodeShape::LinedRect => draw_lined_rect_node(canvas, layout, charset, options),
-        GraphNodeShape::TaggedRect => draw_tagged_rect_node(canvas, layout, charset, options),
-        GraphNodeShape::PaperTape => draw_paper_tape_node(canvas, layout, charset, options),
+        GraphNodeShape::Document => draw_document_node(canvas, layout, charset),
+        GraphNodeShape::StackedDocument => draw_stacked_document_node(canvas, layout, charset),
+        GraphNodeShape::LinedDocument => draw_lined_document_node(canvas, layout, charset),
+        GraphNodeShape::TaggedDocument => draw_tagged_document_node(canvas, layout, charset),
+        GraphNodeShape::StackedRect => draw_stacked_rect_node(canvas, layout, charset),
+        GraphNodeShape::LinedRect => draw_lined_rect_node(canvas, layout, charset),
+        GraphNodeShape::TaggedRect => draw_tagged_rect_node(canvas, layout, charset),
+        GraphNodeShape::PaperTape => draw_paper_tape_node(canvas, layout, charset),
         GraphNodeShape::Text => Ok(()),
-        GraphNodeShape::Hexagon => draw_hexagon_node(canvas, layout, charset, options),
-        GraphNodeShape::Asymmetric => draw_asymmetric_node(canvas, layout, charset, options),
-        GraphNodeShape::Trapezoid => draw_trapezoid_node(canvas, layout, charset, options),
-        GraphNodeShape::TrapezoidAlt => draw_trapezoid_alt_node(canvas, layout, charset, options),
-        GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset, options),
-        GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset, options),
+        GraphNodeShape::Hexagon => draw_hexagon_node(canvas, layout, charset),
+        GraphNodeShape::Asymmetric => draw_asymmetric_node(canvas, layout, charset),
+        GraphNodeShape::Trapezoid => draw_trapezoid_node(canvas, layout, charset),
+        GraphNodeShape::TrapezoidAlt => draw_trapezoid_alt_node(canvas, layout, charset),
+        GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset),
+        GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset),
         GraphNodeShape::ForkJoinHorizontal => draw_fork_join_node(canvas, layout, charset, false),
         GraphNodeShape::ForkJoinVertical => draw_fork_join_node(canvas, layout, charset, true),
         GraphNodeShape::Choice => draw_choice_node(canvas, layout),
@@ -741,7 +724,6 @@ fn draw_rect_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     let right = layout.right();
     let bottom = layout.bottom();
@@ -761,20 +743,18 @@ fn draw_rect_node(
         set_node_border(canvas, right, y, charset.vertical, layout.style)?;
     }
 
-    write_centered_label(canvas, layout, options)
+    Ok(())
 }
 
 fn draw_rounded_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: charset.rounded_top_left,
             top_right: charset.rounded_top_right,
@@ -788,13 +768,11 @@ fn draw_circle_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: if charset.unicode { '◯' } else { 'o' },
             top_right: if charset.unicode { '◯' } else { 'o' },
@@ -808,7 +786,6 @@ fn draw_stadium_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     let corners = if layout.height == 3 || !charset.unicode {
         RoundedCorners {
@@ -826,20 +803,18 @@ fn draw_stadium_node(
         }
     };
 
-    draw_node_with_corners(canvas, layout, charset, options, corners)
+    draw_node_with_corners(canvas, layout, charset, corners)
 }
 
 fn draw_double_circle_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: if charset.unicode { '◎' } else { '@' },
             top_right: if charset.unicode { '◎' } else { '@' },
@@ -861,7 +836,6 @@ fn draw_node_with_corners(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
     corners: RoundedCorners,
 ) -> Result<()> {
     let right = layout.right();
@@ -882,14 +856,13 @@ fn draw_node_with_corners(
         set_node_border(canvas, right, y, charset.vertical, layout.style)?;
     }
 
-    write_centered_label(canvas, layout, options)
+    Ok(())
 }
 
 fn draw_diamond_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     let right = layout.right();
     let bottom = layout.bottom();
@@ -957,17 +930,16 @@ fn draw_diamond_node(
         set_node_border(canvas, x, bottom, charset.horizontal, layout.style)?;
     }
 
-    write_centered_label(canvas, layout, options)
+    Ok(())
 }
 
 fn draw_subroutine_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
     layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
+    draw_rect_node(canvas, layout, charset)?;
     if layout.width > 3 {
         let decoration_inset = 1 + usize::from(layout_policy.node_padding_x > 0);
         let left_inner = layout.x + decoration_inset;
@@ -981,17 +953,16 @@ fn draw_subroutine_node(
             canvas.set(x, text_y, ' ')?;
         }
     }
-    write_centered_label(canvas, layout, options)
+    Ok(())
 }
 
 fn draw_cylinder_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
     layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
-    draw_rounded_node(canvas, layout, charset, options)?;
+    draw_rounded_node(canvas, layout, charset)?;
     if layout.height > 3 {
         for x in (layout.x + 1)..layout.right() {
             set_node_border(canvas, x, layout.y + 1, charset.horizontal, layout.style)?;
@@ -1001,14 +972,13 @@ fn draw_cylinder_node(
     for x in (layout.x + 1)..layout.right() {
         canvas.set(x, text_y, ' ')?;
     }
-    write_centered_label(canvas, layout, options)
+    Ok(())
 }
 
 fn draw_lean_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     let lean_right = layout.shape == GraphNodeShape::LeanRight;
     let top = layout.y;
@@ -1099,16 +1069,15 @@ fn draw_lean_node(
         }
     }
 
-    write_centered_label(canvas, layout, options)
+    Ok(())
 }
 
 fn draw_datastore_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
+    draw_rect_node(canvas, layout, charset)?;
 
     let right = layout.right();
     for y in (layout.y + 1)..layout.bottom() {
@@ -1122,9 +1091,8 @@ fn draw_document_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
+    draw_rect_node(canvas, layout, charset)?;
 
     let bottom = layout.bottom();
     let fold_start = layout.right().saturating_sub(2);
@@ -1139,9 +1107,8 @@ fn draw_stacked_rect_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
+    draw_rect_node(canvas, layout, charset)?;
     draw_stacked_decorator(canvas, layout, charset)
 }
 
@@ -1149,9 +1116,8 @@ fn draw_lined_rect_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
+    draw_rect_node(canvas, layout, charset)?;
     draw_lined_decorator(canvas, layout, charset)
 }
 
@@ -1159,9 +1125,8 @@ fn draw_tagged_rect_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
+    draw_rect_node(canvas, layout, charset)?;
     draw_tagged_decorator(canvas, layout)
 }
 
@@ -1169,9 +1134,8 @@ fn draw_stacked_document_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_document_node(canvas, layout, charset, options)?;
+    draw_document_node(canvas, layout, charset)?;
     draw_stacked_decorator(canvas, layout, charset)
 }
 
@@ -1179,9 +1143,8 @@ fn draw_lined_document_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_document_node(canvas, layout, charset, options)?;
+    draw_document_node(canvas, layout, charset)?;
     draw_lined_decorator(canvas, layout, charset)
 }
 
@@ -1189,9 +1152,8 @@ fn draw_tagged_document_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_document_node(canvas, layout, charset, options)?;
+    draw_document_node(canvas, layout, charset)?;
     draw_tagged_decorator(canvas, layout)
 }
 
@@ -1297,9 +1259,8 @@ fn draw_paper_tape_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
+    draw_rect_node(canvas, layout, charset)?;
     for x in (layout.x + 1)..layout.right() {
         set_node_border(canvas, x, layout.y, '~', layout.style)?;
         set_node_border(canvas, x, layout.bottom(), '~', layout.style)?;
@@ -1311,13 +1272,11 @@ fn draw_hexagon_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: if charset.unicode { '⌜' } else { '*' },
             top_right: if charset.unicode { '⌝' } else { '*' },
@@ -1331,13 +1290,11 @@ fn draw_asymmetric_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: if charset.unicode { '▷' } else { '>' },
             top_right: if charset.unicode { '┐' } else { '+' },
@@ -1351,13 +1308,11 @@ fn draw_trapezoid_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: '/',
             top_right: '\\',
@@ -1371,13 +1326,11 @@ fn draw_trapezoid_alt_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: if charset.unicode { '┌' } else { '+' },
             top_right: if charset.unicode { '┐' } else { '+' },
@@ -1391,34 +1344,30 @@ fn draw_state_start_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     let symbol = if charset.unicode { '●' } else { '*' };
-    draw_state_pseudo_node(canvas, layout, charset, options, symbol)
+    draw_state_pseudo_node(canvas, layout, charset, symbol)
 }
 
 fn draw_state_end_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
     let symbol = if charset.unicode { '◎' } else { '@' };
-    draw_state_pseudo_node(canvas, layout, charset, options, symbol)
+    draw_state_pseudo_node(canvas, layout, charset, symbol)
 }
 
 fn draw_state_pseudo_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
     symbol: char,
 ) -> Result<()> {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        options,
         RoundedCorners {
             top_left: charset.rounded_top_left,
             top_right: charset.rounded_top_right,
@@ -1487,14 +1436,6 @@ fn draw_choice_node(canvas: &mut Canvas<'_>, layout: &NodeLayout) -> Result<()> 
         layout.style,
     )?;
     set_node_border(canvas, center_x + 1, layout.bottom(), '/', layout.style)
-}
-
-fn write_centered_label(
-    _canvas: &mut Canvas<'_>,
-    _layout: &NodeLayout,
-    _options: &AsciiRenderOptions,
-) -> Result<()> {
-    Ok(())
 }
 
 fn redraw_transformed_node_compartments(

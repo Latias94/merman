@@ -437,7 +437,6 @@ function completedPublication(
     }),
     publishedAt: 1,
     snapshot: Object.freeze({ operation, publicationId: id }),
-    svgPlan: null,
     status: "success",
     merman: Object.freeze({
       artifact: projectNavigableInlineSvg(svg("merman")),

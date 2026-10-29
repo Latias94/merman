@@ -6,7 +6,20 @@ Status: experimental, publishable Flutter package.
 
 The generated [`merman.h`](../../crates/merman-ffi/include/merman.h) header is the authoritative native wire definition. ABI 2 and pre-freeze ABI 3 layouts are removed. The Dart transport does not pass through JNI or UniFFI, including on Android; those transports have separate owners and lifecycles.
 
-Start with the [package README](../../platforms/flutter/README.md) for normal use, the [native ABI protocol](FFI_PROTOCOL.md) for C-level details, the [ABI 3 migration guide](ABI3_MIGRATION.md) for host changes, and the [options contract](OPTIONS_JSON.md) for resource policy.
+This guide owns Dart transport and packaging details. Start with the
+[package README](../../platforms/flutter/README.md) for application use, the
+[native ABI protocol](FFI_PROTOCOL.md) for C-level rules and contract evolution, and the
+[options contract](OPTIONS_JSON.md) for resource policy.
+
+The transport owner is the [Dart facade](../../platforms/flutter/lib/src/merman_ffi.dart), with raw
+declarations generated through [ffigen](../../platforms/flutter/ffigen.yaml) and packaging owned by
+the [Flutter release workflow](../../.github/workflows/release-flutter.yml). Keep one Flutter
+transport. A replacement must preserve request, capability, resource, runtime-policy, structured
+error, ownership, and synchronous callback semantics; demonstrate a material application benefit;
+and own the generator, package, and CI path across Android, iOS, macOS, Linux, and Windows. The
+removed Flutter Rust Bridge experiment did not meet those requirements. Scheduling alone does not
+provide synchronous text measurement, bounded queues, preemptive cancellation, or incremental core
+output.
 
 ## Public Dart API
 
@@ -50,6 +63,10 @@ final semantic = result.jsonObject;
 ```
 
 `MermanOperationResult` contains the requested `operation`, returned `mediaType`, copied Dart-owned `bytes`, and decoded operation `metadata`. `utf8Text` and `jsonObject` are decoding conveniences. Named methods for SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation are projections over the same `execute` path.
+
+Typed `MermanOperationMetadata` retains raw JSON for additive fields and unknown future output-plan
+kinds. Runtime operation and resource-limit IDs remain open values; invoking an appended numeric C
+operation still requires an updated generated Dart SDK.
 
 The pub.dev package's prebuilt libraries select the default native SKU: SVG, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime` so one package can carry the Android, Apple, Linux, and Windows target matrix within the registry size limit. The generated Dart operation vocabulary remains unchanged for custom current-contract libraries; unavailable bundled operations use the existing typed `missing-capability` result.
 
@@ -244,22 +261,6 @@ The callback runs synchronously through `NativeCallable.isolateLocal`. Create, u
 The callback bridge catches every Dart exception and returns `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; no Dart exception may unwind across the C boundary. An operation control does not preempt the callback body, so the callback must still return normally before cancellation can be observed. Request and result operation codes come from the generated text-measurement header rather than handwritten Dart numbers.
 
 See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cache keys and display-surface guidance.
-
-## Migrating From The Previous Prerelease API
-
-- Keep `Merman` only for stateless discovery and one-shot calls; it no longer owns an engine or
-  exposes `close()`/`dispose()`.
-- Delete `MermanReusableEngine` and `Merman.reusableEngine(...)`; construct `MermanEngine(...)`
-  directly.
-- Delete constructor-level `textMeasurer:` parameters and use `MermanEngineServices`.
-- Call `MermanEngine.close()` deterministically. Busy and re-entrant failures preserve the complete
-  engine and callback for retry.
-- Use `createOperationControl`, pass `control:` to `execute`, and release the control when it is no
-  longer needed. Treat `MermanCancelledException` as distinct from `MermanResourceErrorDetails`.
-- Use typed `MermanOperationMetadata`; its raw JSON preserves additive fields and unknown future
-  output-plan kinds.
-- Treat runtime operation and resource-limit IDs as open value objects. A newly appended numeric C
-  operation still requires an updated generated Dart SDK before invocation.
 
 ## Platform Packaging
 

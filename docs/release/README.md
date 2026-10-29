@@ -72,7 +72,7 @@ Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts
 | Contract | Reference | Version boundary |
 | --- | --- | --- |
 | Tree-sitter grammar and queries | [Query migration](../../distribution/tree-sitter-mermaid/docs/query-migration.md) and [owner release guide](TREE_SITTER_MERMAID.md) | Grammar `0.3.1` is versioned separately from the Merman workspace and language ABI |
-| C and Flutter native integration | [ABI 3 migration](../bindings/ABI3_MIGRATION.md) and [FFI protocol](../bindings/FFI_PROTOCOL.md) | Rolling source protocol; use generated headers and documentation from the same Merman release |
+| C and Flutter native integration | [FFI protocol and contract evolution](../bindings/FFI_PROTOCOL.md) | Rolling source protocol; use generated headers and documentation from the same Merman release |
 | Typst package | [Package README](../../distribution/typst/merman/README.md) | Wrapper `0.5.0` bundles Merman `0.9.0`; the wrapper version is independent of the workspace version |
 | VS Code extension | [Extension README](../../tools/vscode-extension/README.md) | Independent extension version and artifact channel |
 

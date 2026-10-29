@@ -785,7 +785,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     let _g_viewbox = timing.section(&mut timings.viewbox);
 
-    let padding = 10.0;
+    let padding =
+        crate::config::config_f64(config.as_value(), &["mindmap", "padding"]).unwrap_or(10.0);
+    let use_max_width =
+        crate::config::config_bool(config.as_value(), &["mindmap", "useMaxWidth"]).unwrap_or(true);
     let viewport_bounds =
         mindmap_viewport_bounds_from_layout(layout, model).or_else(|| layout.bounds.clone());
     let (vx, vy, vw, vh) = viewport_bounds
@@ -802,9 +805,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         })
         .unwrap_or((0.0, 0.0, 100.0, 100.0));
 
-    let root_spec = root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
-        vx, vy, vw, vh,
-    ))
+    let root_spec = root_svg::RootViewportSpec::mermaid(
+        root_svg::DiagramBounds::from_view_box(vx, vy, vw, vh),
+        use_max_width,
+    )
     .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vw));
 
     drop(_g_viewbox);

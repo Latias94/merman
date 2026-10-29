@@ -197,6 +197,93 @@ fn render_architecture_fixture(fixture_name: &str) -> String {
 }
 
 #[test]
+fn architecture_mixed_node_declarations_preserve_svg_order_and_accessibility() {
+    let source = r#"architecture-beta
+accTitle: Mixed nodes
+accDescr: Services and junctions in nested groups
+group outer(cloud)[Outer]
+junction j2 in outer
+service beta(server)[Beta] in outer
+group inner(cloud)[Inner] in outer
+junction j1 in inner
+service alpha(database)[Alpha] in inner
+alpha:R -[first]-> L:j1
+beta:R -[second]-> L:j2
+"#;
+    let svg = render_architecture_text_with_options(
+        source,
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-mixed".to_owned()),
+            ..Default::default()
+        },
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Architecture SVG");
+    let root = document.root_element();
+    let group = |class| {
+        root.children()
+            .find(|node| node.attribute("class") == Some(class))
+            .expect("Architecture DOM group")
+    };
+    let services = group("architecture-services");
+    let node_ids = services
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .map(|node| {
+            node.attribute("id")
+                .or_else(|| node.descendants().find_map(|child| child.attribute("id")))
+                .expect("service or junction identity")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        node_ids,
+        [
+            "architecture-mixed-service-beta",
+            "architecture-mixed-service-alpha",
+            "architecture-mixed-node-j2",
+            "architecture-mixed-node-j1",
+        ]
+    );
+    let edge_ids = group("architecture-edges")
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("class") == Some("edge"))
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        edge_ids,
+        [
+            "architecture-mixed-L_alpha_j1_0",
+            "architecture-mixed-L_beta_j2_0"
+        ]
+    );
+    let group_ids = group("architecture-groups")
+        .children()
+        .filter(|node| node.has_tag_name("rect"))
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        group_ids,
+        [
+            "architecture-mixed-group-outer",
+            "architecture-mixed-group-inner"
+        ]
+    );
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-architecture-mixed")
+    );
+    assert_eq!(
+        root.attribute("aria-describedby"),
+        Some("chart-desc-architecture-mixed")
+    );
+    assert!(
+        root.children()
+            .any(|node| node.has_tag_name("title") && node.text() == Some("Mixed nodes"))
+    );
+    assert!(root.children().any(|node| node.has_tag_name("desc")
+        && node.text() == Some("Services and junctions in nested groups")));
+}
+
+#[test]
 fn architecture_public_render_path_uses_the_immutable_icon_registry() {
     let pack = br##"{
         "prefix":"test",

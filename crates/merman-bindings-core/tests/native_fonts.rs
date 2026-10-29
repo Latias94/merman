@@ -32,11 +32,11 @@ fn services(context: NativeFontContext) -> BindingEngineServices {
     BindingEngineServices::new().with_native_font_context(context)
 }
 
-fn facade_svg(context: &NativeFontContext, control: &OperationControl) -> SvgRequest {
+fn facade_svg(context: &NativeFontContext) -> SvgRequest {
     SvgRequest {
         environment: SvgEnvironment::deterministic()
-            .with_native_font_context(context.for_operation(control))
-            .expect("operation-local native font environment"),
+            .with_native_font_context(context.clone())
+            .expect("reusable native font environment"),
         options: merman::svg::SvgRenderOptions {
             diagram_id: Some("native-binding".to_owned()),
             ..Default::default()
@@ -55,7 +55,7 @@ fn native_binding_mindmap_svg_matches_the_facade_and_preserves_all_labels() {
     let expected = Renderer::new()
         .render(RenderRequest::new(
             SOURCE,
-            RenderTarget::Svg(facade_svg(&context, &control)),
+            RenderTarget::Svg(facade_svg(&context)),
             control,
         ))
         .expect("the same facade native SVG request succeeds");
@@ -97,7 +97,7 @@ fn native_binding_mindmap_png_matches_the_facade_using_the_same_fonts() {
         .render(RenderRequest::new(
             SOURCE,
             RenderTarget::Png(merman::PngRequest {
-                svg: facade_svg(&context, &control),
+                svg: facade_svg(&context),
                 options: Default::default(),
             }),
             control,
@@ -124,7 +124,7 @@ fn native_binding_mindmap_pdf_matches_the_facade_using_the_same_fonts() {
         .render(RenderRequest::new(
             SOURCE,
             RenderTarget::Pdf(merman::PdfRequest {
-                svg: facade_svg(&context, &control),
+                svg: facade_svg(&context),
                 options: Default::default(),
             }),
             control,
@@ -296,6 +296,57 @@ fn native_font_context_does_not_reuse_its_loading_control_or_cancelled_requests(
             expected
         );
     }
+}
+
+#[test]
+fn prepared_native_outputs_isolate_service_controls_and_measurement_failures() {
+    let loading = OperationControl::new();
+    let limited_fonts = context(
+        NativeFontLimits {
+            max_label_bytes: 1,
+            ..Default::default()
+        },
+        &loading,
+    );
+    let limited = services(limited_fonts.clone());
+    let healthy = services(context(Default::default(), &OperationControl::new()));
+    let prepared = BindingEngine::new(OPTIONS)
+        .unwrap()
+        .prepare_source(SOURCE.as_bytes(), OperationControl::new())
+        .unwrap();
+    let control = OperationControl::new();
+    let expected = prepared.render_svg(b"", control.clone(), &healthy).unwrap();
+    loading.cancel();
+
+    for error in [
+        prepared
+            .render_svg(b"", control.clone(), &limited)
+            .expect_err("SVG bytes enforce the active font limit"),
+        prepared
+            .render_svg_result(b"", control.clone(), &limited)
+            .expect_err("SVG results enforce the same active font limit"),
+        prepared
+            .layout_json(b"", control.clone(), &limited)
+            .expect_err("prepared layout also measures through an independent font operation"),
+    ] {
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error.resource_details().unwrap();
+        assert_eq!(details.limit_id, "native_font_label_bytes");
+        assert_eq!(details.max, 1);
+    }
+    let geometry = prepared
+        .edge_geometry_json(b"", control.clone(), &limited)
+        .expect("empty Mindmap geometry does not measure text");
+    let geometry: serde_json::Value = serde_json::from_slice(&geometry).unwrap();
+    assert_eq!(geometry["edges"], serde_json::json!([]));
+    assert_eq!(
+        prepared
+            .render_svg_result(b"", control, &healthy)
+            .expect("a later output can select healthy services with the same caller control")
+            .data(),
+        expected.as_slice(),
+    );
+    assert!(limited_fonts.selected_faces().is_empty());
 }
 
 #[test]

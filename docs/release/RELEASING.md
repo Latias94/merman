@@ -342,45 +342,6 @@ for WinGet/Scoop validation and the tag-owned CLI verifier for installed capabil
 manual pages and legal material. Candidate generation, upstream merge and registry propagation are
 separate results. Record each result and its remaining acceptance condition in Publish Order.
 
-## 0.9.0 Preparation Checklist
-
-Workspace 0.9.0 was published on 2026-10-12 from `f754a3c3077d35d2a372c2fec04f9e9b87db1c3f` after immutable preflight. The [publication snapshot](PUBLISH_ORDER.md#090-publication-snapshot) records Rust, CLI/LSP, and independent-prerequisite receipts. Typst wrapper 0.5.0 was submitted independently on 2026-10-13 in [Universe PR #6098](https://github.com/typst/packages/pull/6098); package checks passed, and registry acceptance remains pending. Its [preparation record](TYPST_050_PREPARATION.md) binds the refreshed documentation to the frozen 0.9.0 runtime. Other package channels have their own publication owners.
-
-- [x] Complete independent roughr 0.12.4 public-API and published-consumer compatibility checks, then separately authorize its publication and confirm registry visibility.
-- [x] Complete independent Tree-sitter 0.3.1 generator/runtime/language, package, and provenance checks, then separately authorize prerequisite publication and confirm registry visibility before workspace dependents.
-- [x] Validate the final 0.9.0 version projection and source graph after all dependency updates.
-- [x] Inspect target READMEs, package-local changelogs, the 0.8.0 migration, closest install guides, and the [dependency policy](../DEPENDENCY_POLICY.md); verify packaged documentation bytes.
-- [x] Retain complete Cargo/npm candidate audits, compatibility exceptions, and new legal/advisory results without borrowing historical passes.
-- [x] Complete native, Web/Node, CLI/LSP, FFI, and Typst artifact/profile/package-size owner gates on the final source.
-- [x] Prepare Typst wrapper 0.5.0 with Merman 0.9.0 and plugin ABI 2, keeping the published 0.4.0 mapping unchanged; follow the [Typst checklist](TYPST_050_PREPARATION.md).
-- [x] Set the approved intended tag date, commit all source/documentation projections, freeze the reviewed 40-character SHA, and run immutable preflight.
-- [x] Publish the authorized Rust workspace, CLI/LSP, and independent prerequisites; record their registry and artifact receipts. Typst and other package channels retain separate shipping authorization and owner runs.
-
-A completed prerequisite publication does not publish workspace 0.9.0. A workspace publication does not publish Typst, VS Code, or the separately owned package channels. No checklist item is marked complete without the owner's recorded result.
-
-## 0.9.0 Channel Publication Checklist
-
-The maintainer separately authorized the language/native packages and CLI package-manager updates.
-Completed items below have owner or registry evidence in the
-[publication snapshot](PUBLISH_ORDER.md#090-publication-snapshot).
-
-- [x] Publish all five Web npm packages, verify their frozen-package integrities, `latest` tags and provenance.
-- [x] Publish all seven Node npm packages and verify the complete original package group after any recovery.
-- [x] Publish the three Python wheels and compare PyPI sizes/SHA256 values with the GitHub Release assets.
-- [x] Publish Flutter to pub.dev and reconcile the registry contents with the frozen five-platform package.
-- [x] Publish and verify the Android AAR after native, JVM and Maven staging checks.
-- [x] Publish the Apple XCFramework archive and matching checksum after its owner gates pass.
-- [x] Verify Scoop's main-bucket 0.9.0 archive URL/checksum and update user installation guidance.
-- [x] Submit the frozen Typst 0.5.0 package with the separately authorized documentation refresh and pass the Universe package checks.
-- [ ] Confirm Typst Universe acceptance and registry availability of `@preview/merman:0.5.0`.
-- [x] Confirm the official Homebrew bot update passed platform checks and merged with the 0.9.0 source and bottle entries.
-- [x] Confirm the public Homebrew formula API exposes 0.9.0 and installed CLI health checks pass on macOS and Linux.
-- [ ] Confirm upstream acceptance and registry propagation of the updated WinGet 0.9.0 submission.
-- [x] Update the existing Nixpkgs first-package submission to 0.9.0 and pass its parsing, formatting and evaluation CI.
-- [ ] Build the Nixpkgs expression and complete upstream review/acceptance.
-- [x] Diagnose the Conda-forge bot build failure and submit the recipe repair with source-backed review replies.
-- [ ] Confirm the final Conda-forge recipe passes every target and that channel packages expose 0.9.0 after acceptance.
-
 ## Release Evidence
 
 Before tagging, identify the packages and artifact workflows that will actually publish, then run

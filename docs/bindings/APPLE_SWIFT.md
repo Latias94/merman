@@ -4,6 +4,10 @@ Merman ships its Apple package as a direct UniFFI binding. Swift calls the
 `merman-uniffi` component; it does not call the C ABI and does not maintain a
 second Swift implementation of engine ownership, callbacks, or result buffers.
 
+This guide owns Swift generation and XCFramework integration. The
+[package README](../../platforms/apple/README.md) owns application examples, and the
+[UniFFI contract](UNIFFI.md) owns shared API versions, output records, and lifecycle rules.
+
 The local SwiftPM package contains:
 
 - the root `Package.swift` product named `Merman`;
@@ -106,6 +110,10 @@ document analysis. It omits math and the PNG, JPEG, and PDF exporters. The gener
 remain valid for custom current-contract libraries; the default artifact returns
 `.missingCapability` with the required descriptor ID.
 
+Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
+required. Switch on `outputPlan.kind`, inspect optional format payloads, and retain `rawJson` for
+future kinds; see the [shared output contract](UNIFFI.md#public-model).
+
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
 and optional `resource`, `diagnostic`, `iconRegistry`, and `cancellation` details. The corresponding
 typed records are `MermanResourceErrorDetails`, `MermanDiagnosticErrorDetails`,
@@ -154,29 +162,6 @@ later retry. Only callback errors delivered through UniFFI's generated trampolin
 to fallback. Callback implementations must not unwind across the generated FFI boundary. See
 [host text measurement](HOST_TEXT_MEASUREMENT.md#apple-swift) for the operation and lifecycle
 contract.
-
-## Migrating From The Previous Prerelease API
-
-- Replace the old one-shot `MermanEngine` with `Merman`.
-- Delete `MermanReusableEngine`, `reusableEngine(...)`, and
-  `reusableEngineWithTextMeasurer(...)` usage. Construct `MermanEngine(optionsJson:services:)`
-  directly.
-- Start with `MermanEngineServices()` and chain `withIconRegistry(...)` or
-  `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
-  an existing engine.
-- Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 6 or older generated source and native libraries together to API 7. Replace the
-  version probe with `bindingApiVersionV7()`. API 7 preserves theme-authoring diagnostics and exposes `requestedLayoutProfile` and
-  `compactAttempted` in the schema-3 ASCII output plan; `layoutProfile` identifies the selected
-  Canonical or Compact geometry. API 6 introduced the capability admission arrays and encoding.
-  The generated source and native library must move atomically. `MermanOperationRequestV4` remains the current
-  request record; add `control: nil` to generic request construction until the host adopts
-  `MermanOperationControl`. Handle the optional `diagnostic`
-  `MermanDiagnosticErrorDetails` payload on `MermanError.Binding` instead of inferring parser or
-  ASCII failures from display text.
-- Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
-  required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
-  optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.
 
 ## Verification
 

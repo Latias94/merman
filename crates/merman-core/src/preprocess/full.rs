@@ -1,10 +1,6 @@
 #[cfg(test)]
 use super::{Directive, detect_init_controlled};
-use super::{
-    DirectiveRecoveryMode, PreprocessResult,
-    preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled,
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled,
-};
+use super::{DirectiveRecoveryMode, PreprocessResult, preprocess_source_capture_controlled};
 #[cfg(feature = "editor-facts")]
 use super::{PreprocessCaptureOutcome, SourceConfigCaptureMode};
 #[cfg(test)]
@@ -29,26 +25,12 @@ pub fn preprocess_diagram_with_known_type(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
-    preprocess_diagram_with_known_type_and_directive_recovery(
-        input,
-        registry,
-        diagram_type,
-        DirectiveRecoveryMode::Strict,
-    )
-}
-
-pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-) -> Result<PreprocessResult> {
     let control = OperationControl::new();
     preprocess_diagram_with_known_type_and_directive_recovery_controlled(
         input,
         registry,
         diagram_type,
-        directive_recovery,
+        DirectiveRecoveryMode::Strict,
         &control,
     )
     .expect("a private parse control cannot be cancelled")
@@ -61,18 +43,16 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
     directive_recovery: DirectiveRecoveryMode,
     control: &OperationControl,
 ) -> OperationControlResult<Result<PreprocessResult>> {
-    Ok(
-        preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
-            input,
-            &registry_detector(registry),
-            diagram_type,
-            directive_recovery,
-            #[cfg(feature = "editor-facts")]
-            SourceConfigCaptureMode::Omit,
-            control,
-        )?
-        .into_result(),
-    )
+    Ok(preprocess_source_capture_controlled(
+        input,
+        &registry_detector(registry),
+        diagram_type,
+        directive_recovery,
+        #[cfg(feature = "editor-facts")]
+        SourceConfigCaptureMode::Omit,
+        control,
+    )?
+    .into_result())
 }
 
 #[cfg(feature = "editor-facts")]
@@ -83,78 +63,7 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_evidence
     directive_recovery: DirectiveRecoveryMode,
     control: &OperationControl,
 ) -> OperationControlResult<PreprocessCaptureOutcome> {
-    preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
-        input,
-        &registry_detector(registry),
-        diagram_type,
-        directive_recovery,
-        SourceConfigCaptureMode::Collect,
-        control,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn preprocess_mermaid_public_parse_pipeline(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-) -> Result<PreprocessResult> {
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
-        input,
-        registry,
-        diagram_type,
-        DirectiveRecoveryMode::Strict,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-) -> Result<PreprocessResult> {
-    let control = OperationControl::new();
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
-        input,
-        registry,
-        diagram_type,
-        directive_recovery,
-        &control,
-    )
-    .expect("a private parse control cannot be cancelled")
-}
-
-pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-    control: &OperationControl,
-) -> OperationControlResult<Result<PreprocessResult>> {
-    Ok(
-        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
-            input,
-            &registry_detector(registry),
-            diagram_type,
-            directive_recovery,
-            #[cfg(feature = "editor-facts")]
-            SourceConfigCaptureMode::Omit,
-            control,
-        )?
-        .into_result(),
-    )
-}
-
-#[cfg(feature = "editor-facts")]
-pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
-    input: &str,
-    registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
-    directive_recovery: DirectiveRecoveryMode,
-    control: &OperationControl,
-) -> OperationControlResult<PreprocessCaptureOutcome> {
-    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+    preprocess_source_capture_controlled(
         input,
         &registry_detector(registry),
         diagram_type,
@@ -169,17 +78,10 @@ pub(super) fn detect_init(
     directives: &[Directive],
     input: &str,
     registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
 ) -> Result<MermaidConfig> {
     let control = OperationControl::new();
-    detect_init_controlled(
-        directives,
-        input,
-        &registry_detector(registry),
-        diagram_type,
-        &control,
-    )
-    .expect("a private parse control cannot be cancelled")
+    detect_init_controlled(directives, input, &registry_detector(registry), &control)
+        .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(test)]
@@ -204,8 +106,8 @@ mod tests {
     fn builtin_preprocess_reuses_directive_namespaces_and_source_maps() {
         let input = concat!(
             "---\r\ntitle: Diagram\r\nconfig:\r\n  flowchart:\r\n    inheritDir: true\r\n---\r\n",
-            "%%{init: {config: {htmlLabels: false}, fontFamily: 'Example'}}%%\r\n",
-            "%%{initialize: {config: {curve: 'step'}}}%%\r\n",
+            "%%{init: {flowchart: {htmlLabels: false}, fontFamily: 'Example'}}%%\r\n",
+            "%%{initialize: {flowchart: {curve: 'step'}}}%%\r\n",
             "flowchart-elk TD\r\n%% comment\r\nA-->B",
         );
         let registry = DetectorRegistry::pinned_mermaid_baseline();
@@ -242,20 +144,20 @@ mod tests {
     }
 
     #[test]
-    fn multiple_init_config_directives_detect_the_diagram_only_once() {
+    fn multiple_init_directives_merge_explicit_namespaces_without_extra_detection() {
         INIT_DETECTOR_CALLS.store(0, Ordering::Relaxed);
         let input = concat!(
-            "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",
-            "%%{initialize: {\"config\": {\"htmlLabels\": false}}}%%\n",
+            "%%{init: {\"flowchart\": {\"curve\": \"linear\"}}}%%\n",
+            "%%{initialize: {\"flowchart\": {\"htmlLabels\": false}}}%%\n",
             "flowchart TD\nA-->B\n",
         );
         let directives = detect_directives(input).expect("directives parse");
         let mut registry = DetectorRegistry::new();
         registry.add_fn("flowchart-v2", counting_flowchart_detector);
 
-        let config = detect_init(&directives, input, &registry, None).expect("init merges");
+        let config = detect_init(&directives, input, &registry).expect("init merges");
 
-        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 1);
+        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 0);
         assert_eq!(
             config
                 .as_value()

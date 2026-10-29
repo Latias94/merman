@@ -9,6 +9,11 @@ The Android AAR builds the internal, non-published `merman-android-jni` crate th
 `android-native` artifact recipe. The public `merman-ffi` crate remains a C ABI transport and is
 not linked into the Kotlin AAR.
 
+This guide owns the JNI transport implemented by
+[`merman-android-jni`](../../crates/merman-android-jni/src/lib.rs). The
+[Android package README](../../platforms/android/README.md) owns application setup and examples;
+the [options contract](OPTIONS_JSON.md) owns shared JSON inputs.
+
 ## Layers
 
 ```text
@@ -42,6 +47,11 @@ JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, document an
 validation. The default AAR supports SVG, ASCII, semantic/layout operations, analysis, validation,
 and document analysis. Binary methods remain in the generated API for custom artifacts and return
 typed missing-capability errors against the default AAR.
+
+Use typed result metadata and `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when the
+effective output plan matters. Operation, metadata, resource-limit, option-group, and service IDs
+from runtime discovery are open values; generated known constants are conveniences rather than
+exhaustive runtime enums.
 
 Construct `MermanOperationControl(timeoutMs)` to install an optional relative monotonic
 deadline, retain the same object across threads, and call `cancel()` to request cooperative
@@ -175,18 +185,6 @@ Pack input is untrusted: parsing, retained data, aliases, XML structure, identif
 per-operation expansion are bounded. Icon fragments are sanitized under the effective Mermaid
 configuration immediately before embedding. This does not make parity/readable SVG safe for direct
 browser DOM insertion; use `SafeInlineSvg`, an appropriate CSP, or a sandbox at that boundary.
-
-## Migrating From The Previous Prerelease API
-
-- Replace static one-shot calls on the old `MermanEngine` with `Merman`.
-- Delete `MermanReusableEngine` and callback-specialized constructors; construct
-  `MermanEngine(optionsJson, services)` directly.
-- Put text measurement and icon registries in `MermanEngineServices`; there are no service
-  mutators.
-- Use typed result metadata and `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when the
-  effective output plan matters.
-- Treat operation, metadata, resource-limit, option-group, and service IDs from runtime discovery
-  as open values. Generated known constants are conveniences, not exhaustive runtime enums.
 
 ## Verification
 

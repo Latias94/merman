@@ -3,7 +3,6 @@ import {
   UNAVAILABLE_DIAGRAM_DETECTION,
   type DiagramDetectionFacts,
   type DiagramType,
-  type SvgPlanResult,
   type SvgRenderMetadata,
 } from "@mermanjs/web";
 
@@ -124,7 +123,6 @@ interface CompletedBatchBase {
   readonly diagnostics: RenderDiagnostics | null;
   readonly publishedAt: number;
   readonly snapshot: FrozenRenderSnapshot;
-  readonly svgPlan: SvgPlanResult | null;
 }
 
 export type RenderSuccessState = CompletedBatchBase &
@@ -402,7 +400,6 @@ export function createRenderCoordinator({
     const { facade, snapshot } = request;
     const operation = snapshot.operation;
     const detection = detectDiagram(facade, operation);
-    const svgPlan = collectSvgPlan(facade, operation);
     const externalRequirements = mermaidExternalRequirementsFor(detection);
     const comparePromise = renderCompare(
       compare,
@@ -424,7 +421,6 @@ export function createRenderCoordinator({
       snapshot,
       detection,
       diagnostics,
-      svgPlan,
       merman,
       ascii,
       mermaid,
@@ -514,7 +510,6 @@ export function createRenderCoordinator({
         snapshot,
         state.detection,
         state.diagnostics,
-        state.svgPlan,
         state.merman,
         ascii,
         state.mermaid,
@@ -628,7 +623,6 @@ export function createRenderCoordinator({
           state.snapshot,
           state.detection,
           state.diagnostics,
-          state.svgPlan,
           Object.freeze({ ...state.merman, presentedAt: at }),
           state.ascii,
           state.mermaid,
@@ -649,7 +643,6 @@ export function createRenderCoordinator({
         state.snapshot,
         state.detection,
         state.diagnostics,
-        state.svgPlan,
         state.merman,
         state.ascii,
         Object.freeze({ ...state.mermaid, presentedAt: at }),
@@ -720,21 +713,6 @@ function sameScheduledOperationInput(
       right.workspace.textMeasurementMode &&
     left.workspace.diagramFont === right.workspace.diagramFont
   );
-}
-
-function collectSvgPlan(
-  facade: MermanDomainFacade,
-  operation: FrozenRenderOperation,
-): SvgPlanResult | null {
-  if (!operation.themePresetId && !operation.themeRecipeJson) {
-    return null;
-  }
-
-  try {
-    return freezeSvgPlan(facade.svgPlan(operation));
-  } catch {
-    return null;
-  }
 }
 
 function detectDiagram(
@@ -940,7 +918,6 @@ function classifyBatch(
   snapshot: FrozenRenderSnapshot,
   detection: DiagramDetectionFacts,
   diagnostics: RenderDiagnostics | null,
-  svgPlan: SvgPlanResult | null,
   merman: MermanBatchResult,
   ascii: MermanAsciiBatchResult | null,
   mermaid: MermaidBatchResult | null,
@@ -952,7 +929,6 @@ function classifyBatch(
     diagnostics,
     publishedAt,
     snapshot,
-    svgPlan,
   };
   if (!mermaid) {
     return merman.status === "success"
@@ -1006,18 +982,6 @@ function freezeDetection(
   detection: DiagramDetectionFacts,
 ): DiagramDetectionFacts {
   return Object.freeze({ ...detection });
-}
-
-function freezeSvgPlan(plan: SvgPlanResult): SvgPlanResult {
-  const requiredCapabilityIds = [...plan.required_capability_ids];
-  const missingCapabilityIds = [...plan.missing_capability_ids];
-  Object.freeze(requiredCapabilityIds);
-  Object.freeze(missingCapabilityIds);
-  return Object.freeze({
-    ...plan,
-    required_capability_ids: requiredCapabilityIds,
-    missing_capability_ids: missingCapabilityIds,
-  });
 }
 
 function freezeRenderMetadata(metadata: SvgRenderMetadata | null): SvgRenderMetadata | null {

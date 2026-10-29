@@ -46,7 +46,6 @@ class SdkArchiveTests(unittest.TestCase):
         ):
             self.write(f"crates/merman-ffi/include/{name}", f"#define {macro} {version}u\n")
         self.write("contracts/abi/merman-v3.json", '{"abi_version":3}\n')
-        self.write("contracts/abi/merman-wasi-v1.json", '{"abi_version":1}\n')
         self.write("crates/merman-wasi/README.md", "# WASI scalar ABI\n")
         self.write("contracts/abi/text-measurement-v1.json", '{"protocol_version":1}\n')
         for name in ("LICENSE-MIT", "LICENSE-APACHE"):
@@ -181,6 +180,8 @@ class SdkArchiveTests(unittest.TestCase):
             self.assertEqual(details["sha256"], hashlib.sha256(members[name]).hexdigest())
             self.assertEqual(details["size"], len(members[name]))
         self.assertNotIn("test_fixture.txt", members)
+        self.assertIn("contracts/abi/merman-v3.json", members)
+        self.assertIn("contracts/abi/text-measurement-v1.json", members)
         self.assertIn("include/merman_text_measurement_abi.h", members)
         self.assertIn("examples/render.cpp", members)
         self.assertIn("lib/cmake/Merman/MermanConfig.cmake", members)
@@ -191,17 +192,42 @@ class SdkArchiveTests(unittest.TestCase):
         self.assertEqual(sdk_archive.read_checksum(Path(str(archive) + ".sha256"), archive.name),
                          sdk_archive.sha256_file(archive))
 
-    def test_wasi_module_contract_fonts_and_no_native_payload(self):
+    def test_wasi_module_protocol_fonts_and_no_native_payload(self):
         self.configure(wasi=True)
-        members = self.members(self.package())
-        self.assertIn("lib/merman_wasi.wasm", members)
-        self.assertIn("contracts/abi/merman-wasi-v1.json", members)
+        archive = self.package()
+        members = self.members(archive)
+        self.assertEqual(members["lib/merman_wasi.wasm"],
+                         (self.artifacts / "merman_wasi.wasm").read_bytes())
+        self.assertEqual(members["docs/WASI_ABI.md"],
+                         (self.repo / "crates/merman-wasi/README.md").read_bytes())
+        self.assertEqual(json.loads(members["runtime-catalog.json"]), self.catalog)
+        self.assertEqual(json.loads(members["manifest.json"])["abi_version"], 1)
+        self.assertFalse(any(name.startswith(("contracts/abi/", "include/")) for name in members))
         self.assertIn("fonts/manifest.json", members)
         self.assertNotIn("examples/render.c", members)
         self.assertIn("examples/go-wasi/client.go", members)
         self.assertIn("examples/go-wasi/cmd/render/main.go", members)
         self.assertIn("examples/python-wasi/client.py", members)
         self.assertIn("examples/python-wasi/render.py", members)
+        self.assertEqual(sdk_archive.verify_sdk_archive(
+            repo_root=self.repo, profile=self.profile, target=self.target,
+            archive=archive, checksum=Path(str(archive) + ".sha256"),
+            source_commit=self.commit, version=self.version, descriptor=self.descriptor,
+        ), archive.resolve())
+
+    def test_wasi_catalog_version_and_module_digest_are_required(self):
+        self.configure(wasi=True)
+        for version in (None, True, 3):
+            with self.subTest(version=version):
+                self.catalog["runtime_catalog"]["transport_api_version"] = version
+                self.save_catalog()
+                with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "transport_api_version"):
+                    self.package()
+        self.catalog["runtime_catalog"]["transport_api_version"] = 1
+        self.save_catalog()
+        (self.artifacts / "merman_wasi.wasm").write_bytes(b"replaced module")
+        with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "SHA-256 digests mismatch"):
+            self.package()
 
     def test_native_staging_and_archives_share_integration_files_and_library_layout(self):
         for target in sdk_archive.NATIVE_TARGETS:

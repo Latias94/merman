@@ -1,7 +1,7 @@
 # Resource policy for host integrations
 
-This guide describes the current source. The input-policy inheritance described below and
-recalibrated defaults are newer than published `0.8.0-alpha.7`; use matching release documentation.
+This guide describes the current source. Use documentation from the matching release tag for
+installed packages.
 
 Merman is headless: the host owns scheduling, UI state, cancellation, and memory capacity.
 Choose resource policy for the job, not from whether the executable is native or WebAssembly.
@@ -21,8 +21,6 @@ Interactive is intended to admit ordinary diagrams from the supported corpus. Co
 intentionally accepts a smaller subset and is not a drop-in promise to render the same documents.
 Profiles also set source, model, nesting, SVG, and other limits: changing profile changes more
 than layout work. Use `RenderResourcePolicy::apply_override` to change only a relevant limit.
-The current interactive layout allowance is 14,100,000 work units, trusted-native is 15,000,000,
-and constrained remains 125,000. Published alpha.7 predates the interactive recalibration.
 See the [resource catalog](../bindings/OPTIONS_JSON.md#resource-options) for available dimensions.
 In Rust, inspect each `ResourceLimitId` with `RenderResourcePolicy::value()` for its effective limit.
 

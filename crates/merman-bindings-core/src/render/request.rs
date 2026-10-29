@@ -106,7 +106,7 @@ impl RenderRequestPlan {
         control: OperationControl,
         include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let target = merman::RenderTarget::Svg(self.svg_for_operation(&control)?);
+        let target = merman::RenderTarget::Svg(self.svg_request()?);
         if !include_metadata {
             let merman::RenderTarget::Svg(request) = target else {
                 unreachable!("SVG output target");
@@ -151,7 +151,7 @@ impl RenderRequestPlan {
     ) -> Result<Vec<u8>, BindingError> {
         let output = self.render_input(
             input,
-            merman::RenderTarget::LayoutJson(self.svg_for_operation(&control)?),
+            merman::RenderTarget::LayoutJson(self.svg_request()?),
             control.clone(),
         )?;
         let RenderOutput::LayoutJson(layout_json) = output else {
@@ -173,21 +173,9 @@ impl RenderRequestPlan {
         input: RenderInput<'_>,
         control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        let svg = self.svg.clone();
-        #[cfg(feature = "native-fonts")]
-        let svg = if let Some(context) = &self.native_font_context {
-            let mut svg = svg;
-            svg.environment = svg
-                .environment
-                .with_native_font_context(context.clone())
-                .map_err(|error| classify_render_error(error.into(), self.resource_profile))?;
-            svg
-        } else {
-            svg
-        };
         let output = self.render_input(
             input,
-            merman::RenderTarget::EdgeGeometryJson(svg),
+            merman::RenderTarget::EdgeGeometryJson(self.svg_request()?),
             control.clone(),
         )?;
         let RenderOutput::EdgeGeometryJson(edge_geometry_json) = output else {
@@ -210,7 +198,7 @@ impl RenderRequestPlan {
             .renderer
             .render(self.request(
                 source,
-                merman::RenderTarget::SvgPlan(self.svg_for_operation(&control)?),
+                merman::RenderTarget::SvgPlan(self.svg_request()?),
                 control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
@@ -234,7 +222,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Png(merman::PngRequest {
-                    svg: self.svg_for_operation(&control)?,
+                    svg: self.svg_request()?,
                     options: self.raster_options.clone(),
                 }),
                 control,
@@ -271,7 +259,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Jpeg(merman::JpegRequest {
-                    svg: self.svg_for_operation(&control)?,
+                    svg: self.svg_request()?,
                     options: self.raster_options.clone(),
                 }),
                 control,
@@ -308,7 +296,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Pdf(merman::PdfRequest {
-                    svg: self.svg_for_operation(&control)?,
+                    svg: self.svg_request()?,
                     options: self.pdf_options.clone(),
                 }),
                 control,
@@ -333,19 +321,18 @@ impl RenderRequestPlan {
         )
     }
 
-    fn svg_for_operation(&self, control: &OperationControl) -> Result<SvgRequest, BindingError> {
+    fn svg_request(&self) -> Result<SvgRequest, BindingError> {
         let svg = self.svg.clone();
         #[cfg(feature = "native-fonts")]
         if let Some(context) = &self.native_font_context {
+            // Select reusable assets here; facade target admission owns the operation-local fork.
             let mut svg = svg;
             svg.environment = svg
                 .environment
-                .with_native_font_context(context.for_operation(control))
+                .with_native_font_context(context.clone())
                 .map_err(|error| classify_render_error(error.into(), self.resource_profile))?;
             return Ok(svg);
         }
-        #[cfg(not(feature = "native-fonts"))]
-        let _ = control;
         Ok(svg)
     }
 

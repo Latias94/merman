@@ -4,6 +4,11 @@ Merman exposes Iconify support as an immutable constructor service. It is part o
 capability; it is not a separate renderer feature and it does not add filesystem, package-manager,
 network, DNS, async-runtime, or CLI dependencies to Rust SDK builds.
 
+This guide owns shared constructor, input-lifetime, and security rules. Their implementation is
+the [bindings-core service builder](../../crates/merman-bindings-core/src/services.rs), and
+[service metadata](../../crates/merman-bindings-core/src/service_contract.rs) exposes the admitted
+constructor limits. Transport guides own the language-specific service wrappers.
+
 ## Shared Contract
 
 One registry is built transactionally from one or more borrowed `IconPack` values:

@@ -462,6 +462,8 @@ def discover_executable(
     *,
     timeout_seconds: int,
 ) -> tuple[Path, dict[str, object]]:
+    # Shared targets can retain fingerprints from another checkout; resolving
+    # the Cargo JSON executable alone does not establish the source revision.
     reset_command = cargo_clean_bench_profile_command(recipe)
     command = cargo_prebuild_command(recipe)
     environment = os.environ.copy()

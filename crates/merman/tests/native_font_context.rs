@@ -17,6 +17,128 @@ fn context(
         .unwrap()
 }
 
+mod result_font_diagnostics {
+    use super::*;
+    use merman::{PrepareSourceRequest, RenderEvidence, RenderOutput};
+
+    const SOURCE: &str =
+        "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[AVA]\n";
+
+    fn evidence(output: &RenderOutput) -> &RenderEvidence {
+        match output {
+            RenderOutput::Svg(Some(output)) => output.evidence(),
+            RenderOutput::Document(Some(document)) => document.evidence(),
+            other => panic!("expected completed SVG or document, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ordinary_and_prepared_svg_and_document_capture_only_selected_native_fonts() {
+        let renderer = Renderer::new();
+        let prepared = renderer
+            .prepare_source(PrepareSourceRequest::new(SOURCE, OperationControl::new()))
+            .unwrap()
+            .unwrap();
+        let context = context(Default::default(), &OperationControl::new());
+        for native in [false, true] {
+            let environment = if native {
+                SvgEnvironment::deterministic()
+                    .with_native_font_context(context.clone())
+                    .unwrap()
+            } else {
+                SvgEnvironment::deterministic()
+            };
+            let request = SvgRequest {
+                environment,
+                ..Default::default()
+            };
+            for use_prepared in [false, true] {
+                for document in [false, true] {
+                    let target = if document {
+                        RenderTarget::Document(request.clone())
+                    } else {
+                        RenderTarget::Svg(request.clone())
+                    };
+                    let output = if use_prepared {
+                        renderer.render_prepared(&prepared, target, OperationControl::new())
+                    } else {
+                        renderer.render(RenderRequest::new(SOURCE, target, OperationControl::new()))
+                    }
+                    .unwrap();
+                    let diagnostics: Option<&merman::NativeFontDiagnostics> =
+                        evidence(&output).native_font_diagnostics();
+                    if native {
+                        let diagnostics = diagnostics.expect("native font snapshot is present");
+                        assert_eq!(diagnostics.identity(), context.identity());
+                        assert_eq!(diagnostics.selected_faces(), ["Cousine-Regular#0"]);
+                    } else {
+                        assert!(diagnostics.is_none());
+                    }
+                }
+            }
+        }
+        assert!(context.selected_faces().is_empty());
+    }
+
+    #[test]
+    fn separate_outputs_freeze_their_own_selected_faces() {
+        let fonts =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../merman-export/tests/fonts");
+        let context = NativeFontOptions::default()
+            .with_font_file(fonts.join("Cousine-Regular.ttf"))
+            .with_font_file(fonts.join("NotoSans-Latin-subset.ttf"))
+            .load(&OperationControl::new())
+            .unwrap();
+        let request = SvgRequest {
+            environment: SvgEnvironment::deterministic()
+                .with_native_font_context(context.clone())
+                .unwrap(),
+            ..Default::default()
+        };
+        let renderer = Renderer::new();
+        let first = renderer
+            .render(RenderRequest::svg(
+                SOURCE,
+                OperationControl::new(),
+                request.clone(),
+            ))
+            .unwrap();
+        let first_snapshot = evidence(&first).clone();
+        let source = SOURCE.replace("Cousine", "Noto Sans");
+        let prepared = renderer
+            .prepare_source(PrepareSourceRequest::new(&source, OperationControl::new()))
+            .unwrap()
+            .unwrap();
+        let second = renderer
+            .render_prepared(
+                &prepared,
+                RenderTarget::Document(request),
+                OperationControl::new(),
+            )
+            .unwrap();
+        let first_diagnostics = evidence(&first).native_font_diagnostics().unwrap();
+        let second_diagnostics = evidence(&second).native_font_diagnostics().unwrap();
+        assert_eq!(evidence(&first), &first_snapshot);
+        assert_eq!(first_diagnostics.identity(), second_diagnostics.identity());
+        assert_eq!(first_diagnostics.selected_faces(), ["Cousine-Regular#0"]);
+        assert!(
+            second_diagnostics
+                .selected_faces()
+                .iter()
+                .any(|face| face.starts_with("NotoSans-")),
+            "{second_diagnostics:?}"
+        );
+        assert!(
+            second_diagnostics
+                .selected_faces()
+                .iter()
+                .all(|face| !face.starts_with("Cousine-")),
+            "{second_diagnostics:?}"
+        );
+        assert!(context.selected_faces().is_empty());
+    }
+}
+
 #[test]
 fn facade_replays_native_failure_without_poisoning_selected_font_assets() {
     let context = context(
@@ -717,6 +839,13 @@ mod document_context_contract {
         );
         let svg = document.svg().to_owned();
         let evidence = document.evidence().clone();
+        assert_eq!(
+            evidence
+                .native_font_diagnostics()
+                .expect("document keeps the completed measurement snapshot")
+                .selected_faces(),
+            ["Cousine-Regular#0"]
+        );
 
         #[cfg(feature = "png")]
         {

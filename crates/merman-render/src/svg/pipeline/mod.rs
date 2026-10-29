@@ -746,21 +746,22 @@ impl SvgPipeline {
             // admission. Browser XHTML supplies occurrence placement only; native geometry comes
             // from the renderer-owned evidence lease and never from browser markup.
             execution.checkpoint()?;
-            current = preset::BuiltinSvgStage::PreparedMathProjection
-                .apply(
-                    current,
-                    metadata,
-                    execution,
-                    structure,
-                    prepared_math_evidence,
-                )?
-                .0;
+            let (projected, changed) = preset::BuiltinSvgStage::PreparedMathProjection.apply(
+                current,
+                metadata,
+                execution,
+                structure,
+                prepared_math_evidence,
+            )?;
+            current = projected;
             execution.checkpoint()?;
             execution.preflight_svg_byte_count(current.len())?;
-            structure = final_validation::validate_well_formed_svg_with_execution(
-                current.as_ref(),
-                execution,
-            )?;
+            if changed {
+                structure = final_validation::validate_well_formed_svg_with_execution(
+                    current.as_ref(),
+                    execution,
+                )?;
+            }
         }
         if self.isolate_ids {
             current = embedding::normalize_renderer_ids(current, metadata, execution)?;
@@ -1461,6 +1462,64 @@ mod tests {
     }
 
     #[test]
+    fn inline_pipelines_reuse_unchanged_math_structure_but_revalidate_opaque_output() {
+        struct PreserveBytes;
+
+        impl SvgPostprocessor for PreserveBytes {
+            fn name(&self) -> &'static str {
+                "preserve-bytes"
+            }
+
+            fn process<'a>(
+                &self,
+                svg: Cow<'a, str>,
+                _: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                Ok(svg)
+            }
+        }
+
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>"#;
+        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let evidence = PreparedMathEvidenceLease::default();
+        for contract in [InlineContract::Browser, InlineContract::Static] {
+            for opaque in [false, true] {
+                let mut pipeline = SvgPipeline {
+                    inline_contract: Some(contract),
+                    ..SvgPipeline::parity()
+                };
+                if opaque {
+                    pipeline.push_postprocessor(PreserveBytes);
+                }
+                for generated in [false, true] {
+                    let session = render_session();
+                    let (output, work) = final_validation::measure_xml_validation_work(|| {
+                        if generated {
+                            pipeline.process_generated_with_metadata_and_math_evidence(
+                                svg.to_owned(),
+                                &metadata,
+                                &session,
+                                Some(&evidence),
+                            )
+                        } else {
+                            pipeline.process_to_string_with_metadata(svg, &metadata, &session)
+                        }
+                    });
+
+                    assert_eq!(output.unwrap(), svg);
+                    // Initial XML, inline admission, final inline validation, and any opaque pass.
+                    let expected_calls = 3 + usize::from(opaque);
+                    assert_eq!(
+                        work.calls, expected_calls,
+                        "{contract:?}, opaque={opaque}, generated={generated}"
+                    );
+                    assert_eq!(work.svg_bytes, expected_calls * svg.len());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn inline_pipelines_project_renderer_owned_math_before_admission() {
         let projection = concat!(
             r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9">"#,
@@ -1501,22 +1560,28 @@ mod tests {
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
             .with_family_id(crate::DiagramFamilyId::FLOWCHART);
 
-        for pipeline in [
-            SvgPipeline::parity().with_static_inline_contract("static-math"),
-            SvgPipeline::parity().with_browser_inline_contract("browser-math"),
+        for (pipeline, expected_calls) in [
+            (
+                SvgPipeline::parity().with_static_inline_contract("static-math"),
+                7,
+            ),
+            (
+                SvgPipeline::parity().with_browser_inline_contract("browser-math"),
+                6,
+            ),
         ] {
-            let output = pipeline
-                .run(
+            let (result, work) = final_validation::measure_xml_validation_work(|| {
+                pipeline.run(
                     Cow::Borrowed(&svg),
                     &metadata,
                     &session,
                     Some(&evidence),
                     PipelineTerminalValidation::Immediate,
                 )
-                .unwrap()
-                .svg
-                .into_owned();
+            });
+            let output = result.unwrap().svg.into_owned();
 
+            assert_eq!(work.calls, expected_calls);
             assert!(!output.contains("<template"), "{output}");
             assert!(!output.contains("<foreignObject"), "{output}");
             assert!(output.contains(r#"class="merman-prepared-math-native""#));

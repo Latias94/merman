@@ -49,7 +49,6 @@ fn manifest_projection(root: &Path) -> Result<String, XtaskError> {
         .and_then(Value::as_object_mut)
         .ok_or_else(|| language_contract_error("VS Code manifest contributes must be an object"))?;
 
-    remove_obsolete_semantic_token_projection(contributes)?;
     project_vscode_analysis_settings(
         contributes,
         &crate::cmd::editor_analysis_config::client_projection(),
@@ -58,47 +57,6 @@ fn manifest_projection(root: &Path) -> Result<String, XtaskError> {
     let mut output = serde_json::to_string_pretty(&manifest)?;
     output.push('\n');
     Ok(output)
-}
-
-fn remove_obsolete_semantic_token_projection(
-    contributes: &mut serde_json::Map<String, Value>,
-) -> Result<(), XtaskError> {
-    for key in [
-        "semanticTokenTypes",
-        "semanticTokenModifiers",
-        "semanticTokenScopes",
-    ] {
-        contributes.remove(key);
-    }
-
-    let remove_configuration_defaults = match contributes.get_mut("configurationDefaults") {
-        Some(value) => {
-            let defaults = value.as_object_mut().ok_or_else(|| {
-                language_contract_error("VS Code manifest configurationDefaults must be an object")
-            })?;
-            let remove_mermaid_defaults = match defaults.get_mut("[mermaid]") {
-                Some(value) => {
-                    let mermaid = value.as_object_mut().ok_or_else(|| {
-                        language_contract_error(
-                            "VS Code manifest [mermaid] configuration defaults must be an object",
-                        )
-                    })?;
-                    mermaid.remove("editor.semanticHighlighting.enabled");
-                    mermaid.is_empty()
-                }
-                None => false,
-            };
-            if remove_mermaid_defaults {
-                defaults.remove("[mermaid]");
-            }
-            defaults.is_empty()
-        }
-        None => false,
-    };
-    if remove_configuration_defaults {
-        contributes.remove("configurationDefaults");
-    }
-    Ok(())
 }
 
 fn manifest_drift(root: &Path) -> Result<bool, XtaskError> {

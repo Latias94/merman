@@ -749,7 +749,7 @@ Targeted nextest expressions should run during red-green iteration, but no unit 
 - `crates/merman-ascii/src/gantt.rs` and core Gantt model: claimed dependencies versus currently omitted `prev_task_id` semantics.
 - `docs/adr/0065-ascii-output-boundary.md`: typed model, terminal-native layout, explicit degradation, and semver-sensitive output.
 - `docs/adr/0073-family-owned-diagram-architecture.md`: family catalog authority and family-owned semantics.
-- `docs/workstreams/ascii-architecture-deepening/HANDOFF.md` and `docs/workstreams/ascii-class-er-layered-planner/HANDOFF.md`: established adapter-plan-paint and shared-mechanism boundaries.
+- `docs/workstreams/ascii-architecture-deepening/DESIGN.md`, `docs/workstreams/ascii-architecture-deepening/EVIDENCE_AND_GATES.md`, and `docs/workstreams/ascii-class-er-layered-planner/HANDOFF.md`: established adapter-plan-paint and shared-mechanism boundaries.
 - `crates/merman-ascii/tests/testdata/local-semantic/README.md`: semantic probe versus copied oracle policy.
 - `tools/upstreams/REPOS.lock.json`, the installed Mermaid 11.16.1 package used by local oracle tooling, imported fixtures, and `docs/alignment/*`: authoritative pinned-baseline evidence. The current `repo-ref/mermaid` checkout is Mermaid 11.15.0 supplementary source and must be version-labeled.
 - `repo-ref/mermaid-ascii` at `b1b35f67d6a5dd0699ccfc968c00a763db573076`: moving capability discovery; initial exact oracle remains `6fffb8e2714acab2c4cb41c78894fabbc62cee56`.
