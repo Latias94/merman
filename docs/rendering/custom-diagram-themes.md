@@ -26,6 +26,8 @@ unlisted families are **not yet reviewed**. A dedicated design does not guarante
 effect or export format. Review the actual preview outcome for your diagram.
 
 In Playground the selected preset displays its reviewed families and application notes.
+Use the **Merman preset** selector at the top for direct selection with current-family design
+treatments, or **Browse presets** to compare the recipe color swatches.
 **Use recommended settings** is an explicit configuration change: it preserves unrelated
 configuration and takes effect immediately, just like the Mermaid theme selector. Source
 directives can still override it. **Cancel** restores the prior Merman styling, while keeping

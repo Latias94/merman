@@ -9,10 +9,20 @@ qualification. The installed catalog and each render's metadata describe those s
 | Brutalist | [Flowchart source](brutalist.mmd): repeating yellow/teal/orange accents, bold labels, black outlines and hard shadows | [Classic configuration](brutalist.config.json); basic supported node shapes |
 | Ghibli | [Pie source](ghibli.mmd): warm paper texture, muted slices, distinct title/percentage/legend sizes | Default Pie configuration; no Mermaid scalar styling overrides |
 
+![Brutalist Flowchart with bold labels, ordinal accents and hard shadows](brutalist.png)
+
+![Ghibli Pie with warm paper, muted slice colors and independently sized text roles](ghibli.png)
+
+These previews were exported as native PNG on macOS from the included sources and settings.
+Host font resolution affects the result; the commands below reproduce the workflow with the
+matching runtime, rather than guaranteeing identical pixels on every system.
+
 ## Playground
 
 Paste a source into the editor, open **Theme**, choose **Brutalist** or **Ghibli**, and inspect
-the preview. For Brutalist, choose **Use recommended settings** to explicitly request Classic.
+the preview. The **Merman preset** selector at the top lists the current diagram's design
+treatment next to each preset. **Browse presets** adds recipe color swatches. For Brutalist,
+choose **Use recommended settings** to explicitly request Classic.
 This keeps other configuration and the layout intact. **Apply** commits the Merman styling;
 **Cancel** returns to the prior styling while keeping configuration changes. **None** removes
 Merman styling and keeps the selected Mermaid base theme.
@@ -21,6 +31,8 @@ Read **This render's theme outcome** for this diagram's result. **Dedicated desi
 catalog intent, not a guarantee that every requested effect rendered. An unreviewed family
 can still receive the recipe's base styling. Use **Download JSON** for an editable standalone
 recipe and a workspace share link to include source, settings and the applied recipe together.
+
+![Playground theme panel with direct Ghibli selection, Pie design scope and this render's outcome](theme-panel.png)
 
 ## Native CLI
 

@@ -11,7 +11,7 @@ import { downloadBlob } from "@/src/lib/export";
 import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
 import { SHARE_THEME_RECIPE_BYTES } from "@/src/lib/share";
 import { isThemeDraftChanged, type ThemeValidationToken } from "@/src/lib/theme-edit-session";
-import { currentDiagramDetection, currentThemeRender, detectedThemeFamily, reviewedThemeFamilies, themeFamilyMetadataId } from "@/src/lib/theme-discovery";
+import { currentDiagramDetection, currentThemeRender, detectedThemeFamily, reviewedThemeFamilies, themeFamilyMetadataId, themeFamilyTreatment } from "@/src/lib/theme-discovery";
 import { mergeRecommendedMermaidConfig } from "@/src/lib/mermaid-config";
 import { exceedsUtf8ByteBudget } from "@/src/lib/utf8";
 import { projectError } from "@/src/runtime/error-projection";
@@ -189,19 +189,42 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
             {mermaidThemes.map((theme) => <option key={theme} value={theme}>{t(`themes.${theme}`, { defaultValue: theme })}</option>)}
           </select>
           <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.compatibilityHint")}</p>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.fontPrecedenceHint", { font: t(`diagramFonts.${workspace.diagramFont}`) })}</p>
         </section>
         <section className="space-y-2 border-t pt-3" data-testid="theme-selection-summary">
           <h3 ref={selectionHeading} tabIndex={-1} className="text-xs font-semibold outline-none" data-testid="theme-selection-heading">{t("themePanel.mermanStyling")}</h3>
-          <p className="text-xs font-medium">{t("themePanel.selectedTheme", { theme: candidateLabel })}</p>
+          <label htmlFor={`${headingId}-preset`} className="sr-only">{t("themePanel.choosePreset")}</label>
+          <select id={`${headingId}-preset`} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-xs"
+            value={session.candidate.kind === "preset" ? `preset:${session.candidate.presetId}` : session.candidate.kind}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value !== "none" && !value.startsWith("preset:")) return;
+              useAppStore.getState().selectThemeCandidate(value === "none" ? { kind: "none" } : { kind: "preset", presetId: value.slice(7) });
+              setActionError(null);
+              setConfigFeedback(null);
+            }}>
+            <option value="none">{t("themePanel.none")}</option>
+            {session.candidate.kind === "custom" && <option value="custom" disabled>{t("themePanel.custom")}</option>}
+            {session.candidate.kind === "preset" && !selectedPreset && <option value={`preset:${session.candidate.presetId}`} disabled>{candidateLabel}</option>}
+            {catalog?.presets.map((preset) => <option key={preset.id} value={`preset:${preset.id}`} disabled={!preset.available}>
+              {t(`themePresets.${preset.id}`, { defaultValue: preset.display_name })}
+              {familyId ? ` · ${t(`themePanel.treatments.${themeFamilyTreatment(preset, familyId)}`)}` : ""}
+            </option>)}
+          </select>
           <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.previewHint")}</p>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.layeringHint")}</p>
           <p className="text-xs font-medium" data-testid="theme-current-family">
             {familyId ? t("themePanel.currentFamily", { family: familyLabel(familyId) })
               : t(detection === null ? "themePanel.familyWaiting" : "themePanel.familyUnknown")}
           </p>
+          {selectedPreset && familyId && <p className="text-xs text-muted-foreground" data-testid="theme-current-treatment">
+            {t(`themePanel.treatments.${themeFamilyTreatment(selectedPreset, familyId)}`)}
+          </p>}
           {!catalog && <p role="status" className="text-xs text-muted-foreground">{t("themePanel.catalogUnavailable")}</p>}
           {session.candidate.kind === "preset" && !available && <p role="status" className="break-words text-xs text-destructive">{t("themePanel.unknownPreset", { id: session.candidate.presetId })}</p>}
+          <details className="text-[11px] leading-relaxed text-muted-foreground">
+            <summary className="cursor-pointer">{t("themePanel.howThemesCombine")}</summary>
+            <p className="mt-2">{t("themePanel.layeringHint")}</p>
+            <p className="mt-2">{t("themePanel.fontPrecedenceHint", { font: t(`diagramFonts.${workspace.diagramFont}`) })}</p>
+          </details>
         </section>
         {selectedPreset && selectedPreset.application_notes.length > 0 && <section className="space-y-3 rounded-md border p-3 text-xs" aria-label={t("themePanel.applicationNotes")}>
           <h3 className="font-semibold">{t("themePanel.applicationNotes")}</h3>
@@ -209,8 +232,11 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
             <p className="font-medium">{familyLabel(note.family_id)}</p>
             <p className="leading-relaxed text-muted-foreground">{t(`themeApplicationNotes.${note.id}`, { defaultValue: note.message })}</p>
             {note.recommended_config !== null && <>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 p-2 text-[11px]">{JSON.stringify(note.recommended_config, null, 2)}</pre>
               <Button type="button" variant="outline" size="sm" className="h-auto max-w-full whitespace-normal py-1.5" onClick={() => applyRecommendedSettings(note.recommended_config!)}>{t("themePanel.useRecommendedSettings")}</Button>
+              <details className="text-[11px] text-muted-foreground">
+                <summary className="cursor-pointer">{t("themePanel.showRecommendedConfig")}</summary>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 p-2">{JSON.stringify(note.recommended_config, null, 2)}</pre>
+              </details>
             </>}
           </div>)}
           <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.recommendedConfigHint")}</p>

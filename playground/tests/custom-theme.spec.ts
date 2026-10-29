@@ -317,6 +317,18 @@ test("valid theme import and export do not require a valid diagram", async ({ pa
   await expect.poll(() => svg(page)).toContain("#fef3c7");
 });
 
+test("closing the theme panel does not steal focus from a newly focused editor", async ({ page }) => {
+  await start(page);
+  const panel = await openPanel(page);
+  await page.clock.install({ time: 0 });
+  await page.clock.pauseAt(1000);
+  await panel.getByRole("button", { name: "Cancel", exact: true }).dispatchEvent("click");
+  const editor = page.getByRole("textbox", { name: "Mermaid source", exact: true });
+  await editor.focus();
+  await page.clock.runFor(32);
+  await expect(editor).toBeFocused();
+});
+
 test("oversized import leaves the valid selection intact and can be replaced", async ({ page }) => {
   await start(page);
   const panel = await openPanel(page);

@@ -186,6 +186,8 @@ export default function App() {
                   <ThemePanel
                     className="h-full min-h-0"
                     onClose={() => requestAnimationFrame(() => {
+                      const active = document.activeElement;
+                      if (active && active !== document.body && !active.closest("#theme-panel")) return;
                       const launchers = document.querySelectorAll<HTMLButtonElement>("[data-theme-launcher]");
                       Array.from(launchers).find((launcher) => launcher.offsetParent !== null)?.focus({ preventScroll: true });
                     })}

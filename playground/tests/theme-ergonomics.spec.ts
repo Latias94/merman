@@ -8,12 +8,13 @@ async function openPanel(page: Page) {
   return page.getByRole("region", { name: "Theme panel", exact: true });
 }
 
-async function start(page: Page, mermaidConfig = "{}", themePresetId: string | null = null) {
+async function start(page: Page, mermaidConfig = "{}", themePresetId: string | null = null,
+  code = 'flowchart LR\nA[Authored source] --> B\n%%{init: {"flowchart":{"look":"handDrawn"}}}%%') {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
   const workspace = {
     ...DEFAULT_WORKSPACE_SNAPSHOT,
-    code: 'flowchart LR\nA[Authored source] --> B\n%%{init: {"flowchart":{"look":"handDrawn"}}}%%',
+    code,
     mermaidConfig, themePresetId,
   };
   await page.goto(`./${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
@@ -33,6 +34,23 @@ async function workspaceFromLink(page: Page) {
 async function apply(panel: Locator) {
   await panel.getByRole("button", { name: "Apply", exact: true }).click();
 }
+
+test("the top preset selector previews immediately and keeps keyboard focus without applying", async ({ page }) => {
+  await start(page, "{}", null, 'pie title Tea time\n"Tea": 4\n"Cake": 3');
+  const panel = await openPanel(page);
+  const chooser = panel.getByRole("combobox", { name: "Merman preset", exact: true });
+  await chooser.focus();
+  await chooser.selectOption("preset:ghibli");
+  await expect(chooser).toBeFocused();
+  await expect(chooser.getByRole("option", { name: "Ghibli · Dedicated design", exact: true })).toBeAttached();
+  await expect(panel.getByTestId("theme-current-treatment")).toHaveText("Dedicated design");
+  await expect(panel.locator("[data-theme-draft-status]")).toContainText("Theme preview");
+  await expect(panel.getByTestId("theme-outcome")).toContainText("Theme applied");
+  await page.screenshot({ path: test.info().outputPath("theme-panel-ghibli.png") });
+  await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+  const reopened = await openPanel(page);
+  await expect(reopened.getByRole("combobox", { name: "Merman preset", exact: true })).toHaveValue("none");
+});
 
 test("preset selection preserves source and config; explicit recommendations merge immediately and survive Cancel", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
@@ -88,7 +106,7 @@ test("recommended settings explain invalid config and preserve it for repair", a
 });
 
 test("Brutalist explains unapplied shadows and target residuals without opening Advanced", async ({ page }) => {
-  await start(page, "{}", "brutalist");
+  await start(page, "{}", "brutalist", "flowchart LR\nA[Authored source] --> B");
   await waitForPreviewSvg(page);
   const panel = await openPanel(page);
   const reasons = panel.getByTestId("theme-diagnostic-reasons");

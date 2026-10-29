@@ -445,7 +445,6 @@
   "themePanel": {
     "presets": "Presets",
     "browsePresets": "Browse presets",
-    "selectedTheme": "Current selection: {{theme}}",
     "none": "None",
     "noneDescription": "Use the Mermaid theme and source styles only. The diagram may still have a background.",
     "unavailable": "Unavailable in this runtime",
@@ -457,7 +456,9 @@
     "unknownPreset": "Unavailable in this runtime: {{id}}. The saved selection is preserved.",
     "mermaidTheme": "Mermaid base theme",
     "mermanStyling": "Merman styling · Merman only",
-    "compatibilityHint": "Changes both engines immediately. Authored configuration and source styles can take precedence. Cancel only discards the Merman selection below.",
+    "compatibilityHint": "Changes both engines immediately. Cancel only discards Merman styling.",
+    "choosePreset": "Merman preset",
+    "howThemesCombine": "How themes, source settings and fonts combine",
     "fontPrecedenceHint": "Chosen diagram font: {{font}}. This font is passed to both engines and may override a preset's font stack. Explicit config and source font settings can take precedence.",
     "copyJson": "Copy JSON",
     "applyFirst": "Apply the theme draft before sharing or exporting the preview.",
@@ -508,6 +509,7 @@
     "reviewedFamiliesHint": "Dedicated design adds family-specific styling; base styling uses the shared appearance. Unlisted families and unknown treatments are not yet reviewed, which does not mean unsupported. Review describes design intent; the actual scene and output target still matter.",
     "applicationNotes": "Application notes",
     "useRecommendedSettings": "Use recommended settings",
+    "showRecommendedConfig": "View recommended configuration",
     "recommendedConfigHint": "This button merges the shown keys into Mermaid config, preserving unrelated settings. Config changes apply to both engines immediately and survive Cancel. Source configuration may still override them.",
     "recommendedApplied": "Recommended settings applied to Mermaid config. Source configuration may still override them.",
     "recommendedConfigError": "Could not update Mermaid config. Fix its JSON object and try again. {{error}}",
@@ -533,6 +535,8 @@
     "diagnosticReasons": {
       "unsupported-effect": "A requested effect, such as a shadow or glow, could not be applied to this diagram, look or shape. Review Application notes for any listed requirements.",
       "unsupported-typography": "Some requested font or text styling could not be applied in this render.",
+      "unsupported-paint": "Some requested colors or paint styles could not be applied to this diagram's current look or shape.",
+      "unsupported-geometry": "Some requested shape or border settings could not be applied to this diagram's current look or shape.",
       "unsupported-fill": "Some requested fill paint could not be applied in this render.",
       "unsupported-stroke": "Some requested line or border styling could not be applied in this render.",
       "compatibility-unverified": "Some styling could not be verified for this diagram. Check the SVG in the host where you intend to use it."

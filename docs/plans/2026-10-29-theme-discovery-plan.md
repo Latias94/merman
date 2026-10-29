@@ -1,6 +1,6 @@
 # Theme discovery and reference designs
 
-Date: 2026-10-29. Status: implementation in progress.
+Date: 2026-10-29. Status: implemented and locally verified.
 
 ## Goal
 
@@ -108,6 +108,42 @@ run sequentially by the main agent against the existing shared target directory.
 
 ## Completion record
 
-Record the implemented seams, exact checks, screenshots and any remaining
-limitations here before handoff. Do not convert successful compilation or a
-visually convincing image into a portable qualification claim.
+The Rust catalog owns eleven alpha recipes, representative colors and optional
+family application notes. Web and Flutter project the additive metadata; CLI
+prints readable design scopes and suggestions. Playground offers direct preset
+selection with current-family treatment, optional swatch browsing, explicit
+configuration merging and a same-render outcome summary. Reviewed families,
+recipe validity, theme application and target admission remain distinct.
+
+Pie now prepares its title, percentage and legend properties once for measurement,
+CSS emission and terminal accounting. Ghibli uses the ordinary typed recipe path
+with 25/17/12px roles, a muted five-color palette and four paper-texture layers.
+Entity-decoded whitespace and XML-filtered empty labels cannot claim visible
+application. The catalog's test-only hash/revision/invalidation copies are gone.
+
+Remote main through `dc3ca0f22` was merged in `a985a4b9f`. The removed upstream
+`svgPlan` field stays removed. Automatic merges in README, Flutter contracts and
+Playground scripts retain both intents. Local owner checks include:
+
+- 3,363 renderer unit/Pie/support tests after the merge; one intentional skip.
+- 70 binding theme contracts, 62 theme-wire contracts and 22 CLI theme contracts.
+- 29 Web discovery/authoring/package tests; Dart contracts and analysis.
+- 170 Playground runtime tests, TypeScript, ESLint and production artifact checks.
+- Desktop selection/import/Apply/Cancel, invalid-source recovery, late file reads,
+  current-input evidence, Git Graph/Quadrant Chart names and keyboard-focus cases;
+  mobile 320px, mid-width and shortened viewport cases.
+- Fresh full browser WASM inputs verified as `c43e3f7b8611`; real Chromium renders
+  confirm Classic Brutalist and Ghibli theme application. Exported Ghibli JSON
+  reproduces the preset's SVG bytes for identical inputs.
+- Full SVG comparison with `--dom-modes structure,parity,parity-root
+  --dom-decimals 3 --diagnostic-browser-text-layout --report-root` passed without
+  comparator or residual-policy changes. Linux CI owns the full painted-content
+  containment browser lane.
+- Native SVG/PNG/PDF exports for both gallery examples completed. PNG and PDF
+  previews were visually reviewed; checked-in PNGs sit beside reproducible
+  sources/configuration in `docs/rendering/theme-gallery/`.
+
+These observations do not populate public qualified cells or remove browser/font
+dependencies. Default Neo still reports unapplied Brutalist effects; the UI offers
+Classic explicitly. Other reference designs and unreviewed family aesthetics are
+outside this change. No alpha version, release tag or package was published.
