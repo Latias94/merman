@@ -3396,6 +3396,7 @@ mod tests {
 
     struct StreamingOpaqueMeasurer {
         wrapped_calls: Cell<usize>,
+        literal_bbox_calls: Cell<usize>,
     }
 
     impl TextMeasurer for StreamingOpaqueMeasurer {
@@ -3417,6 +3418,18 @@ mod tests {
             }
         }
 
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.literal_bbox_calls
+                .set(self.literal_bbox_calls.get() + 1);
+            self.measure(text, style).width
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.literal_bbox_calls
+                .set(self.literal_bbox_calls.get() + 1);
+            self.measure(text, style).height
+        }
+
         fn measure_wrapped(
             &self,
             text: &str,
@@ -3433,32 +3446,51 @@ mod tests {
     fn streaming_state_without_builtin_carriers_is_not_cached() {
         let measurer = StreamingOpaqueMeasurer {
             wrapped_calls: Cell::new(0),
+            literal_bbox_calls: Cell::new(0),
         };
         let config = PresentationConfig::default();
         let style = TextStyle::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
-        builder.measure_for_layout(
-            owner,
-            "node",
-            FlowchartLabelMetricsRequest {
-                measurer: &measurer,
-                raw_label: "opaque callback contract",
-                label_type: "text",
-                style: &style,
-                max_width_px: Some(100.0),
-                wrap_mode: WrapMode::SvgLike,
-                config: &config,
-                math_renderer: None,
-            },
-            true,
-            FlowchartSvgWidthMode::Bbox,
-        );
+        let measure = || {
+            builder.measure_for_layout(
+                owner,
+                "node",
+                FlowchartLabelMetricsRequest {
+                    measurer: &measurer,
+                    raw_label: "opaque callback contract",
+                    label_type: "text",
+                    style: &style,
+                    max_width_px: Some(100.0),
+                    wrap_mode: WrapMode::SvgLike,
+                    config: &config,
+                    math_renderer: None,
+                },
+                true,
+                FlowchartSvgWidthMode::Bbox,
+            )
+        };
 
-        assert!(measurer.wrapped_calls.get() > 0);
+        let first = measure();
+        let first_bbox_calls = measurer.literal_bbox_calls.get();
+        assert!(
+            first_bbox_calls > 0,
+            "layout must measure literal SVG row bounds"
+        );
+        let second = measure();
+        assert_eq!(
+            measurer.literal_bbox_calls.get(),
+            2 * first_bbox_calls,
+            "opaque row measurements must run again even with a computed-length streaming state"
+        );
+        assert_eq!(
+            (first.width, first.height, first.line_count),
+            (second.width, second.height, second.line_count)
+        );
+        assert_eq!(measurer.wrapped_calls.get(), 0);
         assert_eq!(builder.prepared_count(), 0);
         let sidecar = builder.finish();
-        let calls_before_render = measurer.wrapped_calls.get();
+        let calls_before_render = measurer.literal_bbox_calls.get();
         let plan = FlowchartSvgLabelRenderPlan::new(
             Some(&sidecar),
             Some(owner),
@@ -3476,12 +3508,13 @@ mod tests {
                 ..
             }
         ));
-        let _ = plan.wrapped_lines();
+        assert!(plan.wrapped_lines().len() > 1);
         assert_eq!(
-            measurer.wrapped_calls.get(),
+            measurer.literal_bbox_calls.get(),
             calls_before_render,
-            "the computed-length carrier owns this route; no opaque wrapped callback is expected"
+            "render wrapping uses computed length without measuring literal row bounds again"
         );
+        assert_eq!(measurer.wrapped_calls.get(), 0);
     }
 
     #[test]

@@ -278,14 +278,23 @@ pub(super) fn title_label_metrics(
     let metrics = sidecar
         .map_or_else(
             || {
-                let decoded = decode_html_entities_once(label);
-                super::StateLabelMeasurement {
-                    metrics: measurer.measure_wrapped(
+                let metrics = if wrap_mode == WrapMode::HtmlLike {
+                    let decoded = decode_html_entities_once(label);
+                    measurer.measure_wrapped(
                         decoded.as_ref(),
                         typography.text_style(),
                         None,
                         wrap_mode,
-                    ),
+                    )
+                } else {
+                    super::label::measure_state_svg_plain_label(
+                        label,
+                        measurer,
+                        typography.text_style(),
+                    )
+                };
+                super::StateLabelMeasurement {
+                    metrics,
                     uses_html_wrapping_table: false,
                 }
             },
@@ -2554,6 +2563,11 @@ mod tests {
             ),
             (250.123_456_789, 17.25)
         );
+        // Keep this padding control below createText's 200px wrapping width.
+        let measurer = NonLatticeMeasurer {
+            width: 73.123_456_789,
+            height: 17.25,
+        };
         assert_eq!(
             edge_label_metrics(
                 "edge",
@@ -2563,7 +2577,7 @@ mod tests {
                 WrapMode::SvgLike,
                 None,
             ),
-            (254.123_456_789, 21.25)
+            (77.123_456_789, 21.25)
         );
     }
 

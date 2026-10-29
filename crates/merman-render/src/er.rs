@@ -41,9 +41,19 @@ pub(crate) struct ErBoxLabel {
 
 impl ErBoxLabel {
     pub(crate) fn from_source(source: &str) -> Self {
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(source);
-        let source = decoded.as_ref().trim();
-        let parsed = merman_core::common::parse_generic_types(source);
+        Self::from_source_with_generic_types(source, true)
+    }
+
+    fn from_source_with_generic_types(source: &str, expand_generic_types: bool) -> Self {
+        // erBox receives source spelling. Browser entity decoding belongs to createText's
+        // HTML insertion or SVG word terminals, after authored line breaks are selected.
+        let restored = merman_core::entities::restore_mermaid_entity_spelling(source);
+        let source = restored.as_ref().trim();
+        let parsed = if expand_generic_types {
+            merman_core::common::parse_generic_types(source)
+        } else {
+            source.to_string()
+        };
         let generic_workaround = parsed != source;
         let markdown_input = if generic_workaround {
             parsed.replace('<', "&lt;").replace('>', "&gt;")
@@ -53,7 +63,12 @@ impl ErBoxLabel {
         let xhtml_fragment =
             crate::text::mermaid_markdown_to_xhtml_label_fragment(&markdown_input, true);
         let rendered_text = if generic_workaround {
-            crate::text::mermaid_xhtml_label_text_content(&xhtml_fragment).unwrap_or(parsed)
+            // addText restores only angle-bracket spellings through textContent after
+            // createText. Other entities retain the depth left by the terminal decoder.
+            crate::text::mermaid_xhtml_label_text_content(&xhtml_fragment)
+                .unwrap_or(parsed)
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
         } else {
             source.to_string()
         };
@@ -125,11 +140,9 @@ impl ErPreparedRelationshipLabel {
                 None,
                 WrapMode::HtmlLike,
             )
-        } else if let Some(plain_text) =
-            crate::text::mermaid_xhtml_label_plain_text(&xhtml_fragment)
-        {
-            measurer.measure_wrapped(&plain_text, style, None, WrapMode::SvgLike)
         } else {
+            // The shared SVG path measures retained word rows after createText entity decoding.
+            // A literal `<br>` in a terminal word must not become another source line break.
             crate::text::measure_markdown_with_inline_styles(
                 measurer,
                 &source,
@@ -277,7 +290,26 @@ pub(crate) fn er_box_label_metrics_with_wrap_mode(
     match wrap_mode {
         WrapMode::HtmlLike => {
             if label.uses_generic_workaround() {
-                measurer.measure_wrapped(label.rendered_text(), style, None, wrap_mode)
+                // erBox assigns the workaround result through textContent. Its final nowrap
+                // HTML text collapses ASCII whitespace but never interprets literal markup.
+                let line = label
+                    .rendered_text()
+                    .split(crate::text::is_html_collapsible_ascii_whitespace)
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if line.is_empty() {
+                    return TextMetrics {
+                        width: 0.0,
+                        height: 0.0,
+                        line_count: 0,
+                    };
+                }
+                TextMetrics {
+                    width: measurer.measure_html_line_width_px(&line, style),
+                    height: measurer.measure_html_line_height_px(&line, style),
+                    line_count: 1,
+                }
             } else {
                 crate::text::measure_xhtml_label_fragment(
                     measurer,
@@ -391,7 +423,12 @@ pub(crate) fn measure_entity_box(
     let min_w = settings.min_entity_width;
     let wrapping_width_px = settings.wrapping_width_px;
 
-    let label = ErBoxLabel::from_source(entity.label_source_for_render());
+    // Attribute-free entities use drawRect/labelHelper, which does not call addText's
+    // parseGenericTypes workaround.
+    let label = ErBoxLabel::from_source_with_generic_types(
+        entity.label_source_for_render(),
+        !entity.attributes.is_empty(),
+    );
     let label_metrics = er_box_label_metrics_with_wrap_mode(
         &label,
         measurer,
@@ -410,12 +447,9 @@ pub(crate) fn measure_entity_box(
         // used by `drawRect`.
         let calc_w =
             calculate_text_width_like_mermaid_px(measurer, label_style, label.markdown_input());
-        let unformatted_label_metrics = measurer.measure_wrapped(
-            label.rendered_text(),
-            label_style,
-            None,
-            settings.label_wrap_mode,
-        );
+        // The painter emits this same prepared terminal. Reusing its metrics preserves
+        // entity depth and avoids measuring encoded source as already-decoded text.
+        let unformatted_label_metrics = label_metrics;
         let clamp_to_min_w = (calc_w as f64 + label_pad_x * 2.0) < min_w;
         let width = if clamp_to_min_w {
             min_w
@@ -2324,10 +2358,16 @@ mod tests {
 
     #[test]
     fn er_svg_entity_measurement_uses_svg_mode_for_names_and_attributes() {
-        struct ModeMeasurer;
+        use crate::environment::TextMeasurementOperation;
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct ModeMeasurer {
+            measured: Mutex<Vec<(TextMeasurementOperation, String)>>,
+        }
         impl TextMeasurer for ModeMeasurer {
             fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
-                panic!("label measurement must specify its wrapping mode")
+                panic!("SVG terminals must select a literal measurement operation")
             }
 
             fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
@@ -2339,42 +2379,198 @@ mod tests {
                 _text: &str,
                 _style: &TextStyle,
                 _max_width_px: Option<f64>,
-                wrap_mode: WrapMode,
+                _wrap_mode: WrapMode,
             ) -> TextMetrics {
-                assert_eq!(wrap_mode, WrapMode::SvgLike);
-                TextMetrics {
-                    width: 40.0,
-                    height: 18.0,
-                    line_count: 1,
-                }
+                panic!("retained SVG word rows must not re-enter wrapped label parsing")
+            }
+
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert!(!text.contains('\n'));
+                self.measured
+                    .lock()
+                    .unwrap()
+                    .push((TextMeasurementOperation::TspanBBoxHeight, text.to_owned()));
+                18.0
+            }
+
+            fn measure_svg_create_text_bbox_y_offset_px(
+                &self,
+                text: &str,
+                _style: &TextStyle,
+            ) -> f64 {
+                assert!(!text.contains('\n'));
+                self.measured.lock().unwrap().push((
+                    TextMeasurementOperation::CreateTextBBoxYOffset,
+                    text.to_owned(),
+                ));
+                -4.0
             }
         }
-        let entity = super::ErEntity {
-            id: "entity-BOOK-0".to_string(),
-            label: "BOOK".to_string(),
-            attributes: vec![merman_core::diagrams::er::ErAttribute {
-                ty: "string".to_string(),
-                name: "title".to_string(),
-                keys: vec!["PK".to_string()],
-                comment: "book title".to_string(),
-            }],
-            ..Default::default()
-        };
         let config = serde_json::json!({ "htmlLabels": false });
         let settings = super::ErConfigView::new(&config).entity_measurement_settings();
-        let measured = super::measure_entity_box(
-            &entity,
-            &ModeMeasurer,
-            &default_style(),
-            &default_style(),
-            settings,
-        );
-        assert_eq!(measured.label_height, 18.0);
-        assert_eq!(measured.rows.len(), 1);
-        assert_eq!(
-            measured.rows[0].height,
-            18.0 + settings.entity_padding * 1.25
-        );
+        let style = default_style();
+        // Source entities remain encoded until the retained SVG words are emitted.
+        // Only an authored break may add another row.
+        for (comment, comment_words, comment_lines) in [
+            ("book &lt;br&gt; title", &["book", " <br>", " title"][..], 1),
+            (
+                "book &amp;lt;br&amp;gt; title",
+                &["book", " &lt;br&gt;", " title"][..],
+                1,
+            ),
+            ("book #lt;br#gt; title", &["book", " <br>", " title"][..], 1),
+            ("book<br/>title", &["book", "title"][..], 2),
+        ] {
+            let entity = super::ErEntity {
+                id: "entity-BOOK-0".to_string(),
+                label: "BOOK".to_string(),
+                attributes: vec![merman_core::diagrams::er::ErAttribute {
+                    ty: "string".to_string(),
+                    name: "title".to_string(),
+                    keys: vec!["PK".to_string()],
+                    comment: comment.to_string(),
+                }],
+                ..Default::default()
+            };
+            let measurer = ModeMeasurer::default();
+            let measured = super::measure_entity_box(&entity, &measurer, &style, &style, settings);
+            assert_eq!(measured.label_height, 18.0, "{comment}");
+            assert_eq!(measured.rows.len(), 1, "{comment}");
+            let expected_height = 18.0
+                + (comment_lines - 1) as f64 * style.font_size * 1.1
+                + settings.entity_padding * 1.25;
+            assert!(
+                (measured.rows[0].height - expected_height).abs() < 1e-9,
+                "{comment}: {} != {expected_height}",
+                measured.rows[0].height
+            );
+            assert_eq!(measured.rows[0].cell_widths, [40.0; 4], "{comment}");
+            let expected_words: Vec<_> = ["BOOK", "string", "title", "PK"]
+                .into_iter()
+                .chain(comment_words.iter().copied())
+                .collect();
+            let calls = measurer.measured.lock().unwrap();
+            for operation in [
+                TextMeasurementOperation::TspanBBoxHeight,
+                TextMeasurementOperation::CreateTextBBoxYOffset,
+            ] {
+                let words: Vec<_> = calls
+                    .iter()
+                    .filter(|(actual, _)| *actual == operation)
+                    .map(|(_, text)| text.as_str())
+                    .collect();
+                assert_eq!(words, expected_words, "{operation:?}: {comment}");
+            }
+        }
+    }
+
+    #[test]
+    fn er_generic_html_metrics_measure_final_literal_line() {
+        struct LiteralLineMeasurer<'a>(&'a str);
+
+        impl TextMeasurer for LiteralLineMeasurer<'_> {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                panic!("generic HTML text must select literal line primitives")
+            }
+
+            fn measure_wrapped(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+                _max_width: Option<f64>,
+                _wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                panic!("generic HTML textContent must not re-enter label parsing")
+            }
+
+            fn measure_html_line_width_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert_eq!(text, self.0);
+                73.123_456_789
+            }
+
+            fn measure_html_line_height_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert_eq!(text, self.0);
+                17.25
+            }
+        }
+
+        for (source, visible) in [
+            ("A~br~B", "A<br>B"),
+            ("*A~br~B*", "A<br>B"),
+            ("A~br~B  C", "A<br>B C"),
+            ("A~br~B\u{a0}C", "A<br>B\u{a0}C"),
+            ("A~br~B&amp;lt;br&amp;gt;C", "A<br>B<br>C"),
+            (
+                "A~br~B&amp;amp;lt;br&amp;amp;gt;C",
+                "A<br>B&amp;lt;br&amp;gt;C",
+            ),
+        ] {
+            let label = super::ErBoxLabel::from_source(source);
+            assert!(label.uses_generic_workaround(), "{source}");
+            let actual = super::er_box_label_metrics(
+                &label,
+                &LiteralLineMeasurer(visible),
+                &default_style(),
+                WrapMode::HtmlLike,
+            );
+            assert_eq!(actual.width, 73.123_456_789, "{source}");
+            assert_eq!(actual.height, 17.25, "{source}");
+            assert_eq!(actual.line_count, 1, "{source}");
+        }
+    }
+
+    #[test]
+    fn er_svg_relationship_metrics_measure_retained_literal_words() {
+        #[derive(Default)]
+        struct TerminalMeasurer(std::cell::RefCell<Vec<String>>);
+
+        impl TextMeasurer for TerminalMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                panic!("SVG relationships must select terminal word primitives")
+            }
+
+            fn measure_wrapped(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+                _max_width: Option<f64>,
+                _wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                panic!("SVG relationship words must not re-enter label parsing")
+            }
+
+            fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                text.chars().count() as f64 * 5.0
+            }
+
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                self.0.borrow_mut().push(text.to_owned());
+                18.0
+            }
+
+            fn measure_svg_create_text_bbox_y_offset_px(
+                &self,
+                text: &str,
+                _style: &TextStyle,
+            ) -> f64 {
+                assert!(!text.contains('\n'));
+                -4.0
+            }
+        }
+
+        for (source, words, width, height) in [
+            ("A&lt;br&gt;B", vec!["A<br>B"], 30.0, 18.0),
+            ("A&amp;lt;br&amp;gt;B", vec!["A&lt;br&gt;B"], 60.0, 18.0),
+            ("A<br/>B", vec!["A", "B"], 5.0, 18.0 + 16.0 * 1.1),
+        ] {
+            let measurer = TerminalMeasurer::default();
+            let prepared =
+                super::ErPreparedRelationshipLabel::new(source, &measurer, &default_style(), false);
+            assert_eq!(prepared.metrics.width, width, "{source}");
+            assert!((prepared.metrics.height - height).abs() < 1e-9, "{source}");
+            assert_eq!(prepared.metrics.line_count, words.len(), "{source}");
+            assert_eq!(*measurer.0.borrow(), words, "{source}");
+        }
     }
 
     #[test]

@@ -8,7 +8,7 @@ use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::model::{FlowchartLayout, LayoutNode};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode};
+use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
 use merman_render::{LayoutOptions, family};
 use serde_json::json;
 
@@ -165,15 +165,22 @@ fn label_dimensions(document: &roxmltree::Document<'_>, id: &str, style: &TextSt
         .map(|element| element.text().unwrap())
         .collect();
     assert_eq!(visible, "a");
-    // This one-row fixture uses the deterministic SVG bbox profile and the effective theme font.
-    // Public layout JSON intentionally omits the renderer's internal label measurement cache.
-    let metrics = DeterministicTextMeasurer::default().measure_wrapped(
-        &visible,
-        style,
-        None,
-        WrapMode::SvgLike,
+    let rows: Vec<_> = text
+        .children()
+        .filter(|element| element.has_tag_name("tspan"))
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the circle fixture must remain a single SVG row"
     );
-    (metrics.width, metrics.height)
+    assert_eq!(rows[0].attribute("dy"), Some("1.1em"));
+    // The circle encloses literal glyph bounds, not createText's 1.1em row advance.
+    let measurer = DeterministicTextMeasurer::default();
+    (
+        measurer.measure_svg_tspan_text_bbox_width_px(&visible, style),
+        measurer.measure_svg_tspan_text_bbox_height_px(&visible, style),
+    )
 }
 
 fn radius(document: &roxmltree::Document<'_>, id: &str, class: Option<&str>) -> f64 {

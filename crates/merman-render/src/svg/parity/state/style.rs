@@ -902,9 +902,19 @@ pub(super) fn state_svg_text_label(
     center_text: bool,
     style_attr: Option<&str>,
 ) -> String {
-    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
-    let normalized = state_normalize_br_tags(decoded.as_ref());
-    state_svg_text_label_lines(normalized.split('\n'), center_text, style_attr)
+    let decoded = merman_core::entities::restore_mermaid_entity_spelling(raw);
+    let source = decoded.replace("\\n", "\n");
+    let lines = source
+        .split('\n')
+        .flat_map(crate::text::split_html_br_lines)
+        .map(|line| {
+            crate::text::non_markdown_svg_words(line)
+                .map(crate::entities::decode_svg_text_content_entities)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>();
+    state_svg_text_label_lines(lines.iter().map(String::as_str), center_text, style_attr)
 }
 
 pub(crate) fn state_measured_svg_text_label(

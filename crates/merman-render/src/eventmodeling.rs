@@ -1,13 +1,18 @@
-use crate::Result;
 use crate::model::{
     Bounds, EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
     EventModelingSwimlaneLayout,
 };
-use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
+use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
+use crate::text::{
+    TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines_with_checkpoint,
+};
+use crate::{Error, Result};
 use merman_core::diagrams::eventmodeling::{
     EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
 };
+use merman_core::presentation::PresentationConfig;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 mod config;
 mod css_binding;
@@ -31,12 +36,48 @@ const BOX_TEXT_PADDING: f64 = 10.0;
 const TEXT_FONT_SIZE: f64 = 16.0;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
-pub(crate) fn layout_eventmodeling_diagram_typed_with_binding(
+/// Final XHTML terminals from the pinned `calculateTextProps` producer, indexed by box index.
+#[derive(Debug, Default)]
+pub(crate) struct EventModelingPreparedLabels {
+    boxes: Vec<EventModelingPreparedHtmlLabel>,
+}
+
+#[derive(Debug)]
+struct EventModelingPreparedHtmlLabel {
+    xhtml: String,
+    dimension: TextDimension,
+    _retained_reservation: PreparedTextRetainedReservation,
+}
+
+impl EventModelingPreparedLabels {
+    pub(crate) fn box_xhtml(&self, index: usize) -> Result<&str> {
+        self.boxes
+            .get(index)
+            .map(|label| label.xhtml.as_str())
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Event Modeling XHTML label for box `{index}`"),
+            })
+    }
+}
+
+pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
     model: &EventModelingDiagramModel,
     theme: &EventModelingCssBinding,
+    effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
-) -> Result<EventModelingDiagramLayout> {
+    work_meter: &Arc<OperationWorkMeter>,
+) -> Result<(EventModelingDiagramLayout, EventModelingPreparedLabels)> {
+    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
     let cfg = theme.layout_settings;
+    let mut label_config = effective_config.clone();
+    if label_config.get_str("securityLevel").is_none() {
+        label_config.set_value("securityLevel", serde_json::json!("strict"));
+    }
+    // Author text is sanitized before wrapping, as in pinned db.ts::calculateTextProps.
+    // The second pass serializes generated markup; it must not escape it as author text.
+    let mut fragment_config = label_config.clone();
+    fragment_config.set_value("securityLevel", serde_json::json!("loose"));
+    let mut prepared_labels = EventModelingPreparedLabels::default();
     let data_entities: HashMap<&str, &EventModelingDataEntity> = model
         .data_entities
         .iter()
@@ -52,7 +93,17 @@ pub(crate) fn layout_eventmodeling_diagram_typed_with_binding(
 
     for (index, frame) in model.frames.iter().enumerate() {
         let text = frame_text(frame, &data_entities);
-        let text_dimension = measure_frame_text(frame, &data_entities, measurer);
+        let label = EventModelingPreparedHtmlLabel::prepare(
+            frame,
+            &data_entities,
+            &label_config,
+            &fragment_config,
+            measurer,
+            work_meter,
+        )?;
+        let text_dimension = label.dimension;
+        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        prepared_labels.boxes.push(label);
         let event_width = text_dimension.width + 2.0 * BOX_TEXT_PADDING;
         let event_height = text_dimension.height + 2.0 * BOX_TEXT_PADDING;
         let width = event_width.clamp(BOX_MIN_WIDTH, BOX_MAX_WIDTH) + 2.0 * BOX_PADDING;
@@ -208,18 +259,21 @@ pub(crate) fn layout_eventmodeling_diagram_typed_with_binding(
     let viewbox_x = padded.min_x;
     let viewbox_y = padded.min_y;
 
-    Ok(EventModelingDiagramLayout {
-        bounds: Some(padded),
-        total_width,
-        total_height,
-        viewbox_x,
-        viewbox_y,
-        padding: cfg.padding,
-        use_max_width: cfg.use_max_width,
-        swimlanes: swimlane_layouts,
-        boxes: box_layouts,
-        relations: relation_layouts,
-    })
+    Ok((
+        EventModelingDiagramLayout {
+            bounds: Some(padded),
+            total_width,
+            total_height,
+            viewbox_x,
+            viewbox_y,
+            padding: cfg.padding,
+            use_max_width: cfg.use_max_width,
+            swimlanes: swimlane_layouts,
+            boxes: box_layouts,
+            relations: relation_layouts,
+        },
+        prepared_labels,
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -433,24 +487,11 @@ fn frame_text(
     text
 }
 
-fn measure_frame_text(
-    frame: &EventModelingFrame,
-    data_entities: &HashMap<&str, &EventModelingDataEntity>,
-    measurer: &dyn TextMeasurer,
-) -> TextDimension {
-    let style = TextStyle {
+fn eventmodeling_label_style() -> TextStyle {
+    TextStyle {
         font_size: TEXT_FONT_SIZE,
         font_weight: Some("700".to_string()),
         ..Default::default()
-    };
-    let (html, has_data) = frame_label_html_for_measurement(frame, data_entities, measurer, &style);
-    let mut dimension = measure_eventmodeling_label_html(&html, measurer, &style);
-    if has_data {
-        dimension.width /= 3.0;
-    }
-    TextDimension {
-        width: dimension.width.min(TEXT_MAX_WIDTH),
-        height: dimension.height,
     }
 }
 
@@ -530,47 +571,139 @@ fn measure_eventmodeling_label_html_with_style(
     }
 }
 
-fn frame_label_html_for_measurement(
-    frame: &EventModelingFrame,
-    data_entities: &HashMap<&str, &EventModelingDataEntity>,
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
-) -> (String, bool) {
-    let title = wrap_eventmodeling_label(extract_name(&frame.entity_identifier), measurer, style);
-    let mut html = format!("<b>{title}</b>");
-    let data = frame
-        .data_inline_value
-        .as_deref()
-        .or_else(|| {
+impl EventModelingPreparedHtmlLabel {
+    fn prepare(
+        frame: &EventModelingFrame,
+        data_entities: &HashMap<&str, &EventModelingDataEntity>,
+        label_config: &PresentationConfig,
+        fragment_config: &PresentationConfig,
+        measurer: &dyn TextMeasurer,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<Self> {
+        use crate::html::HtmlSanitizeSink;
+
+        // Include the vector owner slot, consistently with Block's prepared-label accounting.
+        const OWNER_SLOT_BYTES: usize = 192;
+        let owner_bytes = std::mem::size_of::<Self>().saturating_add(OWNER_SLOT_BYTES);
+        work_meter.preflight_prepared_text_retained_bytes(owner_bytes)?;
+        let parse_work = std::cell::Cell::new(0);
+        let max = work_meter
+            .remaining_prepared_text_retained_bytes()
+            .map_or(usize::MAX, |remaining| {
+                remaining.saturating_sub(owner_bytes)
+            });
+        let sink = HtmlSanitizeSink::new(
+            max,
+            work_meter,
+            &parse_work,
+            merman_core::OperationPhase::Layout,
+        );
+        // Author sanitization is transient and may shrink during wrapLabel whitespace folding.
+        // Its parser/storage work is metered separately from final retained XHTML bytes.
+        let author_sink = HtmlSanitizeSink::new(
+            usize::MAX,
+            work_meter,
+            &parse_work,
+            merman_core::OperationPhase::Layout,
+        );
+        let sanitize_author = |raw: &str| {
+            eventmodeling_sanitize_result(
+                merman_core::sanitize::sanitize_text_with_sink(
+                    raw,
+                    label_config.as_config(),
+                    &author_sink,
+                ),
+                owner_bytes,
+                work_meter,
+            )
+        };
+        let style = eventmodeling_label_style();
+        let wrap = |text: &str| {
+            wrap_label_like_mermaid_lines_with_checkpoint(
+                text,
+                measurer,
+                &style,
+                TEXT_MAX_WIDTH,
+                || Ok(work_meter.checkpoint(merman_core::OperationPhase::Layout)?),
+            )
+            .map(|lines| lines.join("<br/>"))
+        };
+        let title = wrap(&sanitize_author(extract_name(&frame.entity_identifier))?)?;
+        let mut html = format!("<b>{title}</b>");
+        let data = frame.data_inline_value.as_deref().or_else(|| {
             frame
                 .data_reference
                 .as_deref()
                 .and_then(|reference| data_entities.get(reference))
                 .map(|entity| entity.data_block_value.as_str())
-        })
-        .map(normalize_eventmodeling_data_for_measurement);
-
-    if let Some(data) = data {
-        let wrapped_data = wrap_eventmodeling_label(&data, measurer, style).replace(' ', "&nbsp;");
-        html.push_str(
-            r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#,
-        );
-        html.push_str(&wrapped_data);
-        if frame.data_reference.is_some() {
-            html.push_str("<br/>");
+        });
+        if let Some(data) = data {
+            let data = sanitize_author(&normalize_eventmodeling_data(data))?;
+            let wrapped_data = wrap(&data)?.replace(' ', "&nbsp;");
+            html.push_str(
+                r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#,
+            );
+            html.push_str(&wrapped_data);
+            if frame.data_reference.is_some() {
+                html.push_str("<br/>");
+            }
+            html.push_str("</code>");
         }
-        html.push_str("</code>");
-        (html, true)
-    } else {
-        (html, false)
+        // Pinned calculateTextDimensions probes generated HTML source with SVG text APIs.
+        // Preserve entity spellings here; XHTML serialization is a separate terminal projection.
+        let mut dimension = measure_eventmodeling_label_html(&html, measurer, &style);
+        if data.is_some() {
+            dimension.width /= 3.0;
+        }
+        dimension.width = dimension.width.min(TEXT_MAX_WIDTH);
+        // Keep entity-authored angle brackets encoded until this HTML parse consumes them.
+        // Only this sanitized, XML-serialized terminal may be written beneath the XHTML span.
+        let xhtml = eventmodeling_sanitize_result(
+            merman_core::sanitize::sanitize_xhtml_with_sink(
+                &html,
+                fragment_config.as_config(),
+                &sink,
+            ),
+            owner_bytes,
+            work_meter,
+        )?;
+        let work_control =
+            crate::layout_work::OperationLayoutWorkControl::new(Arc::clone(work_meter));
+        let reservation = work_control
+            .reserve_prepared_text_retained_bytes(owner_bytes.saturating_add(xhtml.capacity()))?;
+        Ok(Self {
+            xhtml,
+            dimension,
+            _retained_reservation: reservation,
+        })
     }
 }
 
-fn wrap_eventmodeling_label(label: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> String {
-    wrap_label_like_mermaid_lines(label, measurer, style, TEXT_MAX_WIDTH).join("<br/>")
+fn eventmodeling_sanitize_result(
+    result: std::result::Result<
+        String,
+        merman_core::sanitize::SanitizeFailure<crate::html::HtmlOutputError>,
+    >,
+    owner_bytes: usize,
+    work_meter: &OperationWorkMeter,
+) -> Result<String> {
+    use crate::html::HtmlOutputError;
+    use merman_core::sanitize::SanitizeFailure;
+
+    match result {
+        Ok(text) => Ok(text),
+        Err(SanitizeFailure::Output(HtmlOutputError::Operation(error))) => Err(error.into()),
+        Err(SanitizeFailure::Output(HtmlOutputError::Limit { attempted })) => {
+            work_meter
+                .preflight_prepared_text_retained_bytes(owner_bytes.saturating_add(attempted))?;
+            Ok(String::new())
+        }
+        // Preserve the sanitizer's fail-closed behavior for malformed input/allocation.
+        Err(_) => Ok(String::new()),
+    }
 }
 
-fn normalize_eventmodeling_data_for_measurement(raw: &str) -> String {
+fn normalize_eventmodeling_data(raw: &str) -> String {
     let trimmed = raw.trim();
     let without_outer_braces = trimmed
         .strip_prefix('{')

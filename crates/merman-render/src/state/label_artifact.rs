@@ -149,6 +149,16 @@ fn measure_label(request: StateLabelMetricsRequest<'_>) -> StateLabelMeasurement
             request.max_width_px,
             request.wrap_mode,
         ),
+        StateLabelSourceKind::Plain if request.wrap_mode != WrapMode::HtmlLike => {
+            StateLabelMeasurement {
+                metrics: super::label::measure_state_svg_plain_label(
+                    request.text,
+                    request.measurer,
+                    &style,
+                ),
+                uses_html_wrapping_table: false,
+            }
+        }
         StateLabelSourceKind::Plain => {
             let text = decode_mermaid_entities_for_render_text(request.text);
             StateLabelMeasurement {

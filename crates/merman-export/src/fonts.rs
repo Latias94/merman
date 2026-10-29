@@ -1069,9 +1069,7 @@ impl NativeFontContext {
                     },
                 )?;
                 layout.metrics.height = match request.wrap_mode {
-                    WrapMode::HtmlLike => {
-                        layout.metrics.line_count as f64 * style.font_size.max(1.0) * 1.5
-                    }
+                    WrapMode::HtmlLike => layout.metrics.line_count as f64 * style.font_size * 1.5,
                     WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
                         // Mermaid emits one outer tspan per row. Use the emitted rows' actual
                         // font bbox height; subsequent row baselines advance by dy=1.1em.
@@ -1079,7 +1077,7 @@ impl NativeFontContext {
                         let mut bottom = f64::NEG_INFINITY;
                         for (index, metrics) in line_metrics.iter().enumerate() {
                             if metrics.height > 0.0 {
-                                let baseline = index as f64 * style.font_size.max(1.0) * 1.1;
+                                let baseline = index as f64 * style.font_size * 1.1;
                                 top = top.min(baseline + metrics.raw_y);
                                 bottom = bottom.max(baseline + metrics.raw_y + metrics.height);
                             }
@@ -1154,6 +1152,14 @@ impl NativeFontContext {
                     | Op::TspanBBoxWidth
                     | Op::WrapProbeBBoxWidth
                     | Op::BoundingClientRectWidth => HostTextMeasurement::Length(metrics.width),
+                    Op::HtmlLineHeight => {
+                        // Empty or collapsed whitespace does not create an HTML inline line box.
+                        let empty = request
+                            .text
+                            .bytes()
+                            .all(|byte| matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0c));
+                        HostTextMeasurement::Length(if empty { 0.0 } else { style.font_size * 1.5 })
+                    }
                     Op::SimpleBBoxHeight | Op::RawBBoxHeight | Op::TspanBBoxHeight => {
                         HostTextMeasurement::Length(metrics.height)
                     }

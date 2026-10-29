@@ -7,7 +7,7 @@ use merman_render::environment::TextMeasurementPhase;
 use merman_render::family;
 use merman_render::model::MindmapDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMeasurer, TextStyle, WrapMode};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 
 fn label_translation(document: &roxmltree::Document<'_>, id: &str) -> (f64, f64) {
     let group = document
@@ -30,7 +30,11 @@ fn label_translation(document: &roxmltree::Document<'_>, id: &str) -> (f64, f64)
     (x.trim().parse().unwrap(), y.trim().parse().unwrap())
 }
 
-fn measure_visible_svg_text(source: &str, visible: &str) -> merman_render::text::TextMetrics {
+fn measure_emitted_svg_text(
+    source: &str,
+    document: &roxmltree::Document<'_>,
+    node_id: &str,
+) -> TextMetrics {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -47,9 +51,67 @@ fn measure_visible_svg_text(source: &str, visible: &str) -> merman_render::text:
         font_weight: None,
         font_style: None,
     };
-    session
-        .text_measurer(TextMeasurementPhase::SvgBBox)
-        .measure_wrapped(visible, &style, None, WrapMode::SvgLike)
+    let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
+    let node = document
+        .descendants()
+        .find(|element| element.attribute("id") == Some(node_id))
+        .unwrap();
+    let text = node
+        .descendants()
+        .find(|element| element.has_tag_name("text"))
+        .unwrap();
+    let baseline_em = |row: roxmltree::Node<'_, '_>| {
+        let em = |attribute| {
+            row.attribute(attribute)
+                .unwrap()
+                .strip_suffix("em")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+        };
+        em("y") + em("dy")
+    };
+    let mut first_baseline = None;
+    let mut width = 0.0_f64;
+    let mut ink: Option<(f64, f64)> = None;
+    let mut line_count = 0;
+    // createText.ts measures the emitted textContent, with each word's own face and row baseline.
+    // Generic wrapping would reinterpret literal entity/tag spelling and supply another DOM's ink.
+    for row in text.children().filter(roxmltree::Node::is_element) {
+        let baseline = baseline_em(row);
+        let offset = (baseline - *first_baseline.get_or_insert(baseline)) * style.font_size;
+        let mut row_width = 0.0;
+        for word in row.children().filter(roxmltree::Node::is_element) {
+            let literal = word.text().unwrap_or_default();
+            let face = TextStyle {
+                font_weight: Some(
+                    if word.attribute("font-weight") == Some("bold") {
+                        "700"
+                    } else {
+                        "normal"
+                    }
+                    .to_owned(),
+                ),
+                font_style: word.attribute("font-style").map(str::to_owned),
+                ..style.clone()
+            };
+            row_width += measurer.measure_svg_text_computed_length_px(literal, &face);
+            let height = measurer.measure_svg_tspan_text_bbox_height_px(literal, &face);
+            if height > 0.0 {
+                let top =
+                    measurer.measure_svg_create_text_bbox_y_offset_px(literal, &face) + offset;
+                let bottom = top + height;
+                ink = Some(ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))));
+            }
+        }
+        width = width.max(row_width);
+        line_count += 1;
+    }
+    TextMetrics {
+        width,
+        height: ink.map_or(0.0, |(top, bottom)| bottom - top),
+        line_count,
+    }
 }
 
 fn render(source: &str, diagram_id: &str) -> (String, MindmapDiagramLayout) {
@@ -131,9 +193,10 @@ Root((Centered))
         assert!(background.has_tag_name("rect"));
         assert_eq!(background.attribute("class"), Some("background"));
     }
-    let measured = measure_visible_svg_text("mindmap\nCentered\n", "Centered");
     for node in &layout.nodes {
         let dom_id = format!("mindmap-12-2-center-node_{}", node.id);
+        let measured = measure_emitted_svg_text("mindmap\nCentered\n", &document, &dom_id);
+        assert_eq!(measured.line_count, 1);
         let group = document
             .descendants()
             .find(|element| element.attribute("id") == Some(dom_id.as_str()))
@@ -164,13 +227,31 @@ Root((Centered))
             .descendants()
             .find(|element| element.has_tag_name("text"))
             .unwrap();
+        let emitted: String = text
+            .descendants()
+            .filter(roxmltree::Node::is_text)
+            .filter_map(|element| element.text())
+            .collect();
+        assert_eq!(emitted, "Centered", "{dom_id}");
         assert!(text.attribute("text-anchor").is_none());
     }
-    let (formatted_svg, _) = render(
-        "---\nconfig:\n  layout: tidy-tree\n  htmlLabels: false\n---\nmindmap\nRoot[**Square** *italic*]\n",
-        "mindmap-formatted",
-    );
+    let formatted_source = "---\nconfig:\n  layout: tidy-tree\n  htmlLabels: false\n---\nmindmap\nRoot[**Square**<br/>*italic*]\n";
+    let (formatted_svg, _) = render(formatted_source, "mindmap-formatted");
     let formatted = roxmltree::Document::parse(&formatted_svg).unwrap();
+    let measured =
+        measure_emitted_svg_text(formatted_source, &formatted, "mindmap-formatted-node_0");
+    assert_eq!(measured.line_count, 2);
+    let (x, y) = label_translation(&formatted, "mindmap-formatted-node_0");
+    assert!((x + measured.width / 2.0).abs() < 0.01);
+    assert!((y + measured.height / 2.0).abs() < 0.01);
+    assert_eq!(
+        formatted
+            .descendants()
+            .filter(|element| element.attribute("class") == Some("text-inner-tspan"))
+            .filter_map(|element| element.text())
+            .collect::<Vec<_>>(),
+        ["Square", "italic"]
+    );
     assert!(formatted.descendants().any(|element| {
         element.has_tag_name("tspan") && element.attribute("font-weight") == Some("bold")
     }));
@@ -338,7 +419,8 @@ fn mindmap_svg_entity_spelling_matches_measured_create_text_content() {
 
         // Compare with the rendered DOM's literal text in the same measurement profile.
         // This detects measuring a Unicode entity expansion while emitting its spelling.
-        let measured = measure_visible_svg_text(&source, visible);
+        let measured = measure_emitted_svg_text(&source, &document, "mindmap-12-2-entity-node_0");
+        assert_eq!(measured.line_count, 1, "{entity}");
         let (x, y) = label_translation(&document, "mindmap-12-2-entity-node_0");
         assert!((-2.0 * x - measured.width).abs() < 0.02, "{entity}");
         assert!((-2.0 * y - measured.height).abs() < 0.001, "{entity}");

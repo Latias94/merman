@@ -2,11 +2,7 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use crate::entities::decode_mermaid_entities_for_render_text;
-use crate::text::{
-    MermaidMarkdownWordType, TextMetrics, WrapMode, measure_svg_markdown_word_lines,
-    svg_markdown_word_style,
-};
+use crate::text::{MermaidMarkdownWordType, TextMetrics, WrapMode, svg_markdown_word_style};
 
 use super::StateLabelMeasurement;
 use super::label_artifact::{StateLabelMetricsRequest, StateLabelOwner, StateLabelSourceKind};
@@ -74,38 +70,23 @@ impl StateNativeLabelLines {
 }
 
 fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> StateNativeLabelLines {
-    let simple_text = match request.source_kind {
-        StateLabelSourceKind::Markdown if request.text.contains('`') => None,
-        StateLabelSourceKind::Markdown => super::state_markdown_label_plain_text(request.text),
-        StateLabelSourceKind::Plain => Some(decode_mermaid_entities_for_render_text(request.text)),
-    };
-    if let Some(measured_text) = simple_text {
-        let style = svg_markdown_word_style(
-            request.typography.text_style(),
-            MermaidMarkdownWordType::Normal,
+    if request.source_kind == StateLabelSourceKind::Plain {
+        return StateNativeLabelLines::Plain(
+            super::label::state_svg_plain_lines(request.text)
+                .into_iter()
+                .map(String::into_boxed_str)
+                .collect::<Vec<_>>()
+                .into(),
         );
-        let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(
-            measured_text.as_ref(),
-            request.wrap_mode,
-        )
-        .into_iter()
-        .flat_map(|line| {
-            crate::text::wrap_text_lines_measurer(
-                &line,
-                request.measurer,
-                &style,
-                request.max_width_px,
-            )
-        })
-        .map(String::into_boxed_str)
-        .collect::<Vec<_>>();
-        return StateNativeLabelLines::Plain(lines.into());
     }
-
-    let decoded = decode_mermaid_entities_for_render_text(request.text);
-    let lines = crate::text::mermaid_markdown_to_wrapped_word_lines(
+    if request.max_width_px.is_none()
+        && let Some(text) = super::state_markdown_label_plain_text(request.text)
+    {
+        return StateNativeLabelLines::Plain(vec![text.into_owned().into_boxed_str()].into());
+    }
+    let lines = super::label::state_svg_markdown_word_lines(
+        request.text,
         request.measurer,
-        decoded.as_ref(),
         request.typography.text_style(),
         request.max_width_px,
         request.wrap_mode,
@@ -243,11 +224,10 @@ impl StateNativeLabelGeometry {
         }
         let metrics = match &lines {
             StateNativeLabelLines::Plain(_) => measurement.metrics,
-            StateNativeLabelLines::Markdown(words) => measure_svg_markdown_word_lines(
-                request.measurer,
+            StateNativeLabelLines::Markdown(words) => super::label::measure_state_svg_word_lines(
                 words,
+                request.measurer,
                 request.typography.text_style(),
-                crate::text::SvgTextEntityMode::CreateTextSource,
             ),
         };
         if metrics.line_count == 0 || lines.len() != metrics.line_count {
@@ -262,7 +242,10 @@ impl StateNativeLabelGeometry {
         let first_line_bbox_height_px = request
             .measurer
             .measure_svg_tspan_text_bbox_height_px(&first_line, &row_style);
-        let line_height_px = if metrics.line_count == 1 {
+        let line_height_px = if matches!(&lines, StateNativeLabelLines::Markdown(_)) {
+            // Styled ink extents already include face differences; row baselines stay 1.1em apart.
+            request.typography.text_style().font_size * 1.1
+        } else if metrics.line_count == 1 {
             metrics.height.max(first_line_bbox_height_px)
         } else {
             let additional_height_px = metrics.height - first_line_bbox_height_px;

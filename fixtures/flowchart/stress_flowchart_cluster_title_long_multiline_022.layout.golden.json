@@ -4,7 +4,7 @@
     "FlowchartV2": {
       "bounds": {
         "max_x": 792.0,
-        "max_y": 123.4,
+        "max_y": 125.0,
         "min_x": 12.0,
         "min_y": 12.0
       },
@@ -12,23 +12,23 @@
         {
           "diff": -4.0,
           "effective_dir": "LR",
-          "height": 111.4,
+          "height": 113.0,
           "id": "subGraph0",
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "padding": 8.0,
           "requested_dir": null,
           "title": "A very long cluster title with punctuation: (a/b/c)",
           "title_label": {
-            "height": 13.4,
+            "height": 15.0,
             "width": 285.88,
             "x": 402.0,
-            "y": 18.7
+            "y": 19.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
           "width": 376.0,
           "x": 402.0,
-          "y": 67.7
+          "y": 68.5
         }
       ],
       "edges": [
@@ -43,15 +43,15 @@
           "points": [
             {
               "x": 164.0,
-              "y": 76.9
+              "y": 78.5
             },
             {
               "x": 204.0,
-              "y": 76.9
+              "y": 78.5
             },
             {
               "x": 238.0,
-              "y": 76.9
+              "y": 78.5
             }
           ],
           "start_label_left": null,
@@ -72,15 +72,15 @@
           "points": [
             {
               "x": 566.0,
-              "y": 76.9
+              "y": 78.5
             },
             {
               "x": 600.0,
-              "y": 76.9
+              "y": 78.5
             },
             {
               "x": 640.0,
-              "y": 76.9
+              "y": 78.5
             }
           ],
           "start_label_left": null,
@@ -101,11 +101,11 @@
           "points": [
             {
               "x": 390.0,
-              "y": 76.9
+              "y": 78.5
             },
             {
               "x": 414.0,
-              "y": 76.9
+              "y": 78.5
             }
           ],
           "start_label_left": null,
@@ -118,12 +118,12 @@
       ],
       "nodes": [
         {
-          "height": 111.4,
+          "height": 113.0,
           "id": "subGraph0",
           "is_cluster": true,
           "width": 376.0,
           "x": 402.0,
-          "y": 67.7
+          "y": 68.5
         },
         {
           "height": 45.0,
@@ -131,7 +131,7 @@
           "is_cluster": false,
           "width": 152.0,
           "x": 88.0,
-          "y": 76.9
+          "y": 78.5
         },
         {
           "height": 45.0,
@@ -139,7 +139,7 @@
           "is_cluster": false,
           "width": 152.0,
           "x": 716.0,
-          "y": 76.9
+          "y": 78.5
         },
         {
           "height": 45.0,
@@ -147,7 +147,7 @@
           "is_cluster": false,
           "width": 152.0,
           "x": 314.0,
-          "y": 76.9
+          "y": 78.5
         },
         {
           "height": 45.0,
@@ -155,7 +155,7 @@
           "is_cluster": false,
           "width": 152.0,
           "x": 490.0,
-          "y": 76.9
+          "y": 78.5
         }
       ]
     }

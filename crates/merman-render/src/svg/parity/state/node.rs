@@ -669,15 +669,31 @@ pub(super) fn render_state_node_svg(
             };
             let title_metrics = measured_title.map_or_else(
                 || {
-                    ctx.measurer
-                        .measure_wrapped(&title, node_text_style, None, wrap_mode)
+                    if ctx.html_labels {
+                        ctx.measurer
+                            .measure_wrapped(&title, node_text_style, None, wrap_mode)
+                    } else {
+                        crate::state::StateLabelMeasurement::plain_svg_metrics(
+                            &title,
+                            ctx.measurer,
+                            node_text_style,
+                        )
+                    }
                 },
                 crate::state::StateNativeLabelGeometry::layout_metrics,
             );
             let desc_metrics = measured_description.map_or_else(
                 || {
-                    ctx.measurer
-                        .measure_wrapped(&desc, node_text_style, None, wrap_mode)
+                    if ctx.html_labels {
+                        ctx.measurer
+                            .measure_wrapped(&desc, node_text_style, None, wrap_mode)
+                    } else {
+                        crate::state::StateLabelMeasurement::plain_svg_metrics(
+                            &desc,
+                            ctx.measurer,
+                            node_text_style,
+                        )
+                    }
                 },
                 crate::state::StateNativeLabelGeometry::layout_metrics,
             );

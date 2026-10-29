@@ -18,10 +18,10 @@
           "from_cluster": null,
           "id": "L_A_B_0",
           "label": {
-            "height": 19.4,
+            "height": 21.0,
             "width": 65.74,
             "x": 248.87,
-            "y": 101.2
+            "y": 101.5
           },
           "points": [
             {
@@ -73,10 +73,10 @@
           "from_cluster": null,
           "id": "L_C_D_0",
           "label": {
-            "height": 19.4,
+            "height": 21.0,
             "width": 24.44,
             "x": 747.98,
-            "y": 28.2
+            "y": 28.5
           },
           "points": [
             {
@@ -111,10 +111,10 @@
           "from_cluster": null,
           "id": "L_C_E_0",
           "label": {
-            "height": 19.4,
+            "height": 21.0,
             "width": 29.34,
             "x": 747.98,
-            "y": 101.2
+            "y": 101.5
           },
           "points": [
             {
@@ -141,10 +141,10 @@
           "from_cluster": null,
           "id": "L_C_F_0",
           "label": {
-            "height": 19.4,
+            "height": 21.0,
             "width": 36.48,
             "x": 747.98,
-            "y": 184.7
+            "y": 185.0
           },
           "points": [
             {

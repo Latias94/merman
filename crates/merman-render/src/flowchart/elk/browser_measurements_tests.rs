@@ -23,6 +23,8 @@ struct MeasuredNode {
     id: String,
     size: Option<[f64; 2]>,
     label_size: Option<[f64; 2]>,
+    // Provider output: center x/y and width/height, before endpoint projection.
+    provider_geometry: Option<[f64; 4]>,
 }
 
 #[derive(Deserialize)]
@@ -32,6 +34,8 @@ struct MeasuredEdge {
     target: String,
     label_size: Option<[f64; 2]>,
     points: Vec<[f64; 2]>,
+    // Provider center-label rectangles: top-left x/y and width/height.
+    provider_labels: Option<Vec<[f64; 4]>>,
 }
 
 fn label([width, height]: [f64; 2]) -> elk::Label {
@@ -45,7 +49,7 @@ fn flowchart_elk_routes_with_captured_browser_dimensions() {
     ))
     .unwrap();
     assert_eq!(measurements.schema_version, 1);
-    assert_eq!(measurements.entries.len(), 45);
+    assert_eq!(measurements.entries.len(), 46);
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/flowchart");
 
     for fixture in measurements.entries {
@@ -90,6 +94,36 @@ fn flowchart_elk_routes_with_captured_browser_dimensions() {
         }
 
         let layout = elk::layout(&graph).unwrap();
+        if fixture
+            .nodes
+            .iter()
+            .any(|node| node.provider_geometry.is_some())
+        {
+            assert_eq!(
+                layout.nodes.len(),
+                fixture.nodes.len(),
+                "{name}: placed nodes"
+            );
+        }
+        for expected in &fixture.nodes {
+            let Some(geometry) = expected.provider_geometry else {
+                continue;
+            };
+            let actual = layout
+                .nodes
+                .iter()
+                .find(|node| node.id == expected.id)
+                .unwrap();
+            let observed = [actual.x, actual.y, actual.width, actual.height];
+            assert!(
+                observed
+                    .iter()
+                    .zip(geometry)
+                    .all(|(actual, expected)| (actual - expected).abs() <= 1e-8),
+                "{name}/{}: expected node {geometry:?}, got {observed:?}",
+                expected.id
+            );
+        }
         assert_eq!(
             layout.edges.len(),
             fixture.edges.len(),
@@ -113,6 +147,30 @@ fn flowchart_elk_routes_with_captured_browser_dimensions() {
                     "{name}/{}: expected ({x}, {y}), got {actual:?}",
                     expected.id
                 );
+            }
+            if let Some(labels) = &expected.provider_labels {
+                assert_eq!(
+                    actual.labels.len(),
+                    labels.len(),
+                    "{name}/{}: provider label count",
+                    expected.id
+                );
+                for (actual, expected_label) in actual.labels.iter().zip(labels) {
+                    assert_eq!(
+                        actual.terminal, None,
+                        "{name}/{}: provider center label",
+                        expected.id
+                    );
+                    let observed = [actual.x, actual.y, actual.width, actual.height];
+                    assert!(
+                        observed
+                            .iter()
+                            .zip(expected_label)
+                            .all(|(actual, expected)| (actual - expected).abs() <= 1e-8),
+                        "{name}/{}: expected label {expected_label:?}, got {observed:?}",
+                        expected.id
+                    );
+                }
             }
         }
     }

@@ -3617,6 +3617,153 @@ fn state_emphasis_environment() -> RenderEnvironment {
 }
 
 #[test]
+fn native_state_markdown_rows_keep_fixed_stride_with_face_dependent_bboxes() {
+    struct FaceBboxMeasurer;
+
+    impl TextMeasurer for FaceBboxMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: self.measure_svg_text_computed_length_px(text, style),
+                height: self.measure_svg_tspan_text_bbox_height_px(text, style),
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+            text.chars().count() as f64 * 5.0
+        }
+
+        fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+            let half = self.measure_svg_text_computed_length_px(text, style) / 2.0;
+            (half, half)
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            if text.trim().is_empty() {
+                0.0
+            } else if style.font_style.as_deref() == Some("italic") {
+                18.0
+            } else if matches!(style.font_weight.as_deref(), Some("bold" | "700")) {
+                14.0
+            } else {
+                10.0
+            }
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_style.as_deref() == Some("italic") {
+                -2.0
+            } else if matches!(style.font_weight.as_deref(), Some("bold" | "700")) {
+                -6.0
+            } else {
+                -4.0
+            }
+        }
+    }
+
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.state-face-bbox-stride").expect("valid profile id"),
+        "test",
+    )
+    .expect("valid profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            std::sync::Arc::new(FaceBboxMeasurer),
+        )),
+    );
+    for (label, source_style, expected_rows, node_ink_height, edge_ink_height) in [
+        ("A<br/>*ii*", "", vec!["A", "ii"], 37.6, 37.6),
+        ("*ii*<br/>A", "", vec!["ii", "A"], 25.6, 25.6),
+        ("A **B**<br/>*ii*", "", vec!["A B", "ii"], 39.6, 39.6),
+        ("**B**<br/>*ii*<br/>A", "", vec!["B", "ii", "A"], 47.2, 47.2),
+        ("*ii*", "", vec!["ii"], 18.0, 18.0),
+        ("A **B** *ii*", "", vec!["A B ii"], 22.0, 22.0),
+        ("A<br/>B", "", vec!["A", "B"], 27.6, 27.6),
+        (
+            "A<br/>*ii*",
+            "style A font-weight:700,font-style:italic\n",
+            vec!["A", "ii"],
+            35.6,
+            37.6,
+        ),
+    ] {
+        let (layout, svg) = render_state_layout_and_svg_from_text_in_environment(
+            &format!(
+                "%%{{init: {{\"htmlLabels\": false, \"themeVariables\": {{\"fontSize\": \"16px\"}}, \"state\": {{\"minNodeWidth\": 0}}}}}}%%\nstateDiagram-v2\nstate \"{label}\" as A\nA --> B: {label}\n{source_style}"
+            ),
+            &environment,
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid native State SVG");
+        let layout_node = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let layout_edge = layout.edges[0].label.as_ref().unwrap();
+        for (attribute, value, shape_class, padding, ink_height, layout_height) in [
+            (
+                "id",
+                "merman-state-A-0",
+                "basic label-container",
+                16.0,
+                node_ink_height,
+                layout_node.height,
+            ),
+            (
+                "data-id",
+                "edge0",
+                "background",
+                4.0,
+                edge_ink_height,
+                layout_edge.height,
+            ),
+        ] {
+            let terminal = document
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute(attribute) == Some(value))
+                .expect("State label terminal");
+            let rows = terminal
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("text-outer-tspan row"))
+                .collect::<Vec<_>>();
+            let visible_rows = rows
+                .iter()
+                .map(|row| {
+                    row.descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(visible_rows, expected_rows, "{value}/{label}: {svg}");
+            let baselines = rows
+                .iter()
+                .map(|row| row.attribute("y").unwrap().parse::<f64>().unwrap())
+                .collect::<Vec<_>>();
+            for pair in baselines.windows(2) {
+                assert!(
+                    (pair[1] - pair[0] - 17.6).abs() <= 1e-9,
+                    "{value}/{label}: face bboxes must not alter the 1.1em stride: {svg}"
+                );
+            }
+            let shape = terminal
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect") && node.attribute("class") == Some(shape_class)
+                })
+                .expect("State label shape");
+            let shape_height = shape.attribute("height").unwrap().parse::<f64>().unwrap();
+            let expected_height = ink_height + padding;
+            assert!(
+                (layout_height - expected_height).abs() <= 1e-9,
+                "{value}/{label}: layout height must enclose the face union once: {svg}"
+            );
+            assert!(
+                (shape_height - expected_height).abs() <= 1e-9,
+                "{value}/{label}: SVG height must match the layout: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
 fn native_state_svg_code_spans_use_the_svg_projection_even_when_empty() {
     for label in ["ASCII ``omitted``", "``omitted``"] {
         let svg = render_state_svg_from_text(&format!(
@@ -3998,8 +4145,6 @@ fn native_state_transition_labels_share_layout_background_and_measured_text_orig
         } else {
             "Agjp\nsecond"
         };
-        let metrics =
-            measurer.measure_wrapped(measured_text, &text_style, Some(200.0), WrapMode::SvgLike);
         let bbox_y = measurer.measure_svg_create_text_bbox_y_offset_px("Agjp", &text_style);
         let first_baseline_y = rows[0]
             .attribute("y")
@@ -4007,11 +4152,6 @@ fn native_state_transition_labels_share_layout_background_and_measured_text_orig
             .parse::<f64>()
             .expect("numeric native State baseline");
         let expected_first_baseline_y = 2.0 + f64::from(font_size_px) - bbox_y;
-        assert_eq!(metrics.line_count, expected_lines, "{case}: {svg}");
-        assert!(
-            (height - (metrics.height + 4.0)).abs() <= 1e-9,
-            "{case}: {svg}"
-        );
         assert!(
             text_y.abs() <= 1e-9,
             "{case}: explicit baselines must be relative to the layout box: {svg}"
@@ -4026,8 +4166,33 @@ fn native_state_transition_labels_share_layout_background_and_measured_text_orig
         );
         let ink_top_y = first_baseline_y + bbox_y - f64::from(font_size_px);
         assert!((ink_top_y - 2.0).abs() <= 1e-9, "{case}: {svg}");
+        // createText pads the terminal ink bbox by 2px and advances rows by 1.1em.
+        let mut ink_bottom_y = f64::NEG_INFINITY;
+        for ((index, row), line) in rows.iter().enumerate().zip(measured_text.lines()) {
+            let visible = row
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert_eq!(visible, line, "{case}: row {index}: {svg}");
+            let baseline_y = row
+                .attribute("y")
+                .expect("native State row baseline")
+                .parse::<f64>()
+                .expect("numeric native State row baseline");
+            assert!(
+                (baseline_y - first_baseline_y - index as f64 * text_style.font_size * 1.1).abs()
+                    <= 1e-9,
+                "{case}: row {index} must retain createText's 1.1em stride: {svg}"
+            );
+            let top = baseline_y - text_style.font_size
+                + measurer.measure_svg_create_text_bbox_y_offset_px(line, &text_style);
+            let bottom = top + measurer.measure_svg_tspan_text_bbox_height_px(line, &text_style);
+            assert!(top >= 2.0 - 1e-9, "{case}: row {index}: {svg}");
+            ink_bottom_y = ink_bottom_y.max(bottom);
+        }
         assert!(
-            (ink_top_y + metrics.height - (height - 2.0)).abs() <= 1e-9,
+            (ink_bottom_y - (height - 2.0)).abs() <= 1e-9,
             "{case}: {svg}"
         );
     }
@@ -4202,6 +4367,7 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
             ),
             long_word,
             false,
+            3,
         ),
         (
             "ordinary-spaced-words",
@@ -4210,6 +4376,7 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
             ),
             spaced_words,
             true,
+            2,
         ),
         (
             "self-loop-long-word",
@@ -4218,6 +4385,7 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
             ),
             long_word,
             false,
+            3,
         ),
         (
             "self-loop-spaced-words",
@@ -4226,13 +4394,23 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
             ),
             spaced_words,
             true,
+            2,
         ),
     ];
     let measurer = DeterministicTextMeasurer::default();
     let text_style = TextStyle::default();
 
-    for (case, source, label_text, contains_space) in cases {
-        let svg = render_state_svg_from_text(&source);
+    for (case, source, label_text, contains_space, expected_lines) in cases {
+        let (layout, svg) = render_state_layout_and_svg_from_text_in_environment(
+            &source,
+            &RenderEnvironment::deterministic(),
+        );
+        let layout_label = layout
+            .edges
+            .iter()
+            .find(|edge| edge.id == "edge0")
+            .and_then(|edge| edge.label.as_ref())
+            .expect("State edge layout label");
         let document = roxmltree::Document::parse(&svg).expect("valid native State SVG");
         let label = document
             .descendants()
@@ -4270,12 +4448,6 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
                     .collect::<String>()
             })
             .collect::<Vec<_>>();
-        let metrics = measurer.measure_wrapped(
-            label_text,
-            &text_style,
-            Some(EDGE_WRAP_WIDTH_PX),
-            WrapMode::SvgLike,
-        );
         let width = background
             .attribute("width")
             .expect("background width")
@@ -4298,17 +4470,19 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
                 .expect("measured text origin"),
         );
         assert!(rows.len() > 1, "{case} must auto-wrap: {svg}");
-        assert_eq!(rows.len(), metrics.line_count, "{case}: {svg}");
+        assert_eq!(rows.len(), expected_lines, "{case}: {svg}");
         if contains_space {
             assert_eq!(emitted_lines.join(" "), label_text, "{case}: {svg}");
         } else {
             assert_eq!(emitted_lines.concat(), label_text, "{case}: {svg}");
         }
-        let mut previous_baseline = None;
+        let mut previous_baseline: Option<f64> = None;
+        let mut maximum_advance = 0.0_f64;
+        let mut ink_top = f64::INFINITY;
+        let mut ink_bottom = f64::NEG_INFINITY;
         for (row, line) in rows.iter().zip(&emitted_lines) {
-            let line_width = measurer
-                .measure_wrapped(line, &text_style, None, WrapMode::SvgLike)
-                .width;
+            let line_width = measurer.measure_svg_text_computed_length_px(line, &text_style);
+            maximum_advance = maximum_advance.max(line_width);
             assert!(line_width <= EDGE_WRAP_WIDTH_PX, "{case}: {line}: {svg}");
             let baseline_y = row
                 .attribute("y")
@@ -4317,9 +4491,17 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
                 .expect("numeric native row baseline");
             assert!(baseline_y > 0.0 && baseline_y < height, "{case}: {svg}");
             if let Some(previous) = previous_baseline {
-                assert!(baseline_y > previous, "{case}: {svg}");
+                assert!(
+                    (baseline_y - previous - text_style.font_size * 1.1).abs() <= 1e-9,
+                    "{case}: row stride must be 1.1em: {svg}"
+                );
             }
             previous_baseline = Some(baseline_y);
+            let top = baseline_y - text_style.font_size
+                + measurer.measure_svg_create_text_bbox_y_offset_px(line, &text_style);
+            ink_top = ink_top.min(top);
+            ink_bottom = ink_bottom
+                .max(top + measurer.measure_svg_tspan_text_bbox_height_px(line, &text_style));
             assert_eq!(row.attribute("dy"), None, "{case}: {svg}");
         }
 
@@ -4333,10 +4515,13 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
                     let (left, right) = measurer.measure_svg_text_bbox_x(line, &text_style);
                     (maximum_left.max(left), maximum_right.max(right))
                 });
-        let expected_width = 2.0 * (ink_left.max(ink_right).max(metrics.width / 2.0) + 2.0);
+        let expected_width = 2.0 * (ink_left.max(ink_right).max(maximum_advance / 2.0) + 2.0);
         assert!((width - expected_width).abs() <= 1e-9, "{case}: {svg}");
+        assert!((ink_top - 2.0).abs() <= 1e-9, "{case}: {svg}");
+        assert!((ink_bottom - (height - 2.0)).abs() <= 1e-9, "{case}: {svg}");
+        assert!((layout_label.width - width).abs() <= 1e-9, "{case}: {svg}");
         assert!(
-            (height - (metrics.height + 4.0)).abs() <= 1e-9,
+            (layout_label.height - height).abs() <= 1e-9,
             "{case}: {svg}"
         );
         assert!((label_x + width / 2.0).abs() <= 1e-9, "{case}: {svg}");

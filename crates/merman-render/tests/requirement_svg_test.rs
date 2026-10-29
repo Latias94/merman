@@ -11,8 +11,8 @@ use merman_render::diagram_theme::{
     TypographySpec,
 };
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPolicy,
+    TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -794,14 +794,55 @@ fn requirement_default_labels_match_explicit_html_labels() {
 }
 
 #[derive(Debug)]
+struct RequirementMeasurementCall {
+    operation: TextMeasurementOperation,
+    text: String,
+    style: TextStyle,
+    wrap_mode: Option<WrapMode>,
+}
+
+impl RequirementMeasurementCall {
+    fn is_terminal(&self, html_labels: bool) -> bool {
+        if html_labels {
+            self.operation == TextMeasurementOperation::Wrapped
+                && self.wrap_mode == Some(WrapMode::HtmlLike)
+        } else {
+            matches!(
+                self.operation,
+                TextMeasurementOperation::TspanBBoxHeight
+                    | TextMeasurementOperation::CreateTextBBoxYOffset
+            )
+        }
+    }
+}
+
+#[derive(Debug)]
 struct RequirementSvgModeProbe {
-    calls: Arc<Mutex<Vec<(WrapMode, TextStyle)>>>,
+    calls: Arc<Mutex<Vec<RequirementMeasurementCall>>>,
+    width_per_byte: Option<f64>,
+}
+
+impl RequirementSvgModeProbe {
+    fn record(
+        &self,
+        operation: TextMeasurementOperation,
+        text: &str,
+        style: &TextStyle,
+        wrap_mode: Option<WrapMode>,
+    ) {
+        self.calls.lock().unwrap().push(RequirementMeasurementCall {
+            operation,
+            text: text.to_owned(),
+            style: style.clone(),
+            wrap_mode,
+        });
+    }
 }
 
 impl TextMeasurer for RequirementSvgModeProbe {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         TextMetrics {
-            width: text.len() as f64 * 5.0,
+            width: text.len() as f64 * self.width_per_byte.unwrap_or(style.font_size),
             height: style.font_size,
             line_count: 1,
         }
@@ -814,7 +855,41 @@ impl TextMeasurer for RequirementSvgModeProbe {
         _width: Option<f64>,
         mode: WrapMode,
     ) -> TextMetrics {
-        self.calls.lock().unwrap().push((mode, style.clone()));
+        self.record(TextMeasurementOperation::Wrapped, text, style, Some(mode));
+        self.measure(text, style)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.record(TextMeasurementOperation::ComputedLength, text, style, None);
+        self.measure(text, style).width
+    }
+
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.record(TextMeasurementOperation::TspanBBoxHeight, text, style, None);
+        self.measure(text, style).height
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.record(
+            TextMeasurementOperation::CreateTextBBoxYOffset,
+            text,
+            style,
+            None,
+        );
+        0.0
+    }
+
+    fn measure_mermaid_calculate_text_dimensions(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> TextMetrics {
+        self.record(
+            TextMeasurementOperation::MermaidCalculateTextDimensions,
+            text,
+            style,
+            None,
+        );
         self.measure(text, style)
     }
 }
@@ -838,6 +913,7 @@ fn requirement_svg_labels_measure_with_svg_mode_and_portable_typed_typography() 
         .unwrap(),
         Arc::new(RequirementSvgModeProbe {
             calls: Arc::clone(&calls),
+            width_per_byte: Some(5.0),
         }),
     );
     let rendered = render_requirement_with_theme_requirement_and_environment(
@@ -855,14 +931,23 @@ fn requirement_svg_labels_measure_with_svg_mode_and_portable_typed_typography() 
     assert_eq!(
         calls
             .iter()
-            .filter(|(mode, _)| *mode != WrapMode::SvgLike)
+            .filter(|call| call.operation == TextMeasurementOperation::Wrapped)
             .count(),
         0,
-        "all wrapped Requirement requests must use SVG mode"
+        "SVG labels use literal tspan bounds instead of generic wrapping"
     );
-    assert!(calls.iter().all(|(_, style)| style.font_family.as_deref()
-        == Some(expected_font.as_str())
-        && style.font_size == 24.0));
+    for operation in [
+        TextMeasurementOperation::ComputedLength,
+        TextMeasurementOperation::TspanBBoxHeight,
+        TextMeasurementOperation::CreateTextBBoxYOffset,
+    ] {
+        let terminal_calls = calls.iter().filter(|call| call.operation == operation);
+        assert!(terminal_calls.clone().next().is_some(), "{operation:?}");
+        assert!(terminal_calls.clone().all(|call| {
+            call.style.font_family.as_deref() == Some(expected_font.as_str())
+                && call.style.font_size == 24.0
+        }));
+    }
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
@@ -959,6 +1044,7 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
                 .unwrap(),
                 Arc::new(RequirementSvgModeProbe {
                     calls: Arc::clone(&calls),
+                    width_per_byte: Some(5.0),
                 }),
             );
             let rendered = render_requirement_with_theme_requirement_and_environment(
@@ -972,20 +1058,33 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
                     .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
             );
             let calls = calls.lock().unwrap();
-            assert!(!calls.is_empty());
+            let terminal_calls = calls.iter().filter(|call| call.is_terminal(html_labels));
+            assert!(terminal_calls.clone().next().is_some());
             assert!(
-                calls.iter().all(
-                    |(_, style)| style.font_family.as_deref() == Some("SourceFont")
-                        && style.font_size == 32.0
-                ),
+                terminal_calls.clone().all(|call| {
+                    call.style.font_family.as_deref() == Some("SourceFont")
+                        && call.style.font_size == 32.0
+                }),
                 "{html_labels}/{source_style}: {calls:?}"
             );
             assert!(
-                calls
-                    .iter()
-                    .any(|(_, style)| style.font_weight.as_deref() == Some("bold"))
+                terminal_calls
+                    .clone()
+                    .any(|call| call.style.font_weight.as_deref() == Some("bold"))
             );
-            assert!(calls.iter().any(|(_, style)| style.font_weight.is_none()));
+            assert!(
+                terminal_calls
+                    .clone()
+                    .any(|call| matches!(call.style.font_weight.as_deref(), None | Some("normal")))
+            );
+            assert!(
+                calls.iter().any(|call| {
+                    call.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+                        && call.style.font_family.as_deref() != Some("SourceFont")
+                        && call.style.font_size == 16.0
+                }),
+                "{html_labels}/{source_style}: {calls:?}"
+            );
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
             assert!(document.descendants().any(|node| {
                 node.attribute("style").is_some_and(|style| {
@@ -1004,34 +1103,6 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
 
 #[test]
 fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() {
-    #[derive(Debug)]
-    struct FaceProbe {
-        calls: Arc<Mutex<Vec<TextStyle>>>,
-        row_calls: Arc<Mutex<Vec<TextStyle>>>,
-    }
-
-    impl TextMeasurer for FaceProbe {
-        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            self.calls.lock().unwrap().push(style.clone());
-            TextMetrics {
-                width: text.len() as f64 * style.font_size,
-                height: style.font_size,
-                line_count: 1,
-            }
-        }
-
-        fn measure_wrapped(
-            &self,
-            text: &str,
-            style: &TextStyle,
-            _max_width: Option<f64>,
-            _wrap_mode: WrapMode,
-        ) -> TextMetrics {
-            self.row_calls.lock().unwrap().push(style.clone());
-            self.measure(text, style)
-        }
-    }
-
     let theme = requirement_typography_theme(
         ThemeTextStyle::default()
             .with_font_stack(FontStack::single("RequirementTyped").unwrap())
@@ -1059,16 +1130,15 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
                 ),
             ] {
                 let calls = Arc::new(Mutex::new(Vec::new()));
-                let row_calls = Arc::new(Mutex::new(Vec::new()));
                 let profile = TextMeasurementProfile::new(
                     TextMeasurementProfileIdentity::new(
                         MeasurementProfileId::new("test.requirement-source-faces").unwrap(),
                         "test",
                     )
                     .unwrap(),
-                    Arc::new(FaceProbe {
+                    Arc::new(RequirementSvgModeProbe {
                         calls: Arc::clone(&calls),
-                        row_calls: Arc::clone(&row_calls),
+                        width_per_byte: None,
                     }),
                 );
                 let rendered = render_requirement_with_theme_requirement_and_environment(
@@ -1082,8 +1152,10 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
                         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
                 );
                 let calls = calls.lock().unwrap();
-                let row_calls = row_calls.lock().unwrap();
-                let node_calls = row_calls.iter().filter(|style| style.font_size == 32.0);
+                let node_calls = calls
+                    .iter()
+                    .filter(|call| call.is_terminal(html_labels) && call.style.font_size == 32.0)
+                    .map(|call| &call.style);
                 assert!(node_calls.clone().count() > 0);
                 let matches_source = |style: &&TextStyle| {
                     style.font_weight.as_deref() == Some(weight)
@@ -1099,7 +1171,22 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
                     }),
                     "{html_labels}/{source_style}: {calls:?}"
                 );
+                assert!(
+                    calls.iter().any(|call| {
+                        call.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+                            && call.style.font_size == 16.0
+                            && call.style.font_weight.is_none()
+                            && call.style.font_style.is_none()
+                    }),
+                    "{html_labels}/{source_style}: {calls:?}"
+                );
                 if !html_labels {
+                    assert!(calls.iter().any(|call| {
+                        call.operation == TextMeasurementOperation::ComputedLength
+                            && call.style.font_size == 32.0
+                            && matches!(call.style.font_weight.as_deref(), None | Some("normal"))
+                            && matches!(call.style.font_style.as_deref(), None | Some("normal"))
+                    }));
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
                     let multiline_labels = document
                         .descendants()
@@ -1154,49 +1241,20 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
 
 #[test]
 fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
-    #[derive(Debug)]
-    struct FaceProbe {
-        calls: Arc<Mutex<Vec<TextStyle>>>,
-        row_calls: Arc<Mutex<Vec<TextStyle>>>,
-    }
-
-    impl TextMeasurer for FaceProbe {
-        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            self.calls.lock().unwrap().push(style.clone());
-            TextMetrics {
-                width: text.len() as f64 * style.font_size,
-                height: style.font_size,
-                line_count: 1,
-            }
-        }
-
-        fn measure_wrapped(
-            &self,
-            text: &str,
-            style: &TextStyle,
-            _max_width: Option<f64>,
-            _wrap_mode: WrapMode,
-        ) -> TextMetrics {
-            self.row_calls.lock().unwrap().push(style.clone());
-            self.measure(text, style)
-        }
-    }
-
     let theme = requirement_typography_theme(
         ThemeTextStyle::default().with_font_stack(FontStack::single("RequirementTyped").unwrap()),
     );
     for html_labels in [false, true] {
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let row_calls = Arc::new(Mutex::new(Vec::new()));
         let profile = TextMeasurementProfile::new(
             TextMeasurementProfileIdentity::new(
                 MeasurementProfileId::new("test.requirement-markdown-source-faces").unwrap(),
                 "test",
             )
             .unwrap(),
-            Arc::new(FaceProbe {
+            Arc::new(RequirementSvgModeProbe {
                 calls: Arc::clone(&calls),
-                row_calls: Arc::clone(&row_calls),
+                width_per_byte: None,
             }),
         );
         let source = format!(
@@ -1214,7 +1272,10 @@ fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
                 .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
         );
         let calls = calls.lock().unwrap();
-        let node_calls = calls.iter().filter(|style| style.font_size == 32.0);
+        let node_calls = calls
+            .iter()
+            .filter(|call| call.is_terminal(html_labels) && call.style.font_size == 32.0)
+            .map(|call| &call.style);
         assert!(node_calls.clone().count() > 0);
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         if html_labels {
@@ -1235,21 +1296,27 @@ fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
             );
             assert!(document.descendants().any(|node| node.has_tag_name("em")));
         } else {
-            let row_calls = row_calls.lock().unwrap();
-            let node_rows = row_calls.iter().filter(|style| style.font_size == 32.0);
+            let node_rows = node_calls.clone();
             assert!(node_rows.clone().count() > 0);
             assert!(
                 node_rows
                     .clone()
                     .any(|style| style.font_weight.as_deref() == Some("500"))
             );
-            assert!(
-                node_rows.clone().all(|style| {
-                    matches!(style.font_weight.as_deref(), Some("500" | "normal"))
-                        && style.font_style.as_deref() == Some("normal")
-                }),
-                "{calls:?}"
-            );
+            for (word, weight, face) in [
+                ("Strong", "700", "normal"),
+                ("emphasis", "normal", "italic"),
+            ] {
+                assert!(
+                    calls.iter().any(|call| {
+                        call.operation == TextMeasurementOperation::ComputedLength
+                            && call.text.trim() == word
+                            && call.style.font_weight.as_deref() == Some(weight)
+                            && call.style.font_style.as_deref() == Some(face)
+                    }),
+                    "Markdown wrapping keeps its own face for {word}: {calls:?}"
+                );
+            }
             let words = document
                 .descendants()
                 .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
@@ -1264,21 +1331,48 @@ fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
                     .iter()
                     .any(|word| word.attribute("font-style") == Some("italic"))
             );
-            assert!(words.iter().all(|word| {
+            for word in words {
                 let first_row = word
                     .parent_element()
                     .unwrap()
                     .prev_sibling_element()
                     .is_none();
                 if first_row {
-                    word.attribute("style").is_some_and(|style| {
+                    assert!(word.attribute("style").is_some_and(|style| {
                         style.contains("font-weight:500 !important")
                             && style.contains("font-style:normal !important")
-                    })
+                    }));
                 } else {
-                    word.attribute("style").is_none()
+                    assert!(word.attribute("style").is_none());
                 }
-            }));
+                let weight = if first_row {
+                    "500"
+                } else if word.attribute("font-weight") == Some("bold") {
+                    "700"
+                } else {
+                    "normal"
+                };
+                let face = if first_row {
+                    "normal"
+                } else {
+                    word.attribute("font-style").unwrap()
+                };
+                for operation in [
+                    TextMeasurementOperation::TspanBBoxHeight,
+                    TextMeasurementOperation::CreateTextBBoxYOffset,
+                ] {
+                    assert!(
+                        calls.iter().any(|call| {
+                            call.operation == operation
+                                && call.text == word.text().unwrap()
+                                && call.style.font_size == 32.0
+                                && call.style.font_weight.as_deref() == Some(weight)
+                                && call.style.font_style.as_deref() == Some(face)
+                        }),
+                        "{operation:?} must measure the emitted face: {word:?}/{calls:?}"
+                    );
+                }
+            }
         }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());

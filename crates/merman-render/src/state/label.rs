@@ -4,14 +4,23 @@ use crate::entities::decode_mermaid_entities_for_render_text;
 use crate::svg::scanner::find_tag_end;
 use crate::text::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, html_has_soft_break_opportunity,
-    measure_html_with_inline_styles, measure_markdown_with_inline_styles,
-    mermaid_markdown_to_xhtml_label_fragment,
+    measure_html_with_inline_styles, mermaid_markdown_to_xhtml_label_fragment,
 };
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateLabelMeasurement {
     pub(crate) metrics: TextMetrics,
     pub(crate) uses_html_wrapping_table: bool,
+}
+
+impl StateLabelMeasurement {
+    pub(crate) fn plain_svg_metrics(
+        text: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> TextMetrics {
+        measure_state_svg_plain_label(text, measurer, style)
+    }
 }
 
 fn state_label_xhtml(text: &str) -> String {
@@ -44,7 +53,23 @@ fn simple_xhtml_text(fragment: &str) -> Option<Cow<'_, str>> {
 }
 
 pub(crate) fn state_markdown_label_plain_text(text: &str) -> Option<Cow<'_, str>> {
-    simple_xhtml_text(&state_label_xhtml(text)).map(|text| Cow::Owned(text.into_owned()))
+    let decoded = merman_core::entities::restore_mermaid_entity_spelling(text);
+    let source = crate::text::split_html_br_lines(decoded.as_ref()).join("\n");
+    let lines = crate::text::mermaid_markdown_to_lines(&source, true);
+    if lines.len() != 1
+        || lines[0]
+            .iter()
+            .any(|(_, kind)| *kind != crate::text::MermaidMarkdownWordType::Normal)
+    {
+        return None;
+    }
+    Some(Cow::Owned(
+        lines[0]
+            .iter()
+            .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+            .collect::<Vec<_>>()
+            .join(" "),
+    ))
 }
 
 pub(crate) fn state_value_to_label_text(value: &serde_json::Value) -> String {
@@ -248,6 +273,127 @@ pub(crate) fn state_edge_label_xhtml(text: &str) -> String {
     normalize_img_tags(&state_label_xhtml(text), None)
 }
 
+/// Prepare SVG words from label source before applying createText's entity projection.
+pub(super) fn state_svg_markdown_word_lines(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+) -> Vec<Vec<(String, crate::text::MermaidMarkdownWordType)>> {
+    let decoded = merman_core::entities::restore_mermaid_entity_spelling(text);
+    let source = crate::text::split_html_br_lines(decoded.as_ref()).join("\n");
+    crate::text::mermaid_markdown_to_wrapped_word_lines(
+        measurer, &source, style, max_width, wrap_mode,
+    )
+}
+
+/// Mirror nonMarkdownToLines: split source breaks and words before decoding SVG entities.
+pub(super) fn state_svg_plain_lines(text: &str) -> Vec<String> {
+    let decoded = merman_core::entities::restore_mermaid_entity_spelling(text);
+    let source = decoded.replace("\\n", "\n");
+    source
+        .split('\n')
+        .flat_map(crate::text::split_html_br_lines)
+        .map(|line| {
+            crate::text::non_markdown_svg_words(line)
+                .map(crate::entities::decode_svg_text_content_entities)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect()
+}
+
+/// Measure retained SVG words with literal tspan operations, never a label-source API.
+pub(super) fn measure_state_svg_word_lines(
+    lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> TextMetrics {
+    use crate::text::{svg_markdown_word_style, trim_html_collapsible_ascii_whitespace};
+
+    let mut width = 0.0_f64;
+    let mut ink: Option<(f64, f64)> = None;
+    for (row_index, line) in lines.iter().enumerate() {
+        let mut row_width = 0.0;
+        let mut run = String::new();
+        let mut run_kind = None;
+        for (word_index, (word, kind)) in line.iter().enumerate() {
+            let visible = crate::entities::decode_svg_text_content_entities(word);
+            let text = if word_index == 0 {
+                visible
+            } else {
+                Cow::Owned(format!(" {visible}"))
+            };
+            if run_kind.is_some_and(|previous| previous != *kind) {
+                let face = svg_markdown_word_style(style, run_kind.unwrap());
+                row_width += measurer.measure_svg_text_computed_length_px(&run, &face);
+                run.clear();
+            }
+            run_kind = Some(*kind);
+            run.push_str(&text);
+            if trim_html_collapsible_ascii_whitespace(&text).is_empty() {
+                continue;
+            }
+            let face = svg_markdown_word_style(style, *kind);
+            let top = measurer.measure_svg_create_text_bbox_y_offset_px(&text, &face)
+                + row_index as f64 * style.font_size * 1.1;
+            let height = measurer.measure_svg_tspan_text_bbox_height_px(&text, &face);
+            if height > 0.0 {
+                let bottom = top + height;
+                ink = Some(ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))));
+            }
+        }
+        if let Some(kind) = run_kind {
+            let face = svg_markdown_word_style(style, kind);
+            row_width += measurer.measure_svg_text_computed_length_px(&run, &face);
+        }
+        width = width.max(row_width);
+    }
+    TextMetrics {
+        width: if lines
+            .iter()
+            .flatten()
+            .all(|(_, kind)| *kind == crate::text::MermaidMarkdownWordType::Normal)
+        {
+            width
+        } else {
+            crate::text::round_to_1_64_px(width)
+        },
+        height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
+        line_count: lines.len(),
+    }
+}
+
+pub(super) fn measure_state_svg_plain_label(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> TextMetrics {
+    // Plain rows are already terminal text; do not apply even the SVG entity projection twice.
+    let lines = state_svg_plain_lines(text);
+    let style =
+        crate::text::svg_markdown_word_style(style, crate::text::MermaidMarkdownWordType::Normal);
+    let style = style.as_ref();
+    let mut width = 0.0_f64;
+    let mut ink: Option<(f64, f64)> = None;
+    for (index, line) in lines.iter().enumerate() {
+        width = width.max(measurer.measure_svg_text_computed_length_px(line, style));
+        let height = measurer.measure_svg_tspan_text_bbox_height_px(line, style);
+        if height > 0.0 {
+            let top = measurer.measure_svg_create_text_bbox_y_offset_px(line, style)
+                + index as f64 * style.font_size * 1.1;
+            let bottom = top + height;
+            ink = Some(ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))));
+        }
+    }
+    TextMetrics {
+        width,
+        height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
+        line_count: lines.len(),
+    }
+}
+
 pub(crate) fn measure_state_markdown_label(
     text: &str,
     measurer: &dyn TextMeasurer,
@@ -255,20 +401,20 @@ pub(crate) fn measure_state_markdown_label(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> StateLabelMeasurement {
+    if wrap_mode != WrapMode::HtmlLike {
+        let lines = state_svg_markdown_word_lines(text, measurer, style, max_width, wrap_mode);
+        return StateLabelMeasurement {
+            metrics: measure_state_svg_word_lines(&lines, measurer, style),
+            uses_html_wrapping_table: false,
+        };
+    }
+
     let max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
-    let decoded = decode_mermaid_entities_for_render_text(text);
     let fragment = state_label_xhtml(text);
-    // Entity-produced markup spellings are literal HTML text. Keep their prepared fragment
-    // on the structured path instead of passing decoded `<br/>` back to label normalization.
-    let simple_text = simple_xhtml_text(&fragment).filter(|plain| {
-        if wrap_mode == WrapMode::HtmlLike {
-            !plain.contains('<')
-        } else {
-            !text.contains('`')
-        }
-    });
+    // HTML terminals retain the structured path when a literal tag spelling could be reparsed.
+    let simple_text = simple_xhtml_text(&fragment).filter(|plain| !plain.contains('<'));
     let measure = |width: Option<f64>| match simple_text.as_deref() {
-        Some(plain) if wrap_mode == WrapMode::HtmlLike => {
+        Some(plain) => {
             let natural = measurer.measure_wrapped(plain, style, None, WrapMode::HtmlLike);
             let needs_breakable_wrap = width.is_some_and(|max_width| {
                 natural.width > max_width && html_has_soft_break_opportunity(plain)
@@ -285,23 +431,9 @@ pub(crate) fn measure_state_markdown_label(
                 natural
             }
         }
-        Some(plain) => measurer.measure_wrapped(plain, style, width, wrap_mode),
-        None => match wrap_mode {
-            WrapMode::HtmlLike => measure_html_with_inline_styles(
-                measurer,
-                &fragment,
-                style,
-                width,
-                WrapMode::HtmlLike,
-            ),
-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => measure_markdown_with_inline_styles(
-                measurer,
-                decoded.as_ref(),
-                style,
-                width,
-                wrap_mode,
-            ),
-        },
+        None => {
+            measure_html_with_inline_styles(measurer, &fragment, style, width, WrapMode::HtmlLike)
+        }
     };
 
     let natural = measure(None);
@@ -330,6 +462,66 @@ mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;
     use serde_json::json;
+
+    struct LiteralSvgMeasurer;
+
+    impl TextMeasurer for LiteralSvgMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("prepared SVG terminals must use literal tspan operations");
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+            text.chars().count() as f64 * 10.0
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, _style: &TextStyle) -> f64 {
+            if text.is_empty() { 0.0 } else { 19.0 }
+        }
+    }
+
+    #[test]
+    fn svg_terminal_measurement_never_reenters_label_source_normalization() {
+        let measurer = LiteralSvgMeasurer;
+        let style = TextStyle::default();
+        for (source, visible) in [
+            ("A&lt;br&gt;B", "A<br>B"),
+            ("A#lt;br#gt;B", "A<br>B"),
+            ("**A&lt;br&gt;B**", "A<br>B"),
+            ("A&amp;lt;br&amp;gt;B", "A&lt;br&gt;B"),
+            ("&nbsp;", "&nbsp;"),
+            ("A&shy;B", "A&shy;B"),
+            ("A#nbsp;B", "A&nbsp;B"),
+        ] {
+            let measurement = measure_state_markdown_label(
+                source,
+                &measurer,
+                &style,
+                Some(1000.0),
+                WrapMode::SvgLike,
+            );
+            assert_eq!(measurement.metrics.line_count, 1, "{source}");
+            assert_eq!(measurement.metrics.height, 19.0, "{source}");
+            assert_eq!(
+                measurement.metrics.width,
+                visible.chars().count() as f64 * 10.0,
+                "{source}"
+            );
+        }
+        let plain = measure_state_svg_plain_label("A&lt;br&gt;B", &measurer, &style);
+        assert_eq!(
+            (plain.line_count, plain.width, plain.height),
+            (1, 60.0, 19.0)
+        );
+        let actual_break = measure_state_markdown_label(
+            "A<br/>B",
+            &measurer,
+            &style,
+            Some(1000.0),
+            WrapMode::SvgLike,
+        );
+        assert_eq!(actual_break.metrics.line_count, 2);
+        assert!((actual_break.metrics.height - 36.6).abs() < 1e-9);
+    }
 
     #[test]
     fn array_label_text_preserves_every_source_line() {

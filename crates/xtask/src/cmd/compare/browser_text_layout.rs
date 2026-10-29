@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn committed_catalog_is_sorted_valid_and_source_backed() {
         let catalog = load_catalog().expect("browser text layout residual catalog");
-        assert_eq!(catalog.entries.len(), 127);
+        assert_eq!(catalog.entries.len(), 126);
         for diagram in DIAGRAMS {
             assert!(
                 catalog.entries.iter().any(|entry| entry.diagram == diagram),
@@ -392,7 +392,7 @@ mod tests {
             catalog.mermaid_source_commit
         );
         let entries = matrix["entries"].as_array().unwrap();
-        assert_eq!(entries.len(), 45);
+        assert_eq!(entries.len(), 46);
         for entry in entries {
             let fixture = entry["fixture"].as_str().unwrap();
             let source = fs::read(root.join("flowchart").join(format!("{fixture}.mmd"))).unwrap();

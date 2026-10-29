@@ -114,48 +114,64 @@ pub fn assert_pair(
 
 pub fn assert_parse_paths(engine: &MermaidEngine, source: &str) {
     let strict = engine.parse_diagram_sync(source, ParseOptions::strict());
-    let strict_typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
-    assert_pair(&strict, &strict_typed, source);
-    if let Ok(Some(parsed)) = &strict {
-        let known = engine.parse_diagram_with_type_sync(
-            &parsed.meta.diagram_type,
-            source,
-            ParseOptions::strict(),
-        );
-        assert_pair(&known, &strict_typed, source);
-    }
     let lenient = engine.parse_diagram_sync(source, ParseOptions::lenient());
-    let lenient_typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::lenient());
-    assert_pair(&lenient, &lenient_typed, source);
-
+    // Keep the original family when lenient suppression changes its identity to `error`.
+    let known_type = [&strict, &lenient]
+        .into_iter()
+        .find_map(|result| match result {
+            Ok(Some(parsed)) => Some(parsed.meta.diagram_type.as_str()),
+            Err(error) => error_diagram_type(error),
+            Ok(None) => None,
+        });
+    // Each mode owns its preprocessing policy. Compare entrypoints within that policy,
+    // rather than assuming strict acceptance implies equal lenient semantics.
+    for (options, semantic) in [
+        (ParseOptions::strict(), &strict),
+        (ParseOptions::lenient(), &lenient),
+    ] {
+        let typed = engine.parse_diagram_for_render_model_sync(source, options);
+        assert_pair(semantic, &typed, source);
+        if let Some(diagram_type) = known_type {
+            let known = engine.parse_diagram_with_type_sync(diagram_type, source, options);
+            let known_typed =
+                engine.parse_diagram_for_render_model_with_type_sync(diagram_type, source, options);
+            // Compare the two known-type paths directly, including their error outcomes.
+            assert_pair(&known, &known_typed, source);
+            if !options.suppress_errors && matches!(semantic, Ok(Some(_))) {
+                // Strict results retain the detected identity. A suppressed lenient error model
+                // has identity `error`, which cannot identify the original family parser.
+                assert_pair(&known, &typed, source);
+            }
+        }
+    }
     #[cfg(feature = "editor-facts")]
-    assert_snapshot(&strict, engine.parse_diagram_snapshot_sync(source), source);
-    assert_modes(&strict, &lenient, source);
+    assert_snapshot(
+        &strict,
+        &lenient,
+        engine.parse_diagram_snapshot_sync(source),
+        source,
+    );
 }
 
 pub fn assert_known_type_parse_paths(engine: &MermaidEngine, diagram_type: &str, source: &str) {
     let strict = engine.parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict());
-    let typed = engine.parse_diagram_for_render_model_with_type_sync(
-        diagram_type,
-        source,
-        ParseOptions::strict(),
-    );
-    assert_pair(&strict, &typed, source);
     let lenient =
         engine.parse_diagram_with_type_sync(diagram_type, source, ParseOptions::lenient());
-    let lenient_typed = engine.parse_diagram_for_render_model_with_type_sync(
-        diagram_type,
-        source,
-        ParseOptions::lenient(),
-    );
-    assert_pair(&lenient, &lenient_typed, source);
+    for (options, semantic) in [
+        (ParseOptions::strict(), &strict),
+        (ParseOptions::lenient(), &lenient),
+    ] {
+        let typed =
+            engine.parse_diagram_for_render_model_with_type_sync(diagram_type, source, options);
+        assert_pair(semantic, &typed, source);
+    }
     #[cfg(feature = "editor-facts")]
     assert_snapshot(
         &strict,
+        &lenient,
         engine.parse_diagram_snapshot_with_type_sync(diagram_type, source),
         source,
     );
-    assert_modes(&strict, &lenient, source);
 }
 
 #[cfg(feature = "editor-facts")]
@@ -171,8 +187,9 @@ fn assert_span(span: SourceSpan, source: &str) {
 }
 
 #[cfg(feature = "editor-facts")]
-fn assert_snapshot(
-    semantic: &Result<Option<ParsedDiagram>>,
+pub(super) fn assert_snapshot(
+    strict: &Result<Option<ParsedDiagram>>,
+    lenient: &Result<Option<ParsedDiagram>>,
     snapshot: Result<Option<DiagramParseSnapshot>>,
     source: &str,
 ) {
@@ -180,16 +197,22 @@ fn assert_snapshot(
         Ok(Some(snapshot)) => snapshot,
         Ok(None) => {
             assert!(
-                matches!(semantic, Ok(None)),
-                "snapshot lost a diagram\n{source}"
+                matches!(lenient, Ok(None)),
+                "snapshot lost a recovered diagram\n{source}"
             );
             return;
         }
         Err(error) => {
-            let Err(semantic) = semantic else {
-                panic!("snapshot failed after semantic acceptance: {error}\n{source}");
-            };
-            assert_error_category(semantic, &error, source);
+            if matches!(error, Error::DetectType(_)) {
+                assert!(matches!(lenient, Ok(None)), "recovery detection: {source}");
+            } else {
+                let Err(semantic) = lenient else {
+                    panic!(
+                        "snapshot preprocessing failed after recovery acceptance: {error}\n{source}"
+                    );
+                };
+                assert_error_category(semantic, &error, source);
+            }
             return;
         }
     };
@@ -220,52 +243,42 @@ fn assert_snapshot(
     if let DiagramParseOutcome::Panicked(message) = snapshot.outcome() {
         panic!("snapshot parser panicked: {message}\n{source}");
     }
-    // Editor preprocessing deliberately recovers unfinished directive lines. Its own
-    // recovery receipt distinguishes that input policy from an actual parser divergence.
-    if snapshot.recovered_incomplete_directive() {
-        return;
-    }
-    match (semantic, snapshot.outcome()) {
+    // Snapshots and lenient models both use RecoverLine. Snapshots retain family errors;
+    // model-producing facades suppress them, without changing the original error message.
+    match (lenient, snapshot.outcome()) {
         (Ok(Some(parsed)), DiagramParseOutcome::Parsed { model, .. }) => {
             assert_metadata(&parsed.meta, snapshot.metadata(), source);
             assert_eq!(
                 &parsed.model, model,
-                "snapshot semantic projection: {source}"
+                "snapshot recovery projection: {source}"
             );
         }
-        (Err(semantic), DiagramParseOutcome::Failed(error)) => {
-            assert_error_category(semantic, error, source);
-        }
-        _ => panic!("snapshot acceptance differs from strict semantic parse\n{source}"),
-    }
-}
-
-fn assert_modes(
-    strict: &Result<Option<ParsedDiagram>>,
-    lenient: &Result<Option<ParsedDiagram>>,
-    source: &str,
-) {
-    match (strict, lenient) {
-        (Ok(Some(strict)), Ok(Some(lenient))) => {
-            assert_metadata(&strict.meta, &lenient.meta, source);
+        (Ok(Some(parsed)), DiagramParseOutcome::Failed(error)) => {
+            let mut suppressed_meta = snapshot.metadata().clone();
+            suppressed_meta.diagram_type = "error".to_string();
+            assert_metadata(&parsed.meta, &suppressed_meta, source);
+            assert_eq!(parsed.model["type"].as_str(), Some("error"), "{source}");
+            let error_message = error.to_string();
             assert_eq!(
-                strict.model, lenient.model,
-                "lenient changed accepted semantics: {source}"
+                parsed.model["errorMessage"].as_str(),
+                Some(error_message.as_str()),
+                "snapshot suppressed error: {source}"
             );
         }
-        (Ok(None), Ok(None)) => {}
-        (Err(Error::DiagramParse { .. } | Error::UnsupportedDiagram { .. }), Ok(Some(lenient))) => {
-            assert_eq!(lenient.meta.diagram_type, "error", "{source}");
+        _ => panic!("snapshot acceptance differs from lenient recovery parse\n{source}"),
+    }
+    // Compare strict input only when the preprocessing owner reports no recovery.
+    // Recovery never bypasses the snapshot checks above or the semantic/render pairs.
+    if !snapshot.recovered_incomplete_directive() {
+        match (strict, snapshot.outcome()) {
+            (Ok(Some(parsed)), DiagramParseOutcome::Parsed { model, .. }) => {
+                assert_metadata(&parsed.meta, snapshot.metadata(), source);
+                assert_eq!(&parsed.model, model, "snapshot strict projection: {source}");
+            }
+            (Err(semantic), DiagramParseOutcome::Failed(error)) => {
+                assert_error_category(semantic, error, source);
+            }
+            _ => panic!("snapshot acceptance differs from strict semantic parse\n{source}"),
         }
-        // Lenient preprocessing intentionally recovers incomplete directive lines. Strict
-        // removal can consume the remaining source and fail detection; recovery can expose
-        // a diagram or a later error. Pure unknown input has its own stable contract test.
-        (Err(Error::InvalidDirectiveJson { .. } | Error::DetectType(_)), _) => {}
-        (Err(strict), Err(lenient)) => assert_error_category(strict, lenient, source),
-        _ => panic!(
-            "unexpected strict-to-lenient transition: strict={}, lenient={}\n{source}",
-            outcome(strict),
-            outcome(lenient)
-        ),
     }
 }

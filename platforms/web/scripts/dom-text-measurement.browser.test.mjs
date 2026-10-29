@@ -63,6 +63,7 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
         { operation: "computed-length" },
         { operation: "wrapped" },
         { operation: "wrapped", wrap_mode: "html-like" },
+        { operation: "html-line-height", wrap_mode: "html-like" },
         { operation: "create-text-bbox-y-offset" },
         { operation: "mermaid-calculate-text-dimensions" },
       ];
@@ -79,6 +80,7 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
         { font_weight: "" },
         { font_style: "not-a-style" },
         { font_style: "" },
+        { font_size: -1 },
         { font_size: NaN },
         { font_size: Infinity },
         { letter_spacing: NaN },
@@ -93,6 +95,9 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
       try {
         const nativeComparisons = [];
         const preservedComparisons = [];
+        const operationComparisons = [];
+        const simpleComparisons = [];
+        const lineHeightComparisons = [];
         const nativeSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         const nativeText = document.createElementNS("http://www.w3.org/2000/svg", "text");
         const nativeDiv = document.createElement("div");
@@ -159,6 +164,127 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
             const result = session.measure({ ...preservedInput, operation });
             preservedComparisons.push({ operation, result, expectedWidth, expectedLength });
           }
+
+          for (const text of ["A<br>B", "A&amp;B", "A\nB", "A\u00a0B", "", " \t\r\n", "\u00a0"]) {
+            for (const line_height of [0, 0.25, 24]) {
+              const input = { ...base, operation: "html-line-height", wrap_mode: "html-like",
+                text, font_size: 16, line_height };
+              nativeDiv.style.cssText = "position:fixed;left:-10000px;top:-10000px;visibility:hidden;display:inline-block;padding:0;margin:0;border:0;white-space:nowrap";
+              nativeDiv.style.font = "16px monospace";
+              nativeDiv.style.lineHeight = `${line_height}px`;
+              nativeDiv.textContent = text;
+              operationComparisons.push({ operation: input.operation, text, line_height,
+                result: session.measure(input), expected: { kind: "length", length: nativeDiv.getBoundingClientRect().height } });
+            }
+          }
+
+          // Build independent DOM controls for each operation, without the adapter's helpers.
+          const nativeOperation = (input, content = input.text) => {
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            const formatted = input.operation.startsWith("create-text");
+            const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            nativeSvg.append(group);
+            group.append(text);
+            try {
+              text.setAttribute("x", "0");
+              text.setAttribute("y", formatted ? "-10.1" : "0");
+              text.style.fontFamily = input.font_family;
+              text.style.fontSize = `${input.font_size}px`;
+              text.style.fontWeight = input.font_weight;
+              if (input.operation !== "mermaid-calculate-text-dimensions") {
+                text.style.fontStyle = input.font_style;
+                text.style.whiteSpace = input.white_space;
+                text.style.letterSpacing = `${input.letter_spacing}px`;
+                text.style.wordSpacing = `${input.word_spacing}px`;
+              }
+              const centered = ["bbox-x", "bbox-x-with-ascii-overhang", "title-bbox-x"].includes(input.operation);
+              text.setAttribute("text-anchor", centered ? "middle" : "start");
+              if (input.operation === "raw-middle-bbox-y-offset") text.setAttribute("dominant-baseline", "middle");
+              if (input.operation === "raw-hanging-bbox-y-offset") text.setAttribute("dominant-baseline", "hanging");
+              if (input.operation === "create-text-middle-bbox-y-offset") {
+                for (const [name, value] of Object.entries({ dy: "1em", "alignment-baseline": "middle", "dominant-baseline": "middle", "text-anchor": "middle" })) {
+                  group.setAttribute(name, value);
+                }
+                text.removeAttribute("text-anchor");
+              }
+              const tspanShape = formatted || ["computed-length", "simple-bbox-width", "simple-bbox-height",
+                "tspan-bbox-width", "tspan-bbox-height", "wrap-probe-bbox-width", "mermaid-calculate-text-dimensions"].includes(input.operation);
+              let span;
+              if (tspanShape) {
+                span = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                span.setAttribute("x", "0");
+                if (formatted) {
+                  span.setAttribute("y", "-0.1em");
+                  span.setAttribute("dy", "1.1em");
+                }
+                span.textContent = content;
+                text.append(span);
+              } else text.textContent = content;
+              const box = text.getBBox();
+              if (centered) return { kind: "horizontal-extents", bbox_left: Math.max(0, -box.x), bbox_right: Math.max(0, box.x + box.width) };
+              if (input.operation === "measure" || input.operation === "mermaid-calculate-text-dimensions") {
+                return { kind: "metrics", width: box.width, height: box.height, line_count: 1 };
+              }
+              const length = input.operation === "computed-length" ? span.getComputedTextLength()
+                : input.operation === "bounding-client-rect-width" ? text.getBoundingClientRect().width
+                : input.operation.endsWith("y-offset") ? box.y
+                : input.operation.endsWith("height") ? box.height : box.width;
+              return { kind: "length", length };
+            } finally { group.remove(); }
+          };
+          const operations = ["measure", "computed-length", "bbox-x", "bbox-x-with-ascii-overhang", "title-bbox-x",
+            "simple-bbox-width", "simple-bbox-height", "raw-bbox-width", "raw-bbox-height", "raw-bbox-y-offset",
+            "raw-middle-bbox-y-offset", "raw-hanging-bbox-y-offset", "bounding-client-rect-width",
+            "tspan-bbox-width", "tspan-bbox-height", "wrap-probe-bbox-width",
+            "create-text-bbox-y-offset", "create-text-middle-bbox-y-offset", "mermaid-calculate-text-dimensions"];
+          for (const font_size of [0, 0.5, 1, 20]) {
+            for (const operation of operations) {
+              const input = { ...base, text: "MMMMMMMM", operation, font_size };
+              operationComparisons.push({ operation, font_size, result: session.measure(input), expected: nativeOperation(input) });
+            }
+          }
+          for (const [text, projected] of [["A<br/>B", "A B"], ["A<BR>B</br>C", "A B C"],
+            ["A\nB", "A\nB"], ["A&lt;br&gt;B", "A&lt;br&gt;B"]]) {
+            for (const operation of ["simple-bbox-width", "simple-bbox-height", "mermaid-calculate-text-dimensions",
+              "raw-bbox-width", "tspan-bbox-width", "wrap-probe-bbox-width"]) {
+              const input = { ...base, text, operation };
+              const simple = operation.startsWith("simple-") || operation === "mermaid-calculate-text-dimensions";
+              simpleComparisons.push({ operation, text, result: session.measure(input), expected: nativeOperation(input, simple ? projected : text) });
+            }
+          }
+          for (const wrap_mode of ["svg-like", "html-like"]) {
+            for (const [font_size, line_height] of [[0.5, 0.25], [20, 0.5], [20, 0], [20, 30]]) {
+              const input = { ...base, operation: "wrapped", text: "A\nB", wrap_mode, font_size, line_height };
+              let expected;
+              if (wrap_mode === "html-like") {
+                nativeDiv.style.font = `${font_size}px monospace`;
+                nativeDiv.style.lineHeight = `${line_height}px`;
+                nativeDiv.replaceChildren(document.createTextNode("A"), document.createElement("br"), document.createTextNode("B"));
+                const rect = nativeDiv.getBoundingClientRect();
+                if (line_height > 0) expected = { kind: "metrics", width: rect.width, height: rect.height, line_count: 2 };
+              } else {
+                nativeText.style.cssText = `font:${font_size}px monospace;white-space:normal`;
+                nativeText.replaceChildren();
+                for (const [index, line] of ["A", "B"].entries()) {
+                  const span = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                  span.setAttribute("x", "0");
+                  span.setAttribute("dy", `${index * line_height}px`);
+                  span.textContent = line;
+                  nativeText.append(span);
+                }
+                const box = nativeText.getBBox();
+                expected = { kind: "metrics", width: box.width, height: box.height, line_count: 2 };
+              }
+              for (const operation of ["wrapped", "wrapped-with-raw-width"]) {
+                const result = session.measure({ ...input, operation });
+                lineHeightComparisons.push({ wrap_mode, font_size, line_height, operation, result,
+                  expected: expected && { ...expected, ...(operation === "wrapped-with-raw-width" ? {
+                    kind: "wrapped-with-raw-width",
+                    raw_width: wrap_mode === "html-like" ? expected.width : nativeOperation({ ...input, operation: "tspan-bbox-width" }).length,
+                  } : {}) } });
+              }
+            }
+          }
         } finally {
           nativeSvg.remove();
           nativeDiv.remove();
@@ -203,6 +329,7 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
         });
         session.dispose();
         return {
+          operationComparisons, simpleComparisons, lineHeightComparisons,
           nativeComparisons,
           preservedComparisons,
           assignments,
@@ -215,6 +342,18 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
         session.dispose();
       }
     });
+
+    for (const entry of [...evidence.operationComparisons, ...evidence.simpleComparisons, ...evidence.lineHeightComparisons]) {
+      if (entry.operation === "mermaid-calculate-text-dimensions" && entry.font_size === 0) {
+        assert.equal(entry.result, undefined, "dimensions retains the pinned zero-bbox guard");
+      } else assert.deepEqual(entry.result, entry.expected, JSON.stringify(entry));
+    }
+    console.log(JSON.stringify({ browser: await browser.version(),
+      subpixel: evidence.operationComparisons.filter(entry => entry.operation === "raw-bbox-width"),
+      breaks: evidence.simpleComparisons.filter(entry => entry.text === "A<br/>B" && entry.operation.endsWith("width")),
+      lineHeights: evidence.lineHeightComparisons.filter(entry => entry.operation === "wrapped"),
+    }));
+
     assert.equal(evidence.nativeComparisons.length, 18);
     for (const { html, field, value, result, actualFont, expectedFont, expected } of evidence.nativeComparisons) {
       const label = `${html ? "HTML" : "SVG"} ${field}=${JSON.stringify(value)}`;

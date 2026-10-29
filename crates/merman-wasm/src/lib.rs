@@ -1091,6 +1091,7 @@ mod tests {
                 (19, "raw-bbox-y-offset"),
                 (20, "raw-middle-bbox-y-offset"),
                 (21, "raw-hanging-bbox-y-offset"),
+                (22, "html-line-height"),
             ]
         );
     }
