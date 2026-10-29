@@ -100,6 +100,7 @@ fn render_sequence_diagram_svg_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let model = prepared.model_for_render(model);
     let checkpoints = SequenceEmitCheckpoints::new(options.work_meter());
     checkpoints.checkpoint()?;
     let layout = prepared.layout();
