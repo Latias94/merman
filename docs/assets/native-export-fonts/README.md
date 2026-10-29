@@ -38,6 +38,12 @@ Main already scoped Sequence's built-in shadow. The maintenance backport uses th
 tag background defect exists on both lines and uses the same fix. Custom filter URLs and CSS
 shadow functions retain their values.
 
+CI's Chromium paint audit also found ten Sequence group-box fixtures whose restored shadow
+extended below the root viewport. Main already included this paint in its root bounds. The
+maintenance backport now shares rectangle geometry between box emission and its paint bounds,
+including the actual one-pixel stroke and four-pixel zero-blur shadow. It leaves layout and
+title anchors intact rather than introducing extra diagram padding.
+
 Four existing Sequence entries in
 [`browser-text-layout-residuals.json`](../../../fixtures/_verification/browser-text-layout-residuals.json)
 needed new local signatures. Each affected output changes exactly four CSS filter references.

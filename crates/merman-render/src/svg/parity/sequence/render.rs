@@ -137,6 +137,13 @@ fn render_sequence_diagram_svg_inner(
     }
     checkpoints.checkpoint()?;
 
+    let box_paint_bounds = super::frames::builtin_box_paint_bounds(
+        prepared.box_layouts(),
+        prepared.box_height(),
+        settings.box_margin,
+        effective_config,
+        checkpoints,
+    )?;
     let mut out = String::new();
     checkpoints.checkpoint()?;
     let root_document = write_sequence_svg_root_open(
@@ -145,6 +152,7 @@ fn render_sequence_diagram_svg_inner(
         model,
         diagram_id,
         title_geometry.as_ref().map(|title| &title.bounds),
+        box_paint_bounds.as_ref(),
     )?;
     checkpoints.checkpoint()?;
 
@@ -206,9 +214,10 @@ fn render_sequence_diagram_svg_inner(
         } else {
             "#FFFFFF"
         };
+        let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
         let _ = write!(
             out,
-            r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
+            r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
         );
     }
     checkpoints.checkpoint()?;

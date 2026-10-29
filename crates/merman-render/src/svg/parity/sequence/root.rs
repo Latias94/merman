@@ -52,6 +52,7 @@ pub(super) fn write_sequence_svg_root_open(
     model: &SequenceSvgModel,
     diagram_id: SvgDiagramId<'_>,
     title_bounds: Option<&Bounds>,
+    box_paint_bounds: Option<&Bounds>,
 ) -> Result<root_svg::RootDocument> {
     let mut bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -59,11 +60,11 @@ pub(super) fn write_sequence_svg_root_open(
         max_x: 100.0,
         max_y: 100.0,
     });
-    if let Some(title) = title_bounds {
-        bounds.min_x = bounds.min_x.min(title.min_x);
-        bounds.min_y = bounds.min_y.min(title.min_y);
-        bounds.max_x = bounds.max_x.max(title.max_x);
-        bounds.max_y = bounds.max_y.max(title.max_y);
+    for paint in [title_bounds, box_paint_bounds].into_iter().flatten() {
+        bounds.min_x = bounds.min_x.min(paint.min_x);
+        bounds.min_y = bounds.min_y.min(paint.min_y);
+        bounds.max_x = bounds.max_x.max(paint.max_x);
+        bounds.max_y = bounds.max_y.max(paint.max_y);
     }
     let root_bounds = root_svg::DiagramBounds::from_extents(
         bounds.min_x,
