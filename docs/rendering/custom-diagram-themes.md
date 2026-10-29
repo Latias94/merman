@@ -19,7 +19,11 @@ These inputs can be combined. The Mermaid base supplies defaults, and a Merman r
 its supported styling. Explicit diagram styles and configuration retain property-specific
 precedence. Choosing a preset does not change the source, layout or look.
 
-For a ready-to-run example, see [Brutalist Flowchart and Ghibli Pie](theme-gallery/README.md).
+For ready-to-run examples, see the [six-theme gallery](theme-gallery/README.md), covering
+Flowchart, Pie, Sequence, Class, and XY Chart. Brutalist, Spotless, Cyberpunk, and Ghibli use
+visual design references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid);
+the [gallery credits](theme-gallery/README.md#design-references-and-license) retain the source
+revision and MIT notice.
 Ghibli has a dedicated Pie design. Brutalist has dedicated Flowchart, Sequence and XY Chart
 designs and a base palette adaptation for Class. The catalog records each preset's scope;
 unlisted families are **not yet reviewed**. A dedicated design does not guarantee every shape,

@@ -70,12 +70,16 @@ Cyberpunk, and Ghibli. Open the Playground's **Theme** panel: **Mermaid theme** 
 base appearance shared by both engines; **Merman styling** adds a preset or imported recipe
 to Merman. Cards describe the current diagram's design scope, and the selected preset shows
 application guidance. Preview the styling, then **Apply** it. See the
-[theme gallery](docs/rendering/theme-gallery/README.md) for Brutalist Flowchart and Ghibli Pie,
-or run the Rust example:
+[theme gallery](docs/rendering/theme-gallery/README.md) for six presets across Flowchart, Pie,
+Sequence, Class, and XY Chart, or run the Rust example:
 
 ```sh
 cargo run --locked -p merman --features svg --example theme_preset > themed.svg
 ```
+
+Brutalist, Spotless, Cyberpunk, and Ghibli use visual design references from
+[Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid); see the
+[design credits and retained MIT notice](docs/rendering/theme-gallery/README.md#design-references-and-license).
 
 Use **Import JSON** in the panel to validate and preview a versioned theme recipe; download it
 to edit with an external editor or the theme-design skill. Workspace share links preserve

@@ -6,9 +6,82 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-- Playground theme choices now share one preview/Apply/Cancel model for Merman styling, Mermaid base theme, fonts and suggested configuration. New workspaces inherit theme/source fonts, historical share links preserve their original defaults, and failed imports can recover the last validated selection. Source/configuration declarations and current-family guidance explain overrides without changing authored content.
-- Native CLI `render` and `batch` report partial theme application on stderr and support `--theme-report PATH` for ordered rendering evidence and `--theme-portability require-portable` for the renderer's strict policy. Reports remain separate from image output and describe rendering before publication.
-- Add the editable Ghibli Pie preset, typed Pie title/percentage/legend styling, catalog colors and family guidance. Synchronize preset discovery and shared support fixtures across release checks and SDK consumers.
+### Diagram themes (alpha)
+
+Apply reusable visual designs through Rust, Web, native CLI, or the Playground. The current catalog includes 11 presets: Editor Light/Dark, One Dark, Gruvbox Light/Dark, Ayu Light/Dark, Brutalist, Spotless, Cyberpunk, and Ghibli. Export a preset as editable JSON to customize its tokens, typography, canvas, and supported family rules, then share the same recipe across integrations. Use a matching development runtime; this section does not announce package publication.
+
+Brutalist, Spotless, Cyberpunk, and Ghibli draw their visual design references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid). Thanks to the Modern Mermaid Team for those designs. Merman adapts selected visual mechanisms into typed recipes with its own rendering and family coverage; the [gallery's design references](docs/rendering/theme-gallery/README.md#design-references-and-license) record the pinned source and retained MIT notice.
+
+These are real Merman native PNG exports. The [six-theme gallery](docs/rendering/theme-gallery/README.md) includes every source, configuration, and reproduction command.
+
+| Brutalist · Flowchart | Ghibli · Pie |
+| --- | --- |
+| ![Brutalist Flowchart with bold outlines, accent colors and hard shadows](docs/rendering/theme-gallery/brutalist.png) | ![Ghibli Pie with warm paper, muted slices and distinct text sizes](docs/rendering/theme-gallery/ghibli.png) |
+| **Spotless · Sequence** | **Cyberpunk · Flowchart** |
+| ![Spotless Sequence with a paper grid, ink outlines and bold participants](docs/rendering/theme-gallery/spotless.png) | ![Cyberpunk Flowchart with cyan glow over a dark grid](docs/rendering/theme-gallery/cyberpunk.png) |
+| **One Dark · Class** | **Gruvbox Light · XY Chart** |
+| ![One Dark Class diagram with dark surfaces and a blue relationship](docs/rendering/theme-gallery/one-dark.png) | ![Gruvbox Light XY Chart with a cream canvas, teal bars and an olive line](docs/rendering/theme-gallery/gruvbox-light.png) |
+
+Brutalist, Spotless, and Ghibli have dedicated designs for the families shown; Cyberpunk, One Dark, and Gruvbox Light have base-style catalog scope. Brutalist shadows and Cyberpunk node glow need supported Classic Flowchart shapes; these examples explicitly use [Classic/Dagre configuration](docs/rendering/theme-gallery/brutalist.config.json). All presets remain alpha. Fonts resolve on the host, and the One Dark/Gruvbox examples retain an unverified compatibility diagnostic; successful best-effort output is not a portable-output guarantee.
+
+#### Try a preset
+
+Native CLI:
+
+```text
+merman-cli render docs/rendering/theme-gallery/ghibli.mmd --theme-preset ghibli -o ghibli.svg
+merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-preset brutalist --config-file docs/rendering/theme-gallery/brutalist.config.json -o brutalist.svg
+```
+
+Web, using a matching SVG-capable `@mermanjs/web` artifact:
+
+```ts
+import { initMerman, renderSvgResult } from "@mermanjs/web";
+
+await initMerman();
+const source = `pie title Market Share
+    "Company A": 35
+    "Company B": 25
+    "Others": 40
+`;
+const { svg, metadata } = renderSvgResult(source, {
+  theme: { preset: "ghibli" },
+});
+```
+
+Rust, with the `svg` feature enabled:
+
+```rust
+use merman::svg::{DiagramThemeCompiler, ThemePreset};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = "pie title Market Share\n  \"Company A\": 35\n  \"Others\": 65";
+    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::Ghibli)?;
+    let output = Renderer::new().render(
+        RenderRequest::svg(source, OperationControl::new(), SvgRequest::default())
+            .with_theme(theme),
+    )?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    print!("{}", svg.svg());
+    Ok(())
+}
+```
+
+For a maintained runnable Rust example, use `cargo run --locked -p merman --features svg --example theme_preset > themed.svg`. The [theme guide](docs/rendering/custom-diagram-themes.md) explains Mermaid base themes versus Merman styling, source/configuration precedence, editable recipes, and actual-render diagnostics.
+
+#### Integration and migration
+
+- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract. [#178](https://github.com/Latias94/merman/pull/178)
+- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct. Catalog colors and family guidance describe design intent; qualification applies only to recorded artifact/family/output combinations. Ghibli adds typed Pie title, percentage, and legend styling. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#253](https://github.com/Latias94/merman/pull/253)
+- Playground theme choices share one preview/Apply/Cancel model for Merman styling, Mermaid base theme, fonts, and suggested configuration. New workspaces inherit theme/source fonts; historical share links preserve their original defaults. Import/export and workspace links share reusable recipes, and failed imports can recover the last validated selection. Source/configuration declarations and current-family guidance explain overrides without changing authored content. [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
+- Native CLI selects built-in recipes with `--theme-preset` and reusable JSON with `--theme-file`; `capabilities` reports artifact-aware preset scope. `render` and `batch` report partial theme application on stderr, support separate ordered rendering evidence through `--theme-report PATH`, and offer strict renderer policy through `--theme-portability require-portable`. Reports describe rendering before image publication. Theme CSS and host security controls remain capability-gated. [#178](https://github.com/Latias94/merman/pull/178), [#253](https://github.com/Latias94/merman/pull/253)
+- **Binding migration:** Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline. [#178](https://github.com/Latias94/merman/pull/178)
+
+### Other changes
+
 - Ordinary presentation parsing preserves custom-parser cancellation as `Error::OperationCancelled`, including lenient parsing, and retains the Parse phase instead of producing a suppressed error diagram.
 - Init directives match Mermaid 12.2.0's single/multiple handling. A single legacy `config` uses the detected type key, with Mermaid's `flowchart-v2` exception; unsupported keys such as `classDiagram`, `stateDiagram`, `xychart`, and `flowchart-elk` are filtered out. Multiple init directives sanitize legacy `config` away before merging. Use explicit configuration namespaces or frontmatter for consistent overrides.
 - Gantt axes honor configured `tickInterval` when the body omits it. Mindmap roots honor `padding` and `useMaxWidth`, and compatibility JSON preserves the resolved layout. Sequence consumes `showSequenceNumbers`, `hideUnusedParticipants`, and `noteAlign`, including matching actor layout, lifecycle slots, and emitted SVG.
@@ -32,14 +105,6 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Separate canonical semantic parsing from full presentation so library consumers can select lighter parser, ASCII, analysis, or editor configurations and avoid unrequested theme evaluation, editor facts, and compatibility JSON. Required security normalization, validation, cancellation, and resource accounting remain in place. These boundaries reduce unnecessary work for each use case; they do not guarantee that every artifact is smaller or every operation is faster. [#241](https://github.com/Latias94/merman/pull/241)
 - **Breaking Rust API changes:** use `SemanticParser` and `SemanticMetadata` for canonical meaning, or `MermaidEngine` and `PresentationMetadata` for full processing. Select `editor-facts`, `presentation`, and `compat-json` as needed; `compat-json` implies presentation. Update removed engine/model aliases and render handoffs using the [migration guide](docs/migrations/render-reuse-host-integration.md). [#241](https://github.com/Latias94/merman/pull/241)
 - **Breaking feature behavior:** `complete-svg` and `complete-svg-elk` remain available on `merman` and `merman-rustdoc`, but no longer enable `math`. They select SVG with Cytoscape, and SVG with Cytoscape plus ELK, respectively; diagram families remain independent. Enable `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, to retain mathematical-label rendering. The facade and CLI source defaults and generic Web full/render packages also omit math; official CLI release archives still include it. Source-built CLI users add `--features math`. [#241](https://github.com/Latias94/merman/pull/241)
-
-### Theme integration
-
-- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract. [#178](https://github.com/Latias94/merman/pull/178)
-- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct; alpha preset qualifications apply only to the recorded artifact, family, and output, rather than guaranteeing portability across every family. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223)
-- Binding Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline. [#178](https://github.com/Latias94/merman/pull/178)
-- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary. [#178](https://github.com/Latias94/merman/pull/178)
-- Added a Playground theme workbench for editing and sharing reusable designs. UI theme and font defaults stay in initialization, preserving authored source themes and host paints; automatic canvas appearance follows the same configuration precedence. [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234)
 
 ### Contributors
 
