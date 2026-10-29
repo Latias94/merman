@@ -44,6 +44,50 @@ fn known_target_outside_the_family_semantics_is_not_applicable() {
 }
 
 #[test]
+fn pie_discovery_matches_its_static_text_role_consumers() {
+    for target in [ThemeTarget::Title, ThemeTarget::Text, ThemeTarget::Legend] {
+        for facet in [
+            ThemeRuleFacetV1::Fill,
+            ThemeRuleFacetV1::FontSize,
+            ThemeRuleFacetV1::FontWeight,
+            ThemeRuleFacetV1::FontStyle,
+        ] {
+            let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
+                DiagramFamilyId::PIE.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                target.id(),
+                facet,
+            ));
+            assert_eq!(
+                support.state(),
+                ThemeSupportStateV1::Conditional,
+                "{target:?}/{facet:?}"
+            );
+        }
+        for facet in [ThemeRuleFacetV1::FontStack, ThemeRuleFacetV1::LineHeight] {
+            let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
+                DiagramFamilyId::PIE.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                target.id(),
+                facet,
+            ));
+            assert_eq!(
+                support.state(),
+                ThemeSupportStateV1::Unsupported,
+                "{target:?}/{facet:?}"
+            );
+        }
+    }
+    let slice_size = describe_theme_support(&ThemeSupportQueryV1::for_target(
+        DiagramFamilyId::PIE.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::PieSlice.id(),
+        ThemeRuleFacetV1::FontSize,
+    ));
+    assert_eq!(slice_size.state(), ThemeSupportStateV1::Unsupported);
+}
+
+#[test]
 fn unknown_facet_stays_unverified_even_when_the_known_target_is_not_applicable() {
     let query: ThemeSupportQueryV1 = serde_json::from_str(
         r#"{
@@ -1073,8 +1117,11 @@ fn subject_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule
         (
             DiagramFamilyId::PIE,
             ThemeSupportBaseTypographyPropertyV1::FontSize,
-            ThemeSupportStateV1::Unsupported,
-            &["theme-support.no-supported-route"][..],
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
         ),
         (
             DiagramFamilyId::REQUIREMENT,

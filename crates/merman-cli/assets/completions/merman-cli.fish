@@ -158,7 +158,8 @@ ayu-light\t'[alpha] Ayu Light'
 ayu-dark\t'[alpha] Ayu Dark'
 brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
-cyberpunk\t'[alpha] Cyberpunk'"
+cyberpunk\t'[alpha] Cyberpunk'
+ghibli\t'[alpha] Ghibli'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
@@ -276,7 +277,8 @@ ayu-light\t'[alpha] Ayu Light'
 ayu-dark\t'[alpha] Ayu Dark'
 brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
-cyberpunk\t'[alpha] Cyberpunk'"
+cyberpunk\t'[alpha] Cyberpunk'
+ghibli\t'[alpha] Ghibli'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''

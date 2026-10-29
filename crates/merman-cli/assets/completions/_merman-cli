@@ -183,7 +183,8 @@ ayu-light\:"\[alpha\] Ayu Light"
 ayu-dark\:"\[alpha\] Ayu Dark"
 brutalist\:"\[alpha\] Brutalist"
 spotless\:"\[alpha\] Spotless"
-cyberpunk\:"\[alpha\] Cyberpunk"))' \
+cyberpunk\:"\[alpha\] Cyberpunk"
+ghibli\:"\[alpha\] Ghibli"))' \
 '(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
 '(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering]:THEME_DESIGN_FILE:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
@@ -295,7 +296,8 @@ ayu-light\:"\[alpha\] Ayu Light"
 ayu-dark\:"\[alpha\] Ayu Dark"
 brutalist\:"\[alpha\] Brutalist"
 spotless\:"\[alpha\] Spotless"
-cyberpunk\:"\[alpha\] Cyberpunk"))' \
+cyberpunk\:"\[alpha\] Cyberpunk"
+ghibli\:"\[alpha\] Ghibli"))' \
 '(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
 '(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering]:THEME_DESIGN_FILE:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \

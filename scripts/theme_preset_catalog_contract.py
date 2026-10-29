@@ -13,7 +13,7 @@ def validate_unqualified_catalog(catalog: object) -> None:
     if not isinstance(entries, list) or not entries:
         raise RuntimeError("Missing theme preset catalog entries")
     strings = {"id", "display_name", "appearance", "maturity", "license_expression", "export_kind"}
-    fields = strings | {"available", "availability_reason_ids", "family_designs", "qualified_cells", "required_attribution"}
+    fields = strings | {"available", "availability_reason_ids", "family_designs", "preview_colors", "application_notes", "qualified_cells", "required_attribution"}
     seen = set()
     for entry in entries:
         if not isinstance(entry, dict) or set(entry) != fields:
@@ -29,6 +29,19 @@ def validate_unqualified_catalog(catalog: object) -> None:
             raise RuntimeError("Invalid theme preset family designs")
         if len({design["family_id"] for design in designs}) != len(designs):
             raise RuntimeError("Duplicate family in theme preset designs")
+        colors = entry["preview_colors"]
+        if not isinstance(colors, list) or any(not isinstance(color, str) or not color for color in colors):
+            raise RuntimeError("Invalid theme preset preview colors")
+        notes = entry["application_notes"]
+        if (not isinstance(notes, list)
+                or any(not isinstance(note, dict)
+                       or set(note) != {"id", "family_id", "message", "recommended_config"}
+                       or any(not isinstance(note[key], str) or not note[key] for key in ("id", "family_id", "message"))
+                       or (note["recommended_config"] is not None and not isinstance(note["recommended_config"], dict))
+                       for note in notes)):
+            raise RuntimeError("Invalid theme preset application notes")
+        if len({(note["family_id"], note["id"]) for note in notes}) != len(notes):
+            raise RuntimeError("Duplicate theme preset application note")
         reasons = entry["availability_reason_ids"]
         if (type(entry["available"]) is not bool or not isinstance(reasons, list)
                 or any(not isinstance(reason, str) or not reason for reason in reasons)

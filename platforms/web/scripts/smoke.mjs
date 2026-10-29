@@ -1919,7 +1919,9 @@ async function runSameProcessPackageSmoke() {
     full.runtimeCatalog().resources.general_binding_default_profile,
     "interactive"
   );
-  assert.equal(full.themeCatalog().presets.length, 10);
+  assert.deepEqual(full.themeCatalog().presets, JSON.parse(await readFile(path.join(
+    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
+  ), "utf8")));
   assert.ok(full.themeCatalog().known_semantic_target_ids.includes("node"));
   assert.match(full.renderSvg(source, options), /<svg/);
   const prepared = full.prepareSource(source, options);

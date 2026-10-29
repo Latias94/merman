@@ -1240,6 +1240,8 @@ class MermanThemePreset {
     required this.availabilityReasonIds,
     required this.qualifiedCells,
     this.familyDesigns = const [],
+    this.previewColors = const [],
+    this.applicationNotes = const [],
     required this.licenseExpression,
     required this.requiredAttribution,
     required this.exportKind,
@@ -1256,6 +1258,12 @@ class MermanThemePreset {
   /// Design intent by family, independent of target qualification.
   /// Missing families and unknown treatments remain unevaluated.
   final List<MermanThemePresetFamilyDesign> familyDesigns;
+
+  /// Ordered discovery swatches, not a rendered palette or support claim.
+  final List<String> previewColors;
+
+  /// Curated guidance. Applying recommendations requires a host/user decision.
+  final List<MermanThemePresetApplicationNote> applicationNotes;
   final String licenseExpression;
   final String? requiredAttribution;
   final String exportKind;
@@ -1273,6 +1281,28 @@ class MermanThemePreset {
         'theme preset $id availability contradicts its reason IDs',
       );
     }
+    final rawPreviewColors = json.containsKey('preview_colors')
+        ? json['preview_colors']
+        : const <Object?>[];
+    if (rawPreviewColors is! List ||
+        rawPreviewColors.any((color) => color is! String || color.isEmpty)) {
+      throw MermanException.contract(
+        'theme preset $id.preview_colors must be an array of non-empty strings',
+      );
+    }
+    final rawApplicationNotes = json.containsKey('application_notes')
+        ? json['application_notes']
+        : const <Object?>[];
+    if (rawApplicationNotes is! List) {
+      throw MermanException.contract(
+        'theme preset $id.application_notes must be an array',
+      );
+    }
+    final applicationNotes = rawApplicationNotes.indexed.map(
+      (entry) => MermanThemePresetApplicationNote.fromJson(
+        _asObject(entry.$2, 'theme preset $id.application_notes[${entry.$1}]'),
+      ),
+    );
     final rawFamilyDesigns = json.containsKey('family_designs')
         ? json['family_designs']
         : const <Object?>[];
@@ -1352,6 +1382,8 @@ class MermanThemePreset {
       availabilityReasonIds: List.unmodifiable(availabilityReasonIds),
       qualifiedCells: List.unmodifiable(qualifiedCells),
       familyDesigns: List.unmodifiable(familyDesigns),
+      previewColors: List<String>.unmodifiable(rawPreviewColors.cast<String>()),
+      applicationNotes: List.unmodifiable(applicationNotes),
       licenseExpression: _requiredNonEmptyString(
         json,
         'license_expression',
@@ -1395,6 +1427,43 @@ class MermanThemePresetFamilyDesign {
         'theme preset family design',
       ),
       treatment: treatment,
+    );
+  }
+}
+
+/// Open discovery guidance for one family, without support or qualification grants.
+class MermanThemePresetApplicationNote {
+  const MermanThemePresetApplicationNote({
+    required this.id,
+    required this.familyId,
+    required this.message,
+    this.recommendedConfig,
+  });
+
+  final String id;
+  final String familyId;
+  final String message;
+
+  /// Suggested Mermaid site configuration; selecting a preset does not apply it.
+  final Map<String, Object?>? recommendedConfig;
+
+  factory MermanThemePresetApplicationNote.fromJson(Map<String, Object?> json) {
+    const label = 'theme preset application note';
+    final rawConfig = json['recommended_config'];
+    Map<String, Object?>? config;
+    if (rawConfig != null) {
+      config = _asObject(rawConfig, '$label.recommended_config');
+      _encodePreservedJsonObject(config, '$label.recommended_config');
+      config = _deeplyUnmodifiableJsonObject(
+        config,
+        '$label.recommended_config',
+      );
+    }
+    return MermanThemePresetApplicationNote(
+      id: _requiredRuntimeIdentifier(json, 'id', label),
+      familyId: _requiredRuntimeIdentifier(json, 'family_id', label),
+      message: _requiredNonEmptyString(json, 'message', label),
+      recommendedConfig: config,
     );
   }
 }

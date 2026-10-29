@@ -6,10 +6,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -27,7 +23,22 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#ffffff",
+      "#f8fafc",
+      "#0f172a",
+      "#2563eb",
+      "#059669",
+      "#d97706",
+      "#7c3aed",
+      "#0891b2"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "editor-dark",
@@ -36,10 +47,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -57,7 +64,22 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#0f172a",
+      "#111827",
+      "#e5e7eb",
+      "#60a5fa",
+      "#34d399",
+      "#f59e0b",
+      "#c084fc",
+      "#22d3ee"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "one-dark",
@@ -66,10 +88,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -87,7 +105,22 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#282c34",
+      "#21252b",
+      "#abb2bf",
+      "#61afef",
+      "#98c379",
+      "#e5c07b",
+      "#c678dd",
+      "#56b6c2"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "gruvbox-light",
@@ -96,10 +129,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -117,7 +146,22 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#fbf1c7",
+      "#f2e5bc",
+      "#3c3836",
+      "#458588",
+      "#98971a",
+      "#d79921",
+      "#b16286",
+      "#689d6a"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "gruvbox-dark",
@@ -126,10 +170,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -147,7 +187,22 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#282828",
+      "#3c3836",
+      "#ebdbb2",
+      "#83a598",
+      "#b8bb26",
+      "#fabd2f",
+      "#d3869b",
+      "#8ec07c"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "ayu-light",
@@ -156,10 +211,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -177,7 +228,22 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#fcfcfc",
+      "#f3f4f5",
+      "#5c6166",
+      "#55b4d4",
+      "#86b300",
+      "#ffaa33",
+      "#a37acc",
+      "#4cbf99"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "ayu-dark",
@@ -186,10 +252,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -207,7 +269,22 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#0b0e14",
+      "#11151c",
+      "#bfbdb6",
+      "#59c2ff",
+      "#aad94c",
+      "#ffb454",
+      "#d2a6ff",
+      "#95e6cb"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "brutalist",
@@ -216,10 +293,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -237,7 +310,33 @@
         "family_id": "xychart",
         "treatment": "dedicated"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#f6f3e9",
+      "#ffffff",
+      "#000000",
+      "#FF6B35",
+      "#4ECDC4",
+      "#FFE66D",
+      "#8338ec",
+      "#3a86ff"
+    ],
+    "application_notes": [
+      {
+        "id": "flowchart-classic-shadows",
+        "family_id": "flowchart",
+        "message": "Hard node shadows need Classic look and supported basic shapes (rectangles, diamonds and circles). Selecting this preset does not change the diagram's look.",
+        "recommended_config": {
+          "flowchart": {
+            "look": "classic"
+          }
+        }
+      }
+    ],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "spotless",
@@ -246,10 +345,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -267,7 +362,22 @@
         "family_id": "xychart",
         "treatment": "dedicated"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#EDE8DC",
+      "#F5F1E8",
+      "#1a1a1a",
+      "#8b5e34",
+      "#557a46",
+      "#9a6aa8",
+      "#b2604b",
+      "#4f748d"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   },
   {
     "id": "cyberpunk",
@@ -276,10 +386,6 @@
     "maturity": "alpha",
     "available": true,
     "availability_reason_ids": [],
-    "qualified_cells": [],
-    "license_expression": "MIT OR Apache-2.0",
-    "required_attribution": null,
-    "export_kind": "design",
     "family_designs": [
       {
         "family_id": "class",
@@ -297,6 +403,59 @@
         "family_id": "xychart",
         "treatment": "base_only"
       }
-    ]
+    ],
+    "preview_colors": [
+      "#051423",
+      "#00f2ff",
+      "#22d3ee",
+      "#f472b6",
+      "#a3e635",
+      "#facc15",
+      "#c084fc"
+    ],
+    "application_notes": [
+      {
+        "id": "flowchart-classic-glow",
+        "family_id": "flowchart",
+        "message": "Node glow needs Classic look and supported basic shapes. Selecting this preset does not change the diagram's look.",
+        "recommended_config": {
+          "flowchart": {
+            "look": "classic"
+          }
+        }
+      }
+    ],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
+  },
+  {
+    "id": "ghibli",
+    "display_name": "Ghibli",
+    "appearance": "light",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "family_designs": [
+      {
+        "family_id": "pie",
+        "treatment": "dedicated"
+      }
+    ],
+    "preview_colors": [
+      "#FDF6E3",
+      "#FFFFFF",
+      "#3A2E2C",
+      "#FFF3E0",
+      "#E8F5E9",
+      "#E6E6E6",
+      "#FFDFAD"
+    ],
+    "application_notes": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   }
 ]

@@ -95,6 +95,8 @@ class CliQualificationTests(unittest.TestCase):
         ]}
         for entry in self.catalog["presets"]:
             entry["family_designs"] = [{"family_id": "flowchart", "treatment": "base_only"}]
+            entry["preview_colors"] = []
+            entry["application_notes"] = []
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         self.qualification["render_config"] = {
             "htmlLabels": False,

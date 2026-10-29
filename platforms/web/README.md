@@ -142,12 +142,82 @@ Keep `renderSvgToElement()` for a single publication without a retained lifecycl
 
 ## Choose a preset for a diagram
 
-Read `themeCatalog().presets` from the loaded runtime. `available` means that its compiler can
-construct the recipe. `family_designs` describes curated design intent for a logical family:
+Read `themeCatalog().presets` from the initialized runtime to build a picker. Use each entry's
+open `id` as the saved selection and `display_name` as its label; use `appearance` for light/dark
+grouping and the ordered `preview_colors` for swatches. Discover the inventory instead of keeping
+a preset list or count in the host. `supportedThemes()` lists Mermaid base themes and is separate
+from these Merman presets. This source API requires a matching artifact; published `0.9.2` does
+not expose the unreleased discovery contract.
+
+`available` means that the runtime's compiler can construct the recipe. `maturity` describes the
+catalog entry independently of rendering support. `family_designs` describes curated design intent for a logical family:
 `dedicated` is a family-specific design, `base_only` is the shared base appearance (including
 necessary family adaptations), and missing or unknown treatments are unreviewed. None of these
 states certifies readable output or portability; those depend on the actual scene and target.
 Use `diagramFamilyCapabilities()` to map a detected `diagram_type` to its `family_id`.
+
+```ts
+import {
+  detectDiagramFacts, diagramFamilyCapabilities, renderSvgResult, themeCatalog,
+} from "@mermanjs/web";
+
+// Call after initMerman(). Keep this selection in the host's own state.
+const source = "flowchart LR\nA[Start] --> B[Done]";
+const selectedId = "brutalist";
+const catalog = themeCatalog();
+const detected = detectDiagramFacts(source);
+const familyId = diagramFamilyCapabilities()
+  .find((family) => family.diagram_type === detected.diagramType)?.family_id;
+const selected = catalog.presets.find((preset) => preset.id === selectedId);
+if (!selected) throw new Error(`Unknown saved preset: ${selectedId}`);
+if (!selected.available) throw new Error(selected.availability_reason_ids.join(", "));
+
+const choices = catalog.presets.map((preset) => ({
+  value: preset.id, label: preset.display_name, disabled: !preset.available,
+  appearance: preset.appearance, maturity: preset.maturity, colors: preset.preview_colors,
+}));
+const declaredTreatment = selected.family_designs
+  .find((design) => design.family_id === familyId)?.treatment;
+const treatment = declaredTreatment === "dedicated" || declaredTreatment === "base_only"
+  ? declaredTreatment : "unreviewed";
+const notes = selected.application_notes.filter((note) => note.family_id === familyId);
+console.log({ choices, treatment, notes });
+
+const result = renderSvgResult(source, { theme: { preset: selected.id } });
+console.log(result.metadata.theme_execution_evidence);
+```
+
+Ghibli is an ordinary catalog preset with a dedicated Pie design. Other families remain unreviewed
+unless the catalog declares their treatment. All current built-ins remain `alpha` with empty
+`qualified_cells`; a curated design or an attractive swatch grants no qualification.
+
+Show each applicable `application_notes` message, including unknown note IDs. A host may localize
+known IDs, retaining `message` as its fallback. `recommended_config` is a partial Mermaid
+configuration object or `null`; a note with no recommendation still has useful guidance. For
+example, Flowchart notes can explain the Classic look and basic-shape conditions for shadows or
+glow. Selecting a preset never applies these settings or changes the source.
+
+Offer an explicit action to accept suggested settings. For a fresh request with no existing site
+configuration, that action can pass the object directly:
+
+```ts
+import type { ThemePresetApplicationNote } from "@mermanjs/web";
+
+function renderWithAcceptedSettings(note: ThemePresetApplicationNote) {
+  return renderSvgResult(source, {
+    theme: { preset: selectedId },
+    site_config: note.recommended_config ?? {},
+  });
+}
+```
+
+With existing configuration, merge the accepted object into it while preserving unrelated nested
+keys, then pass the result through `site_config`. Parse and validate stored configuration before
+offering this action; show invalid JSON to the user instead of replacing their edits. Recommendations
+are separate from `options.theme` and exported recipes, so persist accepted configuration separately.
+On older compatible runtimes, absent `preview_colors`, `family_designs`, and `application_notes`
+normalize to empty arrays; malformed present fields are rejected. IDs remain open strings, and
+Web catalog reads return defensive copies, including nested recommendation objects.
 
 Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
 rules and explain the design scope. Query `describeThemeSupport()` for requested mechanisms;

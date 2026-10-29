@@ -18,6 +18,8 @@ class ThemePresetCatalogContractTests(unittest.TestCase):
                 "available": True,
                 "availability_reason_ids": [],
                 "family_designs": [{"family_id": "flowchart", "treatment": "base_only"}],
+                "preview_colors": ["#FFE66D", "#4ECDC4"],
+                "application_notes": [],
                 "qualified_cells": [],
                 "license_expression": "MIT OR Apache-2.0",
                 "required_attribution": None,
@@ -44,6 +46,20 @@ class ThemePresetCatalogContractTests(unittest.TestCase):
             changed = copy.deepcopy(self.catalog)
             changed["presets"][0]["family_designs"] = designs
             with self.subTest(designs=designs), self.assertRaisesRegex(RuntimeError, "family"):
+                validate_unqualified_catalog(changed)
+
+    def test_application_guidance_preserves_open_ids_and_configuration(self):
+        note = {
+            "id": "future-guidance", "family_id": "future-family", "message": "Review settings.",
+            "recommended_config": {"future": {"look": "future-look"}},
+        }
+        self.catalog["presets"][0]["application_notes"] = [note]
+        validate_unqualified_catalog(self.catalog)
+        self.assertEqual(note["recommended_config"], {"future": {"look": "future-look"}})
+        for notes in [None, [dict(note, recommended_config=[])], [dict(note, message="")], [note, note]]:
+            changed = copy.deepcopy(self.catalog)
+            changed["presets"][0]["application_notes"] = notes
+            with self.subTest(notes=notes), self.assertRaisesRegex(RuntimeError, "application note"):
                 validate_unqualified_catalog(changed)
 
     def test_rejects_qualification_or_maturity_in_shared_catalog(self):

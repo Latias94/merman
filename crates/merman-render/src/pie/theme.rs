@@ -9,18 +9,20 @@ use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
     ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    ThemeVariant,
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod css_binding;
 pub(crate) use css_binding::PieCssBinding;
+pub(crate) mod prepared_text;
+use prepared_text::{PiePreparedText, PieTextCssEmission, PieTextReceipt, PieTextRole};
 
 const MERMAID_PIE_PALETTE_SIZE: usize = 12;
 const PIE_SLICE_CLASS: &str = "pieCircle";
@@ -28,8 +30,6 @@ const PIE_OUTER_CIRCLE_CLASS: &str = "pieOuterCircle";
 pub(crate) const PIE_TITLE_CLASS: &str = "pieTitleText";
 const PIE_SLICE_STROKE_PATH: &str = "themeVariables.pieStrokeColor";
 const PIE_OUTER_STROKE_PATH: &str = "themeVariables.pieOuterStrokeColor";
-const PIE_TITLE_FILL_PATH: &str = "themeVariables.pieTitleTextColor";
-const PIE_SECTION_TEXT_FILL_PATH: &str = "themeVariables.pieSectionTextColor";
 const MERMAID_PIE_SLOT_KEYS: [&str; MERMAID_PIE_PALETTE_SIZE] = [
     "pie1", "pie2", "pie3", "pie4", "pie5", "pie6", "pie7", "pie8", "pie9", "pie10", "pie11",
     "pie12",
@@ -73,30 +73,13 @@ struct PieSliceStroke {
     outer_site: bool,
 }
 
-#[derive(Debug, Clone)]
-struct PieTitleFill {
-    css: Box<str>,
-    rule_index: usize,
-    capability: ThemeCapability,
-}
-
-#[derive(Debug, Clone)]
-struct PieTextFill {
-    css: Box<str>,
-    rule_index: usize,
-    capability: ThemeCapability,
-}
-
 #[derive(Debug, Default)]
 struct PieTerminalEvidence {
     palette_capabilities: BTreeSet<ThemeCapability>,
     fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     stroke_applied: bool,
     stroke_not_applicable: bool,
-    text_fill_applied: bool,
-    text_fill_not_applicable: bool,
-    typography_applied: bool,
-    typography_not_applicable: bool,
+    text: Option<PieTextReceipt>,
 }
 
 /// Resolves Pie theme surfaces once for layout, SVG emission, and terminal evidence.
@@ -107,10 +90,7 @@ pub(crate) struct PieThemePlan {
     section_paint_indices: Vec<usize>,
     paints: Vec<PieSlicePaint>,
     stroke: Option<PieSliceStroke>,
-    title_fill: Option<PieTitleFill>,
-    text_fill: Option<PieTextFill>,
-    inherited_font_stack: InheritedFontStackPlan,
-    title_present: bool,
+    text: PiePreparedText,
     evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_rules: BTreeMap<FamilyThemeMechanismKey, PiePendingEvidence>,
@@ -124,35 +104,23 @@ impl PieThemePlan {
         effective_config: &serde_json::Value,
     ) -> Self {
         let effective_config = PresentationConfig::from_value(effective_config.clone());
-        Self::baseline_with_config(model, &effective_config, None)
+        Self::baseline_with_config(model, &effective_config, None, model.title.as_deref())
     }
 
     fn baseline_with_config(
         model: &PieDiagramRenderModel,
         effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
+        title: Option<&str>,
     ) -> Self {
-        let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let mut css = PieCssBinding::new(
-            effective_config.as_value(),
-            Some(inherited_font_stack.font_family_css()),
-        );
-        if !inherited_font_stack.typography_requested() {
-            css.common = css
-                .common
-                .with_configured_root_font_family(effective_config.as_value());
-        }
+        let (text, css) = PiePreparedText::new(model, title, effective_config, theme);
         let mut plan = Self {
             css,
             label_indices: HashMap::new(),
             section_paint_indices: Vec::with_capacity(model.sections.len()),
             paints: Vec::new(),
             stroke: None,
-            title_fill: None,
-            text_fill: None,
-            inherited_font_stack,
-            title_present: false,
+            text,
             evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             pending_rules: BTreeMap::new(),
@@ -189,8 +157,7 @@ impl PieThemePlan {
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self::baseline_with_config(model, effective_config, theme);
-        plan.title_present = title.is_some_and(|title| !title.trim().is_empty());
+        let mut plan = Self::baseline_with_config(model, effective_config, theme, title);
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -198,8 +165,8 @@ impl PieThemePlan {
         plan.evidence = FamilyThemeOutcomes::default();
         plan.resolve_palette(effective_config, theme, work_meter)?;
         plan.resolve_rules(model, effective_config, theme, work_meter)?;
-        plan.resolve_title_rules(effective_config, theme, title, work_meter)?;
-        plan.resolve_text_rules(effective_config, theme, model.sections.len(), work_meter)?;
+        plan.text
+            .resolve_rules(&mut plan.css, effective_config, theme, work_meter)?;
         plan.bind_css_winners();
         Ok(plan)
     }
@@ -212,12 +179,6 @@ impl PieThemePlan {
             if stroke.outer_site {
                 self.css.outer_stroke.bind_typed(&stroke.css);
             }
-        }
-        if let Some(fill) = self.title_fill.as_ref() {
-            self.css.title_text_color = fill.css.to_string();
-        }
-        if let Some(fill) = self.text_fill.as_ref() {
-            self.css.section_text_color = fill.css.to_string();
         }
     }
 
@@ -482,255 +443,6 @@ impl PieThemePlan {
         Ok(())
     }
 
-    fn resolve_title_rules(
-        &mut self,
-        effective_config: &PresentationConfig,
-        theme: &ResolvedDiagramTheme,
-        title: Option<&str>,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<(), OperationWorkError> {
-        let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let title_count = usize::from(title_present);
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            PIE_TITLE_FILL_PATH,
-        );
-        let style = title_present
-            .then(|| {
-                theme.style_with_work_meter(
-                    ThemeTarget::Title,
-                    ThemeVariant::Default,
-                    Some(1),
-                    work_meter,
-                )
-            })
-            .transpose()?;
-        let winner_properties = style
-            .as_ref()
-            .into_iter()
-            .flat_map(|style| style.winner_rule_properties())
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
-        let typed_fill = (!config_owns_fill)
-            .then(|| {
-                style.as_ref().and_then(|style| {
-                    resolve_direct_static_fill(
-                        theme,
-                        style,
-                        &[ThemeTarget::Title],
-                        DirectStaticSelectorDomain::Default,
-                    )
-                })
-            })
-            .flatten();
-        self.title_fill = typed_fill.map(|fill| {
-            let (css, rule_index, capability) = fill.into_parts();
-            PieTitleFill {
-                css,
-                rule_index,
-                capability,
-            }
-        });
-        let typed_fill_rule = self.title_fill.as_ref().map(|fill| fill.rule_index);
-        let source_owned_fill = [config_owns_fill];
-
-        let mut observations = BTreeMap::<usize, PieTitleRuleObservation>::new();
-        for route in theme.family_mechanism_routes().iter().copied() {
-            let FamilyThemeMechanism::RuleFacet {
-                rule_index,
-                target: ThemeTarget::Title,
-                selector,
-                facet,
-            } = route.mechanism()
-            else {
-                continue;
-            };
-            let observation = observations.entry(rule_index).or_default();
-            if !selector.ordinal_domain_intersects_occurrence_count(title_count) {
-                continue;
-            }
-            let route_won =
-                winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
-            if !route_won {
-                continue;
-            }
-
-            observation.applicable = true;
-            if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                continue;
-            }
-            match (route.disposition(), selector, facet) {
-                (
-                    FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static {
-                        variant: None | Some(ThemeVariant::Default),
-                    },
-                    FamilyThemeRuleFacet::Fill(_),
-                ) if typed_fill_rule == Some(rule_index) => {
-                    observation.fill_pending = true;
-                }
-                (FamilyThemeDisposition::Unsupported, _, facet) => {
-                    observation
-                        .residual
-                        .get_or_insert(unsupported_residual_for_facet(facet));
-                }
-                (FamilyThemeDisposition::TypedAdapter, _, _) => {
-                    observation.incomplete = true;
-                }
-            }
-        }
-
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut self.evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Title,
-                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&source_owned_fill)],
-            work_meter,
-        )?;
-
-        for (rule_index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::Title,
-            };
-            if !observation.applicable {
-                self.evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                self.evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // Mixed rules remain fail-closed until every winning facet has a terminal owner.
-            } else if observation.fill_pending {
-                self.pending_rules
-                    .insert(key, PiePendingEvidence::fill_only());
-            } else {
-                self.evidence.mark_not_applicable(key);
-            }
-        }
-        Ok(())
-    }
-
-    fn resolve_text_rules(
-        &mut self,
-        effective_config: &PresentationConfig,
-        theme: &ResolvedDiagramTheme,
-        occurrence_count: usize,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<(), OperationWorkError> {
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            PIE_SECTION_TEXT_FILL_PATH,
-        );
-        // The writer emits one shared CSS rule. Ordinal requests are observed below, but
-        // cannot select this whole-surface fallback on behalf of just the first text node.
-        let style = theme.style_with_work_meter(
-            ThemeTarget::Text,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let winner_properties = pie_occurrence_winner_properties(
-            theme,
-            ThemeTarget::Text,
-            occurrence_count,
-            &style,
-            work_meter,
-        )?;
-        let typed_fill = (!config_owns_fill)
-            .then(|| {
-                resolve_direct_static_fill(
-                    theme,
-                    &style,
-                    &[ThemeTarget::Text],
-                    DirectStaticSelectorDomain::Default,
-                )
-            })
-            .flatten();
-        self.text_fill = typed_fill.map(|fill| {
-            let (css, rule_index, capability) = fill.into_parts();
-            PieTextFill {
-                css,
-                rule_index,
-                capability,
-            }
-        });
-        let typed_fill_rule = self.text_fill.as_ref().map(|fill| fill.rule_index);
-
-        let mut pending = None;
-        let mut observations = BTreeMap::<usize, PieTextRuleObservation>::new();
-        for route in theme.family_mechanism_routes().iter().copied() {
-            let FamilyThemeMechanism::RuleFacet {
-                rule_index,
-                target: ThemeTarget::Text,
-                selector,
-                facet,
-            } = route.mechanism()
-            else {
-                continue;
-            };
-            let observation = observations.entry(rule_index).or_default();
-            if !selector.ordinal_domain_intersects_occurrence_count(occurrence_count) {
-                continue;
-            }
-            let route_won =
-                winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
-            if !route_won {
-                continue;
-            }
-
-            observation.applicable = true;
-            if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                continue;
-            }
-            match (route.disposition(), selector, facet) {
-                (
-                    FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static {
-                        variant: None | Some(ThemeVariant::Default),
-                    },
-                    FamilyThemeRuleFacet::Fill(
-                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
-                    ),
-                ) if typed_fill_rule == Some(rule_index) => {
-                    observation.fill_pending = true;
-                }
-                (FamilyThemeDisposition::Unsupported, _, facet) => {
-                    observation
-                        .residual
-                        .get_or_insert(unsupported_residual_for_facet(facet));
-                }
-                (FamilyThemeDisposition::TypedAdapter, _, _) => {
-                    observation.incomplete = true;
-                }
-            }
-        }
-
-        for (rule_index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::Text,
-            };
-            if !observation.applicable {
-                self.evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                self.evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // Mixed rules remain fail-closed until every winning facet is owned.
-            } else if observation.fill_pending {
-                pending = Some(key);
-            } else {
-                self.evidence.mark_not_applicable(key);
-            }
-        }
-        if let Some(key) = pending {
-            self.pending_rules
-                .insert(key, PiePendingEvidence::text_fill_only());
-        }
-        Ok(())
-    }
-
     fn insert_mermaid_paint(&mut self, label: &str, effective_config: &serde_json::Value) -> usize {
         if let Some(index) = self.label_indices.get(label).copied() {
             return index;
@@ -769,20 +481,8 @@ impl PieThemePlan {
             .map(|stroke| stroke.css.as_ref())
     }
 
-    pub(crate) fn title_fill_css(&self) -> Option<&str> {
-        self.title_fill.as_ref().map(|fill| fill.css.as_ref())
-    }
-
-    pub(crate) fn text_fill_css(&self) -> Option<&str> {
-        self.text_fill.as_ref().map(|fill| fill.css.as_ref())
-    }
-
-    pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
-    }
-
-    pub(crate) fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typography_requested()
+    pub(crate) fn text_measurement_requested(&self) -> bool {
+        self.text.requested()
     }
 
     pub(crate) fn begin_terminal_receipt<'a>(
@@ -792,8 +492,7 @@ impl PieThemePlan {
         (self.palette_key.is_some()
             || !self.pending_rules.is_empty()
             || self.stroke.is_some()
-            || self.text_fill.is_some()
-            || self.typography_requested())
+            || self.text.requested())
         .then(|| PieThemeReceipt::new(self, visible_slice_labels))
     }
 
@@ -808,32 +507,13 @@ impl PieThemePlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
-        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        let Some(terminal) = self.terminal_evidence.get() else {
-            self.inherited_font_stack
-                .record_unsupported_typography_evidence(evidence, true);
-            if self.inherited_font_stack.typed_font_stack_requested() {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-            return;
-        };
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, terminal.typography_applied);
-        if self.inherited_font_stack.typed_font_stack_requested() {
-            if terminal.typography_not_applicable {
-                evidence.mark_not_applicable(key);
-            } else if self.inherited_font_stack.typed_font_stack_active()
-                && terminal.typography_applied
-            {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            } else if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::ConfigOwned
-                && terminal.typography_applied
-            {
-                evidence.mark_not_applicable(key);
-            } else {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-        }
+        self.text.record_evidence(
+            &self.css,
+            self.terminal_evidence
+                .get()
+                .and_then(|terminal| terminal.text.as_ref()),
+            evidence,
+        );
         if let Some(key) = self.palette_key.clone() {
             match self.terminal_evidence.get() {
                 Some(terminal) if terminal.palette_capabilities.is_empty() => {
@@ -849,7 +529,7 @@ impl PieThemePlan {
         }
         if let Some(terminal) = self.terminal_evidence.get() {
             for (key, pending) in &self.pending_rules {
-                let FamilyThemeMechanismKey::Rule { index, target } = key else {
+                let FamilyThemeMechanismKey::Rule { index, .. } = key else {
                     continue;
                 };
                 let mut capabilities = BTreeSet::new();
@@ -858,15 +538,6 @@ impl PieThemePlan {
                     if let Some(fill_capabilities) = terminal.fill_capabilities.get(index) {
                         capabilities.extend(fill_capabilities.iter().copied());
                     } else {
-                        complete = false;
-                    }
-                }
-                if pending.text_fill && *target == ThemeTarget::Text {
-                    if terminal.text_fill_applied {
-                        if let Some(text_fill) = self.text_fill.as_ref() {
-                            capabilities.insert(text_fill.capability);
-                        }
-                    } else if !terminal.text_fill_not_applicable {
                         complete = false;
                     }
                 }
@@ -906,22 +577,10 @@ pub(crate) struct PieThemeReceipt {
     expected_legend_paints: Vec<Option<usize>>,
     next_slice_index: usize,
     next_legend_index: usize,
-    next_slice_text_index: usize,
     values_match: bool,
     slice_classes_match: bool,
-    slice_texts_match: bool,
     outer_circle_class: Option<Box<str>>,
-    title_stylesheet_fill: Option<Box<str>>,
-    title_stylesheet_class: Option<Box<str>>,
-    text_stylesheet_fill: Option<Box<str>>,
-    text_stylesheet_class: Option<Box<str>>,
-    typography_stylesheet_family: Option<Box<str>>,
-    visible_title_count: usize,
-    title_text_recorded: bool,
-    visible_slice_text_count: usize,
-    next_legend_text_index: usize,
-    visible_legend_text_count: usize,
-    legend_texts_match: bool,
+    text: Option<PieTextReceipt>,
     palette_capabilities: BTreeSet<ThemeCapability>,
     fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     slice_stroke_css: Option<Box<str>>,
@@ -952,22 +611,10 @@ impl PieThemeReceipt {
                 .collect(),
             next_slice_index: 0,
             next_legend_index: 0,
-            next_slice_text_index: 0,
             values_match,
             slice_classes_match: true,
-            slice_texts_match: true,
             outer_circle_class: None,
-            title_stylesheet_fill: None,
-            title_stylesheet_class: None,
-            text_stylesheet_fill: None,
-            text_stylesheet_class: None,
-            typography_stylesheet_family: None,
-            visible_title_count: 0,
-            title_text_recorded: false,
-            visible_slice_text_count: 0,
-            next_legend_text_index: 0,
-            visible_legend_text_count: 0,
-            legend_texts_match: true,
+            text: plan.text.requested().then(PieTextReceipt::default),
             palette_capabilities: BTreeSet::new(),
             fill_capabilities: BTreeMap::new(),
             slice_stroke_css: None,
@@ -1026,51 +673,25 @@ impl PieThemeReceipt {
     pub(crate) fn record_text_stylesheet(
         &mut self,
         plan: &PieThemePlan,
-        emitted_class: &str,
-        emitted_fill: Option<&str>,
+        role: PieTextRole,
+        emitted: PieTextCssEmission<'_>,
     ) {
-        let Some(text_fill) = plan.text_fill.as_ref() else {
-            self.values_match = false;
-            return;
-        };
-        if self.text_stylesheet_fill.is_some() || self.text_stylesheet_class.is_some() {
-            self.values_match = false;
-            return;
+        if let Some(text) = self.text.as_mut() {
+            text.record_css(&plan.css, role, emitted);
         }
-        self.values_match &= emitted_class == "slice";
-        self.values_match &= emitted_fill == Some(text_fill.css.as_ref());
-        self.text_stylesheet_class = Some(emitted_class.into());
-        self.text_stylesheet_fill = emitted_fill.map(Into::into);
     }
 
-    pub(crate) fn record_slice_text(&mut self, emitted_class: Option<&str>, emitted_text: &str) {
-        self.values_match &= self.next_slice_text_index < self.expected_slice_paints.len();
-        self.next_slice_text_index = self.next_slice_text_index.saturating_add(1);
-        self.slice_texts_match &= emitted_class == Some("slice");
-        self.visible_slice_text_count = self
-            .visible_slice_text_count
-            .saturating_add(usize::from(!emitted_text.trim().is_empty()));
-    }
-
-    pub(crate) fn record_legend_text(
+    pub(crate) fn record_text(
         &mut self,
-        emitted_parent_class: Option<&str>,
-        emitted_text: &str,
+        plan: &PieThemePlan,
+        role: PieTextRole,
+        index: usize,
+        selector: Option<&str>,
+        emitted_text: Option<&str>,
     ) {
-        self.values_match &= self.next_legend_text_index < self.expected_legend_paints.len();
-        self.next_legend_text_index = self.next_legend_text_index.saturating_add(1);
-        self.legend_texts_match &= emitted_parent_class == Some("legend");
-        self.visible_legend_text_count = self
-            .visible_legend_text_count
-            .saturating_add(usize::from(!emitted_text.trim().is_empty()));
-    }
-
-    pub(crate) fn record_typography_stylesheet(&mut self, emitted_font_family: Option<&str>) {
-        if self.typography_stylesheet_family.is_some() {
-            self.values_match = false;
-            return;
+        if let Some(text) = self.text.as_mut() {
+            text.record_text(&plan.text, role, index, selector, emitted_text);
         }
-        self.typography_stylesheet_family = emitted_font_family.map(Into::into);
     }
 
     fn record_paint_owner(&mut self, owner: Option<PieSlicePaintOwner>) {
@@ -1138,45 +759,8 @@ impl PieThemeReceipt {
         self.outer_circle_class = emitted_class.map(Into::into);
     }
 
-    pub(crate) fn record_title_stylesheet(
-        &mut self,
-        plan: &PieThemePlan,
-        emitted_class: &str,
-        emitted_fill: Option<&str>,
-    ) {
-        let Some(title_fill) = plan.title_fill.as_ref() else {
-            self.values_match = false;
-            return;
-        };
-        if self.title_stylesheet_fill.is_some() || self.title_stylesheet_class.is_some() {
-            self.values_match = false;
-            return;
-        }
-        self.values_match &= emitted_class == PIE_TITLE_CLASS;
-        self.values_match &= emitted_fill == Some(title_fill.css.as_ref());
-        self.title_stylesheet_class = Some(emitted_class.into());
-        self.title_stylesheet_fill = emitted_fill.map(Into::into);
-    }
-
-    pub(crate) fn record_title_text(
-        &mut self,
-        emitted_class: Option<&str>,
-        emitted_text: Option<&str>,
-    ) {
-        if self.title_text_recorded {
-            self.values_match = false;
-        }
-        self.title_text_recorded = true;
-        self.visible_title_count = self.visible_title_count.saturating_add(usize::from(
-            emitted_text.is_some_and(|text| !text.trim().is_empty()),
-        ));
-        self.values_match &= emitted_class == Some(PIE_TITLE_CLASS);
-    }
-
     fn proves_complete(&self, plan: &PieThemePlan) -> bool {
         let stroke_is_applicable = plan.stroke.is_some() && !self.expected_slice_paints.is_empty();
-        let title_is_applicable = plan.title_fill.is_some();
-        let text_fill_is_applicable = plan.text_fill.is_some();
         let stroke_sites_match = plan.stroke.as_ref().is_none_or(|stroke| {
             if !stroke_is_applicable {
                 return self.slice_stroke_css.is_none() && self.outer_stroke_css.is_none();
@@ -1193,63 +777,22 @@ impl PieThemeReceipt {
                 || plan.stroke.as_ref().is_none_or(|stroke| !stroke.outer_site)
                 || self.outer_circle_class.as_deref() == Some(PIE_OUTER_CIRCLE_CLASS))
             && stroke_sites_match
-            && (!title_is_applicable
-                || plan.title_fill.as_ref().is_some_and(|title_fill| {
-                    self.title_stylesheet_fill.as_deref() == Some(title_fill.css.as_ref())
-                        && self.title_stylesheet_class.as_deref() == Some(PIE_TITLE_CLASS)
-                        && self.visible_title_count == 1
-                }))
-            && (!text_fill_is_applicable
-                || (self.text_stylesheet_class.as_deref() == Some("slice")
-                    && self.text_stylesheet_fill.as_deref()
-                        == plan
-                            .text_fill
-                            .as_ref()
-                            .map(|text_fill| text_fill.css.as_ref())
-                    && self.next_slice_text_index == self.expected_slice_paints.len()
-                    && self.slice_texts_match))
-            && self.proves_typography(plan)
-    }
-
-    fn proves_typography(&self, plan: &PieThemePlan) -> bool {
-        if !plan.typography_requested() {
-            return true;
-        }
-        self.typography_stylesheet_family.as_deref() == Some(plan.font_family_css())
-            && self.next_slice_text_index == self.expected_slice_paints.len()
-            && self.next_legend_text_index == self.expected_legend_paints.len()
-            && self.legend_texts_match
-            && self.title_text_recorded
-            && self.visible_title_count == usize::from(plan.title_present)
+            && self
+                .text
+                .as_ref()
+                .is_none_or(|text| text.proves_complete(&plan.text))
     }
 
     fn into_terminal_evidence(self, plan: &PieThemePlan) -> PieTerminalEvidence {
         let stroke_is_applicable = plan.stroke.is_some() && !self.expected_slice_paints.is_empty();
-        let mut fill_capabilities = self.fill_capabilities;
-        if let Some(title_fill) = plan.title_fill.as_ref() {
-            fill_capabilities
-                .entry(title_fill.rule_index)
-                .or_default()
-                .insert(title_fill.capability);
-        }
         PieTerminalEvidence {
             palette_capabilities: self.palette_capabilities,
-            fill_capabilities,
+            fill_capabilities: self.fill_capabilities,
             stroke_applied: plan.pending_rules.values().any(|pending| pending.stroke)
                 && stroke_is_applicable,
             stroke_not_applicable: plan.pending_rules.values().any(|pending| pending.stroke)
                 && !stroke_is_applicable,
-            text_fill_applied: plan.text_fill.is_some() && self.visible_slice_text_count > 0,
-            text_fill_not_applicable: plan.text_fill.is_some()
-                && self.visible_slice_text_count == 0,
-            typography_applied: plan.typography_requested()
-                && (self.visible_title_count > 0
-                    || self.visible_slice_text_count > 0
-                    || self.visible_legend_text_count > 0),
-            typography_not_applicable: plan.typography_requested()
-                && self.visible_title_count == 0
-                && self.visible_slice_text_count == 0
-                && self.visible_legend_text_count == 0,
+            text: self.text,
         }
     }
 }
@@ -1376,28 +919,11 @@ fn pie_occurrence_winner_properties(
 struct PiePendingEvidence {
     fill: bool,
     stroke: bool,
-    text_fill: bool,
 }
 
 impl PiePendingEvidence {
-    const fn fill_only() -> Self {
-        Self {
-            fill: true,
-            stroke: false,
-            text_fill: false,
-        }
-    }
-
-    const fn text_fill_only() -> Self {
-        Self {
-            fill: false,
-            stroke: false,
-            text_fill: true,
-        }
-    }
-
     const fn requires_terminal_proof(&self) -> bool {
-        self.fill || self.stroke || self.text_fill
+        self.fill || self.stroke
     }
 }
 
@@ -1407,22 +933,6 @@ struct PieSliceRuleObservation {
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     pending: PiePendingEvidence,
-}
-
-#[derive(Debug, Default)]
-struct PieTitleRuleObservation {
-    applicable: bool,
-    incomplete: bool,
-    residual: Option<FamilyThemeResidualReason>,
-    fill_pending: bool,
-}
-
-#[derive(Debug, Default)]
-struct PieTextRuleObservation {
-    applicable: bool,
-    incomplete: bool,
-    residual: Option<FamilyThemeResidualReason>,
-    fill_pending: bool,
 }
 
 fn default_pie_palette() -> [&'static str; MERMAID_PIE_PALETTE_SIZE] {

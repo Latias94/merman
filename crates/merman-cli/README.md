@@ -292,6 +292,16 @@ The `mmdc` subcommand is a release-pinned compatibility snapshot. This release f
 
 `mmdc -t/--theme` remains the official Mermaid CLI selector and accepts only `default`, `forest`, `dark`, and `neutral`; omitting the option value selects `default`, matching mmdc. Native theme selection belongs only to `render` and `batch`: use `--theme-design-file` for a shareable `ThemeDesignV1` JSON file, `--theme-preset` for a built-in compiled theme, or `--theme-file` for a versioned `ThemeRecipeV1` document or a selection such as `{"preset":"editor-dark"}`. A selection contains exactly one `preset` or `spec` member; a recipe keeps its `schema_version`, `kind`, and matching `design` or `complete_spec` payload. These three inputs are mutually exclusive. `mmdc` and `layout` intentionally reject them; use the official `--theme` or `--configFile` on `mmdc`. The removed `--presentation-profile` and `merman-modern` inputs are not compatibility aliases.
 
+Run `merman-cli capabilities` to choose a Merman preset using its curated diagram-design scope
+and application notes. `capabilities --json` exposes the same metadata, including representative
+`preview_colors`, `family_designs` and `application_notes`. An unlisted family is unreviewed;
+recipe availability and a dedicated design do not qualify every scene or output format.
+Mermaid's base theme (`--theme dark`) and Merman styling (`--theme-preset ghibli`) are separate
+inputs. A preset never changes diagram look or layout. For example, Brutalist hard Flowchart
+shadows require an explicit Classic configuration; the capability listing provides the suggested
+`--config-file` content. See the [two-theme gallery](../../docs/rendering/theme-gallery/README.md)
+for complete sources, configuration and commands.
+
 ## Markdown Batches
 
 Native batch rendering owns one output directory:

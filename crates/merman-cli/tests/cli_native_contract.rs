@@ -3,6 +3,22 @@ mod support;
 use std::process::Command;
 use support::{exit_code, run_with_stdin};
 
+#[cfg(feature = "svg")]
+#[test]
+fn human_capabilities_explains_theme_scope_and_explicit_application() {
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .arg("capabilities")
+        .output()
+        .expect("run capabilities without reading stdin");
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("ghibli\tpie\t"));
+    assert!(text.contains("Hard node shadows need Classic"));
+    assert!(text.contains(r#"{"flowchart":{"look":"classic"}}"#));
+    assert!(text.contains("Unlisted families have unreviewed design scope"));
+    assert!(text.contains("--theme-preset ID or --theme-file PATH"));
+}
+
 #[test]
 fn render_help_excludes_mmdc_and_batch_only_options() {
     let exe = assert_cmd::cargo_bin!("merman-cli");

@@ -2,6 +2,8 @@ use crate::config::{config_css_number_or_string, config_string};
 use crate::svg::PreparedCommonCss;
 use crate::text::TextStyle;
 
+use super::prepared_text::PieTextRole;
+
 /// A prepared stylesheet token retains Mermaid's authored spelling, including browser-only CSS.
 #[derive(Debug)]
 pub(crate) struct PieCssBinding {
@@ -18,6 +20,8 @@ pub(crate) struct PieCssBinding {
     pub(crate) legend_text_size: String,
     pub(crate) legend_text_color: String,
     inherited_font_size: f64,
+    text_weights: [Option<String>; 3],
+    text_styles: [Option<String>; 3],
 }
 
 /// An absent surface keeps its baseline CSS without admitting a typed terminal application.
@@ -83,26 +87,89 @@ impl PieCssBinding {
             legend_text_size: value("pieLegendTextSize", "17px"),
             legend_text_color,
             inherited_font_size,
+            text_weights: std::array::from_fn(|_| None),
+            text_styles: std::array::from_fn(|_| None),
         }
     }
 
+    pub(super) fn bind_base_font_size(&mut self, config: &serde_json::Value, size: f32) {
+        self.inherited_font_size = f64::from(size);
+        self.common = PreparedCommonCss::with_resolved_typography(
+            config,
+            self.common.font_family().to_owned(),
+            format!("{size}px"),
+        );
+    }
+
+    pub(super) fn bind_text_fill(&mut self, role: PieTextRole, fill: &str) {
+        *match role {
+            PieTextRole::Title => &mut self.title_text_color,
+            PieTextRole::Section => &mut self.section_text_color,
+            PieTextRole::Legend => &mut self.legend_text_color,
+        } = fill.to_owned();
+    }
+
+    pub(super) fn bind_text_size(&mut self, role: PieTextRole, size: &str) {
+        *match role {
+            PieTextRole::Title => &mut self.title_text_size,
+            PieTextRole::Section => &mut self.section_text_size,
+            PieTextRole::Legend => &mut self.legend_text_size,
+        } = size.to_owned();
+    }
+
+    pub(super) fn bind_text_weight(&mut self, role: PieTextRole, weight: String) {
+        self.text_weights[role.index()] = Some(weight);
+    }
+
+    pub(super) fn bind_text_style(&mut self, role: PieTextRole, style: String) {
+        self.text_styles[role.index()] = Some(style);
+    }
+
+    pub(crate) fn text_size(&self, role: PieTextRole) -> &str {
+        match role {
+            PieTextRole::Title => &self.title_text_size,
+            PieTextRole::Section => &self.section_text_size,
+            PieTextRole::Legend => &self.legend_text_size,
+        }
+    }
+
+    pub(crate) fn text_fill(&self, role: PieTextRole) -> &str {
+        match role {
+            PieTextRole::Title => &self.title_text_color,
+            PieTextRole::Section => &self.section_text_color,
+            PieTextRole::Legend => &self.legend_text_color,
+        }
+    }
+
+    pub(crate) fn text_weight(&self, role: PieTextRole) -> Option<&str> {
+        self.text_weights[role.index()].as_deref()
+    }
+
+    pub(crate) fn text_style(&self, role: PieTextRole) -> Option<&str> {
+        self.text_styles[role.index()].as_deref()
+    }
+
+    pub(super) fn text_size_resolution(&self, role: PieTextRole) -> Option<(f64, bool)> {
+        super::super::config::pie_font_size(self.text_size(role), self.inherited_font_size)
+    }
+
     pub(crate) fn legend_measurement_style(&self) -> TextStyle {
-        self.measurement_style(&self.legend_text_size)
+        self.measurement_style(PieTextRole::Legend)
     }
 
     pub(crate) fn title_measurement_style(&self) -> TextStyle {
-        self.measurement_style(&self.title_text_size)
+        self.measurement_style(PieTextRole::Title)
     }
 
-    fn measurement_style(&self, font_size_css: &str) -> TextStyle {
+    fn measurement_style(&self, role: PieTextRole) -> TextStyle {
         TextStyle {
             font_family: Some(self.common.font_family().to_owned()),
             font_size: super::super::config::pie_font_size_px(
-                font_size_css,
+                self.text_size(role),
                 self.inherited_font_size,
             ),
-            font_weight: None,
-            font_style: None,
+            font_weight: self.text_weight(role).map(str::to_owned),
+            font_style: self.text_style(role).map(str::to_owned),
         }
     }
 }

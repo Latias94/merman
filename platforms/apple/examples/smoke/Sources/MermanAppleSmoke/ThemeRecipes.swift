@@ -61,7 +61,7 @@ func verifyThemePresetRecipes(client: Merman) throws {
     let fixture = repositoryRoot.appendingPathComponent(
         "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
     )
-    let expected = try JSONSerialization.jsonObject(with: Data(contentsOf: fixture))
+    let expected = try JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as! [[String: Any]]
     let engine = try MermanEngine(optionsJson: nil, services: nil)
     defer { try? engine.close() }
     for catalogJSON in [try client.themeCatalogJson(), try engine.themeCatalogJson()] {
@@ -101,7 +101,7 @@ func verifyThemePresetRecipes(client: Merman) throws {
                               "\(mode): unexpected render result")
             return result.data
         }
-        for entry in expected as! [[String: Any]] {
+        for entry in expected {
             let preset = entry["id"] as! String
             let result = try execute(MermanOperationRequestV4(
                 operationId: "export-theme-preset-json", source: preset, uri: nil,
@@ -240,7 +240,7 @@ func verifyThemePresetRecipes(client: Merman) throws {
             }
         }
     }
-    print("Apple preset recipes passed: 10 exports per consumer, 4 Cyberpunk families, 10 invalid recipes, 3 fresh-process imports, unsupported Class width")
+    print("Apple preset recipes passed: \(expected.count) exports per consumer, 4 Cyberpunk families, 10 invalid recipes, 3 fresh-process imports, unsupported Class width")
     print("Apple recipe artifacts: \(outputRoot.path)")
 }
 

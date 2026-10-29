@@ -101,8 +101,12 @@ export interface ThemePresetCatalogEntry {
   maturity: string;
   available: boolean;
   availability_reason_ids: string[];
+  /** Ordered color swatches for discovery, not a rendered palette or support claim. */
+  preview_colors: string[];
   /** Curated design scope, independent of technical support or qualification. */
   family_designs: ThemePresetFamilyDesign[];
+  /** Curated visual guidance; recommendations require an explicit host/user decision. */
+  application_notes: ThemePresetApplicationNote[];
   qualified_cells: ThemePresetQualifiedCell[];
   license_expression: string;
   required_attribution: string | null;
@@ -114,6 +118,15 @@ export interface ThemePresetFamilyDesign {
   family_id: string;
   /** Open string: dedicated, base_only, or unreviewed. None grants portability. */
   treatment: string;
+}
+
+/** Open discovery guidance for a family; presence grants no support or qualification. */
+export interface ThemePresetApplicationNote {
+  id: string;
+  family_id: string;
+  message: string;
+  /** Suggested Mermaid site configuration. Never applied by preset selection itself. */
+  recommended_config: Record<string, unknown> | null;
 }
 
 /** Scoped metadata backed by catalog qualification, not an unconditional portability claim. */

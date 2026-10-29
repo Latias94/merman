@@ -241,7 +241,7 @@ pub(crate) fn write_compiled_capabilities(
         #[cfg(feature = "ascii")]
         ascii: ascii_capability_document(),
         #[cfg(feature = "svg")]
-        theme_presets: json.then(theme_preset_catalog_document),
+        theme_presets: Some(theme_preset_catalog_document()),
     };
 
     if json {
@@ -256,6 +256,45 @@ pub(crate) fn write_compiled_capabilities(
         output.push('\t');
         output.push_str(capability.description);
         output.push('\n');
+    }
+    #[cfg(feature = "svg")]
+    if let Some(catalog) = &document.theme_presets {
+        output.push_str(
+            "\nMerman styling presets (alpha; design scope is not output qualification)\n",
+        );
+        output.push_str("ID\tDedicated designs\tBase palette adaptations\n");
+        for preset in &catalog.presets {
+            let families = |treatment| {
+                let ids = preset
+                    .family_designs
+                    .iter()
+                    .filter(|design| design.treatment == treatment)
+                    .map(|design| design.family_id.as_str())
+                    .collect::<Vec<_>>();
+                if ids.is_empty() {
+                    "—".to_owned()
+                } else {
+                    ids.join(", ")
+                }
+            };
+            output.push_str(&format!(
+                "{}\t{}\t{}\n",
+                preset.id,
+                families("dedicated"),
+                families("base_only")
+            ));
+            for note in &preset.application_notes {
+                output.push_str(&format!("  {}: {}\n", note.family_id, note.message));
+                if let Some(config) = &note.recommended_config {
+                    output.push_str(&format!(
+                        "  Suggested --config-file content: {}\n",
+                        serde_json::to_string(config).expect("catalog config serializes")
+                    ));
+                }
+            }
+        }
+        output.push_str("Unlisted families have unreviewed design scope. Use capabilities --json for full discovery metadata.\n");
+        output.push_str("Apply Mermaid's base theme with --theme; add Merman styling with --theme-preset ID or --theme-file PATH.\n");
     }
     write_stdout(output.as_bytes(), stdout)
 }

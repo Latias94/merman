@@ -55,6 +55,7 @@ export 'src/merman_ffi.dart'
         MermanOperationResult,
         MermanThemeCatalog,
         MermanThemePreset,
+        MermanThemePresetApplicationNote,
         MermanThemePresetFamilyDesign,
         MermanThemePresetQualifiedCell,
         MermanThemeResourceLimit,
