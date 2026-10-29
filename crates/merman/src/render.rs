@@ -44,6 +44,8 @@ pub use document::{PdfOutput, PreparedPdfExport};
 pub use document::{RenderedDocument, SvgOutput};
 #[cfg(feature = "svg")]
 pub use environment::SvgEnvironment;
+#[cfg(feature = "native-fonts")]
+pub use evidence::NativeFontDiagnostics;
 #[cfg(feature = "svg")]
 pub use evidence::{RenderEvidence, ThemeDiagnostic, ThemeEvidenceStatus, ThemeEvidenceSummary};
 
@@ -1387,11 +1389,13 @@ fn render_svg_target(
         required_capabilities,
         &operation.control,
         layout_adaptation,
-    )
-    .map(Some);
+    );
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    output
+    let output = output?;
+    #[cfg(feature = "native-fonts")]
+    let output = output.with_native_font_diagnostics(request.environment.native_fonts.as_ref());
+    Ok(Some(output))
 }
 
 #[cfg(feature = "svg")]
@@ -1595,10 +1599,7 @@ fn render_document_target(
     let document = RenderedDocument::new(
         completion,
         required_capabilities,
-        #[cfg(all(
-            feature = "native-fonts",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
+        #[cfg(feature = "native-fonts")]
         request.environment.native_fonts,
         #[cfg(all(
             feature = "native-fonts",

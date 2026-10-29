@@ -111,6 +111,8 @@ pub use diagnostic::{
 };
 #[cfg(feature = "ascii")]
 pub use render::AsciiRequest;
+#[cfg(feature = "native-fonts")]
+pub use render::NativeFontDiagnostics;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use render::RasterOutput;
 #[cfg(feature = "svg")]
