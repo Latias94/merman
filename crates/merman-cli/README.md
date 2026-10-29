@@ -6,6 +6,10 @@ Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or anoth
 
 Installation examples target `0.9.1`. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) for changed APIs and output defaults.
 
+The encoded-output font defaults in this checkout are an unreleased 0.9 maintenance
+fix. Installed versions retain their published contract; see the
+[release index](../../docs/release/README.md).
+
 The command line has four explicit workflows:
 
 | Workflow | Command | Use it when |
@@ -93,8 +97,10 @@ Use `--output -` to request stdout explicitly or `--output PATH` to choose a fil
 
 ## Common Workflows
 
-Ordinary graphical commands use deterministic text measurement. For more accurate
-text sizing, wrapping and node layout, [provide fixed local fonts](#explicit-fonts).
+Mermaid SVG output uses deterministic text measurement without system-font discovery.
+Mermaid PNG/JPEG/PDF output uses native measurement by default when the CLI includes
+`system-fonts`, sharing a font context between layout and painting. For reproducible
+font selection, [provide fixed local fonts](#explicit-fonts).
 
 
 | Task | Command |
@@ -136,19 +142,35 @@ library behavior. For embedded integrations, use the
 ## Explicit Fonts
 
 Current-source default builds and the official release profile include
-`native-fonts` and `system-fonts`. Ordinary Mermaid SVG, PNG, JPEG, and PDF output
-uses deterministic text measurement by default, without a native font context or
-system discovery for layout. Native measurement and its discovery route run only
-when explicitly requested. PNG/JPEG/PDF painting can still load system fonts
-through the existing codec path; deterministic measurement does not guarantee
-binary export without system font discovery.
+`native-fonts` and `system-fonts`. Mermaid SVG keeps deterministic, font-agnostic
+measurement by default, without creating a native font context or discovering
+system fonts. Mermaid-to-PNG/JPEG/PDF rendering automatically discovers system
+fonts within bounded resource limits before layout and shares that context with
+native painting. This keeps label sizing and the export font selection together.
+It can change wrapping, node sizes and image/PDF snapshots, and system-font results
+depend on the host.
 
-| Font options | Mermaid text measurement | Native-context system discovery |
-| --- | --- | --- |
-| No font options | Deterministic | Off |
-| `--font-file PATH` or `--font-dir PATH` | Native, using supplied fonts | Off unless `--font-system on` is added |
-| `--font-measurement native` without font sources | Native | On when `system-fonts` is compiled |
-| `--font-system on` | Native | Explicitly on when `system-fonts` is compiled |
+With those CLI capabilities compiled:
+
+| Font options | Mermaid SVG measurement | Mermaid PNG/JPEG/PDF measurement | Native-context system discovery |
+| --- | --- | --- | --- |
+| No font options | Deterministic | Native | Before layout for PNG/JPEG/PDF; off for SVG |
+| `--font-measurement deterministic` | Deterministic | Deterministic | Off |
+| `--font-file PATH` or `--font-dir PATH` | Native, using supplied fonts | Native, using supplied fonts | Off unless `--font-system on` is added |
+| `--font-measurement native` without font sources | Native | Native | On |
+| `--font-system on` | Native | Native | Explicitly on |
+
+To retain the previous font-agnostic layout estimates and native painting for an
+encoded output, select deterministic measurement explicitly:
+
+```sh
+merman-cli render diagram.mmd --format png --font-measurement deterministic
+```
+
+That compatibility route can still discover system fonts during painting; it does
+not guarantee font-free or host-independent PNG/JPEG/PDF bytes. The same output-based
+defaults apply to Mermaid input through `render`, `batch`, and `mmdc`. Raw SVG
+conversion only paints existing geometry and is never relaid out.
 
 For diagrams with strict layout requirements, **provide the fonts that will be
 used to display the result**. Actual-font measurement uses their glyph sizes for
@@ -200,7 +222,8 @@ merman-cli render diagram.mmd --output diagram.svg --font-file fonts/FiraSans-Re
 The reported `actual` is the first rejected probe, not the total needed to finish.
 `--resource-profile` does not change this font-provider limit. The same option is
 available on `mmdc` and `batch`; each diagram gets its own allowance. It requires
-native Mermaid measurement and does not apply to raw SVG conversion. See the
+native Mermaid measurement, including the implicit encoded-output default, and does
+not apply to raw SVG conversion. See the
 [host resource guide](../../docs/integration/RESOURCE_POLICY.md#native-font-measurement-budget)
 for the corresponding Rust API.
 
@@ -212,12 +235,21 @@ work; supply the fonts used by your document when precise wrapping and node
 bounds matter. The [saved measurements](../../docs/performance/cli_font_runtime_policy_2026-10-12.md)
 record this particular probe.
 
-`fontFamily` alone does not enable actual-font measurement. Use
-`--font-measurement deterministic` to explicitly select the default layout without
-font sources. This mode also supports custom CSS that native measurement cannot
-represent. Minimal builds without `system-fonts` require explicit sources for
-native measurement. Rust library, FFI, ASCII, and committed Rustdoc generation
-defaults are unchanged.
+`fontFamily` selects among available faces; it does not supply a font file or
+change the output's measurement policy. Custom `--css-file` and `themeCSS` remain
+incompatible with native Mermaid measurement because they can change typography
+after layout. For encoded output that needs the previous CSS behavior, explicitly
+select `--font-measurement deterministic` without font sources; existing CSS
+security admission still applies.
+
+Minimal builds without the CLI `system-fonts` capability keep deterministic
+encoded-output defaults and require explicit sources for native measurement.
+Dependency feature union alone does not enable the CLI policy. If a native route
+cannot load any usable fonts, it fails instead of silently succeeding with
+deterministic estimates. Unsupported individual probes and missing glyphs retain
+their documented per-request fallback. Rust library, bindings, ASCII, and committed
+Rustdoc generation defaults are unchanged. The 0.9 library codec features retain
+their published system-font discovery behavior.
 
 Explicit font files and directories are protected inputs. With `--font-dir`,
 choose output outside that directory; existing output files with multiple hard
@@ -469,7 +501,23 @@ cargo install merman-cli --version 0.9.1 --locked \
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 6`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately. Contract 6 describes compiled native/system font support separately from runtime selection: ordinary Mermaid graphical output defaults to deterministic measurement without native-context system discovery. Codec painting may still load system fonts. Explicit font sources enable native measurement with a closed set; `--font-measurement native` without sources or `--font-system on` requests system discovery when available. It preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 6`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately.
+
+For native-font builds, `native_fonts.default_policy_scope` is `mermaid-svg-input`:
+`default_measurement`, `default_font_source`, and `default_system_discovery` remain
+`deterministic`, `none`, and `disabled`. The additive `encoded_output_defaults`
+object reports `measurement: "native"`, `font_source: "bounded-system-discovery"`,
+and `system_discovery: "before-layout"` when the CLI includes `system-fonts`.
+Without that CLI capability, its three values are `deterministic`, `none`, and
+`disabled`. Explicit font sources enable native measurement with a closed set;
+`--font-system on` permits system fallback. Experimental platform-query builds
+report `platform-managed-system-query` and
+`platform-initialization-then-on-demand-families` for the encoded font source and
+discovery policy; that feature is excluded from official releases. These discovery
+fields and runtime defaults do not change CLI contract 6, JSON schema 2, C ABI 3,
+Options schema 2, or the pinned Mermaid 12.1 baseline.
+
+The contract preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
 

@@ -449,7 +449,7 @@ where
         tag_label_border.as_str()
     };
     let tag_label_bkg_filter = if use_color_gen {
-        format!("filter:{};", drop_shadow)
+        format!("filter:{};", scoped_drop_shadow(diagram_id, &drop_shadow))
     } else {
         String::new()
     };

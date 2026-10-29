@@ -1,0 +1,12 @@
+---
+config:
+  fontFamily: sans-serif
+  sequence:
+    noteFontWeight: 600
+---
+sequenceDiagram
+    participant Client
+    participant Renderer
+    Client->>Renderer: Render diagram
+    Note right of Renderer: Measure and lay out text
+    Renderer-->>Client: Return image
