@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -70,6 +71,17 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_sdk_installs_repository_toolchain_components_before_cargo(self) -> None:
+        required = set(tomllib.loads(read(ROOT / "rust-toolchain.toml"))["toolchain"]["components"])
+        sdk = read(WORKFLOW_ROOT / "release-sdk.yml")
+        for name in ("package", "cli-reference"):
+            with self.subTest(job=name):
+                job = workflow_job(sdk, name)
+                components = re.search(r"(?m)^\s+components:\s*([^\n]+)$", job)
+                self.assertIsNotNone(components)
+                installed = {value.strip() for value in components.group(1).split(",")}
+                self.assertLessEqual(required, installed)
+
     def test_strict_preflight_installs_the_wasi_compile_target(self) -> None:
         packages = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "versions-and-packages")
         self.assertIn("verify-feature-matrix --strict", packages)
