@@ -320,7 +320,7 @@ def native_consumer_files(repo_root: Path, target: str, version: str) -> dict[st
 
 
 def _header_version(data, macro):
-    matches = re.findall(rb"^#define[ \t]+" + macro.encode() + rb"[ \t]+([0-9]+)[uU]?[ \t]*$",
+    matches = re.findall(rb"^#define[ \t]+" + macro.encode() + rb"[ \t]+([0-9]+)[uU]?[ \t]*\r?$",
                          data, re.MULTILINE)
     if len(matches) != 1:
         raise ArchiveVerificationError(f"generated SDK header is missing {macro}")
