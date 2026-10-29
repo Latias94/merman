@@ -457,27 +457,22 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
     let group_edge_label_bottom_px = ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
     let is_junction = |id: &str| junction_bounds.contains_key(id);
 
-    let layout_edge_points: Vec<(f64, f64, f64, f64, f64, f64)> = layout
-        .edges
-        .iter()
-        .map(|e| {
-            // Architecture layout edges are expected to be 3-point polylines.
-            // Be defensive and fall back to zeros if the snapshot is malformed.
-            let p0 = e.points.first().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-            let pm = e.points.get(1).map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-            let p2 = e.points.last().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-            (p0.0, p0.1, pm.0, pm.1, p2.0, p2.1)
-        })
-        .collect();
-
     let edge_points = |edge_idx: usize, edge: &ArchitectureEdgeModel| -> ArchitectureEdgePoints {
         // Prefer layout-provided points: this is where we model Mermaid/Cytoscape edge routing.
         //
         // The layout points represent raw Cytoscape endpoints; Mermaid applies group/junction
         // endpoint shifts later, during SVG emission.
-        let (raw_start_x, raw_start_y, mid_x, mid_y, raw_end_x, raw_end_y) = layout_edge_points
+        let (raw_start_x, raw_start_y, mid_x, mid_y, raw_end_x, raw_end_y) = layout
+            .edges
             .get(edge_idx)
-            .copied()
+            .map(|layout_edge| {
+                // A present layout edge keeps zero fallbacks for missing polyline points.
+                let points = &layout_edge.points;
+                let p0 = points.first().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+                let pm = points.get(1).map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+                let p2 = points.last().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+                (p0.0, p0.1, pm.0, pm.1, p2.0, p2.1)
+            })
             .unwrap_or_else(|| {
                 let (sx, sy) = node_xy
                     .get(edge.lhs_id.as_str())
@@ -813,6 +808,94 @@ mod tests {
             rhs_group: None,
             title: Some(title.to_string()),
         }
+    }
+
+    #[test]
+    fn architecture_edges_preserve_missing_and_short_layout_point_fallbacks() {
+        let mut edge = render_edge("");
+        edge.title = None;
+        let model = ArchitectureDiagramModel {
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            nodes: Vec::new(),
+            groups: Vec::new(),
+            edges: vec![edge],
+            layout_hints: Vec::new(),
+        };
+        let request = SvgRenderOptions {
+            diagram_id: Some("architecture".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        with_test_svg_execution(crate::DiagramFamilyId::ARCHITECTURE, &request, |options| {
+            let diagram_id = options.diagram_id_or("architecture");
+            let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
+                None,
+                &merman_core::presentation::PresentationConfig::empty_object(),
+            );
+            let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
+            settings.icon_size_px = 20.0;
+            settings.half_icon = 10.0;
+            let node_xy =
+                rustc_hash::FxHashMap::from_iter([("api", (10.0, 20.0)), ("db", (110.0, 80.0))]);
+            let junction_bounds = rustc_hash::FxHashMap::default();
+            let measurer = DeterministicTextMeasurer::default();
+
+            for (points, expected_path) in [
+                (None, "M 30,30 L 110,30 L110,90 "),
+                (Some(Vec::new()), "M 0,0 L 0,0 L0,0 "),
+                (Some(vec![(3.0, 5.0)]), "M 3,5 L 0,0 L3,5 "),
+                (Some(vec![(3.0, 5.0), (7.0, 11.0)]), "M 3,5 L 7,11 L7,11 "),
+                (
+                    Some(vec![(3.0, 5.0), (7.0, 11.0), (13.0, 17.0)]),
+                    "M 3,5 L 7,11 L13,17 ",
+                ),
+            ] {
+                let layout = ArchitectureDiagramLayout {
+                    nodes: Vec::new(),
+                    edges: points
+                        .into_iter()
+                        .map(|points| {
+                            let mut edge = layout_edge("edge-0");
+                            edge.points = points
+                                .into_iter()
+                                .map(|(x, y)| LayoutPoint { x, y })
+                                .collect();
+                            edge
+                        })
+                        .collect(),
+                    cytoscape_service_bounds: Vec::new(),
+                    fcose_compound_bounds: Vec::new(),
+                    bounds: None,
+                };
+                let mut content_bounds = None;
+                let mut out = String::new();
+                let mut edge_style_emitted = false;
+                let mut ctx = ArchitectureEdgeRenderContext {
+                    out: &mut out,
+                    diagram_id,
+                    layout: &layout,
+                    model: &model,
+                    node_xy: &node_xy,
+                    settings: &settings,
+                    text_measurer: &measurer,
+                    content_bounds: &mut content_bounds,
+                    junction_bounds: &junction_bounds,
+                    edge_inline_style: None,
+                    edge_style_emitted: &mut edge_style_emitted,
+                    surface_styles: None,
+                    typography_emission: None,
+                    checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
+                };
+
+                push_architecture_edges(&mut ctx).unwrap();
+
+                assert!(
+                    out.contains(&format!(r#"<path d="{expected_path}""#)),
+                    "{out}"
+                );
+            }
+        });
     }
 
     #[test]
