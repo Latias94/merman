@@ -84,3 +84,22 @@ Neo, Mindmap, State, Flowchart, and Timeline paths already scope their built-in 
 - Maintenance commit `674a56cba` is proposed separately in
   [PR #255](https://github.com/Latias94/merman/pull/255), with real before/after native exports.
   Remote CI owns the remaining cross-platform matrix; pending jobs are not local passes.
+
+## Follow-up audit and CI triage
+
+The 2026-10-30 follow-up splits the audit across family text/paint contracts, native font
+context selection, and SVG definition references. Findings require a concrete source path or
+reproducer before changing behavior; existing deterministic/browser residuals are not promoted
+to defects solely because their pixels differ.
+
+Main's Linux acceptance job retained a ten-preset count and the pre-Ghibli recipe classification.
+Its behavioral test now visits every catalog entry, including Ghibli as a native recipe. The
+existing catalog identity tests retain the exact public inventory, and Ghibli gains no native
+qualification declaration. Both real SVG/PNG admission and declared-profile qualification tests
+pass locally.
+
+Maintenance's Linux Chromium job identified ten Sequence group-box roots that clipped the
+restored Neo shadow by four pixels. Main already owns the matching paint-bounds fix from
+`f8160267a`. The maintenance adaptation shares the emitted rectangle geometry with its built-in
+shadow bounds and unions those with the layout and title bounds. It does not move the title,
+change message layout, enlarge arbitrary padding, or alter comparator policy.

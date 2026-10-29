@@ -7,12 +7,18 @@ use merman_theme_acceptance::inspect_preset_admission;
 #[test]
 fn exact_catalog_recipes_keep_native_admission_failures_visible() {
     let descriptors = theme_preset_descriptors();
-    assert_eq!(descriptors.len(), 10);
+    assert!(!descriptors.is_empty());
     for descriptor in descriptors {
         let preset = descriptor.preset();
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
         let report = inspect_preset_admission(preset).unwrap();
-        let native_candidate = matches!(preset.id(), "brutalist" | "spotless" | "cyberpunk");
+        let native_candidate = matches!(
+            preset,
+            merman::svg::ThemePreset::Brutalist
+                | merman::svg::ThemePreset::Spotless
+                | merman::svg::ThemePreset::Cyberpunk
+                | merman::svg::ThemePreset::Ghibli
+        );
         assert_eq!(report.preset(), preset);
         assert_eq!(report.recipe_fingerprint(), theme.recipe_fingerprint());
         assert_eq!(
