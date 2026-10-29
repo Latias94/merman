@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { MermaidThemeSelection } from "../lib/mermaid-theme-name.ts";
 import type { DiagramFont } from "../lib/diagram-font.ts";
+import { mergeRecommendedMermaidConfig, type MermaidConfigObject } from "../lib/mermaid-config.ts";
+import { projectError } from "../runtime/error-projection.ts";
 import type {
   ShareViewWarning,
   StartupShareHydration,
@@ -26,14 +28,16 @@ import {
   failThemeImport,
   isThemeDraftChanged,
   rejectThemeValidation,
+  restoreValidThemeDraft,
   selectThemeCandidate,
-  themeCandidateFields,
   themeCandidateFromFields,
   themeValidationToken,
+  themePreviewWorkspace,
   type ThemeCandidate,
   type ThemeEditSession,
   type ThemeImportToken,
   type ThemeValidationToken,
+  type ThemeSettingsDraft,
 } from "../lib/theme-edit-session.ts";
 
 export type Theme = MermaidThemeSelection;
@@ -71,6 +75,9 @@ export interface AppState {
   acceptThemeValidation: (token: ThemeValidationToken, recipeJson: string) => boolean;
   rejectThemeValidation: (token: ThemeValidationToken, error: string) => boolean;
   selectThemeCandidate: (candidate: Exclude<ThemeCandidate, { kind: "custom" }>) => void;
+  previewThemeSettings: (settings: Pick<ThemeSettingsDraft, "diagramTheme" | "diagramFont">) => void;
+  previewThemeConfig: (config: Readonly<MermaidConfigObject>) => void;
+  restoreValidThemeDraft: () => boolean;
   beginThemeImport: () => ThemeImportToken | null;
   completeThemeImport: (token: ThemeImportToken, rawJson: string) => ThemeValidationToken | null;
   failThemeImport: (token: ThemeImportToken, error: string) => boolean;
@@ -123,9 +130,14 @@ export function selectRenderInputSnapshot(
   state: Pick<AppState, keyof WorkspaceSnapshot | "themeEditSession">,
 ): WorkspaceSnapshot {
   const workspace = selectWorkspaceSnapshot(state);
-  return state.themeEditSession
-    ? { ...workspace, ...themeCandidateFields(state.themeEditSession.candidate) }
-    : workspace;
+  const session = state.themeEditSession;
+  if (!session) return workspace;
+  try {
+    return themePreviewWorkspace(workspace, session);
+  } catch {
+    // Let the renderer report live invalid JSON instead of retaining an old config snapshot.
+    return themePreviewWorkspace(workspace, { ...session, settings: { ...session.settings, config: undefined } });
+  }
 }
 
 export function selectThemeDraftChanged(state: Pick<AppState, "themeEditSession">): boolean {
@@ -186,7 +198,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   code: DEFAULT_WORKSPACE_SNAPSHOT.code,
   setCode: (code) => set({ code }),
   mermaidConfig: DEFAULT_WORKSPACE_SNAPSHOT.mermaidConfig,
-  setMermaidConfig: (mermaidConfig) => set({ mermaidConfig }),
+  setMermaidConfig: (mermaidConfig) => set((state) => ({
+    mermaidConfig,
+    ...(state.themeEditSession?.applyError ? { themeEditSession: { ...state.themeEditSession, applyError: null } } : {}),
+  })),
   editorMode: "code",
   setEditorMode: (editorMode) => set({ editorMode }),
 
@@ -232,6 +247,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = get().themeEditSession;
     if (current) set({ themeEditSession: selectThemeCandidate(current, candidate) });
   },
+  previewThemeSettings: (update) => {
+    const state = get();
+    const current = state.themeEditSession;
+    if (!current) return;
+    const settings = { ...current.settings, ...update };
+    if (settings.diagramTheme === state.diagramTheme) delete settings.diagramTheme;
+    if (settings.diagramFont === state.diagramFont) delete settings.diagramFont;
+    set({ themeEditSession: { ...current, settings } });
+  },
+  previewThemeConfig: (config) => {
+    const state = get();
+    const current = state.themeEditSession;
+    if (!current) return;
+    const patch = JSON.parse(mergeRecommendedMermaidConfig(JSON.stringify(current.settings.config ?? {}), config)) as MermaidConfigObject;
+    // Validate against the current authored config before exposing a preview action as successful.
+    mergeRecommendedMermaidConfig(state.mermaidConfig, patch);
+    set({ themeEditSession: { ...current, settings: { ...current.settings, config: patch }, applyError: null } });
+  },
+  restoreValidThemeDraft: () => {
+    const current = get().themeEditSession;
+    if (!current) return false;
+    const session = restoreValidThemeDraft(current);
+    if (session === current) return false;
+    set({ themeEditSession: session });
+    return true;
+  },
   beginThemeImport: () => {
     const current = get().themeEditSession;
     if (!current) return null;
@@ -256,11 +297,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     return true;
   },
   applyThemeEdit: () => {
-    const current = get().themeEditSession;
+    const state = get();
+    const current = state.themeEditSession;
     if (!current || current.validation !== "valid" || current.importing) return false;
-    const session = advanceThemeBaseline(current);
-    set({ ...themeCandidateFields(session.candidate), themeEditSession: session });
-    return true;
+    try {
+      const workspace = themePreviewWorkspace(selectWorkspaceSnapshot(state), current);
+      const session = advanceThemeBaseline(current);
+      set({ ...workspace, themeEditSession: { ...session, error: null, applyError: null } });
+      return true;
+    } catch (cause) {
+      set({ themeEditSession: { ...current, applyError: projectError(cause).summary } });
+      return false;
+    }
   },
   cancelThemeEdit: () => set({ themeEditSession: null }),
   svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,

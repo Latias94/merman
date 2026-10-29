@@ -33,6 +33,9 @@ export function ThemePresetCards({ presets, candidate, familyId, pending, onSele
         onClick={() => onSelect({ kind: "preset", presetId: preset.id })}>
         <div className="flex h-7 overflow-hidden rounded border" aria-hidden="true" data-theme-swatches>{colors.map((color, index) => <span key={index} className="flex-1" style={{ backgroundColor: color }} />)}</div>
         <span className="break-words font-medium">{t(`themePresets.${preset.id}`, { defaultValue: preset.display_name })}</span>
+        <span className="text-[10px] font-medium text-muted-foreground" data-theme-maturity={preset.maturity}>
+          {t(`themePanel.maturity.${preset.maturity}`, { defaultValue: preset.maturity })}
+        </span>
         <span className="text-[11px] leading-relaxed text-muted-foreground">{treatment ? t(`themePanel.treatments.${treatment}`) : t("themePanel.treatmentWaiting")}</span>
         {!preset.available && <span className="text-[11px] text-destructive">{t("themePanel.unavailable")}</span>}
         {selected && <Check className="absolute right-2 top-2 size-3.5 text-primary" aria-hidden="true" />}

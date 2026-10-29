@@ -32,12 +32,15 @@ export function ThemeRenderEvidence({ render }: { render: CurrentThemeRender }) 
     {render.status === "failed" && render.batch.merman.status === "failure" &&
       <p className="break-words text-destructive">{render.batch.merman.message}</p>}
     {evidence && <ThemeEvidenceReasons codes={evidence.diagnostics?.map((diagnostic) => diagnostic.code) ?? []} kind="theme" />}
-    {render.status === "ready" && <div className="space-y-1 border-t pt-2" data-theme-target-state={target}>
-      <h4 className="font-medium">{t("themePanel.targetBoundary")}</h4>
-      <p className="leading-relaxed text-muted-foreground">{t(`themePanel.target.${target}`)}</p>
-      {evidence && <p className="text-muted-foreground">{t("themePanel.observedTarget", { target: evidence.target_kind })}</p>}
-      {evidence && <ThemeEvidenceReasons codes={evidence.target_reason_ids} kind="target" />}
+    {render.status === "ready" && <div className="space-y-2 border-t pt-2" data-theme-target-state={target}>
+      {(target === "rejected" || target === "host_dependent") && <p className={target === "rejected" ? "leading-relaxed text-destructive" : "leading-relaxed text-muted-foreground"}
+        role={target === "rejected" ? "alert" : undefined} data-testid="theme-target-notice">{t(`themePanel.targetNotice.${target}`)}</p>}
+      <details data-testid="theme-target-details" className="space-y-2">
+        <summary className="cursor-pointer font-medium">{t("themePanel.targetBoundary")}</summary>
+        <p className="mt-2 leading-relaxed text-muted-foreground">{t(`themePanel.target.${target}`)}</p>
+        {evidence && <p className="text-muted-foreground">{t("themePanel.observedTarget", { target: evidence.target_kind })}</p>}
+        {evidence && <ThemeEvidenceReasons codes={evidence.target_reason_ids} kind="target" />}
+      </details>
     </div>}
-    <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.sameRenderHint")}</p>
   </section>;
 }

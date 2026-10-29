@@ -44,11 +44,12 @@
     "headless": "Headless"
   },
   "diagramFonts": {
-    "trebuchet": "Mermaid 默认",
+    "trebuchet": "Trebuchet（经典 Mermaid）",
     "system": "系统 UI",
     "arial": "Arial",
     "georgia": "Georgia",
-    "monospace": "等宽"
+    "monospace": "等宽",
+    "inherit": "继承主题／源码字体"
   },
   "export": {
     "title": "导出",
@@ -380,8 +381,8 @@
     "ghibli": "吉卜力"
   },
   "themeApplicationNotes": {
-    "flowchart-classic-shadows": "节点硬阴影需要 classic 外观，且限定为已支持的基本形状（矩形、菱形和圆形）。选择此预设不会更改图表外观设置。",
-    "flowchart-classic-glow": "节点发光需要 classic 外观，且限定为已支持的基本形状。选择此预设不会更改图表外观设置。"
+    "flowchart-classic-shadows": "节点硬阴影需要 Classic 外观，且仅适用于已支持的基本形状（矩形、菱形和圆形）。选择此预设会保留当前外观设置。",
+    "flowchart-classic-glow": "节点发光需要 Classic 外观，且仅适用于已支持的基本形状。选择此预设会保留当前外观设置。"
   },
   "svgPipelines": {
     "parity": "Mermaid SVG（默认）",
@@ -456,23 +457,23 @@
     "validRecipeRequired": "请先修复配方，再导出。",
     "copiedJson": "已复制主题 JSON",
     "validating": "正在校验配方…",
-    "applied": "已应用主题",
-    "unknownPreset": "当前运行时不支持 {{id}}，已保留保存的选择。",
+    "applied": "已应用于当前工作区",
+    "unknownPreset": "当前运行时不支持 {{id}}，已保留所选预设。",
     "mermaidTheme": "Mermaid 基础主题",
     "choosePreset": "Merman 预设",
     "howThemesCombine": "主题、源码设置与字体如何共同生效",
     "mermanStyling": "Merman 扩展样式 · 仅作用于 Merman",
-    "compatibilityHint": "立即影响两个引擎。取消仅撤销 Merman 样式草稿。",
-    "fontPrecedenceHint": "当前图表字体：{{font}}。此字体会传入两个引擎，可能覆盖预设的字体栈；显式配置和源码中的字体设置仍可能优先。",
+    "compatibilityHint": "基础主题和字体会在两个引擎中预览。“应用”统一采用面板中的改动，“取消”丢弃这些草稿；源码和配置编辑器中的改动会保留。",
+    "fontPrecedenceHint": "“继承”由主题和源码决定字体。指定字体会传入两个引擎，可能覆盖预设字体；配置和源码设置仍可能优先。",
     "copyJson": "复制 JSON",
     "applyFirst": "请先应用主题草稿，再分享或导出预览。",
     "invalidPreview": "JSON 无效。预览使用最后一个有效主题和当前图表。",
-    "draftPreview": "正在预览主题，点击“应用”后用于导出和分享。",
-    "appliedPreview": "正在预览已应用主题。",
-    "renderOutcome": "此次渲染的主题结果",
+    "draftPreview": "正在预览主题，点击“应用”后用于当前工作区。",
+    "appliedPreview": "正在预览已应用的主题。",
+    "renderOutcome": "当前预览",
     "executionMetadata": "执行元数据",
     "evidenceUnavailable": "此 SVG 没有可用的执行证据。",
-    "evidenceExplanation": "这些结果描述此次 SVG 执行。预设设计范围和运行时支持是独立信息；诊断列表为空不代表已证明可移植。",
+    "evidenceExplanation": "这些结果仅描述此次 SVG 渲染。设计评审和输出兼容性分别检查；诊断列表为空不代表已验证可移植性。",
     "compareStyled": "Merman 应用所选预设或自定义配方；Mermaid.js 接收 Mermaid 源码和配置。可在主题面板选择“无”，比较不含 Merman 样式的结果。",
     "previewBacking": "预览衬底",
     "previewBackingHint": "仅用于显示，不随图片导出。透明网格用于查看透明区域，不会移除主题背景。",
@@ -483,56 +484,52 @@
       "transparency": "透明网格"
     },
     "title": "主题面板",
-    "close": "关闭主题面板",
+    "close": "取消并关闭主题面板",
     "resize": "调整主题面板大小",
     "advanced": "高级",
     "json": "主题 JSON",
-    "jsonHint": "此处仅供查看。使用 $design-merman-theme 创作或调整主题后，再导入更新后的 JSON。",
+    "jsonHint": "只读的 Merman 样式，不含 Mermaid 基础主题、图表字体、源码或 Mermaid 配置。",
     "noRecipe": "选择预设或导入主题后，可查看其 JSON。",
     "importTitle": "你的主题",
-    "importHint": "导入主题 JSON 文件即可预览。创作或调整主题可使用 $design-merman-theme。",
+    "importHint": "导入 Merman 主题 JSON 文件即可预览样式。“应用”将其用于当前工作区，“取消”丢弃预览草稿。",
     "imported": "已导入主题 JSON",
-    "previewHint": "选择仅在 Merman 中预览。点击“应用”后保存样式并用于导出和分享；“取消”恢复上次应用的 Merman 样式。",
+    "previewHint": "Merman 预设仅在 Merman 中预览。尚未针对当前图表评审的预设也可试用。",
     "layeringHint": "Merman 样式叠加在 Mermaid 基础主题上。配置、前置配置、指令和源码样式可能覆盖最终效果。选择预设会保留你的源码、外观和布局设置。",
-    "swatchHint": "色卡读取各预设配方中的代表颜色；最终效果请查看当前图表预览。",
-    "catalogUnavailable": "主题列表暂不可用，渲染器就绪后会自动加载。",
+    "swatchHint": "为当前图表专门设计的预设优先展示。色卡展示配方颜色，实际效果请查看预览。",
     "catalogDetails": "预设运行时详情",
     "renderInput": "当前显示的图表所用主题",
-    "invalidDraft": "主题无效，正在显示上一个有效主题。",
+    "invalidDraft": "主题无效，预览保留最后一个有效主题。",
     "currentFamily": "当前图表：{{family}}",
     "familyWaiting": "当前图表：正在等待此次渲染的类型检测…",
     "familyUnknown": "无法检测当前图表所属的类型。",
     "treatmentWaiting": "正在等待当前图表",
     "treatments": {
-      "dedicated": "专属设计",
-      "base_only": "基础样式",
-      "unreviewed": "设计尚未评审"
+      "dedicated": "为此图表专门设计",
+      "base_only": "共享样式",
+      "unreviewed": "尚未针对此图表评审"
     },
     "reviewedFamilies": "已评审的图表类型",
     "noReviewedFamilies": "此预设尚未列出已评审的图表类型。",
-    "reviewedFamiliesHint": "专属设计包含该图表类型的专项样式，基础样式使用共享外观。未列出的类型或未知处理方式表示尚未评审，不代表不支持。评审描述设计意图，实际场景和输出目标仍会影响效果。",
+    "reviewedFamiliesHint": "“为此图表专门设计”包含专项样式，“共享样式”使用通用外观。未列出的类型尚未评审，不代表不支持；实际效果请查看当前预览。",
     "applicationNotes": "应用说明",
-    "useRecommendedSettings": "使用推荐设置",
     "showRecommendedConfig": "查看推荐配置",
-    "recommendedConfigHint": "此按钮将所示字段合并到 Mermaid 配置，保留无关设置。配置会立即作用于两个引擎，点击“取消”也会保留。源码中的配置仍可能覆盖它们。",
-    "recommendedApplied": "推荐设置已写入 Mermaid 配置。源码中的配置仍可能覆盖它们。",
-    "recommendedConfigError": "无法更新 Mermaid 配置。请修复 JSON 对象后重试。{{error}}",
-    "sameRenderHint": "这些结果仅对应当前输入和此次渲染。主题应用与输出目标或宿主兼容性分别检查。",
+    "recommendedConfigHint": "仅将这些字段加入配置预览，保留无关设置。“应用”统一采用该配置，“取消”丢弃草稿；源码设置仍可能优先。",
+    "recommendedConfigError": "无法预览 Mermaid 配置。请修复 JSON 对象后重试。{{error}}",
     "waiting": {
-      "render": "正在等待当前图表与主题完成渲染…",
-      "importing": "正在读取主题文件，等待选择通过校验并完成渲染…",
-      "validating": "正在校验主题，等待渲染结果…",
-      "invalid": "请修复或替换无效主题后查看其结果。预览仍保留最后一个有效主题。"
+      "render": "正在更新预览…",
+      "importing": "正在读取主题文件…",
+      "validating": "正在检查主题 JSON…",
+      "invalid": "请修复、替换或恢复无效主题，预览保留最后一个有效主题。"
     },
     "outcome": {
-      "applied": "主题已应用。渲染器已验证此 SVG 的主题应用结果。",
-      "residual": "主题应用仍有残余项。此 SVG 的部分样式仍有条件限制或尚未验证。",
-      "incomplete": "主题应用不完整。部分请求的样式未能完整应用。",
-      "not_present": "此 SVG 未报告 Merman 主题应用。图中仍可能包含 Mermaid 主题和源码样式。",
-      "failed": "当前 Merman 渲染失败，无法提供此选择的完整主题结果。",
-      "unavailable": "此 SVG 缺少主题证据或证据无法识别，尚未确认主题应用。"
+      "applied": "主题已应用于当前预览。",
+      "residual": "部分请求的样式仍有条件限制或尚未验证。",
+      "incomplete": "部分请求的样式未能应用。",
+      "not_present": "当前预览没有应用 Merman 主题样式。",
+      "failed": "预览渲染失败，请检查图表和配置。",
+      "unavailable": "渲染器未能确认当前预览的样式结果。"
     },
-    "targetBoundary": "输出目标与宿主",
+    "targetBoundary": "输出兼容性详情",
     "observedTarget": "此次观察的输出目标：{{target}}",
     "diagnosticReasonsTitle": "样式观察结果",
     "diagnosticReasonsUnknown": "渲染器诊断：{{code}}。可在“高级”中查看原始详情。",
@@ -560,9 +557,53 @@
     "target": {
       "checked": "此次输出及其输入通过了渲染器的目标检查，不代表已验证所有宿主的兼容性。",
       "host_dependent": "此输出依赖宿主的字体或浏览器渲染等能力。主题应用成功不会消除这些依赖。",
-      "rejected": "虽然已返回 SVG，但输出目标的兼容性检查未通过。可在“高级”中查看具体原因。",
+      "rejected": "虽然已返回 SVG，但输出兼容性检查未通过，请查看下方原因。",
       "unverified": "此次输出尚未验证目标兼容性。",
       "unavailable": "此次输出没有可识别的目标兼容性证据。"
+    },
+    "diagramFont": "图表字体",
+    "inheritFontHint": "由主题和源码决定字体。",
+    "explicitFontHint": "在两个引擎中预览此字体。配置和源码中的字体设置仍可能优先。",
+    "catalogLoading": "正在等待渲染器就绪并加载预设…",
+    "catalogError": "无法加载预设。{{error}}",
+    "retryCatalog": "重新加载预设",
+    "restoreValidDraft": "恢复最后一个有效主题",
+    "maturity": {
+      "alpha": "Alpha",
+      "beta": "Beta",
+      "stable": "稳定"
+    },
+    "maturityLabel": "{{maturity}}预设",
+    "alphaHint": "Alpha · 设计仍可能变化，应用前请检查当前预览。",
+    "previewRecommendedConfig": "预览推荐配置",
+    "recommendationInConfig": "预览配置中已包含此设置",
+    "recommendationInSource": "源码中已声明 Classic 外观",
+    "recommendationSourceOverride": "源码将外观声明为“{{value}}”，可能覆盖此配置；如需改变，请编辑源码中的声明。",
+    "exchangeHint": "JSON 仅含 Merman 样式，不含 Mermaid 配置。完整复现请先应用，再复制工作区链接。",
+    "authoringTitle": "创作主题（可选）",
+    "authoringHint": "可用自己的工具编辑下载的 JSON，再重新导入。如果你的代理已安装 $design-merman-theme 技能，也可以使用它创作主题；此技能并非必需。",
+    "detectedOverrides": "配置与源码声明",
+    "detectedOverridesHint": "这里只列出配置或源码中的声明，不代表渲染器已支持这些值或确认最终外观。",
+    "overrideKeys": {
+      "theme": "基础主题",
+      "font": "字体",
+      "look": "外观"
+    },
+    "overrideOrigins": {
+      "config": "配置声明",
+      "source": "源码声明"
+    },
+    "editOverride": {
+      "config": "编辑配置",
+      "source": "编辑源码"
+    },
+    "targetNotice": {
+      "host_dependent": "导出的 SVG 依赖宿主提供字体或渲染能力。",
+      "rejected": "输出兼容性检查未通过，请展开下方详情查看原因。"
     }
+  },
+  "themeApplicationActions": {
+    "flowchart-classic-shadows": "使用 Classic 外观",
+    "flowchart-classic-glow": "使用 Classic 外观"
   }
 }

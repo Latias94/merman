@@ -5,6 +5,7 @@ import { load as parseYaml } from "js-yaml";
 
 import { SUPPORTED_THEMES } from "@mermanjs/web";
 import { resolveMermaidCanvasTone } from "./mermaid-canvas-tone.ts";
+import { readMermaidAppearanceOverrides } from "./mermaid-appearance.ts";
 import { locateMermaidFrontmatter } from "./mermaid-frontmatter.ts";
 import {
   buildMermaidConfig,
@@ -31,6 +32,36 @@ test("explicit config theme takes precedence over the selected theme", () => {
     buildMermaidConfig('{"theme":"dark"}', "redux-color").theme,
     "dark"
   );
+});
+
+test("inherited fonts add no host or source override and preserve authored fonts", () => {
+  const source = "pie\n\"Tea\": 4";
+  assert.deepEqual(buildMermaidConfig("{}", "auto", { diagramFont: "inherit" }), {});
+  assert.deepEqual(buildMermaidOperationInput(source, "auto", "{}", { diagramFont: "inherit" }), {
+    initializationConfig: {}, configuredSource: source,
+  });
+  const config = { fontFamily: "Authored Font", themeVariables: { fontFamily: "Authored Variable Font" } };
+  const operation = buildMermaidOperationInput(source, "auto", JSON.stringify(config), { diagramFont: "inherit" });
+  assert.deepEqual(operation.initializationConfig, {});
+  assert.equal(operation.configuredSource, `%%{init: ${JSON.stringify(config)}}%%\n${source}`);
+});
+
+test("appearance guidance identifies authored declarations without rewriting them", () => {
+  const source = '---\nconfig:\n  theme: forest\n---\nflowchart LR\nA --> B\n%%{init: {"flowchart":{"look":"handDrawn"},"fontFamily":"Source Font"}}%%';
+  assert.deepEqual(readMermaidAppearanceOverrides(source, '{"theme":"dark","flowchart":{"look":"classic"}}', "flowchart"), {
+    theme: { origin: "config", value: "dark" }, font: { origin: "source", value: "Source Font" },
+    look: { origin: "source", value: "handDrawn" },
+  });
+  assert.deepEqual(readMermaidAppearanceOverrides(source, "{"), {});
+  assert.deepEqual(readMermaidAppearanceOverrides("pie\n\"Tea\": 4", "{}"), { theme: undefined, look: undefined, font: undefined });
+});
+
+test("later empty or invalid declarations do not retain an earlier Classic claim", () => {
+  const source = '---\nconfig:\n  flowchart:\n    look: classic\n---\nflowchart LR\nA --> B';
+  const empty = readMermaidAppearanceOverrides(source, '{"look":"handDrawn","flowchart":{"look":""}}', "flowchart");
+  assert.deepEqual(empty.look, { origin: "config", value: "" });
+  const invalid = readMermaidAppearanceOverrides(source, '{"look":"handDrawn","flowchart":{"look":false}}', "flowchart");
+  assert.deepEqual(invalid.look, { origin: "config", value: "handDrawn" });
 });
 
 test("maps every supported effective theme to a canvas tone", () => {

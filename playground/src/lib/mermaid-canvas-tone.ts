@@ -1,7 +1,5 @@
-import { JSON_SCHEMA, load as parseYaml } from "js-yaml";
-import { locateMermaidFrontmatter } from "./mermaid-frontmatter.ts";
-
-import { buildMermaidOperationInput, parseMermaidConfigJson, type MermaidConfigObject } from "./mermaid-config.ts";
+import { authoredMermaidConfigLayers } from "./mermaid-appearance.ts";
+import { buildMermaidOperationInput, type MermaidConfigObject } from "./mermaid-config.ts";
 import {
   normalizeMermaidThemeName,
   type ThemeName,
@@ -31,16 +29,13 @@ export function resolveMermaidCanvasTone(
 ): MermaidCanvasTone {
   let effectiveTheme = normalizeMermaidThemeName(selectedTheme);
   try {
-    const config = parseMermaidConfigJson(configJson);
     // The playground inserts config after frontmatter and before authored directives.
     // Project only theme fields; scoped values survive later global-only overrides.
     const initialized: ThemeFields = {};
     mergeThemeFields(initialized, buildMermaidOperationInput(source, selectedTheme, configJson).initializationConfig, configNamespace);
     const themes: ThemeFields = {};
-    mergeThemeFields(themes, frontmatterConfig(source), configNamespace);
-    mergeThemeFields(themes, config, configNamespace);
-    for (const directive of directiveConfigs(source)) {
-      mergeThemeFields(themes, directive, configNamespace);
+    for (const { config } of authoredMermaidConfigLayers(source, configJson)) {
+      mergeThemeFields(themes, config, configNamespace);
     }
     const resolved = [themes.scoped, themes.global, initialized.scoped, initialized.global].find(
       (value): value is ThemeName | "null" => value === "null" || isKnownTheme(value),
@@ -53,49 +48,6 @@ export function resolveMermaidCanvasTone(
     // Invalid config is rendered as an error; keep the selected-theme canvas.
   }
   return MERMAID_CANVAS_TONES[effectiveTheme];
-}
-
-function frontmatterConfig(source: string): MermaidConfigObject | null {
-  const frontmatter = locateMermaidFrontmatter(source);
-  if (!frontmatter) return null;
-
-  const { indent, bodyStart, bodyEnd } = frontmatter;
-  const body = source.slice(bodyStart, bodyEnd)
-    .split(/\r\n|[\r\n]/)
-    .map((line) => indent && line.startsWith(indent) ? line.slice(indent.length) : line)
-    .join("\n");
-
-  try {
-    const parsed = parseYaml(body, { schema: JSON_SCHEMA }) as unknown;
-    if (!isPlainObject(parsed) || !isPlainObject(parsed.config)) return null;
-    return parsed.config;
-  } catch {
-    return null;
-  }
-}
-
-function* directiveConfigs(source: string): Generator<MermaidConfigObject> {
-  const directiveStart = /%%\{\s*(?:init|initialize)\s*:\s*/gi;
-  const directiveEnd = /\}\s*%%/g;
-
-  for (
-    let start = directiveStart.exec(source);
-    start;
-    start = directiveStart.exec(source)
-  ) {
-    directiveEnd.lastIndex = directiveStart.lastIndex;
-    const end = directiveEnd.exec(source);
-    if (!end) break;
-
-    const body = source.slice(directiveStart.lastIndex, end.index);
-    directiveStart.lastIndex = directiveEnd.lastIndex;
-    try {
-      const config = JSON.parse(body.trim().replaceAll("'", '"')) as unknown;
-      if (isPlainObject(config)) yield config;
-    } catch {
-      return;
-    }
-  }
 }
 
 function isPlainObject(value: unknown): value is MermaidConfigObject {

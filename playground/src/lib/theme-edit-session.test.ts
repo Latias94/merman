@@ -10,6 +10,7 @@ import {
   failThemeImport,
   isThemeDraftChanged,
   rejectThemeValidation,
+  restoreValidThemeDraft,
   selectThemeCandidate,
   themeValidationToken,
   type ThemeEditSession,
@@ -30,7 +31,8 @@ test("opening an applied preset or None keeps only transactional theme state", (
     assert.deepEqual(session, {
       id: 1, revision: 0, importGeneration: 0, importing: false,
       baseline: candidate, baselineRawJson: null, rawJson: null, candidate,
-      validation: "valid", error: null,
+      lastValidCandidate: candidate, settings: {},
+      validation: "valid", error: null, applyError: null,
     });
     assert.equal(isThemeDraftChanged(session), false);
   }
@@ -139,4 +141,26 @@ test("selecting a preset or None clears imported text and validation errors", ()
   assert.equal(isThemeDraftChanged(session), true);
   session = selectThemeCandidate(session, { kind: "none" });
   assert.equal(isThemeDraftChanged(session), false);
+});
+
+test("recovering a validated custom draft rejects stale work and retains appearance choices", () => {
+  let session = importDraft(beginThemeEditSession(1, { kind: "none" }), recipe);
+  session = acceptThemeValidation(session, themeValidationToken(session), recipe);
+  session = { ...session, settings: { diagramFont: "inherit", config: { flowchart: { look: "classic" } } } };
+  session = importDraft(session, "{");
+  const stale = themeValidationToken(session);
+  session = rejectThemeValidation(session, stale, "Invalid JSON");
+  session = restoreValidThemeDraft(session);
+  assert.equal(session.validation, "valid");
+  assert.equal(session.rawJson, recipe);
+  assert.deepEqual(session.candidate, { kind: "custom", recipeJson: recipe });
+  assert.equal(session.settings.diagramFont, "inherit");
+  assert.equal(acceptThemeValidation(session, stale, "late recipe"), session);
+});
+
+test("an unvalidated initial custom recipe cannot be certified by recovery", () => {
+  let session = beginThemeEditSession(1, { kind: "custom", recipeJson: "{" });
+  session = rejectThemeValidation(session, themeValidationToken(session), "Invalid JSON");
+  assert.equal(session.lastValidCandidate, null);
+  assert.equal(restoreValidThemeDraft(session), session);
 });

@@ -1,4 +1,5 @@
 export type DiagramFont =
+  | "inherit"
   | "system"
   | "trebuchet"
   | "arial"
@@ -6,6 +7,7 @@ export type DiagramFont =
   | "monospace";
 
 export const DIAGRAM_FONT_VALUES: readonly DiagramFont[] = [
+  "inherit",
   "trebuchet",
   "system",
   "arial",
@@ -13,7 +15,7 @@ export const DIAGRAM_FONT_VALUES: readonly DiagramFont[] = [
   "monospace",
 ];
 
-const DIAGRAM_FONT_STACKS: Record<DiagramFont, string> = {
+const DIAGRAM_FONT_STACKS: Record<Exclude<DiagramFont, "inherit">, string> = {
   system:
     'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   trebuchet: '"trebuchet ms", verdana, arial, sans-serif',
@@ -23,8 +25,8 @@ const DIAGRAM_FONT_STACKS: Record<DiagramFont, string> = {
     '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
 };
 
-export function diagramFontStack(font: DiagramFont): string {
-  return DIAGRAM_FONT_STACKS[font] ?? DIAGRAM_FONT_STACKS.trebuchet;
+export function diagramFontStack(font: DiagramFont): string | undefined {
+  return font === "inherit" ? undefined : DIAGRAM_FONT_STACKS[font];
 }
 
 export function isDiagramFont(value: string | undefined): value is DiagramFont {

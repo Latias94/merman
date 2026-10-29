@@ -20,10 +20,10 @@ test("theme selection survives family changes without authoring controls", async
   await page.getByRole("button", { name: "Theme", exact: true }).click();
   const workbench = page.locator("#theme-panel");
   const scenes = [
-    { family: "Flowchart", source: null, treatment: "dedicated", label: "Dedicated design" },
-    { family: "Class", source: "classDiagram\nclass Account {\n  +String name\n}", treatment: "base_only", label: "Base styling" },
-    { family: "XY Chart", source: 'xychart-beta\nx-axis [Jan, Feb]\ny-axis "Count" 0 --> 10\nbar [3, 7]', treatment: "dedicated", label: "Dedicated design" },
-    { family: "Packet", source: 'packet\n0-7: "Header"', treatment: "unreviewed", label: "Design not yet reviewed" },
+    { family: "Flowchart", source: null, treatment: "dedicated", label: "Designed for this diagram" },
+    { family: "Class", source: "classDiagram\nclass Account {\n  +String name\n}", treatment: "base_only", label: "Shared styling" },
+    { family: "XY Chart", source: 'xychart-beta\nx-axis [Jan, Feb]\ny-axis "Count" 0 --> 10\nbar [3, 7]', treatment: "dedicated", label: "Designed for this diagram" },
+    { family: "Packet", source: 'packet\n0-7: "Header"', treatment: "unreviewed", label: "Not yet reviewed for this diagram" },
   ];
   for (const scene of scenes) {
     if (scene.source) await replaceEditorSource(page, scene.source);
@@ -61,7 +61,7 @@ for (const scene of [
       const selected = panel.getByRole("button", { name: language === "en" ? /^Brutalist/ : /^粗野主义/ });
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       await expect(selected).toHaveAttribute("data-theme-treatment", "unreviewed");
-      await expect(selected).toContainText(language === "en" ? "Design not yet reviewed" : "设计尚未评审");
+      await expect(selected).toContainText(language === "en" ? "Not yet reviewed for this diagram" : "尚未针对此图表评审");
     });
   }
 }
@@ -81,7 +81,7 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
   const reviewed = panel.getByTestId("theme-reviewed-families");
   await expect(reviewed.getByRole("listitem")).toHaveCount(1);
   await expect(reviewed.getByRole("listitem")).toContainText("Pie Chart");
-  await expect(reviewed.getByRole("listitem")).toContainText("Dedicated design");
+  await expect(reviewed.getByRole("listitem")).toContainText("Designed for this diagram");
   await panel.locator("summary").filter({ hasText: /^Advanced$/ }).click();
   const catalogSummary = panel.locator("summary").filter({ hasText: /^Preset runtime details$/ });
   await catalogSummary.click();
@@ -100,7 +100,7 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
   await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Flowchart");
   await expect(card).toHaveAttribute("aria-pressed", "true");
   await expect(card).toHaveAttribute("data-theme-treatment", "unreviewed");
-  await expect(card).toContainText("Design not yet reviewed");
+  await expect(card).toContainText("Not yet reviewed for this diagram");
   await expect(panel.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
   await expect(reviewed.getByRole("listitem")).toHaveCount(1);
 });

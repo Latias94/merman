@@ -44,11 +44,12 @@
     "headless": "Headless"
   },
   "diagramFonts": {
-    "trebuchet": "Mermaid default",
+    "trebuchet": "Trebuchet (classic Mermaid)",
     "system": "System UI",
     "arial": "Arial",
     "georgia": "Georgia",
-    "monospace": "Monospace"
+    "monospace": "Monospace",
+    "inherit": "Inherit from theme / source"
   },
   "export": {
     "title": "Export",
@@ -452,23 +453,23 @@
     "validRecipeRequired": "Fix the recipe before exporting it.",
     "copiedJson": "Theme JSON copied",
     "validating": "Validating recipe…",
-    "applied": "Applied theme",
-    "unknownPreset": "Unavailable in this runtime: {{id}}. The saved selection is preserved.",
+    "applied": "Applied to this workspace",
+    "unknownPreset": "Unavailable in this runtime: {{id}}. Your selection is preserved.",
     "mermaidTheme": "Mermaid base theme",
     "mermanStyling": "Merman styling · Merman only",
-    "compatibilityHint": "Changes both engines immediately. Cancel only discards Merman styling.",
+    "compatibilityHint": "Base theme and font preview in both engines. Apply uses all panel changes for this workspace. Cancel discards them; source and config editor edits stay.",
     "choosePreset": "Merman preset",
     "howThemesCombine": "How themes, source settings and fonts combine",
-    "fontPrecedenceHint": "Chosen diagram font: {{font}}. This font is passed to both engines and may override a preset's font stack. Explicit config and source font settings can take precedence.",
+    "fontPrecedenceHint": "Inherit lets the theme and source choose fonts. An explicit font is passed to both engines and may override a preset font. Config and source settings can take precedence.",
     "copyJson": "Copy JSON",
     "applyFirst": "Apply the theme draft before sharing or exporting the preview.",
     "invalidPreview": "Invalid JSON. Preview uses the last valid theme with the current diagram.",
-    "draftPreview": "Theme preview. Apply to use this selection.",
-    "appliedPreview": "Applied theme preview.",
-    "renderOutcome": "This render's theme outcome",
+    "draftPreview": "Theme preview. Apply to use these changes in this workspace.",
+    "appliedPreview": "Preview of the applied theme.",
+    "renderOutcome": "Current preview",
     "executionMetadata": "Execution metadata",
     "evidenceUnavailable": "No execution evidence is available for this SVG.",
-    "evidenceExplanation": "These results describe this SVG execution. Preset design scope and runtime support are separate; an empty diagnostic list does not certify portability.",
+    "evidenceExplanation": "These results describe only this SVG render. Design review and output compatibility are separate checks; an empty diagnostic list does not certify portability.",
     "compareStyled": "Merman applies its selected preset or custom recipe. Mermaid.js receives the Mermaid source and config. Choose None in the theme panel for a comparison without Merman styling.",
     "previewBacking": "Preview backing",
     "previewBackingHint": "Display only; excluded from image exports. A transparency grid reveals transparent regions without removing theme paint.",
@@ -479,56 +480,52 @@
       "transparency": "Transparency grid"
     },
     "title": "Theme panel",
-    "close": "Close theme panel",
+    "close": "Cancel and close theme panel",
     "resize": "Resize theme panel",
     "advanced": "Advanced",
     "json": "Theme JSON",
-    "jsonHint": "Read-only. Create or refine a theme with $design-merman-theme, then import the updated JSON.",
+    "jsonHint": "Read-only Merman styling. This JSON does not include the Mermaid base theme, diagram font, source or Mermaid config.",
     "noRecipe": "Select a preset or import a theme to view its JSON.",
     "importTitle": "Your theme",
-    "importHint": "Import a theme JSON file to preview it here. Use $design-merman-theme to create or refine a theme.",
+    "importHint": "Import a Merman theme JSON file to preview its styling. Apply uses it in this workspace; Cancel discards the preview.",
     "imported": "Imported theme JSON",
-    "previewHint": "Selections preview in Merman only. Apply saves this styling for exports and shared links; Cancel restores the last applied Merman styling.",
+    "previewHint": "Merman presets preview in Merman only. You can also try presets that have not been reviewed for this diagram.",
     "layeringHint": "Merman styling layers over the Mermaid base theme. Authored configuration, frontmatter, directives and source styles may override the result. Selecting a preset keeps your source, look and layout settings.",
-    "swatchHint": "Swatches come from each preset's recipe colors. The current diagram preview shows the resulting appearance.",
-    "catalogUnavailable": "The theme catalog is unavailable. It will load when the renderer is ready.",
+    "swatchHint": "Presets designed for this diagram appear first. Swatches show recipe colors; check the preview for the actual appearance.",
     "catalogDetails": "Preset runtime details",
     "renderInput": "Theme used by the displayed render",
-    "invalidDraft": "Invalid theme. Showing the last valid theme.",
+    "invalidDraft": "Invalid theme. The preview keeps the last valid theme.",
     "currentFamily": "Current diagram: {{family}}",
     "familyWaiting": "Current diagram: waiting for this render's detection…",
     "familyUnknown": "The current diagram family could not be detected.",
     "treatmentWaiting": "Waiting for current diagram",
     "treatments": {
-      "dedicated": "Dedicated design",
-      "base_only": "Base styling",
-      "unreviewed": "Design not yet reviewed"
+      "dedicated": "Designed for this diagram",
+      "base_only": "Shared styling",
+      "unreviewed": "Not yet reviewed for this diagram"
     },
     "reviewedFamilies": "Reviewed diagram families",
     "noReviewedFamilies": "No diagram families are listed as reviewed for this preset.",
-    "reviewedFamiliesHint": "Dedicated design adds family-specific styling; base styling uses the shared appearance. Unlisted families and unknown treatments are not yet reviewed, which does not mean unsupported. Review describes design intent; the actual scene and output target still matter.",
+    "reviewedFamiliesHint": "Designed for this diagram means it has specific styling. Shared styling uses the common appearance. Unlisted families are unreviewed; this does not mean unsupported. Check the current preview for the actual result.",
     "applicationNotes": "Application notes",
-    "useRecommendedSettings": "Use recommended settings",
     "showRecommendedConfig": "View recommended configuration",
-    "recommendedConfigHint": "This button merges the shown keys into Mermaid config, preserving unrelated settings. Config changes apply to both engines immediately and survive Cancel. Source configuration may still override them.",
-    "recommendedApplied": "Recommended settings applied to Mermaid config. Source configuration may still override them.",
-    "recommendedConfigError": "Could not update Mermaid config. Fix its JSON object and try again. {{error}}",
-    "sameRenderHint": "These observations belong only to the current inputs and this render. Theme application and target or host compatibility are separate checks.",
+    "recommendedConfigHint": "Adds only these keys to the config preview and keeps unrelated settings. Apply uses this config; Cancel discards it. Source settings can still take precedence.",
+    "recommendedConfigError": "Could not preview Mermaid config. Fix its JSON object and try again. {{error}}",
     "waiting": {
-      "render": "Waiting for the current diagram and theme to finish rendering…",
-      "importing": "Reading the theme file. Waiting for a validated selection and its render…",
-      "validating": "Validating the theme. Waiting for its render…",
-      "invalid": "Fix or replace the invalid theme to see its outcome. The preview retains the last valid theme."
+      "render": "Updating the preview…",
+      "importing": "Reading the theme file…",
+      "validating": "Checking the theme JSON…",
+      "invalid": "Fix, replace or restore the invalid theme. The preview keeps the last valid theme."
     },
     "outcome": {
-      "applied": "Theme applied. The renderer verified theme application for this SVG.",
-      "residual": "Theme application has residuals. Some styling remains conditional or unverified in this SVG.",
-      "incomplete": "Theme application is incomplete. Some requested styling was not fully applied.",
-      "not_present": "No Merman theme application was reported for this SVG. Mermaid and source styling may still be present.",
-      "failed": "The current Merman render failed. No completed theme result is available for this selection.",
-      "unavailable": "Theme evidence is missing or not recognized for this SVG. Application has not been confirmed."
+      "applied": "Theme applied to this preview.",
+      "residual": "Some requested styling is conditional or unverified.",
+      "incomplete": "Some requested styling could not be applied.",
+      "not_present": "No Merman theme styling was applied to this preview.",
+      "failed": "The preview could not be rendered. Check the diagram and config.",
+      "unavailable": "The renderer could not confirm the styling for this preview."
     },
-    "targetBoundary": "Output target and host",
+    "targetBoundary": "Output compatibility details",
     "observedTarget": "Observed output target: {{target}}",
     "diagnosticReasonsTitle": "Styling observations",
     "diagnosticReasonsUnknown": "Renderer diagnostic: {{code}}. See Advanced for the original details.",
@@ -557,9 +554,57 @@
     "target": {
       "checked": "The renderer's target checks passed for this output and these inputs. This does not establish compatibility with every host.",
       "host_dependent": "This output depends on the host, such as its fonts or browser rendering. Theme application alone does not remove those dependencies.",
-      "rejected": "Target compatibility checks failed, although an SVG was returned. Inspect Advanced for the reported reasons.",
+      "rejected": "Output compatibility checks failed, although an SVG was returned. Review the reasons below.",
       "unverified": "Target compatibility was not verified for this output.",
       "unavailable": "No recognized target compatibility evidence is available for this output."
+    },
+    "diagramFont": "Diagram font",
+    "inheritFontHint": "Let the theme and source choose the font.",
+    "explicitFontHint": "Preview this font in both engines. Config and source font settings may take precedence.",
+    "catalogLoading": "Loading presets when the renderer is ready…",
+    "catalogError": "Could not load presets. {{error}}",
+    "retryCatalog": "Retry loading presets",
+    "restoreValidDraft": "Restore last valid theme",
+    "maturity": {
+      "alpha": "Alpha",
+      "beta": "Beta",
+      "stable": "Stable"
+    },
+    "maturityLabel": "{{maturity}} preset",
+    "alphaHint": "Alpha · The design may change. Check the current preview before applying.",
+    "previewRecommendedConfig": "Preview recommended config",
+    "recommendationInConfig": "Already in the preview config",
+    "recommendationInSource": "Classic look is already declared in the source",
+    "recommendationSourceOverride": "Source declares the look as “{{value}}” and may override this config. Edit the source to change that declaration.",
+    "exchangeHint": "JSON contains only Merman styling, without Mermaid config. For the full diagram, Apply and copy a workspace link.",
+    "authoringTitle": "Creating a theme (optional)",
+    "authoringHint": "Edit the downloaded JSON with your own tools and import it again. If your agent has the $design-merman-theme skill installed, you can also use it to create a theme; the skill is optional.",
+    "detectedOverrides": "Config and source declarations",
+    "detectedOverridesHint": "These are declarations found in config or source. They do not confirm renderer support or the final appearance.",
+    "overrideKeys": {
+      "theme": "Base theme",
+      "font": "Font",
+      "look": "Look"
+    },
+    "overrideOrigins": {
+      "config": "Config declaration",
+      "source": "Source declaration"
+    },
+    "editOverride": {
+      "config": "Edit config",
+      "source": "Edit source"
+    },
+    "targetNotice": {
+      "host_dependent": "The exported SVG depends on the host’s fonts or rendering.",
+      "rejected": "Output compatibility checks failed. Open the details below for the reasons."
     }
+  },
+  "themeApplicationNotes": {
+    "flowchart-classic-shadows": "Hard node shadows need the Classic look and supported basic shapes (rectangles, diamonds and circles). Selecting this preset keeps your current look.",
+    "flowchart-classic-glow": "Node glow needs the Classic look and supported basic shapes. Selecting this preset keeps your current look."
+  },
+  "themeApplicationActions": {
+    "flowchart-classic-shadows": "Use Classic look",
+    "flowchart-classic-glow": "Use Classic look"
   }
 }

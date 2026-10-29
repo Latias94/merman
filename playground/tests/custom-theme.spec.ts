@@ -76,6 +76,7 @@ test("theme panel offers selection and import with read-only JSON in Advanced", 
   await expect(panel.getByLabel("Mermaid base theme", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /^None/ })).toBeVisible();
   await expect(panel.getByRole("button", { name: /^Brutalist/ })).toBeVisible();
+  await expect(panel.getByTestId("theme-appearance-overrides")).toHaveCount(0);
   await expect(panel.getByRole("textbox", { name: "Theme JSON", exact: true })).toBeHidden();
   await expect(panel.getByRole("button", { name: /^(New recipe|Customize|Create from)/ })).toHaveCount(0);
   await expect(panel.getByRole("tab")).toHaveCount(0);
@@ -83,6 +84,8 @@ test("theme panel offers selection and import with read-only JSON in Advanced", 
   const authored = `${JSON.stringify(recipe, null, 2)}\n`;
   await importRecipe(panel, authored);
   await expect.poll(() => svg(page)).toContain("#fef3c7");
+  await expect(panel).toContainText("JSON contains only Merman styling, without Mermaid config");
+  await expect(panel).toContainText("For the full diagram, Apply and copy a workspace link");
   await openAdvanced(panel);
   const json = panel.getByRole("textbox", { name: "Theme JSON", exact: true });
   await expect(json).toHaveAttribute("readonly", "");
@@ -173,11 +176,16 @@ test("invalid imports keep the last valid preview and Cancel preserves current s
     await expect(panel.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
     await expect(panel.getByRole("button", { name: "Download JSON", exact: true })).toBeDisabled();
     await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "waiting");
-    await expect(panel.getByTestId("theme-outcome")).toContainText("Fix or replace the invalid theme");
+    await expect(panel.getByTestId("theme-outcome")).toContainText("Fix, replace or restore the invalid theme");
     await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Flowchart");
     await expect(panel.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("data-theme-treatment", "dedicated");
     expect(await svg(page)).toBe(validPreview);
   }
+  await panel.getByRole("button", { name: "Restore last valid theme", exact: true }).click();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+  expect(JSON.parse(await copyRecipe(page, panel))).toEqual(recipe);
+  expect(await svg(page)).toBe(validPreview);
   await replaceEditorSource(page, "flowchart LR\nEdited[Source edit survives] --> B");
   await expect.poll(() => svg(page)).toContain("Source edit survives");
   await expect.poll(() => svg(page)).toContain("#fef3c7");
@@ -216,7 +224,7 @@ test("presets export standalone JSON and replace an imported selection directly"
   expect(JSON.parse(await copyRecipe(page, await openPanel(page)))).toEqual(parsed);
 });
 
-test("Mermaid theme is shared immediately and survives cancelling a Merman selection", async ({ page }) => {
+test("Cancel discards base theme and render-menu font drafts while preserving config editor changes", async ({ page }) => {
   await start(page, "brutalist");
   const panel = await openPanel(page);
   await panel.getByLabel("Mermaid base theme", { exact: true }).selectOption("forest");
@@ -228,16 +236,17 @@ test("Mermaid theme is shared immediately and survives cancelling a Merman selec
   await expect.poll(() => svg(page)).toContain("#fef3c7");
   await panel.getByRole("button", { name: "Cancel", exact: true }).click();
   const reopened = await openPanel(page);
-  await expect(reopened.getByLabel("Mermaid base theme", { exact: true })).toHaveValue("forest");
+  await expect(reopened.getByLabel("Mermaid base theme", { exact: true })).toHaveValue(DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme);
+  await expect(reopened.getByLabel("Diagram font", { exact: true })).toHaveValue(DEFAULT_WORKSPACE_SNAPSHOT.diagramFont);
   await expect(reopened.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("aria-pressed", "true");
   await reopened.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await page.getByRole("menuitem", { name: "Copy workspace link", exact: true }).click();
   const url = await page.evaluate(() => navigator.clipboard.readText());
   const saved = decodeShareHash(new URL(url).hash)!;
-  expect(saved.diagramTheme).toBe("forest");
+  expect(saved.diagramTheme).toBe(DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme);
   expect(saved.mermaidConfig).toBe(config);
-  expect(saved.diagramFont).toBe("arial");
+  expect(saved.diagramFont).toBe(DEFAULT_WORKSPACE_SNAPSHOT.diagramFont);
   expect(saved.themePresetId).toBe("brutalist");
   expect(saved.themeRecipeJson).toBeNull();
 });
@@ -256,11 +265,11 @@ test("same-render summary is readable before Advanced and retains raw execution 
   await expect.poll(() => svg(page)).toContain("用户");
   const summary = panel.getByTestId("theme-render-evidence");
   await expect(summary).toHaveAttribute("data-theme-evidence-state", /^(residual|incomplete)$/);
-  await expect(summary).toContainText("Output target and host");
-  await expect(summary).toContainText("Theme application and target or host compatibility are separate checks");
+  await expect(summary).toContainText("Output compatibility details");
+  await expect(summary.getByTestId("theme-target-details")).not.toHaveAttribute("open", "");
   await expect(panel.getByTestId("theme-execution-metadata")).toHaveCount(0);
   await openAdvanced(panel);
-  await expect(panel).toContainText("This render's theme outcome");
+  await expect(panel).toContainText("Current preview");
   await expect(panel).toContainText("an empty diagnostic list does not certify portability");
   const raw = panel.getByTestId("theme-execution-metadata");
   await expect.poll(async () => {
@@ -395,11 +404,12 @@ test("Chinese theme panel keeps import, preview and advanced JSON reachable on a
   const previewBounds = await page.locator(".preview-container").first().boundingBox();
   expect(previewBounds!.height).toBeGreaterThan(60);
   await expect(panel.getByLabel("Mermaid 基础主题", { exact: true })).toBeVisible();
-  await expect(panel).toContainText("当前图表字体：Mermaid 默认");
+  await expect(panel.getByLabel("图表字体", { exact: true })).toHaveValue("inherit");
+  await expect(panel).toContainText("由主题和源码决定字体");
   await panel.getByRole("button", { name: /^粗野主义/ }).click();
   const note = panel.locator('[data-theme-application-note="flowchart-classic-shadows"]');
-  await expect(note).toContainText("节点硬阴影需要 classic 外观");
-  await expect(note.getByRole("button", { name: "使用推荐设置", exact: true })).toBeVisible();
+  await expect(note).toContainText("节点硬阴影需要 Classic 外观");
+  await expect(note.getByRole("button", { name: "使用 Classic 外观", exact: true })).toBeVisible();
   const input = panel.getByLabel("导入 JSON", { exact: true });
   await input.setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from("{") });
   await expect(panel.getByRole("alert")).toBeVisible();

@@ -66,8 +66,9 @@ export function buildMermaidConfig(
   if (normalizedTheme !== "auto" && config.theme === undefined) {
     config.theme = normalizedTheme;
   }
-  if (options.diagramFont) {
-    applyDiagramFont(config, diagramFontStack(options.diagramFont));
+  const fontFamily = options.diagramFont && diagramFontStack(options.diagramFont);
+  if (fontFamily) {
+    applyDiagramFont(config, fontFamily);
   }
   return config;
 }
@@ -104,8 +105,8 @@ function safeInitializationConfig(
   }
   // Font values come only from the validated UI enum. User config font/CSS fields
   // remain source directives and therefore pass through Mermaid/Core sanitization.
-  if (options.diagramFont) {
-    const fontFamily = diagramFontStack(options.diagramFont);
+  const fontFamily = options.diagramFont && diagramFontStack(options.diagramFont);
+  if (fontFamily) {
     safe.fontFamily = fontFamily;
     safe.themeVariables = Object.freeze({ fontFamily });
   }
