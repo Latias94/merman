@@ -293,9 +293,13 @@ impl<'a> ParsePipeline<'a> {
 
     #[cfg(feature = "compat-json")]
     pub(crate) fn parse_json(&self, timing: ParseTiming) -> Result<Option<ParsedDiagram>> {
-        self.parse_model(
+        let operation = OperationControl::new();
+        let operation_context = self.engine.begin_operation()?;
+        self.parse_model_controlled_in_context(
             timing,
-            Self::parse_compatibility_semantic,
+            &operation,
+            &operation_context,
+            Self::parse_compatibility_semantic_controlled,
             |parsed, config| {
                 common_db::apply_common_db_sanitization(parsed.model.as_value_mut(), config);
             },
@@ -307,33 +311,35 @@ impl<'a> ParsePipeline<'a> {
             Self::remap_compatibility_semantic_warnings,
             |_| None,
         )
+        .map_err(Error::from)?
     }
 
     #[cfg(feature = "compat-json")]
-    fn parse_compatibility_semantic(
+    fn parse_compatibility_semantic_controlled(
         &self,
         code: &str,
         meta: &PresentationMetadata,
-    ) -> Result<CompatibilitySemanticParse> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<CompatibilitySemanticParse>> {
+        control.checkpoint()?;
         let Some(parser) = self.engine.diagram_registry.resolve(&meta.diagram_type) else {
-            return Err(Error::UnsupportedDiagram {
+            return Ok(Err(Error::UnsupportedDiagram {
                 diagram_type: meta.diagram_type.clone(),
-            });
+            }));
         };
         match parser {
-            ResolvedSemanticParser::BuiltIn(parser) => {
+            ResolvedSemanticParser::BuiltIn(parser) => Ok(
                 if let Some(parser) = family::warning_semantic_parser(&meta.diagram_type) {
-                    let (model, warning_facts) = parser(code, meta)?.into_parts();
-                    Ok(CompatibilitySemanticParse::built_in(model, warning_facts))
+                    parser(code, meta).map(|parsed| {
+                        let (model, warning_facts) = parsed.into_parts();
+                        CompatibilitySemanticParse::built_in(model, warning_facts)
+                    })
                 } else {
                     parser(code, meta).map(CompatibilitySemanticParse::built_in_without_warnings)
-                }
-            }
+                },
+            ),
             ResolvedSemanticParser::Custom(parser) => {
-                let control = OperationControl::new();
-                parser(code, meta, &control)
-                    .map_err(Error::from)?
-                    .map(CompatibilitySemanticParse::custom)
+                Ok(parser(code, meta, control)?.map(CompatibilitySemanticParse::custom))
             }
         }
     }
@@ -605,23 +611,8 @@ impl<'a> ParsePipeline<'a> {
     }
 
     pub(crate) fn parse_render_model(&self) -> Result<Option<ParsedDiagramRender>> {
-        self.parse_model(
-            ParseTiming::Render,
-            Self::parse_render_semantic_model,
-            |output, config| output.model_mut().sanitize_common_db_fields(config),
-            error_diagram::suppressed_error_render_diagram,
-            ParsedDiagramRender::from_parse_output,
-            |output, source_map| {
-                let (line_offset, column_offset) = source_map.source.parser_position_offset();
-                output
-                    .model_mut()
-                    .offset_parser_diagnostic_positions(line_offset, column_offset);
-                output.model_mut().remap_warning_fact_spans(|fact| {
-                    Self::remap_warning_fact_spans(fact, source_map);
-                });
-            },
-            |output| Some(output.model().kind()),
-        )
+        self.parse_render_model_controlled(&OperationControl::new())
+            .map_err(Error::from)?
     }
 
     /// Parses a typed render model while observing one caller-owned operation control.
@@ -650,20 +641,60 @@ impl<'a> ParsePipeline<'a> {
         operation: &OperationControl,
         operation_context: &runtime::OperationContext,
     ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        self.parse_model_controlled_in_context(
+            ParseTiming::Render,
+            operation,
+            operation_context,
+            Self::parse_render_semantic_model_controlled,
+            |output, config| output.model_mut().sanitize_common_db_fields(config),
+            error_diagram::suppressed_error_render_diagram,
+            ParsedDiagramRender::from_parse_output,
+            |output, source_map| {
+                let (line_offset, column_offset) = source_map.source.parser_position_offset();
+                output
+                    .model_mut()
+                    .offset_parser_diagnostic_positions(line_offset, column_offset);
+                output.model_mut().remap_warning_fact_spans(|fact| {
+                    Self::remap_warning_fact_spans(fact, source_map);
+                });
+            },
+            |output| Some(output.model().kind()),
+        )
+    }
+
+    // These callbacks are the explicit stages of the parse pipeline; bundling them into an
+    // untyped options object would obscure their distinct ownership and lifetimes.
+    #[allow(clippy::too_many_arguments)]
+    fn parse_model_controlled_in_context<T, O>(
+        &self,
+        timing: ParseTiming,
+        operation: &OperationControl,
+        operation_context: &runtime::OperationContext,
+        parse: impl FnOnce(
+            &Self,
+            &str,
+            &PresentationMetadata,
+            &OperationControl,
+        ) -> OperationControlResult<Result<T>>,
+        sanitize: impl FnOnce(&mut T, &MermaidConfig),
+        suppressed: impl FnOnce(&PresentationMetadata, &Error) -> O,
+        finish: impl FnOnce(PresentationMetadata, T) -> O,
+        postprocess: impl FnOnce(&mut T, &ParserSourceMap<'_>),
+        model_kind: impl FnOnce(&T) -> Option<&'static str>,
+    ) -> OperationControlResult<Result<Option<O>>> {
         operation.checkpoint_at(OperationPhase::Admission)?;
         let control = operation.for_phase(OperationPhase::Parse);
         control.checkpoint_at(OperationPhase::Parse)?;
         runtime::with_operation_context(operation_context, || {
-            let timing = ParseTiming::Render;
             let operation_timing = timing.operation_timing(operation_context);
             let total_start = operation_timing.map(runtime::OperationTiming::start);
-            operation.checkpoint_at(OperationPhase::Parse)?;
+
+            let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
             let directive_recovery = if self.options.suppress_errors {
                 DirectiveRecoveryMode::RecoverLine
             } else {
                 DirectiveRecoveryMode::Strict
             };
-            let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
             let preprocessed = self
                 .preprocess_for_with_directive_recovery_controlled(directive_recovery, &control)?;
             let Some((code, meta)) = (match preprocessed {
@@ -675,138 +706,47 @@ impl<'a> ParsePipeline<'a> {
             let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
             let source_map = ParserSourceMap::new(&code);
+
             let parse_start = operation_timing.map(runtime::OperationTiming::start);
-            let parsed = self.parse_render_semantic_model_controlled(
-                source_map.parser_input(),
-                &meta,
-                &control,
-            );
+            let parse_res = parse(self, source_map.parser_input(), &meta, &control);
             let parse = parse_start.map(runtime::OperationTimer::elapsed);
+            control.checkpoint()?;
             operation.checkpoint_at(OperationPhase::Semantic)?;
-            let parsed = parsed?;
-            let mut output = match parsed {
-                Ok(output) => output,
-                Err(error) => {
+
+            let mut model = match parse_res? {
+                Ok(model) => model,
+                Err(err) => {
                     if !self.options.suppress_errors {
-                        return Ok(Err(source_map.remap_parse_error(error)));
+                        return Ok(Err(source_map.remap_parse_error(err)));
                     }
+
                     timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
-                    return Ok(Ok(Some(error_diagram::suppressed_error_render_diagram(
+                    return Ok(Ok(Some(suppressed(
                         &meta,
-                        &source_map.remap_parse_error(error),
+                        &source_map.remap_parse_error(err),
                     ))));
                 }
             };
+
             let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
-            output
-                .model_mut()
-                .sanitize_common_db_fields(meta.effective_config.as_config());
+            sanitize(&mut model, meta.effective_config.as_config());
             let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
-            let (line_offset, column_offset) = code.parser_position_offset();
-            output
-                .model_mut()
-                .offset_parser_diagnostic_positions(line_offset, column_offset);
-            output.model_mut().remap_warning_fact_spans(|fact| {
-                Self::remap_warning_fact_spans(fact, &source_map);
-            });
+            postprocess(&mut model, &source_map);
             operation.checkpoint_at(OperationPhase::Semantic)?;
+
             timing.log_success(ParseTimingSuccess {
                 total_start,
                 meta: &meta,
-                model_kind: Some(output.model().kind()),
+                model_kind: model_kind(&model),
                 preprocess,
                 parse,
                 sanitize,
                 input_bytes: self.text.len(),
             });
-            Ok(Ok(Some(ParsedDiagramRender::from_parse_output(
-                meta, output,
-            ))))
+
+            Ok(Ok(Some(finish(meta, model))))
         })
-    }
-
-    // These callbacks are the explicit stages of the parse pipeline; bundling them into an
-    // untyped options object would obscure their distinct ownership and lifetimes.
-    #[allow(clippy::too_many_arguments)]
-    fn parse_model<T, O>(
-        &self,
-        timing: ParseTiming,
-        parse: impl FnOnce(&Self, &str, &PresentationMetadata) -> Result<T>,
-        sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&PresentationMetadata, &Error) -> O,
-        finish: impl FnOnce(PresentationMetadata, T) -> O,
-        postprocess: impl FnOnce(&mut T, &ParserSourceMap<'_>),
-        model_kind: impl FnOnce(&T) -> Option<&'static str>,
-    ) -> Result<Option<O>> {
-        self.with_operation_context(|operation_context| {
-            self.parse_model_in_context(
-                timing,
-                operation_context,
-                parse,
-                sanitize,
-                suppressed,
-                finish,
-                postprocess,
-                model_kind,
-            )
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn parse_model_in_context<T, O>(
-        &self,
-        timing: ParseTiming,
-        operation_context: &runtime::OperationContext,
-        parse: impl FnOnce(&Self, &str, &PresentationMetadata) -> Result<T>,
-        sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&PresentationMetadata, &Error) -> O,
-        finish: impl FnOnce(PresentationMetadata, T) -> O,
-        postprocess: impl FnOnce(&mut T, &ParserSourceMap<'_>),
-        model_kind: impl FnOnce(&T) -> Option<&'static str>,
-    ) -> Result<Option<O>> {
-        let operation_timing = timing.operation_timing(operation_context);
-        let total_start = operation_timing.map(runtime::OperationTiming::start);
-
-        let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
-        let Some((code, meta)) = self.preprocess_for()? else {
-            return Ok(None);
-        };
-        let source_map = ParserSourceMap::new(&code);
-        let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
-
-        let parse_start = operation_timing.map(runtime::OperationTiming::start);
-        let parse_res = parse(self, source_map.parser_input(), &meta);
-        let parse = parse_start.map(runtime::OperationTimer::elapsed);
-
-        let mut model = match parse_res {
-            Ok(model) => model,
-            Err(err) => {
-                if !self.options.suppress_errors {
-                    return Err(source_map.remap_parse_error(err));
-                }
-
-                timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
-                return Ok(Some(suppressed(&meta, &source_map.remap_parse_error(err))));
-            }
-        };
-
-        let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
-        sanitize(&mut model, meta.effective_config.as_config());
-        let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
-        postprocess(&mut model, &source_map);
-
-        timing.log_success(ParseTimingSuccess {
-            total_start,
-            meta: &meta,
-            model_kind: model_kind(&model),
-            preprocess,
-            parse,
-            sanitize,
-            input_bytes: self.text.len(),
-        });
-
-        Ok(Some(finish(meta, model)))
     }
 
     #[cfg(feature = "compat-json")]
@@ -918,16 +858,6 @@ impl<'a> ParsePipeline<'a> {
         source_map.source.remap_warning_fact_spans(fact);
     }
 
-    fn parse_render_semantic_model(
-        &self,
-        code: &str,
-        meta: &PresentationMetadata,
-    ) -> Result<RenderSemanticParseOutput> {
-        let control = OperationControl::new();
-        self.parse_render_semantic_model_controlled(code, meta, &control)
-            .map_err(Error::from)?
-    }
-
     fn parse_render_semantic_model_controlled(
         &self,
         code: &str,
@@ -991,17 +921,6 @@ impl<'a> ParsePipeline<'a> {
         Ok(Err(Error::UnsupportedDiagram {
             diagram_type: meta.diagram_type.clone(),
         }))
-    }
-
-    fn preprocess_for(&self) -> Result<Option<(PreprocessedSource, PresentationMetadata)>> {
-        let directive_recovery = if self.options.suppress_errors {
-            DirectiveRecoveryMode::RecoverLine
-        } else {
-            DirectiveRecoveryMode::Strict
-        };
-        let control = OperationControl::new();
-        self.preprocess_for_with_directive_recovery_controlled(directive_recovery, &control)
-            .expect("a private parse control cannot be cancelled")
     }
 
     fn preprocess_for_with_directive_recovery_controlled(
@@ -1453,6 +1372,258 @@ mod editor_parse_source_map_tests {
 
         assert_eq!(error.phase, OperationPhase::Parse);
         assert_eq!(error.reason, CancelReason::Requested);
+    }
+
+    #[test]
+    fn ordinary_render_parsing_preserves_callback_cancellation() {
+        fn cancelling_success(
+            _code: &str,
+            _meta: &PresentationMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
+            control.cancel();
+            Ok(Ok(CustomJsonRenderModel::new(
+                "cancelled",
+                serde_json::json!({}),
+            )))
+        }
+
+        for parser in [
+            cancelling_render_parser as crate::CustomJsonRenderParser,
+            cancelling_success,
+        ] {
+            let mut engine = MermaidEngine::new();
+            engine
+                .render_diagram_registry_mut()
+                .insert("flowchart-v2", parser);
+            for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+                for known_type in [false, true] {
+                    let result = if known_type {
+                        engine.parse_diagram_for_render_model_with_type_sync(
+                            "flowchart-v2",
+                            "flowchart TD\nA --> B",
+                            options,
+                        )
+                    } else {
+                        engine.parse_diagram_for_render_model_sync("flowchart TD\nA --> B", options)
+                    };
+                    let Error::OperationCancelled(error) = result
+                        .expect_err("cancellation must never publish a model or error diagram")
+                    else {
+                        panic!("callback cancellation must remain an operation error");
+                    };
+                    assert_eq!(error.phase, OperationPhase::Parse);
+                    assert_eq!(error.reason, CancelReason::Requested);
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "compat-json")]
+    #[test]
+    fn ordinary_json_parsing_preserves_callback_cancellation() {
+        fn cancelling_parser(
+            _code: &str,
+            meta: &PresentationMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<serde_json::Value>> {
+            control.cancel();
+            Ok(Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                "cancelled JSON parser",
+            )))
+        }
+        fn cancelling_success(
+            _code: &str,
+            _meta: &PresentationMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<serde_json::Value>> {
+            control.cancel();
+            Ok(Ok(serde_json::json!({})))
+        }
+
+        for parser in [
+            cancelling_parser as crate::DiagramSemanticParser,
+            cancelling_success,
+        ] {
+            let mut engine = MermaidEngine::new();
+            engine.diagram_registry_mut().insert("flowchart-v2", parser);
+            for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+                for known_type in [false, true] {
+                    let result = if known_type {
+                        engine.parse_diagram_with_type_sync(
+                            "flowchart-v2",
+                            "flowchart TD\nA --> B",
+                            options,
+                        )
+                    } else {
+                        engine.parse_diagram_sync("flowchart TD\nA --> B", options)
+                    };
+                    let Error::OperationCancelled(error) = result
+                        .expect_err("cancellation must never publish JSON or an error diagram")
+                    else {
+                        panic!("callback cancellation must remain an operation error");
+                    };
+                    assert_eq!(error.phase, OperationPhase::Parse);
+                    assert_eq!(error.reason, CancelReason::Requested);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn render_entrypoints_preserve_direct_outer_cancellation() {
+        fn cancelled<T>(
+            _code: &str,
+            _meta: &PresentationMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<T>> {
+            assert!(!control.is_cancelled());
+            Err(OperationCancelled {
+                phase: OperationPhase::Parse,
+                reason: CancelReason::Requested,
+            })
+        }
+
+        let mut render_engine = MermaidEngine::new();
+        render_engine
+            .render_diagram_registry_mut()
+            .insert("flowchart-v2", cancelled::<CustomJsonRenderModel>);
+        let engines = [
+            (false, render_engine),
+            #[cfg(feature = "compat-json")]
+            (true, {
+                let mut engine = MermaidEngine::new();
+                engine
+                    .diagram_registry_mut()
+                    .insert("flowchart-v2", cancelled::<serde_json::Value>);
+                engine
+            }),
+        ];
+        let expected = OperationCancelled {
+            phase: OperationPhase::Parse,
+            reason: CancelReason::Requested,
+        };
+        let source = "flowchart TD\nA --> B";
+        for (semantic_fallback, engine) in engines {
+            for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+                for known_type in [false, true] {
+                    let ordinary = if known_type {
+                        engine.parse_diagram_for_render_model_with_type_sync(
+                            "flowchart-v2",
+                            source,
+                            options,
+                        )
+                    } else {
+                        engine.parse_diagram_for_render_model_sync(source, options)
+                    };
+                    let Error::OperationCancelled(error) =
+                        ordinary.expect_err("outer cancellation must not become an error diagram")
+                    else {
+                        panic!("outer cancellation must remain an operation error");
+                    };
+                    assert_eq!(error, expected, "semantic_fallback={semantic_fallback}");
+
+                    let control = OperationControl::new();
+                    let controlled = if known_type {
+                        engine.parse_diagram_for_render_model_with_type_controlled_sync(
+                            "flowchart-v2",
+                            source,
+                            options,
+                            &control,
+                        )
+                    } else {
+                        engine.parse_diagram_for_render_model_controlled_sync(
+                            source, options, &control,
+                        )
+                    };
+                    assert_eq!(
+                        controlled.expect_err("cancellation must remain in the outer result"),
+                        expected,
+                        "semantic_fallback={semantic_fallback}"
+                    );
+                    assert!(!control.is_cancelled());
+
+                    #[cfg(feature = "compat-json")]
+                    if semantic_fallback {
+                        let json = if known_type {
+                            engine.parse_diagram_with_type_sync("flowchart-v2", source, options)
+                        } else {
+                            engine.parse_diagram_sync(source, options)
+                        };
+                        let Error::OperationCancelled(error) =
+                            json.expect_err("outer cancellation must not publish error JSON")
+                        else {
+                            panic!("JSON must preserve the operation cancellation");
+                        };
+                        assert_eq!(error, expected);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn render_entrypoints_use_the_caller_owned_runtime_context() {
+        fn observe_context(
+            _code: &str,
+            _meta: &PresentationMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
+            control.checkpoint()?;
+            Ok(Ok(CustomJsonRenderModel::new(
+                "runtime-context",
+                serde_json::json!({
+                    "today": crate::runtime::today_local().to_string(),
+                    "id": crate::runtime::generated_id_hex("parse-pipeline.context", 0, 16),
+                }),
+            )))
+        }
+
+        let context = crate::runtime::RuntimePolicy::deterministic()
+            .with_fixed_today(crate::time::CivilDate::new(2030, 1, 2))
+            .with_fixed_seed(73)
+            .begin_operation()
+            .unwrap();
+        let mut engine = MermaidEngine::new().with_runtime_policy(
+            crate::runtime::RuntimePolicy::deterministic()
+                .with_fixed_today(crate::time::CivilDate::new(1999, 12, 31))
+                .with_fixed_seed(11),
+        );
+        engine
+            .render_diagram_registry_mut()
+            .insert("flowchart-v2", observe_context);
+        let expected = serde_json::json!({
+            "today": context.today_local().to_string(),
+            "id": context.derive_hex("parse-pipeline.context", 0, 16),
+        });
+        let source = "flowchart TD\nA --> B";
+        for known_type in [false, true] {
+            let control = OperationControl::new();
+            let parsed = if known_type {
+                engine.parse_diagram_for_render_model_with_type_controlled_in_context_sync(
+                    "flowchart-v2",
+                    source,
+                    ParseOptions::strict(),
+                    &control,
+                    &context,
+                )
+            } else {
+                engine.parse_diagram_for_render_model_controlled_in_context_sync(
+                    source,
+                    ParseOptions::strict(),
+                    &control,
+                    &context,
+                )
+            }
+            .unwrap()
+            .unwrap()
+            .unwrap();
+            let crate::RenderSemanticModel::CustomJson(model) = parsed.model() else {
+                panic!("the runtime context observer must produce its custom model");
+            };
+            assert_eq!(model.value(), &expected);
+        }
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
