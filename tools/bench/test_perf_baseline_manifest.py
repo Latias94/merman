@@ -804,6 +804,15 @@ class PerfBaselineManifestTest(unittest.TestCase):
                     self.freeze()
 
     def test_freeze_records_committed_tree_recipes_and_every_fixture(self) -> None:
+        self.corpus["fixtures"][0] = {
+            "name": "flowchart",
+            "source": "fixtures/flowchart.mmd",
+        }
+        self._write_json(self.corpus_path, self.corpus)
+        report = baseline.load_strict_json(self.report_path)
+        report["inputs"]["corpus"] = file_record(self.corpus_path)
+        self._write_json(self.report_path, report)
+
         manifest = self.freeze()
 
         self.assertIn(
@@ -839,6 +848,67 @@ class PerfBaselineManifestTest(unittest.TestCase):
         self.assertEqual(memory["seed"], 101)
         self.assertEqual(memory["process_lifecycle"], "fresh-process")
         self.assertEqual(manifest["host"], self.host)
+
+    def test_freeze_rejects_invalid_shared_corpus_lanes(self) -> None:
+        original = copy.deepcopy(self.corpus)
+        for field, value, diagnostic in (
+            ("kind", "unknown", "kind is not registered"),
+            ("logical_operations_per_estimate", True, "must be a positive integer"),
+            ("history_aliases", ["end_to_end/{fixture}"], "namespace collision"),
+            ("measurement_metrics", ["rss_bytes"], "native allocator metrics"),
+        ):
+            with self.subTest(field=field):
+                damaged = copy.deepcopy(original)
+                damaged["lanes"][1][field] = value
+                self._write_json(self.corpus_path, damaged)
+                with self.assertRaisesRegex(baseline.ManifestError, diagnostic):
+                    self.freeze()
+
+    def test_freeze_requires_canonical_unique_fixture_sources(self) -> None:
+        for source in (
+            "./fixtures/flowchart.mmd",
+            "fixtures/../fixtures/flowchart.mmd",
+            "fixtures//flowchart.mmd",
+            self.fixture.as_posix(),
+        ):
+            with self.subTest(source=source):
+                self.corpus["fixtures"][0]["source"] = source
+                self._write_json(self.corpus_path, self.corpus)
+                with self.assertRaisesRegex(
+                    baseline.ManifestError, "canonical|repository-relative"
+                ):
+                    self.freeze()
+
+        self.corpus["fixtures"][0]["source"] = "fixtures/flowchart.mmd"
+        self.corpus["fixtures"].append(
+            {**self.corpus["fixtures"][0], "name": "second-flowchart"}
+        )
+        self._write_json(self.corpus_path, self.corpus)
+        with self.assertRaisesRegex(baseline.ManifestError, "duplicate sources"):
+            self.freeze()
+
+    def test_freeze_requires_report_corpus_path_and_content_identity(self) -> None:
+        original = baseline.load_strict_json(self.report_path)
+        corpus_bytes = self.corpus_path.read_bytes()
+        copy_path = self.corpus_path.with_name("copy.json")
+        copy_path.write_bytes(corpus_bytes)
+        damaged = copy.deepcopy(original)
+        damaged["inputs"]["corpus"] = file_record(copy_path)
+        self._write_json(self.report_path, damaged)
+        with self.assertRaisesRegex(baseline.ManifestError, "corpus.path path mismatch"):
+            self.freeze()
+
+        self._write_json(self.report_path, original)
+        for content, field in (
+            (corpus_bytes + b"\n", "bytes"),
+            (corpus_bytes.replace(b'"test"', b'"TEST"', 1), "sha256"),
+        ):
+            with self.subTest(field=field):
+                self.corpus_path.write_bytes(content)
+                with self.assertRaisesRegex(
+                    baseline.ManifestError, f"corpus.{field} differs"
+                ):
+                    self.freeze()
 
     def test_freeze_accepts_schema_v2_retained_memory_and_rejects_tampering(
         self,

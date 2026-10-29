@@ -22,8 +22,7 @@ from typing import Any, Protocol
 
 from compare_mermaid_renderers import best_effort_cpu_model
 from compare_self import cargo_clean_bench_profile_command, cargo_prebuild_command
-from corpus_utils import load_corpus as load_typed_corpus
-from corpus_utils import resolve_lane_selector
+from corpus_utils import Corpus, LaneMetadata, load_corpus
 from native_memory import (
     MemoryContractError,
     suite_exit_code,
@@ -65,10 +64,6 @@ DEFAULT_MANIFEST_PATHS = ("Cargo.toml", "crates/merman/Cargo.toml")
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_OBJECT_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
-_REQUIRED_MEMORY_METRICS = frozenset(
-    {"allocation_count", "allocated_bytes", "peak_growth_bytes"}
-)
-_SUPPORTED_MEMORY_METRICS = _REQUIRED_MEMORY_METRICS | {"retained_growth_bytes"}
 _PROCESS_LIFECYCLES = frozenset({"fresh-process", "reused-process"})
 _ENGINE_LIFECYCLES = frozenset(
     {"cold-engine", "reused-engine", "not-applicable"}
@@ -157,34 +152,6 @@ _NATIVE_RECIPE_FIELDS = frozenset(
         "subprocess_isolation",
         "pair_order",
     }
-)
-_CORPUS_FIELDS = frozenset(
-    {"schema_version", "default_group", "suites", "lanes", "fixtures"}
-)
-_CORPUS_LANE_FIELDS = frozenset(
-    {
-        "id",
-        "kind",
-        "owner",
-        "public_operation",
-        "diagnostic_stage",
-        "parent_public_lane",
-        "process_lifecycle",
-        "engine_lifecycle",
-        "logical_operations_per_estimate",
-        "transport",
-        "required_features",
-        "selector",
-        "history_aliases",
-        "size_vector",
-        "workload",
-        "evidence_contract",
-        "measurement_metrics",
-        "semantic_output_dimensions",
-    }
-)
-_CORPUS_FIXTURE_FIELDS = frozenset(
-    {"name", "family", "size", "category", "source", "suites", "features", "quality"}
 )
 _REPORT_FIELDS = frozenset(
     {
@@ -986,107 +953,38 @@ def _verify_record(
     return path
 
 
-def _validate_corpus(value: object) -> Mapping[str, object]:
-    corpus = _object(value, "corpus")
-    _fields(corpus, _CORPUS_FIELDS, "corpus")
-    if _integer(corpus["schema_version"], "corpus.schema_version", minimum=1) != 2:
+def _load_corpus(path: Path) -> Corpus:
+    try:
+        corpus = load_corpus(path)
+    except (OSError, TypeError, ValueError) as error:
+        raise ManifestError(f"cannot load benchmark corpus {path}: {error}") from error
+    if corpus.schema_version != 2:
         raise ManifestError("performance baseline requires corpus schema_version 2")
-    _string(corpus["default_group"], "corpus.default_group")
-    suites = _object(corpus["suites"], "corpus.suites")
-    if not suites:
-        raise ManifestError("corpus.suites must not be empty")
-    for key, description in suites.items():
-        _string(key, "corpus suite name")
-        _string(description, f"corpus.suites.{key}")
-
-    lanes = _list(corpus["lanes"], "corpus.lanes")
-    if not lanes:
-        raise ManifestError("corpus.lanes must not be empty")
-    lane_ids: set[str] = set()
-    selectors: set[str] = set()
-    for index, raw_lane in enumerate(lanes):
-        context = f"corpus.lanes[{index}]"
-        lane = _object(raw_lane, context)
-        _fields(lane, _CORPUS_LANE_FIELDS, context)
-        lane_id = _string(lane["id"], f"{context}.id")
-        if lane_id in lane_ids:
-            raise ManifestError(f"duplicate corpus lane id: {lane_id}")
-        lane_ids.add(lane_id)
-        for field in ("kind", "owner", "public_operation", "process_lifecycle", "engine_lifecycle", "transport", "selector", "workload"):
-            _string(lane[field], f"{context}.{field}")
-        _optional_string(lane["diagnostic_stage"], f"{context}.diagnostic_stage")
-        _optional_string(lane["parent_public_lane"], f"{context}.parent_public_lane")
-        _optional_string(lane["evidence_contract"], f"{context}.evidence_contract")
-        if lane["process_lifecycle"] not in _PROCESS_LIFECYCLES:
-            raise ManifestError(f"{context}.process_lifecycle is unknown")
-        if lane["engine_lifecycle"] not in _ENGINE_LIFECYCLES:
-            raise ManifestError(f"{context}.engine_lifecycle is unknown")
-        _integer(
-            lane["logical_operations_per_estimate"],
-            f"{context}.logical_operations_per_estimate",
-            minimum=1,
-        )
-        _string_list(lane["required_features"], f"{context}.required_features", allow_empty=True)
-        history = _string_list(lane["history_aliases"], f"{context}.history_aliases", allow_empty=True)
-        selector_values = [str(lane["selector"]), *history]
-        if any(selector in selectors for selector in selector_values):
-            raise ManifestError(f"{context} reuses a lane selector or history alias")
-        selectors.update(selector_values)
-        _int_list(lane["size_vector"], f"{context}.size_vector", allow_empty=True)
-        _string_list(
-            lane["measurement_metrics"], f"{context}.measurement_metrics", allow_empty=False
-        )
-        _string_list(
-            lane["semantic_output_dimensions"],
-            f"{context}.semantic_output_dimensions",
-            allow_empty=False,
-        )
-
-    fixtures = _list(corpus["fixtures"], "corpus.fixtures")
-    if not fixtures:
+    if not corpus.fixtures:
         raise ManifestError("corpus.fixtures must not be empty")
-    names: set[str] = set()
     sources: set[str] = set()
-    for index, raw_fixture in enumerate(fixtures):
-        context = f"corpus.fixtures[{index}]"
-        fixture = _object(raw_fixture, context)
-        _fields(fixture, _CORPUS_FIXTURE_FIELDS, context)
-        for field in ("name", "family", "size", "category"):
-            _string(fixture[field], f"{context}.{field}")
-        name = str(fixture["name"])
-        source = _validate_path(fixture["source"], f"{context}.source", allow_absolute=False)
-        if name in names or source in sources:
-            raise ManifestError("corpus fixtures contain duplicate names or sources")
-        names.add(name)
+    for index, fixture in enumerate(corpus.fixtures):
+        source = _validate_path(
+            fixture.source, f"corpus.fixtures[{index}].source", allow_absolute=False
+        )
+        if source in sources:
+            raise ManifestError("corpus fixtures contain duplicate sources")
         sources.add(source)
-        _string_list(fixture["suites"], f"{context}.suites", allow_empty=True)
-        _string_list(fixture["features"], f"{context}.features", allow_empty=True)
-        _string_list(fixture["quality"], f"{context}.quality", allow_empty=True)
     return corpus
 
 
-def _load_corpus(path: Path) -> Mapping[str, object]:
-    return _validate_corpus(load_strict_json(path))
+def _find_lane(corpus: Corpus, lane_id: str) -> LaneMetadata:
+    for lane in corpus.lanes:
+        if lane.id == lane_id:
+            return lane
+    raise ManifestError(f"corpus lane {lane_id!r} is not registered")
 
 
-def _find_lane(corpus: Mapping[str, object], lane_id: str) -> Mapping[str, object]:
-    matches = [
-        _object(raw, "corpus lane")
-        for raw in _list(corpus["lanes"], "corpus.lanes")
-        if isinstance(raw, Mapping) and raw.get("id") == lane_id
-    ]
-    if len(matches) != 1:
-        raise ManifestError(f"corpus lane {lane_id!r} resolved to {len(matches)} entries")
-    return matches[0]
-
-
-def _fixture_records(root: Path, corpus: Mapping[str, object]) -> list[dict[str, object]]:
+def _fixture_records(root: Path, corpus: Corpus) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
-    for index, raw_fixture in enumerate(_list(corpus["fixtures"], "corpus.fixtures")):
-        fixture = _object(raw_fixture, f"corpus.fixtures[{index}]")
-        source = str(fixture["source"])
-        record = _record_repo_file(root, source, f"corpus fixture {fixture['name']}")
-        records.append({"name": fixture["name"], **record})
+    for fixture in corpus.fixtures:
+        record = _record_repo_file(root, fixture.source, f"corpus fixture {fixture.name}")
+        records.append({"name": fixture.name, **record})
     return records
 
 
@@ -1181,7 +1079,7 @@ def _validate_report_source(
 def _validate_report_schedule(
     report: Mapping[str, object],
     method: Mapping[str, object],
-    lane: Mapping[str, object],
+    lane: LaneMetadata,
     owner_contract: Mapping[str, object],
     executable_sha256: str,
 ) -> tuple[dict[str, object], list[Mapping[str, object]]]:
@@ -1208,7 +1106,7 @@ def _validate_report_schedule(
                 _fields(request, _REPORT_REQUEST_FIELDS, f"{context}.request")
                 expected_request = {
                     "schema_version": 1,
-                    "lane_id": lane["id"],
+                    "lane_id": lane.id,
                     "mode": mode,
                     "scale": scale,
                     "seed": method["seed"],
@@ -1257,12 +1155,10 @@ def _validate_report_schedule(
                     if response.get(field) != request[field]:
                         raise ManifestError(f"{context}.response echo drift for {field}")
                 lane_echo = {
-                    "public_operation": lane["public_operation"],
-                    "process_lifecycle": lane["process_lifecycle"],
-                    "engine_lifecycle": lane["engine_lifecycle"],
-                    "logical_operations_per_estimate": lane[
-                        "logical_operations_per_estimate"
-                    ],
+                    "public_operation": lane.public_operation,
+                    "process_lifecycle": lane.process_lifecycle,
+                    "engine_lifecycle": lane.engine_lifecycle,
+                    "logical_operations_per_estimate": lane.logical_operations_per_estimate,
                 }
                 for field, expected in lane_echo.items():
                     if response.get(field) != expected:
@@ -1314,7 +1210,7 @@ def _inspect_native_memory_report(
     *,
     corpus_path: Path,
     corpus_record: Mapping[str, object],
-    corpus: Mapping[str, object],
+    corpus: Corpus,
     workspace_manifest_record: Mapping[str, object],
     package_manifest_record: Mapping[str, object],
     lock_record: Mapping[str, object],
@@ -1407,41 +1303,14 @@ def _inspect_native_memory_report(
     report_lane = _object(report["lane"], "native-memory report.lane")
     _fields(report_lane, _REPORT_LANE_FIELDS, "native-memory report.lane")
     lane = _find_lane(corpus, str(report_lane["id"]))
-    try:
-        typed_corpus = load_typed_corpus(corpus_path)
-        typed_lane = resolve_lane_selector(typed_corpus, str(report_lane["id"]))
-    except (OSError, TypeError, ValueError) as error:
-        raise ManifestError(
-            f"native-memory corpus lane cannot be validated by the driver: {error}"
-        ) from error
-    lane_fields = (
-        "id",
-        "public_operation",
-        "process_lifecycle",
-        "engine_lifecycle",
-        "logical_operations_per_estimate",
-        "transport",
-        "workload",
-        "size_vector",
-        "measurement_metrics",
-        "semantic_output_dimensions",
-    )
-    for field in lane_fields:
-        if report_lane[field] != lane[field]:
+    for field in sorted(_REPORT_LANE_FIELDS):
+        expected = getattr(lane, field)
+        if isinstance(expected, tuple):
+            expected = list(expected)
+        if report_lane[field] != expected:
             raise ManifestError(f"native-memory report lane drift for {field}")
-    if lane["process_lifecycle"] != "fresh-process":
-        raise ManifestError("native-memory corpus lane must use fresh-process lifecycle")
-    if lane["transport"] != "native-system-allocator-subprocess":
+    if lane.transport != "native-system-allocator-subprocess":
         raise ManifestError("native-memory corpus lane uses the wrong transport")
-    if tuple(lane["size_vector"]) != MEMORY_SCALES:
-        raise ManifestError("native-memory corpus lane uses the wrong size vector")
-    lane_metrics = frozenset(lane["measurement_metrics"])
-    if not _REQUIRED_MEMORY_METRICS.issubset(
-        lane_metrics
-    ) or not lane_metrics.issubset(_SUPPORTED_MEMORY_METRICS):
-        raise ManifestError(
-            "native-memory corpus lane uses unsupported allocator metrics"
-        )
 
     inputs = _object(report["inputs"], "native-memory report.inputs")
     input_fields = frozenset(inputs)
@@ -1497,7 +1366,7 @@ def _inspect_native_memory_report(
         "native-memory report.inputs.owner_contract.path",
     )
     try:
-        owner_value = load_owner_contract(owner_path, lane=typed_lane)
+        owner_value = load_owner_contract(owner_path, lane=lane)
     except (DriverContractError, OSError, TypeError, ValueError) as error:
         raise ManifestError(
             f"native-memory owner contract is invalid: {error}"
@@ -1523,7 +1392,7 @@ def _inspect_native_memory_report(
     owner_record = _record_file(root, owner_path, "native-memory owner contract")
     if owner_record["bytes"] != owner_input["bytes"] or owner_record["sha256"] != owner_input["sha256"]:
         raise ManifestError("native-memory owner contract digest differs from the report")
-    evidence_contract = lane["evidence_contract"]
+    evidence_contract = lane.evidence_contract
     if not isinstance(evidence_contract, str):
         raise ManifestError("native-memory corpus lane is missing its evidence contract path")
     expected_owner, _ = _resolve_repo_file(
@@ -1779,7 +1648,7 @@ def _inspect_native_memory_report(
             contract=owner_value,
             bootstrap_resamples=int(method["bootstrap_resamples"]),
             seed_material=(
-                f"{lane['id']}:{method['seed']}:{method['repeats']}"
+                f"{lane.id}:{method['seed']}:{method['repeats']}"
             ),
         )
     except (DriverContractError, MemoryContractError, TypeError, ValueError) as error:
@@ -1811,13 +1680,13 @@ def _inspect_native_memory_report(
         "build_command": recipe["build_command"],
         "build_environment": recipe["build_environment"],
         "requested_toolchain": recipe["requested_toolchain"],
-        "lane_id": lane["id"],
-        "public_operation": lane["public_operation"],
-        "process_lifecycle": lane["process_lifecycle"],
-        "engine_lifecycle": lane["engine_lifecycle"],
-        "logical_operations_per_estimate": lane["logical_operations_per_estimate"],
-        "transport": lane["transport"],
-        "workload": lane["workload"],
+        "lane_id": lane.id,
+        "public_operation": lane.public_operation,
+        "process_lifecycle": lane.process_lifecycle,
+        "engine_lifecycle": lane.engine_lifecycle,
+        "logical_operations_per_estimate": lane.logical_operations_per_estimate,
+        "transport": lane.transport,
+        "workload": lane.workload,
         "scales": list(method["scales"]),
         "repeats": method["repeats"],
         "seed": method["seed"],
@@ -1840,7 +1709,7 @@ def _inspect_native_memory_report(
 
 
 def _default_latency_recipe(
-    corpus_path: str, lane: Mapping[str, object]
+    corpus_path: str, lane: LaneMetadata
 ) -> dict[str, object]:
     recipe = {
         "package": "merman",
@@ -1854,13 +1723,13 @@ def _default_latency_recipe(
         "target": None,
         "corpus": corpus_path,
         "suite": "canary",
-        "lane_id": lane["id"],
-        "selector": lane["selector"],
-        "public_operation": lane["public_operation"],
-        "process_lifecycle": lane["process_lifecycle"],
-        "engine_lifecycle": lane["engine_lifecycle"],
-        "logical_operations_per_estimate": lane["logical_operations_per_estimate"],
-        "transport": lane["transport"],
+        "lane_id": lane.id,
+        "selector": lane.selector,
+        "public_operation": lane.public_operation,
+        "process_lifecycle": lane.process_lifecycle,
+        "engine_lifecycle": lane.engine_lifecycle,
+        "logical_operations_per_estimate": lane.logical_operations_per_estimate,
+        "transport": lane.transport,
         "preset": "long",
         "sample_size": 30,
         "warm_up_seconds": 2,
@@ -1883,23 +1752,23 @@ def _validate_latency_lane_recipe(
     recipe: Mapping[str, object],
     *,
     corpus_path: str,
-    lane: Mapping[str, object],
+    lane: LaneMetadata,
 ) -> None:
     _validate_latency_recipe(recipe)
     expected = {
         "corpus": corpus_path,
-        "lane_id": lane["id"],
-        "selector": lane["selector"],
-        "public_operation": lane["public_operation"],
-        "process_lifecycle": lane["process_lifecycle"],
-        "engine_lifecycle": lane["engine_lifecycle"],
-        "logical_operations_per_estimate": lane["logical_operations_per_estimate"],
-        "transport": lane["transport"],
+        "lane_id": lane.id,
+        "selector": lane.selector,
+        "public_operation": lane.public_operation,
+        "process_lifecycle": lane.process_lifecycle,
+        "engine_lifecycle": lane.engine_lifecycle,
+        "logical_operations_per_estimate": lane.logical_operations_per_estimate,
+        "transport": lane.transport,
     }
     for field, value in expected.items():
         if recipe[field] != value:
             raise ManifestError(f"latency recipe {field} differs from the corpus lane")
-    if lane["kind"] != "public" or lane["transport"] != "native-criterion":
+    if lane.kind != "public" or lane.transport != "native-criterion":
         raise ManifestError("latency common A/A lane must be a native public operation")
 
 
@@ -2201,12 +2070,9 @@ def freeze_to_file(
 
 
 def _verify_fixture_manifest(
-    corpus: Mapping[str, object], fixtures: Sequence[object]
+    corpus: Corpus, fixtures: Sequence[object]
 ) -> None:
-    expected = [
-        (str(_object(raw, "corpus fixture")["name"]), str(_object(raw, "corpus fixture")["source"]))
-        for raw in _list(corpus["fixtures"], "corpus.fixtures")
-    ]
+    expected = [(fixture.name, fixture.source) for fixture in corpus.fixtures]
     observed = [
         (
             str(_object(raw, "manifest fixture")["name"]),
