@@ -1139,6 +1139,14 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             ("failed_bound", "failed_bound", 1),
             ("inconclusive", "inconclusive", 3),
         )
+        # Exit mapping does not depend on concurrent edits in the caller's worktree.
+        source = {
+            "commit": "a" * 40,
+            "tree": "b" * 40,
+            "clean": False,
+            "dirty_status_sha256": "c" * 64,
+            "dirty_disposition": "unapproved",
+        }
         with tempfile.TemporaryDirectory() as raw:
             executable = Path(raw) / "native_memory"
             executable.write_bytes(b"probe")
@@ -1146,6 +1154,8 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
 
             for metric_outcome, expected_outcome, expected_exit in cases:
                 with self.subTest(metric_outcome=metric_outcome), mock.patch.object(
+                    run_native_memory, "_git_provenance", return_value=source
+                ), mock.patch.object(
                     run_native_memory,
                     "discover_executable",
                     return_value=(executable, {"command": ["cargo"]}),
@@ -1169,6 +1179,8 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
                 ):
                     report, exit_code = run_native_memory.execute(self.args())
 
+                self.assertEqual(report["contract_errors"], [])
+                self.assertIsNotNone(report["analysis"])
                 self.assertEqual(exit_code, expected_exit)
                 self.assertEqual(report["exit_code"], expected_exit)
                 self.assertEqual(report["outcome"], expected_outcome)

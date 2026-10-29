@@ -1,10 +1,10 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.9.1` retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
+Use this index to choose an upgrade path by the version you have installed. The Merman `0.9.x` line retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
 ## 0.9 maintenance line
 
-`release/0.9.x` carries compatible patch releases and prepares 0.9.2 from the published 0.9.1 baseline. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2; the compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [0.9.2 changelog](../../CHANGELOG.md#092---2026-10-21) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership. Published releases remain identified by their immutable version tags.
+`release/0.9.x` carries compatible patch releases and prepares 0.9.3 from the published 0.9.2 baseline. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2; the compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [0.9.3 changelog](../../CHANGELOG.md#093---2026-10-29) for the selected fixes and SDK profiles and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership. Published releases remain identified by their immutable version tags.
 
 ## Merman 0.9.1
 
@@ -26,6 +26,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
+| `0.9.0`–`0.9.2` | `0.9.3` | [Changelog](../../CHANGELOG.md#093---2026-10-29): compatible patch fixes and additive SDK profiles; review output snapshots and host measurement limitations |
 | `0.9.0` | `0.9.1` | [Changelog](../../CHANGELOG.md): patch fixes; no additional API migration |
 | `0.8.0` | `0.9.0` | [Stable upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md): managed JSON, canonical model records, transparent SVG, fonts, geometry, and binding callbacks |
 | `0.7.0` | `0.8.0` | [Stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](../rendering/RUST_EMBEDDING.md), and [comparison report](V070_TO_V080_RELEASE_REPORT.md) |
