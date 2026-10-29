@@ -11,14 +11,14 @@ const DESCRIPTOR_PATH: &str = "contracts/abi/text-measurement-v1.json";
 const TEXT_MEASUREMENT_PROTOCOL_ID: &str = "merman-text-measurement";
 const TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION: u32 = 1;
 const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 1;
-const TEXT_MEASUREMENT_OPERATION_COUNT: usize = 22;
+const TEXT_MEASUREMENT_OPERATION_COUNT: usize = 23;
 const TEXT_MEASUREMENT_RESULT_KIND_COUNT: usize = 4;
 const TEXT_MEASUREMENT_WRAP_MODE_COUNT: usize = 3;
 const TEXT_MEASUREMENT_DIRECTION_COUNT: usize = 1;
 const TEXT_MEASUREMENT_WHITE_SPACE_COUNT: usize = 3;
 const TEXT_MEASUREMENT_PHASE_COUNT: usize = 4;
 const TEXT_MEASUREMENT_V1_PROTOCOL_SHA256: &str =
-    "5ede3d42b2d7ff3c378cf756ffe87cf570488f66027f102e1c34b2c3503e125c";
+    "a9e67d5b2eb5c11bf5fc1a52b167ad1b94a8d1e0a6224409ac9dd204342a5dbd";
 
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
@@ -1228,7 +1228,8 @@ mod tests {
         assert_descriptor_error(&duplicate_result_kind, "duplicate result-kind id value");
 
         let mut gap = committed_descriptor();
-        gap.operations[21].code = 22;
+        gap.operations.last_mut().unwrap().code =
+            i32::try_from(TEXT_MEASUREMENT_OPERATION_COUNT).unwrap();
         assert_descriptor_error(
             &gap,
             "operation codes must be the contiguous protocol range",

@@ -148,6 +148,82 @@ fn mindmap_root_viewport_defaults_match_explicit_mermaid_defaults() {
 }
 
 #[test]
+fn mindmap_html_entity_depth_and_attributes_share_terminal_geometry() {
+    // Mermaid 12.2 createText restores references before innerHTML consumes the fragment.
+    for (label, visible, reference, title) in [
+        ("A#60;B", "A<B", "A&lt;B", None),
+        (
+            "A#60;b#62;B#60;/b#62;C",
+            "A<b>B</b>C",
+            "A&lt;b&gt;B&lt;/b&gt;C",
+            None,
+        ),
+        ("A#60;br/#62;B", "A<br/>B", "A&lt;br/&gt;B", None),
+        (
+            "A#amp;lt;br/#amp;gt;B",
+            "A&lt;br/&gt;B",
+            "A&amp;lt;br/&amp;gt;B",
+            None,
+        ),
+        (
+            "A<span title='x#quot;y'>B</span>C",
+            "ABC",
+            "ABC",
+            Some("x\"y"),
+        ),
+    ] {
+        let source = |label| {
+            format!(
+                "---\nconfig:\n  layout: tidy-tree\n  htmlLabels: true\n  securityLevel: loose\n---\nmindmap\n  root[\"{label}\"]\n"
+            )
+        };
+        let svg = render_mindmap_svg_from_text(&source(label), "mindmap-html-entities");
+        let reference_svg =
+            render_mindmap_svg_from_text(&source(reference), "mindmap-html-entities");
+        let document = roxmltree::Document::parse(&svg).expect("final XHTML must remain XML");
+        let reference_document = roxmltree::Document::parse(&reference_svg).unwrap();
+        let terminal = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        let reference_terminal = reference_document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        let text: String = terminal
+            .descendants()
+            .filter(roxmltree::Node::is_text)
+            .filter_map(|node| node.text())
+            .collect();
+        assert_eq!(text, visible, "{label}");
+        assert!(
+            !terminal
+                .descendants()
+                .any(|node| { node.has_tag_name("b") || node.has_tag_name("br") })
+        );
+        assert_eq!(
+            terminal
+                .descendants()
+                .find_map(|node| node.attribute("title")),
+            title,
+            "{label}"
+        );
+        for attribute in ["width", "height"] {
+            assert_eq!(
+                terminal.attribute(attribute),
+                reference_terminal.attribute(attribute),
+                "{label}: terminal {attribute}"
+            );
+        }
+        assert_eq!(
+            document.root_element().attribute("viewBox"),
+            reference_document.root_element().attribute("viewBox"),
+            "{label}: layout must measure the same literal content as emission"
+        );
+    }
+}
+
+#[test]
 fn mindmap_configured_root_font_sizes_html_measurement_and_terminal_geometry() {
     use merman_render::environment::{
         MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,

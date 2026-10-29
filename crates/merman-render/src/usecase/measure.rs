@@ -2,13 +2,33 @@ use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::text::{
-    WrapMode, measure_html_with_inline_styles, measure_wrapped_markdown_with_inline_styles,
+    WrapMode, measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
 };
 use merman_core::diagrams::usecase::{
     UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
     UsecaseRelationshipType,
 };
 use std::collections::HashSet;
+
+#[derive(Debug)]
+pub(crate) struct UsecasePreparedHtmlLabel {
+    pub(crate) xhtml: String,
+    _retained_text: crate::resources::PreparedTextRetainedReservation,
+}
+
+impl UsecasePreparedHtmlLabel {
+    fn new(xhtml: String, work: &OperationLayoutWorkControl) -> Result<Arc<Self>> {
+        let bytes = xhtml
+            .capacity()
+            .saturating_add(std::mem::size_of::<Self>())
+            .saturating_add(2 * std::mem::size_of::<usize>());
+        let retained_text = work.reserve_prepared_text_retained_bytes(bytes)?;
+        Ok(Arc::new(Self {
+            xhtml,
+            _retained_text: retained_text,
+        }))
+    }
+}
 
 pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
     config
@@ -146,21 +166,8 @@ struct LabelContext<'a> {
 fn measure_plain_label(
     source: &str,
     style: &TextStyle,
-    max_width: Option<f64>,
-    html: bool,
     measurer: &dyn TextMeasurer,
 ) -> TextMetrics {
-    if html {
-        let fragment = format!("<p>{}</p>", source.replace('\n', "<br/>"));
-        return measure_html_with_inline_styles(
-            measurer,
-            &fragment,
-            style,
-            max_width,
-            WrapMode::HtmlLike,
-        );
-    }
-
     // Match the writer's source tokenization before decoding each textContent payload.
     // Decoded rows are literal tspan text, not another input to label normalization.
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(source);
@@ -200,7 +207,8 @@ fn label(
     max_width: Option<f64>,
     min_width: f64,
     context: &LabelContext<'_>,
-) -> UsecaseLabelPlan {
+    work: &OperationLayoutWorkControl,
+) -> Result<UsecaseLabelPlan> {
     let html = context
         .config
         .as_value()
@@ -235,23 +243,59 @@ fn label(
     let math_renderer = context
         .math_renderer
         .filter(|_| crate::math::contains_delimited_math(source));
-    let math_html = if html {
-        crate::math::render_math_html_label(source, context.config, math_renderer)
+    let html_content = if html {
+        Some(
+            crate::math::render_math_html_label(source, context.config, math_renderer)
+                .unwrap_or_else(|| match label_type {
+                    UsecaseLabelType::Text => {
+                        format!("<p>{}</p>", source.replace('\n', "<br/>"))
+                    }
+                    UsecaseLabelType::Markdown => {
+                        crate::text::mermaid_markdown_to_xhtml_label_fragment(
+                            text,
+                            crate::config::config_bool(
+                                context.config.as_value(),
+                                &["markdownAutoWrap"],
+                            )
+                            .unwrap_or(true),
+                        )
+                    }
+                }),
+        )
     } else {
         None
+    };
+    // The generated NBSP terminal has no automatic space breaks. Authored <br/> remains
+    // structural XHTML and is still measured as separate rows with no width constraint.
+    let measurement_width = if html
+        && label_type == UsecaseLabelType::Markdown
+        && crate::config::config_bool(context.config.as_value(), &["markdownAutoWrap"])
+            == Some(false)
+    {
+        None
+    } else {
+        max_width
     };
     let mut metrics =
         crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
             measurer: context.measurer,
             raw_label: source,
             style: &terminal_style,
-            max_width_px: max_width,
+            max_width_px: measurement_width,
             wrap_mode: mode,
             config: context.config,
             math_renderer,
         })
         .unwrap_or_else(|| {
-            if label_type == UsecaseLabelType::Markdown {
+            if let Some(content) = html_content.as_deref() {
+                measure_xhtml_label_fragment(
+                    context.measurer,
+                    content,
+                    &terminal_style,
+                    measurement_width,
+                    WrapMode::HtmlLike,
+                )
+            } else if label_type == UsecaseLabelType::Markdown {
                 measure_wrapped_markdown_with_inline_styles(
                     context.measurer,
                     text,
@@ -260,7 +304,7 @@ fn label(
                     mode,
                 )
             } else {
-                measure_plain_label(source, &terminal_style, max_width, html, context.measurer)
+                measure_plain_label(source, &terminal_style, context.measurer)
             }
         });
     let text_metrics = metrics;
@@ -268,7 +312,7 @@ fn label(
     if !text.is_empty() {
         metrics.width = metrics.width.max(min_width);
     }
-    UsecaseLabelPlan {
+    Ok(UsecaseLabelPlan {
         text: text.to_owned(),
         label_type,
         text_metrics,
@@ -277,14 +321,16 @@ fn label(
         // terminal size and applying relative descendant declarations twice.
         style: if html { style.clone() } else { terminal_style },
         max_width,
-        math_html,
+        html: html_content
+            .map(|content| UsecasePreparedHtmlLabel::new(content, work))
+            .transpose()?,
         styles: context
             .styles
             .iter()
             .filter(|(key, _)| crate::mermaid_style::is_label_style_key(key))
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
-    }
+    })
 }
 
 fn json_display_string(node: &UsecaseJsonNode, value: &str) -> Result<String> {
@@ -484,7 +530,8 @@ pub(super) fn measure(
                 wrapping_width,
                 if actor { 0.0 } else { min_width },
                 &label_context,
-            );
+                work,
+            )?;
             let stereotype = source_stereotype
                 .as_ref()
                 .filter(|value| !value.is_empty() && !folded_stereotype)
@@ -502,8 +549,10 @@ pub(super) fn measure(
                         wrapping_width,
                         0.0,
                         &label_context,
+                        work,
                     )
-                });
+                })
+                .transpose()?;
             let stereo_width = stereotype.as_ref().map_or(0.0, |value| value.metrics.width);
             let stereo_height = stereotype
                 .as_ref()
@@ -569,7 +618,8 @@ pub(super) fn measure(
             wrapping_width,
             min_width,
             &label_context,
-        );
+            work,
+        )?;
         nodes.push(UsecaseNodePlan {
             id: note.id.clone(),
             source_style: shape_style(&css),
@@ -605,7 +655,8 @@ pub(super) fn measure(
             wrapping_width,
             min_width,
             &label_context,
-        );
+            work,
+        )?;
         let mut rows = Vec::new();
         let mut key_width: f64 = 16.0;
         let mut value_width: f64 = 16.0;
@@ -618,7 +669,8 @@ pub(super) fn measure(
                 None,
                 0.0,
                 &label_context,
-            );
+                work,
+            )?;
             let value_label = label(
                 &sanitize(&value),
                 UsecaseLabelType::Text,
@@ -626,7 +678,8 @@ pub(super) fn measure(
                 None,
                 0.0,
                 &label_context,
-            );
+                work,
+            )?;
             key_width = key_width.max(key_label.metrics.width + 16.0);
             value_width = value_width.max(value_label.metrics.width + 16.0);
             let height = key_label.metrics.height.max(value_label.metrics.height) + 8.0;
@@ -687,7 +740,8 @@ pub(super) fn measure(
             Some(200.0),
             0.0,
             &label_context,
-        );
+            work,
+        )?;
         nodes.push(UsecaseNodePlan {
             id: boundary.id.clone(),
             source_style: shape_style(&css),
@@ -770,29 +824,32 @@ pub(super) fn measure(
             id: edge.id.clone(),
             source: edge.source.clone(),
             target: edge.target.clone(),
-            label: text.map(|text| {
-                let mut plan = label(
-                    &sanitize(text),
-                    kind,
-                    &style,
-                    Some(200.0),
-                    0.0,
-                    &label_context,
-                );
-                if full_config
-                    .as_value()
-                    .get("htmlLabels")
-                    .and_then(Value::as_bool)
-                    == Some(false)
-                    && !plan.text.is_empty()
-                {
-                    // insertEdgeLabel passes createText's padded background bbox to both
-                    // graph providers and the label-aware ELK terminal guard.
-                    plan.metrics.width += 4.0;
-                    plan.metrics.height += 4.0;
-                }
-                plan
-            }),
+            label: text
+                .map(|text| {
+                    let mut plan = label(
+                        &sanitize(text),
+                        kind,
+                        &style,
+                        Some(200.0),
+                        0.0,
+                        &label_context,
+                        work,
+                    )?;
+                    if full_config
+                        .as_value()
+                        .get("htmlLabels")
+                        .and_then(Value::as_bool)
+                        == Some(false)
+                        && !plan.text.is_empty()
+                    {
+                        // insertEdgeLabel passes createText's padded background bbox to both
+                        // graph providers and the label-aware ELK terminal guard.
+                        plan.metrics.width += 4.0;
+                        plan.metrics.height += 4.0;
+                    }
+                    Ok::<_, crate::Error>(plan)
+                })
+                .transpose()?,
             minlen: edge.minlen,
             start_marker: start.map(str::to_owned),
             end_marker: end.map(str::to_owned),

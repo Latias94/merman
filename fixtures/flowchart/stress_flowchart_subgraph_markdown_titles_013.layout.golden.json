@@ -4,7 +4,7 @@
     "FlowchartV2": {
       "bounds": {
         "max_x": 754.594,
-        "max_y": 189.8,
+        "max_y": 193.0,
         "min_x": 12.0,
         "min_y": 12.0
       },
@@ -12,44 +12,44 @@
         {
           "diff": -4.0,
           "effective_dir": "LR",
-          "height": 111.4,
+          "height": 113.0,
           "id": "_Child_",
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "padding": 8.0,
           "requested_dir": null,
           "title": "_Child_",
           "title_label": {
-            "height": 13.4,
+            "height": 15.0,
             "width": 28.281,
             "x": 630.594,
-            "y": 61.1
+            "y": 63.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
           "width": 200.0,
           "x": 630.594,
-          "y": 110.1
+          "y": 112.5
         },
         {
           "diff": -4.0,
           "effective_dir": "LR",
-          "height": 177.8,
+          "height": 181.0,
           "id": "subGraph1",
-          "offset_y": 9.4,
+          "offset_y": 11.0,
           "padding": 8.0,
           "requested_dir": null,
           "title": "**Parent** cluster",
           "title_label": {
-            "height": 13.4,
+            "height": 15.0,
             "width": 83.156,
             "x": 383.297,
-            "y": 18.7
+            "y": 19.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
           "width": 742.594,
           "x": 383.297,
-          "y": 100.9
+          "y": 102.5
         }
       ],
       "edges": [
@@ -64,15 +64,15 @@
           "points": [
             {
               "x": 496.594,
-              "y": 119.3
+              "y": 122.5
             },
             {
               "x": 520.594,
-              "y": 119.3
+              "y": 122.5
             },
             {
               "x": 554.594,
-              "y": 119.3
+              "y": 122.5
             }
           ],
           "start_label_left": null,
@@ -90,19 +90,19 @@
           "from_cluster": null,
           "id": "L_a_b_0",
           "label": {
-            "height": 19.4,
+            "height": 21.0,
             "width": 58.594,
             "x": 239.297,
-            "y": 118.5
+            "y": 122.0
           },
           "points": [
             {
               "x": 186.0,
-              "y": 119.3
+              "y": 122.5
             },
             {
               "x": 292.594,
-              "y": 119.3
+              "y": 122.5
             }
           ],
           "start_label_left": null,
@@ -115,20 +115,20 @@
       ],
       "nodes": [
         {
-          "height": 177.8,
+          "height": 181.0,
           "id": "subGraph1",
           "is_cluster": true,
           "width": 742.594,
           "x": 383.297,
-          "y": 100.9
+          "y": 102.5
         },
         {
-          "height": 111.4,
+          "height": 113.0,
           "id": "_Child_",
           "is_cluster": true,
           "width": 200.0,
           "x": 630.594,
-          "y": 110.1
+          "y": 112.5
         },
         {
           "height": 72.0,
@@ -136,7 +136,7 @@
           "is_cluster": false,
           "width": 150.0,
           "x": 111.0,
-          "y": 119.3
+          "y": 122.5
         },
         {
           "height": 91.0,
@@ -144,7 +144,7 @@
           "is_cluster": false,
           "width": 204.0,
           "x": 394.594,
-          "y": 119.3
+          "y": 122.5
         },
         {
           "height": 45.0,
@@ -152,7 +152,7 @@
           "is_cluster": false,
           "width": 152.0,
           "x": 630.594,
-          "y": 119.3
+          "y": 122.5
         }
       ]
     }

@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
@@ -77,9 +78,49 @@ pub(crate) struct KanbanPreparedArtifact {
     task_theme: KanbanTaskTheme,
     text_paint: KanbanTextPaintPlan,
     css: KanbanCssBinding,
+    _retained_text: Option<crate::resources::PreparedTextRetainedReservation>,
 }
 
 impl KanbanPreparedArtifact {
+    pub(crate) fn with_retained_text_accounting(
+        mut self,
+        work_meter: &std::sync::Arc<OperationWorkMeter>,
+    ) -> Result<Self> {
+        let payloads = self
+            .sections
+            .iter()
+            .map(|label| label.html.capacity())
+            .chain(self.items.iter().flat_map(|item| {
+                [
+                    item.title.html.capacity(),
+                    item.ticket.html.capacity(),
+                    item.assigned.html.capacity(),
+                    item.ticket_link
+                        .as_ref()
+                        .and_then(|link| link.href.as_ref())
+                        .map_or(0, |href| href.as_serialized_str().len()),
+                ]
+            }));
+        // Vec capacities include inline String, geometry, style-fact, and ticket-link slots.
+        // The artifact owns the reservation and all prepared labels and serialized hrefs.
+        // Hrefs use Box<str>, so their lengths cover the complete retained string allocations.
+        let owner_bytes = std::mem::size_of::<Self>()
+            .saturating_add(
+                self.sections
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<KanbanPreparedMarkdownLabel>()),
+            )
+            .saturating_add(
+                self.items
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<KanbanPreparedItem>()),
+            );
+        let bytes = payloads.fold(owner_bytes, usize::saturating_add);
+        let work = OperationLayoutWorkControl::new(std::sync::Arc::clone(work_meter));
+        self._retained_text = Some(work.reserve_prepared_text_retained_bytes(bytes)?);
+        Ok(self)
+    }
+
     pub(crate) const fn layout_adaptation(&self) -> Option<crate::LayoutAdaptationObservation> {
         self.adaptation
     }
@@ -138,13 +179,14 @@ impl KanbanPreparedLabelGeometry {
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedItem {
     pub(crate) title: KanbanPreparedMarkdownLabel,
-    pub(crate) ticket: KanbanPreparedPlainLabel,
-    pub(crate) assigned: KanbanPreparedPlainLabel,
+    pub(crate) ticket: KanbanPreparedMetadataLabel,
+    pub(crate) assigned: KanbanPreparedMetadataLabel,
     pub(crate) ticket_link: Option<KanbanPreparedTicketLink>,
 }
 
 #[derive(Debug)]
-pub(crate) struct KanbanPreparedPlainLabel {
+pub(crate) struct KanbanPreparedMetadataLabel {
+    pub(crate) html: String,
     pub(crate) geometry: KanbanPreparedLabelGeometry,
     pub(crate) visible_style_facts: crate::text::VisibleTextStyleFacts,
 }
@@ -260,21 +302,34 @@ fn prepare_kanban_title_label(
     prepared
 }
 
-fn prepare_kanban_plain_label(
+fn prepare_kanban_metadata_label(
+    markdown: &KanbanMarkdown<'_>,
     measurer: &dyn TextMeasurer,
     text: Option<&str>,
     style: &TextStyle,
     max_width: f64,
     capture_style_facts: bool,
-) -> KanbanPreparedPlainLabel {
-    let text = text.unwrap_or_default();
-    let geometry = if text.is_empty() {
+) -> KanbanPreparedMetadataLabel {
+    // Metadata takes the non-Markdown HTML path. Keep its original source on the public model;
+    // only this private terminal owns HTML parsing, sanitization, and XHTML serialization.
+    let html = text
+        .filter(|text| !text.is_empty())
+        .map_or_else(String::new, |text| {
+            merman_core::sanitize::sanitize_xhtml(
+                &format!(
+                    "<p>{}</p>",
+                    text.replace("\\n", "<br/>").replace('\n', "<br/>")
+                ),
+                markdown.sanitize_config.as_config(),
+            )
+        });
+    let geometry = if html.is_empty() {
         KanbanPreparedLabelGeometry::empty()
     } else {
-        let raw_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+        let raw_metrics = markdown.measure_html(measurer, &html, style, None);
         let wrapped = max_width > 0.0 && raw_metrics.width > max_width;
         let metrics = if wrapped {
-            measurer.measure_wrapped(text, style, Some(max_width), WrapMode::HtmlLike)
+            markdown.measure_html(measurer, &html, style, Some(max_width))
         } else {
             raw_metrics
         };
@@ -288,13 +343,14 @@ fn prepare_kanban_plain_label(
             wrapped,
         }
     };
-    KanbanPreparedPlainLabel {
+    KanbanPreparedMetadataLabel {
         geometry,
         visible_style_facts: if capture_style_facts {
-            crate::text::VisibleTextStyleFacts::plain_text(text)
+            crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html)
         } else {
             crate::text::VisibleTextStyleFacts::not_requested()
         },
+        html,
     }
 }
 
@@ -441,14 +497,16 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 item_inner_max_width,
                 capture_style_facts,
             );
-            let prepared_ticket = prepare_kanban_plain_label(
+            let prepared_ticket = prepare_kanban_metadata_label(
+                &markdown,
                 measurer,
                 node.ticket.as_deref(),
                 &legend_style,
                 item_inner_max_width,
                 capture_style_facts,
             );
-            let prepared_assigned = prepare_kanban_plain_label(
+            let prepared_assigned = prepare_kanban_metadata_label(
+                &markdown,
                 measurer,
                 node.assigned.as_deref(),
                 &legend_style,
@@ -725,6 +783,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         task_theme,
         text_paint,
         css,
+        _retained_text: None,
     })
 }
 
@@ -768,14 +827,16 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
                 false,
             ),
-            ticket: prepare_kanban_plain_label(
+            ticket: prepare_kanban_metadata_label(
+                &markdown,
                 measurer,
                 item.ticket.as_deref(),
                 &settings.text_style,
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
                 false,
             ),
-            assigned: prepare_kanban_plain_label(
+            assigned: prepare_kanban_metadata_label(
+                &markdown,
                 measurer,
                 item.assigned.as_deref(),
                 &settings.text_style,
@@ -799,6 +860,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         task_theme,
         text_paint: KanbanTextPaintPlan::baseline(),
         css,
+        _retained_text: None,
     })
 }
 
@@ -859,6 +921,179 @@ mod tests {
         assert_eq!(super::KANBAN_SECTION_PADDING_PX, 10.0);
         assert_eq!(super::KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, 24.0);
         assert_eq!(super::KANBAN_ITEM_LABEL_PADDING_Y_PX, 10.0);
+    }
+
+    #[test]
+    fn kanban_prepared_text_owner_is_charged_and_released_without_html_payloads() {
+        use std::sync::Arc;
+
+        let prepare = |meter: &Arc<OperationWorkMeter>| {
+            prepare_kanban_diagram_typed_with_work_meter(
+                &KanbanDiagramRenderModel { nodes: Vec::new() },
+                &merman_core::presentation::PresentationConfig::default(),
+                None,
+                &DeterministicTextMeasurer::default(),
+                meter,
+                &crate::LayoutOptions::default(),
+            )
+            .unwrap()
+            .with_retained_text_accounting(meter)
+        };
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let artifact = prepare(&meter).unwrap();
+        assert!(meter.prepared_text_retained_bytes() > 0);
+        drop(artifact);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+
+        let limited = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+                .unwrap(),
+        ));
+        let error = prepare(&limited).unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected prepared-text owner rejection");
+        };
+        assert_eq!(
+            error.limit,
+            ResourceLimitId::MaxPreparedTextRetainedBytes.as_str()
+        );
+        assert_eq!(limited.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn kanban_ticket_hrefs_count_every_retained_url_and_release_on_rejection() {
+        use std::sync::Arc;
+
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                item_with_details("first", "Task", "todo", Some("MC-1"), None),
+                item_with_details("second", "Task", "todo", Some("MC-2"), None),
+                item_with_details("third", "Task", "todo", Some("MC-3"), None),
+            ],
+        };
+        let short_url = "https://example.invalid/#TICKET#?owner=a&team=b";
+        let long_url = format!(
+            "https://example.invalid/{}/#TICKET#?owner=a&team=b",
+            "a".repeat(8192)
+        );
+        for security_level in ["strict", "loose"] {
+            let prepare = |ticket_base_url: &str, policy| {
+                let config = merman_core::presentation::PresentationConfig::from_value(json!({
+                    "securityLevel": security_level,
+                    "kanban": { "ticketBaseUrl": ticket_base_url }
+                }));
+                let meter = Arc::new(OperationWorkMeter::new(policy));
+                let artifact = prepare_kanban_diagram_typed_with_work_meter(
+                    &model,
+                    &config,
+                    None,
+                    &DeterministicTextMeasurer::default(),
+                    &meter,
+                    &crate::LayoutOptions::default(),
+                )
+                .and_then(|artifact| artifact.with_retained_text_accounting(&meter));
+                (artifact, meter)
+            };
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+            let (short, short_meter) = prepare(short_url, policy);
+            let short = short.unwrap();
+            let short_bytes = short_meter.prepared_text_retained_bytes();
+            let (long, long_meter) = prepare(&long_url, policy);
+            let long = long.unwrap();
+            let long_bytes = long_meter.prepared_text_retained_bytes();
+            assert_eq!(long.items.len(), 3);
+            assert_eq!(
+                long_bytes - short_bytes,
+                long.items.len() * (long_url.len() - short_url.len()),
+                "each card retains its own serialized href: {security_level}"
+            );
+            for (index, item) in long.items.iter().enumerate() {
+                let href = item.ticket_link.as_ref().unwrap().href.as_ref().unwrap();
+                assert_eq!(
+                    href.as_serialized_str(),
+                    long_url
+                        .replacen("#TICKET#", &format!("MC-{}", index + 1), 1)
+                        .replace('&', "&amp;"),
+                    "prepared href remains serialized exactly once: {security_level}"
+                );
+            }
+            drop(short);
+            drop(long);
+            assert_eq!(short_meter.prepared_text_retained_bytes(), 0);
+            assert_eq!(long_meter.prepared_text_retained_bytes(), 0);
+
+            let (exact, exact_meter) = prepare(
+                &long_url,
+                policy
+                    .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, long_bytes)
+                    .unwrap(),
+            );
+            let exact = exact.expect("the exact retained URL budget must admit all cards");
+            assert_eq!(exact_meter.prepared_text_retained_bytes(), long_bytes);
+            drop(exact);
+            assert_eq!(exact_meter.prepared_text_retained_bytes(), 0);
+
+            let (rejected, rejected_meter) = prepare(
+                &long_url,
+                policy
+                    .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, short_bytes)
+                    .unwrap(),
+            );
+            let Error::ResourceLimitExceeded(error) = rejected.unwrap_err() else {
+                panic!("long prepared hrefs must exceed the short URL budget");
+            };
+            assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+            assert_eq!(error.actual, long_bytes);
+            assert_eq!(rejected_meter.prepared_text_retained_bytes(), 0);
+            assert_eq!(rejected_meter.prepared_text_retained_bytes_peak(), 0);
+        }
+    }
+
+    #[test]
+    fn kanban_retained_admission_observes_cancellation_before_the_budget() {
+        use std::sync::Arc;
+
+        let control = merman_core::OperationControl::new();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+                .unwrap(),
+            control.clone(),
+        ));
+        let existing = meter.reserve_prepared_text_retained_bytes(1).unwrap();
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                item_with_details("task", "Task", "todo", Some("MC-1"), None),
+            ],
+        };
+        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+            "kanban": { "ticketBaseUrl": "https://example.invalid/#TICKET#" }
+        }));
+        let artifact = prepare_kanban_diagram_typed_with_work_meter(
+            &model,
+            &config,
+            None,
+            &DeterministicTextMeasurer::default(),
+            &meter,
+            &crate::LayoutOptions::default(),
+        )
+        .unwrap();
+        control.cancel();
+        let Error::Cancelled(error) = artifact.with_retained_text_accounting(&meter).unwrap_err()
+        else {
+            panic!("cancellation must win over the insufficient retained budget");
+        };
+        assert_eq!(error.phase, merman_core::OperationPhase::Layout);
+        assert_eq!(error.reason, merman_core::CancelReason::Requested);
+        assert_eq!(meter.prepared_text_retained_bytes(), 1);
+        assert_eq!(meter.prepared_text_retained_bytes_peak(), 1);
+        drop(existing);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 
     #[test]

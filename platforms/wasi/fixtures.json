@@ -14,7 +14,7 @@
   "sources": {
     "basic": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n",
     "parse_error": "flowchart ???",
-    "math": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
+    "math": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[\"$$\\color{red}{x^2}$$\"]\nstyle A fill:#ffffff,stroke:#000000,color:#000000\n",
     "elk": "---\nconfig:\n  fontFamily: Cousine\n  layout: elk\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n",
     "dagre": "---\nconfig:\n  fontFamily: Cousine\n  layout: dagre\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n"
   }

@@ -228,8 +228,6 @@ fn write_kanban_label_group(
     );
     if let Some(html) = html.filter(|_| text.is_some_and(|text| !text.is_empty())) {
         out.push_str(html);
-    } else if let Some(text) = text.filter(|text| !text.is_empty()) {
-        let _ = write!(out, r#"<p>{}</p>"#, escape_xml(text));
     }
     out.push_str("</span></div></foreignObject></g>");
     out.checkpoint()?;
@@ -512,7 +510,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     KanbanLabelGroup {
                         position: (left_x, details_y),
                         text: Some(t),
-                        html: None,
+                        html: Some(prepared_item.ticket.html.as_str()),
                         geometry: ticket_geometry,
                         div_class: None,
                         markdown: false,
@@ -553,7 +551,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     KanbanLabelGroup {
                         position: (left_x, details_y),
                         text: Some(t),
-                        html: None,
+                        html: Some(prepared_item.ticket.html.as_str()),
                         geometry: ticket_geometry,
                         div_class: None,
                         markdown: false,
@@ -623,7 +621,7 @@ pub(crate) fn render_kanban_diagram_svg(
             KanbanLabelGroup {
                 position: (right_x, details_y),
                 text: n.assigned.as_deref(),
-                html: None,
+                html: Some(prepared_item.assigned.html.as_str()),
                 geometry: assigned_geometry,
                 div_class: None,
                 markdown: false,

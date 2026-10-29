@@ -46,14 +46,15 @@ pub struct LayoutLabel {
     pub height: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg(feature = "diagram-class")]
 pub struct ClassNodeRowMetrics {
     pub members: Vec<crate::text::TextMetrics>,
     pub methods: Vec<crate::text::TextMetrics>,
+    pub(crate) _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg(feature = "diagram-class")]
 #[non_exhaustive]
 pub struct ClassPreparedHtmlLabel {
@@ -62,16 +63,18 @@ pub struct ClassPreparedHtmlLabel {
     pub xhtml: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg(feature = "diagram-class")]
 pub struct ClassPreparedHtmlNodeLabels {
     pub title: ClassPreparedHtmlLabel,
     pub annotation: Option<ClassPreparedHtmlLabel>,
     pub members: Vec<ClassPreparedHtmlLabel>,
     pub methods: Vec<ClassPreparedHtmlLabel>,
+    pub(crate) _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
 }
 
-#[derive(Debug, Clone)]
+/// Prepared labels share ownership through `Arc` without copying their admitted allocations.
+#[derive(Debug)]
 #[cfg(feature = "diagram-class")]
 pub enum ClassNodeLabelPlan {
     RowMetrics(ClassNodeRowMetrics),

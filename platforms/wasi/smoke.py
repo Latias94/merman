@@ -7,7 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
-from common import (HERE, PROTOCOL, compare_pixels, require, sha, write_json)
+from common import (HERE, PROTOCOL, compare_pixels, require, sha, validate_png, validate_svg,
+                    write_json)
 
 
 def run(args):
@@ -49,6 +50,16 @@ def run(args):
     comparisons = {}
     names = ["basic"] + (["math"] if args.flavor != "standard" else [])
     for name in names:
+        # Revalidate each host's persisted output with the shared content oracle, including
+        # wazero's Go-owned transport checks. Runtime equality remains a separate assertion.
+        for runtime in ("wazero", "wasmtime"):
+            directory = output / runtime
+            viewport = validate_svg((directory / (name + ".svg")).read_bytes(),
+                                    json.loads((directory / (name + ".svg.metadata.json")).read_bytes()),
+                                    mathematical=name == "math")
+            validate_png((directory / (name + ".png")).read_bytes(),
+                         json.loads((directory / (name + ".png.metadata.json")).read_bytes()),
+                         viewport, mathematical=name == "math")
         comparisons[name + ".png"] = compare_pixels(output / "wazero" / (name + ".png"),
                                                      output / "wasmtime" / (name + ".png"))
         for runtime in ("wazero", "wasmtime"):

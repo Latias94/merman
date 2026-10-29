@@ -4,7 +4,7 @@
     "FlowchartV2": {
       "bounds": {
         "max_x": 591.52,
-        "max_y": 51.4,
+        "max_y": 53.0,
         "min_x": 12.0,
         "min_y": 12.0
       },
@@ -18,19 +18,19 @@
           "from_cluster": null,
           "id": "L_A_B_0",
           "label": {
-            "height": 34.8,
+            "height": 36.4,
             "width": 195.52,
             "x": 301.76,
-            "y": 31.1
+            "y": 31.7
           },
           "points": [
             {
               "x": 164.0,
-              "y": 31.7
+              "y": 32.5
             },
             {
               "x": 439.52,
-              "y": 31.7
+              "y": 32.5
             }
           ],
           "start_label_left": null,
@@ -43,20 +43,20 @@
       ],
       "nodes": [
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "A",
           "is_cluster": false,
           "width": 152.0,
           "x": 88.0,
-          "y": 31.7
+          "y": 32.5
         },
         {
-          "height": 39.4,
+          "height": 41.0,
           "id": "B",
           "is_cluster": false,
           "width": 152.0,
           "x": 515.52,
-          "y": 31.7
+          "y": 32.5
         }
       ]
     }

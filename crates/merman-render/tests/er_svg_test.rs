@@ -1017,7 +1017,7 @@ fn er_svg_flowchart_htmllabels_only_changes_relationship_labels() {
 
 #[test]
 fn er_svg_html_labels_false_uses_svg_text_for_entity_and_attribute_labels() {
-    let text = r#"%%{init: {"htmlLabels": false}}%%
+    let text = r#"%%{init: {"htmlLabels": false, "er": {"diagramPadding": 20}}}%%
 erDiagram
 subgraph Orders [Order Domain]
   CUSTOMER {
@@ -1028,7 +1028,7 @@ end
 CUSTOMER ||--|| ORDER : owns
 "#;
 
-    let html_text = r#"%%{init: {"htmlLabels": true}}%%
+    let html_text = r#"%%{init: {"htmlLabels": true, "er": {"diagramPadding": 20}}}%%
 erDiagram
 subgraph Orders [Order Domain]
   CUSTOMER {
@@ -1098,8 +1098,17 @@ CUSTOMER ||--|| ORDER : owns
         svg_entity_size, html_entity_size,
         "root htmlLabels=false must feed SVG text metrics into ER entity geometry"
     );
-    assert!((svg_entity_size.1 - 77.6).abs() < 1e-9);
-    assert!((html_entity_size.1 - 84.0).abs() < 1e-9);
+    let style = TextStyle {
+        font_size: 16.0,
+        ..TextStyle::default()
+    };
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let svg_ink_height = measurer.measure_svg_tspan_text_bbox_height_px("ORDER", &style);
+    let html_line_height = measurer.measure_html_line_height_px("ORDER", &style);
+    // erBox's attribute-free drawRect branch adds 1.5 * diagramPadding on each side.
+    let vertical_padding = 2.0 * 1.5 * 20.0;
+    assert!((svg_entity_size.1 - (svg_ink_height + vertical_padding)).abs() < 1e-9);
+    assert!((html_entity_size.1 - (html_line_height + vertical_padding)).abs() < 1e-9);
 
     let cluster_label = document
         .descendants()
@@ -1119,6 +1128,267 @@ CUSTOMER ||--|| ORDER : owns
             .contains("Order Domain"),
         "ER cluster title must be emitted as SVG text: {svg}"
     );
+}
+
+#[test]
+fn er_entity_source_depth_and_authored_breaks_reach_public_svg_consumers() {
+    use merman_core::RenderSemanticModel;
+    use merman_render::text::DeterministicTextMeasurer;
+
+    let style = TextStyle {
+        font_size: 16.0,
+        ..TextStyle::default()
+    };
+    let measurer = DeterministicTextMeasurer::default();
+    for html_labels in [false, true] {
+        for with_attributes in [false, true] {
+            for (label, expected_rows) in [
+                ("AXXXXB", &["AXXXXB"][..]),
+                ("A&lt;br&gt;B", &["A<br>B"][..]),
+                ("A&amp;lt;br&amp;gt;B", &["A&lt;br&gt;B"][..]),
+                (
+                    "A&amp;amp;lt;br&amp;amp;gt;B",
+                    &["A&amp;lt;br&amp;gt;B"][..],
+                ),
+                ("A#lt;br#gt;B", &["A<br>B"][..]),
+                ("book &lt;br&gt; title", &["book <br> title"][..]),
+                ("A<br/>B", &["A", "B"][..]),
+            ] {
+                let entity = if with_attributes {
+                    format!("E[\"{label}\"] {{\n  string title PK \"{label}\"\n}}")
+                } else {
+                    format!("\"{label}\"")
+                };
+                let source = format!(
+                    "---\nconfig:\n  layout: dagre\n  look: classic\n  htmlLabels: {html_labels}\n  flowchart:\n    wrappingWidth: 1000\n  er:\n    diagramPadding: 20\n    entityPadding: 15\n  themeVariables:\n    fontSize: 16px\n---\nerDiagram\n{entity}\n"
+                );
+                let parsed = MermaidEngine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .expect("parse ER entity source depth")
+                    .expect("detect ER entity source depth");
+                let RenderSemanticModel::Er(model) = parsed.model() else {
+                    panic!("expected typed ER model");
+                };
+                let entity = model.entities.values().next().expect("parsed ER entity");
+                let restored = merman_core::entities::restore_mermaid_entity_spelling(label);
+                let source_field = if with_attributes {
+                    assert_eq!(entity.label, "E");
+                    assert_eq!(
+                        merman_core::entities::restore_mermaid_entity_spelling(
+                            &entity.attributes[0].comment
+                        ),
+                        restored
+                    );
+                    &entity.alias
+                } else {
+                    assert!(entity.alias.is_empty());
+                    &entity.label
+                };
+                assert_eq!(
+                    merman_core::entities::restore_mermaid_entity_spelling(source_field),
+                    restored,
+                    "the parser must retain entity depth: {label}"
+                );
+                let artifact = family::prepare(
+                    &parsed,
+                    &LayoutOptions::default(),
+                    RenderEnvironment::deterministic().begin_session().unwrap(),
+                )
+                .expect("prepare ER entity source depth");
+                let layout = artifact.layout_json().expect("ER layout projection");
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .expect("render ER entity source depth");
+                let document = roxmltree::Document::parse(rendered.svg()).expect("valid ER SVG");
+                let classes = if with_attributes {
+                    &["label name", "label attribute-comment"][..]
+                } else {
+                    &["label"][..]
+                };
+                for class in classes {
+                    let terminal = document
+                        .descendants()
+                        .find(|node| node.attribute("class") == Some(*class))
+                        .unwrap_or_else(|| panic!("missing {class}: {label}"));
+                    let visible = terminal
+                        .descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect::<String>();
+                    assert_eq!(visible, expected_rows.concat(), "{class}/{label}");
+                    if html_labels {
+                        assert_eq!(
+                            terminal
+                                .descendants()
+                                .filter(|node| node.has_tag_name("br"))
+                                .count(),
+                            expected_rows.len() - 1,
+                            "{class}/{label}"
+                        );
+                    } else {
+                        let rows = terminal
+                            .descendants()
+                            .filter(|node| {
+                                node.has_tag_name("tspan")
+                                    && node
+                                        .parent()
+                                        .is_some_and(|parent| parent.has_tag_name("text"))
+                            })
+                            .map(|row| {
+                                row.descendants()
+                                    .filter(|node| node.is_text())
+                                    .filter_map(|node| node.text())
+                                    .collect::<String>()
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(rows, expected_rows, "{class}/{label}");
+                    }
+                }
+                let label_height = if html_labels {
+                    expected_rows.len() as f64 * 16.0 * 1.5
+                } else {
+                    measurer.measure_svg_tspan_text_bbox_height_px("A", &style)
+                        + (expected_rows.len() - 1) as f64 * 16.0 * 1.1
+                };
+                let expected_height = if with_attributes {
+                    let padding = if html_labels { 15.0 } else { 15.0 * 1.25 };
+                    2.0 * (label_height + padding)
+                } else {
+                    label_height + 2.0 * 20.0 * 1.5
+                };
+                let actual_height = layout["layout"]["ErDiagram"]["nodes"][0]["height"]
+                    .as_f64()
+                    .expect("ER entity layout height");
+                assert!(
+                    (actual_height - expected_height).abs() < 1e-9,
+                    "{html_labels}/{with_attributes}/{label}: {actual_height} != {expected_height}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn er_generic_html_entity_depth_follows_text_content_restoration() {
+    for (generic, escaped, expected) in [
+        ("A~br~B", "A&lt;br&gt;B", "A<br>B"),
+        ("*A~br~B*", "A&lt;br&gt;B", "A<br>B"),
+        (
+            "A~br~B&amp;lt;br&amp;gt;C",
+            "A&lt;br&gt;B&lt;br&gt;C",
+            "A<br>B<br>C",
+        ),
+        (
+            "A~br~B&amp;amp;lt;br&amp;amp;gt;C",
+            "A&lt;br&gt;B&amp;amp;lt;br&amp;amp;gt;C",
+            "A<br>B&amp;lt;br&amp;gt;C",
+        ),
+    ] {
+        for label in [generic, escaped] {
+            let source = format!(
+                "---\nconfig:\n  layout: dagre\n  look: classic\n  htmlLabels: true\n  themeVariables:\n    fontSize: 16px\n---\nerDiagram\nE[\"{label}\"] {{\n  string id\n}}\n"
+            );
+            let svg = render_er_svg_from_text(&source, &SvgRenderOptions::default());
+            let document = roxmltree::Document::parse(&svg).expect("valid generic ER SVG");
+            let terminal = document
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .expect("HTML entity name terminal");
+            let visible = terminal
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert_eq!(visible, expected, "{label}");
+            assert!(
+                !terminal
+                    .descendants()
+                    .any(|node| node.has_tag_name("br") || node.has_tag_name("em")),
+                "textContent restoration must retain literal text: {label}"
+            );
+            assert_eq!(terminal.attribute("height"), Some("24"), "{label}");
+        }
+    }
+}
+
+#[test]
+fn er_generic_html_literal_height_uses_selected_line_measurement() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        TextMeasurementOperation, TextMeasurementPhase,
+    };
+
+    #[derive(Default)]
+    struct LiteralHeightHost(AtomicUsize);
+
+    impl HostTextMeasurer for LiteralHeightHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.text != "A<br>B" {
+                return Ok(None);
+            }
+            assert_ne!(
+                request.operation,
+                TextMeasurementOperation::Wrapped,
+                "literal HTML height must not re-enter label parsing"
+            );
+            if request.operation != TextMeasurementOperation::HtmlLineHeight {
+                return Ok(None);
+            }
+            assert_eq!(request.phase, TextMeasurementPhase::Wrap);
+            assert_eq!(request.max_width, None);
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Ok(Some(HostTextMeasurement::Length(31.25)))
+        }
+    }
+
+    let source = r#"%%{init: {"htmlLabels": true, "layout": "dagre"}}%%
+erDiagram
+  A["A~br~B"] {
+    string id
+  }
+"#;
+    let host = Arc::new(LiteralHeightHost::default());
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.er-html-line-height").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            host.clone(),
+            [TextMeasurementPhase::Wrap],
+        ))
+        .begin_session()
+        .unwrap();
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .expect("parse generic ER entity")
+        .expect("detect ER diagram");
+    let artifact =
+        family::prepare(&parsed, &LayoutOptions::default(), session).expect("prepare ER labels");
+    assert!(
+        host.0.load(Ordering::Relaxed) > 0,
+        "layout must receive the literal HtmlLineHeight operation before emission"
+    );
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render generic ER entity");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid ER SVG");
+    let terminal = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("foreignObject")
+                && node
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+                    == "A<br>B"
+        })
+        .expect("literal generic HTML terminal");
+    assert!(!terminal.descendants().any(|node| node.has_tag_name("br")));
+    assert_eq!(terminal.attribute("height"), Some("31.25"));
 }
 
 #[test]

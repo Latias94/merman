@@ -296,6 +296,58 @@ test("pixel observation restores authored text style", async ({ page }) => {
   expect(await root.evaluate((element) => new XMLSerializer().serializeToString(element))).toBe(before);
 });
 
+for (const [name, extraCss] of [
+  ["partially clipped text", `${NOTE_TEXT}{clip-path:inset(0 80% 0 0)}`],
+  ["clipped final glyph", `${NOTE_TEXT}{clip-path:inset(0 5% 0 0)}`],
+  ["partially clipped ancestor", ".legacy-note{clip-path:inset(0 80% 0 0)}"],
+] as const) {
+  test(`terminal observation rejects ${name}`, async ({ page }) => {
+    await expect(
+      observeThemeTextSurfaces(page, fixtureSvg({ extraCss }), [PROBE]),
+    ).rejects.toThrow("Terminal text must retain its complete visible ink");
+  });
+}
+
+test("terminal observation rejects a selected tspan clipped by its text parent", async ({ page }) => {
+  await expect(observeThemeTextSurfaces(page, fixtureSvg({
+    extraCss: `${NOTE_TEXT}{clip-path:inset(0 80% 0 0)}`,
+  }), [{ ...PROBE, textSelector: `${NOTE_TEXT} tspan` }])).rejects.toThrow(
+    "Terminal text must retain its complete visible ink",
+  );
+});
+
+test("terminal observation accepts clipping confined to font whitespace", async ({ page }) => {
+  const svg = fixtureSvg({
+    extraCss: `${NOTE_TEXT}{font-family:serif;font-size:28px;font-style:italic;white-space:pre;clip-path:inset(-20% 1% -20% -20%)}`,
+  }).replace("Terminal note</tspan>", "Italic f    </tspan>")
+    .replace(/>\s+<tspan/u, "><tspan")
+    .replace(/<\/tspan>\s+<\/text>/u, "</tspan></text>");
+  const [observation] = await observeThemeTextSurfaces(page, svg, [PROBE]);
+  expect(observation.finalFontIdentity).toContain("serif");
+});
+
+test("terminal observation rejects text partly clipped by the root viewport", async ({ page }) => {
+  const svg = fixtureSvg({})
+    .replace('id="diagram"', 'id="diagram" style="overflow:hidden"')
+    .replace(/x="30"/gu, 'x="200"')
+    .replace('width="200" height="48"', 'width="300" height="48"');
+  await expect(observeThemeTextSurfaces(page, svg, [PROBE])).rejects.toThrow(
+    "Terminal text must retain its complete visible ink",
+  );
+});
+
+test("partial clipping rejection restores every authored style", async ({ page }) => {
+  await page.setContent(fixtureSvg({
+    extraCss: ".legacy-note{clip-path:inset(0 80% 0 0)}",
+  }));
+  const root = page.locator("svg");
+  const before = await root.evaluate((element) => new XMLSerializer().serializeToString(element));
+  await expect(observeMountedThemeTextSurfaces(root, [PROBE])).rejects.toThrow(
+    "Terminal text must retain its complete visible ink",
+  );
+  expect(await root.evaluate((element) => new XMLSerializer().serializeToString(element))).toBe(before);
+});
+
 test("terminal observation rejects a selector with zero matches", async ({
   page,
 }) => {

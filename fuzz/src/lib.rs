@@ -151,7 +151,32 @@ mod tree_sitter_edits;
 
 #[cfg(test)]
 mod tests {
-    use super::assert_resvg_safe_svg;
+    use super::{
+        ParseOptions, assert_known_type_parse_paths, assert_parse_paths, assert_resvg_safe_svg,
+        deterministic_engine,
+    };
+
+    #[test]
+    fn incomplete_directive_recovery_preserves_each_parse_path_contract() {
+        let engine = deterministic_engine();
+        for source in [
+            include_str!("../seeds/mermaid/31_gitgraph_incomplete_directive_ci.mmd"),
+            include_str!("../seeds/mermaid/32_gitgraph_incomplete_directive_minimal.mmd"),
+        ] {
+            let strict = engine
+                .parse_diagram_sync(source, ParseOptions::strict())
+                .expect("strict preprocessing removes the unfinished directive through EOF")
+                .expect("the remaining gitGraph prefix must parse");
+            let lenient = engine
+                .parse_diagram_sync(source, ParseOptions::lenient())
+                .expect("line recovery suppresses the invalid merge")
+                .expect("the recovered gitGraph failure must produce an error diagram");
+            assert_eq!(strict.meta.diagram_type, "gitGraph", "{source}");
+            assert_eq!(lenient.meta.diagram_type, "error", "{source}");
+            assert_parse_paths(&engine, source);
+            assert_known_type_parse_paths(&engine, "gitGraph", source);
+        }
+    }
 
     #[test]
     fn css_url_oracle_does_not_treat_function_name_suffixes_as_url_functions() {
@@ -172,6 +197,40 @@ mod tests {
         assert_resvg_safe_svg(sanitized);
         assert!(sanitized.contains(".node{}"), "{sanitized}");
         assert!(!sanitized.contains("animatiw:"), "{sanitized}");
+    }
+
+    #[test]
+    fn terminal_finalizer_is_idempotent_for_unquoted_trailing_css_escape() {
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("parity render session must be constructible");
+        for (svg, expected_css) in [
+            (
+                include_str!("../seeds/svg/06_unquoted_css_escape_ci.svg"),
+                ".safe{fill:#123456;content:\"A\\\"B\";font-family:'A\\\\'}.broken{stroke:blue;content:nfinished\u{FFFD}}",
+            ),
+            (
+                include_str!("../seeds/svg/07_unquoted_css_escape_minimal.svg"),
+                ".a{content:x\u{FFFD}}",
+            ),
+        ] {
+            let sanitized = merman_render::svg::finalize_resvg_svg(svg, &session)
+                .expect("well-formed SVG with malformed CSS must be sanitizable");
+            assert_resvg_safe_svg(sanitized.as_ref());
+            let document = roxmltree::Document::parse(sanitized.as_ref()).unwrap();
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text());
+            assert_eq!(css, Some(expected_css), "safe declarations must survive");
+        }
+    }
+
+    #[test]
+    fn terminal_finalizer_preserves_closed_css_identifier_escapes() {
+        assert_resvg_safe_svg(
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.paired{font-family:font\\}.hex{font-family:\31}.close{font-family:font\}}</style></svg>"##,
+        );
     }
 
     #[test]

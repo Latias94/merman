@@ -4487,6 +4487,7 @@ public enum MermanTextMeasurementOperation: Equatable, Hashable {
     case rawBBoxYOffset
     case rawMiddleBBoxYOffset
     case rawHangingBBoxYOffset
+    case htmlLineHeight
 
 
 
@@ -4551,6 +4552,8 @@ public struct FfiConverterTypeMermanTextMeasurementOperation: FfiConverterRustBu
         case 21: return .rawMiddleBBoxYOffset
 
         case 22: return .rawHangingBBoxYOffset
+
+        case 23: return .htmlLineHeight
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4646,6 +4649,10 @@ public struct FfiConverterTypeMermanTextMeasurementOperation: FfiConverterRustBu
 
         case .rawHangingBBoxYOffset:
             writeInt(&buf, Int32(22))
+
+
+        case .htmlLineHeight:
+            writeInt(&buf, Int32(23))
 
         }
     }

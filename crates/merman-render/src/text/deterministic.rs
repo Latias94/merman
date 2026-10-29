@@ -392,13 +392,6 @@ impl DeterministicTextMeasurer {
         })
     }
 
-    pub(crate) fn normalized_text_lines_for_wrap_mode(
-        text: &str,
-        _wrap_mode: WrapMode,
-    ) -> Vec<String> {
-        Self::normalized_text_lines(text)
-    }
-
     pub(crate) fn split_line_to_words(text: &str) -> Vec<String> {
         // Mirrors Mermaid's `splitLineToWords` fallback behavior when `Intl.Segmenter` is absent:
         // split by spaces, then re-add the spaces as separate tokens (preserving multiple spaces).
@@ -589,7 +582,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
         } else {
             self.line_height_factor
         };
-        style.font_size.max(1.0) * factor
+        style.font_size.max(0.0) * factor
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
@@ -731,7 +724,7 @@ impl TextMeasurer for WidthCallbackTextMeasurer {
         } else {
             self.line_height_factor
         };
-        style.font_size.max(1.0) * factor
+        style.font_size.max(0.0) * factor
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {

@@ -32,7 +32,7 @@ The optional native context uses bounded explicit TTF/OTF/TTC sources and shared
 font selection. Install it through the facade's
 `SvgEnvironment::with_native_font_context` for shared layout, wrapping, SVG
 bounds, and computed-length measurement across diagram families, with automatic
-reuse by typed binary outputs. All 22 measurement protocol operations are
+reuse by typed binary outputs. All 23 measurement protocol operations are
 supported; missing-glyph requests retain deterministic fallback by default. Opt into
 `NativeFontContext::with_strict_glyph_coverage(true)` to return a normal error instead of
 declining unsupported measurement or silently painting missing glyphs.

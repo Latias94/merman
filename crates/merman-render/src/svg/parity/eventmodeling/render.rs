@@ -7,6 +7,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     layout: &EventModelingDiagramLayout,
     model: &EventModelingDiagramModel,
     text_theme: &crate::eventmodeling::EventModelingTextThemePlan,
+    prepared_labels: &crate::eventmodeling::EventModelingPreparedLabels,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("eventmodeling");
@@ -104,7 +105,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
         );
         out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#);
         out.checkpoint()?;
-        push_box_html_label(&mut out, &box_layout.text)?;
+        push_box_html_label(&mut out, prepared_labels, box_layout.index)?;
         out.push_str("</span></div></foreignObject></g>");
         out.checkpoint()?;
     }
@@ -134,35 +135,27 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     Ok(rooted_svg)
 }
 
-fn push_box_html_label(out: &mut impl SvgOutput, text: &str) -> Result<()> {
-    let mut lines = text.lines();
-    let title = lines.next().unwrap_or(text);
-    let rest = lines.collect::<Vec<_>>().join("\n");
-
-    out.push_str("<b>");
-    escape_xml_into(out, title);
-    out.push_str("</b>");
-    out.checkpoint()?;
-
-    let code = normalize_eventmodeling_code_text(&rest);
-    if code.is_empty() {
-        return Ok(());
-    }
-
-    out.push_str(r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#);
-    escape_xml_into(out, &code);
-    if code.contains('\n') {
-        out.push_str("<br/>");
-    }
-    out.push_str("</code>");
+fn push_box_html_label(
+    out: &mut impl SvgOutput,
+    prepared_labels: &crate::eventmodeling::EventModelingPreparedLabels,
+    index: usize,
+) -> Result<()> {
+    out.push_str(prepared_labels.box_xhtml(index)?);
     out.checkpoint()
 }
 
-fn normalize_eventmodeling_code_text(raw: &str) -> String {
-    let trimmed = raw.trim();
-    let without_outer_braces = trimmed
-        .strip_prefix('{')
-        .and_then(|s| s.strip_suffix('}'))
-        .unwrap_or(trimmed);
-    without_outer_braces.trim().to_string()
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn emission_requires_prepared_xhtml() {
+        let mut out = String::new();
+        let error = super::push_box_html_label(
+            &mut out,
+            &crate::eventmodeling::EventModelingPreparedLabels::default(),
+            0,
+        )
+        .expect_err("missing prepared XHTML must fail without rebuilding layout text");
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert!(out.is_empty());
+    }
 }

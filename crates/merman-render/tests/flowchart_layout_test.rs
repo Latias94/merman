@@ -2532,14 +2532,38 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         font_weight: None,
         font_style: None,
     };
-    let single = measurer.measure_wrapped(title, &style, None, WrapMode::SvgLike);
-    let wrapped = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::SvgLike);
-
+    let single_height = measurer.measure_svg_tspan_text_bbox_height_px(title, &style);
+    let wrapped = merman_render::text::try_measure_wrapped_text(
+        title,
+        &style,
+        Some(200.0),
+        WrapMode::SvgLike,
+        single_height,
+        |row, face| {
+            Ok::<_, std::convert::Infallible>(
+                measurer.measure_svg_text_computed_length_px(row, face),
+            )
+        },
+    )
+    .unwrap();
     assert!(
-        wrapped.height > single.height + 1e-6,
-        "expected SVG-like mode to wrap long-word title"
+        wrapped.lines.len() > 1,
+        "expected a wrapped long-word title"
     );
-    assert!((cluster.title_label.height - wrapped.height).abs() < 1e-6);
+    assert_eq!(wrapped.lines.concat(), title);
+    for row in &wrapped.lines {
+        assert!(measurer.measure_svg_text_computed_length_px(row, &style) <= 200.0);
+        assert_eq!(
+            measurer.measure_svg_tspan_text_bbox_height_px(row, &style),
+            single_height,
+            "splitting this plain word must preserve its literal row ink height"
+        );
+    }
+    // Pinned createText positions rows 1.1em apart; getBBox spans the first and last ink bounds.
+    let expected_height = single_height + (wrapped.lines.len() - 1) as f64 * style.font_size * 1.1;
+    assert!(expected_height > single_height + 1e-6);
+    assert!((cluster.title_label.height - expected_height).abs() < 1e-6);
+    assert!(cluster.height >= cluster.title_label.height);
 }
 
 #[test]

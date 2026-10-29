@@ -1,6 +1,7 @@
 # Host Text Measurement
 
 Status: Current
+Last updated: 2026-10-28
 
 This guide owns display-stack integration, callback result semantics, and measurement lifecycle
 guidance. The [text-measurement descriptor](../../contracts/abi/text-measurement-v1.json) owns
@@ -208,6 +209,7 @@ The stable operation mapping is:
 | 19 | `raw-bbox-y-offset` | `length` (signed) |
 | 20 | `raw-middle-bbox-y-offset` | `length` (signed) |
 | 21 | `raw-hanging-bbox-y-offset` | `length` (signed) |
+| 22 | `html-line-height` | `length` |
 
 The four stable result kinds are `metrics` (`width`, `height`, `line_count`), `length` (`length`),
 `horizontal-extents` (`bbox_left`, `bbox_right`), and `wrapped-with-raw-width` (metrics plus an
@@ -249,8 +251,50 @@ If a host cannot reproduce the exact baseline, it must leave that operation unha
 codes 0 through 18 and all result shapes remain unchanged; these operations extend protocol 1
 without changing the separately versioned transport APIs.
 
+Operation 22, `html-line-height`, reads the non-negative client-rect height of one
+already-decoded HTML line in a borderless, unpadded `inline-block` with `white-space: nowrap`.
+Assign the request through `textContent`; literal `<br>` and entity spellings must remain text.
+Apply the supplied font, spacing, and line height. It returns `length`, retains the Wrap phase,
+and carries no width constraint. An unsupported host leaves it unhandled for the routed fallback.
+Existing operation codes and transport versions are unchanged.
+Rust hosts that exhaustively match `TextMeasurementOperation` must add an
+`HtmlLineHeight` arm; the new enum variant is a source-level API change.
+
 Request string pointers are valid only during the callback. Copy or decode them immediately if the
 host text API needs owned strings.
+
+### Browser DOM Operation Contracts
+
+`createBrowserTextMeasurementSession()` preserves valid CSS pixel font sizes, including zero and
+subpixel values. SVG and HTML probes must not raise those sizes to `1px`. Invalid CSS assignments
+leave the request unhandled rather than measuring a previous font. Canvas likewise preserves valid
+sizes and leaves negative or non-finite sizes unhandled instead of substituting `16px`.
+
+The simple operations (`simple-bbox-width`, `simple-bbox-height`) mirror pinned Mermaid
+`drawSimpleText`: replace matches of `/<\/?br\s*\/?>/gi` with one space, then assign the result as
+literal text to one child `<tspan>`. The body-attached, single-row
+`mermaid-calculate-text-dimensions` probe performs the same projection. It still consumes only font
+family, size, and weight, and retains Mermaid's zero-bbox rejection. This operation does not own the
+caller's full multi-line splitting, font comparison, or rounding algorithm. Raw direct-text,
+literal-tspan, and incremental `wrap-probe-bbox-width` probes keep their request text; sharing an
+SVG container does not make their text projections interchangeable. In particular, do not decode
+`&lt;br&gt;` or reinterpret ordinary newlines as HTML breaks in simple probes.
+
+Wrapped SVG probes preserve `line_height` as the subsequent row's baseline advance, including zero
+and subpixel values. Wrapped HTML probes apply the requested pixel line height and return the actual
+client-rect height without a minimum-height floor. Negative or non-finite line heights are unhandled.
+Zero HTML line height is also unhandled because a zero-height rect cannot reliably identify the
+number of wrapped lines. Browser float quantization remains observable. The binding transport derives line height from the actual font size and the operation
+multiplier without a 1px floor. This does not establish propagation of arbitrary source CSS line heights.
+
+Focused regressions live in `platforms/web/scripts/text-measurement.test.mjs`,
+`dom-text-measurement.browser.test.mjs`, `canvas-text-measurement.browser.test.mjs`, and
+`pie-text-measurement.browser.test.mjs`. Run `npm run build:ts` in `platforms/web` before testing so
+the browser imports the current TypeScript output. Set `PUPPETEER_EXECUTABLE_PATH` for the browser
+tests; `MERMAN_PUPPETEER_MODULE` may reference an existing Puppeteer installation. The Pie consumer
+regression additionally requires a full WASM artifact matching the current renderer in `pkg/full`.
+An older artifact that emits a default `17px` legend measurement for a `0.5px` configuration cannot
+verify this consumer contract; rebuilding TypeScript alone does not refresh WASM.
 
 ## Lifecycle And Threading Rules
 

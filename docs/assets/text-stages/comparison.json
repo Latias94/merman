@@ -1,0 +1,46 @@
+{
+  "baseline": "0ce21f1cc66435a6650a4dfae2dca39a9028f50f",
+  "after": "Full WASM build captured during this change; exact manifest retained",
+  "browser": "Edg/156.0.4314.50",
+  "wasm_inputs_sha256": "f543530bd3ca8138a9ee424e998931b5a13e502fb37852deac927e08a5748595",
+  "cases": [
+    {
+      "case": "kanban",
+      "files": {
+        "kanban.mmd": "b1e61260a4d655a1f48bd925e4267e5d410166e8d726fd23e3db59610066a897",
+        "kanban-before.svg": "0a928cec11af832e1f27b927fd2bf33c10d85ad2a2b4c304ddb40436923a3855",
+        "kanban-after.svg": "77d03d5a9c098c7ef904853a8da3de0e47633cab8f87aa7ee8a4d142a51170a7"
+      },
+      "xml": {
+        "before": "valid",
+        "after": "valid"
+      }
+    },
+    {
+      "case": "class-note",
+      "files": {
+        "class-note.mmd": "806328efc02c001efa4c273616cabc3c0f95f322b93bbb60d5c928e8fc53a634",
+        "class-note-before.svg": "5fe0deaa6cbbbe85e4f39cb620b506fe39057042d55248b8be8e2c4115cf9b54",
+        "class-note-after.svg": "2d16421bc8fc0b7a237d20b87c4c68649fbd1e520c556df031a79f5e7db551b6"
+      },
+      "xml": {
+        "before": "undefined entity: line 1, column 16048",
+        "after": "valid"
+      }
+    }
+  ],
+  "wasm_sha256": "cced4be17df524df150ad75ccdf6ad3795b4c4239a9318dc58eb57a793a60f91",
+  "wasm_source_input_drift": [
+    {
+      "path": "crates/merman-bindings-core/src/text_measurement.rs",
+      "build_sha256": "44312bb9a8c1be6299c89a42993cbc2435165fe298377e3a479585c8c01b512a",
+      "current_sha256": "1f4ebfb655cb125ca95420cfb6dd53ee08073987826d382df96827187f971b05"
+    },
+    {
+      "path": "crates/merman-render/src/flowchart/elk/browser_measurements_tests.rs",
+      "build_sha256": "0ed2fe9887f01ce1b0742c926b0d1554a9d91f9fd4c39371afc07bb6a4f032d1",
+      "current_sha256": "2060663e7b3cd6994bfcfad6f71c6bd3bf57602e3e9186d1f5b82cfbe8721ab5"
+    }
+  ],
+  "comparison_png_sha256": "a0f093972307aff70106b3736ffff8c04b4aa1178f88dc29e605e04350fe620e"
+}

@@ -1279,13 +1279,15 @@ mod palette_tests {
 #[cfg(test)]
 mod typography_tests {
     use super::*;
+    use crate::environment::TextMeasurementOperation;
     use crate::text::TextMetrics;
     use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::sync::Mutex;
 
     struct RecordingMeasurer {
-        measured: Mutex<Vec<(String, TextStyle)>>,
+        measured: Mutex<Vec<(TextMeasurementOperation, String, TextStyle)>>,
         computed: Mutex<Vec<TextStyle>>,
+        probes: Mutex<Vec<TextStyle>>,
         probe_width: f64,
     }
 
@@ -1294,12 +1296,20 @@ mod typography_tests {
             Self {
                 measured: Mutex::default(),
                 computed: Mutex::default(),
+                probes: Mutex::default(),
                 probe_width,
             }
         }
 
+        fn record(&self, operation: TextMeasurementOperation, text: &str, style: &TextStyle) {
+            self.measured
+                .lock()
+                .unwrap()
+                .push((operation, text.to_owned(), style.clone()));
+        }
+
         fn metrics(text: &str, style: &TextStyle) -> TextMetrics {
-            let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
+            let lines = text.split('\n').collect::<Vec<_>>();
             TextMetrics {
                 width: lines
                     .iter()
@@ -1312,22 +1322,33 @@ mod typography_tests {
     }
 
     impl TextMeasurer for RecordingMeasurer {
-        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-            self.measured
-                .lock()
-                .unwrap()
-                .push((text.to_owned(), style.clone()));
-            Self::metrics(text, style)
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("Class SVG rows must select an explicit measurement operation")
         }
 
         fn measure_wrapped(
             &self,
             text: &str,
             style: &TextStyle,
-            _max_width: Option<f64>,
-            _wrap: WrapMode,
+            max_width: Option<f64>,
+            wrap: WrapMode,
         ) -> TextMetrics {
-            self.measure(text, style)
+            assert_eq!(max_width, None);
+            assert_eq!(wrap, WrapMode::SvgLike);
+            self.record(TextMeasurementOperation::Wrapped, text, style);
+            Self::metrics(text, style)
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            assert!(!text.contains('\n'), "terminal probes own one literal word");
+            self.record(TextMeasurementOperation::TspanBBoxHeight, text, style);
+            style.font_size
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+            assert!(!text.contains('\n'), "terminal probes own one literal word");
+            self.record(TextMeasurementOperation::CreateTextBBoxYOffset, text, style);
+            -style.font_size / 4.0
         }
 
         fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
@@ -1340,6 +1361,7 @@ mod typography_tests {
             _text: &str,
             style: &TextStyle,
         ) -> TextMetrics {
+            self.probes.lock().unwrap().push(style.clone());
             TextMetrics {
                 width: self.probe_width,
                 height: style.font_size,
@@ -1402,13 +1424,19 @@ mod typography_tests {
             assert_eq!(runs[1].y_offset, font_size + 3.0);
             assert_eq!(rect.unwrap().height(), font_size * 1.5 + 11.0);
             let measured = measurer.measured.lock().unwrap();
-            assert!(measured.iter().any(|(text, style)| {
-                text == &runs[0].text
-                    && style.font_family.as_deref() == Some("serif")
-                    && style.font_size == font_size
-                    && style.font_weight.as_deref() == Some("normal")
-                    && style.font_style.as_deref() == Some("normal")
-            }));
+            for operation in [
+                TextMeasurementOperation::TspanBBoxHeight,
+                TextMeasurementOperation::CreateTextBBoxYOffset,
+            ] {
+                assert!(measured.iter().any(|(actual, text, style)| {
+                    *actual == operation
+                        && text == &runs[0].text
+                        && style.font_family.as_deref() == Some("serif")
+                        && style.font_size == font_size
+                        && style.font_weight.as_deref() == Some("normal")
+                        && style.font_style.as_deref() == Some("normal")
+                }));
+            }
             drop(measured);
 
             let mut svg = String::new();
@@ -1444,10 +1472,64 @@ mod typography_tests {
 
         assert_eq!(runs[0].text, "W\nW\nW\nW\nW\nW");
         assert_eq!(runs[0].metrics.line_count, 6);
-        assert_eq!(runs[0].metrics.height, 192.0);
+        let mut svg = String::new();
+        render_class_svg_node_runs_group(&mut svg, "members-group text", 0.0, 0.0, &runs, "");
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let rows: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+            .collect();
+        assert_eq!(rows.len(), runs[0].metrics.line_count);
+        let baseline_em = |row: &roxmltree::Node<'_, '_>| {
+            ["y", "dy"]
+                .into_iter()
+                .map(|name| {
+                    row.attribute(name)
+                        .unwrap()
+                        .strip_suffix("em")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                })
+                .sum::<f64>()
+        };
+        let baseline_span = baseline_em(rows.last().unwrap()) - baseline_em(&rows[0]);
+        let font_size = 32.0;
+        let expected_height = baseline_span * font_size + font_size;
+        assert!((runs[0].metrics.height - expected_height).abs() < 1e-9);
+        let measured = measurer.measured.lock().unwrap();
+        for operation in [
+            TextMeasurementOperation::TspanBBoxHeight,
+            TextMeasurementOperation::CreateTextBBoxYOffset,
+        ] {
+            let words: Vec<_> = measured
+                .iter()
+                .filter(|(actual, _, _)| *actual == operation)
+                .collect();
+            assert_eq!(words.len(), rows.len());
+            assert!(
+                words
+                    .iter()
+                    .all(|(_, text, style)| text == "W" && style.font_size == font_size)
+            );
+        }
+        assert!(
+            measured
+                .iter()
+                .all(|(operation, _, _)| *operation != TextMeasurementOperation::Wrapped)
+        );
         let computed = measurer.computed.lock().unwrap();
         assert!(!computed.is_empty());
         assert!(computed.iter().all(|style| style.font_size == 32.0));
+        let probes = measurer.probes.lock().unwrap();
+        assert_eq!(probes.len(), 2);
+        assert_eq!(probes[0].font_family.as_deref(), Some("sans-serif"));
+        assert_eq!(probes[1].font_family.as_deref(), Some("Arial"));
+        assert!(
+            probes
+                .iter()
+                .all(|style| style.font_size == ctx.wrap_probe_font_size)
+        );
     }
 
     #[test]
@@ -1464,20 +1546,6 @@ mod typography_tests {
 
         assert!(runs[0].literal_fallback);
         assert!(!runs[1].literal_fallback);
-        for text in ["\\\\", "<span style='font-size:99px'> owner </span>"] {
-            assert!(
-                measurer
-                    .measured
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .any(|(actual, style)| {
-                        actual == text
-                            && style.font_size == 32.0
-                            && style.font_style.as_deref() == Some("normal")
-                    })
-            );
-        }
         assert!(runs.iter().all(|run| run.metrics.height == 32.0));
         let mut svg = String::new();
         render_class_svg_node_runs_group(&mut svg, "members-group text", 0.0, 0.0, &runs, "");
@@ -1493,6 +1561,40 @@ mod typography_tests {
             .filter_map(|child| child.text())
             .collect();
         assert_eq!(visible, "\\\\<span style='font-size:99px'> owner </span>");
+        let measured = measurer.measured.lock().unwrap();
+        let fallback: Vec<_> = measured
+            .iter()
+            .filter(|(operation, _, _)| *operation == TextMeasurementOperation::Wrapped)
+            .collect();
+        assert_eq!(fallback.len(), 1);
+        assert_eq!(fallback[0].1, "\\\\");
+        let words: Vec<_> = document
+            .descendants()
+            .filter(|child| child.attribute("class") == Some("text-inner-tspan"))
+            .map(|child| child.text().unwrap())
+            .collect();
+        assert_eq!(
+            words,
+            ["<span style='font-size:99px'>", " owner", " </span>"]
+        );
+        for operation in [
+            TextMeasurementOperation::TspanBBoxHeight,
+            TextMeasurementOperation::CreateTextBBoxYOffset,
+        ] {
+            let actual: Vec<_> = measured
+                .iter()
+                .filter(|(actual, _, _)| *actual == operation)
+                .map(|(_, text, _)| text.as_str())
+                .collect();
+            assert_eq!(actual, words);
+        }
+        assert!(measured.iter().all(|(_, _, style)| {
+            style.font_size == 32.0 && style.font_style.as_deref() == Some("normal")
+        }));
+        assert_eq!(
+            runs[1].metrics.width,
+            words.iter().map(|word| word.chars().count()).sum::<usize>() as f64 * 32.0
+        );
     }
 }
 

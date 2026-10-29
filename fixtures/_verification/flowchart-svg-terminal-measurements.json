@@ -1,0 +1,494 @@
+{
+  "schema_version": 1,
+  "mermaid_version": "12.2.0",
+  "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+  "browser": "Edg/156.0.4314.50",
+  "measurement_source": "Literal single-tspan height and row-zero createFormattedText bbox y, independently measured from pinned SVG word DOM with its computed typography. Both row-start and leading-space forms are probed with textContent. Complete raw and DOMPurify-sanitized source/plain payloads used by label placement are also independently probed with textContent, never parsed as terminal markup. Responsive viewBox scaling is removed; no fonts are injected.",
+  "entries": [
+    {
+      "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh27_set_text_color_of_nodes_and_links_according_to_styles_when_027",
+      "input_sha256": "e37d2bc5cfa26cefde0177a1c617384e8a8e6bf4de30269c5b35d9e1277ba8d1",
+      "upstream_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
+      "faces": [
+        {
+          "style": {
+            "font_family": "courier",
+            "font_size": 14,
+            "font_weight": "400",
+            "font_style": "normal"
+          },
+          "texts": [
+            {
+              "text": "red",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " red",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "text",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "red\ntext",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "red text",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " text",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "blue",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " blue",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "blue\ntext",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "blue text",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "default",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " default",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "style",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "default\nstyle",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "default style",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " style",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020",
+      "input_sha256": "89d1f6cdd6662da4eefc4f4023587c64545f50df14d3690946354d7aa58a92e9",
+      "upstream_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
+      "faces": [
+        {
+          "style": {
+            "font_family": "courier",
+            "font_size": 14,
+            "font_weight": "400",
+            "font_style": "normal"
+          },
+          "texts": [
+            {
+              "text": "hello",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " hello",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024",
+      "input_sha256": "9d416eaedbeda364326ad0d96ad075d2d12a96eda9278d763eba79cf1c939918",
+      "upstream_svg_sha256": "3d296ceab9ed3a364d2e6069c3430ea3ed94e35dfbcba70afd699cb5e302a09d",
+      "faces": [
+        {
+          "style": {
+            "font_family": "courier",
+            "font_size": 14,
+            "font_weight": "400",
+            "font_style": "normal"
+          },
+          "texts": [
+            {
+              "text": "step",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " step",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "step 1",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "1",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " 1",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "step 2",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "2",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " 2",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "step 3",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "3",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " 3",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_false_094",
+      "input_sha256": "fcc1647a03d968d09a49f5be57be869fa34639476d4c06065e49c686a9b69380",
+      "upstream_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
+      "faces": [
+        {
+          "style": {
+            "font_family": "\"Recursive Variable\", arial, sans-serif",
+            "font_size": 14,
+            "font_weight": "400",
+            "font_style": "normal"
+          },
+          "texts": [
+            {
+              "text": "n0",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " n0",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " This",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is bold",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "and <strong>",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "strong </strong>",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "for brace-r shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is bold\nand <strong>\nstrong </strong>\nfor brace-r shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is bold and <strong> strong </strong> for brace-r shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is **bold** </br>and <strong>strong</strong> for brace-r shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is **bold** <br>and <strong>strong</strong> for brace-r shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "is",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " is",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "and",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " and",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "<strong>",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " <strong>",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "strong",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " strong",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "</strong>",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " </strong>",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "for",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " for",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "brace-r",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " brace-r",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "n1",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " n1",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "for braces shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is bold\nand <strong>\nstrong </strong>\nfor braces shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is bold and <strong> strong </strong> for braces shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is **bold** </br>and <strong>strong</strong> for braces shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "This is **bold** <br>and <strong>strong</strong> for braces shape",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "braces",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " braces",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            }
+          ]
+        },
+        {
+          "style": {
+            "font_family": "\"Recursive Variable\", arial, sans-serif",
+            "font_size": 14,
+            "font_weight": "700",
+            "font_style": "normal"
+          },
+          "texts": [
+            {
+              "text": "bold",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " bold",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "local_mermaid_12_2_elk_label_clearance_8368",
+      "input_sha256": "e82ce307a88afea33da54324d9dfdfb674dfc7c35107dd162e71845ea1b8a497",
+      "upstream_svg_sha256": "26b4dde86ef879321f362a35486a1980d13088ef5d71baa25a449000db7b2fd4",
+      "faces": [
+        {
+          "style": {
+            "font_family": "\"Recursive Variable\", arial, sans-serif",
+            "font_size": 14,
+            "font_weight": "400",
+            "font_style": "normal"
+          },
+          "texts": [
+            {
+              "text": "approved",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " approved",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "changes",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " changes",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "Draft",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " Draft",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "Review",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " Review",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": "Published",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            },
+            {
+              "text": " Published",
+              "tspan_bbox_height": 16,
+              "create_text_bbox_y": 1.0000009536743164
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

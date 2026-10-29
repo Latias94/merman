@@ -1,3 +1,5 @@
+#![cfg(feature = "diagram-flowchart")]
+
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
@@ -402,6 +404,9 @@ mod rendering {
     #[cfg(feature = "native-fonts")]
     #[test]
     fn cli_mermaid_png_keeps_math_ink_in_label_center() {
+        let font = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../merman-export/tests/fonts/Cousine-Regular.ttf");
+        let font = font.to_str().expect("fixture font path");
         let output = run_with_stdin(
             &[
                 "render",
@@ -413,11 +418,15 @@ mod rendering {
                 "ratex",
                 "--font-measurement",
                 "native",
+                "--font-file",
+                font,
+                "--font-system",
+                "off",
                 "--background",
                 "white",
                 "-",
             ],
-            "flowchart LR\nA[\"$$\\color{red}{E=mc^2}$$\"]\n",
+            "---\nconfig:\n  fontFamily: Cousine\n---\nflowchart LR\nA[\"$$\\color{red}{E=mc^2}$$\"]\n",
         );
         assert!(
             output.status.success(),
@@ -438,5 +447,96 @@ mod rendering {
             has_math_ink,
             "Mermaid PNG lost red formula ink in label center"
         );
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+mod native_exports {
+    use super::run_with_stdin;
+
+    const MATH: &str = "flowchart LR\nA[\"$$\\frac{x}{y}$$\"]\n";
+    const CSS: &str = "path { fill: #ff0000 !important; stroke: #00ff00 !important; stroke-width: 3px !important; }";
+    const FORMATS: &[(&str, &[u8])] = &[
+        #[cfg(feature = "png")]
+        ("png", b"\x89PNG\r\n\x1a\n"),
+        #[cfg(feature = "jpeg")]
+        ("jpeg", b"\xff\xd8\xff"),
+        #[cfg(feature = "pdf")]
+        ("pdf", b"%PDF-"),
+    ];
+
+    #[test]
+    fn cli_native_math_with_scoped_css_is_rejected() {
+        let css = tempfile::NamedTempFile::new().expect("CSS file");
+        std::fs::write(css.path(), CSS).unwrap();
+        let css_path = css.path().to_str().expect("CSS path");
+        for &(format, _) in FORMATS {
+            let output = run_with_stdin(
+                &[
+                    "render",
+                    "--format",
+                    format,
+                    "--output",
+                    "-",
+                    "--math-renderer",
+                    "ratex",
+                    "--css-file",
+                    css_path,
+                    "-",
+                ],
+                MATH,
+            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                !output.status.success(),
+                "{format}: caller CSS must not change formula paint"
+            );
+            assert!(output.stdout.is_empty(), "{format}: no partial artifact");
+            assert!(
+                stderr.contains("prepared-math evidence was invalidated"),
+                "{format}: {stderr}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_native_exports_allow_math_without_css_and_css_without_math() {
+        let css = tempfile::NamedTempFile::new().expect("CSS file");
+        std::fs::write(css.path(), CSS).unwrap();
+        let css_path = css.path().to_str().expect("CSS path");
+        for &(format, magic) in FORMATS {
+            for (source, styled) in [
+                (MATH, false),
+                ("flowchart LR\nA[Ordinary label]\n", true),
+                (
+                    "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\nA[\"$$x^2$$\"]\n",
+                    true,
+                ),
+            ] {
+                let mut args = vec![
+                    "render",
+                    "--format",
+                    format,
+                    "--output",
+                    "-",
+                    "--math-renderer",
+                    "ratex",
+                ];
+                if styled {
+                    args.extend(["--css-file", css_path]);
+                }
+                args.push("-");
+                let output = run_with_stdin(&args, source);
+                assert!(
+                    output.status.success(),
+                    "{format}, styled={styled}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert!(
+                    output.stdout.starts_with(magic),
+                    "{format}: encoded artifact"
+                );
+            }
+        }
     }
 }
