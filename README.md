@@ -65,15 +65,21 @@ cargo run --locked -p merman --example render_svg > diagram.svg
 
 ## Diagram themes
 
-The current source branch includes compiled visual presets such as Brutalist, Spotless, and
-Cyberpunk. Select a preset from the Playground's **Theme** menu, or run the Rust example:
+The current source branch includes compiled visual presets such as Brutalist, Spotless,
+Cyberpunk, and Ghibli. Open the Playground's **Theme** panel: **Mermaid theme** chooses the
+base appearance shared by both engines; **Merman styling** adds a preset or imported recipe
+to Merman. Cards describe the current diagram's design scope, and the selected preset shows
+application guidance. Preview the styling, then **Apply** it. See the
+[theme gallery](docs/rendering/theme-gallery/README.md) for Brutalist Flowchart and Ghibli Pie,
+or run the Rust example:
 
 ```sh
 cargo run --locked -p merman --features svg --example theme_preset > themed.svg
 ```
 
-Use **Custom theme…** to import, edit, validate, and download a versioned theme recipe. Workspace
-share links preserve the applied custom recipe. The same JSON can be used through Rust, Web,
+Use **Import JSON** in the panel to validate and preview a versioned theme recipe; download it
+to edit with an external editor or the theme-design skill. Workspace share links preserve
+the applied custom recipe and configuration. The same JSON can be used through Rust, Web,
 Node, and native CLI APIs. The authoring format is alpha; see
 [Create, Customize, and Share Diagram Themes](docs/rendering/custom-diagram-themes.md) for examples,
 configuration precedence, and export limitations.

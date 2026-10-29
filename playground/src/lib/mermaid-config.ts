@@ -27,6 +27,35 @@ export function formatMermaidConfigJson(configJson: string): string {
   return `${JSON.stringify(parseMermaidConfigJson(configJson), null, 2)}\n`;
 }
 
+/** Apply only the catalog's recommended keys, preserving other authored settings. */
+export function mergeRecommendedMermaidConfig(
+  configJson: string,
+  recommended: Readonly<MermaidConfigObject>,
+): string {
+  function assertSafeKeys(value: unknown): void {
+    if (typeof value !== "object" || value === null) return;
+    for (const [key, nested] of Object.entries(value)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        throw new Error(`Mermaid config cannot contain the reserved key "${key}".`);
+      }
+      assertSafeKeys(nested);
+    }
+  }
+  function merge(current: MermaidConfigObject, incoming: Readonly<MermaidConfigObject>): MermaidConfigObject {
+    const result = { ...current, ...incoming };
+    for (const [key, value] of Object.entries(incoming)) {
+      if (!isPlainObject(value)) continue;
+      const previous = Object.hasOwn(current, key) ? current[key] : undefined;
+      result[key] = merge(isPlainObject(previous) ? previous : {}, value);
+    }
+    return result;
+  }
+  const current = parseMermaidConfigJson(configJson);
+  assertSafeKeys(current);
+  assertSafeKeys(recommended);
+  return `${JSON.stringify(merge(current, recommended), null, 2)}\n`;
+}
+
 export function buildMermaidConfig(
   configJson: string,
   theme: string,

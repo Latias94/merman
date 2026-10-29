@@ -3,6 +3,7 @@ import { Copy, Download, FileUp, Palette, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { normalizeThemeName, SUPPORTED_THEMES } from "@mermanjs/web";
+import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,25 +11,33 @@ import { downloadBlob } from "@/src/lib/export";
 import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
 import { SHARE_THEME_RECIPE_BYTES } from "@/src/lib/share";
 import { isThemeDraftChanged, type ThemeValidationToken } from "@/src/lib/theme-edit-session";
+import { currentDiagramDetection, currentThemeRender, detectedThemeFamily, reviewedThemeFamilies, themeFamilyMetadataId } from "@/src/lib/theme-discovery";
+import { mergeRecommendedMermaidConfig } from "@/src/lib/mermaid-config";
 import { exceedsUtf8ByteBudget } from "@/src/lib/utf8";
 import { projectError } from "@/src/runtime/error-projection";
 import { selectMermanFacade, useMermanRuntime } from "@/src/runtime/use-merman-runtime";
-import { selectVisibleMermanRenderMetadata, selectVisibleRenderBatch, useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
-import { useAppStore } from "@/src/store";
+import { useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
+import { selectRenderInputSnapshot, useAppStore } from "@/src/store";
 import { ThemePresetCards } from "./ThemePresetCards";
+import { ThemeRenderEvidence } from "./ThemeRenderEvidence";
 
 export function ThemePanel({ className, onClose }: { className?: string; onClose(): void }) {
   const { t } = useTranslation();
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
+  const selectionHeading = useRef<HTMLHeadingElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const facade = useMermanRuntime(selectMermanFacade);
   const session = useAppStore((state) => state.themeEditSession);
-  const diagramTheme = useAppStore((state) => state.diagramTheme);
-  const batch = useRenderCoordinator(selectVisibleRenderBatch);
-  const metadata = useRenderCoordinator(selectVisibleMermanRenderMetadata);
+  const workspace = useAppStore(useShallow(selectRenderInputSnapshot));
+  const coordinator = useRenderCoordinator((state) => state);
+  const detection = currentDiagramDetection(coordinator, workspace);
+  const render = currentThemeRender(coordinator, workspace, session);
+  const batch = render.batch;
+  const metadata = batch?.merman.status === "success" ? batch.merman.metadata : null;
   const [advanced, setAdvanced] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [configFeedback, setConfigFeedback] = useState<{ error: boolean; message: string } | null>(null);
 
   const catalog = useMemo(() => {
     try { return facade?.themeCatalog() ?? null; }
@@ -38,6 +47,12 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
     try { return [...new Set((facade?.getThemes() ?? SUPPORTED_THEMES).map(normalizeThemeName))]; }
     catch { return [...SUPPORTED_THEMES].map(normalizeThemeName); }
   }, [facade]);
+  const families = useMemo(() => {
+    try { return facade?.diagramFamilyCapabilities() ?? []; }
+    catch { return []; }
+  }, [facade]);
+  const familyId = detectedThemeFamily(detection, families);
+  const familyLabel = (id: string) => t(`diagramTypes.${themeFamilyMetadataId(id, families) ?? id}`, { defaultValue: id });
 
   const checkRecipeSize = useCallback((raw: string | number) => {
     if (typeof raw === "number" ? raw > SHARE_THEME_RECIPE_BYTES : exceedsUtf8ByteBudget(raw, SHARE_THEME_RECIPE_BYTES)) {
@@ -81,6 +96,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
   const dirty = isThemeDraftChanged(session);
   const valid = session.validation === "valid" && !session.importing;
   const available = session.candidate.kind !== "preset" || Boolean(selectedPreset?.available);
+  const reviewedFamilies = selectedPreset ? reviewedThemeFamilies(selectedPreset) : [];
   const canExchange = Boolean(facade && valid && available && session.candidate.kind !== "none");
   const candidateLabel = session.candidate.kind === "none" ? t("themePanel.none")
     : session.candidate.kind === "custom" ? t("themePanel.custom")
@@ -138,6 +154,17 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
     } catch (cause) { setActionError(projectError(cause).summary); }
   }
 
+  function applyRecommendedSettings(config: Record<string, unknown>) {
+    try {
+      const store = useAppStore.getState();
+      const merged = mergeRecommendedMermaidConfig(store.mermaidConfig, config);
+      store.setMermaidConfig(merged);
+      setConfigFeedback({ error: false, message: t("themePanel.recommendedApplied") });
+    } catch (cause) {
+      setConfigFeedback({ error: true, message: t("themePanel.recommendedConfigError", { error: projectError(cause).summary }) });
+    }
+  }
+
   return (
     <aside id="theme-panel" role="region" aria-labelledby={headingId} data-theme-panel
       className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden border-t bg-background lg:border-l lg:border-t-0", className)}
@@ -157,12 +184,49 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
         <section className="space-y-2">
           <label htmlFor={`${headingId}-mermaid-theme`} className="block text-xs font-semibold">{t("themePanel.mermaidTheme")}</label>
           <select id={`${headingId}-mermaid-theme`} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-xs"
-            value={diagramTheme} onChange={(event) => useAppStore.getState().setDiagramTheme(event.target.value as MermaidThemeSelection)}>
+            value={workspace.diagramTheme} onChange={(event) => useAppStore.getState().setDiagramTheme(event.target.value as MermaidThemeSelection)}>
             <option value="auto">{t("themes.auto")}</option>
             {mermaidThemes.map((theme) => <option key={theme} value={theme}>{t(`themes.${theme}`, { defaultValue: theme })}</option>)}
           </select>
           <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.compatibilityHint")}</p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.fontPrecedenceHint", { font: t(`diagramFonts.${workspace.diagramFont}`) })}</p>
         </section>
+        <section className="space-y-2 border-t pt-3" data-testid="theme-selection-summary">
+          <h3 ref={selectionHeading} tabIndex={-1} className="text-xs font-semibold outline-none" data-testid="theme-selection-heading">{t("themePanel.mermanStyling")}</h3>
+          <p className="text-xs font-medium">{t("themePanel.selectedTheme", { theme: candidateLabel })}</p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.previewHint")}</p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.layeringHint")}</p>
+          <p className="text-xs font-medium" data-testid="theme-current-family">
+            {familyId ? t("themePanel.currentFamily", { family: familyLabel(familyId) })
+              : t(detection === null ? "themePanel.familyWaiting" : "themePanel.familyUnknown")}
+          </p>
+          {!catalog && <p role="status" className="text-xs text-muted-foreground">{t("themePanel.catalogUnavailable")}</p>}
+          {session.candidate.kind === "preset" && !available && <p role="status" className="break-words text-xs text-destructive">{t("themePanel.unknownPreset", { id: session.candidate.presetId })}</p>}
+        </section>
+        {selectedPreset && selectedPreset.application_notes.length > 0 && <section className="space-y-3 rounded-md border p-3 text-xs" aria-label={t("themePanel.applicationNotes")}>
+          <h3 className="font-semibold">{t("themePanel.applicationNotes")}</h3>
+          {selectedPreset.application_notes.map((note) => <div key={note.id} className="space-y-2" data-theme-application-note={note.id}>
+            <p className="font-medium">{familyLabel(note.family_id)}</p>
+            <p className="leading-relaxed text-muted-foreground">{t(`themeApplicationNotes.${note.id}`, { defaultValue: note.message })}</p>
+            {note.recommended_config !== null && <>
+              <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 p-2 text-[11px]">{JSON.stringify(note.recommended_config, null, 2)}</pre>
+              <Button type="button" variant="outline" size="sm" className="h-auto max-w-full whitespace-normal py-1.5" onClick={() => applyRecommendedSettings(note.recommended_config!)}>{t("themePanel.useRecommendedSettings")}</Button>
+            </>}
+          </div>)}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.recommendedConfigHint")}</p>
+          {configFeedback && <p role={configFeedback.error ? "alert" : "status"} className={cn("break-words leading-relaxed", configFeedback.error ? "text-destructive" : "text-muted-foreground")}>{configFeedback.message}</p>}
+        </section>}
+        <ThemeRenderEvidence render={render} />
+        {selectedPreset && <section className="space-y-2 rounded-md border p-3 text-xs" aria-label={t("themePanel.reviewedFamilies")} data-testid="theme-reviewed-families">
+          <h3 className="font-semibold">{t("themePanel.reviewedFamilies")}</h3>
+          {reviewedFamilies.length > 0 ? <ul className="space-y-1.5">
+            {reviewedFamilies.map((design) => <li key={design.family_id} className="flex flex-wrap justify-between gap-x-2 gap-y-0.5">
+              <span className="font-medium">{familyLabel(design.family_id)}</span>
+              <span className="text-muted-foreground">{t(`themePanel.treatments.${design.treatment}`)}</span>
+            </li>)}
+          </ul> : <p className="text-muted-foreground">{t("themePanel.noReviewedFamilies")}</p>}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.reviewedFamiliesHint")}</p>
+        </section>}
         <section className="space-y-2 rounded-md border p-3">
           <h3 className="text-xs font-semibold">{t("themePanel.importTitle")}</h3>
           <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.importHint")}</p>
@@ -171,16 +235,16 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
             onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
           {session.rawJson !== null && <p className="text-xs text-muted-foreground">{t("themePanel.imported")}</p>}
         </section>
-        <section className="space-y-2 border-t pt-3">
-          <h3 className="text-xs font-semibold">{t("themePanel.mermanStyling")}</h3>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.previewHint")}</p>
-          <ThemePresetCards presets={catalog?.presets ?? []} candidate={session.candidate} onSelect={(candidate) => {
+        <details open className="space-y-3 border-t pt-3" data-testid="theme-preset-discovery">
+          <summary className="cursor-pointer text-xs font-semibold">{t("themePanel.browsePresets")}</summary>
+          <ThemePresetCards presets={catalog?.presets ?? []} candidate={session.candidate} familyId={familyId} pending={detection === null} onSelect={(candidate) => {
             useAppStore.getState().selectThemeCandidate(candidate);
             setActionError(null);
+            setConfigFeedback(null);
+            selectionHeading.current?.focus({ preventScroll: true });
+            selectionHeading.current?.scrollIntoView({ block: "start" });
           }} />
-          {!catalog && <p role="status" className="text-xs text-muted-foreground">{t("themePanel.catalogUnavailable")}</p>}
-          {session.candidate.kind === "preset" && !available && <p role="status" className="break-words text-xs text-destructive">{t("themePanel.unknownPreset", { id: session.candidate.presetId })}</p>}
-        </section>
+        </details>
         <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)} className="min-w-0 border-t pt-3">
           <summary className="cursor-pointer text-xs font-medium">{t("themePanel.advanced")}</summary>
           {advanced && <div className="mt-3 min-w-0 space-y-4 text-xs">
@@ -195,7 +259,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
                 : <p className="text-muted-foreground">{t("themePanel.noRecipe")}</p>}
             </section>
             <section className="space-y-2">
-              <h3 className="font-semibold">{t("themePanel.renderOutcome")}</h3>
+              <h3 className="font-semibold">{t("themePanel.executionMetadata")}</h3>
               <p className="leading-relaxed text-muted-foreground">{t("themePanel.evidenceExplanation")}</p>
               {metadata ? <pre data-testid="theme-execution-metadata" className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded border bg-muted/20 p-2 text-[11px]">{JSON.stringify(metadata, null, 2)}</pre>
                 : <p className="text-muted-foreground">{t("themePanel.evidenceUnavailable")}</p>}

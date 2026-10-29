@@ -5,6 +5,52 @@ contract. Use a matching runtime artifact that exposes theme authoring and catal
 a package version alone does not establish channel availability or feature support. Examples
 assume an initialized SVG-capable runtime.
 
+## Start with a theme
+
+Choose the kind of change you want:
+
+| Choice | Playground | CLI | Web options | Scope |
+| --- | --- | --- | --- | --- |
+| Mermaid's base appearance | **Mermaid theme** | `--theme dark` | `site_config: {theme: "dark"}` | Shared Mermaid configuration; affects both engines in Compare |
+| A Merman visual design | **Merman styling**, preview, **Apply** | `--theme-preset ghibli` | `theme: {preset: "ghibli"}` | Merman recipe: colors, canvas, typography and supported family effects |
+| Your own Merman design | **Import JSON**, preview, **Apply** | `--theme-file theme.json` | `theme: recipe` | The same editable recipe, independent of the installed catalog |
+
+These inputs can be combined. The Mermaid base supplies defaults, and a Merman recipe supplies
+its supported styling. Explicit diagram styles and configuration retain property-specific
+precedence. Choosing a preset does not change the source, layout or look.
+
+For a ready-to-run example, see [Brutalist Flowchart and Ghibli Pie](theme-gallery/README.md).
+Ghibli has a dedicated Pie design. Brutalist has dedicated Flowchart, Sequence and XY Chart
+designs and a base palette adaptation for Class. The catalog records each preset's scope;
+unlisted families are **not yet reviewed**. A dedicated design does not guarantee every shape,
+effect or export format. Review the actual preview outcome for your diagram.
+
+In Playground the selected preset displays its reviewed families and application notes.
+**Use recommended settings** is an explicit configuration change: it preserves unrelated
+configuration and takes effect immediately, just like the Mermaid theme selector. Source
+directives can still override it. **Cancel** restores the prior Merman styling, while keeping
+source and configuration edits. Downloading the recipe does not package separate Mermaid
+configuration; a workspace share link includes both.
+
+For CLI discovery, run `merman-cli capabilities` to see presets with their design scope and
+settings guidance, or `capabilities --json` for the same structured metadata. In Web:
+
+```ts
+const preset = themeCatalog().presets.find((entry) => entry.id === "ghibli");
+if (!preset?.available) throw new Error("Ghibli is unavailable in this runtime");
+console.log(preset.family_designs, preset.application_notes);
+const { svg, metadata } = renderSvgResult(source, {
+  version: 3,
+  theme: { preset: preset.id },
+});
+// Keep metadata with this SVG when explaining any unapplied styling.
+```
+
+The installed runtime's catalog is authoritative. Preview colors are illustrative recipe
+colors; they are not a rendering or an output qualification. Hosts should show unknown
+application notes using their readable message and offer configuration only as an explicit
+user action.
+
 ## Family configuration and compiled rules
 
 Mermaid compatibility configuration remains a separate input from compiled style rules.
@@ -70,6 +116,9 @@ Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`, 
 `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. **Merman styling** is a separate
 selection that affects Merman only. Its preset cards come from the loaded runtime's catalog;
 card swatches illustrate the preset rather than render the current diagram.
+Each card also reports the current family's design treatment. The selected preset lists
+reviewed diagram families and any settings guidance. The render outcome appears directly in
+the panel; **Advanced** retains the exact JSON for developers.
 
 Choose **Import JSON** to load a standalone version-1 recipe created with the
 [theme design skill](#design-a-theme-with-an-agent) or an external editor. The original authored
@@ -178,10 +227,12 @@ Read the loaded runtime's `themeCatalog().presets`. Keep these facts separate:
 | `family_designs` treatment `dedicated` | The catalog records a family-specific design |
 | `family_designs` treatment `base_only` | The shared appearance, with necessary family adaptations |
 | Missing family or unknown treatment | Unreviewed design scope; preserve the value conservatively |
+| `preview_colors` | Representative recipe colors for discovery, not a rendered preview |
+| `application_notes` | Readable family guidance and optional explicit configuration suggestions |
 | `qualified_cells` | Evidence for named scenarios and targets, not every possible diagram |
 | Actual render admission | What this input, output target, resources, and policy can deliver |
 
-The current catalog advertises dedicated mechanism scope for Brutalist and Spotless, but it does
+The current catalog advertises dedicated design scope for Brutalist, Spotless and Ghibli, but it does
 not claim pixel parity with Modern Mermaid. A successful SVG render is not proof of readable dense
 labels, complete effects, or PNG/PDF portability. Cyberpunk carries a layered canvas and scoped
 effects with bounded Flowchart, Sequence and XY Chart SVG/PNG/PDF observations. Larger scenes may
@@ -189,6 +240,9 @@ exceed native export budgets. Brutalist now provides bold borders, ordinal accen
 shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
 without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
 spacing; these targets do not support typed letter-spacing rules.
+Ghibli adds a warm, textured canvas and a five-color muted Pie palette with typed title,
+percentage and legend text sizes. Its fonts resolve on the receiving host. The paper texture
+uses tiled gradients; this does not imply generic pattern or every effect primitive is supported.
 
 Flowchart node, edge and label glow/shadow effects currently require `flowchart.look: classic`.
 The default Neo look does not consume these effect bindings; selecting Cyberpunk alone does not

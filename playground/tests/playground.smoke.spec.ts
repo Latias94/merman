@@ -253,7 +253,7 @@ test("automatic and explicit default themes remain distinct in the presentation 
   await waitForPreviewSvg(page);
 
   await page.getByRole("button", { name: "Theme", exact: true }).click();
-  const compatibility = page.getByLabel("Mermaid theme", { exact: true });
+  const compatibility = page.getByLabel("Mermaid base theme", { exact: true });
   await expect(compatibility).toHaveValue("auto");
   await compatibility.selectOption("default");
   await waitForPreviewSvg(page);

@@ -3,23 +3,13 @@ import { useTranslation } from "react-i18next";
 import type { ThemePresetCatalogEntry } from "@mermanjs/web";
 import { cn } from "@/lib/utils";
 import type { ThemeCandidate } from "@/src/lib/theme-edit-session";
+import { themeFamilyTreatment } from "@/src/lib/theme-discovery";
 
-const PRESET_SWATCHES: Readonly<Record<string, readonly string[]>> = {
-  "editor-light": ["#ffffff", "#f0f4f8", "#24292e", "#0969da"],
-  "editor-dark": ["#1e1e1e", "#31343b", "#d4d4d4", "#569cd6"],
-  "one-dark": ["#282c34", "#3e4451", "#abb2bf", "#61afef"],
-  "gruvbox-light": ["#fbf1c7", "#ebdbb2", "#3c3836", "#b57614"],
-  "gruvbox-dark": ["#282828", "#3c3836", "#ebdbb2", "#fabd2f"],
-  "ayu-light": ["#fafafa", "#f3f4f5", "#5c6166", "#ff9940"],
-  "ayu-dark": ["#0b0e14", "#131721", "#bfbdb6", "#e6b450"],
-  brutalist: ["#f3f0e7", "#ffffff", "#171717", "#ff5b35"],
-  spotless: ["#ffffff", "#f8fafc", "#0f172a", "#94a3b8"],
-  cyberpunk: ["#080b18", "#14162d", "#00e5ff", "#ff3cac"],
-};
-
-export function ThemePresetCards({ presets, candidate, onSelect }: {
+export function ThemePresetCards({ presets, candidate, familyId, pending, onSelect }: {
   presets: readonly ThemePresetCatalogEntry[];
   candidate: ThemeCandidate;
+  familyId: string | null;
+  pending: boolean;
   onSelect(candidate: Exclude<ThemeCandidate, { kind: "custom" }>): void;
 }) {
   const { t } = useTranslation();
@@ -34,14 +24,16 @@ export function ThemePresetCards({ presets, candidate, onSelect }: {
     </button>
     {presets.map((preset) => {
       const selected = candidate.kind === "preset" && candidate.presetId === preset.id;
-      const colors = PRESET_SWATCHES[preset.id] ?? (preset.appearance === "dark"
-        ? ["#18181b", "#3f3f46", "#e4e4e7", "#a1a1aa"] : ["#fafafa", "#e4e4e7", "#27272a", "#71717a"]);
+      const colors = preset.preview_colors;
+      const treatment = pending ? null : themeFamilyTreatment(preset, familyId);
       return <button key={preset.id} type="button" aria-pressed={selected} disabled={!preset.available}
+        data-theme-preset={preset.id} data-theme-treatment={treatment ?? "waiting"}
         title={!preset.available ? preset.availability_reason_ids.join(", ") : undefined}
         className={cn(cardClass, selected && "border-primary bg-primary/5")}
         onClick={() => onSelect({ kind: "preset", presetId: preset.id })}>
-        <div className="flex h-7 overflow-hidden rounded border" aria-hidden="true">{colors.map((color, index) => <span key={index} className="flex-1" style={{ backgroundColor: color }} />)}</div>
+        <div className="flex h-7 overflow-hidden rounded border" aria-hidden="true" data-theme-swatches>{colors.map((color, index) => <span key={index} className="flex-1" style={{ backgroundColor: color }} />)}</div>
         <span className="break-words font-medium">{t(`themePresets.${preset.id}`, { defaultValue: preset.display_name })}</span>
+        <span className="text-[11px] leading-relaxed text-muted-foreground">{treatment ? t(`themePanel.treatments.${treatment}`) : t("themePanel.treatmentWaiting")}</span>
         {!preset.available && <span className="text-[11px] text-destructive">{t("themePanel.unavailable")}</span>}
         {selected && <Check className="absolute right-2 top-2 size-3.5 text-primary" aria-hidden="true" />}
       </button>;
