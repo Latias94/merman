@@ -1842,14 +1842,24 @@ fn detect_init_controlled(
     directives: &[Directive],
     input: &str,
     registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
+    _diagram_type: Option<&str>,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
     let mut merged = MermaidConfig::empty_object();
-    let mut config_for_detect = MermaidConfig::empty_object();
-    let mut detected_type = diagram_type.map(str::to_owned);
-    let mut detection_attempted = diagram_type.is_some();
+    let mut init_count = 0;
+    for (index, directive) in directives.iter().enumerate() {
+        if index % 16 == 0 {
+            control.checkpoint()?;
+        }
+        if matches!(directive.ty.as_str(), "init" | "initialize") {
+            init_count += 1;
+            if init_count == 2 {
+                break;
+            }
+        }
+    }
+    let multiple_inits = init_count > 1;
 
     for (index, d) in directives.iter().enumerate() {
         if index % 16 == 0 {
@@ -1863,31 +1873,26 @@ fn detect_init_controlled(
             Some(v) => crate::config::clone_value_nonrecursive(v),
             None => Value::Object(Default::default()),
         };
-        let mut diagram_specific = args
-            .as_object_mut()
-            .and_then(|object| object.remove("config"));
-
-        sanitize_directive_controlled(&mut args, control)?;
-
-        // Mermaid moves a top-level `config` directive field into the diagram-type-specific config.
-        if let Some(mut diagram_specific_value) = diagram_specific.take() {
-            sanitize_directive_controlled(&mut diagram_specific_value, control)?;
-            if !detection_attempted {
-                detection_attempted = true;
-                detected_type = match registry.detect_type_controlled(
-                    input,
-                    &mut config_for_detect,
-                    control,
-                )? {
-                    Ok(diagram_type) => Some(diagram_type.to_string()),
-                    Err(_) => None,
+        // Mermaid sanitizes multiple init arguments before merging, filtering out `config`.
+        // A single init remaps that legacy key before sanitizing the complete arguments.
+        if !multiple_inits
+            && let Some(diagram_specific_value) = args
+                .as_object_mut()
+                .and_then(|object| object.remove("config"))
+        {
+            // Use the source detector ID even when a parser type was supplied. Mermaid only
+            // remaps flowchart-v2; all other IDs still pass through source sanitization.
+            let mut config_for_detect = MermaidConfig::empty_object();
+            if let Ok(ty) =
+                registry.detect_type_controlled(input, &mut config_for_detect, control)?
+            {
+                let key = if ty == "flowchart-v2" {
+                    "flowchart"
+                } else {
+                    ty
                 };
-            }
-
-            if let Some(ty) = detected_type.as_deref() {
-                let key = diagram_config_key_for_type(ty).to_string();
                 if let Value::Object(obj) = &mut args
-                    && let Some(old) = obj.insert(key, diagram_specific_value)
+                    && let Some(old) = obj.insert(key.to_string(), diagram_specific_value)
                 {
                     crate::config::drop_value_nonrecursive(old);
                 }
@@ -1895,6 +1900,7 @@ fn detect_init_controlled(
                 crate::config::drop_value_nonrecursive(diagram_specific_value);
             }
         }
+        sanitize_directive_controlled(&mut args, control)?;
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
 
         merged.deep_merge(&args);
@@ -3407,7 +3413,7 @@ A["<span title="😀">Label</span>"]
     }
 
     #[test]
-    fn multiple_init_config_directives_detect_the_diagram_only_once() {
+    fn multiple_init_legacy_config_is_filtered_without_detection() {
         INIT_DETECTOR_CALLS.store(0, Ordering::Relaxed);
         let input = concat!(
             "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",
@@ -3420,21 +3426,8 @@ A["<span title="😀">Label</span>"]
 
         let config = detect_init(&directives, input, &registry, None).expect("init merges");
 
-        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 1);
-        assert_eq!(
-            config
-                .as_value()
-                .pointer("/flowchart/curve")
-                .and_then(Value::as_str),
-            Some("linear")
-        );
-        assert_eq!(
-            config
-                .as_value()
-                .pointer("/flowchart/htmlLabels")
-                .and_then(Value::as_bool),
-            Some(false)
-        );
+        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 0);
+        assert_eq!(config.as_value(), &json!({}));
     }
 
     #[test]
