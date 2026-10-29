@@ -8,6 +8,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Custom-parser cancellation retains its Parse phase and bypasses lenient error suppression, including cancellation requested before a callback returns success or failure.
+- Init directives follow the pinned Mermaid 12.1.0 sanitization order: multiple init directives filter legacy `config` before merging; a single legacy `config` uses the actual source detector key, with the `flowchart-v2` exception. Prefer explicit configuration namespaces or frontmatter for consistent overrides.
+- Gantt axes use configured `tickInterval` when the body omits it. Mindmap roots honor `padding` and `useMaxWidth`, and compatibility JSON preserves the final layout selection.
+- Sequence consumes `showSequenceNumbers`, `hideUnusedParticipants`, and `noteAlign` while retaining source actor measurements, lifecycle order, and the existing semantic model.
 - Swimlane HTML edge labels wrap consistently with layout and retain their complete text in native SVG/PNG fallback output. [issue #242](https://github.com/Latias94/merman/issues/242)
 
 ### Added
