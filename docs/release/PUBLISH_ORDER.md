@@ -157,7 +157,7 @@ These are verified local source-gate results at the 2026-10-12 preparation check
 | Native, WASM, size, and package-content checks | Require final-source owner results; compilation and static declarations do not replace these artifact checks. |
 | Dated source and immutable preflight | The approved intended date is 2026-10-12 for workspace 0.9.0 and Typst wrapper 0.5.0. Commit the dated documentation, freeze that 40-character source SHA, and require a successful `release-preflight.yml` run for version 0.9.0 and that exact SHA before publication. No successful immutable preflight or registry publication is asserted at this checkpoint. |
 
-See the [0.8.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md), [Typst preparation guide](TYPST_050_PREPARATION.md), and [owner checklist](RELEASING.md#090-preparation-checklist). Dated publication snapshots below retain their original release context.
+See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md), [Typst preparation guide](TYPST_050_PREPARATION.md), and [release evidence procedure](RELEASING.md#release-evidence). Dated publication snapshots below retain their original release context.
 The source also carries experimental compiled-theme integration. It is not part of immutable `0.8.0` artifacts, and any `0.9.0` claim remains subject to the matching artifact, theme evidence, and owner gates above.
 
 ## 0.8.0 Publication Snapshot

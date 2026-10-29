@@ -1,7 +1,14 @@
 # WASM Feature Surface Slimming
 
 Status: Closed
-Last updated: 2026-06-10
+Last updated: 2026-10-29
+
+This is the historical design for WFS-010 through WFS-120, completed on 2026-06-10.
+[Evidence And Gates](EVIDENCE_AND_GATES.md#wfs-120-final-verification-and-closeout) retains the
+measurements and final verification. Profile names and dependency observations below describe
+that work, not current package admission. Use the [capability guide](../../FEATURES.md),
+[package surface guide](../../release/PACKAGE_SURFACES.md), and
+[WASM surface ADR](../../adr/0069-wasm-package-surface-semantics.md) for their current owners.
 
 ## Why This Lane Exists
 
@@ -116,35 +123,38 @@ have multiple real adapters: native system, browser JS, deterministic test/probe
 wasm. Those are real seams. Build the smallest interfaces that keep the capability decision out of
 family parsers.
 
-## Initial Refactor Brief
+### Contract Decisions
 
-**Intent:** make the next release credible for both browser WASM slimming and future Typst plugin
-support, without weakening full Mermaid parity.
+- Full/native/browser compatibility remains the default. The facade disables implicit core
+  defaults on its dependency edge and selects the full core profile explicitly, so opting out of
+  facade defaults also opts out of broad core dependencies. See
+  [ADR 0006](../../adr/0006-feature-flags-tiny-vs-full.md) and
+  [ADR 0012](../../adr/0012-tiny-scope.md) for the original feature decision.
+- Full preprocessing, DOM sanitization, and URL canonicalization preserve
+  [ADR 0020](../../adr/0020-sanitization-and-security-level.md) and
+  [ADR 0023](../../adr/0023-url-sanitization-braintree-port.md). Minimal profiles must escape
+  conservatively and reject unsafe links; reducing dependencies must not weaken full defaults.
+- Host-neutral parsing receives fixed dates, UTC offsets, and deterministic IDs, or rejects a
+  family that needs an unavailable capability. An admitted Gantt input with the same explicit date
+  and offset must retain the same date semantics across native and pure-WASM paths.
+- Browser and Typst transports remain separate adapters over the host-neutral facade. The original
+  research also cites this [Typst integration report](https://github.com/HSGamer/typst-mmdr/issues/4#issuecomment-4624101901).
+  Browser code keeps wasm-bindgen; Typst requires exported memory and only its two protocol imports.
+  The [binding strategy](../../adr/0066-ffi-binding-strategy.md) owns the shared facade boundary.
+- Dependency, import, export, and size measurements precede broad feature changes. Full behavior
+  tests remain independent from pure-WASM admission, and the
+  [runtime policy](../../adr/0008-async-and-runtime.md) still governs host integration.
 
-**Scope:** Cargo features, core runtime helpers, family facts, browser WASM transport, binding
-facade defaults, and a new pure-wasm/Typst probe or crate.
+## Acceptance Boundary
 
-**Deletion plan:** remove JS-only capabilities from core's minimal profile; delete or fence shallow
-defaults that silently imply browser WASM; make full-vs-minimal profiles meaningful dependency
-boundaries.
-
-**Boundary plan:** introduce explicit host capability/profile types; project family registration
-from those profiles; keep browser transport and Typst transport separate.
-
-**Testing plan:** add import allowlist checks with `wasm-tools`, cargo-tree dependency checks,
-profile-specific parser/render tests, and parity smoke tests for full default behavior.
-
-**Risk plan:** feature-gating families can create accidental behavior gaps. Start with evidence-only
-gates, then move one dependency/capability at a time with focused tests.
-
-**Workflow plan:** this should run as an architecture lane with bounded tasks, not a one-shot patch.
-
-## Closeout Condition
-
-This lane can close when:
+The completed lane used these acceptance conditions:
 
 - a parser-only pure wasm probe has no JS/wasm-bindgen imports;
 - a Typst minimal-protocol probe can be loaded by Typst or a compatible wasmi runner;
 - browser WASM has documented default and slim package variants;
 - full native/browser parity gates still pass;
 - dependency and import budgets are documented in release notes or package-surface docs.
+
+Transport validation did not establish Typst registry publication or full-family SVG coverage.
+Rough/hand-drawn admission also required a separate deterministic-randomness decision. These were
+scope boundaries, not reasons to keep this implementation lane active.

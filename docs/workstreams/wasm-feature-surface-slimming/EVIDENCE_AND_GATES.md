@@ -515,7 +515,6 @@ Decision summary:
 Validation:
 
 ```bash
-jq . docs/workstreams/wasm-feature-surface-slimming/WORKSTREAM.json
 cargo fmt --all --check
 git diff --check
 ```

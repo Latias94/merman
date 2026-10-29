@@ -187,7 +187,6 @@ The Rust side owns the compile boundary. The browser package owns the preset met
 - `docs/workstreams/wasm-feature-surface-slimming/EVIDENCE_AND_GATES.md`
 - `docs/workstreams/web-wasm-playground/HANDOFF.md`
 - `docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md`
-- `docs/plans/2026-06-09-002-refactor-wasm-feature-surface-slimming-plan.md`
 - `docs/plans/2026-06-28-001-refactor-editor-core-language-intelligence-plan.md`
 - `docs/knowledge/engineering/progress/2026-06-28-editor-core-language-intelligence-extraction.md`
 - `docs/release/PACKAGE_SURFACES.md`
