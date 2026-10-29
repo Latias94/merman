@@ -51,7 +51,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for curved-trapezoid shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for curved-trapezoid shape",
         "labelType": "markdown",
         "shape": "curved-trapezoid",
         "layoutShape": "curved-trapezoid",
@@ -89,7 +89,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for bow-rect shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for bow-rect shape",
         "labelType": "markdown",
         "shape": "bow-rect",
         "layoutShape": "bow-rect",
@@ -127,7 +127,7 @@
       },
       {
         "id": "n22",
-        "label": "This is **bold** </br>and <strong>strong</strong> for tagged-document shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for tagged-document shape",
         "labelType": "markdown",
         "shape": "tagged-document",
         "layoutShape": "tagged-document",
@@ -165,7 +165,7 @@
       },
       {
         "id": "n33",
-        "label": "This is **bold** </br>and <strong>strong</strong> for divided-rectangle shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for divided-rectangle shape",
         "labelType": "markdown",
         "shape": "divided-rectangle",
         "layoutShape": "divided-rectangle",
@@ -203,7 +203,7 @@
       },
       {
         "id": "n44",
-        "label": "This is **bold** </br>and <strong>strong</strong> for crossed-circle shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for crossed-circle shape",
         "labelType": "markdown",
         "shape": "crossed-circle",
         "layoutShape": "crossed-circle",

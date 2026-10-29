@@ -127,7 +127,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "Multi-line note<br/>\nwith HTML line break.",
+        "label": "Multi-line note<br>\nwith HTML line break.",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -145,7 +145,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "Multi-line note<br/>\nwith HTML line break.",
+        "label": "Multi-line note<br>\nwith HTML line break.",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

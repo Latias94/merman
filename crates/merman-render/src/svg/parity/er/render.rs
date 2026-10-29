@@ -1563,11 +1563,7 @@ pub(crate) fn render_er_diagram_svg_model(
         }
 
         // ER table labels use createText in both HTML and SVG modes.
-        let line_h = if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
-            (font_size * 1.5).max(1.0)
-        } else {
-            measure.label_height.max(1.0)
-        };
+        let line_h = measure.label_height.max(1.0);
         let mut pad = entity_measurement.diagram_padding;
         // Keep parity with Mermaid's erBox.ts `if (!config.htmlLabels) { PADDING *= 1.25; }`:
         // when `htmlLabels` is unset (undefined), upstream still applies the 1.25 multiplier.

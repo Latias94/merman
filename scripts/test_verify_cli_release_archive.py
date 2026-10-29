@@ -277,6 +277,7 @@ def valid_capabilities_payload(
                 "raw-bbox-y-offset",
                 "raw-middle-bbox-y-offset",
                 "raw-hanging-bbox-y-offset",
+                "html-line-height",
             ],
             "measurement_phases": ["layout", "wrap", "svg-bbox", "computed-length"],
             "unsupported_operations": "deterministic-fallback",
@@ -1306,7 +1307,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(native["default_system_discovery"], "disabled")
         self.assertIs(native["system_discovery_compiled"], True)
         self.assertIs(native["system_discovery_runtime_available"], True)
-        self.assertEqual(len(native["measurement_operations"]), 22)
+        self.assertEqual(len(native["measurement_operations"]), 23)
         verifier._validate_runtime_capabilities(payload, expected)
 
     def test_runtime_rejects_implicit_native_font_defaults(self) -> None:

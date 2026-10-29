@@ -1706,7 +1706,7 @@ async function runPureDistSmoke() {
   assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
-    Array.from({ length: 22 }, (_, code) => code)
+    Array.from({ length: 23 }, (_, code) => code)
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS
@@ -1755,6 +1755,12 @@ async function runPureDistSmoke() {
         resultKind: "length",
         acceptsSignedLength: true,
       },
+      {
+        code: 22,
+        name: "html-line-height",
+        resultKind: "length",
+        acceptsSignedLength: false,
+      },
     ]
   );
   assert.deepEqual(
@@ -1765,7 +1771,7 @@ async function runPureDistSmoke() {
     new Set(
       textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ name }) => name)
     ).size,
-    22
+    23
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS

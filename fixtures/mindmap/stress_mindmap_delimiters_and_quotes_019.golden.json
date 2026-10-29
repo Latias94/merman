@@ -42,7 +42,7 @@
       {
         "id": "2",
         "domId": "node_2",
-        "label": "String containing () and [] and <br/> tags",
+        "label": "String containing () and [] and <br> tags",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
@@ -163,7 +163,7 @@
               "id": 2,
               "nodeId": "quoted2",
               "level": 4,
-              "descr": "String containing () and [] and <br/> tags",
+              "descr": "String containing () and [] and <br> tags",
               "type": 2,
               "children": [],
               "width": 200,

@@ -78,7 +78,7 @@
       },
       {
         "id": "C",
-        "label": "Let me think...<br />Do I want something for work,<br />something to spend every free second with,<br />or something to get around?",
+        "label": "Let me think...<br>Do I want something for work,<br>something to spend every free second with,<br>or something to get around?",
         "labelType": "text",
         "shape": "stadium",
         "layoutShape": "stadium",
@@ -137,7 +137,7 @@
       },
       {
         "id": "F",
-        "label": "Car<br/>wroom wroom",
+        "label": "Car<br>wroom wroom",
         "labelType": "text",
         "shape": "stadium",
         "layoutShape": "stadium",

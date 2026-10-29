@@ -188,7 +188,7 @@
           "height": 186.0,
           "diff": 0.0,
           "offset_y": 0.0,
-          "title": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a><br/>\n<img src=x>",
+          "title": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n<img src=\"x\">",
           "title_label": {
             "x": 454.31,
             "y": 184.5,

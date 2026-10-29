@@ -929,8 +929,68 @@ pub(super) fn state_svg_text_label(
     center_text: bool,
     style_attr: Option<&str>,
 ) -> String {
-    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
-    let normalized = state_normalize_br_tags(decoded.as_ref());
+    let lines = state_svg_plain_word_lines(raw);
+    state_svg_word_label(&lines, center_text, style_attr)
+}
+
+fn state_svg_plain_word_lines(
+    raw: &str,
+) -> Vec<Vec<(String, crate::text::MermaidMarkdownWordType)>> {
+    let decoded = merman_core::entities::restore_mermaid_entity_spelling(raw);
+    let source = decoded.replace("\\n", "\n");
+    source
+        .split('\n')
+        .flat_map(crate::text::split_html_br_lines)
+        .map(|line| {
+            crate::text::non_markdown_svg_words(line)
+                .map(|word| {
+                    (
+                        word.to_owned(),
+                        crate::text::MermaidMarkdownWordType::Normal,
+                    )
+                })
+                .collect()
+        })
+        .collect()
+}
+
+pub(super) fn state_svg_plain_label_metrics(
+    raw: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+) -> crate::text::TextMetrics {
+    let lines = state_svg_plain_word_lines(raw);
+    let style =
+        crate::text::svg_markdown_word_style(style, crate::text::MermaidMarkdownWordType::Normal);
+    let mut width = 0.0_f64;
+    let mut ink: Option<(f64, f64)> = None;
+    for (index, words) in lines.iter().enumerate() {
+        let line = words
+            .iter()
+            .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
+            .collect::<Vec<_>>()
+            .join(" ");
+        width = width.max(measurer.measure_svg_text_computed_length_px(&line, &style));
+        let height = measurer.measure_svg_tspan_text_bbox_height_px(&line, &style);
+        if height > 0.0 {
+            let top = measurer.measure_svg_create_text_bbox_y_offset_px(&line, &style)
+                + index as f64 * style.font_size * 1.1;
+            let bottom = top + height;
+            ink = Some(ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))));
+        }
+    }
+    crate::text::TextMetrics {
+        width,
+        height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
+        line_count: lines.len(),
+    }
+}
+
+pub(super) fn state_svg_word_label(
+    lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
     } else {
@@ -942,14 +1002,35 @@ pub(super) fn state_svg_text_label(
         .unwrap_or_default();
 
     let mut out = format!(r#"<text y="-10.1"{text_anchor}{style_attr}>"#);
-    for (idx, line) in normalized.split('\n').enumerate() {
+    for (idx, words) in lines.iter().enumerate() {
         let y = idx as f64 * 1.1 - 0.1;
         let _ = write!(
             &mut out,
-            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">{}</tspan></tspan>"#,
+            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em">"#,
             fmt_display(y),
-            escape_xml_display(line)
         );
+        for (index, (word, kind)) in words.iter().enumerate() {
+            let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
+                "italic"
+            } else {
+                "normal"
+            };
+            let font_weight = if *kind == crate::text::MermaidMarkdownWordType::Strong {
+                "bold"
+            } else {
+                "normal"
+            };
+            let visible = crate::entities::decode_svg_text_content_entities(word);
+            let _ = write!(
+                &mut out,
+                r#"<tspan font-style="{font_style}" class="text-inner-tspan" font-weight="{font_weight}">"#
+            );
+            if index > 0 {
+                out.push(' ');
+            }
+            let _ = write!(&mut out, "{}</tspan>", escape_xml_display(&visible));
+        }
+        out.push_str("</tspan>");
     }
     out.push_str("</text>");
     out

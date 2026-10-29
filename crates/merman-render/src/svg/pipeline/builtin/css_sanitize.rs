@@ -650,6 +650,22 @@ fn rewrite_component_values(
             Token::BadUrl(_) | Token::BadString(_) => {
                 return Err(ParseError::custom(CssViolation::BadToken));
             }
+            Token::Ident(name)
+            | Token::AtKeyword(name)
+            | Token::Hash(name)
+            | Token::IDHash(name)
+            | Token::Dimension { unit: name, .. }
+                if name.ends_with('\u{FFFD}')
+                    && input.slice(token_start..token_end).ends_with('\\') =>
+            {
+                // cssparser decodes an identifier's EOF escape as U+FFFD. Replaying the
+                // backslash would instead escape a delimiter appended by the enclosing rule.
+                // The decoded suffix distinguishes this from a literal paired backslash;
+                // retaining the raw prefix also preserves dimension numeric precision.
+                let raw = input.slice(token_start..token_end);
+                output.push_str(&raw[..raw.len() - 1]);
+                output.push('\u{FFFD}');
+            }
             _ => output.push_str(input.slice(token_start..token_end)),
         }
     }
@@ -1050,8 +1066,67 @@ mod tests {
     }
 
     #[test]
+    fn css_sanitize_serializes_identifier_eof_escapes_without_changing_tokens() {
+        for (value, expected) in [
+            (r"\", "\u{FFFD}"),
+            (r"x\", "x\u{FFFD}"),
+            (r"x\\\", "x\\\\\u{FFFD}"),
+            (r"\5c\", "\\5c\u{FFFD}"),
+            (r"@x\", "@x\u{FFFD}"),
+            (r"#x\", "#x\u{FFFD}"),
+            (r"#1\", "#1\u{FFFD}"),
+            (r"1.234567890123px\", "1.234567890123px\u{FFFD}"),
+            (r"+001.2500e+02u\", "+001.2500e+02u\u{FFFD}"),
+        ] {
+            let mut original = Parser::new(value);
+            let original_token = original.next().unwrap().clone();
+            let mut serialized = Parser::new(expected);
+            assert_eq!(
+                serialized.next().unwrap(),
+                &original_token,
+                "EOF escape token semantics: {value:?}"
+            );
+            assert!(original.is_exhausted());
+            assert!(serialized.is_exhausted());
+            assert_eq!(
+                sanitize_css_value(value).as_deref(),
+                Some(expected),
+                "{value:?}"
+            );
+            assert_eq!(sanitize_css_value(expected).as_deref(), Some(expected));
+
+            let css = format!(".safe{{fill:red}}.a{{stroke:blue;content:{value}");
+            let expected_css = format!(".safe{{fill:red}}.a{{stroke:blue;content:{expected}}}");
+            let sanitized = sanitize_css(&css);
+            assert_eq!(sanitized, expected_css, "{value:?}");
+            assert_eq!(sanitize_css(&sanitized), sanitized, "{value:?}");
+            assert!(
+                validate_resvg_css_stylesheet(&sanitized).is_ok(),
+                "{value:?}"
+            );
+            assert!(
+                validate_resvg_css_declaration_list(&format!("content:{expected}")).is_ok(),
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
     fn css_sanitize_preserves_explicitly_closed_component_value_tokens() {
         for value in [
+            r"x\\",
+            r"x\5c",
+            r"x\5c ",
+            r"x\}",
+            r"x\)\]",
+            r"\31",
+            r"\000031",
+            r"\31 ",
+            r"@x\\",
+            r"#x\\",
+            r"#1\\",
+            r"1.234567890123px\\",
+            r"+001.2500e+02u\5c",
             r#""""#,
             "''",
             r#""A\"B""#,

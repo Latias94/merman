@@ -88,7 +88,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "This is the note +,-<br/>",
+        "label": "This is the note +,-<br>",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -106,7 +106,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "This is the note +,-<br/>",
+        "label": "This is the note +,-<br>",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

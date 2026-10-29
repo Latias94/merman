@@ -6,17 +6,17 @@
         {
           "id": "markdown",
           "x": 88.0,
-          "y": 47.1,
+          "y": 47.9,
           "width": 152.0,
-          "height": 39.4,
+          "height": 41.0,
           "is_cluster": false
         },
         {
           "id": "newLines",
           "x": 280.0,
-          "y": 47.1,
+          "y": 47.9,
           "width": 152.0,
-          "height": 70.2,
+          "height": 71.8,
           "is_cluster": false
         }
       ],
@@ -30,11 +30,11 @@
           "points": [
             {
               "x": 164.0,
-              "y": 47.1
+              "y": 47.9
             },
             {
               "x": 204.0,
-              "y": 47.1
+              "y": 47.9
             }
           ],
           "label": null,
@@ -52,7 +52,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 356.0,
-        "max_y": 82.2
+        "max_y": 83.8
       }
     }
   }

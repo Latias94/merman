@@ -1427,8 +1427,9 @@ fn render_builtin_family_artifact_raw(
         #[cfg(feature = "diagram-event-modeling")]
         BuiltinFamilyArtifact::EventModeling(pair) => {
             eventmodeling::render_eventmodeling_diagram_svg(
-                pair.layout(),
+                pair.layout().layout(),
                 pair.semantic(),
+                pair.layout().labels(),
                 effective_config_value,
                 options,
             )

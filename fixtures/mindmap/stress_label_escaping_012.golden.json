@@ -23,7 +23,7 @@
       {
         "id": "1",
         "domId": "node_1",
-        "label": "Contains <br/> literal and HTML-ish: ",
+        "label": "Contains <br> literal and HTML-ish: ",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
@@ -155,7 +155,7 @@
           "id": 1,
           "nodeId": "a",
           "level": 2,
-          "descr": "Contains <br/> literal and HTML-ish: ",
+          "descr": "Contains <br> literal and HTML-ish: ",
           "type": 2,
           "children": [],
           "width": 200,

@@ -42,7 +42,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for brace-r shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for brace-r shape",
         "labelType": "markdown",
         "shape": "brace-r",
         "layoutShape": "brace-r",
@@ -80,7 +80,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for braces shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for braces shape",
         "labelType": "markdown",
         "shape": "braces",
         "layoutShape": "braces",

@@ -48,7 +48,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for rounded shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for rounded shape",
         "labelType": "markdown",
         "shape": "rounded",
         "layoutShape": "rounded",
@@ -86,7 +86,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for rect shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for rect shape",
         "labelType": "markdown",
         "shape": "rect",
         "layoutShape": "rect",
@@ -124,7 +124,7 @@
       },
       {
         "id": "n22",
-        "label": "This is **bold** </br>and <strong>strong</strong> for start shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for start shape",
         "labelType": "markdown",
         "shape": "start",
         "layoutShape": "start",
@@ -162,7 +162,7 @@
       },
       {
         "id": "n33",
-        "label": "This is **bold** </br>and <strong>strong</strong> for stop shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for stop shape",
         "labelType": "markdown",
         "shape": "stop",
         "layoutShape": "stop",

@@ -550,7 +550,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
         } else {
             self.line_height_factor
         };
-        style.font_size.max(1.0) * factor
+        style.font_size.max(0.0) * factor
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
@@ -692,7 +692,7 @@ impl TextMeasurer for WidthCallbackTextMeasurer {
         } else {
             self.line_height_factor
         };
-        style.font_size.max(1.0) * factor
+        style.font_size.max(0.0) * factor
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {

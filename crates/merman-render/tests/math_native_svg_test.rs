@@ -207,6 +207,47 @@ fn compiled_math_html_label_is_visible_in_resvg_safe() {
 }
 
 #[test]
+fn compiled_math_with_scoped_css_rejects_native_finalization() {
+    use merman_render::svg::SvgOutputPolicy;
+
+    let source = "flowchart LR\nA[\"$$\\frac{x}{y}$$\"]\n";
+    let css = "path { fill: #ff0000 !important; stroke: #00ff00 !important; stroke-width: 3px !important; }";
+    for preset in [
+        merman_render::svg::SvgPipelinePreset::Parity,
+        merman_render::svg::SvgPipelinePreset::ResvgSafe,
+    ] {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let environment = RenderEnvironment::deterministic().with_compiled_math_renderer();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let pipeline = SvgOutputPolicy {
+            preset,
+            scoped_css: Some(css.to_owned()),
+            ..Default::default()
+        }
+        .pipeline();
+        let error = rendered
+            .finalize_resvg(&pipeline.into_resvg_safe())
+            .err()
+            .expect("caller CSS must not silently repaint the compiled formula");
+        assert!(
+            error.to_string().contains("native math with scoped CSS"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn compiled_math_fraction_root_and_multiline_preserve_all_formula_outlines() {
     for label in [
         r"$$\frac{1}{x+1}$$",

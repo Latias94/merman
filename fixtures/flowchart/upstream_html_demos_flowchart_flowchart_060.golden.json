@@ -76,7 +76,7 @@
       },
       {
         "id": "C",
-        "label": "red<br />text",
+        "label": "red<br>text",
         "labelType": "text",
         "shape": "lean_right",
         "layoutShape": "lean_right",
@@ -99,7 +99,7 @@
       },
       {
         "id": "D",
-        "label": "blue<br />text",
+        "label": "blue<br>text",
         "labelType": "text",
         "shape": "diamond",
         "layoutShape": "diamond",
@@ -124,7 +124,7 @@
       },
       {
         "id": "E",
-        "label": "default<br />style",
+        "label": "default<br>style",
         "labelType": "text",
         "shape": "hexagon",
         "layoutShape": "hexagon",
@@ -143,7 +143,7 @@
       },
       {
         "id": "F",
-        "label": "default<br />style",
+        "label": "default<br>style",
         "labelType": "text",
         "shape": "stadium",
         "layoutShape": "stadium",
@@ -191,7 +191,7 @@
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "blue<br />text",
+        "label": "blue<br>text",
         "labelType": "text",
         "style": [
           "stroke:DarkGray",
@@ -213,7 +213,7 @@
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "default<br />style",
+        "label": "default<br>style",
         "labelType": "text",
         "style": [],
         "classes": [],

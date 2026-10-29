@@ -117,7 +117,7 @@
         "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "label with & &lt; > \"quotes\" and 'single'",
+        "label": "label with &amp; &lt; &gt; \"quotes\" and 'single'",
         "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",

@@ -251,7 +251,7 @@
       },
       {
         "id": "Less",
-        "label": "<Less&lt;",
+        "label": "",
         "labelType": "string",
         "layoutShape": "squareRect",
         "shape": "square",

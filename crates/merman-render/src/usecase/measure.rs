@@ -2,13 +2,24 @@ use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::text::{
-    WrapMode, measure_html_with_inline_styles, measure_wrapped_markdown_with_inline_styles,
+    WrapMode, measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
 };
 use merman_core::diagrams::usecase::{
     UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
     UsecaseRelationshipType,
 };
 use std::collections::HashSet;
+
+#[derive(Debug)]
+pub(crate) struct UsecasePreparedHtmlLabel {
+    pub(crate) xhtml: String,
+}
+
+impl UsecasePreparedHtmlLabel {
+    fn new(xhtml: String) -> Arc<Self> {
+        Arc::new(Self { xhtml })
+    }
+}
 
 pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
     config
@@ -117,21 +128,8 @@ struct LabelContext<'a> {
 fn measure_plain_label(
     source: &str,
     style: &TextStyle,
-    max_width: Option<f64>,
-    html: bool,
     measurer: &dyn TextMeasurer,
 ) -> TextMetrics {
-    if html {
-        let fragment = format!("<p>{}</p>", source.replace('\n', "<br/>"));
-        return measure_html_with_inline_styles(
-            measurer,
-            &fragment,
-            style,
-            max_width,
-            WrapMode::HtmlLike,
-        );
-    }
-
     // Match the writer's source tokenization before decoding each textContent payload.
     // Decoded rows are literal tspan text, not another input to label normalization.
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(source);
@@ -194,23 +192,59 @@ fn label(
     let math_renderer = context
         .math_renderer
         .filter(|_| crate::math::contains_delimited_math(source));
-    let math_html = if html {
-        crate::math::render_math_html_label(source, context.config, math_renderer)
+    let html_content = if html {
+        Some(
+            crate::math::render_math_html_label(source, context.config, math_renderer)
+                .unwrap_or_else(|| match label_type {
+                    UsecaseLabelType::Text => {
+                        format!("<p>{}</p>", source.replace('\n', "<br/>"))
+                    }
+                    UsecaseLabelType::Markdown => {
+                        crate::text::mermaid_markdown_to_xhtml_label_fragment(
+                            text,
+                            crate::config::config_bool(
+                                context.config.as_value(),
+                                &["markdownAutoWrap"],
+                            )
+                            .unwrap_or(true),
+                        )
+                    }
+                }),
+        )
     } else {
         None
+    };
+    // The generated NBSP terminal has no automatic space breaks. Authored <br/> remains
+    // structural XHTML and is still measured as separate rows with no width constraint.
+    let measurement_width = if html
+        && label_type == UsecaseLabelType::Markdown
+        && crate::config::config_bool(context.config.as_value(), &["markdownAutoWrap"])
+            == Some(false)
+    {
+        None
+    } else {
+        max_width
     };
     let mut metrics =
         crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
             measurer: context.measurer,
             raw_label: source,
             style: &measurement_style,
-            max_width_px: max_width,
+            max_width_px: measurement_width,
             wrap_mode: mode,
             config: context.config,
             math_renderer,
         })
         .unwrap_or_else(|| {
-            if label_type == UsecaseLabelType::Markdown {
+            if let Some(content) = html_content.as_deref() {
+                measure_xhtml_label_fragment(
+                    context.measurer,
+                    content,
+                    &measurement_style,
+                    measurement_width,
+                    WrapMode::HtmlLike,
+                )
+            } else if label_type == UsecaseLabelType::Markdown {
                 measure_wrapped_markdown_with_inline_styles(
                     context.measurer,
                     text,
@@ -219,13 +253,7 @@ fn label(
                     mode,
                 )
             } else {
-                measure_plain_label(
-                    source,
-                    &measurement_style,
-                    max_width,
-                    html,
-                    context.measurer,
-                )
+                measure_plain_label(source, &measurement_style, context.measurer)
             }
         });
     // labelHelper.withMinWidth also widens the measured box for SVG labels.
@@ -238,7 +266,7 @@ fn label(
         metrics,
         style: style.clone(),
         max_width,
-        math_html,
+        html: html_content.map(UsecasePreparedHtmlLabel::new),
         styles: context
             .styles
             .iter()

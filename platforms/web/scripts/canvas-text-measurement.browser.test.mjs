@@ -93,6 +93,12 @@ test("Canvas font assignment and state isolation in Chromium", {
         { font_weight: "not-a-weight", invalid: true },
         { font_family: "", invalid: true },
         { font_style: "italic", font_size: 24, font_family: "monospace" },
+        { font_size: 0, font_family: "monospace" },
+        { font_size: 0.5, font_family: "monospace" },
+        { font_size: 1, font_family: "monospace" },
+        { font_size: -1, invalid: true },
+        { font_size: NaN, invalid: true },
+        { font_size: Infinity, invalid: true },
       ];
       try {
         const measurements = cases.map(({ invalid = false, ...font }, index) => {

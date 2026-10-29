@@ -51,7 +51,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for subroutine shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for subroutine shape",
         "labelType": "markdown",
         "shape": "subroutine",
         "layoutShape": "subroutine",
@@ -89,7 +89,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for cylinder shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for cylinder shape",
         "labelType": "markdown",
         "shape": "cylinder",
         "layoutShape": "cylinder",
@@ -127,7 +127,7 @@
       },
       {
         "id": "n22",
-        "label": "This is **bold** </br>and <strong>strong</strong> for circle shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for circle shape",
         "labelType": "markdown",
         "shape": "circle",
         "layoutShape": "circle",
@@ -165,7 +165,7 @@
       },
       {
         "id": "n33",
-        "label": "This is **bold** </br>and <strong>strong</strong> for doublecircle shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for doublecircle shape",
         "labelType": "markdown",
         "shape": "doublecircle",
         "layoutShape": "doublecircle",
@@ -203,7 +203,7 @@
       },
       {
         "id": "n44",
-        "label": "This is **bold** </br>and <strong>strong</strong> for odd shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for odd shape",
         "labelType": "markdown",
         "shape": "odd",
         "layoutShape": "odd",

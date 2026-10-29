@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Default)]
 struct SvgFontMeasurer {
     requests: Mutex<Vec<(String, TextStyle)>>,
-    bbox_y_requests: Mutex<Vec<String>>,
+    bbox_y_requests: Mutex<Vec<(String, TextStyle)>>,
 }
 
 impl TextMeasurer for SvgFontMeasurer {
@@ -67,7 +67,10 @@ impl TextMeasurer for SvgFontMeasurer {
     }
 
     fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
-        self.bbox_y_requests.lock().unwrap().push(text.to_owned());
+        self.bbox_y_requests
+            .lock()
+            .unwrap()
+            .push((text.to_owned(), style.clone()));
         self.measure(text, style);
         0.0
     }
@@ -256,9 +259,21 @@ fn class_svg_note_measures_visible_markdown_in_layout_and_emission() {
 
 #[test]
 fn class_svg_note_preserves_entity_depth_and_measures_visible_baseline_words() {
-    for (source, visible, transform) in [
-        ("ASCII `omitted`", "ASCII", "translate(-20, -8)"),
-        ("**A &amp;amp; B**", "A &amp; B", "translate(-54, -8)"),
+    for (source, visible, transform, expected_words, weight) in [
+        (
+            "ASCII `omitted`",
+            "ASCII",
+            "translate(-20, -8)",
+            &["ASCII"][..],
+            "normal",
+        ),
+        (
+            "**A &amp;amp; B**",
+            "A &amp; B",
+            "translate(-54, -8)",
+            &["A", " &amp;", " B"][..],
+            "bold",
+        ),
     ] {
         let measurer = Arc::new(SvgFontMeasurer::default());
         let profile = TextMeasurementProfile::new(
@@ -297,11 +312,20 @@ fn class_svg_note_preserves_entity_depth_and_measures_visible_baseline_words() {
             .descendants()
             .find(|node| node.attribute("class") == Some("label noteLabel"))
             .unwrap();
-        let terminal = label
+        let words = label
             .descendants()
             .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+            .collect::<Vec<_>>();
+        let terminal_words = words
+            .iter()
             .filter_map(|node| node.text())
-            .collect::<String>();
+            .collect::<Vec<_>>();
+        assert_eq!(terminal_words, expected_words, "{source}");
+        for word in &words {
+            assert_eq!(word.attribute("font-style"), Some("normal"), "{source}");
+            assert_eq!(word.attribute("font-weight"), Some(weight), "{source}");
+        }
+        let terminal = terminal_words.concat();
         assert_eq!(terminal, visible, "{source}");
         assert_eq!(label.attribute("transform"), Some(transform), "{source}");
         let requests = measurer.requests.lock().unwrap();
@@ -318,13 +342,28 @@ fn class_svg_note_preserves_entity_depth_and_measures_visible_baseline_words() {
         let bbox_y_requests = measurer.bbox_y_requests.lock().unwrap();
         let mut measured_words = bbox_y_requests
             .iter()
-            .map(String::as_str)
+            .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>();
         measured_words.sort_unstable();
         measured_words.dedup();
-        let mut visible_words = visible.split(' ').collect::<Vec<_>>();
+        // Baseline probes use source words; retained tspan probes own their leading spaces.
+        let mut visible_words = visible
+            .split(' ')
+            .chain(expected_words.iter().copied())
+            .collect::<Vec<_>>();
         visible_words.sort_unstable();
         visible_words.dedup();
         assert_eq!(measured_words, visible_words, "{source}");
+        // Matching probes inherit the base face; bold probes materialize the reset.
+        // The emitted tspan attributes above must remain explicit in both cases.
+        let (probe_font_style, probe_font_weight) = if weight == "bold" {
+            (Some("normal"), Some("700"))
+        } else {
+            (None, None)
+        };
+        for (_, style) in bbox_y_requests.iter() {
+            assert_eq!(style.font_style.as_deref(), probe_font_style, "{source}");
+            assert_eq!(style.font_weight.as_deref(), probe_font_weight, "{source}");
+        }
     }
 }

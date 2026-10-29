@@ -164,6 +164,40 @@ mod tests {
     }
 
     #[test]
+    fn terminal_finalizer_is_idempotent_for_unquoted_trailing_css_escape() {
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("parity render session must be constructible");
+        for (svg, expected_css) in [
+            (
+                include_str!("../seeds/svg/06_unquoted_css_escape_ci.svg"),
+                ".safe{fill:#123456;content:\"A\\\"B\";font-family:'A\\\\'}.broken{stroke:blue;content:nfinished\u{FFFD}}",
+            ),
+            (
+                include_str!("../seeds/svg/07_unquoted_css_escape_minimal.svg"),
+                ".a{content:x\u{FFFD}}",
+            ),
+        ] {
+            let sanitized = merman_render::svg::finalize_resvg_svg(svg, &session)
+                .expect("well-formed SVG with malformed CSS must be sanitizable");
+            assert_resvg_safe_svg(sanitized.as_ref());
+            let document = roxmltree::Document::parse(sanitized.as_ref()).unwrap();
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text());
+            assert_eq!(css, Some(expected_css), "safe declarations must survive");
+        }
+    }
+
+    #[test]
+    fn terminal_finalizer_preserves_closed_css_identifier_escapes() {
+        assert_resvg_safe_svg(
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.paired{font-family:font\\}.hex{font-family:\31}.close{font-family:font\}}</style></svg>"##,
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "resvg-safe output was not terminally normalized")]
     fn terminal_oracle_rejects_an_actual_unsafe_css_url() {
         assert_resvg_safe_svg(

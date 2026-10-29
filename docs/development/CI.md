@@ -156,6 +156,26 @@ tests, scanner and incremental behavior, native binding builds, and Cargo/npm pa
 Shared dependency and legal gates retain their existing owners. The package-local provenance,
 corpus, fixtures, and queries define the syntax contract.
 
+The Windows grammar job prepares Node.js development files separately from compilation with the
+lockfile-installed `node-gyp install --ensure`. Its job-local SDK cache under
+`${{ runner.temp }}/tree-sitter-node-gyp` is shared with `build:node` through
+`npm_package_config_node_gyp_devdir`. Preparation allows at most three attempts, waits 5 and 10
+seconds between failures, and has a 10-minute step timeout. node-gyp retains its upstream download
+checksum validation, rollback, and per-request retries. The native build runs once and uses
+`NODE_GYP_FORCE_PYTHON` with setup-python's `python-path` output; compile and link errors remain
+blocking. The generation checks are unchanged. This does not add a cache shared across workflow runs.
+
+This boundary addresses the interrupted Node 24.21.0 development-file download in
+[main run 40662958348, Windows job 122730428757](https://github.com/Latias94/merman/actions/runs/40662958348/job/122730428757).
+The failure reached HTTP 200 for the headers, checksums, and `node.lib`, then ended with
+`TypeError: terminated` during installation before C++ compilation. See the official
+[node-gyp options](https://github.com/nodejs/node-gyp#command-options),
+[environment configuration](https://github.com/nodejs/node-gyp#environment-variables), and
+[Python selection](https://github.com/nodejs/node-gyp#configuring-python-dependency).
+Local workflow contracts and actionlint validate the setup/build boundary. Remote
+`grammar-owner / generation-windows` evidence must additionally show successful development-file
+preparation, Python 3.14 selection, and the original native build succeeding without another download.
+
 The pull-request feature matrix validates the complete declared feature graph but compiles a curated
 set of representative products and transports. It deliberately does not compile every bounded
 pairwise combination and artifact recipe.

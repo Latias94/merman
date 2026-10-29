@@ -1,0 +1,1 @@
+SVG postprocessor `validate-well-formed-svg` failed: invalid XML entity reference: unknown entity &nbsp;

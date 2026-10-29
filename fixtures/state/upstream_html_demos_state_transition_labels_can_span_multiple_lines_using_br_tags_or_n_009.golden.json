@@ -117,7 +117,7 @@
         "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "This long line uses a br tag<br />to create multiple<br />lines.",
+        "label": "This long line uses a br tag<br>to create multiple<br>lines.",
         "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",

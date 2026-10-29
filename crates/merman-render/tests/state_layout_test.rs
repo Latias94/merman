@@ -181,34 +181,34 @@ fn state_start_and_end_use_source_defined_nominal_diameter() {
 
 #[test]
 fn state_layout_root_html_labels_override_deprecated_flowchart_html_labels() {
-    let root_false = layout_state_from_text(
-        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
-stateDiagram-v2
-A --> B: owns
-"#,
-    );
-    let root_true = layout_state_from_text(
-        r#"%%{init: {"htmlLabels": true, "flowchart": {"htmlLabels": false}}}%%
-stateDiagram-v2
-A --> B: owns
-"#,
-    );
+    let label_size = |root: bool, flowchart: bool| {
+        let layout = layout_state_from_text(&format!(
+            "%%{{init: {config}}}%%\nstateDiagram-v2\nA --> B: owns\n",
+            config = serde_json::json!({"htmlLabels":root, "flowchart":{"htmlLabels":flowchart}})
+        ));
+        let label = layout
+            .edges
+            .iter()
+            .find_map(|edge| edge.label.as_ref())
+            .expect("State edge label");
+        (label.width, label.height)
+    };
+    let svg_control = label_size(false, false);
+    let html_control = label_size(true, true);
 
-    let false_label = root_false
-        .edges
-        .iter()
-        .find_map(|edge| edge.label.as_ref())
-        .expect("root=false edge label");
-    let true_label = root_true
-        .edges
-        .iter()
-        .find_map(|edge| edge.label.as_ref())
-        .expect("root=true edge label");
-
-    assert!(
-        false_label.width > true_label.width
-            && (false_label.height - true_label.height).abs() > 1e-6,
-        "root htmlLabels=false should select SVG-like label metrics over deprecated flowchart=true: false={false_label:?}, true={true_label:?}"
+    assert_ne!(
+        svg_control, html_control,
+        "the controls must distinguish SVG and HTML label geometry"
+    );
+    assert_eq!(
+        label_size(false, true),
+        svg_control,
+        "root htmlLabels=false must override deprecated flowchart=true"
+    );
+    assert_eq!(
+        label_size(true, false),
+        html_control,
+        "root htmlLabels=true must override deprecated flowchart=false"
     );
 }
 

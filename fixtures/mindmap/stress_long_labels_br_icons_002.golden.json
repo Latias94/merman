@@ -6,7 +6,7 @@
       {
         "id": "0",
         "domId": "node_0",
-        "label": "A root with a long<br/>wrapping label",
+        "label": "A root with a long<br>wrapping label",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -61,7 +61,7 @@
       {
         "id": "3",
         "domId": "node_3",
-        "label": "Two-line label<br/>with icon",
+        "label": "Two-line label<br>with icon",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -116,7 +116,7 @@
       {
         "id": "6",
         "domId": "node_6",
-        "label": "Nested<br/>multiline",
+        "label": "Nested<br>multiline",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -211,7 +211,7 @@
       "id": 0,
       "nodeId": "root",
       "level": 0,
-      "descr": "A root with a long<br/>wrapping label",
+      "descr": "A root with a long<br>wrapping label",
       "type": 3,
       "children": [
         {
@@ -236,7 +236,7 @@
               "id": 3,
               "nodeId": "l2",
               "level": 4,
-              "descr": "Two-line label<br/>with icon",
+              "descr": "Two-line label<br>with icon",
               "type": 3,
               "children": [],
               "width": 200,
@@ -272,7 +272,7 @@
               "id": 6,
               "nodeId": "r2",
               "level": 4,
-              "descr": "Nested<br/>multiline",
+              "descr": "Nested<br>multiline",
               "type": 3,
               "children": [],
               "width": 200,

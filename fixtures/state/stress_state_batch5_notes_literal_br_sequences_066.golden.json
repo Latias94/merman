@@ -94,7 +94,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "literal <br/> should be treated as text\nline2\\\\nline3 (escaped)",
+        "label": "literal <br> should be treated as text\nline2\\\\nline3 (escaped)",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -112,7 +112,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "literal <br/> should be treated as text\nline2\\\\nline3 (escaped)",
+        "label": "literal <br> should be treated as text\nline2\\\\nline3 (escaped)",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

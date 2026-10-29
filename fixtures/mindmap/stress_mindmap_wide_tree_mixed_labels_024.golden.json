@@ -41,7 +41,7 @@
       {
         "id": "2",
         "domId": "node_2",
-        "label": "Node A1<br/>with break",
+        "label": "Node A1<br>with break",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
@@ -523,7 +523,7 @@
               "id": 2,
               "nodeId": "a1",
               "level": 4,
-              "descr": "Node A1<br/>with break",
+              "descr": "Node A1<br>with break",
               "type": 2,
               "children": [],
               "width": 200,

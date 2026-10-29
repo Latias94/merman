@@ -377,6 +377,16 @@ impl TextMeasurer for RequirementSvgBoldMeasurer<'_> {
         )
     }
 
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.0.measure_svg_tspan_text_bbox_height_px(
+            text,
+            &TextStyle {
+                font_weight: Some("bold".to_owned()),
+                ..style.clone()
+            },
+        )
+    }
+
     fn measure_wrapped(
         &self,
         text: &str,
@@ -402,7 +412,7 @@ fn measure_requirement_svg_word_lines(
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: &TextStyle,
 ) -> TextMetrics {
-    let (first, remaining) = lines.split_at(1);
+    let (first, remaining) = lines.split_at(lines.len().min(1));
     let mut metrics = crate::text::measure_svg_markdown_word_lines(
         first_row_measurer,
         first,
@@ -410,6 +420,9 @@ fn measure_requirement_svg_word_lines(
         crate::text::SvgTextEntityMode::CreateTextSource,
     );
     let Some(first_tail_row) = remaining.iter().position(|row| !row.is_empty()) else {
+        if metrics.line_count > 0 {
+            metrics.line_count = lines.len();
+        }
         return metrics;
     };
     let remaining = &remaining[first_tail_row..];
@@ -419,19 +432,37 @@ fn measure_requirement_svg_word_lines(
         style,
         crate::text::SvgTextEntityMode::CreateTextSource,
     );
-    let row_style = crate::text::svg_markdown_word_style(style, MermaidMarkdownWordType::Normal);
-    let row_y = |measurer: &dyn TextMeasurer, row: &[(String, MermaidMarkdownWordType)]| {
-        let text = row
-            .iter()
-            .map(|(word, _)| crate::entities::decode_svg_text_content_entities(word))
-            .collect::<Vec<_>>()
-            .join(" ");
-        measurer.measure_svg_create_text_bbox_y_offset_px(&text, &row_style)
+    let rows_y = |measurer: &dyn TextMeasurer, rows: &[Vec<(String, MermaidMarkdownWordType)>]| {
+        rows.iter()
+            .enumerate()
+            .flat_map(|(row_index, row)| {
+                row.iter()
+                    .enumerate()
+                    .filter_map(move |(word_index, (word, kind))| {
+                        let visible = crate::entities::decode_svg_text_content_entities(word);
+                        if crate::text::trim_html_collapsible_ascii_whitespace(&visible).is_empty()
+                        {
+                            return None;
+                        }
+                        let text = if word_index == 0 {
+                            visible
+                        } else {
+                            std::borrow::Cow::Owned(format!(" {visible}"))
+                        };
+                        let face = crate::text::svg_markdown_word_style(style, *kind);
+                        Some(
+                            measurer.measure_svg_create_text_bbox_y_offset_px(&text, &face)
+                                + row_index as f64 * style.font_size * 1.1,
+                        )
+                    })
+            })
+            .reduce(f64::min)
+            .unwrap_or(0.0)
     };
-    // createText positions each row 1.1em apart; Requirement restyles only the first row.
-    let first_y = row_y(first_row_measurer, &first[0]);
-    let tail_y =
-        (first_tail_row + 1) as f64 * style.font_size * 1.1 + row_y(measurer, &remaining[0]);
+    // Match the final styled-word bbox origins, including retained empty rows.
+    // Requirement changes only the first row's face after its wrapping probe.
+    let first_y = rows_y(first_row_measurer, first);
+    let tail_y = (first_tail_row + 1) as f64 * style.font_size * 1.1 + rows_y(measurer, remaining);
     metrics.height = if metrics.line_count == 0 {
         tail.height
     } else if tail.line_count == 0 {
@@ -440,7 +471,7 @@ fn measure_requirement_svg_word_lines(
         (first_y + metrics.height).max(tail_y + tail.height) - first_y.min(tail_y)
     };
     metrics.width = metrics.width.max(tail.width);
-    metrics.line_count += tail.line_count;
+    metrics.line_count = lines.len();
     metrics
 }
 
@@ -1409,6 +1440,14 @@ mod tests {
                 }
             }
 
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+                assert!(
+                    !text.contains('\n'),
+                    "terminal bbox receives one retained word"
+                );
+                self.measure(text, style).height
+            }
+
             fn measure_svg_create_text_bbox_y_offset_px(
                 &self,
                 text: &str,
@@ -1439,25 +1478,12 @@ mod tests {
 
             fn measure_wrapped(
                 &self,
-                text: &str,
-                style: &TextStyle,
+                _text: &str,
+                _style: &TextStyle,
                 _max_width: Option<f64>,
                 _wrap_mode: WrapMode,
             ) -> TextMetrics {
-                let rows = text
-                    .lines()
-                    .enumerate()
-                    .filter(|(_, row)| !row.is_empty())
-                    .collect::<Vec<_>>();
-                let mut metrics = self.measure(rows[0].1, style);
-                metrics.line_count = rows.len();
-                metrics.width = rows
-                    .iter()
-                    .map(|(_, row)| self.measure(row, style).width)
-                    .fold(0.0_f64, f64::max);
-                metrics.height +=
-                    (rows.last().unwrap().0 - rows[0].0) as f64 * style.font_size * 1.1;
-                metrics
+                panic!("SVG terminal rows must use computed length and literal tspan bounds")
             }
         }
 
@@ -1472,7 +1498,9 @@ mod tests {
             (true, "W<br/>`x`<br/>WW WW", 50.0, 2.0 * row_step + 19.0),
             (true, "`x`<br/>WW WW", 50.0, 16.0),
             (true, "W<br/>`x`", 20.0, 26.0),
-            (true, "W<br/>**WWW**", 60.0, row_step + 19.0),
+            // Both rows have bold terminal ink [-5, 15]; the second baseline is row_step.
+            // The outer Requirement shape adds 6px after the union of those two boxes.
+            (true, "W<br/>**WWW**", 60.0, row_step + 20.0 + 6.0),
         ] {
             let metrics = measure_requirement_label_metrics(
                 &FaceSensitiveMeasurer,
@@ -1490,6 +1518,102 @@ mod tests {
                 "{text}: {} != {expected_height}",
                 metrics.height
             );
+        }
+    }
+
+    #[test]
+    fn requirement_svg_literal_rows_union_each_word_face_at_its_retained_baseline() {
+        struct LiteralWordMeasurer;
+
+        impl TextMeasurer for LiteralWordMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                panic!("literal SVG words must reach their dedicated operations")
+            }
+
+            fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                text.chars().count() as f64
+            }
+
+            fn measure_svg_tspan_text_bbox_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+                if style.font_style.as_deref() == Some("italic") {
+                    18.0
+                } else {
+                    10.0
+                }
+            }
+
+            fn measure_svg_create_text_bbox_y_offset_px(
+                &self,
+                _text: &str,
+                style: &TextStyle,
+            ) -> f64 {
+                if style.font_style.as_deref() == Some("italic") {
+                    -30.0
+                } else {
+                    -2.0
+                }
+            }
+        }
+
+        let normal = MermaidMarkdownWordType::Normal;
+        let italic = MermaidMarkdownWordType::Em;
+        let style = TextStyle {
+            font_size: 10.0,
+            ..TextStyle::default()
+        };
+        for (lines, expected_width, expected_height) in [
+            (vec![], 0.0, 0.0),
+            (vec![vec![], vec![]], 0.0, 0.0),
+            (vec![vec![("head", normal)], vec![]], 4.0, 10.0),
+            (vec![vec![], vec![("tail", normal)]], 4.0, 10.0),
+            (
+                vec![vec![("A&lt;br&gt;B", normal), ("A\nB", italic)]],
+                10.0,
+                38.0,
+            ),
+            (
+                vec![
+                    vec![("head", normal)],
+                    vec![("tail", normal)],
+                    vec![("high", italic)],
+                ],
+                4.0,
+                27.0,
+            ),
+            (
+                vec![
+                    vec![("head", normal)],
+                    vec![],
+                    vec![("tail", normal)],
+                    vec![],
+                    vec![("high", italic)],
+                ],
+                4.0,
+                34.0,
+            ),
+        ] {
+            let lines = lines
+                .into_iter()
+                .map(|row| {
+                    row.into_iter()
+                        .map(|(text, face)| (text.to_owned(), face))
+                        .collect()
+                })
+                .collect::<Vec<_>>();
+            let metrics = measure_requirement_svg_word_lines(
+                &LiteralWordMeasurer,
+                &LiteralWordMeasurer,
+                &lines,
+                &style,
+            );
+            assert_eq!(metrics.width, expected_width, "{lines:?}");
+            assert_eq!(metrics.height, expected_height, "{lines:?}");
+            let expected_rows = if lines.iter().all(Vec::is_empty) {
+                0
+            } else {
+                lines.len()
+            };
+            assert_eq!(metrics.line_count, expected_rows, "{lines:?}");
         }
     }
 

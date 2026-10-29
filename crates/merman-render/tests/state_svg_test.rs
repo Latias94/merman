@@ -563,16 +563,43 @@ note right of A : Note text
 "#,
     );
 
-    assert!(
-        svg.contains("statediagram-note")
-            && svg.contains(
-                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Note text</tspan>"#
-            ),
-        "root htmlLabels=false should render State notes as SVG text: {svg}"
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+    let note = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("node statediagram-note"))
+        .expect("State note node");
+    let label = note
+        .descendants()
+        .find(|node| node.attribute("class") == Some("label noteLabel"))
+        .expect("State note label");
+    let text = label
+        .descendants()
+        .find(|node| node.has_tag_name(("http://www.w3.org/2000/svg", "text")))
+        .expect("root htmlLabels=false must select SVG note text");
+    let words = text
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name(("http://www.w3.org/2000/svg", "tspan"))
+                && node.attribute("class") == Some("text-inner-tspan")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        words
+            .iter()
+            .filter_map(|node| node.text())
+            .collect::<Vec<_>>(),
+        ["Note", " text"],
+        "createText emits one tspan per word, including inter-word spaces: {svg}"
     );
+    for word in words {
+        assert_eq!(word.attribute("font-style"), Some("normal"));
+        assert_eq!(word.attribute("font-weight"), Some("normal"));
+    }
     assert!(
-        !svg.contains(r#"<span class="nodeLabel"><p>Note text</p></span>"#),
-        "root htmlLabels=false should not render State note text through HTML node labels: {svg}"
+        !label
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject")),
+        "root htmlLabels=false must keep State notes in SVG text: {svg}"
     );
 }
 

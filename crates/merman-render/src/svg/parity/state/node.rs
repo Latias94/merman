@@ -334,7 +334,7 @@ pub(super) fn render_state_node_svg(
             let label_dom = if ctx.html_labels {
                 state_node_label_html(&label, ctx.text_style.font_size)
             } else {
-                state_svg_text_label(&label, false, None)
+                state_svg_word_label(&measurement.svg_word_lines, false, None)
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
@@ -410,12 +410,16 @@ pub(super) fn render_state_node_svg(
                 .map(|v| v.join("\n"))
                 .unwrap_or_default();
             let measure_start = timing.start();
-            let title_metrics =
-                ctx.measurer
-                    .measure_wrapped(&title, &ctx.text_style, None, WrapMode::HtmlLike);
-            let desc_metrics =
-                ctx.measurer
-                    .measure_wrapped(&desc, &ctx.text_style, None, WrapMode::HtmlLike);
+            let measure_plain = |text: &str| {
+                if ctx.html_labels {
+                    ctx.measurer
+                        .measure_wrapped(text, &ctx.text_style, None, WrapMode::HtmlLike)
+                } else {
+                    state_svg_plain_label_metrics(text, ctx.measurer, &ctx.text_style)
+                }
+            };
+            let title_metrics = measure_plain(&title);
+            let desc_metrics = measure_plain(&desc);
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
@@ -628,7 +632,7 @@ pub(super) fn render_state_node_svg(
             let label_dom = if ctx.html_labels {
                 state_node_label_html_with_style(&label, label_span_style, ctx.text_style.font_size)
             } else {
-                state_svg_text_label(&label, false, label_span_style)
+                state_svg_word_label(&measurement.svg_word_lines, false, label_span_style)
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();

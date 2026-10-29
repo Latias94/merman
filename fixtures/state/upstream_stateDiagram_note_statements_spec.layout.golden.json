@@ -195,7 +195,7 @@
           "height": 165.0,
           "diff": 0.0,
           "offset_y": 0.0,
-          "title": "this is a short<br/>note",
+          "title": "this is a short<br>note",
           "title_label": {
             "x": 182.5,
             "y": 33.0,

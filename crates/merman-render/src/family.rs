@@ -419,7 +419,7 @@ pub(crate) enum BuiltinFamilyArtifact {
         Box<
             FamilyPair<
                 diagrams::eventmodeling::EventModelingDiagramRenderModel,
-                EventModelingDiagramLayout,
+                crate::eventmodeling::EventModelingPreparedArtifact,
             >,
         >,
     ),
@@ -734,7 +734,9 @@ impl BuiltinFamilyArtifact {
             #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(pair) => LayoutProjection::IshikawaDiagram(pair.layout()),
             #[cfg(feature = "diagram-event-modeling")]
-            Self::EventModeling(pair) => LayoutProjection::EventModelingDiagram(pair.layout()),
+            Self::EventModeling(pair) => {
+                LayoutProjection::EventModelingDiagram(pair.layout().layout())
+            }
             #[cfg(feature = "diagram-venn")]
             Self::Venn(pair) => LayoutProjection::VennDiagram(pair.layout()),
             #[cfg(feature = "diagram-usecase")]
@@ -2100,10 +2102,11 @@ fn prepare_non_class_render(
         #[cfg(feature = "diagram-event-modeling")]
         RenderSemanticModel::EventModeling(model) => {
             BuiltinFamilyArtifact::EventModeling(prepare_pair(model, |model| {
-                crate::eventmodeling::layout_eventmodeling_diagram_typed(
+                crate::eventmodeling::prepare_eventmodeling_diagram_typed(
                     model,
-                    effective_config,
+                    &meta.effective_config,
                     execution.text_measurer(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }

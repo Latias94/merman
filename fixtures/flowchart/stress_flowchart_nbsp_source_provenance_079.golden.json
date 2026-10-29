@@ -219,7 +219,7 @@
       },
       {
         "id": "EscapedMarkup",
-        "label": "<b> literal",
+        "label": "<b> literal</b>",
         "labelType": "string",
         "layoutShape": "squareRect",
         "shape": "square",

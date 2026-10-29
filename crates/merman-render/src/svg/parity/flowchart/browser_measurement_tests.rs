@@ -7,20 +7,97 @@ use crate::model::{FlowchartLayout, LayoutPoint};
 use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
 
-struct BrowserLabelBoxes {
-    raw: std::collections::HashMap<String, TextMetrics>,
-    svg_markdown: std::collections::HashMap<String, TextMetrics>,
+#[derive(Deserialize)]
+struct BrowserSvgTextBox {
+    text: String,
+    tspan_bbox_height: f64,
+    create_text_bbox_y: f64,
 }
+
+#[derive(Deserialize)]
+struct BrowserSvgFace {
+    style: TextStyle,
+    texts: Vec<BrowserSvgTextBox>,
+}
+
+impl BrowserSvgFace {
+    fn matches(&self, style: &TextStyle) -> bool {
+        let family = |style: &TextStyle| {
+            style
+                .font_family
+                .as_deref()
+                .map(crate::config::normalize_css_font_family)
+                .filter(|family| !family.is_empty())
+        };
+        let weight = |style: &TextStyle| {
+            crate::text::apply_css_font_declarations(
+                style,
+                &format!(
+                    "font-weight:{}",
+                    style.font_weight.as_deref().unwrap_or("normal")
+                ),
+            )
+            .font_weight
+        };
+        family(style).is_some()
+            && family(style) == family(&self.style)
+            && style.font_size == self.style.font_size
+            && weight(style) == weight(&self.style)
+            && style.font_style.as_deref().unwrap_or("normal")
+                == self.style.font_style.as_deref().unwrap_or("normal")
+    }
+}
+
+struct BrowserLabelBoxes {
+    fixture: String,
+    raw: std::collections::HashMap<String, TextMetrics>,
+    svg_faces: Vec<BrowserSvgFace>,
+    html_lines: std::collections::HashMap<String, f64>,
+}
+
+impl BrowserLabelBoxes {
+    fn svg_text_box(&self, text: &str, style: &TextStyle) -> &BrowserSvgTextBox {
+        self.svg_faces
+            .iter()
+            .filter(|face| face.matches(style))
+            .flat_map(|face| &face.texts)
+            .find(|probe| probe.text == text)
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}: missing browser SVG terminal primitive for {text:?} with {style:?}",
+                    self.fixture
+                )
+            })
+    }
+}
+
 impl TextMeasurer for BrowserLabelBoxes {
+    fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.html_lines.get(text).copied().unwrap_or_else(|| {
+            self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+                .width
+        })
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.raw
             .get(text)
             .copied()
             .unwrap_or_else(|| DeterministicTextMeasurer::default().measure(text, style))
     }
+
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.svg_text_box(text, style).tspan_bbox_height
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.svg_text_box(text, style).create_text_bbox_y
+    }
+
     fn measure_wrapped(
         &self,
         text: &str,
@@ -28,23 +105,67 @@ impl TextMeasurer for BrowserLabelBoxes {
         max_width: Option<f64>,
         mode: WrapMode,
     ) -> TextMetrics {
-        self.raw
-            .get(text)
-            .copied()
-            .or_else(|| {
-                // SVG Markdown measures the complete plain label after tokenization/wrapping.
-                // Reuse the captured final bbox for that full text, not for word-width probes.
-                (mode != WrapMode::HtmlLike && max_width.is_none())
-                    .then(|| {
-                        self.svg_markdown
-                            .get(&text.split_whitespace().collect::<Vec<_>>().join(" "))
-                            .copied()
-                    })
-                    .flatten()
-            })
-            .unwrap_or_else(|| {
-                DeterministicTextMeasurer::default().measure_wrapped(text, style, max_width, mode)
-            })
+        self.raw.get(text).copied().unwrap_or_else(|| {
+            DeterministicTextMeasurer::default().measure_wrapped(text, style, max_width, mode)
+        })
+    }
+}
+
+#[test]
+fn browser_svg_profile_captures_sanitized_source_placement_as_independent_literal_probes() {
+    let captures: Value = serde_json::from_str(include_str!(
+        "../../../../../../fixtures/_verification/flowchart-svg-terminal-measurements.json"
+    ))
+    .unwrap();
+    let fixture =
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_false_094";
+    let entry = captures["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["fixture"] == fixture)
+        .unwrap();
+    let mut profile = BrowserLabelBoxes {
+        fixture: fixture.to_owned(),
+        raw: Default::default(),
+        svg_faces: serde_json::from_value(entry["faces"].clone()).unwrap(),
+        html_lines: Default::default(),
+    };
+    let style = TextStyle {
+        font_family: Some("\"Recursive Variable\",arial,sans-serif".to_owned()),
+        font_size: 14.0,
+        font_weight: None,
+        font_style: None,
+    };
+    for shape in ["brace-r", "braces"] {
+        let text = format!("This is **bold** <br>and <strong>strong</strong> for {shape} shape");
+        // The full label is four wrapped rows. Its metrics cannot supply a literal primitive.
+        profile.raw.insert(
+            text.clone(),
+            TextMetrics {
+                width: 120.0,
+                height: 62.200_000_762_939_45,
+                line_count: 4,
+            },
+        );
+        assert_eq!(
+            profile.measure_svg_tspan_text_bbox_height_px(&text, &style),
+            16.0,
+            "{shape}: independently captured single-tspan height"
+        );
+        assert_eq!(
+            profile.measure_svg_create_text_bbox_y_offset_px(&text, &style),
+            1.000_000_953_674_316_4,
+            "{shape}: independently captured row-zero createText offset"
+        );
+        // Equivalent HTML spellings and different faces must not alias the captured request.
+        let uncaptured = text.replace("<br>", "<br/>");
+        assert!(std::panic::catch_unwind(|| profile.svg_text_box(&uncaptured, &style)).is_err());
+        let bold = TextStyle {
+            font_weight: Some("700".to_owned()),
+            ..style.clone()
+        };
+        assert!(std::panic::catch_unwind(|| profile.svg_text_box(&text, &bold)).is_err());
     }
 }
 
@@ -55,6 +176,33 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         "../../../../../../fixtures/_verification/flowchart-elk-browser-measurements.json"
     ))
     .unwrap();
+    let terminals: Value = serde_json::from_str(include_str!(
+        "../../../../../../fixtures/_verification/flowchart-svg-terminal-measurements.json"
+    ))
+    .unwrap();
+    assert_eq!(terminals["schema_version"], 1);
+    for key in ["mermaid_version", "mermaid_source_commit"] {
+        assert_eq!(
+            terminals[key], matrix[key],
+            "{key}: SVG terminal provenance"
+        );
+    }
+    let terminal_entries = terminals["entries"].as_array().unwrap();
+    for terminal in terminal_entries {
+        let fixture = matrix["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|fixture| fixture["fixture"] == terminal["fixture"])
+            .expect("SVG terminal fixture belongs to the browser matrix");
+        for key in ["input_sha256", "upstream_svg_sha256"] {
+            assert_eq!(
+                terminal[key], fixture[key],
+                "{}: SVG terminal {key}",
+                terminal["fixture"]
+            );
+        }
+    }
     let mut mismatches = Vec::new();
     let number =
         regex::Regex::new(r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?").unwrap();
@@ -120,7 +268,6 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         };
         let debug = SvgDebugOptions::default();
         let mut labels = std::collections::HashMap::new();
-        let mut svg_markdown = std::collections::HashMap::new();
         for node in fixture["nodes"].as_array().unwrap() {
             let Some(text) = node["label_box"]["text"].as_str() else {
                 continue;
@@ -134,22 +281,6 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                 height: node["label_box"]["size"][1].as_f64().unwrap(),
                 line_count: normalized.lines().count(),
             };
-            if model.nodes.iter().any(|n| {
-                n.id == node["id"].as_str().unwrap() && n.label_type.as_deref() == Some("markdown")
-            }) {
-                let key = crate::text::mermaid_markdown_to_lines(text, true)
-                    .into_iter()
-                    .flatten()
-                    .map(|(word, _)| {
-                        crate::entities::decode_svg_text_content_entities(&word).into_owned()
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                svg_markdown.insert(key, metrics);
-            }
             for key in [text.to_string(), normalized] {
                 if let Some(previous) = labels.insert(key.clone(), metrics) {
                     assert_eq!(
@@ -160,6 +291,11 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                 }
             }
         }
+        let svg_faces = terminal_entries
+            .iter()
+            .find(|entry| entry["fixture"].as_str() == Some(name))
+            .map(|entry| serde_json::from_value(entry["faces"].clone()).unwrap())
+            .unwrap_or_default();
         use crate::environment::{
             MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
             TextMeasurementProfileIdentity,
@@ -171,8 +307,10 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             )
             .unwrap(),
             std::sync::Arc::new(BrowserLabelBoxes {
+                fixture: name.to_owned(),
                 raw: labels,
-                svg_markdown,
+                svg_faces,
+                html_lines: Default::default(),
             }),
         );
         let session = environment

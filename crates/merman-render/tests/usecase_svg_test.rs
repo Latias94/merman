@@ -666,7 +666,8 @@ A edge@-- "g<br/>h" --> B
                 .filter_map(|child| child.text())
                 .collect::<String>()
         };
-        for (id, expected) in [("A", "a<br/>b"), ("B", "c<BR />d &lt; e &amp; f")] {
+        // UsecaseDB sanitizes HTML before plain labels escape it as literal text.
+        for (id, expected) in [("A", "a<br>b"), ("B", "c<br>d &lt; e &amp; f")] {
             let node = document
                 .descendants()
                 .find(|node| node.attribute("data-usecase-id") == Some(id))
@@ -676,6 +677,10 @@ A edge@-- "g<br/>h" --> B
                 .find(|node| node.has_tag_name(if html { "span" } else { "text" }))
                 .unwrap();
             assert_eq!(text_content(label), expected, "{id}, htmlLabels={html}");
+            assert!(
+                !label.descendants().any(|node| node.has_tag_name("br")),
+                "{id} must keep a literal break spelling, htmlLabels={html}: {svg}"
+            );
             if !html {
                 assert_eq!(label.children().filter(|node| node.is_element()).count(), 1);
             }
@@ -684,7 +689,11 @@ A edge@-- "g<br/>h" --> B
             .descendants()
             .find(|node| node.attribute("data-id") == Some("edge") && node.has_tag_name("g"))
             .unwrap();
-        assert_eq!(text_content(edge_label), "g<br/>h", "htmlLabels={html}");
+        assert_eq!(text_content(edge_label), "g<br>h", "htmlLabels={html}");
+        assert!(
+            !edge_label.descendants().any(|node| node.has_tag_name("br")),
+            "edge labels must keep a literal break spelling, htmlLabels={html}: {svg}"
+        );
     }
 }
 
@@ -861,7 +870,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
     struct FixedMath;
     impl MathRenderer for FixedMath {
         fn render_html_label(&self, text: &str, _: &MermaidConfig) -> Option<String> {
-            assert_eq!(text, "$$x&lt;br/&gt;y$$");
+            assert_eq!(text, "$$x&lt;br&gt;y$$");
             Some("<span>rendered formula</span>".to_owned())
         }
         fn measure_html_label(
@@ -872,7 +881,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
             _: Option<f64>,
             _: WrapMode,
         ) -> Option<TextMetrics> {
-            assert_eq!(text, "$$x&lt;br/&gt;y$$");
+            assert_eq!(text, "$$x&lt;br&gt;y$$");
             Some(TextMetrics {
                 width: 222.0,
                 height: 37.0,

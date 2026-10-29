@@ -51,7 +51,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for document shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for document shape",
         "labelType": "markdown",
         "shape": "document",
         "layoutShape": "document",
@@ -89,7 +89,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for notched-pentagon shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for notched-pentagon shape",
         "labelType": "markdown",
         "shape": "notched-pentagon",
         "layoutShape": "notched-pentagon",
@@ -127,7 +127,7 @@
       },
       {
         "id": "n22",
-        "label": "This is **bold** </br>and <strong>strong</strong> for lined-cylinder shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for lined-cylinder shape",
         "labelType": "markdown",
         "shape": "lined-cylinder",
         "layoutShape": "lined-cylinder",
@@ -165,7 +165,7 @@
       },
       {
         "id": "n33",
-        "label": "This is **bold** </br>and <strong>strong</strong> for stacked-document shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for stacked-document shape",
         "labelType": "markdown",
         "shape": "stacked-document",
         "layoutShape": "stacked-document",
@@ -203,7 +203,7 @@
       },
       {
         "id": "n44",
-        "label": "This is **bold** </br>and <strong>strong</strong> for half-rounded-rectangle shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for half-rounded-rectangle shape",
         "labelType": "markdown",
         "shape": "half-rounded-rectangle",
         "layoutShape": "half-rounded-rectangle",

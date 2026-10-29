@@ -60,7 +60,7 @@
       {
         "id": "3",
         "domId": "node_3",
-        "label": "Root<br/>With<br/>Breaks",
+        "label": "Root<br>With<br>Breaks",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -180,7 +180,7 @@
           "id": 3,
           "nodeId": "br1",
           "level": 2,
-          "descr": "Root<br/>With<br/>Breaks",
+          "descr": "Root<br>With<br>Breaks",
           "type": 3,
           "children": [
             {

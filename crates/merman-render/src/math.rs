@@ -258,9 +258,7 @@ pub(crate) fn render_math_html_label(
         return None;
     }
     let rendered = math_renderer?.render_html_label(text, config)?;
-    Some(crate::xml::normalize_html_fragment_for_xhtml(
-        &merman_core::sanitize::sanitize_text(&rendered, config),
-    ))
+    Some(merman_core::sanitize::sanitize_xhtml(&rendered, config))
 }
 
 /// Pure-Rust math renderer backed by RaTeX.

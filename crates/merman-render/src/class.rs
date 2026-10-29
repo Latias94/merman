@@ -1852,7 +1852,7 @@ pub(crate) fn class_note_html_fragment(
     mermaid_config: &merman_core::MermaidConfig,
 ) -> String {
     let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-    let note_html = merman_core::sanitize::sanitize_text(&note_html, mermaid_config);
+    let note_html = merman_core::sanitize::sanitize_xhtml(&note_html, mermaid_config);
     class_normalize_xhtml_br_tags(&note_html)
 }
 
@@ -1962,7 +1962,7 @@ impl ClassSvgTitleLabel {
         style: &TextStyle,
     ) -> crate::text::TextMetrics {
         let role = ClassTitleMeasurer { inner: measurer };
-        let mut metrics = crate::text::measure_svg_literal_word_lines(
+        let mut metrics = crate::text::measure_svg_markdown_word_lines(
             &role,
             self.lines(),
             style,

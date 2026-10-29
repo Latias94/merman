@@ -225,6 +225,14 @@ in addition to output pixels, decoded images, and encoder overhead.
 
 ## Known gaps
 
+- Native formula geometry and nonempty caller scoped CSS cannot be combined through
+  `SvgOutputPolicy`, including CLI `--css-file` / `--cssFile`. PNG, JPEG, PDF, and explicit
+  `resvg-safe` SVG return an error before publication: the native CSS engine can repaint formula
+  paths through global selectors even when the formula lives in root definitions. Omit caller
+  CSS for native formula export, or use parity SVG in a browser. Ordinary diagrams without
+  rendered formulas, including the literal math branch with `htmlLabels: false`, retain native
+  CSS export support. This check concerns caller scoped CSS, not Mermaid's generated theme and
+  `classDef` styles.
 - The `<text>` fallback for browser-only HTML labels is approximate and is not expected to be
   pixel-identical to Chromium.
 - Fallback typography is resolved from the source element context before `foreignObject` removal.

@@ -42,7 +42,7 @@ pub(super) fn sequence_katex_label(
     let Some(html) = html else {
         return Ok(None);
     };
-    let html = xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html, config));
+    let html = merman_core::sanitize::sanitize_xhtml(&html, config);
     Ok(Some(SequenceKatexLabel {
         html,
         width,
@@ -65,17 +65,6 @@ pub(super) fn write_sequence_katex_foreign_object(
         y = fmt(y),
         html = label.html,
     );
-}
-
-fn xhtml_fix_fragment(input: &str) -> String {
-    input
-        .replace("<br>", "<br />")
-        .replace("<br/>", "<br />")
-        .replace("<br >", "<br />")
-        .replace("</br>", "<br />")
-        .replace("</br/>", "<br />")
-        .replace("</br />", "<br />")
-        .replace("</br >", "<br />")
 }
 
 #[cfg(test)]

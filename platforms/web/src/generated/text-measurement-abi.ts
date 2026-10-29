@@ -71,6 +71,7 @@ export const HOST_TEXT_MEASUREMENT_OPERATIONS = [
   { code: 19, name: "raw-bbox-y-offset", resultKind: "length", acceptsSignedLength: true },
   { code: 20, name: "raw-middle-bbox-y-offset", resultKind: "length", acceptsSignedLength: true },
   { code: 21, name: "raw-hanging-bbox-y-offset", resultKind: "length", acceptsSignedLength: true },
+  { code: 22, name: "html-line-height", resultKind: "length", acceptsSignedLength: false },
 ] as const;
 
 export type HostTextMeasurementOperation =

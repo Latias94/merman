@@ -24,7 +24,7 @@
     "nodes": [
       {
         "id": "B",
-        "label": "<img src='https://mermaid.js.org/mermaid-logo.svg'>",
+        "label": "<img src=\"https://mermaid.js.org/mermaid-logo.svg\">",
         "labelType": "text",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -43,7 +43,7 @@
       },
       {
         "id": "C",
-        "label": "<img src='https://mermaid.js.org/mermaid-logo.svg'> more text <img src='https://mermaid.js.org/mermaid-logo.svg'>",
+        "label": "<img src=\"https://mermaid.js.org/mermaid-logo.svg\"> more text <img src=\"https://mermaid.js.org/mermaid-logo.svg\">",
         "labelType": "text",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -62,7 +62,7 @@
       },
       {
         "id": "D",
-        "label": "<img src='https://mermaid.js.org/mermaid-logo.svg'> some text",
+        "label": "<img src=\"https://mermaid.js.org/mermaid-logo.svg\"> some text",
         "labelType": "text",
         "shape": "round",
         "layoutShape": "roundedRect",

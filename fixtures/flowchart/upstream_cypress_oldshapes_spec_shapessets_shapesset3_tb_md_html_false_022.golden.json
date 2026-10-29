@@ -51,7 +51,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for fork shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for fork shape",
         "labelType": "markdown",
         "shape": "fork",
         "layoutShape": "fork",
@@ -89,7 +89,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for choice shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for choice shape",
         "labelType": "markdown",
         "shape": "choice",
         "layoutShape": "choice",
@@ -127,7 +127,7 @@
       },
       {
         "id": "n22",
-        "label": "This is **bold** </br>and <strong>strong</strong> for note shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for note shape",
         "labelType": "markdown",
         "shape": "note",
         "layoutShape": "note",
@@ -165,7 +165,7 @@
       },
       {
         "id": "n33",
-        "label": "This is **bold** </br>and <strong>strong</strong> for stadium shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for stadium shape",
         "labelType": "markdown",
         "shape": "stadium",
         "layoutShape": "stadium",
@@ -203,7 +203,7 @@
       },
       {
         "id": "n44",
-        "label": "This is **bold** </br>and <strong>strong</strong> for odd shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for odd shape",
         "labelType": "markdown",
         "shape": "odd",
         "layoutShape": "odd",
