@@ -428,7 +428,7 @@ fn parse_diagram_with_type_sync_matches_auto_detect_for_flowchart_v2() {
 }
 
 #[test]
-fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
+fn parse_metadata_with_type_sync_uses_flowchart_legacy_init_special_case() {
     let engine = MermaidEngine::new();
     let input = "%%{init: {\"config\": {\"htmlLabels\": true}}}%%\nflowchart TD; A-->B;";
 
@@ -440,7 +440,7 @@ fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
 }
 
 #[test]
-fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
+fn parse_metadata_with_type_sync_preserves_explicit_namespaces_through_diagram_aliases() {
     let engine = MermaidEngine::new();
 
     for (diagram_type, source, config_key) in [
@@ -454,7 +454,10 @@ fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
         ),
         ("flowchart-elk", "flowchart-elk TD\nA-->B\n", "flowchart"),
     ] {
-        let input = format!("%%{{init: {{\"config\": {{\"useMaxWidth\": false}}}}}}%%\n{source}");
+        let input = format!(
+            "%%{{init: {}}}%%\n{source}",
+            json!({(config_key): {"useMaxWidth": false}})
+        );
 
         let meta = engine
             .parse_metadata_with_type_sync(diagram_type, &input)

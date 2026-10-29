@@ -318,7 +318,6 @@ fn preprocess_source_capture_controlled(
     let processed_directives = process_directives_controlled(
         source.text(),
         detector,
-        diagram_type,
         directive_recovery,
         #[cfg(feature = "editor-facts")]
         capture_mode,
@@ -1685,7 +1684,6 @@ struct LocalDirectiveEvidence {
 fn process_directives_controlled(
     input: &str,
     detector: &DiagramTypeDetector<'_>,
-    diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
     #[cfg(feature = "editor-facts")] capture_mode: SourceConfigCaptureMode,
     evaluate_config: bool,
@@ -1816,7 +1814,6 @@ fn process_directives_controlled(
                 &directives,
                 input_without_directives.as_ref(),
                 detector,
-                diagram_type,
                 control,
             )
         };
@@ -1882,7 +1879,6 @@ fn detect_init_controlled(
     directives: &[Directive],
     input: &str,
     detector: &DiagramTypeDetector<'_>,
-    diagram_type: Option<&str>,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
@@ -1908,27 +1904,21 @@ fn detect_init_controlled(
         };
         // Mermaid sanitizes multiple init arguments before merging, so their legacy `config`
         // key is filtered out. A single init remaps that key before source sanitization.
-        let diagram_specific = if multiple_inits {
-            None
-        } else {
-            args.as_object_mut()
+        if !multiple_inits
+            && let Some(diagram_specific_value) = args
+                .as_object_mut()
                 .and_then(|object| object.remove("config"))
-        };
-
-        sanitize_directive_controlled(&mut args, control)?;
-
-        // Mermaid moves a top-level `config` directive field into the diagram-type-specific config.
-        if let Some(mut diagram_specific_value) = diagram_specific {
-            sanitize_directive_controlled(&mut diagram_specific_value, control)?;
-            let detected_type = match diagram_type {
-                Some(diagram_type) => Some(diagram_type),
-                None => detector(input, control)?.ok(),
-            };
-
-            if let Some(ty) = detected_type {
-                let key = diagram_config_key_for_type(ty).to_string();
+        {
+            // Legacy init uses the source detector ID, even when a parser type was supplied.
+            // Mermaid only remaps flowchart-v2; other IDs still pass through source admission.
+            if let Ok(ty) = detector(input, control)? {
+                let key = if ty == "flowchart-v2" {
+                    "flowchart"
+                } else {
+                    ty
+                };
                 if let Value::Object(obj) = &mut args
-                    && let Some(old) = obj.insert(key, diagram_specific_value)
+                    && let Some(old) = obj.insert(key.to_string(), diagram_specific_value)
                 {
                     crate::json_value::drop_value_nonrecursive(old);
                 }
@@ -1936,6 +1926,7 @@ fn detect_init_controlled(
                 crate::json_value::drop_value_nonrecursive(diagram_specific_value);
             }
         }
+        sanitize_directive_controlled(&mut args, control)?;
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
 
         merged.deep_merge(&args);

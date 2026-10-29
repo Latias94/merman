@@ -78,17 +78,10 @@ pub(super) fn detect_init(
     directives: &[Directive],
     input: &str,
     registry: &DetectorRegistry,
-    diagram_type: Option<&str>,
 ) -> Result<MermaidConfig> {
     let control = OperationControl::new();
-    detect_init_controlled(
-        directives,
-        input,
-        &registry_detector(registry),
-        diagram_type,
-        &control,
-    )
-    .expect("a private parse control cannot be cancelled")
+    detect_init_controlled(directives, input, &registry_detector(registry), &control)
+        .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(test)]
@@ -162,7 +155,7 @@ mod tests {
         let mut registry = DetectorRegistry::new();
         registry.add_fn("flowchart-v2", counting_flowchart_detector);
 
-        let config = detect_init(&directives, input, &registry, None).expect("init merges");
+        let config = detect_init(&directives, input, &registry).expect("init merges");
 
         assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 0);
         assert_eq!(
