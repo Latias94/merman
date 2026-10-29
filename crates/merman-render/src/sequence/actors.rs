@@ -66,7 +66,9 @@ pub(super) fn plan_sequence_actors<'a>(
 ) -> Result<SequenceActorLayoutPlan<'a>> {
     let has_boxes = !ctx.model.boxes.is_empty();
 
-    if ctx.model.actor_order.is_empty() {
+    if ctx.model.actor_order.is_empty()
+        && ctx.math_config.get_bool("sequence.hideUnusedParticipants") != Some(true)
+    {
         return Err(Error::InvalidModel {
             message: "sequence model has no actorOrder".to_string(),
         });

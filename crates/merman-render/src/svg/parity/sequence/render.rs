@@ -85,6 +85,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let model = prepared.model_for_render(model);
     let sanitize_config = effective_config;
     let effective_config = effective_config.as_value();
     let checkpoints = SequenceEmitCheckpoints::for_emit(options.work_meter());
