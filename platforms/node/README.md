@@ -11,10 +11,10 @@ Application developers should start with the [`@mermanjs/node` package guide](pa
 The loader, selected native platform package, and explicit `@mermanjs/node-wasm` transport use one package-group version. Pin an exact version when reproducible installs matter.
 
 ```sh
-npm install @mermanjs/node@0.9.1
+npm install @mermanjs/node@0.9.3
 ```
 
-Version `0.9.1` includes Mermaid 12.1 and Agentflow/Usecase support; see the [package changelog](CHANGELOG.md). For source builds, use the `v0.9.1` tag with its matching package workspace and lockfile.
+Version `0.9.3` targets Mermaid 12.1 and adds instance-local icon packs and corrected SVG text handling; see the [package changelog](CHANGELOG.md). For source builds, use the `v0.9.3` tag with its matching package workspace and lockfile.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";

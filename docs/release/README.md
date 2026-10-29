@@ -56,6 +56,7 @@ Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts
 | --- | --- |
 | Choose a package or delivery channel | [Package surfaces](PACKAGE_SURFACES.md) |
 | Prepare, publish, or recover a release | [Release operator guide](RELEASING.md) |
+| Inspect the 0.9.3 maintenance candidate and new SDK gates | [0.9.3 readiness review](V093_BACKPORT_READINESS.md) |
 | Inspect publication order and dated channel receipts | [Publish order](PUBLISH_ORDER.md) |
 | Operate the independent grammar release | [Tree-sitter Mermaid release](TREE_SITTER_MERMAID.md) |
 | Change the Mermaid compatibility baseline | [Mermaid upgrade playbook](MERMAID_UPGRADE_PLAYBOOK.md) |

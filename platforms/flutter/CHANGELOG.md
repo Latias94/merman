@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.3] - Unreleased
+
+- Flowchart preserves percent-containing node IDs, and YAML frontmatter no longer mistakes brackets in comments or block text for nested collections. [#241](https://github.com/Latias94/merman/pull/241), [#251](https://github.com/Latias94/merman/pull/251)
+- Correct label sizing, configured fonts, literal text, and HTML/entity handling across SVG diagrams, including wrapped Swimlane edge labels and valid Class-note XML. Review updated output snapshots. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- Apply Gantt `tickInterval`, Mindmap root padding and width settings, and Sequence numbering, participant visibility, and note alignment. Init directives follow Mermaid 12.1.0's filtering and merge order. [#252](https://github.com/Latias94/merman/pull/252)
+- Host measurement adds `html-line-height` (operation 22) for literal decoded text. Keep the Dart wrapper and Native Assets paired; unsupported operations use fallback. Native ABI 3 and Options JSON schema 2 remain unchanged. [#250](https://github.com/Latias94/merman/pull/250)
+
+Native C/WASI SDK archives are separate integrations and do not expand this package's default capabilities. See the [workspace changelog](../../CHANGELOG.md).
+
 ## [0.9.2] - 2026-10-22
 
 - Host themes keep C4 boundary contents and relationships visible, color Wardley anchors, and apply a coherent ZenUML palette. Diagram-selected Mermaid palettes retain matching text and fills. [#235](https://github.com/Latias94/merman/pull/235), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)

@@ -11,10 +11,10 @@ Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Da
 Pin the exact package version when pairing the Dart facade with its Native Assets libraries:
 
 ```sh
-flutter pub add 'merman:0.9.1'
+flutter pub add 'merman:0.9.3'
 ```
 
-Version `0.9.1` includes Mermaid 12.1 and schema-3 ASCII output; alpha.6 has the older contract. For source development, check out the `v0.9.1` tag and use a local path dependency:
+Version `0.9.3` includes Mermaid 12.1 and schema-3 ASCII output; alpha.6 has the older contract. For source development, check out the `v0.9.3` tag and use a local path dependency:
 
 ```yaml
 dependencies:

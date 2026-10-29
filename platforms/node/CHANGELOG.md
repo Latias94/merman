@@ -2,6 +2,14 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [0.9.3] - Unreleased
+
+- Flowchart preserves percent-containing node IDs, and YAML frontmatter no longer mistakes brackets in comments or block text for nested collections. [#241](https://github.com/Latias94/merman/pull/241), [#251](https://github.com/Latias94/merman/pull/251)
+- `createNodeEngine({ iconPacks })` accepts already-loaded Iconify JSON for icons scoped to that engine. The application owns loading and credentials. [#247](https://github.com/Latias94/merman/pull/247)
+- Correct label sizing, configured fonts, literal text, and HTML/entity handling across SVG diagrams, including wrapped Swimlane edge labels and valid Class-note XML. Review updated output snapshots. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- Apply Gantt `tickInterval`, Mindmap root padding and width settings, and Sequence numbering, participant visibility, and note alignment. Init directives follow Mermaid 12.1.0's filtering and merge order. [#252](https://github.com/Latias94/merman/pull/252)
+- Refresh the native and WASM dependency graphs while retaining Mermaid 12.1.0, Options JSON schema 2, and Node transport 1. Native C/WASI SDK archives have separate APIs and capabilities; this package continues to provide its own SVG recipe. See the [workspace changelog](../../CHANGELOG.md). [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247)
+
 ## [0.9.2] - 2026-10-22
 
 - Host themes keep C4 boundary contents and relationships visible, color Wardley anchors, and apply a coherent ZenUML palette. Diagram-selected Mermaid palettes retain matching text and fills. [#235](https://github.com/Latias94/merman/pull/235), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)
