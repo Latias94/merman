@@ -1,5 +1,6 @@
 use super::execute::{ExecutedMetadata, execute_graphical};
 use super::prepare::PreparedGraphicalRender;
+use super::theme_feedback::{BatchThemeReport, ThemeResult};
 use crate::error::CliError;
 use crate::markdown::{MarkdownChart, MarkdownImage};
 use crate::resources::CheckedBytes;
@@ -15,6 +16,7 @@ pub(crate) struct MarkdownRenderContext<'a> {
     control: &'a OperationControl,
     staged_bytes: &'a Mutex<CheckedBytes>,
     stderr: &'a SharedWriter,
+    theme_report: Option<&'a BatchThemeReport>,
     #[cfg(feature = "parallel-markdown")]
     jobs: usize,
 }
@@ -25,6 +27,7 @@ impl<'a> MarkdownRenderContext<'a> {
         control: &'a OperationControl,
         staged_bytes: &'a Mutex<CheckedBytes>,
         stderr: &'a SharedWriter,
+        theme_report: Option<&'a BatchThemeReport>,
         #[cfg(feature = "parallel-markdown")] jobs: usize,
     ) -> Self {
         Self {
@@ -32,6 +35,7 @@ impl<'a> MarkdownRenderContext<'a> {
             control,
             staged_bytes,
             stderr,
+            theme_report,
             #[cfg(feature = "parallel-markdown")]
             jobs,
         }
@@ -90,12 +94,24 @@ fn render_chart(
     let chart_control = context.control.child();
     let rendered = (|| {
         crate::operation::checkpoint(&chart_control, merman::OperationPhase::Layout)?;
-        let artifact = execute_graphical(
+        let mut result = execute_graphical(
             context.renderer,
             chart.definition(),
             &chart_control,
             context.stderr,
-        )?;
+            Some(chart_index),
+        );
+        if let Some(report) = context.theme_report {
+            let theme = match &mut result {
+                Ok(artifact) => artifact
+                    .theme_result
+                    .take()
+                    .expect("theme report requested"),
+                Err(error) => ThemeResult::failed(error),
+            };
+            report.record(chart_index, url.clone(), theme);
+        }
+        let artifact = result?;
         crate::operation::checkpoint(&chart_control, merman::OperationPhase::Emit)?;
         let ExecutedMetadata { title, desc } =
             artifact.stage_into(slot, context.staged_bytes, &chart_control)?;

@@ -383,6 +383,7 @@ impl<'a> ThemeInput<'a> {
 #[derive(Debug, Clone, Copy)]
 struct RendererInputs<'a> {
     theme: Option<ThemeInput<'a>>,
+    theme_portability: crate::cli::ThemePortabilityKind,
     math_renderer: Option<MathRendererKind>,
     container_width: Option<f64>,
     container_height: Option<f64>,
@@ -400,6 +401,7 @@ impl<'a> RendererInputs<'a> {
                 render.theme_file.as_deref(),
                 render.theme_design_file.as_deref(),
             )?,
+            theme_portability: render.theme_portability,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
             container_height: render.container_height,
@@ -415,6 +417,7 @@ impl<'a> RendererInputs<'a> {
                 render.theme_file.as_deref(),
                 render.theme_design_file.as_deref(),
             )?,
+            theme_portability: render.theme_portability,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
             container_height: render.container_height,
@@ -436,6 +439,7 @@ fn renderer_from_config(
 ) -> Result<ConfiguredRenderer, CliError> {
     let theme_resources = ThemeResourcePolicy::for_profile(resources.profile());
     let mut environment = SvgEnvironment::deterministic()
+        .with_theme_portability_requirement(render.theme_portability.requirement())
         .with_resource_policy(resources.render_policy())
         .with_theme_resource_ceiling(theme_resources.clone())
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
@@ -570,6 +574,8 @@ mod tests {
             theme_preset: None,
             theme_file: None,
             theme_design_file: None,
+            theme_portability: crate::cli::ThemePortabilityKind::default(),
+            theme_report: None,
             #[cfg(feature = "native-fonts")]
             fonts: crate::cli::FontCliArgs::default(),
             math_renderer,
@@ -577,6 +583,37 @@ mod tests {
             container_height: None,
             svg_id: None,
             hand_drawn_seed: None,
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn cli_portability_requirement_is_owned_by_the_renderer_environment() {
+        use crate::cli::ThemePortabilityKind;
+        for (policy, requirement) in [
+            (
+                ThemePortabilityKind::BestEffort,
+                merman::svg::ThemePortabilityRequirement::BestEffort,
+            ),
+            (
+                ThemePortabilityKind::RequirePortable,
+                merman::svg::ThemePortabilityRequirement::RequirePortable,
+            ),
+        ] {
+            let mut render = resolved_render(None);
+            render.theme_portability = policy;
+            let renderer = renderer_for_resolved(
+                &default_resolved_parse(),
+                &render,
+                None,
+                &default_resources(),
+                &merman::OperationControl::new(),
+            )
+            .expect("CLI renderer");
+            assert_eq!(
+                renderer.svg.environment.theme_portability_requirement(),
+                requirement
+            );
         }
     }
 

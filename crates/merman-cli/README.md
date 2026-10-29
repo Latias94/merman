@@ -302,6 +302,54 @@ shadows require an explicit Classic configuration; the capability listing provid
 `--config-file` content. See the [two-theme gallery](../../docs/rendering/theme-gallery/README.md)
 for complete sources, configuration and commands.
 
+Native `render` and `batch` print one concise theme line to stderr for an actual theme request
+or an actionable renderer diagnostic. The line includes up to three explanations, such as
+`unsupported-geometry rule (lifeline)`. A rule-level diagnostic describes a partially consumed
+rule; it does not claim that every property failed. `--quiet` suppresses this feedback while
+retaining errors and explicitly requested report files. Plain diagrams do not print generic
+theme-evidence or unadapted-family notices.
+
+Use `--theme-report PATH` to retain the full renderer diagnostics and target-admission result:
+
+```sh
+merman-cli render diagram.mmd --theme-file theme.json --output diagram.svg \
+  --theme-report diagram.theme.json
+merman-cli batch README.md --output-dir generated --theme-file theme.json \
+  --theme-report README.theme.json --quiet
+```
+
+The JSON report has `schema_version: 1`, `stage: "render"`, and an ordered `results` array.
+Each result identifies its one-based `chart` number and optional `output` path (a relative image
+URL for batch; omitted for stdout). A completed result contains `evidence` with the diagram
+family, theme status, output-mutation flag, and all diagnostics. Diagnostics preserve renderer
+codes, subjects, targets, optional properties, source-document names, RFC 6901 source paths,
+and generated-default markers. `target` contains the actual artifact kind, admission status,
+reason IDs and font source. These IDs are open strings. SVG, PNG, JPEG and PDF use the same
+feedback path; the report records each format's own target receipt.
+
+Render failures instead contain `error` and any target receipt returned by the renderer.
+Unavailable completed evidence is omitted. Preflight, input acquisition, theme compilation,
+batch setup and cancellation can fail before a report is published; an existing report then
+remains unchanged. Batch reports contain the charts that reached rendering, including failures,
+in source order even with parallel jobs. An empty batch produces an empty results array.
+
+Reports are separate files with an existing parent directory. They reject `-`, stdio aliases,
+input aliases, and image/document aliases, including existing hard links. Report and image names
+in the same directory must not differ only by case, including on case-sensitive hosts. A batch report must
+be outside the managed output directory. The report is atomically replaced after rendering and
+before image publication; a report write failure prevents image publication. The report is
+render evidence, not a receipt that image publication succeeded. Failed rendering preserves
+existing images and the previous batch generation. Stdout carries only the requested image.
+
+`--theme-portability best-effort` is the default. `--theme-portability require-portable` passes
+the strict requirement directly to the renderer environment, which enforces its existing family
+and target admission checks. It rejects residuals and other nonportable target conditions without
+changing fonts, SVG pipelines, or diagram geometry. Browser-oriented SVG can remain `unverified`,
+and encoded output can depend on host fonts. Choosing `--svg-pipeline resvg-safe` requests SVG
+compatibility observation, but does not by itself guarantee portable admission. Empty diagnostics
+are not a portability certificate. Theme feedback options apply to Mermaid graphical `render`
+and `batch`; they are not available for raw SVG conversion, ASCII/Unicode, `layout`, or `mmdc`.
+
 ## Markdown Batches
 
 Native batch rendering owns one output directory:

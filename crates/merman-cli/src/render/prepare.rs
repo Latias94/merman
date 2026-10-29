@@ -76,6 +76,9 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) output: PreparedGraphicalOutput,
     pub(super) admission: BackendAdmission,
     pub(super) quiet: bool,
+    pub(super) theme_requested: bool,
+    pub(super) theme_feedback_enabled: bool,
+    pub(super) theme_report: Option<std::path::PathBuf>,
     #[cfg(feature = "native-fonts")]
     pub(super) font_context: Option<merman::svg::export::NativeFontContext>,
     #[cfg(feature = "native-fonts")]
@@ -635,6 +638,12 @@ pub(crate) fn prepare_graphical_output(
             output,
             admission,
             quiet: common.quiet,
+            theme_requested: common.render.theme_preset.is_some()
+                || common.render.theme_file.is_some()
+                || common.render.theme_design_file.is_some()
+                || (!mmdc_compat && common.parse.theme.is_some()),
+            theme_feedback_enabled: !mmdc_compat,
+            theme_report: common.render.theme_report,
             #[cfg(feature = "native-fonts")]
             font_context,
             #[cfg(feature = "native-fonts")]
@@ -792,6 +801,8 @@ fn prepare_rustdoc_renderer(
         theme_preset: None,
         theme_file: None,
         theme_design_file: None,
+        theme_portability: crate::cli::ThemePortabilityKind::default(),
+        theme_report: None,
         #[cfg(feature = "native-fonts")]
         fonts: crate::cli::FontCliArgs {
             measurement: Some(crate::cli::FontMeasurementKind::Deterministic),
@@ -816,6 +827,9 @@ fn prepare_rustdoc_renderer(
         output: PreparedGraphicalOutput::Svg,
         admission: BackendAdmission::for_svg(resources)?,
         quiet: true,
+        theme_requested: true,
+        theme_feedback_enabled: false,
+        theme_report: None,
         #[cfg(feature = "native-fonts")]
         font_context: None,
         #[cfg(feature = "native-fonts")]

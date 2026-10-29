@@ -162,6 +162,9 @@ cyberpunk\t'[alpha] Cyberpunk'
 ghibli\t'[alpha] Ghibli'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-portability -d 'Renderer portability requirement; require-portable rejects nonportable target output' -r -f -a "best-effort\t''
+require-portable\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-report -d 'Write versioned theme results to a separate JSON file, including render failures' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -281,6 +284,9 @@ cyberpunk\t'[alpha] Cyberpunk'
 ghibli\t'[alpha] Ghibli'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-portability -d 'Renderer portability requirement; require-portable rejects nonportable target output' -r -f -a "best-effort\t''
+require-portable\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-report -d 'Write versioned theme results to a separate JSON file, including render failures' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s w -l width -d 'Available container width for size-sensitive layouts' -r

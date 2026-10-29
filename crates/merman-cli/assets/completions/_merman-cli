@@ -187,6 +187,8 @@ cyberpunk\:"\[alpha\] Cyberpunk"
 ghibli\:"\[alpha\] Ghibli"))' \
 '(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
 '(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering]:THEME_DESIGN_FILE:_files' \
+'--theme-portability=[Renderer portability requirement; require-portable rejects nonportable target output]:THEME_PORTABILITY:(best-effort require-portable)' \
+'--theme-report=[Write versioned theme results to a separate JSON file, including render failures]:PATH:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -300,6 +302,8 @@ cyberpunk\:"\[alpha\] Cyberpunk"
 ghibli\:"\[alpha\] Ghibli"))' \
 '(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
 '(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering]:THEME_DESIGN_FILE:_files' \
+'--theme-portability=[Renderer portability requirement; require-portable rejects nonportable target output]:THEME_PORTABILITY:(best-effort require-portable)' \
+'--theme-report=[Write versioned theme results to a separate JSON file, including render failures]:PATH:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \

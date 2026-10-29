@@ -701,6 +701,31 @@ pub(crate) struct RenderCliArgs {
     pub(crate) theme_design_file: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
+    /// Renderer portability requirement; require-portable rejects nonportable target output.
+    #[arg(
+        long = "theme-portability",
+        value_enum,
+        default_value_t = ThemePortabilityKind::BestEffort,
+        help_heading = "Theme feedback",
+        hide_short_help = true
+    )]
+    pub(crate) theme_portability: ThemePortabilityKind,
+
+    #[cfg(feature = "svg")]
+    /// Write versioned theme results to a separate JSON file, including render failures.
+    ///
+    /// The parent directory must exist. Use a path outside the managed output directory for
+    /// batch. Reports describe rendering before image publication; stdout remains image-only.
+    #[arg(
+        long = "theme-report",
+        value_name = "PATH",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Theme feedback",
+        hide_short_help = true
+    )]
+    pub(crate) theme_report: Option<PathBuf>,
+
+    #[cfg(feature = "svg")]
     /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
     #[arg(
         long = "math-renderer",
@@ -776,6 +801,24 @@ pub(crate) struct LayoutRenderCliArgs {
         help_heading = "Layout viewport"
     )]
     pub(crate) container_height: Option<f64>,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ThemePortabilityKind {
+    #[default]
+    BestEffort,
+    RequirePortable,
+}
+
+#[cfg(feature = "svg")]
+impl ThemePortabilityKind {
+    pub(crate) const fn requirement(self) -> merman::svg::ThemePortabilityRequirement {
+        match self {
+            Self::BestEffort => merman::svg::ThemePortabilityRequirement::BestEffort,
+            Self::RequirePortable => merman::svg::ThemePortabilityRequirement::RequirePortable,
+        }
+    }
 }
 
 #[cfg(feature = "native-fonts")]
@@ -888,6 +931,8 @@ impl LayoutRenderCliArgs {
             theme_preset: None,
             theme_file: None,
             theme_design_file: None,
+            theme_portability: ThemePortabilityKind::default(),
+            theme_report: None,
             math_renderer: self.math_renderer,
             container_width: self.container_width,
             container_height: self.container_height,
