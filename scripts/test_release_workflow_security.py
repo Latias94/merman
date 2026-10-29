@@ -71,6 +71,16 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_sdk_installs_and_checks_the_license_cli_before_building(self) -> None:
+        package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
+        self.assertIn("if: matrix.platform.target != 'x86_64-apple-darwin'", package)
+        self.assertIn("if: matrix.platform.target == 'x86_64-apple-darwin'", package)
+        self.assertIn("cargo install cargo-about --version 0.9.2 --locked --features cli", package)
+        self.assertLess(
+            package.index("verify_cargo_about_version"),
+            package.index("python scripts/sdk_qualify.py"),
+        )
+
     def test_sdk_installs_repository_toolchain_components_before_cargo(self) -> None:
         required = set(tomllib.loads(read(ROOT / "rust-toolchain.toml"))["toolchain"]["components"])
         sdk = read(WORKFLOW_ROOT / "release-sdk.yml")
