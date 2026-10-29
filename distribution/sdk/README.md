@@ -106,13 +106,19 @@ rendering in either transport; selecting a math/full archive is not a policy byp
 
 ## WASI SDK
 
-`lib/merman_wasi.wasm` uses the independently versioned WASI ABI 1 in
-`contracts/abi/merman-wasi-v1.json`, not the C function-pointer table. The host must
-implement the documented ABI and resource policy; `docs/WASI_ABI.md` in the WASI
-archive contains allocation, ownership, request and descriptor examples. Execute the module with the
-owner harness `platforms/wasi/smoke.py` before packaging. That harness owns the
-WASI-standard-import-only check, formula SVG/PNG execution and constrained-resource
-rejection; the packager does not parse WASM imports or claim execution evidence.
+`lib/merman_wasi.wasm` uses the independently versioned WASI ABI 1 documented in
+`docs/WASI_ABI.md` in the archive, copied from the source-tree
+[WASI crate guide](../../crates/merman-wasi/README.md). It covers scalar exports,
+allocation, ownership, request envelopes, result descriptors and resource policy.
+WASI archives carry that guide, the actual module and its hash-bound runtime
+catalog; removing the redundant hand-maintained ABI JSON changes archive contents
+only, with no wire, ABI version or runtime behavior change. Native archives retain
+their native ABI and text-measurement descriptors.
+
+Execute the module with the owner harness `platforms/wasi/smoke.py` before
+packaging. That harness owns the WASI-standard-import-only check, formula SVG/PNG
+execution and constrained-resource rejection; the packager does not parse WASM
+imports or claim execution evidence.
 
 ## Build and packaging handoff
 
