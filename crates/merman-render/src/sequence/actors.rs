@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use super::metrics::measure_svg_like_with_html_br;
 pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) model: &'a SequenceDiagramModel,
+    pub(super) source_actor_order: &'a [String],
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) actor_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
@@ -74,19 +75,57 @@ pub(super) fn plan_sequence_actors<'a>(
         });
     }
 
-    let (actor_widths, mut actor_base_heights, actor_text_heights, actor_has_prepared_math) =
-        measure_actor_boxes(&ctx)?;
-    let actor_index = actor_index(&ctx)?;
-    let actor_popup_widths = actor_popup_widths(&ctx, &actor_index, &actor_widths)?;
-    let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index)?;
-    let actor_margins = actor_margins(&ctx, &actor_widths, &actor_to_message_width)?;
+    let actor_index = index_actors(&ctx.model.actor_order, ctx.checkpoints)?;
+    let hidden = ctx.source_actor_order.len() != ctx.model.actor_order.len();
+    let source_actor_index = hidden
+        .then(|| index_actors(ctx.source_actor_order, ctx.checkpoints))
+        .transpose()?;
+    let measurement_index = source_actor_index.as_ref().unwrap_or(&actor_index);
+    // Mermaid measures all source actors and boxes before filtering actorKeys.
+    let (
+        mut actor_widths,
+        mut actor_base_heights,
+        mut actor_text_heights,
+        mut actor_has_prepared_math,
+    ) = measure_actor_boxes(&ctx, &actor_index)?;
+    let actor_popup_widths = actor_popup_widths(&ctx, measurement_index, &actor_widths)?;
+    let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, measurement_index)?;
+    let mut actor_margins = actor_margins(&ctx, &actor_widths, &actor_to_message_width)?;
     let (mut box_layouts, box_title_height) = measure_boxes(
         &ctx,
-        &actor_index,
+        measurement_index,
         &actor_widths,
         &actor_margins,
         &actor_to_message_width,
     )?;
+    let max_actor_layout_height = if actor_index.is_empty() {
+        1.0
+    } else {
+        max_actor_layout_height(&ctx, &actor_base_heights)?
+    };
+    // addActorRenderingData applies the full-source conf.height to every retained actor.
+    if ctx.is_neo || hidden {
+        actor_base_heights.fill(max_actor_layout_height);
+    }
+    if hidden {
+        let mut retained = 0;
+        for (source_slot, id) in ctx.source_actor_order.iter().enumerate() {
+            ctx.checkpoints.checkpoint_loop(source_slot)?;
+            if actor_index.contains_key(id.as_str()) {
+                actor_widths[retained] = actor_widths[source_slot];
+                actor_base_heights[retained] = actor_base_heights[source_slot];
+                actor_text_heights[retained] = actor_text_heights[source_slot];
+                actor_has_prepared_math[retained] = actor_has_prepared_math[source_slot];
+                actor_margins[retained] = actor_margins[source_slot];
+                retained += 1;
+            }
+        }
+        actor_widths.truncate(retained);
+        actor_base_heights.truncate(retained);
+        actor_text_heights.truncate(retained);
+        actor_has_prepared_math.truncate(retained);
+        actor_margins.truncate(retained);
+    }
     let actor_top_offset_y = if has_boxes {
         ctx.box_margin + box_title_height
     } else {
@@ -101,10 +140,6 @@ pub(super) fn plan_sequence_actors<'a>(
         &mut box_layouts,
     )?;
     let actor_centers_x = actor_centers_x(&ctx, &actor_left_x, &actor_widths)?;
-    let max_actor_layout_height = max_actor_layout_height(&ctx, &actor_base_heights)?;
-    if ctx.is_neo {
-        actor_base_heights.fill(max_actor_layout_height);
-    }
     ctx.checkpoints.checkpoint()?;
 
     Ok(SequenceActorLayoutPlan {
@@ -166,13 +201,14 @@ fn actor_popup_widths(
 )]
 fn measure_actor_boxes(
     ctx: &SequenceActorLayoutPlanContext<'_>,
+    visible_actor_index: &HashMap<&str, usize>,
 ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<bool>)> {
     // Measure participant boxes.
-    let mut actor_widths: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
-    let mut actor_base_heights: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
-    let mut actor_has_prepared_math = Vec::with_capacity(ctx.model.actor_order.len());
-    let mut actor_text_heights = Vec::with_capacity(ctx.model.actor_order.len());
-    for (actor_position, id) in ctx.model.actor_order.iter().enumerate() {
+    let mut actor_widths: Vec<f64> = Vec::with_capacity(ctx.source_actor_order.len());
+    let mut actor_base_heights: Vec<f64> = Vec::with_capacity(ctx.source_actor_order.len());
+    let mut actor_has_prepared_math = Vec::with_capacity(ctx.source_actor_order.len());
+    let mut actor_text_heights = Vec::with_capacity(ctx.source_actor_order.len());
+    for (actor_position, id) in ctx.source_actor_order.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(actor_position)?;
         let a = ctx
             .model
@@ -195,8 +231,12 @@ fn measure_actor_boxes(
         } else {
             std::borrow::Cow::Borrowed(a.description.as_str())
         };
+        let occurrence = visible_actor_index.get(id.as_str()).map_or(
+            super::SequenceMathOccurrence::HiddenActor(actor_position),
+            |index| super::SequenceMathOccurrence::Actor(*index),
+        );
         let prepared_math = ctx.math_sidecar.prepare_or_get(
-            super::SequenceMathOccurrence::Actor(actor_position),
+            occurrence,
             &description,
             ctx.typography
                 .terminal_text_style(super::SequenceTextSurface::ParticipantLabel),
@@ -248,10 +288,13 @@ fn measure_actor_boxes(
     ))
 }
 
-fn actor_index<'a>(ctx: &SequenceActorLayoutPlanContext<'a>) -> Result<HashMap<&'a str, usize>> {
+fn index_actors<'a>(
+    actor_order: &'a [String],
+    checkpoints: SequenceLayoutCheckpoints<'_>,
+) -> Result<HashMap<&'a str, usize>> {
     let mut actor_index: HashMap<&str, usize> = HashMap::new();
-    for (i, id) in ctx.model.actor_order.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(i)?;
+    for (i, id) in actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(i)?;
         actor_index.insert(id.as_str(), i);
     }
     Ok(actor_index)
@@ -261,7 +304,7 @@ fn actor_message_widths(
     ctx: &SequenceActorLayoutPlanContext<'_>,
     actor_index: &HashMap<&str, usize>,
 ) -> Result<(Vec<f64>, SequenceMessageMetricSidecar)> {
-    let mut actor_to_message_width: Vec<f64> = vec![0.0; ctx.model.actor_order.len()];
+    let mut actor_to_message_width: Vec<f64> = vec![0.0; ctx.source_actor_order.len()];
     let mut message_metrics =
         SequenceMessageMetricSidecar::new(ctx.model, ctx.msg_text_style, ctx.measurer);
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
@@ -282,7 +325,7 @@ fn actor_message_widths(
             continue;
         }
         // If this is the last actor, and the note is right of it, no need to calculate the margin.
-        if placement == Some(1) && to_idx + 1 == ctx.model.actor_order.len() {
+        if placement == Some(1) && to_idx + 1 == ctx.source_actor_order.len() {
             continue;
         }
 
@@ -353,7 +396,7 @@ fn actor_message_widths(
         let message_w = (w0 + 2.0 * ctx.wrap_padding).max(0.0);
 
         let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
-        let next_idx = if to_idx + 1 < ctx.model.actor_order.len() {
+        let next_idx = if to_idx + 1 < ctx.source_actor_order.len() {
             Some(to_idx + 1)
         } else {
             None

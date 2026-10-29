@@ -367,7 +367,7 @@ fn write_central_connection_circles(
     from: &str,
     to: &str,
     line_y: f64,
-    sequence_number_visible: bool,
+    autonumber_visible: bool,
 ) {
     let Some(decoration) = msg.central_decoration() else {
         return;
@@ -396,7 +396,7 @@ fn write_central_connection_circles(
         }
     };
 
-    if sequence_number_visible {
+    if autonumber_visible {
         match decoration {
             SequenceCentralDecoration::Target if is_reverse => {
                 to_center += circle_offset(is_left_to_right, true);
@@ -680,7 +680,7 @@ pub(super) fn render_sequence_messages(
                     .unwrap_or_default(),
                 style = style
             );
-            write_central_connection_circles(out, ctx, msg, from, to, y, sequence_number_visible);
+            write_central_connection_circles(out, ctx, msg, from, to, y, autonumber_visible);
         } else {
             let _ = write!(
                 out,
@@ -695,15 +695,7 @@ pub(super) fn render_sequence_messages(
                 marker_end = marker_end.as_deref().unwrap_or(""),
                 style = style
             );
-            write_central_connection_circles(
-                out,
-                ctx,
-                msg,
-                from,
-                to,
-                p0.y,
-                sequence_number_visible,
-            );
+            write_central_connection_circles(out, ctx, msg, from, to, p0.y, autonumber_visible);
         }
 
         if sequence_number_visible {

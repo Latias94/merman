@@ -575,6 +575,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
     work_meter.charge(work_units)?;
 
+    let source_actor_order = model.actor_order.as_slice();
     let visible_model =
         if effective_config.get_bool("sequence.hideUnusedParticipants") == Some(true) {
             sequence_visible_model(model, checkpoints)?
@@ -634,6 +635,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         message_metrics,
     } = plan_sequence_actors(SequenceActorLayoutPlanContext {
         model,
+        source_actor_order,
         measurer,
         actor_text_style: &settings.actor_text_style,
         note_text_style: &settings.note_text_style,
