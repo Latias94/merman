@@ -225,16 +225,17 @@ void _checkAuthoringRuntimePolicies(
           byteLimit,
           'options preflight maximum',
         );
+        final expectedResource = {
+          'cause': 'ceiling',
+          'limit_id': 'max_options_json_bytes',
+          'phase': 'options-json-preflight',
+          'actual': error.resourceDetails?.actual,
+          'max': byteLimit,
+          'profile': 'binding-json',
+        };
         _expectJson(
           error.details?['resource'],
-          {
-            'cause': 'ceiling',
-            'limit_id': 'max_options_json_bytes',
-            'phase': 'options-json-preflight',
-            'actual': error.resourceDetails?.actual,
-            'max': byteLimit,
-            'profile': 'binding-json',
-          },
+          expectedResource,
           'options preflight complete resource details',
         );
         if (error.resourceDetails!.actual <= byteLimit ||
