@@ -40,3 +40,85 @@ fn public_parse_config_contains_only_admitted_source_overrides() {
         );
     }
 }
+
+#[test]
+fn init_namespaces_match_selected_mermaid_single_and_multiple_directives() {
+    let engine = MermaidEngine::new();
+    for (directives, expected) in [
+        (
+            vec![json!({"config": {"curve": "step"}})],
+            json!({"flowchart": {"curve": "step"}}),
+        ),
+        (
+            vec![json!({
+                "config": {"curve": "step"},
+                "flowchart": {"htmlLabels": false}
+            })],
+            json!({"flowchart": {"curve": "step"}}),
+        ),
+        (
+            vec![
+                json!({"config": {"curve": "step"}}),
+                json!({"config": {"htmlLabels": false}}),
+            ],
+            json!({}),
+        ),
+        (
+            vec![
+                json!({"config": {"curve": "step"}}),
+                json!({"flowchart": {"htmlLabels": false}}),
+            ],
+            json!({"flowchart": {"htmlLabels": false}}),
+        ),
+        (
+            vec![
+                json!({"flowchart": {"htmlLabels": false}}),
+                json!({"config": {"curve": "step"}}),
+            ],
+            json!({"flowchart": {"htmlLabels": false}}),
+        ),
+        (
+            vec![
+                json!({"flowchart": {"curve": "step"}}),
+                json!({"flowchart": {"htmlLabels": false}}),
+            ],
+            json!({"flowchart": {"curve": "step", "htmlLabels": false}}),
+        ),
+    ] {
+        let source = directives
+            .iter()
+            .enumerate()
+            .map(|(index, directive)| {
+                let keyword = if index == 0 { "init" } else { "initialize" };
+                format!("%%{{{keyword}: {directive}}}%%\n")
+            })
+            .collect::<String>()
+            + "flowchart TD\nA-->B";
+        for known_type in [false, true] {
+            let (json, typed) = if known_type {
+                (
+                    engine.parse_diagram_with_type_sync(
+                        "flowchart-v2",
+                        &source,
+                        ParseOptions::strict(),
+                    ),
+                    engine.parse_diagram_for_render_model_with_type_sync(
+                        "flowchart-v2",
+                        &source,
+                        ParseOptions::strict(),
+                    ),
+                )
+            } else {
+                (
+                    engine.parse_diagram_sync(&source, ParseOptions::strict()),
+                    engine.parse_diagram_for_render_model_sync(&source, ParseOptions::strict()),
+                )
+            };
+            assert_eq!(json.unwrap().unwrap().meta.config.as_value(), &expected);
+            assert_eq!(
+                typed.unwrap().unwrap().metadata().config.as_value(),
+                &expected
+            );
+        }
+    }
+}

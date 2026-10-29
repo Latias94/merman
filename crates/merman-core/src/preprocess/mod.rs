@@ -1887,8 +1887,12 @@ fn detect_init_controlled(
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
     let mut merged = MermaidConfig::empty_object();
-    let mut detected_type = diagram_type.map(str::to_owned);
-    let mut detection_attempted = diagram_type.is_some();
+    let multiple_inits = directives
+        .iter()
+        .filter(|directive| matches!(directive.ty.as_str(), "init" | "initialize"))
+        .take(2)
+        .count()
+        > 1;
 
     for (index, d) in directives.iter().enumerate() {
         if index % 16 == 0 {
@@ -1902,24 +1906,29 @@ fn detect_init_controlled(
             Some(v) => crate::json_value::clone_value_nonrecursive(v),
             None => Value::Object(Default::default()),
         };
-        let mut diagram_specific = args
-            .as_object_mut()
-            .and_then(|object| object.remove("config"));
+        // Mermaid sanitizes multiple init arguments before merging, so their legacy `config`
+        // key is filtered out. A single init remaps that key before source sanitization.
+        let diagram_specific = if multiple_inits {
+            None
+        } else {
+            args.as_object_mut()
+                .and_then(|object| object.remove("config"))
+        };
 
         sanitize_directive_controlled(&mut args, control)?;
 
         // Mermaid moves a top-level `config` directive field into the diagram-type-specific config.
-        if let Some(mut diagram_specific_value) = diagram_specific.take() {
+        if let Some(mut diagram_specific_value) = diagram_specific {
             sanitize_directive_controlled(&mut diagram_specific_value, control)?;
-            if !detection_attempted {
-                detection_attempted = true;
-                detected_type = match detector(input, control)? {
-                    Ok(diagram_type) => Some(diagram_type.to_string()),
+            let detected_type = match diagram_type {
+                Some(diagram_type) => Some(diagram_type),
+                None => match detector(input, control)? {
+                    Ok(diagram_type) => Some(diagram_type),
                     Err(_) => None,
-                };
-            }
+                },
+            };
 
-            if let Some(ty) = detected_type.as_deref() {
+            if let Some(ty) = detected_type {
                 let key = diagram_config_key_for_type(ty).to_string();
                 if let Value::Object(obj) = &mut args
                     && let Some(old) = obj.insert(key, diagram_specific_value)

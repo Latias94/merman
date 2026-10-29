@@ -113,8 +113,8 @@ mod tests {
     fn builtin_preprocess_reuses_directive_namespaces_and_source_maps() {
         let input = concat!(
             "---\r\ntitle: Diagram\r\nconfig:\r\n  flowchart:\r\n    inheritDir: true\r\n---\r\n",
-            "%%{init: {config: {htmlLabels: false}, fontFamily: 'Example'}}%%\r\n",
-            "%%{initialize: {config: {curve: 'step'}}}%%\r\n",
+            "%%{init: {flowchart: {htmlLabels: false}, fontFamily: 'Example'}}%%\r\n",
+            "%%{initialize: {flowchart: {curve: 'step'}}}%%\r\n",
             "flowchart-elk TD\r\n%% comment\r\nA-->B",
         );
         let registry = DetectorRegistry::pinned_mermaid_baseline();
@@ -151,11 +151,11 @@ mod tests {
     }
 
     #[test]
-    fn multiple_init_config_directives_detect_the_diagram_only_once() {
+    fn multiple_init_directives_merge_explicit_namespaces_without_extra_detection() {
         INIT_DETECTOR_CALLS.store(0, Ordering::Relaxed);
         let input = concat!(
-            "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",
-            "%%{initialize: {\"config\": {\"htmlLabels\": false}}}%%\n",
+            "%%{init: {\"flowchart\": {\"curve\": \"linear\"}}}%%\n",
+            "%%{initialize: {\"flowchart\": {\"htmlLabels\": false}}}%%\n",
             "flowchart TD\nA-->B\n",
         );
         let directives = detect_directives(input).expect("directives parse");
@@ -164,7 +164,7 @@ mod tests {
 
         let config = detect_init(&directives, input, &registry, None).expect("init merges");
 
-        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 1);
+        assert_eq!(INIT_DETECTOR_CALLS.load(Ordering::Relaxed), 0);
         assert_eq!(
             config
                 .as_value()
