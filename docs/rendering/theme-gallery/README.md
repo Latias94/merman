@@ -22,17 +22,26 @@ matching runtime, rather than guaranteeing identical pixels on every system.
 Paste a source into the editor, open **Theme**, choose **Brutalist** or **Ghibli**, and inspect
 the preview. The **Merman preset** selector at the top lists the current diagram's design
 treatment next to each preset. **Browse presets** adds recipe color swatches. For Brutalist,
-choose **Use recommended settings** to explicitly request Classic.
-This keeps other configuration and the layout intact. **Apply** commits the Merman styling;
-**Cancel** returns to the prior styling while keeping configuration changes. **None** removes
+choose **Use Classic look** to explicitly preview Classic.
+This keeps other configuration and the layout intact. **Apply** commits the panel's theme,
+font and recommended configuration together; **Cancel** discards these drafts while preserving
+independent source/config editor edits. Leave the font at **Inherit from theme / source** to use
+the recipe's typography. **None** removes
 Merman styling and keeps the selected Mermaid base theme.
 
-Read **This render's theme outcome** for this diagram's result. **Dedicated design** describes
+Read **Current preview** for this diagram's result. **Designed for this diagram** describes
 catalog intent, not a guarantee that every requested effect rendered. An unreviewed family
 can still receive the recipe's base styling. Use **Download JSON** for an editable standalone
 recipe and a workspace share link to include source, settings and the applied recipe together.
 
-![Playground theme panel with direct Ghibli selection, Pie design scope and this render's outcome](theme-panel.png)
+| Earlier panel | Current panel |
+| --- | --- |
+| ![Earlier panel with an implicit Trebuchet override and expanded verification text](theme-panel-before.png) | ![Current panel with explicit font inheritance, one Apply/Cancel model and optional output details](theme-panel.png) |
+
+The current example requests Ghibli's `Open Sans, Noto Sans SC, sans-serif` stack. A browser may
+resolve the generic fallback when the named fonts are absent. The earlier panel always injected
+Trebuchet, even when the user had not chosen a font. These are real Playground screenshots;
+font installation and rasterization remain host-dependent.
 
 ## Native CLI
 

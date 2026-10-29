@@ -346,16 +346,16 @@ See [Create, Customize, and Share Diagram Themes](../rendering/custom-diagram-th
 for exporting presets, authoring designs, and importing saved recipes.
 
 `theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
-`gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. The value
+`gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, `cyberpunk`, and `ghibli`. The value
 compiles the corresponding Rust `ThemePreset`. It does not select `look: neo`, Flowchart ELK, an
 SVG pipeline, or a product profile.
 
-An explicit Mermaid theme in `site_config` or admitted source frontmatter/directives owns
-the resulting paint palette, including derived colors. Existing palette values outrank
-compiled theme paint defaults; missing roles retain their fallback. Explicit variables retain
-their property-specific precedence. A recipe's own Mermaid compatibility theme does not
-disable its compiled paint. Independent typography, geometry, effects and canvas decoration
-continue to apply.
+The [theme ownership table](../rendering/custom-diagram-themes.md#family-configuration-and-compiled-rules)
+defines precedence. A site Mermaid theme supplies a fallback palette and does not disable
+compiled recipe rules. An admitted source theme owns the materialized source palette for
+present roles. Explicit variables retain property-specific precedence. Typography, geometry,
+effects and canvas decoration retain their independent owners. Preserve configuration location
+as well as value when reproducing a themed diagram.
 
 `theme.spec` compiles one complete `DiagramThemeSpec`. Its supported top-level fields are:
 

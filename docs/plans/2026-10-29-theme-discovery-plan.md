@@ -2,6 +2,10 @@
 
 Date: 2026-10-29. Status: implemented and locally verified.
 
+The subsequent [product readiness plan](2026-10-29-theme-product-plan.md) supersedes this
+plan's immediate-setting/Cancel behavior and initial release-check evidence. This document
+records the earlier implementation; the current guide defines the revised user contract.
+
 ## Goal
 
 Prepare the main branch's theme experience for a bounded `v0.10.0-alpha.1`.
