@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_cli_release_archive as verifier
 from ascii_capability_contract import canonical_ascii_capabilities
+from theme_preset_catalog_test_fixture import canonical_theme_preset_catalog
 import release_archive as archive_core
 import release_process as process_core
 
@@ -291,13 +292,7 @@ def valid_capabilities_payload(
             "context_scope": "operation-owned",
         },
         "ascii": valid_ascii_capabilities_payload(),
-        "theme_presets": {"schema_version": 1, "presets": [{
-            "id": "brutalist", "display_name": "Brutalist", "appearance": "light",
-            "maturity": "alpha", "available": True, "availability_reason_ids": [],
-            "family_designs": [{"family_id": "flowchart", "treatment": "base_only"}],
-            "qualified_cells": [], "license_expression": "MIT OR Apache-2.0",
-            "required_attribution": None, "export_kind": "complete_spec",
-        }]},
+        "theme_presets": canonical_theme_preset_catalog(),
     }
 
 
@@ -589,7 +584,8 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 "font_catalog_fingerprint": "resource-digest", "scenarios": scenarios,
             }
             public_catalog = valid_capabilities_payload()["theme_presets"]
-            public_catalog["presets"][0]["qualified_cells"] = [{
+            brutalist = next(entry for entry in public_catalog["presets"] if entry["id"] == "brutalist")
+            brutalist["qualified_cells"] = [{
                 "family_id": "state", "output_id": output,
                 "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent",
             } for output in ("png", "svg")]
@@ -626,7 +622,10 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 self.assertEqual(catalog["artifact"]["executable_sha256"], record["cli"]["executable_sha256"])
                 self.assertEqual(catalog["catalog"], record["cli"]["catalog"])
                 self.assertEqual(catalog["qualifications"], [public_qualification])
-                self.assertEqual(catalog["catalog"]["presets"][0]["qualified_cells"], [
+                qualified_preset = next(
+                    entry for entry in catalog["catalog"]["presets"] if entry["id"] == "brutalist"
+                )
+                self.assertEqual(qualified_preset["qualified_cells"], [
                     {"family_id": "state", "output_id": output,
                      "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent"}
                     for output in ("png", "svg")

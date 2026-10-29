@@ -4,31 +4,29 @@ import copy
 import unittest
 
 from scripts.theme_preset_catalog_contract import validate_unqualified_catalog
+from scripts.theme_preset_catalog_test_fixture import canonical_theme_preset_catalog
 
 
 class ThemePresetCatalogContractTests(unittest.TestCase):
     def setUp(self):
-        self.catalog = {
-            "schema_version": 1,
-            "presets": [{
-                "id": "brutalist",
-                "display_name": "Brutalist",
-                "appearance": "light",
-                "maturity": "alpha",
-                "available": True,
-                "availability_reason_ids": [],
-                "family_designs": [{"family_id": "flowchart", "treatment": "base_only"}],
-                "preview_colors": ["#FFE66D", "#4ECDC4"],
-                "application_notes": [],
-                "qualified_cells": [],
-                "license_expression": "MIT OR Apache-2.0",
-                "required_attribution": None,
-                "export_kind": "complete_spec",
-            }],
-        }
+        self.catalog = canonical_theme_preset_catalog()
 
     def test_accepts_unqualified_alpha_catalog(self):
         validate_unqualified_catalog(self.catalog)
+
+    def test_rejects_missing_application_guidance_fields(self):
+        for field in ("preview_colors", "application_notes"):
+            changed = copy.deepcopy(self.catalog)
+            del changed["presets"][0][field]
+            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, "entry fields"):
+                validate_unqualified_catalog(changed)
+
+    def test_rejects_malformed_preview_colors(self):
+        for colors in (None, {}, "#123456", [""], [1]):
+            changed = copy.deepcopy(self.catalog)
+            changed["presets"][0]["preview_colors"] = colors
+            with self.subTest(colors=colors), self.assertRaisesRegex(RuntimeError, "preview colors"):
+                validate_unqualified_catalog(changed)
 
     def test_family_designs_preserve_open_ids_without_granting_qualification(self):
         self.catalog["presets"][0]["family_designs"] = [

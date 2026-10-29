@@ -5,6 +5,26 @@ use merman_theme_contract::{
     ThemeSupportOutputV1, ThemeSupportQueryV1,
 };
 
+#[cfg(feature = "all-diagrams")]
+#[test]
+fn shared_support_vectors_match_renderer_projection() {
+    let vectors: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
+    ))
+    .expect("shared support vectors are valid JSON");
+    assert!(
+        !vectors.is_empty(),
+        "shared support vectors must not be empty"
+    );
+    for vector in vectors {
+        let query: ThemeSupportQueryV1 =
+            serde_json::from_value(vector["query"].clone()).expect("shared support query is valid");
+        let actual = serde_json::to_value(describe_theme_support(&query))
+            .expect("support descriptor serializes");
+        assert_eq!(actual, vector["expected"], "{}", vector["id"]);
+    }
+}
+
 #[test]
 fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
     let query: ThemeSupportQueryV1 = serde_json::from_str(

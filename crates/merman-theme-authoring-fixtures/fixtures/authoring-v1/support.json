@@ -748,7 +748,7 @@
       "state": "conditional",
       "reason_ids": [
         "theme-support.family-owned-consumer-present",
-        "theme-support.document-surface-dependent"
+        "theme-support.public-value-domain-partial"
       ]
     }
   },
@@ -780,7 +780,7 @@
       "state": "conditional",
       "reason_ids": [
         "theme-support.family-owned-consumer-present",
-        "theme-support.document-surface-dependent"
+        "theme-support.public-value-domain-partial"
       ]
     }
   },
@@ -812,7 +812,7 @@
       "state": "conditional",
       "reason_ids": [
         "theme-support.family-owned-consumer-present",
-        "theme-support.document-surface-dependent"
+        "theme-support.public-value-domain-partial"
       ]
     }
   },
@@ -844,7 +844,7 @@
       "state": "conditional",
       "reason_ids": [
         "theme-support.family-owned-consumer-present",
-        "theme-support.document-surface-dependent"
+        "theme-support.public-value-domain-partial"
       ]
     }
   }

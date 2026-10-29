@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from scripts.qualify_theme_presets import BUILD, clean_revision, qualify_cli, verify_record
+from scripts.theme_preset_catalog_test_fixture import canonical_theme_preset_catalog
 
 
 class PresetQualificationTests(unittest.TestCase):
@@ -89,14 +90,9 @@ class CliQualificationTests(unittest.TestCase):
              "artifact_digest": hashlib.sha256(payload).hexdigest()}
             for output, payload in self.payloads.items()
         ]}]}
-        self.catalog = {"schema_version": 1, "presets": [
-            {"id": "brutalist", "display_name": "Brutalist", "appearance": "light", "maturity": "alpha", "available": True, "availability_reason_ids": [], "qualified_cells": [], "license_expression": "MIT OR Apache-2.0", "required_attribution": None, "export_kind": "complete_spec"},
-            {"id": "editor-light", "display_name": "Editor Light", "appearance": "light", "maturity": "alpha", "available": True, "availability_reason_ids": [], "qualified_cells": [], "license_expression": "MIT OR Apache-2.0", "required_attribution": None, "export_kind": "complete_spec"},
-        ]}
-        for entry in self.catalog["presets"]:
-            entry["family_designs"] = [{"family_id": "flowchart", "treatment": "base_only"}]
-            entry["preview_colors"] = []
-            entry["application_notes"] = []
+        self.catalog = canonical_theme_preset_catalog()
+        entries = {entry["id"]: entry for entry in self.catalog["presets"]}
+        self.catalog["presets"] = [entries[preset_id] for preset_id in ("brutalist", "editor-light")]
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         self.qualification["render_config"] = {
             "htmlLabels": False,
@@ -200,8 +196,10 @@ class CliQualificationTests(unittest.TestCase):
     def test_cyberpunk_catalog_requires_complete_scene_profile_and_families(self):
         from scripts.qualify_theme_presets import CYBERPUNK_QUALIFIED_PROFILE, QUALIFIED_PROFILE
 
-        base = self.catalog["presets"][0]
-        base.update(id="cyberpunk", display_name="Cyberpunk", appearance="dark")
+        base = next(
+            entry for entry in canonical_theme_preset_catalog()["presets"] if entry["id"] == "cyberpunk"
+        )
+        self.catalog["presets"][0] = base
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         preset = self.qualification["presets"][0]
         preset.update(preset="cyberpunk", profile=CYBERPUNK_QUALIFIED_PROFILE)
