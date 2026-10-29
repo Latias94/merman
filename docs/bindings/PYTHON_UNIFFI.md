@@ -2,7 +2,11 @@
 
 Status: experimental publishable Python package.
 
-The Python binding is generated from the `merman-uniffi` cdylib with UniFFI. The package shape is:
+This guide owns Python generation, wheel assembly, and release procedures. The
+[package generator](../../crates/merman-uniffi/examples/generate_python_package.rs) reads UniFFI
+metadata from the matching Rust library and packages the production `merman-uniffi` cdylib. See the
+[package README](../../platforms/python/merman/README.md) for application use and the
+[UniFFI contract](UNIFFI.md) for shared API and lifecycle rules. The package shape is:
 
 ```text
 platforms/python/merman/
@@ -18,13 +22,6 @@ platforms/python/merman/
 The generated Python module and native library must live in the same package directory because the
 UniFFI Python loader resolves the cdylib relative to `__file__`.
 
-Merman itself is a browserless Rust engine for Mermaid diagrams. Start from the
-[project README](https://github.com/Latias94/merman) for product scope, the
-[UniFFI binding notes](https://github.com/Latias94/merman/blob/main/docs/bindings/UNIFFI.md) for
-the shared wrapper layer, and
-[diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
-for current Mermaid parity.
-
 ## Generate Locally
 
 `scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
@@ -36,8 +33,7 @@ profile's published target set and replaces the package scaffold's release-set l
 the checked-in single-target report before building the wheel.
 
 ```bash
-cargo build -p merman-uniffi --profile native-distribution --no-default-features \
-  --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+python3 scripts/artifact_profile_recipe.py python-uniffi-native --build-host --locked
 cargo run -p merman-uniffi --no-default-features \
   --features binding-generation --example generate_python_package -- \
   --metadata-library target/native-distribution/libmerman_uniffi.rlib \
@@ -50,12 +46,8 @@ that atomic feature to compile the clock, time-zone, and random adapters togethe
 runtime discovery exposes the concrete `system-clock`, `system-timezone`, and `system-random`
 adapter IDs only when present; the Cargo aggregate is not a Python capability name.
 
-On Windows PowerShell, use the same command on one line:
-
-```powershell
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
-cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --metadata-library target/native-distribution/libmerman_uniffi.rlib --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
-```
+On Linux, use `libmerman_uniffi.so` for `--cdylib`; on Windows, use `merman_uniffi.dll`
+and run the generator command on one line. `--metadata-library` still selects the matching `rlib`.
 
 ## API
 
@@ -167,15 +159,10 @@ The direct UniFFI binding API is `7`, independently versioned from the native C 
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
-names or copy an ID table into Python; inspect the loaded catalog instead.
-
-When migrating from API 6/7/8, replace the old version probe with
-`binding_api_version_v7()` and regenerate the complete package with its matching native library.
-API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in the schema-3
-`MermanAsciiOutputPlan`; `layout_profile` is the selected Canonical or Compact geometry. The symbol
-change makes stale generated bindings fail before decoding the revised record. API 6 introduced
-the capability admission arrays and output encoding; older consumers must also regenerate the
-whole projection rather than applying incremental shims.
+names or copy an ID table into Python; inspect the loaded catalog instead. Preserve unknown
+discovery IDs. The [UniFFI contract](UNIFFI.md#public-model) owns version checks and the open
+`MermanOutputPlan` record. Result-returning binary methods preserve operation metadata; inspect
+`output_plan.kind` and optional format payloads, and retain `raw_json` for future kinds.
 
 ## Text Measurement
 
@@ -224,42 +211,7 @@ engine for retry. `close()` is explicit and idempotent; always call it for a cal
 because the callback may capture the engine and form a reference cycle. There is no callback
 mutation lifecycle.
 
-## Migrating From The Previous Prerelease API
-
-- Replace the old one-shot `MermanEngine()` with `Merman()`.
-- Delete `MermanReusableEngine`, `reusable_engine(...)`, and
-  `reusable_engine_with_text_measurer(...)` usage. Construct `MermanEngine(options_json, services)`
-  directly.
-- Start with `MermanEngineServices()` and chain `with_text_measurer(...)` or
-  `with_icon_registry(...)`. Each call returns a new immutable bundle; the constructor no longer
-  takes positional optional services.
-- Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
-- Move API 6 or older generated modules and native libraries together to API 7 before consuming
-  schema-3 ASCII selection metadata. Generic request constructors require `control`;
-  pass `None` until the host adopts `MermanOperationControl`.
-- Use the result-returning binary methods when callers need typed operation metadata or the
-  effective output plan. Switch on `output_plan.kind`; read `raster`, `pdf_filter_images`, or
-  `ascii` when present, and retain `raw_json` for unknown future kinds. The ASCII payload records
-  the selected projection, encoding, emitted dimensions, and viewport fallback outcome.
-- Preserve unknown runtime discovery IDs instead of treating generated known constants as a closed
-  enum.
-
-## Verification
-
-```bash
-cargo check -p merman-uniffi --no-default-features \
-  --features binding-generation --examples
-python3 scripts/build-python-uniffi-wheel.py --run-smoke
-```
-
-The wheel command is the sole cross-language Python smoke: it generates the module from the release
-cdylib, builds the final platform wheel, installs it in an isolated environment, and runs the
-repository's canonical
-[`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py).
-Owner-local Rust tests carry exhaustive catalog, error, output-plan, callback-shape, and lifecycle
-contracts.
-
-## Build A Local Wheel
+## Build And Verify A Wheel
 
 ```bash
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
@@ -268,7 +220,8 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 The script builds `merman-uniffi`, copies the checked-in Python package scaffold into a temporary
 staging directory, generates UniFFI Python files only in that staging directory, and builds a
 platform wheel under `target/python-wheels`. With `--run-smoke`, it installs the wheel into a
-temporary venv and runs the checked-in package smoke. That smoke proves import and identity,
+temporary venv and runs the canonical [package smoke](../../platforms/python/merman/examples/smoke.py).
+That smoke proves import and identity,
 one SVG operation, immutable constructor services, and deterministic close;
 owner-local Rust and generated-binding tests carry the exhaustive operation and protocol
 contracts. The build fails when generated support files differ from their checked-in projections or
@@ -285,17 +238,3 @@ updated workflow definition from `main` never changes the artifact source.
 
 Configure the PyPI project `merman` with a Trusted Publisher for this repository and
 `.github/workflows/release-python.yml`. No PyPI API token is required for the OIDC path.
-
-## Example
-
-Build and exercise the installed wheel:
-
-```bash
-python3 scripts/build-python-uniffi-wheel.py --run-smoke
-```
-
-## Not Yet Done
-
-- Broader architecture matrix beyond the default GitHub hosted runner architecture for each OS.
-- macOS universal2 wheel assembly.
-- Windows wheel signing or installer metadata.

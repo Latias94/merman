@@ -1,22 +1,13 @@
 # UniFFI Bindings
 
-`merman-uniffi` is Merman's direct object binding for Swift, Kotlin, and Python hosts. It calls
-`merman-bindings-core` directly and has its own binding API version. It is not a wrapper around the
-C ABI, and applications must not mix a generated UniFFI source projection with a different native
-library build.
+This guide owns the direct object-binding contract implemented by
+[`merman-uniffi`](../../crates/merman-uniffi/src/lib.rs). Swift and Python packages call
+`merman-bindings-core` through UniFFI and have an independent binding API version. Android's
+[Kotlin package](ANDROID_JNI.md) uses its own JNI transport. Applications must deploy each generated
+UniFFI projection with its matching native library.
 
 The current direct binding API is `7`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
-
-API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in `MermanAsciiOutputPlan`,
-whose ASCII result schema is now `3`. The effective `layout_profile` identifies Canonical or
-Compact; the requested profile can be Auto. Regenerate the language projection and native library
-together, and replace older version probes with `binding_api_version_v7()`.
-
-API 6 expanded `MermanAsciiCapability` with `layout_profiles`, `width_profiles`, `encodings`, and
-`fallback_encodings`. It also introduced ASCII result schema `2`, adding `encoding` to
-`MermanAsciiOutputPlan`. Those record changes required regenerating Swift and Python projections
-with the matching native library; API 5 generated source could not decode them.
 
 Theme authoring errors preserve `details_json` with the versioned `theme_authoring`
 diagnostic envelope (`code`, `path`, and `details`). Use `theme_catalog_json()` for
@@ -41,26 +32,11 @@ atomic runtime catalog: loaded package/options versions, capability and output I
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
 
-API `4` adds the required `tags` field to `MermanLintRuleCatalogEntry` and replaces the API `3`
-`binding_api_version()` probe with `transport_api_version()`. The native library no longer exports
-the API `3` method symbol, so an API `3` generated binding fails during symbol resolution or UniFFI
-initialization before it can decode the changed record layout. Regenerate the whole language
-projection and deploy it with the matching native library; changing only the library is not
-supported.
-
-API `5` replaces the API `4` `transport_api_version()` probe with
-`binding_api_version_v5()`. This symbol change is required because UniFFI method checksums do not
-include the fields of the changed `MermanAsciiCapability` and `MermanError::Binding` wire records.
-An API `4` generated binding therefore fails before it can decode an API `5` value.
-
-API `6` replaces `binding_api_version_v5()` with `binding_api_version_v6()`. The same checksum
-limitation applies to the newly expanded `MermanAsciiCapability` and `MermanAsciiOutputPlan` records,
-so API `5` generated source fails before decoding an API `6` value. The version probe, generated
-projection, and native library are one deployment unit.
-
-API `7` replaces the API 6 probes with `binding_api_version_v7()` for the merged
-ASCII selection and theme-authoring diagnostic records. Old generated bindings fail before decoding
-these records; the generic request record remains `MermanOperationRequestV4`.
+The versioned probe symbol rejects older generated bindings before they decode revised records.
+UniFFI method checksums alone do not cover all nested record-field changes. Regenerate the complete
+projection when the binding API changes and deploy it with the matching library; the probe and
+generated code form one deployment unit. For changes between published releases, use the
+[versioned upgrade index](../release/README.md#workspace-upgrades).
 
 Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
 owns the generic operation's options. Named methods such as
@@ -68,6 +44,16 @@ owns the generic operation's options. Named methods such as
 `layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
 catalog. An unavailable operation returns a structured missing-capability error instead of a
 transport-specific stub result.
+
+Use result-returning binary methods when operation metadata or the effective output plan matters.
+`MermanOutputPlan` is an open record: switch on `kind`, inspect optional `raster`,
+`pdf_filter_images`, or `ascii`, and preserve `raw_json` for future kinds. The schema-3 ASCII plan
+includes projection, encoding, emitted dimensions, viewport fallback, `requested_layout_profile`,
+and `compact_attempted`. Its effective `layout_profile` is Canonical or Compact; the request may
+select Auto. `MermanAsciiCapability` reports `layout_profiles`, `width_profiles`, `encodings`, and
+`fallback_encodings`. Runtime operation, metadata, option-group, constructor-service, and
+resource-limit IDs remain open discovery values; request-input vocabularies use generated closed
+types.
 
 Set `MermanOperationRequestV4.control` when a host needs to cancel or deadline one synchronous
 operation. Retain another reference and call `cancel()` from a different thread or callback. The
@@ -120,9 +106,10 @@ analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PD
 the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
-```bash
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
-```
+Exact features, diagram selectors, Cargo profiles, and target sets belong to the
+`python-uniffi-native` and `apple-uniffi-native`
+[artifact recipes](../../capabilities/artifact-profiles-v2.json). Use the platform builders below
+rather than maintaining a second recipe here.
 
 Custom artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
 `layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when native
@@ -133,38 +120,19 @@ adapter IDs rather than exposing the Cargo aggregate as a capability.
 
 ## Python
 
-The repository ships a Python package layout. Generate it from the exact cdylib that will be
-packaged:
-
-```bash
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
-cargo run -p merman-uniffi --no-default-features --features binding-generation \
-  --example generate_python_package -- \
-  --cdylib target/native-distribution/libmerman_uniffi.dylib \
-  --package-dir platforms/python/merman
-```
-
-Use `.so` on Linux and `merman_uniffi.dll` on Windows. The generator enables `binding-generation`, but
-the copied production library is the separately built release artifact without that tool feature.
-
-See [Python UniFFI](PYTHON_UNIFFI.md) for package and wheel details.
+The [Python guide](PYTHON_UNIFFI.md) owns package generation, wheel assembly, and installation
+verification through `scripts/build-python-uniffi-wheel.py`. The
+[package generator](../../crates/merman-uniffi/examples/generate_python_package.rs) reads metadata
+from the matching Rust library and packages the separately built production cdylib without
+`binding-generation`.
 
 ## Apple Swift
 
-Apple is a direct UniFFI lane. Its checked-in generated `Merman.swift` imports the `MermanFFI`
-module inside the matching `Merman.xcframework`; no hand-written C façade remains. Generate the
-Swift source, header, and module map from the exact static library:
-
-```bash
-cargo run -p merman-uniffi --no-default-features --features binding-generation \
-  --example generate_swift_bindings -- \
-  --library target/aarch64-apple-darwin/release/libmerman_uniffi.a \
-  --output-dir platforms/apple/Sources/Merman/Generated
-```
-
-Use `scripts/build-apple-xcframework.sh` for normal packaging. It builds every selected slice,
-regenerates the three source artifacts, and embeds the generated header/module map in each slice.
-See [Apple Swift](APPLE_SWIFT.md) for the SwiftPM API and smoke command.
+The [Apple guide](APPLE_SWIFT.md) owns SwiftPM and XCFramework assembly through
+`scripts/build-apple-xcframework.sh`. Its
+[Swift generator](../../crates/merman-uniffi/examples/generate_swift_bindings.rs) reads the matching
+static library and emits the checked-in Swift source, C header, and module map. Apple CI rebuilds
+the XCFramework, compiles its Swift consumer, and rejects projection drift.
 
 ## Text Measurement
 
@@ -184,35 +152,3 @@ report a returned callback error to Rust, but Merman does not catch arbitrary fo
 exceptions, or longjmps that bypass that boundary. See
 [host text measurement](HOST_TEXT_MEASUREMENT.md) for the operation, result-shape, and lifecycle
 contract.
-
-## Migrating From The Previous Prerelease API
-
-- Replace one-shot `MermanEngine` values with `Merman`.
-- Replace `MermanReusableEngine` and facade factories such as `reusable_engine(...)` with the
-  direct `MermanEngine(options_json, services)` constructor.
-- Put icon registries and text measurement in a zero-argument `MermanEngineServices` value through
-  its persistent `with_*` builders; there are no callback-specialized constructors or
-  post-construction service mutators.
-- Call `close()` deterministically. Do not rely on garbage collection to release foreign callback
-  cycles.
-- Use result-returning binary methods when callers need operation metadata or the effective output
-  plan; byte-returning conveniences remain available. `MermanOutputPlan` is an open record: switch
-  on `kind`, use the optional `raster`, `pdf_filter_images`, or `ascii` payload, and preserve
-  `raw_json` for future kinds. The ASCII payload records projection, encoding, emitted dimensions,
-  and viewport fallback outcome.
-- Treat runtime operation, metadata, option-group, constructor-service, and resource-limit IDs as
-  open discovery values. Closed request-input vocabularies remain generated enums/value sets.
-- Move generated API 6 or older wrappers and libraries together to API 7 before consuming
-  schema-3 ASCII selection metadata. API 6 introduced the capability admission arrays and encoding. Older prerelease wrappers must also be fully
-  regenerated; do not pair source generated for one API version with a library whose runtime catalog
-  reports another.
-
-## Verification
-
-```bash
-python3 scripts/build-python-uniffi-wheel.py --run-smoke
-```
-
-The binding smoke builds a library, generates foreign-language source from its embedded UniFFI
-metadata, and exercises the public API. Apple CI additionally rebuilds its XCFramework, compiles
-the Swift package and smoke, and rejects a changed checked-in Swift projection.

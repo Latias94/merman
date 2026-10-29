@@ -165,7 +165,7 @@ Add failing regression coverage in those homes before changing their behavior.
 Use the original shared graph as an end-to-end CLI reproducer in addition to minimal cases.
 
 The full structure comparison from `.agents/skills/contribute-merman-pr/SKILL.md` is required for renderer changes. Focused family comparisons guide diagnosis but do not replace that gate.
-Native/WASM feature and dependency checks follow `docs/development/CI.md` and `docs/release/FFI_CONTRACT_READINESS.md`.
+Native/WASM feature and dependency checks follow `docs/development/CI.md` and the artifact owners in `docs/release/PACKAGE_SURFACES.md`.
 Dependency changes require the Rust license report, third-party notices generation, and license verification chain.
 Record unsupported local owner lanes explicitly rather than reporting them as passed.
 
