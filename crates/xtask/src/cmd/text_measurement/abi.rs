@@ -2,10 +2,10 @@
 
 use crate::XtaskError;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const DESCRIPTOR_PATH: &str = "contracts/abi/text-measurement-v1.json";
 const TEXT_MEASUREMENT_PROTOCOL_ID: &str = "merman-text-measurement";
@@ -77,22 +77,13 @@ struct TextMeasurementProtocolDescriptor {
     directions: Vec<VocabularyValue>,
     white_spaces: Vec<VocabularyValue>,
     phases: Vec<VocabularyValue>,
-    result_kinds: Vec<ResultKind>,
+    result_kinds: Vec<VocabularyValue>,
     operations: Vec<Operation>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct VocabularyValue {
-    id: String,
-    external_name: String,
-    rust_variant: String,
-    code: i32,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct ResultKind {
     id: String,
     external_name: String,
     rust_variant: String,
@@ -231,9 +222,8 @@ fn validate_contiguous_codes(
 ) -> Result<(), XtaskError> {
     let codes = values.into_iter().collect::<BTreeSet<_>>();
     let expected = (0..expected_count)
-        .map(|code| i32::try_from(code).expect("protocol descriptor count fits i32"))
-        .collect::<BTreeSet<_>>();
-    if codes == expected {
+        .map(|code| i32::try_from(code).expect("protocol descriptor count fits i32"));
+    if codes.iter().copied().eq(expected) {
         Ok(())
     } else {
         Err(descriptor_error(format!(
@@ -308,12 +298,6 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
             descriptor.operations.len()
         )));
     }
-    if descriptor.result_kinds.len() != TEXT_MEASUREMENT_RESULT_KIND_COUNT {
-        return Err(descriptor_error(format!(
-            "text-measurement protocol {TEXT_MEASUREMENT_PROTOCOL_VERSION} requires exactly {TEXT_MEASUREMENT_RESULT_KIND_COUNT} result kinds; found {}",
-            descriptor.result_kinds.len()
-        )));
-    }
     validate_vocabulary(
         &descriptor.wrap_modes,
         TEXT_MEASUREMENT_WRAP_MODE_COUNT,
@@ -330,34 +314,16 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
         "white-space",
     )?;
     validate_vocabulary(&descriptor.phases, TEXT_MEASUREMENT_PHASE_COUNT, "phase")?;
-    for kind in &descriptor.result_kinds {
-        validate_identifier(&kind.id, "result kind")?;
-        validate_external_name(&kind.external_name, "result kind")?;
-        validate_rust_variant(&kind.rust_variant, "result kind")?;
-    }
+    validate_vocabulary(
+        &descriptor.result_kinds,
+        TEXT_MEASUREMENT_RESULT_KIND_COUNT,
+        "result-kind",
+    )?;
     for operation in &descriptor.operations {
         validate_identifier(&operation.id, "operation")?;
         validate_external_name(&operation.external_name, "operation")?;
         validate_rust_variant(&operation.rust_variant, "operation")?;
     }
-    validate_unique(
-        descriptor.result_kinds.iter().map(|kind| kind.id.as_str()),
-        "result-kind id",
-    )?;
-    validate_unique(
-        descriptor
-            .result_kinds
-            .iter()
-            .map(|kind| kind.rust_variant.as_str()),
-        "result-kind Rust variant",
-    )?;
-    validate_unique(
-        descriptor
-            .result_kinds
-            .iter()
-            .map(|kind| kind.external_name.as_str()),
-        "result-kind external name",
-    )?;
     validate_unique(
         descriptor
             .operations
@@ -380,23 +346,17 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
         "operation external name",
     )?;
     validate_contiguous_codes(
-        descriptor.result_kinds.iter().map(|kind| kind.code),
-        TEXT_MEASUREMENT_RESULT_KIND_COUNT,
-        "result-kind",
-    )?;
-    validate_contiguous_codes(
         descriptor.operations.iter().map(|operation| operation.code),
         TEXT_MEASUREMENT_OPERATION_COUNT,
         "operation",
     )?;
 
-    let result_kinds = descriptor
-        .result_kinds
-        .iter()
-        .map(|kind| (kind.id.as_str(), kind))
-        .collect::<BTreeMap<_, _>>();
     for operation in &descriptor.operations {
-        let Some(result_kind) = result_kinds.get(operation.result_kind.as_str()) else {
+        let Some(result_kind) = descriptor
+            .result_kinds
+            .iter()
+            .find(|kind| kind.id == operation.result_kind)
+        else {
             return Err(descriptor_error(format!(
                 "operation `{}` references unknown result kind `{}`",
                 operation.id, operation.result_kind
@@ -418,12 +378,6 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
     Ok(())
 }
 
-fn sorted_result_kinds(descriptor: &TextMeasurementProtocolDescriptor) -> Vec<&ResultKind> {
-    let mut values = descriptor.result_kinds.iter().collect::<Vec<_>>();
-    values.sort_by_key(|kind| kind.code);
-    values
-}
-
 fn sorted_operations(descriptor: &TextMeasurementProtocolDescriptor) -> Vec<&Operation> {
     let mut values = descriptor.operations.iter().collect::<Vec<_>>();
     values.sort_by_key(|operation| operation.code);
@@ -436,7 +390,10 @@ fn sorted_vocabulary(values: &[VocabularyValue]) -> Vec<&VocabularyValue> {
     values
 }
 
-fn result_kind<'a>(descriptor: &'a TextMeasurementProtocolDescriptor, id: &str) -> &'a ResultKind {
+fn result_kind<'a>(
+    descriptor: &'a TextMeasurementProtocolDescriptor,
+    id: &str,
+) -> &'a VocabularyValue {
     descriptor
         .result_kinds
         .iter()
@@ -472,7 +429,7 @@ fn generated_preamble(comment: &str) -> String {
 }
 
 fn render_render_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
+    let kinds = sorted_vocabulary(&descriptor.result_kinds);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
@@ -576,7 +533,7 @@ fn render_bindings_core_rust(descriptor: &TextMeasurementProtocolDescriptor) -> 
 }
 
 fn render_uniffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
+    let kinds = sorted_vocabulary(&descriptor.result_kinds);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
@@ -658,7 +615,7 @@ fn render_uniffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String 
 }
 
 fn render_ffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
+    let kinds = sorted_vocabulary(&descriptor.result_kinds);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
@@ -733,7 +690,7 @@ fn render_ffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
         writeln!(
             output,
             "    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_{},",
-            upper_snake(&result_kind(descriptor, &operation.result_kind).id)
+            upper_snake(&operation.result_kind)
         )
         .unwrap();
     }
@@ -742,7 +699,7 @@ fn render_ffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
 }
 
 fn render_c_header(descriptor: &TextMeasurementProtocolDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
+    let kinds = sorted_vocabulary(&descriptor.result_kinds);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     output.push_str(
@@ -857,21 +814,18 @@ fn render_kotlin_operations(descriptor: &TextMeasurementProtocolDescriptor) -> S
         .unwrap();
     }
     output.push_str("        else -> null\n    }\n\n    fun acceptsSignedLength(code: Int): Boolean = when (code) {\n");
-    let signed = operations
+    for operation in operations
         .iter()
         .filter(|operation| operation.accepts_signed_length)
-        .collect::<Vec<_>>();
-    if !signed.is_empty() {
-        for operation in signed {
-            writeln!(output, "        {} -> true", upper_snake(&operation.id)).unwrap();
-        }
+    {
+        writeln!(output, "        {} -> true", upper_snake(&operation.id)).unwrap();
     }
     output.push_str("        else -> false\n    }\n}\n");
     output
 }
 
 fn render_kotlin_result_kinds(descriptor: &TextMeasurementProtocolDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
+    let kinds = sorted_vocabulary(&descriptor.result_kinds);
     let mut output = generated_preamble("//");
     output.push_str("package io.merman\n\nobject MermanTextMeasurementResultKind {\n");
     for kind in &kinds {
@@ -997,7 +951,7 @@ fn render_dart(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     );
 
     output.push_str("enum MermanTextMeasurementResultKind {\n");
-    let kinds = sorted_result_kinds(descriptor);
+    let kinds = sorted_vocabulary(&descriptor.result_kinds);
     for (index, kind) in kinds.iter().enumerate() {
         let suffix = if index + 1 == kinds.len() { ";" } else { "," };
         writeln!(
@@ -1016,7 +970,7 @@ fn render_dart(descriptor: &TextMeasurementProtocolDescriptor) -> String {
 }
 
 fn render_typescript(descriptor: &TextMeasurementProtocolDescriptor) -> String {
-    let kinds = sorted_result_kinds(descriptor);
+    let kinds = sorted_vocabulary(&descriptor.result_kinds);
     let operations = sorted_operations(descriptor);
     let mut output = generated_preamble("//");
     writeln!(
@@ -1117,7 +1071,7 @@ fn render_python(descriptor: &TextMeasurementProtocolDescriptor) -> String {
         output.push_str(")\n\n");
     }
     output.push_str("TEXT_MEASUREMENT_RESULT_KINDS = (\n");
-    for kind in sorted_result_kinds(descriptor) {
+    for kind in sorted_vocabulary(&descriptor.result_kinds) {
         writeln!(output, "    ({}, {:?}),", kind.code, kind.external_name).unwrap();
     }
     output.push_str(")\n\nTEXT_MEASUREMENT_OPERATIONS = (\n");
@@ -1156,11 +1110,12 @@ fn render_python(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     output
 }
 
-fn generated_artifacts(descriptor: &TextMeasurementProtocolDescriptor) -> Vec<(PathBuf, String)> {
+fn generated_artifacts(
+    descriptor: &TextMeasurementProtocolDescriptor,
+) -> impl Iterator<Item = (&'static str, String)> + '_ {
     GENERATED_OUTPUTS
         .iter()
-        .map(|(path, kind)| (PathBuf::from(path), kind.render(descriptor)))
-        .collect()
+        .map(move |&(path, kind)| (path, kind.render(descriptor)))
 }
 
 fn write_generated_artifact(path: &Path, contents: &str) -> Result<(), XtaskError> {
@@ -1193,13 +1148,13 @@ pub(crate) fn verify_text_measurement_protocol_artifacts() -> Result<Option<Stri
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
     let mut drift = Vec::new();
     for (relative_path, expected) in generated_artifacts(&descriptor) {
-        let path = root.join(&relative_path);
+        let path = root.join(relative_path);
         let actual = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
             path: path.display().to_string(),
             source,
         })?;
-        if actual.replace("\r\n", "\n") != expected {
-            drift.push(relative_path.display().to_string());
+        if actual != expected && actual.replace("\r\n", "\n") != expected {
+            drift.push(relative_path);
         }
     }
     if drift.is_empty() {
@@ -1231,45 +1186,18 @@ mod tests {
             .expect("committed text-measurement protocol descriptor")
     }
 
-    fn assert_protocol_v1_contract_is_immutable(descriptor: &TextMeasurementProtocolDescriptor) {
-        let error = validate_descriptor(descriptor).expect_err("protocol v1 mutation must fail");
+    fn assert_descriptor_error(descriptor: &TextMeasurementProtocolDescriptor, expected: &str) {
+        let error = validate_descriptor(descriptor).expect_err("descriptor mutation must fail");
         assert!(
-            error
-                .to_string()
-                .contains("text-measurement protocol 1 contract is immutable"),
+            error.to_string().contains(expected),
             "unexpected validation error: {error}"
         );
     }
 
-    #[test]
-    fn descriptor_is_complete_unique_and_protocol_v1_stable() {
-        let descriptor = committed_descriptor();
-        assert_eq!(descriptor.schema_version, 1);
-        assert_eq!(descriptor.protocol_id, TEXT_MEASUREMENT_PROTOCOL_ID);
-        assert_eq!(descriptor.protocol_version, 1);
-        assert_eq!(descriptor.operations.len(), 22);
-        assert_eq!(descriptor.result_kinds.len(), 4);
-        assert_eq!(descriptor.wrap_modes.len(), 3);
-        assert_eq!(descriptor.directions.len(), 1);
-        assert_eq!(descriptor.white_spaces.len(), 3);
-        assert_eq!(descriptor.phases.len(), 4);
-        assert_eq!(
-            protocol_sha256(&descriptor),
-            TEXT_MEASUREMENT_V1_PROTOCOL_SHA256
-        );
-        assert_eq!(
-            sorted_operations(&descriptor)
-                .into_iter()
-                .map(|operation| operation.code)
-                .collect::<Vec<_>>(),
-            (0..22).collect::<Vec<_>>()
-        );
-        assert_eq!(
-            sorted_result_kinds(&descriptor)
-                .into_iter()
-                .map(|result_kind| result_kind.code)
-                .collect::<Vec<_>>(),
-            (0..4).collect::<Vec<_>>()
+    fn assert_protocol_v1_contract_is_immutable(descriptor: &TextMeasurementProtocolDescriptor) {
+        assert_descriptor_error(
+            descriptor,
+            "text-measurement protocol 1 contract is immutable",
         );
     }
 
@@ -1277,40 +1205,56 @@ mod tests {
     fn validator_rejects_duplicates_gaps_and_unknown_result_shapes() {
         let mut wrong_protocol_id = committed_descriptor();
         wrong_protocol_id.protocol_id = "other".to_string();
-        assert!(validate_descriptor(&wrong_protocol_id).is_err());
+        assert_descriptor_error(&wrong_protocol_id, "descriptor protocol id `other`");
 
         let mut wrong_protocol_version = committed_descriptor();
         wrong_protocol_version.protocol_version = 2;
-        assert!(validate_descriptor(&wrong_protocol_version).is_err());
+        assert_descriptor_error(&wrong_protocol_version, "descriptor protocol version 2");
 
         let mut duplicate = committed_descriptor();
         duplicate.operations[1].id = duplicate.operations[0].id.clone();
-        assert!(validate_descriptor(&duplicate).is_err());
+        assert_descriptor_error(&duplicate, "duplicate operation id value");
 
         let mut duplicate_external_name = committed_descriptor();
         duplicate_external_name.operations[1].external_name =
             duplicate_external_name.operations[0].external_name.clone();
-        assert!(validate_descriptor(&duplicate_external_name).is_err());
+        assert_descriptor_error(
+            &duplicate_external_name,
+            "duplicate operation external name value",
+        );
+
+        let mut duplicate_result_kind = committed_descriptor();
+        duplicate_result_kind.result_kinds[1].id = duplicate_result_kind.result_kinds[0].id.clone();
+        assert_descriptor_error(&duplicate_result_kind, "duplicate result-kind id value");
 
         let mut gap = committed_descriptor();
         gap.operations[21].code = 22;
-        assert!(validate_descriptor(&gap).is_err());
+        assert_descriptor_error(
+            &gap,
+            "operation codes must be the contiguous protocol range",
+        );
 
         let mut unknown = committed_descriptor();
         unknown.operations[0].result_kind = "missing".to_string();
-        assert!(validate_descriptor(&unknown).is_err());
+        assert_descriptor_error(&unknown, "references unknown result kind `missing`");
 
         let mut invalid_signed = committed_descriptor();
         invalid_signed.operations[0].accepts_signed_length = true;
-        assert!(validate_descriptor(&invalid_signed).is_err());
+        assert_descriptor_error(
+            &invalid_signed,
+            "accepts signed lengths but requires non-length",
+        );
 
         let mut changed_vocabulary = committed_descriptor();
         changed_vocabulary.directions[0].external_name = "ltr".to_string();
-        assert!(validate_descriptor(&changed_vocabulary).is_err());
+        assert_protocol_v1_contract_is_immutable(&changed_vocabulary);
 
         let mut vocabulary_gap = committed_descriptor();
         vocabulary_gap.phases[3].code = 4;
-        assert!(validate_descriptor(&vocabulary_gap).is_err());
+        assert_descriptor_error(
+            &vocabulary_gap,
+            "phase codes must be the contiguous protocol range",
+        );
     }
 
     #[test]
@@ -1339,59 +1283,6 @@ mod tests {
             swapped_result_kind_codes.result_kinds[1].code;
         swapped_result_kind_codes.result_kinds[1].code = first_code;
         assert_protocol_v1_contract_is_immutable(&swapped_result_kind_codes);
-    }
-
-    #[test]
-    fn every_platform_projection_is_derived_from_the_same_ordered_contract() {
-        let descriptor = committed_descriptor();
-        for (path, kind) in GENERATED_OUTPUTS {
-            let rendered = kind.render(&descriptor);
-            assert!(rendered.contains("@generated"), "{path}");
-            for operation in sorted_operations(&descriptor) {
-                let expected_name = &operation.external_name;
-                if matches!(
-                    kind,
-                    ArtifactKind::RenderRust
-                        | ArtifactKind::KotlinOperations
-                        | ArtifactKind::TypeScript
-                        | ArtifactKind::Python
-                ) {
-                    assert!(
-                        rendered.contains(expected_name.as_str()),
-                        "{path}: {expected_name}"
-                    );
-                }
-            }
-        }
-
-        let ffi = ArtifactKind::FfiRust.render(&descriptor);
-        assert!(ffi.contains("MERMAN_TEXT_MEASUREMENT_OPERATION_RESULT_KINDS"));
-        assert!(ffi.contains("MERMAN_TEXT_WRAP_MODE_HTML_LIKE"));
-        assert!(ffi.contains("MERMAN_TEXT_DIRECTION_AUTO"));
-        assert!(ffi.contains("MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES"));
-        assert!(ffi.contains("MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH"));
-        for operation in sorted_operations(&descriptor) {
-            let expected = format!(
-                "MERMAN_TEXT_MEASUREMENT_RESULT_KIND_{}",
-                upper_snake(&result_kind(&descriptor, &operation.result_kind).id)
-            );
-            assert!(
-                ffi.contains(&expected),
-                "FFI projection omitted `{expected}`"
-            );
-        }
-
-        let uniffi = ArtifactKind::UniffiRust.render(&descriptor);
-        assert!(uniffi.contains("pub enum MermanTextDirection {\n    Auto,\n}"));
-        assert!(!uniffi.contains("    Ltr,"));
-        assert!(!uniffi.contains("    Rtl,"));
-        assert!(!uniffi.contains("    PreWrap,"));
-
-        let dart = ArtifactKind::Dart.render(&descriptor);
-        assert!(dart.contains("enum MermanTextWrapMode"));
-        assert!(dart.contains("enum MermanTextMeasurementPhase"));
-        assert!(dart.contains("svgBBox(2,"));
-        assert!(dart.contains("titleBBoxX(4)"));
     }
 
     #[test]

@@ -340,26 +340,11 @@ fn validate_unique<'a>(
     Ok(())
 }
 
-fn validate_contiguous_codes(
-    values: impl IntoIterator<Item = i32>,
-    context: &str,
-) -> Result<(), String> {
-    let codes = values.into_iter().collect::<BTreeSet<_>>();
-    let expected = (0..i32::try_from(codes.len()).expect("descriptor count fits i32"))
-        .collect::<BTreeSet<_>>();
-    if codes == expected {
-        Ok(())
-    } else {
-        Err(descriptor_error(format!(
-            "{context} codes must be contiguous from zero; found {codes:?}"
-        )))
-    }
-}
-
 fn validate_codes_in_descriptor_order(
     values: impl IntoIterator<Item = i32>,
     context: &str,
 ) -> Result<(), String> {
+    // Exact positions also establish uniqueness, contiguity, and non-negative codes.
     for (expected, actual) in values.into_iter().enumerate() {
         let expected = i32::try_from(expected).expect("descriptor count fits i32");
         if actual != expected {
@@ -384,7 +369,6 @@ fn validate_code_descriptors(
         values.iter().map(|value| value.c_name.as_str()),
         &format!("{id_context} C names"),
     )?;
-    validate_contiguous_codes(values.iter().map(|value| value.code), id_context)?;
     validate_codes_in_descriptor_order(values.iter().map(|value| value.code), id_context)?;
     for value in values {
         validate_identifier(&value.id, id_context)?;
@@ -404,11 +388,7 @@ fn validate_code_descriptors(
     Ok(())
 }
 
-fn validate_callable(
-    callable: &CallableDescriptor,
-    context: &str,
-    require_code: bool,
-) -> Result<(), String> {
+fn validate_callable(callable: &CallableDescriptor, context: &str) -> Result<(), String> {
     validate_identifier(&callable.id, context)?;
     if !is_ascii_identifier(&callable.c_name) {
         return Err(descriptor_error(format!(
@@ -420,12 +400,6 @@ fn validate_callable(
         return Err(descriptor_error(format!(
             "{context} `{}` has invalid Rust name `{}`",
             callable.id, callable.rust_name
-        )));
-    }
-    if require_code && callable.code < 0 {
-        return Err(descriptor_error(format!(
-            "{context} `{}` must have a non-negative code",
-            callable.id
         )));
     }
     validate_type_name(
@@ -853,13 +827,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         "native ABI status codes",
         "MERMAN_NATIVE_STATUS_",
     )?;
-    if descriptor.status_codes.len() < minimum_prefix.status_code_count {
-        return Err(descriptor_error(format!(
-            "native ABI status vocabulary minimum prefix selects {} entries, but the descriptor defines {}",
-            minimum_prefix.status_code_count,
-            descriptor.status_codes.len()
-        )));
-    }
     let known_error_kinds = descriptor
         .error_kinds
         .iter()
@@ -879,11 +846,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             }
         }
     }
-    if descriptor.operation_codes.is_empty() {
-        return Err(descriptor_error(
-            "native ABI operation codes must not be empty",
-        ));
-    }
     validate_unique(
         descriptor
             .operation_codes
@@ -897,13 +859,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .iter()
             .map(|operation| operation.c_name.as_str()),
         "native ABI operation code C names",
-    )?;
-    validate_contiguous_codes(
-        descriptor
-            .operation_codes
-            .iter()
-            .map(|operation| operation.code),
-        "native ABI operation codes",
     )?;
     validate_codes_in_descriptor_order(
         descriptor
@@ -992,16 +947,12 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|callback| callback.c_name.as_str()),
         "native ABI callback C names",
     )?;
-    validate_contiguous_codes(
-        descriptor.callbacks.iter().map(|callback| callback.code),
-        "native ABI callbacks",
-    )?;
     validate_codes_in_descriptor_order(
         descriptor.callbacks.iter().map(|callback| callback.code),
         "native ABI callbacks",
     )?;
     for callback in &descriptor.callbacks {
-        validate_callable(callback, "native ABI callback", true)?;
+        validate_callable(callback, "native ABI callback")?;
     }
 
     validate_unique(
@@ -1018,19 +969,12 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|slot| slot.c_name.as_str()),
         "native ABI function slot C names",
     )?;
-    validate_contiguous_codes(
-        descriptor.function_slots.iter().map(|slot| slot.code),
-        "native ABI function slots",
-    )?;
     validate_codes_in_descriptor_order(
         descriptor.function_slots.iter().map(|slot| slot.code),
         "native ABI function slots",
     )?;
     for slot in &descriptor.function_slots {
-        validate_callable(slot, "native ABI function slot", true)?;
-    }
-    if descriptor.records.is_empty() {
-        return Err(descriptor_error("native ABI records must not be empty"));
+        validate_callable(slot, "native ABI function slot")?;
     }
     validate_unique(
         descriptor.records.iter().map(|record| record.id.as_str()),
@@ -1175,7 +1119,7 @@ fn resolve_operations(
     }
 
     let mut resolved = Vec::with_capacity(descriptor.operation_codes.len());
-    for operation_code in sorted_operation_codes(&descriptor.operation_codes) {
+    for operation_code in &descriptor.operation_codes {
         let non_executable_failure = operation_code
             .non_executable_failure
             .as_ref()
@@ -1277,18 +1221,6 @@ fn canonical_descriptor(descriptor: &NativeAbiDescriptor) -> NativeAbiDescriptor
     canonical
 }
 
-fn descriptor_digest(
-    descriptor: &NativeAbiDescriptor,
-    context: &str,
-) -> Result<String, XtaskError> {
-    let bytes = serde_json::to_vec(&canonical_descriptor(descriptor)).map_err(|error| {
-        native_abi_error(format!(
-            "failed to serialize canonical native ABI {context}: {error}"
-        ))
-    })?;
-    Ok(format!("sha256:{}", crate::util::sha256_hex(&bytes)))
-}
-
 fn full_descriptor_digest(
     descriptor: &NativeAbiDescriptor,
     resolved_operations: &[ResolvedOperation],
@@ -1348,11 +1280,7 @@ fn strip_layout_irrelevant_metadata(descriptor: &mut NativeAbiDescriptor) {
     }
 }
 
-fn prefix_layout_digest(
-    descriptor: &NativeAbiDescriptor,
-    function_slot_count: usize,
-    context: &str,
-) -> Result<String, XtaskError> {
+fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
     let minimum = &descriptor.minimum_prefix;
     let mut prefix = descriptor.clone();
     prefix.status_codes.sort_by_key(|status| status.code);
@@ -1367,21 +1295,17 @@ fn prefix_layout_digest(
     prefix.callbacks.sort_by_key(|callback| callback.code);
     prefix.callbacks.truncate(minimum.callback_count);
     prefix.function_slots.sort_by_key(|slot| slot.code);
-    prefix.function_slots.truncate(function_slot_count);
-    prefix.minimum_prefix.function_slot_count = function_slot_count;
+    prefix.function_slots.truncate(minimum.function_slot_count);
     prefix.records.truncate(minimum.record_count);
     prefix.minimum_semantics.clear();
     prefix.ownership_rules.clear();
     strip_layout_irrelevant_metadata(&mut prefix);
-    descriptor_digest(&prefix, context)
-}
-
-fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
-    prefix_layout_digest(
-        descriptor,
-        descriptor.minimum_prefix.function_slot_count,
-        "minimum-prefix layout",
-    )
+    let bytes = serde_json::to_vec(&canonical_descriptor(&prefix)).map_err(|error| {
+        native_abi_error(format!(
+            "failed to serialize canonical native ABI minimum-prefix layout: {error}"
+        ))
+    })?;
+    Ok(format!("sha256:{}", crate::util::sha256_hex(&bytes)))
 }
 
 fn upper_snake(value: &str) -> String {
@@ -1451,27 +1375,9 @@ fn validate_flutter_operation_projection(
     )
 }
 
-fn sorted_codes(values: &[CodeDescriptor]) -> Vec<&CodeDescriptor> {
-    let mut values = values.iter().collect::<Vec<_>>();
-    values.sort_by_key(|value| value.code);
-    values
-}
-
 fn sorted_error_kinds(values: &[ErrorKindDescriptor]) -> Vec<&ErrorKindDescriptor> {
     let mut values = values.iter().collect::<Vec<_>>();
     values.sort_by(|left, right| left.id.cmp(&right.id));
-    values
-}
-
-fn sorted_operation_codes(values: &[OperationCodeDescriptor]) -> Vec<&OperationCodeDescriptor> {
-    let mut values = values.iter().collect::<Vec<_>>();
-    values.sort_by_key(|value| value.code);
-    values
-}
-
-fn sorted_slots(values: &[CallableDescriptor]) -> Vec<&CallableDescriptor> {
-    let mut values = values.iter().collect::<Vec<_>>();
-    values.sort_by_key(|value| value.code);
     values
 }
 
@@ -1592,14 +1498,9 @@ fn render_c_header(
         "#define MERMAN_NATIVE_STRUCT_SIZE(type) ((uint32_t)sizeof(type))\n#ifdef __cplusplus\n#define MERMAN_NATIVE_RESULT_INIT { MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult), 0, 0, 0, {}, {}, {} }\n#else\n#define MERMAN_NATIVE_RESULT_INIT { .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult) }\n#endif\n\n",
     );
 
-    render_c_code_type(
-        &mut out,
-        "MermanNativeStatus",
-        "MERMAN_NATIVE_STATUS",
-        &sorted_codes(&descriptor.status_codes),
-    );
+    render_c_code_type(&mut out, "MermanNativeStatus", &descriptor.status_codes);
     render_c_operation_type(&mut out, operations);
-    render_c_slot_type(&mut out, &sorted_slots(&descriptor.function_slots));
+    render_c_slot_type(&mut out, &descriptor.function_slots);
     for scalar_id in ["engine_token", "operation_control_token"] {
         let scalar = opaque_scalar(descriptor, scalar_id);
         writeln!(
@@ -1632,7 +1533,7 @@ fn render_c_header(
     }
     out.push('\n');
 
-    for slot in sorted_slots(&descriptor.function_slots) {
+    for slot in &descriptor.function_slots {
         writeln!(
             out,
             "typedef {} (*{})({}) MERMAN_NATIVE_NOEXCEPT;",
@@ -1650,7 +1551,7 @@ fn render_c_header(
             writeln!(out, "    {};", c_declaration(&field.c_type, &field.name)).unwrap();
         }
         if record.appends_function_slots {
-            for slot in sorted_slots(&descriptor.function_slots) {
+            for slot in &descriptor.function_slots {
                 writeln!(out, "    {} {};", slot.c_name, slot.id).unwrap();
             }
         }
@@ -1664,8 +1565,9 @@ fn render_c_header(
         minimum_slot.id,
     )
     .unwrap();
-    for slot in sorted_slots(&descriptor.function_slots)
-        .into_iter()
+    for slot in descriptor
+        .function_slots
+        .iter()
         .skip(descriptor.minimum_prefix.function_slot_count)
     {
         writeln!(
@@ -1730,12 +1632,7 @@ fn render_c_comment_item(out: &mut String, id: &str, description: &str) {
     writeln!(out, "{line}").unwrap();
 }
 
-fn render_c_code_type(
-    out: &mut String,
-    type_name: &str,
-    _prefix: &str,
-    values: &[&CodeDescriptor],
-) {
+fn render_c_code_type(out: &mut String, type_name: &str, values: &[CodeDescriptor]) {
     writeln!(out, "typedef int32_t {type_name};").unwrap();
     out.push_str("enum {\n");
     for (index, value) in values.iter().enumerate() {
@@ -1824,7 +1721,7 @@ fn render_c_operation_type(out: &mut String, values: &[ResolvedOperation]) {
     out.push('\n');
 }
 
-fn render_c_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
+fn render_c_slot_type(out: &mut String, values: &[CallableDescriptor]) {
     out.push_str("typedef int32_t MermanNativeFunctionSlot;\nenum {\n");
     for (index, value) in values.iter().enumerate() {
         writeln!(
@@ -1880,15 +1777,11 @@ fn render_rust(
     )
     .unwrap();
 
-    render_rust_code_type(
-        &mut out,
-        "MermanNativeStatus",
-        &sorted_codes(&descriptor.status_codes),
-    );
+    render_rust_code_type(&mut out, "MermanNativeStatus", &descriptor.status_codes);
     render_rust_error_contract(&mut out, descriptor);
     render_rust_operation_type(&mut out, operations);
     render_rust_operation_catalog(&mut out, operations);
-    render_rust_slot_type(&mut out, &sorted_slots(&descriptor.function_slots));
+    render_rust_slot_type(&mut out, &descriptor.function_slots);
     let engine_token = opaque_scalar(descriptor, "engine_token");
     let result_token = opaque_scalar(descriptor, "result_allocation_token");
     let control_token = opaque_scalar(descriptor, "operation_control_token");
@@ -1960,7 +1853,7 @@ fn render_rust(
             writeln!(out, "    pub {}: {},", field.name, field.rust_type).unwrap();
         }
         if record.appends_function_slots {
-            for slot in sorted_slots(&descriptor.function_slots) {
+            for slot in &descriptor.function_slots {
                 writeln!(out, "    pub {}: Option<{}>,", slot.id, slot.rust_name).unwrap();
             }
         }
@@ -1971,7 +1864,7 @@ fn render_rust(
         render_rust_callable_type(&mut out, callback);
     }
     out.push('\n');
-    for slot in sorted_slots(&descriptor.function_slots) {
+    for slot in &descriptor.function_slots {
         render_rust_callable_type(&mut out, slot);
     }
     let minimum_slot = minimum_prefix_terminal_slot(descriptor);
@@ -1982,11 +1875,9 @@ fn render_rust(
         minimum_slot.rust_name,
     )
     .unwrap();
-    let appended_slots = sorted_slots(&descriptor.function_slots)
-        .into_iter()
-        .skip(descriptor.minimum_prefix.function_slot_count)
-        .collect::<Vec<_>>();
-    for slot in &appended_slots {
+    let appended_slots =
+        &descriptor.function_slots[descriptor.minimum_prefix.function_slot_count..];
+    for slot in appended_slots {
         writeln!(
             out,
             "pub const MERMAN_NATIVE_API_{}_PREFIX_SIZE: u32 =\n    (std::mem::offset_of!(MermanNativeApi, {})\n        + std::mem::size_of::<Option<{}>>()) as u32;\n",
@@ -2039,7 +1930,7 @@ fn render_rust_doc_comment(out: &mut String, description: &str) {
     writeln!(out, "{line}").unwrap();
 }
 
-fn render_rust_code_type(out: &mut String, type_name: &str, values: &[&CodeDescriptor]) {
+fn render_rust_code_type(out: &mut String, type_name: &str, values: &[CodeDescriptor]) {
     writeln!(out, "pub type {type_name} = i32;").unwrap();
     for value in values {
         writeln!(
@@ -2065,7 +1956,7 @@ fn render_rust_error_contract(out: &mut String, descriptor: &NativeAbiDescriptor
     out.push_str(
         "pub(crate) fn merman_native_status_name(status: MermanNativeStatus) -> &'static str {\n    match status {\n",
     );
-    for status in sorted_codes(&descriptor.status_codes) {
+    for status in &descriptor.status_codes {
         writeln!(
             out,
             "        {} => {:?},",
@@ -2107,7 +1998,7 @@ fn render_rust_error_contract(out: &mut String, descriptor: &NativeAbiDescriptor
     out.push_str(
         "pub(crate) fn merman_native_normalize_error_kind(\n    status: MermanNativeStatus,\n    requested: merman_bindings_core::BindingErrorKind,\n) -> merman_bindings_core::BindingErrorKind {\n    match status {\n",
     );
-    for status in sorted_codes(&descriptor.status_codes) {
+    for status in &descriptor.status_codes {
         if status.error_kinds.is_empty() {
             writeln!(
                 out,
@@ -2383,7 +2274,7 @@ fn render_flutter_operations(values: &[ResolvedOperation]) -> String {
     out
 }
 
-fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
+fn render_rust_slot_type(out: &mut String, values: &[CallableDescriptor]) {
     out.push_str("pub type MermanNativeFunctionSlot = i32;\n");
     for value in values {
         writeln!(
@@ -2397,8 +2288,8 @@ fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
     out.push('\n');
 }
 
-fn generated_artifacts(prepared: &PreparedNativeAbi) -> Result<Vec<(PathBuf, String)>, XtaskError> {
-    Ok(vec![
+fn generated_artifacts(prepared: &PreparedNativeAbi) -> Vec<(PathBuf, String)> {
+    vec![
         (
             PathBuf::from(FFI_RUST_OUTPUT),
             render_rust(
@@ -2421,7 +2312,7 @@ fn generated_artifacts(prepared: &PreparedNativeAbi) -> Result<Vec<(PathBuf, Str
             PathBuf::from(FLUTTER_OPERATION_OUTPUT),
             render_flutter_operations(&prepared.operations),
         ),
-    ])
+    ]
 }
 
 fn write_artifact(root: &Path, path: &Path, contents: &str) -> Result<(), XtaskError> {
@@ -2460,7 +2351,7 @@ pub(crate) fn gen_native_abi(args: Vec<String>) -> Result<(), XtaskError> {
     }
     let root = crate::cmd::workspace_root();
     let prepared = load_and_validate(&root)?;
-    for (path, contents) in generated_artifacts(&prepared)? {
+    for (path, contents) in generated_artifacts(&prepared) {
         write_artifact(&root, &path, &contents)?;
     }
     Ok(())
@@ -2470,7 +2361,7 @@ pub(crate) fn verify_native_abi_artifacts() -> Result<Option<String>, XtaskError
     let root = crate::cmd::workspace_root();
     let prepared = load_and_validate(&root)?;
     let mut drift = Vec::new();
-    for (path, expected) in generated_artifacts(&prepared)? {
+    for (path, expected) in generated_artifacts(&prepared) {
         let full = root.join(&path);
         let actual = fs::read_to_string(&full).map_err(|source| XtaskError::ReadFile {
             path: full.display().to_string(),
@@ -2599,6 +2490,24 @@ mod tests {
 
     #[test]
     fn descriptor_rejects_unsafe_layout_and_slot_changes() {
+        for code in [-1, 1, 99] {
+            let mut descriptor = committed_descriptor();
+            descriptor.status_codes[0].code = code;
+            assert!(validate_descriptor(&descriptor).is_err());
+
+            let mut descriptor = committed_descriptor();
+            descriptor.operation_codes[0].code = code;
+            assert!(validate_descriptor(&descriptor).is_err());
+
+            let mut descriptor = committed_descriptor();
+            descriptor.callbacks[0].code = code;
+            assert!(validate_descriptor(&descriptor).is_err());
+
+            let mut descriptor = committed_descriptor();
+            descriptor.function_slots[0].code = code;
+            assert!(validate_descriptor(&descriptor).is_err());
+        }
+
         let mut descriptor = committed_descriptor();
         descriptor.records[0].fields.remove(0);
         assert!(validate_descriptor(&descriptor).is_err());

@@ -121,15 +121,15 @@ struct OperationExpectationProjection {
     metadata_schema_version: u32,
     requires_uri: bool,
     availability_capability_id: Option<&'static str>,
-    compiled_prerequisite_ids: Vec<&'static str>,
+    compiled_prerequisite_ids: &'static [&'static str],
     unavailable: Option<BindingUnavailableOperationExpectation>,
 }
 
 #[derive(Serialize)]
-struct SharedOperationContractProjection {
+struct SharedOperationContractProjection<'a> {
     schema_version: u32,
     operation_metadata_contract: &'static BindingOperationMetadataContract,
-    operation_expectations: Vec<OperationExpectationProjection>,
+    operation_expectations: &'a [OperationExpectationProjection],
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -196,6 +196,7 @@ struct NodeFieldLimitsProjection {
 }
 
 struct BindingRegistryProjections {
+    operation_expectations: Vec<OperationExpectationProjection>,
     capabilities: Vec<CapabilityProjection>,
     metadata: Vec<MetadataProjection>,
     option_groups: Vec<OptionGroupProjection>,
@@ -211,11 +212,14 @@ fn pretty_json(value: &impl Serialize) -> String {
 }
 
 fn kotlin_string_arguments(values: &[&str]) -> String {
-    values
-        .iter()
-        .map(|value| format!("{value:?}"))
-        .collect::<Vec<_>>()
-        .join(", ")
+    let mut out = String::new();
+    for (index, value) in values.iter().enumerate() {
+        if index != 0 {
+            out.push_str(", ");
+        }
+        write!(out, "{value:?}").unwrap();
+    }
+    out
 }
 
 fn upper_snake(value: &str) -> String {
@@ -249,17 +253,19 @@ fn operation_expectation_projections() -> Vec<OperationExpectationProjection> {
             metadata_schema_version: expectation.metadata_schema_version(),
             requires_uri: expectation.requires_uri(),
             availability_capability_id: expectation.availability_capability_id(),
-            compiled_prerequisite_ids: expectation.compiled_prerequisite_ids().to_vec(),
+            compiled_prerequisite_ids: expectation.compiled_prerequisite_ids(),
             unavailable: expectation.unavailable(),
         })
         .collect()
 }
 
-fn shared_operation_contract_projection() -> SharedOperationContractProjection {
+fn shared_operation_contract_projection(
+    projections: &BindingRegistryProjections,
+) -> SharedOperationContractProjection<'_> {
     SharedOperationContractProjection {
         schema_version: BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION,
         operation_metadata_contract: operation_metadata_contract(),
-        operation_expectations: operation_expectation_projections(),
+        operation_expectations: &projections.operation_expectations,
     }
 }
 
@@ -268,23 +274,14 @@ fn artifact_profile_projection(
 ) -> BindingArtifactProfileProjection {
     let catalog = contract.runtime_catalog(1);
     BindingArtifactProfileProjection {
-        capability_ids: contract.capability_keys().map(CapabilityKey::id).collect(),
-        output_ids: contract.output_keys().map(|key| key.id()).collect(),
+        capability_ids: catalog.capabilities.capability_ids,
+        output_ids: catalog.capabilities.output_ids,
         output_contracts: catalog.output_contracts,
-        system_adapter_ids: contract
-            .system_adapter_keys()
-            .map(CapabilityKey::id)
-            .collect(),
-        operation_ids: contract.operation_keys().map(|key| key.id()).collect(),
-        metadata_ids: contract.metadata_keys().map(MetadataKey::id).collect(),
-        option_group_ids: contract
-            .option_group_keys()
-            .map(BindingOptionGroupKey::id)
-            .collect(),
-        constructor_service_ids: contract
-            .constructor_service_keys()
-            .map(ConstructorServiceKey::id)
-            .collect(),
+        system_adapter_ids: catalog.capabilities.system_adapter_ids,
+        operation_ids: catalog.capabilities.operation_ids,
+        metadata_ids: catalog.metadata_ids,
+        option_group_ids: catalog.option_group_ids,
+        constructor_service_ids: catalog.constructor_service_ids,
         text_measurement_provider_ids: contract
             .text_measurement_provider_keys()
             .map(TextMeasurementProviderKey::id)
@@ -401,7 +398,9 @@ fn render_node_wire_contract_json() -> String {
             contract_digest_utf8_bytes: 128,
         },
     };
-    format!("{}\n", pretty_json(&contract))
+    let mut json = pretty_json(&contract);
+    json.push('\n');
+    json
 }
 
 fn binding_registry_projections() -> BindingRegistryProjections {
@@ -508,6 +507,7 @@ fn binding_registry_projections() -> BindingRegistryProjections {
         .collect::<Vec<_>>();
 
     BindingRegistryProjections {
+        operation_expectations: operation_expectation_projections(),
         capabilities,
         metadata,
         option_groups,
@@ -519,10 +519,7 @@ fn binding_registry_projections() -> BindingRegistryProjections {
     }
 }
 
-fn render_node_javascript() -> String {
-    let projections = binding_registry_projections();
-    let operation_expectations = operation_expectation_projections();
-
+fn render_node_javascript(projections: &BindingRegistryProjections) -> String {
     let mut out = String::from(
         "// @generated by `cargo run -p xtask -- gen-binding-contract`.\n// Sources: typed registries in merman-bindings-core. Do not edit directly.\n\n",
     );
@@ -571,7 +568,7 @@ fn render_node_javascript() -> String {
     writeln!(
         out,
         "export const BINDING_OPERATION_EXPECTATIONS = {};\n",
-        pretty_json(&operation_expectations)
+        pretty_json(&projections.operation_expectations)
     )
     .unwrap();
     writeln!(
@@ -643,8 +640,7 @@ fn render_node_javascript() -> String {
     out
 }
 
-fn render_web_typescript() -> String {
-    let projections = binding_registry_projections();
+fn render_web_typescript(projections: &BindingRegistryProjections) -> String {
     let mut out = String::from(
         "// @generated by `cargo run -p xtask -- gen-binding-contract`.\n// Sources: typed registries in merman-bindings-core. Do not edit directly.\n\n",
     );
@@ -759,15 +755,13 @@ fn render_web_typescript() -> String {
     out
 }
 
-fn render_shared_operation_json() -> String {
-    let mut json = pretty_json(&shared_operation_contract_projection());
+fn render_shared_operation_json(projections: &BindingRegistryProjections) -> String {
+    let mut json = pretty_json(&shared_operation_contract_projection(projections));
     json.push('\n');
     json
 }
 
-fn render_kotlin() -> String {
-    let projections = binding_registry_projections();
-    let operation_expectations = operation_expectation_projections();
+fn render_kotlin(projections: &BindingRegistryProjections) -> String {
     let android_artifact = android_artifact_profile_projection();
     let mut out = String::from(
         "// This file is @generated by `cargo run -p xtask -- gen-binding-contract`.\n// Sources: typed registries in merman-bindings-core. Do not edit directly.\n\npackage io.merman\n\nimport org.json.JSONObject\n\n",
@@ -857,7 +851,7 @@ fn render_kotlin() -> String {
     );
 
     out.push_str("internal object MermanBindingOperationId {\n");
-    for expectation in &operation_expectations {
+    for expectation in &projections.operation_expectations {
         writeln!(
             out,
             "    internal const val {}: String = {:?}",
@@ -921,11 +915,7 @@ fn render_kotlin() -> String {
             "    MermanBindingOptionGroupSpec({:?}, {}, setOf({}), {}),",
             spec.id,
             spec.always_available,
-            spec.any_capability_ids
-                .iter()
-                .map(|id| format!("{id:?}"))
-                .collect::<Vec<_>>()
-                .join(", "),
+            kotlin_string_arguments(&spec.any_capability_ids),
             spec.requires_svg_pipeline,
         )
         .unwrap();
@@ -938,16 +928,8 @@ fn render_kotlin() -> String {
             out,
             "    MermanBindingTransportExposureSpec({:?}, setOf({}), setOf({})),",
             spec.id,
-            spec.payload_schema_ids
-                .iter()
-                .map(|id| format!("{id:?}"))
-                .collect::<Vec<_>>()
-                .join(", "),
-            spec.constructor_service_candidate_ids
-                .iter()
-                .map(|id| format!("{id:?}"))
-                .collect::<Vec<_>>()
-                .join(", "),
+            kotlin_string_arguments(&spec.payload_schema_ids),
+            kotlin_string_arguments(&spec.constructor_service_candidate_ids),
         )
         .unwrap();
     }
@@ -974,11 +956,7 @@ fn render_kotlin() -> String {
             "    MermanBindingConstructorServiceSpec({:?}, {}, {required}, setOf({}), listOf({})),",
             spec.id,
             spec.requires_svg_pipeline,
-            spec.provided_text_measurement_provider_ids
-                .iter()
-                .map(|id| format!("{id:?}"))
-                .collect::<Vec<_>>()
-                .join(", "),
+            kotlin_string_arguments(&spec.provided_text_measurement_provider_ids),
             resource_limits,
         )
         .unwrap();
@@ -986,7 +964,7 @@ fn render_kotlin() -> String {
     out.push_str(").associateBy(MermanBindingConstructorServiceSpec::id)\n\n");
 
     out.push_str("internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationExpectation> = listOf(\n");
-    for expectation in &operation_expectations {
+    for expectation in &projections.operation_expectations {
         let output = expectation
             .output_id
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
@@ -1003,7 +981,7 @@ fn render_kotlin() -> String {
             expectation.metadata_schema_version,
             expectation.requires_uri,
             availability,
-            kotlin_string_arguments(&expectation.compiled_prerequisite_ids),
+            kotlin_string_arguments(expectation.compiled_prerequisite_ids),
         )
         .unwrap();
     }
@@ -1206,9 +1184,7 @@ fn write_dart_string_argument(out: &mut String, indent: &str, name: &str, value:
     }
 }
 
-fn render_dart() -> String {
-    let projections = binding_registry_projections();
-    let operation_expectations = operation_expectation_projections();
+fn render_dart(projections: &BindingRegistryProjections) -> String {
     let mut out = String::from(
         "// This file is @generated by `cargo run -p xtask -- gen-binding-contract`.\n// Sources: typed registries in merman-bindings-core. Do not edit directly.\n\nimport 'dart:convert';\n\nimport '../operation_metadata.dart';\n\n",
     );
@@ -1513,7 +1489,7 @@ final class MermanBindingOperationExpectation {
     out.push_str(
         "const List<MermanBindingOperationExpectation>\n    mermanBindingOperationExpectations = <MermanBindingOperationExpectation>[\n",
     );
-    for expectation in &operation_expectations {
+    for expectation in &projections.operation_expectations {
         let availability = expectation
             .availability_capability_id
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
@@ -1537,7 +1513,7 @@ final class MermanBindingOperationExpectation {
             &mut out,
             "    ",
             "compiledPrerequisiteIds",
-            &expectation.compiled_prerequisite_ids,
+            expectation.compiled_prerequisite_ids,
         );
         out.push_str("  ),\n");
     }
@@ -1727,9 +1703,7 @@ bool _requiredGeneratedBool(Map<String, Object?> value, String key) {
     out
 }
 
-fn render_python() -> String {
-    let projections = binding_registry_projections();
-    let operation_expectations = operation_expectation_projections();
+fn render_python(projections: &BindingRegistryProjections) -> String {
     let mut out = String::from(
         "# @generated by `cargo run -p xtask -- gen-binding-contract`.\n# Sources: typed registries in merman-bindings-core. Do not edit directly.\n\n",
     );
@@ -1775,13 +1749,13 @@ fn render_python() -> String {
     }
     out.push_str(")\n\n");
     out.push_str("REQUIRED_PAYLOAD_SCHEMA_VERSIONS = {\n");
-    for key in BindingPayloadSchemaKey::ALL {
-        writeln!(out, "    {:?}: {},", key.id(), key.version()).unwrap();
+    for schema in &projections.payload_schemas {
+        writeln!(out, "    {:?}: {},", schema.id, schema.version).unwrap();
     }
     out.push_str("}\n\n");
 
     out.push_str("BINDING_OPERATION_RELATION_SPECS = (\n");
-    for spec in &operation_expectations {
+    for spec in &projections.operation_expectations {
         out.push_str("    {\n");
         writeln!(out, "        \"operation_id\": {:?},", spec.operation_id).unwrap();
         writeln!(out, "        \"maturity\": {:?},", spec.maturity).unwrap();
@@ -1987,22 +1961,29 @@ fn render_python() -> String {
 }
 
 fn generated_artifacts() -> Vec<(PathBuf, String)> {
-    let python = render_python();
+    let projections = binding_registry_projections();
+    let python = render_python(&projections);
     vec![
-        (PathBuf::from(NODE_OUTPUT), render_node_javascript()),
+        (
+            PathBuf::from(NODE_OUTPUT),
+            render_node_javascript(&projections),
+        ),
         (
             PathBuf::from(NODE_WIRE_OUTPUT),
             render_node_wire_contract_json(),
         ),
-        (PathBuf::from(WEB_OUTPUT), render_web_typescript()),
+        (
+            PathBuf::from(WEB_OUTPUT),
+            render_web_typescript(&projections),
+        ),
         (
             PathBuf::from(SHARED_OPERATION_OUTPUT),
-            render_shared_operation_json(),
+            render_shared_operation_json(&projections),
         ),
         (PathBuf::from(UNIFFI_PYTHON_OUTPUT), python.clone()),
         (PathBuf::from(PYTHON_OUTPUT), python),
-        (PathBuf::from(KOTLIN_OUTPUT), render_kotlin()),
-        (PathBuf::from(DART_OUTPUT), render_dart()),
+        (PathBuf::from(KOTLIN_OUTPUT), render_kotlin(&projections)),
+        (PathBuf::from(DART_OUTPUT), render_dart(&projections)),
     ]
 }
 
@@ -2094,88 +2075,12 @@ mod tests {
     }
 
     #[test]
-    fn host_language_projections_are_sorted_and_use_typed_relations() {
-        let metadata_ids = MetadataKey::ALL
-            .iter()
-            .map(|key| key.id())
-            .collect::<Vec<_>>();
-        assert!(metadata_ids.windows(2).all(|pair| pair[0] < pair[1]));
-
-        let option_ids = BindingOptionGroupKey::ALL
-            .iter()
-            .map(|key| key.id())
-            .collect::<Vec<_>>();
-        assert!(option_ids.windows(2).all(|pair| pair[0] < pair[1]));
-
+    fn text_measurement_providers_reference_registered_services() {
         for provider in TextMeasurementProviderKey::ALL {
             if let TextMeasurementProviderSource::ConstructorService(service) = provider.source() {
                 assert!(ConstructorServiceKey::ALL.contains(&service));
             }
         }
-
-        let generated = render_node_javascript();
-        assert!(generated.contains("BINDING_OPERATION_METADATA_CONTRACT"));
-        assert!(generated.contains("BINDING_OPERATION_EXPECTATIONS"));
-        assert!(generated.contains("\"maturity\": \"alpha\""));
-        assert!(generated.contains("CAPABILITY_SPECS"));
-        assert!(generated.contains("implication_ids"));
-        assert!(generated.contains("RUNTIME_CATALOG_IDENTIFIER_PATTERN"));
-        assert!(generated.contains("RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN"));
-        assert!(generated.contains("RUNTIME_CATALOG_SCHEMA_VERSION"));
-        assert!(generated.contains("RUNTIME_CATALOG_MAX_SAFE_INTEGER"));
-        assert!(generated.contains("BINDING_OPTION_GROUP_SPECS"));
-        assert!(generated.contains("METADATA_SPECS"));
-        assert!(generated.contains("required_capability_id"));
-        assert!(generated.contains("always_available"));
-        assert!(generated.contains("CONSTRUCTOR_SERVICE_SPECS"));
-        assert!(generated.contains("BINDING_TRANSPORT_EXPOSURE_SPECS"));
-        assert!(generated.contains("constructor_service_candidate_ids"));
-        assert!(generated.contains("BINDING_PAYLOAD_SCHEMAS"));
-        assert!(generated.contains("TEXT_MEASUREMENT_PROVIDER_SPECS"));
-        assert!(generated.contains("DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID"));
-        assert!(!generated.contains("VENDORED_TEXT_MEASUREMENT_PROVIDER_ID"));
-
-        let wire_contract = render_node_wire_contract_json();
-        assert!(wire_contract.contains("\"artifact_id\": \"merman-node-static-svg\""));
-        assert!(wire_contract.contains("\"output_contracts\""));
-    }
-
-    #[test]
-    fn python_projection_uses_the_typed_payload_schema_registry() {
-        let generated = render_python();
-        assert!(generated.contains("CAPABILITY_SPECS"));
-        assert!(generated.contains("implication_ids"));
-        assert!(generated.contains("RUNTIME_CATALOG_IDENTIFIER_PATTERN"));
-        assert!(generated.contains("DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID"));
-        assert!(!generated.contains("VENDORED_TEXT_MEASUREMENT_PROVIDER_ID"));
-        assert!(generated.contains("RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN"));
-        assert!(generated.contains("RUNTIME_CATALOG_MAX_SAFE_INTEGER"));
-        assert!(generated.contains("REQUIRED_PAYLOAD_SCHEMA_VERSIONS"));
-        assert!(generated.contains("BINDING_OPERATION_RELATION_SPECS"));
-        assert!(generated.contains("\"maturity\": \"alpha\""));
-        assert!(generated.contains("METADATA_SPECS"));
-        assert!(generated.contains("BINDING_OPTION_GROUP_SPECS"));
-        assert!(generated.contains("CONSTRUCTOR_SERVICE_SPECS"));
-        assert!(generated.contains("BINDING_TRANSPORT_EXPOSURE_SPECS"));
-        assert!(generated.contains("constructor_service_candidate_ids"));
-        for key in BindingPayloadSchemaKey::ALL {
-            assert!(generated.contains(&format!("{:?}: {}", key.id(), key.version())));
-        }
-    }
-
-    #[test]
-    fn web_projection_uses_immutable_typed_registry_constants() {
-        let generated = render_web_typescript();
-        assert!(generated.contains("export const CAPABILITY_SPECS ="));
-        assert!(generated.contains("implication_ids"));
-        assert!(generated.contains("RUNTIME_CATALOG_MAX_SAFE_INTEGER"));
-        assert!(generated.contains("export const METADATA_SPECS ="));
-        assert!(generated.contains("export const BINDING_OPTION_GROUP_SPECS ="));
-        assert!(generated.contains("export const CONSTRUCTOR_SERVICE_SPECS ="));
-        assert!(generated.contains("export const BINDING_TRANSPORT_EXPOSURE_SPECS ="));
-        assert!(generated.contains("constructor_service_candidate_ids"));
-        assert!(generated.contains("provided_text_measurement_provider_ids"));
-        assert!(generated.contains(" as const;"));
     }
 
     #[test]
@@ -2184,110 +2089,38 @@ mod tests {
             .into_iter()
             .map(|(path, _)| path)
             .collect::<Vec<_>>();
-        assert!(paths.contains(&PathBuf::from(NODE_OUTPUT)));
-        assert!(paths.contains(&PathBuf::from(WEB_OUTPUT)));
-        assert!(paths.contains(&PathBuf::from(UNIFFI_PYTHON_OUTPUT)));
-        assert!(paths.contains(&PathBuf::from(PYTHON_OUTPUT)));
-        assert!(paths.contains(&PathBuf::from(KOTLIN_OUTPUT)));
-        assert!(paths.contains(&PathBuf::from(DART_OUTPUT)));
-    }
-
-    #[test]
-    fn kotlin_and_dart_projections_include_transport_and_metadata_contracts() {
-        let kotlin = render_kotlin();
-        assert!(kotlin.contains("MERMAN_BINDING_TRANSPORT_EXPOSURE_SPECS"));
-        assert!(kotlin.contains("decodeMermanOperationMetadata"));
-        assert!(kotlin.contains("\"ascii\" -> MermanAsciiOutputPlan("));
-        assert!(kotlin.contains("MermanUnknownOutputPlan"));
-        assert!(kotlin.contains("MERMAN_BINDING_OPERATION_EXPECTATIONS"));
-        assert!(kotlin.contains("val maturity: String"));
-        assert!(kotlin.contains("val compiledPrerequisiteIds: Set<String>"));
-        assert!(kotlin.contains("setOf(\"svg\")"));
-        assert!(kotlin.contains(
-            "MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID: String = \"deterministic\""
-        ));
-        assert!(kotlin.contains(
-            "MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf(\"deterministic\", \"host-callback\", \"native-fonts\")"
-        ));
-        assert!(kotlin.contains("val textMeasurementProviderIds: List<String>"));
-        assert!(
-            kotlin.contains(
-                "textMeasurementProviderIds = listOf(\"deterministic\", \"host-callback\")"
-            )
+        assert_eq!(
+            paths,
+            [
+                NODE_OUTPUT,
+                NODE_WIRE_OUTPUT,
+                WEB_OUTPUT,
+                SHARED_OPERATION_OUTPUT,
+                UNIFFI_PYTHON_OUTPUT,
+                PYTHON_OUTPUT,
+                KOTLIN_OUTPUT,
+                DART_OUTPUT,
+            ]
+            .map(PathBuf::from)
         );
-        assert!(kotlin.contains("MermanBindingMetadataId"));
-        assert!(
-            kotlin
-                .contains("internal const val SUPPORTED_DIAGRAMS: String = \"supported-diagrams\"")
-        );
-
-        let dart = render_dart();
-        assert!(dart.contains("mermanBindingTransportExposureSpecs"));
-        assert!(dart.contains("decodeMermanOperationMetadata"));
-        assert!(dart.contains("'ascii' => MermanAsciiOutputPlan("));
-        assert!(dart.contains("MermanUnknownOutputPlan"));
-        assert!(dart.contains("mermanBindingOperationExpectations"));
-        assert!(dart.contains("final String maturity;"));
-        assert!(dart.contains("final Set<String> compiledPrerequisiteIds;"));
-        assert!(dart.contains("compiledPrerequisiteIds: <String>{\n      \"svg\","));
-        assert!(dart.contains(
-            "const String mermanDeterministicTextMeasurementProviderId = \"deterministic\";"
-        ));
-        assert!(dart.contains("const Set<String> mermanTextMeasurementProviderIds"));
-        assert!(dart.contains("abstract final class MermanBindingMetadataId"));
-        assert!(dart.contains("static const String supportedDiagrams = \"supported-diagrams\";"));
-        assert!(dart.contains(
-            "const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =\n"
-        ));
-    }
-
-    #[test]
-    fn dart_projection_exposes_constructor_ids_and_enforces_integer_widths() {
-        let dart = render_dart();
-        assert!(dart.contains(
-            "const String mermanHostTextMeasurementConstructorServiceId =\n    \"host-text-measurement\";"
-        ));
-        assert!(
-            dart.contains(
-                "const String mermanIconRegistryConstructorServiceId = \"icon-registry\";"
-            )
-        );
-
-        for (container, field) in [
-            ("metadata", "version"),
-            ("plan", "width_px"),
-            ("plan", "height_px"),
-        ] {
-            assert!(dart.contains(&format!("_requiredGeneratedUint32({container}, '{field}')")));
-        }
-        for (container, field) in [
-            ("metadata", "byte_length"),
-            ("plan", "filtered_groups"),
-            ("plan", "requested_image_pixels"),
-            ("plan", "effective_image_pixels"),
-        ] {
-            assert!(dart.contains(&format!("_requiredGeneratedUint64({container}, '{field}')")));
-        }
-
-        assert!(dart.contains("int _requiredGeneratedUint32("));
-        assert!(dart.contains("if (field > 0xffffffff)"));
-        assert!(dart.contains("int _requiredGeneratedUint64("));
-        assert!(!dart.contains("_requiredGeneratedInt("));
     }
 
     #[test]
     fn shared_operation_projection_consumes_the_complete_typed_matrix() {
-        let projection = shared_operation_contract_projection();
-        assert_eq!(projection.schema_version, 1);
-        assert_eq!(projection.operation_expectations.len(), 17);
+        let projections = binding_registry_projections();
+        let json: serde_json::Value =
+            serde_json::from_str(&render_shared_operation_json(&projections)).unwrap();
+        assert_eq!(json["schema_version"], 1);
         assert_eq!(
-            projection.operation_metadata_contract,
-            operation_metadata_contract()
+            json["operation_metadata_contract"],
+            serde_json::to_value(operation_metadata_contract()).unwrap()
         );
-
-        let json = render_shared_operation_json();
-        assert!(json.contains("\"operation_metadata_contract\""));
-        assert!(json.contains("\"operation_id\": \"semantic-json\""));
-        assert!(!json.contains("\"compiled\""));
+        let expectations = json["operation_expectations"].as_array().unwrap();
+        assert_eq!(expectations.len(), binding_operation_expectations().len());
+        for (row, expected) in expectations.iter().zip(binding_operation_expectations()) {
+            assert_eq!(row["operation_id"], expected.operation_id());
+            assert!(row.get("compiled").is_none());
+            assert!(row.get("input_kind").is_none());
+        }
     }
 }

@@ -312,34 +312,6 @@ const KOTLIN_LIMIT_PROJECTION: ProjectionRules = ProjectionRules {
     reserved_words: &[],
     fixed_members: &[],
 };
-const KOTLIN_OVERRIDE_PROJECTION: ProjectionRules = ProjectionRules {
-    language: "Kotlin",
-    namespace: "MermanResourceOverrideId",
-    project: upper_snake,
-    reserved_words: &[],
-    fixed_members: &[],
-};
-const PYTHON_PROFILE_PROJECTION: ProjectionRules = ProjectionRules {
-    language: "Python",
-    namespace: "ResourceProfile",
-    project: upper_snake,
-    reserved_words: &[],
-    fixed_members: &[],
-};
-const PYTHON_LIMIT_PROJECTION: ProjectionRules = ProjectionRules {
-    language: "Python",
-    namespace: "ResourceLimitId",
-    project: upper_snake,
-    reserved_words: &[],
-    fixed_members: &[],
-};
-const PYTHON_OVERRIDE_PROJECTION: ProjectionRules = ProjectionRules {
-    language: "Python",
-    namespace: "ResourceOverrideId",
-    project: upper_snake,
-    reserved_words: &[],
-    fixed_members: &[],
-};
 
 fn pascal_case(value: &str) -> String {
     value
@@ -505,6 +477,8 @@ fn validate_resource_projections(contract: &BindingResourceContract) -> Result<(
         RUST_OVERRIDE_PROJECTION,
     )?;
 
+    // Python uses the same UPPER_SNAKE projection without reserved words or fixed members.
+    // Checking every limit also covers the overridable subset for both languages.
     validate_projected_members(
         contract.profiles.iter().map(|profile| profile.id),
         "resource profile",
@@ -514,35 +488,6 @@ fn validate_resource_projections(contract: &BindingResourceContract) -> Result<(
         contract.limits.iter().map(|limit| limit.stable_id),
         "resource limit",
         KOTLIN_LIMIT_PROJECTION,
-    )?;
-    validate_projected_members(
-        contract
-            .limits
-            .iter()
-            .filter(|limit| limit.overridable)
-            .map(|limit| limit.stable_id),
-        "resource override",
-        KOTLIN_OVERRIDE_PROJECTION,
-    )?;
-
-    validate_projected_members(
-        contract.profiles.iter().map(|profile| profile.id),
-        "resource profile",
-        PYTHON_PROFILE_PROJECTION,
-    )?;
-    validate_projected_members(
-        contract.limits.iter().map(|limit| limit.stable_id),
-        "resource limit",
-        PYTHON_LIMIT_PROJECTION,
-    )?;
-    validate_projected_members(
-        contract
-            .limits
-            .iter()
-            .filter(|limit| limit.overridable)
-            .map(|limit| limit.stable_id),
-        "resource override",
-        PYTHON_OVERRIDE_PROJECTION,
     )?;
 
     validate_c_macro_symbols(contract)?;
@@ -1085,16 +1030,6 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
 
 fn render_uniffi(contract: &BindingResourceContract) -> String {
     let profiles = &contract.profiles;
-    let limits = &contract.limits;
-    let override_limits = UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER
-        .iter()
-        .map(|id| {
-            limits
-                .iter()
-                .find(|limit| limit.overridable && limit.stable_id == *id)
-                .expect("validated UniFFI override wire id must resolve")
-        })
-        .collect::<Vec<_>>();
     let mut out = generated_preamble("//");
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]\npub enum MermanResourceProfile {\n");
     for profile in profiles {
@@ -1113,20 +1048,14 @@ fn render_uniffi(contract: &BindingResourceContract) -> String {
         .unwrap();
     }
     out.push_str("        }\n    }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]\npub enum MermanResourceOverrideId {\n");
-    for limit in &override_limits {
-        writeln!(out, "    {},", pascal_case(limit.stable_id)).unwrap();
+    for &id in UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER {
+        writeln!(out, "    {},", pascal_case(id)).unwrap();
     }
     out.push_str(
         "}\n\nimpl MermanResourceOverrideId {\n    fn id(self) -> &'static str { match self {\n",
     );
-    for limit in &override_limits {
-        writeln!(
-            out,
-            "        Self::{} => {:?},",
-            pascal_case(limit.stable_id),
-            limit.stable_id
-        )
-        .unwrap();
+    for &id in UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER {
+        writeln!(out, "        Self::{} => {:?},", pascal_case(id), id).unwrap();
     }
     out.push_str("        }\n    }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]\npub struct MermanResourceLimitOverride {\n    pub id: MermanResourceOverrideId,\n    pub value: u64,\n}\n\nfn resource_override_value<T>(value: u64, target: &str) -> Result<T, MermanError>\nwhere\n    T: TryFrom<u64>,\n{\n    T::try_from(value).map_err(|_| {\n        MermanError::invalid_argument(format!(\"resource override exceeds {target}\"))\n    })\n}\n\nfn resource_override_host_value(value: u64) -> Result<usize, MermanError> {\n    resource_override_value(value, \"host usize\")\n}\n\n#[uniffi::export]\npub fn resource_options_json(\n    profile: Option<MermanResourceProfile>,\n    overrides: Vec<MermanResourceLimitOverride>,\n) -> Result<String, MermanError> {\n    let pairs = overrides\n        .iter()\n        .map(|override_| {\n            resource_override_host_value(override_.value)\n                .map(|value| (override_.id.id(), value))\n        })\n        .collect::<Result<Vec<_>, _>>()?;\n    let profile_id = profile.map(MermanResourceProfile::id);\n    let bytes = merman_bindings_core::resource_options_json(profile_id, &pairs)\n        .map_err(MermanError::from_binding)?;\n    String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))\n}\n");
     out
@@ -1487,6 +1416,38 @@ mod tests {
     }
 
     #[test]
+    fn resource_projection_rejects_uniffi_wire_registry_drift() {
+        let mut missing = binding_resource_contract();
+        missing
+            .limits
+            .iter_mut()
+            .find(|limit| limit.overridable)
+            .expect("committed contract has an overridable limit")
+            .stable_id = "new_limit";
+        let error = validate_resource_projections(&missing)
+            .expect_err("new overrides must be added to the append-only UniFFI wire order");
+        assert_eq!(
+            error,
+            "overridable resource limit `new_limit` is missing from the append-only UniFFI wire order"
+        );
+
+        let mut unavailable = binding_resource_contract();
+        let id = UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER[0];
+        unavailable
+            .limits
+            .iter_mut()
+            .find(|limit| limit.stable_id == id)
+            .expect("committed wire id has a resource descriptor")
+            .overridable = false;
+        let error = validate_resource_projections(&unavailable)
+            .expect_err("wire ids must remain overridable in the resource registry");
+        assert_eq!(
+            error,
+            format!("UniFFI resource override wire id `{id}` is not an overridable resource limit")
+        );
+    }
+
+    #[test]
     fn upper_snake_projection_is_case_sensitive_valid_and_collision_safe() {
         validate_projected_members(
             ["class", "lambda"],
@@ -1497,7 +1458,7 @@ mod tests {
         validate_projected_members(
             ["known-by-id", "mro"],
             "synthetic resource limit",
-            PYTHON_LIMIT_PROJECTION,
+            KOTLIN_LIMIT_PROJECTION,
         )
         .expect("uppercase Python members do not collide with lowercase attributes");
 

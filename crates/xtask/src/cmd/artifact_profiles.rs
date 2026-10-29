@@ -150,20 +150,14 @@ impl HostArtifactProfile {
             .arg(&self.package)
             .arg("--manifest-path")
             .arg(&self.manifest_path);
-        let kinds = self
-            .target_kinds
-            .iter()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>();
-        if kinds == BTreeSet::from(["bin"]) {
+        if !self.target_kinds.is_empty() && self.target_kinds.iter().all(|kind| kind == "bin") {
             command.arg("--bin").arg(&self.target_name);
-        } else if !kinds.is_disjoint(&BTreeSet::from([
-            "lib",
-            "proc-macro",
-            "cdylib",
-            "rlib",
-            "staticlib",
-        ])) {
+        } else if self.target_kinds.iter().any(|kind| {
+            matches!(
+                kind.as_str(),
+                "lib" | "proc-macro" | "cdylib" | "rlib" | "staticlib"
+            )
+        }) {
             command.arg("--lib");
         } else {
             return Err(format!(
@@ -181,18 +175,66 @@ impl HostArtifactProfile {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct CargoMetadata {
     packages: Vec<CargoPackage>,
+    workspace_members: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct CargoPackage {
-    name: String,
-    manifest_path: PathBuf,
-    features: BTreeMap<String, Vec<String>>,
-    targets: Vec<CargoMetadataTarget>,
-    metadata: serde_json::Value,
+pub(super) struct CargoPackage {
+    pub(super) id: String,
+    pub(super) name: String,
+    pub(super) manifest_path: PathBuf,
+    #[serde(default)]
+    pub(super) features: BTreeMap<String, Vec<String>>,
+    pub(super) targets: Vec<CargoMetadataTarget>,
+    #[serde(default)]
+    pub(super) metadata: serde_json::Value,
+    #[serde(default)]
+    pub(super) dependencies: Vec<CargoDependency>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(super) struct CargoDependency {
+    pub(super) name: String,
+    pub(super) kind: Option<String>,
+    pub(super) uses_default_features: bool,
+    #[serde(default)]
+    pub(super) optional: bool,
+    #[serde(default)]
+    pub(super) features: Vec<String>,
+}
+
+impl CargoPackage {
+    /// Follows local feature groups; Cargo owns dependency feature resolution.
+    pub(super) fn local_feature_closure<'a>(
+        &'a self,
+        roots: impl IntoIterator<Item = &'a str>,
+    ) -> Result<BTreeSet<&'a str>, String> {
+        let mut visited = BTreeSet::new();
+        let mut pending = roots.into_iter().collect::<Vec<_>>();
+        while let Some(feature) = pending.pop() {
+            if !visited.insert(feature) {
+                continue;
+            }
+            let edges = self.features.get(feature).ok_or_else(|| {
+                format!(
+                    "{}: unknown feature `{feature}`",
+                    self.manifest_path.display()
+                )
+            })?;
+            for edge in edges {
+                if !edge.starts_with("dep:")
+                    && !edge.contains('/')
+                    && self.features.contains_key(edge)
+                {
+                    pending.push(edge.as_str());
+                }
+            }
+        }
+        Ok(visited)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -203,7 +245,7 @@ struct CargoDistRecipe {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct CargoMetadataTarget {
+pub(super) struct CargoMetadataTarget {
     name: String,
     kind: Vec<String>,
     crate_types: Vec<String>,
@@ -244,11 +286,14 @@ fn validate_kebab_id(value: &str, path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_sorted_unique(values: &[String], path: &str) -> Result<BTreeSet<String>, String> {
+fn validate_sorted_unique<'a>(
+    values: &'a [String],
+    path: &str,
+) -> Result<BTreeSet<&'a str>, String> {
     let mut set = BTreeSet::new();
     for (index, value) in values.iter().enumerate() {
         require_non_empty(value, &format!("{path}[{index}]"))?;
-        if !set.insert(value.clone()) {
+        if !set.insert(value.as_str()) {
             return Err(format!("{path}[{index}]: duplicate value `{value}`"));
         }
     }
@@ -312,8 +357,40 @@ fn relative_manifest(root: &Path, path: &Path) -> Result<String, String> {
         .map(|relative| relative.to_string_lossy().replace('\\', "/"))
 }
 
+pub(super) fn load_workspace_packages(
+    root: &Path,
+    locked: bool,
+) -> Result<Vec<CargoPackage>, String> {
+    let mut command = Command::new("cargo");
+    command.args(["metadata", "--no-deps", "--format-version", "1"]);
+    if locked {
+        command.arg("--locked");
+    }
+    let output = command
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cannot execute `cargo metadata`: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "`cargo metadata` failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let metadata: CargoMetadata = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("cannot decode `cargo metadata`: {error}"))?;
+    let workspace_members = metadata
+        .workspace_members
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    Ok(metadata
+        .packages
+        .into_iter()
+        .filter(|package| workspace_members.contains(&package.id))
+        .collect())
+}
+
 impl ValidationContext {
-    fn load(root: &Path) -> Result<Self, String> {
+    fn load(root: &Path, locked: bool) -> Result<Self, String> {
         let root = fs::canonicalize(root).map_err(|error| {
             format!(
                 "cannot resolve workspace root `{}`: {error}",
@@ -322,21 +399,8 @@ impl ValidationContext {
         })?;
         let capability = super::capability_surface::load_capability_contract_catalog(&root)
             .map_err(|error| format!("capability authority: {error}"))?;
-        let output = Command::new("cargo")
-            .args(["metadata", "--no-deps", "--format-version", "1"])
-            .current_dir(&root)
-            .output()
-            .map_err(|error| format!("cannot execute `cargo metadata`: {error}"))?;
-        if !output.status.success() {
-            return Err(format!(
-                "`cargo metadata` failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        let metadata: CargoMetadata = serde_json::from_slice(&output.stdout)
-            .map_err(|error| format!("cannot decode `cargo metadata`: {error}"))?;
         let mut packages = BTreeMap::new();
-        for package in metadata.packages {
+        for package in load_workspace_packages(&root, locked)? {
             let manifest = relative_manifest(&root, &package.manifest_path)?;
             packages.insert((package.name.clone(), manifest), package);
         }
@@ -379,40 +443,10 @@ impl ValidationContext {
     }
 }
 
-fn expand_local_feature(
-    name: &str,
-    features: &BTreeMap<String, Vec<String>>,
-    enabled: &mut BTreeSet<String>,
-) {
-    if !enabled.insert(name.to_string()) {
-        return;
-    }
-    let Some(edges) = features.get(name) else {
-        return;
-    };
-    for edge in edges {
-        let candidate = edge.strip_suffix('?').unwrap_or(edge);
-        if features.contains_key(candidate) {
-            expand_local_feature(candidate, features, enabled);
-        }
-    }
-}
-
-fn enabled_local_features(package: &CargoPackage, recipe: &CargoRecipe) -> BTreeSet<String> {
-    let mut enabled = BTreeSet::new();
-    if recipe.default_features {
-        expand_local_feature("default", &package.features, &mut enabled);
-    }
-    for feature in &recipe.features {
-        expand_local_feature(feature, &package.features, &mut enabled);
-    }
-    enabled
-}
-
 fn validate_capability_feature_closure(
     profile: &ArtifactProfile,
     package: &CargoPackage,
-    enabled: &BTreeSet<String>,
+    enabled: &BTreeSet<&str>,
     catalog: &CapabilityContractCatalog,
     path: &str,
 ) -> Result<(), String> {
@@ -461,7 +495,7 @@ fn validate_capability_feature_closure(
         .features
         .keys()
         .filter(|feature| catalog.capability_targets.contains_key(*feature))
-        .filter(|feature| enabled.contains(*feature))
+        .filter(|feature| enabled.contains(feature.as_str()))
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
     if enabled.contains(NATIVE_RUNTIME_FEATURE) {
@@ -481,18 +515,19 @@ fn validate_capability_feature_closure(
     Ok(())
 }
 
-fn derive_output_surface(
-    catalog: &CapabilityContractCatalog,
+fn derive_output_surface<'a>(
+    catalog: &'a CapabilityContractCatalog,
     target: &str,
-    capabilities: &BTreeSet<String>,
-) -> BTreeSet<String> {
+    capabilities: &BTreeSet<&str>,
+) -> BTreeSet<&'a str> {
     catalog
         .output_capabilities
         .iter()
         .filter(|(output, capability)| {
-            capabilities.contains(*capability) && catalog.output_targets[*output].contains(target)
+            capabilities.contains(capability.as_str())
+                && catalog.output_targets[*output].contains(target)
         })
-        .map(|(output, _)| output.clone())
+        .map(|(output, _)| output.as_str())
         .collect()
 }
 
@@ -516,7 +551,7 @@ fn validate_cargo_dist_recipe(
         .metadata
         .get("dist")
         .ok_or_else(|| format!("{metadata_path}: missing exact cargo-dist recipe"))?;
-    let recipe = serde_json::from_value::<CargoDistRecipe>(metadata.clone())
+    let recipe = CargoDistRecipe::deserialize(metadata)
         .map_err(|error| format!("{metadata_path}: invalid cargo-dist recipe: {error}"))?;
     if recipe.default_features != profile.cargo.default_features {
         return Err(format!(
@@ -530,7 +565,7 @@ fn validate_cargo_dist_recipe(
         .cargo
         .features
         .iter()
-        .cloned()
+        .map(String::as_str)
         .collect::<BTreeSet<_>>();
     if actual_features != expected_features {
         return Err(format!(
@@ -564,7 +599,7 @@ fn validate_expected(
     )?;
 
     for capability in &capabilities {
-        let targets = catalog.capability_targets.get(capability).ok_or_else(|| {
+        let targets = catalog.capability_targets.get(*capability).ok_or_else(|| {
             format!("{path}.expected.capabilities: unknown capability `{capability}`")
         })?;
         if !targets.contains(target) {
@@ -572,8 +607,8 @@ fn validate_expected(
                 "{path}.expected.capabilities: `{capability}` is unavailable on `{target}`"
             ));
         }
-        for implied in &catalog.capability_implications[capability] {
-            if !capabilities.contains(implied) {
+        for implied in &catalog.capability_implications[*capability] {
+            if !capabilities.contains(implied.as_str()) {
                 return Err(format!(
                     "{path}.expected.capabilities: `{capability}` requires `{implied}`"
                 ));
@@ -589,15 +624,15 @@ fn validate_expected(
     for output in &outputs {
         let output_target = catalog
             .output_targets
-            .get(output)
+            .get(*output)
             .ok_or_else(|| format!("{path}.expected.outputs: unknown output `{output}`"))?;
         if !output_target.contains(target) {
             return Err(format!(
                 "{path}.expected.outputs: `{output}` is unavailable on `{target}`"
             ));
         }
-        let capability = &catalog.output_capabilities[output];
-        if !capabilities.contains(capability) {
+        let capability = &catalog.output_capabilities[*output];
+        if !capabilities.contains(capability.as_str()) {
             return Err(format!(
                 "{path}.expected.outputs: `{output}` requires capability `{capability}`"
             ));
@@ -676,7 +711,11 @@ fn validate_profile(
         &profile.cargo.target.kinds,
         &format!("{path}.cargo.target.kinds"),
     )?;
-    let actual_kinds = target.kind.iter().cloned().collect::<BTreeSet<_>>();
+    let actual_kinds = target
+        .kind
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
     if expected_kinds != actual_kinds {
         return Err(format!(
             "{path}.cargo.target.kinds: expected {expected_kinds:?}, found {actual_kinds:?}"
@@ -686,7 +725,11 @@ fn validate_profile(
         &profile.cargo.target.crate_types,
         &format!("{path}.cargo.target.crate_types"),
     )?;
-    let actual_crate_types = target.crate_types.iter().cloned().collect::<BTreeSet<_>>();
+    let actual_crate_types = target
+        .crate_types
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
     if expected_crate_types != actual_crate_types {
         return Err(format!(
             "{path}.cargo.target.crate_types: expected {expected_crate_types:?}, found {actual_crate_types:?}"
@@ -699,16 +742,17 @@ fn validate_profile(
     let actual_required = target
         .required_features
         .iter()
-        .cloned()
+        .map(String::as_str)
         .collect::<BTreeSet<_>>();
     if expected_required != actual_required {
         return Err(format!(
             "{path}.cargo.target.required_features: expected {expected_required:?}, found {actual_required:?}"
         ));
     }
-    let enabled = enabled_local_features(package, &profile.cargo);
+    let enabled =
+        package.local_feature_closure(profile.cargo.features.iter().map(String::as_str))?;
     for required in expected_required {
-        if !enabled.contains(&required) {
+        if !enabled.contains(required) {
             return Err(format!(
                 "{path}.cargo.target.required_features: `{required}` is not enabled"
             ));
@@ -722,7 +766,7 @@ fn validate_profile(
     let selected_families = merman_core::diagram_family_selectors()
         .iter()
         .filter(|selector| enabled.contains(selector.feature))
-        .map(|selector| selector.logical_family_kind.to_string())
+        .map(|selector| selector.logical_family_kind)
         .collect::<BTreeSet<_>>();
     if diagram_families != selected_families {
         return Err(format!(
@@ -782,8 +826,8 @@ fn validate_artifact_profile_coverage(
         .iter()
         .map(|profile| {
             (
-                profile.cargo.package.clone(),
-                profile.cargo.manifest.clone(),
+                profile.cargo.package.as_str(),
+                profile.cargo.manifest.as_str(),
             )
         })
         .collect::<BTreeSet<_>>();
@@ -791,7 +835,7 @@ fn validate_artifact_profile_coverage(
         .iter()
         .filter_map(|((package, manifest), metadata)| {
             match package_requires_artifact_profile(metadata, manifest) {
-                Ok(true) => Some(Ok((package.clone(), manifest.clone()))),
+                Ok(true) => Some(Ok((package.as_str(), manifest.as_str()))),
                 Ok(false) => None,
                 Err(error) => Some(Err(error)),
             }
@@ -923,10 +967,14 @@ pub(crate) fn verify_artifact_profiles(args: Vec<String>) -> Result<(), String> 
     Ok(())
 }
 
-/// Loads every validated host and WASM artifact recipe from one descriptor pass.
-pub(crate) fn load_artifact_profile_catalog() -> Result<ArtifactProfileCatalog, String> {
+/// Loads artifact recipes and workspace packages in one locked metadata pass.
+pub(super) fn load_feature_matrix_inputs()
+-> Result<(ArtifactProfileCatalog, Vec<CargoPackage>), String> {
     let root = super::workspace_root();
-    load_artifact_profile_catalog_from(&root, &root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))
+    let (descriptor, context) =
+        load_validated_descriptor(&root, &root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH), true)?;
+    let catalog = artifact_profile_catalog(descriptor)?;
+    Ok((catalog, context.packages.into_values().collect()))
 }
 
 /// Loads every exact artifact recipe that produces the canonical browser or
@@ -938,8 +986,8 @@ pub(crate) fn load_artifact_profile_catalog() -> Result<ArtifactProfileCatalog, 
 /// otherwise it cannot be measured as one stable `.wasm` artifact.
 pub(crate) fn load_wasm_size_artifact_profiles() -> Result<Vec<WasmArtifactProfile>, String> {
     let root = super::workspace_root();
-    let descriptor =
-        load_validated_descriptor(&root, &root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))?;
+    let (descriptor, _) =
+        load_validated_descriptor(&root, &root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH), false)?;
     let profiles = wasm_artifact_profiles(&descriptor)?;
     validate_wasm_owner_closures(&profiles)?;
     Ok(profiles)
@@ -949,7 +997,7 @@ fn load_artifact_profile_catalog_from(
     root: &Path,
     descriptor_path: &Path,
 ) -> Result<ArtifactProfileCatalog, String> {
-    let descriptor = load_validated_descriptor(root, descriptor_path)?;
+    let (descriptor, _) = load_validated_descriptor(root, descriptor_path, false)?;
     artifact_profile_catalog(descriptor)
 }
 
@@ -970,11 +1018,12 @@ fn artifact_profile_catalog(
 fn load_validated_descriptor(
     root: &Path,
     descriptor_path: &Path,
-) -> Result<ArtifactProfileDescriptor, String> {
+    locked: bool,
+) -> Result<(ArtifactProfileDescriptor, ValidationContext), String> {
     let descriptor = read_descriptor(descriptor_path)?;
-    let context = ValidationContext::load(root)?;
+    let context = ValidationContext::load(root, locked)?;
     validate_descriptor(&descriptor, &context)?;
-    Ok(descriptor)
+    Ok((descriptor, context))
 }
 
 fn host_artifact_profiles(descriptor: ArtifactProfileDescriptor) -> Vec<HostArtifactProfile> {
@@ -1079,7 +1128,9 @@ mod tests {
 
     fn context() -> &'static ValidationContext {
         static CONTEXT: OnceLock<ValidationContext> = OnceLock::new();
-        CONTEXT.get_or_init(|| ValidationContext::load(&super::super::workspace_root()).unwrap())
+        CONTEXT.get_or_init(|| {
+            ValidationContext::load(&super::super::workspace_root(), false).unwrap()
+        })
     }
 
     #[test]
@@ -1424,13 +1475,10 @@ mod tests {
     #[test]
     fn derives_outputs_without_assuming_a_binding_transport() {
         let catalog = &context().capability;
-        let outputs = derive_output_surface(
-            catalog,
-            "native",
-            &BTreeSet::from(["analysis".to_string(), "svg".to_string()]),
-        );
+        let outputs =
+            derive_output_surface(catalog, "native", &BTreeSet::from(["analysis", "svg"]));
 
-        assert_eq!(outputs, BTreeSet::from(["svg".to_string()]));
+        assert_eq!(outputs, BTreeSet::from(["svg"]));
     }
 
     #[test]
