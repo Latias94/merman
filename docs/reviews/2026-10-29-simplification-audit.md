@@ -81,8 +81,9 @@ multiple init arguments are sanitized first, which removes that key.
 | Two explicit `flowchart` objects | Fields merge; the later value wins for the same field |
 
 Inputs with multiple init directives should use explicit family keys or frontmatter configuration.
-Single-init legacy configuration remains supported. No baseline or comparator was changed to
-accept this correction.
+Single-init legacy configuration is admitted under the detected type key, with only Mermaid's
+`flowchart-v2` to `flowchart` exception. The later family audit below covers keys that Mermaid
+filters out. No baseline or comparator was changed to accept this correction.
 
 The only added public Rust API is gated by `native-fonts`:
 `RenderEvidence::native_font_diagnostics()` returns an optional `NativeFontDiagnostics` snapshot
@@ -231,3 +232,75 @@ build-graph failures require the actual `artifacts/wasm/merman_wasm.js` and `.ru
 bootstrap assets. No synthetic WASM declarations, runtime assets, test skips, or graph-policy
 exceptions were introduced. WASM/browser qualification and complete Playground typechecking
 remain with the Web/Pages owner.
+
+## Contract and configuration follow-through
+
+The third pass reviewed the actual consumers of every remaining contract descriptor, then
+cross-reviewed the generator changes. Native ABI and text-measurement JSON remain: they generate
+runtime declarations and multiple host-language projections. The rename-policy descriptor also
+remains because Rust, TypeScript, defaults, and documentation consume its policy properties.
+The WASI JSON was a handwritten packaging mirror; runtime code and real hosts did not derive
+their protocol from it.
+
+| Area | Simplification | Retained evidence |
+| --- | --- | --- |
+| Native ABI generator | Exact descriptor-position checks replace redundant contiguous-code sets; renderers borrow validated slices; the only prefix digest operation replaces generic single-caller wrappers. | Name uniqueness, type/layout validation, minimum-prefix bounds, canonical digests, mutation rejection, full generated drift, and real C consumers |
+| Text-measurement generator | One vocabulary type and validator covers result kinds; redundant lookups, intermediate collections, and generated-text substring assertions were removed. | Frozen protocol digest, semantic negative cases, complete projections and platform owners |
+| Binding generator | One registry projection is shared by all languages; existing runtime-catalog collections replace duplicate registry scans. | Complete operation matrix and eight-artifact drift; Dart executes uint32/uint64 boundary cases instead of checking decoder source strings |
+| Resource generator | Identical Python/Kotlin checks cover full sets once; validated UniFFI wire order is emitted directly. | Language-specific collisions, C macro collisions, bidirectional wire membership and append-only ordinals |
+| Feature verification | Artifact validation and feature verification share one Cargo metadata load and local feature-group traversal. | Real Cargo builds own dependency resolution; exact recipes and capability/output boundaries remain checked |
+| Editor generator | Removed the obsolete semantic-token manifest migration. | Current analysis-setting projection and full manifest drift |
+| Documentation | Removed three old migration/admission/readiness documents and consolidated current binding guidance. | Unique memory, discovery, transport, resource, and platform guidance remains with its active owner |
+| WASI packaging | Removed `merman-wasi-v1.json` and its mirror-equality test. | Existing `docs/WASI_ABI.md`, actual module, artifact hash, runtime catalog, wire/runtime tests and real-host import/export auditing |
+
+WASI archives no longer contain that JSON path. This changes archive contents, with no wire,
+ABI-version, or runtime behavior change. Native SDK archives retain both machine-consumed
+descriptors and matching headers.
+
+### Configuration admission and consumption
+
+The public pipeline is shared, but that alone does not prove that every admitted field affects
+its diagram. Independent source review identified both admission and consumption defects.
+
+Installed Mermaid 12.2.0 was initialized before executing `detectInit` and `sanitizeDirective`.
+Single legacy `config` uses the actual detector ID, except that `flowchart-v2` becomes `flowchart`.
+Consequently `flowchart-elk`, `classDiagram`, `stateDiagram`, `xychart`, and `info` legacy keys are
+filtered out; explicit `flowchart`, `class`, `state`, and `xyChart` namespaces remain usable.
+Known-type parser aliases do not change this source rule. The global canonical-family helper
+retains its separate purpose.
+
+A catalog-driven test now exercises site/frontmatter/init precedence, protected fields, explicit
+namespaces, known/detected metadata and enabled JSON/controlled-render parsers. It uses existing
+legal family fixtures. Selected Mermaid also filters the explicit init namespaces `zenuml` and
+`wardley-beta`; the test preserves this distinction from frontmatter admission rather than
+assuming that every catalog namespace is an init key.
+
+The consumption fixes are source-backed and checked at their actual outputs:
+
+- Gantt falls back from a nonempty body interval to `gantt.tickInterval`; a UTC cross-month test
+  checks the complete top and bottom axis tick labels and body precedence.
+- Mindmap roots use `mindmap.padding/useMaxWidth`; tests check graph-relative viewBox margins,
+  fixed/responsive attributes, source-over-site precedence, and unchanged explicit defaults.
+  Compatibility JSON now clones the final configuration instead of selecting a layout again.
+- Sequence combines configured numbering with the body autonumber switch, aligns note text and
+  shadow regions, and uses one retained visible model for actor layout and SVG emission.
+  Tests cover hidden actors, boxes, mirrored actors, creation/destruction, note/activation-only
+  references, all-hidden bounds, self-messages, numbering while autonumber is off, and wrapped
+  and unwrapped note alignment. The parser-owned semantic model remains unchanged.
+
+This is not a complete field-by-field qualification for every diagram. Flowchart, State, Class,
+ER, Architecture, GitGraph, and XY reviewed paths already consume the effective configuration
+or a plan frozen from it; the review found no additional confirmed consumer defect there.
+
+### Mainline integration and fresh evidence
+
+The branch merged `origin/main` at `1c4cd0da9`. All three conflicts preserve both changes:
+Mindmap tests, the new 23rd text-measurement operation alongside the simplified generator, and
+the updated host measurement guide. The previously failing comparison-project dependency audit
+is repaired by mainline's locked `pulldown-cmark 0.13.5`; a fresh local audit passes with the two
+existing unmaintained-package warnings. No audit exception was added.
+
+After merging mainline, core plus xtask pass 3,044 tests. Sequence/Gantt/Mindmap pass 253 owner
+tests, with one pre-existing ignored test. The real Dart ABI contract entrypoint passes after
+the merge. Archive/qualification Python tests pass 45 cases. WASI host tests before the merge
+pass all 17 cases, including actual SVG/PNG, ownership, quotas, and error recovery.

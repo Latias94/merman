@@ -455,8 +455,7 @@ The callback and `user_data` are immutable constructor state. The host may relea
 `MermanNativeTextMeasureRequest` fields valid only during the callback and writes a size-tagged
 `MermanNativeTextMeasureResult`. The generated
 [`merman_text_measurement_abi.h`](../../crates/merman-ffi/include/merman_text_measurement_abi.h)
-defines the independent text-measurement protocol version, 22 operation codes, and required result
-kinds.
+defines the independent text-measurement protocol version, operation codes, and required result kinds.
 
 Use the same display font system that will render the final SVG. A host that cannot answer an
 operation accurately should initialize the result, set `handled = 0`, and return
