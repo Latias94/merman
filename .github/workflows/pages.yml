@@ -35,7 +35,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           shared-key: pages-web-wasm
 
@@ -90,7 +90,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           shared-key: pages-web-budget-tool
 
@@ -145,7 +145,7 @@ jobs:
           path: target/release
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.87.32
         with:
           tool: wasm-tools@1.261.0
 
@@ -174,7 +174,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           shared-key: pages-playground-tools
           cache-targets: false

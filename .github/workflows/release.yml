@@ -233,7 +233,7 @@ jobs:
           submodules: recursive
       - name: Install Python for GNU baseline checks
         if: runner.os == 'Linux'
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
       - name: Install Rust non-interactively if not already installed
@@ -509,7 +509,7 @@ jobs:
           submodules: recursive
       - name: Install Python for GNU baseline checks
         if: runner.os == 'Linux'
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
       - name: Download verified release bundle

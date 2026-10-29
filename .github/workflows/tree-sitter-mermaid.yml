@@ -28,7 +28,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.87.32
         with:
           tool: nextest@0.9.148
 
@@ -64,7 +64,7 @@ jobs:
 
       - name: Install Python
         id: python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: "3.14"
 
