@@ -16,7 +16,7 @@ fn result() -> MermanNativeResult {
     result
 }
 
-fn api() -> MermanNativeApi {
+fn api() -> MermanNativeApiWithFonts {
     let request = MermanNativeApiRequest {
         struct_size: size_of::<MermanNativeApiRequest>() as u32,
         expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
@@ -24,10 +24,9 @@ fn api() -> MermanNativeApi {
             MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
         ),
     };
-    let mut api: MermanNativeApi = unsafe { std::mem::zeroed() };
-    api.struct_size = size_of::<MermanNativeApi>() as u32;
+    let mut api = MermanNativeApiWithFonts::for_discovery();
     assert_eq!(
-        unsafe { merman_get_native_api(&request, &mut api) },
+        unsafe { merman_get_native_api(&request, api.as_mut_api_ptr()) },
         MERMAN_NATIVE_STATUS_OK
     );
     assert!(api.engine_new_with_fonts.is_some());
@@ -296,7 +295,7 @@ fn real_c_consumer_releases_constructor_inputs_before_svg_and_png() {
     unsafe {
         let library = libloading::Library::new(&library_path).unwrap();
         let smoke: libloading::Symbol<
-            unsafe extern "C" fn(*const MermanNativeApi, *const u8, usize, u8) -> i32,
+            unsafe extern "C" fn(*const MermanNativeApiWithFonts, *const u8, usize, u8) -> i32,
         > = library.get(b"merman_c_font_consumer_smoke").unwrap();
         assert_eq!(smoke(&api, FONT.as_ptr(), FONT.len(), 0), 0);
         #[cfg(feature = "bundled-fonts")]

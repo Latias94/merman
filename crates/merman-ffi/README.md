@@ -77,6 +77,8 @@ MermanNativeStatus merman_get_native_api(
 
 The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`, then receives the common prefix of a size-tagged function table. `MermanNativeApi.struct_size` is the host capacity on input and the largest complete producer prefix safely initialized within that capacity on output. The returned minimum-prefix digest is the compatibility key, the full descriptor digest records producer provenance, and the capability catalog digest identifies the loaded artifact. Every other record requires its exact generated size. Use `MERMAN_NATIVE_RESULT_INIT` to fully zero-initialize each result before a producing call; setting only `struct_size` in otherwise uninitialized storage is invalid. The generated C header and release C smoke tests carry the compile-run layout fingerprint, so applications should not implement a second runtime offset probe.
 
+Rust callers keep the published `MermanNativeApi` fields and can continue using existing struct literals. To discover the appended memory-font constructor, create `MermanNativeApiWithFonts::for_discovery()` and pass its `as_mut_api_ptr()` to `merman_get_native_api`. Check discovery status and the returned `struct_size` before reading appended slots from an older producer. The C header's `MermanNativeApi` continues to describe the complete table; the two Rust views share its exact prefix.
+
 The ABI 3 minimum prefix ends at `engine_new_with_services` (function slot `6`). Operation control
 is an additive current-contract extension: `operation_control_new`, `operation_control_cancel`, and
 `operation_control_release` occupy slots `7`, `8`, and `9`, while

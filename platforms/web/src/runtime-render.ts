@@ -181,14 +181,6 @@ function measureWithBrowserProbes(
       return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").width) };
     case "raw-bbox-height":
       return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").height) };
-    case "html-line-height": {
-      applyHtmlTextMeasureStyle(probes.html, request);
-      Object.assign(probes.html.style, {
-        display: "inline-block", width: "auto", maxWidth: "none", whiteSpace: "nowrap",
-      });
-      probes.html.textContent = request.text;
-      return { kind: "length", length: Math.max(0, probes.html.getBoundingClientRect().height) };
-    }
     case "raw-bbox-y-offset":
       return { kind: "length", length: svgBBox(probes, request, "direct").y };
     case "raw-middle-bbox-y-offset":
@@ -239,7 +231,6 @@ function emptyMeasurement(request: HostTextMeasureRequest): HostTextMeasureResul
     case "bbox-x-with-ascii-overhang":
     case "title-bbox-x":
       return { kind: "horizontal-extents", bbox_left: 0, bbox_right: 0 };
-    case "html-line-height":
     case "tspan-bbox-height":
     case "simple-bbox-height":
     case "raw-bbox-height":

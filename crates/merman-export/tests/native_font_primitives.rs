@@ -507,17 +507,17 @@ fn routed_prepared_svg_fragments_preserve_spaces_against_native_export() {
 }
 
 #[test]
-fn native_html_line_height_keeps_literal_breaks_and_subpixel_sizes() {
+fn native_html_wrapped_height_keeps_subpixel_sizes_and_legacy_breaks() {
     let context = context(&["Cousine-Regular.ttf"]);
     for font_size in [0.5, 16.0] {
         let style = TextStyle {
             font_size,
             ..style("Cousine")
         };
-        for text in ["A<br>B", "A&amp;B", "AB", "", " \t\r\n", "\u{00a0}"] {
+        for (text, line_count) in [("A<br>B", 2), ("A&amp;B", 1), ("AB", 1)] {
             let measured = context
                 .measure(HostTextMeasurementRequest {
-                    operation: TextMeasurementOperation::HtmlLineHeight,
+                    operation: TextMeasurementOperation::Wrapped,
                     phase: TextMeasurementPhase::Wrap,
                     text,
                     style: &style,
@@ -525,13 +525,12 @@ fn native_html_line_height_keeps_literal_breaks_and_subpixel_sizes() {
                     wrap_mode: WrapMode::HtmlLike,
                 })
                 .unwrap()
-                .expect("explicit native font covers literal text");
-            let expected = if matches!(text, "" | " \t\r\n") {
-                0.0
-            } else {
-                font_size * 1.5
+                .expect("explicit native font covers wrapped text");
+            let HostTextMeasurement::Metrics(metrics) = measured else {
+                panic!("legacy Wrapped operation returns complete metrics");
             };
-            assert!(matches!(measured, HostTextMeasurement::Length(height) if height == expected));
+            assert_eq!(metrics.line_count, line_count);
+            assert_eq!(metrics.height, line_count as f64 * font_size * 1.5);
         }
     }
 }

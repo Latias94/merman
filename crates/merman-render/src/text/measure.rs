@@ -95,7 +95,9 @@ pub trait TextMeasurer {
     /// Measures the height of one already-decoded HTML text line without parsing markup.
     ///
     /// The compatibility default preserves custom profile behavior. Built-in profiles and the
-    /// routed fallback specialize this operation so literal angle brackets remain text.
+    /// routed fallback specialize this operation so literal angle brackets remain text. Protocol
+    /// 1 host callbacks retain their complete `Wrapped` metrics contract; they do not receive a
+    /// separate literal-line operation and may interpret markup according to that contract.
     #[doc(hidden)]
     fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.measure_wrapped(text, style, None, WrapMode::HtmlLike)

@@ -156,17 +156,18 @@ define_binding_transports! {
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
         constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
     },
-    Wasi => {
-        id: "wasi",
-        targets: NATIVE_TARGET,
-        payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
-        constructor_service_candidates: WASI_SERVICES,
-    },
     Web => {
         id: "web",
         targets: WEB_TARGET,
         payload_schemas: BINDING_RESULT_PAYLOAD_SCHEMA,
         constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
+    },
+    // Append new transports so published repr(u8) values and derived ordering stay stable.
+    Wasi => {
+        id: "wasi",
+        targets: NATIVE_TARGET,
+        payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
+        constructor_service_candidates: WASI_SERVICES,
     },
 }
 
@@ -184,7 +185,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn transport_exposure_registry_is_bijective_and_sorted() {
+    fn transport_exposure_registry_is_bijective_and_preserves_published_order() {
         assert_eq!(
             BindingTransportKey::ALL.len(),
             TRANSPORT_EXPOSURE_SPECS.len()
@@ -194,7 +195,24 @@ mod tests {
             .copied()
             .map(BindingTransportKey::id)
             .collect::<Vec<_>>();
-        assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(
+            ids.iter().copied().collect::<BTreeSet<_>>().len(),
+            ids.len()
+        );
+        assert_eq!(
+            &ids[..7],
+            &[
+                "android-jni",
+                "native-c",
+                "node",
+                "rust",
+                "typst",
+                "uniffi",
+                "web"
+            ],
+        );
+        assert_eq!(BindingTransportKey::Web as u8, 6);
+        assert!(BindingTransportKey::Web < BindingTransportKey::Wasi);
 
         for (index, key) in BindingTransportKey::ALL.iter().copied().enumerate() {
             assert_eq!(key as usize, index);

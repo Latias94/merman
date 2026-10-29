@@ -233,24 +233,36 @@ fn rust_layout_fingerprint() -> u64 {
         expected_minimum_prefix_layout_digest
     );
 
-    hash_record!(hash, merman_ffi::MermanNativeApi);
-    hash_field!(hash, merman_ffi::MermanNativeApi, struct_size);
-    hash_field!(hash, merman_ffi::MermanNativeApi, abi_version);
+    hash_record!(hash, merman_ffi::MermanNativeApiWithFonts);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, abi_version);
     hash_field!(
         hash,
-        merman_ffi::MermanNativeApi,
+        merman_ffi::MermanNativeApiWithFonts,
         minimum_prefix_layout_digest
     );
-    hash_field!(hash, merman_ffi::MermanNativeApi, full_descriptor_digest);
-    hash_field!(hash, merman_ffi::MermanNativeApi, capability_catalog_digest);
-    hash_field!(hash, merman_ffi::MermanNativeApi, package_version);
-    hash_field!(hash, merman_ffi::MermanNativeApi, runtime_catalog);
-    hash_field!(hash, merman_ffi::MermanNativeApi, engine_new);
-    hash_field!(hash, merman_ffi::MermanNativeApi, engine_try_close);
-    hash_field!(hash, merman_ffi::MermanNativeApi, execute_collect);
-    hash_field!(hash, merman_ffi::MermanNativeApi, result_free);
-    hash_field!(hash, merman_ffi::MermanNativeApi, metadata_collect);
-    hash_field!(hash, merman_ffi::MermanNativeApi, engine_new_with_services);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeApiWithFonts,
+        full_descriptor_digest
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeApiWithFonts,
+        capability_catalog_digest
+    );
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, package_version);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, runtime_catalog);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, engine_new);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, engine_try_close);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, execute_collect);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, result_free);
+    hash_field!(hash, merman_ffi::MermanNativeApiWithFonts, metadata_collect);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeApiWithFonts,
+        engine_new_with_services
+    );
 
     hash_record!(hash, merman_ffi::MermanNativeIconPack);
     hash_field!(hash, merman_ffi::MermanNativeIconPack, struct_size);

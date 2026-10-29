@@ -5,7 +5,7 @@ and native or WASM artifacts to the same Merman version.
 
 ## Release versions
 
-Merman `0.9.3` targets Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for that release line's API and output changes, and the [workspace changelog](../../CHANGELOG.md) for the custom text-measurement callback update in 0.9.3.
+Merman `0.9.3` targets Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for that release line's API and output changes, and the [workspace changelog](../../CHANGELOG.md) for the 0.9.3 fixes and SDK profiles. The published host text-measurement protocol retains operations `0..21`.
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 

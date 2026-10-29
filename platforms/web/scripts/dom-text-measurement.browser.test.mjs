@@ -63,7 +63,6 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
         { operation: "computed-length" },
         { operation: "wrapped" },
         { operation: "wrapped", wrap_mode: "html-like" },
-        { operation: "html-line-height", wrap_mode: "html-like" },
         { operation: "create-text-bbox-y-offset" },
         { operation: "mermaid-calculate-text-dimensions" },
       ];
@@ -163,19 +162,6 @@ test("DOM probes match native typography, reject invalid CSS and recover after d
           for (const operation of ["computed-length", "bbox-x", "raw-bbox-width", "tspan-bbox-width"]) {
             const result = session.measure({ ...preservedInput, operation });
             preservedComparisons.push({ operation, result, expectedWidth, expectedLength });
-          }
-
-          for (const text of ["A<br>B", "A&amp;B", "A\nB", "A\u00a0B", "", " \t\r\n", "\u00a0"]) {
-            for (const line_height of [0, 0.25, 24]) {
-              const input = { ...base, operation: "html-line-height", wrap_mode: "html-like",
-                text, font_size: 16, line_height };
-              nativeDiv.style.cssText = "position:fixed;left:-10000px;top:-10000px;visibility:hidden;display:inline-block;padding:0;margin:0;border:0;white-space:nowrap";
-              nativeDiv.style.font = "16px monospace";
-              nativeDiv.style.lineHeight = `${line_height}px`;
-              nativeDiv.textContent = text;
-              operationComparisons.push({ operation: input.operation, text, line_height,
-                result: session.measure(input), expected: { kind: "length", length: nativeDiv.getBoundingClientRect().height } });
-            }
           }
 
           // Build independent DOM controls for each operation, without the adapter's helpers.

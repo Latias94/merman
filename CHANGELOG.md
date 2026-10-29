@@ -4,24 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.9.3] - Unreleased
+## [0.9.3] - 2026-10-29
 
 This maintenance release targets Mermaid 12.1.0 and retains the Presentation API, Options JSON schema 2, and existing transport versions. Review regenerated SVG and image snapshots after upgrading.
 
-### Breaking changes
-
-- **Custom Rust text-measurement hosts:** `TextMeasurementOperation` adds `HtmlLineHeight` (operation 22), so exhaustive matches must add an arm. The operation measures one decoded HTML line without interpreting literal markup; unsupported callbacks should leave it unhandled for fallback. Update generated wrappers and runtime artifacts together. Existing numeric codes and protocol versions are unchanged. See the [host measurement guide](docs/bindings/HOST_TEXT_MEASUREMENT.md). [#250](https://github.com/Latias94/merman/pull/250)
+Text-measurement protocol 1 keeps operations 0..21; existing hosts need no new enum match arm. ER generic names containing literal `<br>` may retain extra height with markup-aware callbacks; an extension for exact literal-height callbacks is deferred. See the [host measurement guide](docs/bindings/HOST_TEXT_MEASUREMENT.md). [#250](https://github.com/Latias94/merman/pull/250)
 
 ### Added
 
-- Native C shared/static SDKs and a `wasm32-wasip1` WASI reactor enable embedding without a browser or JavaScript runtime. Choose `standard` without math or ELK, `math` with formulas but no ELK, or `full` with both. Archives include capability catalogs, checksums, license notices, and runnable C/C++, Go/wazero, and Python/wasmtime examples; WASI exposes SVG and PNG through scalar ABI 1. See the [SDK guide](distribution/sdk/README.md) for target and host requirements. [#241](https://github.com/Latias94/merman/pull/241), [#245](https://github.com/Latias94/merman/pull/245), [issue #243](https://github.com/Latias94/merman/issues/243)
+- Native C shared/static SDK archive recipes and a `wasm32-wasip1` WASI reactor enable embedding without a browser or JavaScript runtime. Choose `standard` without math or ELK, `math` with formulas but no ELK, or `full` with both. Generated archives include capability catalogs, checksums, license notices, and runnable C/C++, Go/wazero, and Python/wasmtime examples; WASI exposes SVG and PNG through scalar ABI 1. See the [SDK guide](distribution/sdk/README.md) for target and host requirements. [#241](https://github.com/Latias94/merman/pull/241), [#245](https://github.com/Latias94/merman/pull/245), [issue #243](https://github.com/Latias94/merman/issues/243)
 - Native C and WASI engines accept caller-supplied font bytes and use the same fonts for label measurement and image painting. Bundled Cousine provides a fallback; supply additional fonts for CJK or emoji, and install matching fonts wherever SVG is viewed. The C ABI 3 constructor is appended without changing the existing API prefix. [#245](https://github.com/Latias94/merman/pull/245)
 - Web `createRenderSession({ iconPacks })` and Node `createNodeEngine({ iconPacks })` accept already-loaded Iconify JSON for instance-local icon rendering. The host controls loading and credentials; separate engines do not share registrations. [#247](https://github.com/Latias94/merman/pull/247)
 
 ### Fixed
 
 - Labels and titles reserve space for the fonts, weights, styles, whitespace, and visible text actually rendered, avoiding clipping and misplaced text across Class, Flowchart, Sequence, State, Block, ER, Requirement, and other affected diagrams. Browser measurement also preserves valid zero and subpixel typography. [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
-- HTML labels use bounded HTML5 recovery and namespace-aware SVG/XHTML serialization. Class notes no longer produce invalid XML entities, Kanban break markup renders as intended, and literal angle brackets and escaped text survive measurement and output consistently. See the [before/after examples](docs/assets/text-stages/README.md). [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- HTML labels use bounded HTML5 recovery and namespace-aware SVG/XHTML serialization. Class notes no longer produce invalid XML entities, Kanban break markup renders as intended, and literal angle brackets and escaped text retain their intended rendered content. See the [before/after examples](docs/assets/text-stages/README.md). [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - Formula labels remain visible in native PNG, JPEG, and PDF exports, including glyph paint, fraction bars, Unicode bounds, clipping, and Sequence placement. Native formula output with nonempty caller-scoped CSS now fails explicitly when its paint cannot be preserved; omit that CSS or export parity SVG for browser rendering. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - Wrapped Swimlane edge labels retain all measured lines in native SVG and PNG output instead of being forced onto one clipped line. [#245](https://github.com/Latias94/merman/pull/245), [issue #242](https://github.com/Latias94/merman/issues/242)
 - Gantt uses configured `tickInterval` when the diagram body omits it. Mindmap honors root `padding` and `useMaxWidth` and preserves the resolved layout in compatibility JSON. Sequence applies `showSequenceNumbers`, `hideUnusedParticipants`, and `noteAlign` consistently in layout and SVG. [#252](https://github.com/Latias94/merman/pull/252)

@@ -643,12 +643,13 @@ fn er_generic_html_entity_depth_follows_text_content_restoration() {
 }
 
 #[test]
-fn er_generic_html_literal_height_uses_selected_line_measurement() {
+fn er_generic_html_height_preserves_selected_legacy_host_metrics() {
     use merman_render::environment::{
         HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
         MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
         TextMeasurementPolicy, TextMeasurementProfileIdentity,
     };
+    use merman_render::text::TextMetrics;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -660,18 +661,19 @@ fn er_generic_html_literal_height_uses_selected_line_measurement() {
             if request.text != "A<br>B" {
                 return Ok(None);
             }
-            assert_ne!(
-                request.operation,
-                TextMeasurementOperation::Wrapped,
-                "literal HTML height must not re-enter label parsing"
-            );
-            if request.operation != TextMeasurementOperation::HtmlLineHeight {
+            if request.operation != TextMeasurementOperation::Wrapped {
                 return Ok(None);
             }
             assert_eq!(request.phase, TextMeasurementPhase::Wrap);
             assert_eq!(request.max_width, None);
             self.0.fetch_add(1, Ordering::Relaxed);
-            Ok(Some(HostTextMeasurement::Length(31.25)))
+            // Protocol 1 keeps the original wrapped-label callback. Its returned height must
+            // reach the emitted foreignObject without being replaced by a built-in estimate.
+            Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                width: 73.0,
+                height: 31.25,
+                line_count: 2,
+            })))
         }
     }
 
@@ -703,7 +705,7 @@ erDiagram
         family::prepare(parsed, &LayoutOptions::default(), session).expect("prepare ER labels");
     assert!(
         host.0.load(Ordering::Relaxed) > 0,
-        "layout must receive the literal HtmlLineHeight operation before emission"
+        "layout must preserve the selected legacy Wrapped host before emission"
     );
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())

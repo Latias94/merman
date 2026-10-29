@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-10-28
+Last updated: 2026-10-29
 
 This guide explains how native hosts should use Merman's text-measurement callback and where the
 remaining headless-rendering limits are. It complements the exact C ABI contract in
@@ -127,6 +127,14 @@ The callback is a seam, not a promise that all output becomes browser-identical.
 the extent that the host measures with the same fonts, line wrapping, white-space behavior, and
 surface that will render the SVG.
 
+## Rust Profiles And Fallible Host Callbacks
+
+An infallible Rust `TextMeasurer` can be installed through a `TextMeasurementProfile` and `TextMeasurementPolicy`. Version 0.9.3 adds the defaulted `TextMeasurer::measure_html_line_height_px` hook, which custom profiles can override to measure one already-decoded HTML line without parsing literal markup. Built-in deterministic profiles specialize this hook too. The default delegates to `measure_wrapped(..., None, WrapMode::HtmlLike)`, so existing custom implementations need no new method; override it when the profile must distinguish literal markup from HTML.
+
+Fallible `HostTextMeasurer` callbacks use the operation-aware protocol instead. In 0.9.3, the decoded HTML line-height helper routes fallible requests through operation 11, `Wrapped`, in the Wrap phase with `WrapMode::HtmlLike`, no width constraint, and the complete `metrics` result. Merman uses the returned height and preserves selected host geometry and measurement provenance. Existing adapters continue interpreting `Wrapped` according to its original HTML/wrapping contract; they must not reinterpret all `Wrapped` requests as literal text. Missing, invalid, or failed callbacks still use the configured per-request fallback and record its reason.
+
+The dedicated host literal-height extension (`HtmlLineHeight`, proposed operation 22) is deferred beyond 0.9.3. For ER generic labels, the generic workaround can produce text such as `A<br>B` that is emitted literally through `textContent`. An existing HTML-aware `Wrapped` adapter may measure that spelling as two lines, so its retained height can differ from the single literal line in the output. The frozen callback protocol does not promise exact host height for this case. Deterministic profiles and infallible custom Rust profiles with the hook override can measure literal-line height without extending that protocol.
+
 ## Text-Measurement Protocol Summary
 
 The operation-aware request and tagged result described here use text-measurement protocol v1
@@ -177,7 +185,7 @@ waiting for a UI thread, or starting a font download inside the callback cannot
 complete that measurement. A reusable host cache must include the complete
 request and invalidate when its font environment changes.
 
-The stable operation mapping is:
+Version 0.9.3 retains protocol 1's 22 published operations (0..21), their numeric codes, and result shapes. It adds no operation or exhaustive enum match arm. The stable operation mapping is:
 
 | Code | Operation | Expected result kind |
 | ---: | --- | --- |
@@ -203,7 +211,6 @@ The stable operation mapping is:
 | 19 | `raw-bbox-y-offset` | `length` (signed) |
 | 20 | `raw-middle-bbox-y-offset` | `length` (signed) |
 | 21 | `raw-hanging-bbox-y-offset` | `length` (signed) |
-| 22 | `html-line-height` | `length` |
 
 The four stable result kinds are `metrics` (`width`, `height`, `line_count`), `length` (`length`),
 `horizontal-extents` (`bbox_left`, `bbox_right`), and `wrapped-with-raw-width` (metrics plus an
@@ -244,15 +251,6 @@ offset. Preserve the requested font style and baseline, and clear baseline state
 If a host cannot reproduce the exact baseline, it must leave that operation unhandled. Existing
 codes 0 through 18 and all result shapes remain unchanged; these operations extend protocol 1
 without changing the separately versioned transport APIs.
-
-Operation 22, `html-line-height`, reads the non-negative client-rect height of one
-already-decoded HTML line in a borderless, unpadded `inline-block` with `white-space: nowrap`.
-Assign the request through `textContent`; literal `<br>` and entity spellings must remain text.
-Apply the supplied font, spacing, and line height. It returns `length`, retains the Wrap phase,
-and carries no width constraint. An unsupported host leaves it unhandled for the routed fallback.
-Existing operation codes and transport versions are unchanged.
-Rust hosts that exhaustively match `TextMeasurementOperation` must add an
-`HtmlLineHeight` arm; the new enum variant is a source-level API change.
 
 Request string pointers are valid only during the callback. Copy or decode them immediately if the
 host text API needs owned strings.
