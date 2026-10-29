@@ -87,9 +87,22 @@ fn render_stacked_boxes_with_section_colors_title_and_summary_lines() {
 }
 
 #[test]
-fn relation_graph_box_from_sections_builds_shared_sectioned_boxes() {
+fn relation_graph_box_from_deferred_sections_builds_shared_sectioned_boxes() {
     let options = AsciiRenderOptions::ascii();
     let mut resources = test_resources(AsciiResourcePolicy::default());
+    let mut deferred = DeferredTextRegistry::new();
+    let sections = ["A", "B"].map(|text| {
+        vec![
+            deferred
+                .try_register(
+                    ComposedTextPlan::try_new(&resources, 1, |push| push(text))
+                        .expect("section text should plan"),
+                    TerminalWidthProfile::Unicode,
+                    &resources,
+                )
+                .expect("section text should register"),
+        ]
+    });
     let style = RelationGraphBoxStyle {
         top_left: '+',
         top_right: '+',
@@ -102,9 +115,9 @@ fn relation_graph_box_from_sections_builds_shared_sectioned_boxes() {
         border_role: AsciiColorRole::NodeBorder,
         text_role: AsciiColorRole::Text,
     };
-    let relation_box = RelationGraphBox::from_sections(
+    let relation_box = RelationGraphBox::from_deferred_sections(
         "box".to_string(),
-        &[vec!["A".to_string()], vec!["B".to_string()]],
+        &sections,
         1,
         style,
         TerminalWidthProfile::Unicode,
@@ -119,10 +132,18 @@ fn relation_graph_box_from_sections_builds_shared_sectioned_boxes() {
 
     assert_eq!(relation_box.width(), 5);
     assert_eq!(relation_box.height(), 5);
+    let lines = canvas
+        .into_styled_lines_preserving_extent()
+        .expect("deferred box should convert to styled lines");
     assert_eq!(
-        canvas
-            .finish_trimmed_with_options(&options)
-            .expect("canvas should encode"),
+        crate::canvas::finish_styled_line_iter_with_deferred_resources(
+            lines.iter(),
+            &options,
+            true,
+            &mut resources,
+            &deferred,
+        )
+        .expect("deferred box should encode"),
         "+---+\n| A |\n+---+\n| B |\n+---+\n"
     );
 }
@@ -159,7 +180,7 @@ fn relation_graph_box_draws_role_lines_to_trimmed_canvas() {
 }
 
 #[test]
-fn relation_graph_box_content_line_preserves_border_and_text_roles() {
+fn relation_graph_deferred_box_content_line_preserves_border_and_text_roles() {
     let options = AsciiRenderOptions::ascii()
         .with_color_mode(AsciiColorMode::Html)
         .with_color_theme(
@@ -167,7 +188,16 @@ fn relation_graph_box_content_line_preserves_border_and_text_roles() {
                 .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x111111))
                 .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x222222)),
         );
-    let resources = test_resources(AsciiResourcePolicy::default());
+    let mut resources = test_resources(AsciiResourcePolicy::default());
+    let mut deferred = DeferredTextRegistry::new();
+    let text = deferred
+        .try_register(
+            ComposedTextPlan::try_new(&resources, 1, |push| push("A"))
+                .expect("box text should plan"),
+            TerminalWidthProfile::Unicode,
+            &resources,
+        )
+        .expect("box text should register");
     let style = RelationGraphBoxStyle {
         top_left: '+',
         top_right: '+',
@@ -180,19 +210,43 @@ fn relation_graph_box_content_line_preserves_border_and_text_roles() {
         border_role: AsciiColorRole::NodeBorder,
         text_role: AsciiColorRole::Text,
     };
-    let line =
-        RelationGraphLine::box_content("A", 3, 1, style, TerminalWidthProfile::Unicode, &resources)
-            .expect("box content should fit");
+    let line = RelationGraphLine::deferred_box_content(
+        &text,
+        3,
+        1,
+        style,
+        TerminalWidthProfile::Unicode,
+        &resources,
+    )
+    .expect("box content should fit");
     let mut canvas = Canvas::new(5, 1);
 
     line.draw_at(&mut canvas, 0, 0)
         .expect("line should fit the canvas");
 
-    assert_eq!(line.text(), "| A |");
+    let lines = canvas
+        .into_styled_lines_preserving_extent()
+        .expect("deferred box content should convert to styled lines");
     assert_eq!(
-        canvas
-            .finish_trimmed_with_options(&options)
-            .expect("canvas should encode"),
+        crate::canvas::finish_styled_line_iter_with_deferred_resources(
+            lines.iter(),
+            &AsciiRenderOptions::ascii(),
+            true,
+            &mut resources,
+            &deferred,
+        )
+        .expect("deferred box content should encode as plain text"),
+        "| A |\n"
+    );
+    assert_eq!(
+        crate::canvas::finish_styled_line_iter_with_deferred_resources(
+            lines.iter(),
+            &options,
+            true,
+            &mut resources,
+            &deferred,
+        )
+        .expect("deferred box content should encode as HTML"),
         "<span style=\"color:#111111\">|</span> <span style=\"color:#222222\">A</span> <span style=\"color:#111111\">|</span>\n"
     );
 }
