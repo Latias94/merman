@@ -1922,10 +1922,7 @@ fn detect_init_controlled(
             sanitize_directive_controlled(&mut diagram_specific_value, control)?;
             let detected_type = match diagram_type {
                 Some(diagram_type) => Some(diagram_type),
-                None => match detector(input, control)? {
-                    Ok(diagram_type) => Some(diagram_type),
-                    Err(_) => None,
-                },
+                None => detector(input, control)?.ok(),
             };
 
             if let Some(ty) = detected_type {

@@ -1,6 +1,6 @@
 # Repository simplification audit
 
-Date: 2026-10-29. Base: `0ce21f1cc`.
+Date: 2026-10-29. First-pass base: `0ce21f1cc`. Follow-through base: `f8bfcc59d`.
 
 Six Codex review lanes covered documentation, verification tools, parser/preprocessing,
 SVG rendering, the Rust facade/shared bindings, and ASCII/graph layout. Follow-up reviews
@@ -13,7 +13,7 @@ does an abstraction still have distinct consumers, does a check establish a uniq
 and does a document still own information that is useful outside its original agent session?
 File length alone was not a reason to split a module.
 
-## Implemented
+## First-pass implementation
 
 | Area | Removed responsibility or duplication | Preserved contract |
 | --- | --- | --- |
@@ -38,90 +38,79 @@ It is now one lazily constructed borrowed index, `O(V log V)` when needed, with
 of the entire cycle algorithm or a measured latency improvement. Acyclic graphs
 and singleton-only components do not construct the index.
 
-## Follow-up priorities
+## Follow-through implementation
 
-These findings remain unmodified. They are ordered by the value of clarifying ownership and
-behavior before doing further mechanical cleanup.
+The second pass addressed all nine original priority areas. Six initial implementation lanes,
+three additional cleanup lanes, and read-only cross-reviews used disjoint write scopes; Cargo
+remained serial under the main agent.
 
-1. **Unify ordinary and controlled parsing only after specifying cancellation behavior.**
-   `crates/merman-core/src/presentation/parse_pipeline.rs` still has separate
-   `parse_render_model_controlled_in_context` and `parse_model_in_context` flows.
-   The ordinary wrapper converts cancellation to `Error`, which its lenient branch can
-   suppress into an error diagram; the controlled route propagates cancellation outside
-   parse errors. Static control flow establishes the difference, but a dedicated ordinary
-   public-entry regression is needed before selecting a shared kernel.
+| Area | Follow-through change | Preserved boundary |
+| --- | --- | --- |
+| Parsing | Ordinary render, controlled render, and compatibility JSON share one controlled kernel; duplicated wrappers and parse flow were deleted. | Parse errors remain suppressible; cancellation remains outside suppression. Caller-owned runtime context, sanitization, source mapping, warning remapping, and timing remain explicit stages. |
+| Init directives | Single versus multiple init handling now matches actual execution of the selected Mermaid package, including pre-merge sanitization. | Single legacy `config`, explicit family-key merging, known/detected types, and post-init wrap handling |
+| Native fonts | CLI no longer creates a measurement context that the facade immediately forks again. Diagnostics come from immutable completed-output evidence. | Per-operation measurement state, separate export control, raw SVG's explicit fork, quiet behavior, and font budgets |
+| SVG | Unchanged prepared-math projection reuses structural metrics; Architecture borrows edge points instead of copying six floats per edge. | Opaque/custom output validation, resource/reference admission, changed math validation, and distinct missing-edge/short-polyline fallbacks |
+| Typst/UniFFI | Data convenience methods call the existing data executor, avoiding metadata construction and conversion that were immediately discarded. | Full result metadata, reusable-engine admission, busy/reentry/close errors, control, and resource limits |
+| Performance tools | Baseline freezing uses shared `Corpus`/`LaneMetadata` instead of a second schema and a later second load. | Freeze-only canonical paths, unique source paths, file sizes/digests, and report identity |
+| FCoSE | Removed always-empty fixed-node storage, dead loops/branch, and unused displacement parameters. | Random order, numerical order, effective constraints, and work accounting |
+| ASCII | Removed test-only `from_sections`/`box_content` and their width calculation; existing tests now exercise deferred construction and text replay. | Production geometry, section output, semantic colors, and resource accounting |
+| Documentation | Deleted eight completed administrative/duplicate files and the duplicate 0.9.0 release checklists; corrected archived status and references. | Unique design constraints and historical verification in existing design/evidence documents; release acceptance records in Publish Order |
+| Playground/Node | Deleted unused preview plan collection/state/internal facade methods and the parse/materialize round trip after encoding controlled JSON. | SDK plan API, recipe validation, native external JSON syntax parsing, UTF-8 and structural wire limits |
 
-2. **Check multiple-init merging against the pinned Mermaid implementation.**
-   `detect_init_controlled` in `crates/merman-core/src/preprocess/mod.rs` moves each
-   directive's `config` into the family namespace before merging. Mermaid's `detectInit`
-   in `packages/mermaid/src/utils.ts` merges all directives before assigning `results.config`
-   to the family key. Mixed `config` and explicit family keys can therefore differ.
-   Build an upstream-backed example before changing existing configuration behavior.
+### Behavior and API changes
 
-3. **Make CLI native-font diagnostics observe the executing operation.**
-   `crates/merman-cli/src/render/execute.rs` forks a font context before the facade
-   forks again, then reads `selected_faces()` from the earlier context. The shared
-   bindings no longer perform this extra fork. Check actual CLI diagnostics separately
-   for Mermaid and raw SVG before choosing one owner for both paths.
+Ordinary custom-parser cancellation previously lost its Parse phase or could become a suppressed
+error diagram. Red tests reproduced both cases before consolidation. Ordinary APIs now return
+`Error::OperationCancelled`; controlled APIs retain their outer cancellation result, including
+callbacks that return cancellation directly without setting the control. Strict/lenient and
+known/detected-type regression cases protect this distinction. In-context tests observe the
+caller's date and derived ID rather than the engine's different runtime policy.
 
-4. **Reuse validated structure when prepared-math projection leaves bytes unchanged.**
-   `crates/merman-render/src/svg/pipeline/mod.rs` discards the boolean returned by
-   `BuiltinSvgStage::PreparedMathProjection` and validates XML again even on its
-   explicit no-change path. `preset.rs` already supplies that outcome. Preserve
-   opaque/custom postprocessor validation, reference admission, and cancellation;
-   byte identity is the useful proof boundary.
+Mermaid 12.2.0's installed `detectInit` was executed with valid JSON directives, and independently
+checked against the selected source at `1fb7869866dd619168d840291c9c54b4f129758b`.
+The source map matched the selected `utils.ts`; `sanitizeDirective.ts` was also checked. Contrary
+to the initial static hypothesis, merely moving legacy `config` after merging is insufficient:
+multiple init arguments are sanitized first, which removes that key.
 
-5. **Remove unused metadata construction from data-only transports.**
-   `execute_typst_operation` in `crates/merman-typst-plugin/src/lib.rs` calls
-   `execute_once` and immediately discards the metadata. UniFFI's
-   `binary_operation_output` and `string_operation_output` also drop it after
-   conversion. Evaluate existing `execute_once_data`/`execute_data` paths rather
-   than adding another transport executor.
+| Directives | Selected Mermaid result |
+| --- | --- |
+| One `config: {curve: "step"}` | `flowchart: {curve: "step"}` |
+| One init containing that `config` plus `flowchart: {htmlLabels: false}` | `flowchart: {curve: "step"}`; the family object is replaced |
+| Two init directives containing only legacy `config` | `{}` |
+| Legacy `config` plus explicit `flowchart`, in either order | Only the explicit family configuration remains |
+| Two explicit `flowchart` objects | Fields merge; the later value wins for the same field |
 
-6. **Consolidate the performance corpus parser and revisit unconditional clean builds.**
-   `tools/bench/freeze_perf_baseline.py::_validate_corpus` duplicates the lane schema
-   in `corpus_utils.py`, then later calls the shared loader. Keep freeze-specific
-   canonical-path and content-identity checks at the freeze boundary.
-   `run_native_memory.py::discover_executable` unconditionally cleans the bench profile,
-   whereas `compare_self.py` does so for its shared-target freeze case. Verify the
-   evidence requirement before changing this behavior; do not replace it with new
-   cache/provenance machinery.
+Inputs with multiple init directives should use explicit family keys or frontmatter configuration.
+Single-init legacy configuration remains supported. No baseline or comparator was changed to
+accept this correction.
 
-7. **Remove unreachable FCoSE constraint state and test-only alternate render paths.**
-   `AxisConstraintRuntime::fixed_nodes` in `crates/manatee/src/algo/fcose/mod.rs`
-   is always empty and has no population path. Its displacement method also receives
-   unused arguments. In ASCII, `relation_graph/model.rs` retains test-only
-   `from_sections`/`box_content` construction beside the production deferred path.
-   Move tests onto the production path before deleting the alternate implementation.
+The only added public Rust API is gated by `native-fonts`:
+`RenderEvidence::native_font_diagnostics()` returns an optional `NativeFontDiagnostics` snapshot
+with `identity()` and `selected_faces()`. It owns strings rather than services or mutable operation
+state. Identity describes the existing context policy/admitted bytes; it is not a cross-process
+font fingerprint. No wire schema or native ABI field was added.
 
-8. **Retire completed administrative records without erasing engineering evidence.**
-   The WASM slimming plan still says `active` while its workstream is closed.
-   ASCII architecture deepening says all tasks are complete and `NO ACTIVE TASK`
-   while its JSON remains active. The release operator guide also includes completed
-   0.9.0 execution checklists already recorded in `PUBLISH_ORDER.md`. Apply the same
-   content-ownership test used in this cleanup instead of adding more status indices.
+### Deliberately remaining work
 
-9. **Remove unused work in the Playground and Node wrapper before adding caches.**
-   `playground/src/runtime/render-coordinator.ts` calls `collectSvgPlan` again for themed
-   previews, while production consumers only retain or copy the result. Confirm the
-   whole UI data flow, then remove the unused preview field and operation; the SDK plan
-   API and recipe-validation calls have separate uses. In
-   `platforms/node/src/errors.mjs::encodeTransportJson`, encoding a controlled copy
-   is followed by parsing and rebuilding an object whose result is discarded. Separate
-   bounded wire validation from object materialization while retaining depth, token,
-   member, string, and UTF-8 limits. Native transport validation remains necessary for
-   callers that bypass the JS SDK.
-
-Other bounded opportunities include borrowing Architecture edge geometry instead of copying
-six floats per edge, computing ASCII group depths once with explicit work-accounting semantics,
-and reducing tests that freeze internal callback batch shapes rather than observable budgets.
+- Native-memory `discover_executable` still resets the shared bench profile. The runbook and
+  historical fingerprint-reuse incident require source-revision evidence; Cargo's executable
+  path alone is insufficient. This pass adds no replacement cache/provenance framework and
+  makes no timing or allocator-performance claim.
+- Computing ASCII group depths once would require a decision about observable work accounting.
+  That change and tests coupled to internal callback batching remain separate opportunities.
+- Parser cross-review identified a precise diagnostic-span test combining BOM, CRLF, frontmatter,
+  and removed comments as useful protection against common source-map drift. Existing
+  source-map tests pass, but this combined failure-path test was not added in this pass.
 
 ## Independent review
 
 Two read-only cross-reviews examined another lane's parser/render/binding and
 ASCII/manatee/graphlib changes. Neither identified a blocking regression. These reviews
 supplement the executable checks; they do not claim to have executed them independently.
-The following nonblocking test gaps remain explicit:
+Follow-through cross-reviews independently checked init execution, cancellation and context
+ownership, and the CLI/facade font paths. They found no remaining blocking defect in those diffs;
+the newly requested cancellation/context regressions are included. The following first-pass
+nonblocking test gaps remain explicit:
 
 - Prepared native-font output cancellation racing a measurement-limit failure lacks a
   direct error-priority test.
@@ -141,9 +130,11 @@ The following nonblocking test gaps remain explicit:
 - FFI pointer, ownership, and lifecycle checks protect a distinct trust boundary.
 - DOMPurify policy generation still needs its narrow literal-list reader.
 - Diagram families remain independently selectable; optional layouts and math remain explicit.
-- No baseline, comparator normalization, public API, ABI, feature recipe, or lockfile was changed.
+- No baseline, comparator normalization, ABI, feature recipe, or lockfile was changed. The
+  follow-through's additive Rust diagnostics API is described above; the first pass had no
+  public API change.
 
-## Verification
+## First-pass verification
 
 Cargo work runs sequentially with two build jobs and two test threads, reusing `target/`.
 
@@ -194,3 +185,49 @@ package build and these dependent checks.
 
 Cross-platform binary distribution and browser-runtime qualification remain with their existing
 CI owners; no publication is part of this audit.
+
+## Follow-through verification
+
+These results were freshly run after the second-pass changes, separately from the first-pass
+receipts above. Cargo reused `target/` with two build jobs and two test threads.
+
+| Check | Result |
+| --- | --- |
+| Core all features, including direct/callback cancellation and caller context regressions | 2,349 passed |
+| Core lean / presentation / compatibility / editor / presentation+editor selections | 42 / 53 / 54 / 65 / 63 passed |
+| SVG pipeline without diagram features | 40 passed |
+| Pipeline, Architecture edge fallbacks, and compiled math owner tests, all features | 45 passed |
+| Facade explicit native-font contexts with PNG/JPEG/PDF | 24 passed |
+| Facade native-font contexts without binary codecs | 9 passed |
+| Facade render-operation and prepared-source integration | 59 passed |
+| CLI native-font, quiet, raw SVG, batch, and codec contracts | 25 passed |
+| Facade SVG and CLI SVG/native-fonts independent compile checks | 3 passed |
+| Typst official recipe on the host, including data execution | 36 passed |
+| UniFFI Apple artifact feature recipe on the host | 66 passed |
+| UniFFI data, validation, ASCII, and PNG/JPEG/PDF convenience methods with system fonts | 9 passed |
+| FCoSE and Manatee public API | 58 passed |
+| ASCII all features after removing alternate test builders | 1,397 passed |
+| Performance baseline, allocator, driver, and performance Python contracts | 23 + 51 + 33 + 157 = 264 passed |
+| Node wire, API, and loader contracts | 80 passed |
+| Web SDK TypeScript compilation with `--noEmitOnError` | Passed; real generated entries and declarations |
+| Playground complete runtime suite | 155 passed |
+| Playground build-graph suite | 52 passed; 3 blocked on absent WASM glue / Compare runtime assets |
+| Playground ESLint, changed JavaScript/TypeScript syntax, and changed documentation links | Passed |
+| Changed Rust crates: Clippy all features/all targets, warnings denied | Passed for core, render, facade, CLI, Typst, UniFFI, Manatee, and ASCII |
+| Fresh release SVG comparison: all 37 entries, structure/parity/parity-root, three decimals | Passed with existing exact browser-layout/parser-diagnostic receipts |
+| Mermaid reference, binding contract, and native ABI projection verification | All passed |
+| Final workspace Rust formatting, path budget, and diff whitespace | Passed |
+
+The initial attempt to run all UniFFI tests with only Flowchart and binary codecs selected
+failed because existing full-family tests require Architecture/Sequence/Usecase/ER, and binary
+output requires a font source. The artifact-owner recipe and the separate data-only binary
+selection above passed. No production fallback, fixture, golden, or feature declaration was
+changed to make an unsuitable test recipe pass.
+
+For local Playground checks, the existing package-entry generator, installed TypeScript 6.0.3,
+and `packageDistClosure` compiled and projected the real full SDK into ignored build directories.
+This resolved the previous missing SDK declarations without substitutes. The remaining three
+build-graph failures require the actual `artifacts/wasm/merman_wasm.js` and `.runtime` Compare
+bootstrap assets. No synthetic WASM declarations, runtime assets, test skips, or graph-policy
+exceptions were introduced. WASM/browser qualification and complete Playground typechecking
+remain with the Web/Pages owner.
