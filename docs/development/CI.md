@@ -391,7 +391,7 @@ It uses compiler results rather than attempting to infer Rust visibility from so
 parity CI and release preflight own this gate. It is separate from native C6a and preset qualification.
 
 The `preset_qualification` integration target currently runs the admission stage over the exact
-catalog recipes (ten presets, three representative families, Standalone SVG plus PNG). Both the
+catalog recipes (the installed presets, three representative families, Standalone SVG plus PNG). Both the
 PR C6 step and release preflight include it. The test keeps current rejection reasons and recipe
 identities explicit; successful test execution means those observations were reproduced, not that
 the presets became qualified. The separate opaque qualification runner checks Flowchart/State/Sequence

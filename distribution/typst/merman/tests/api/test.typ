@@ -445,7 +445,10 @@ API fixture passed.
 #assert.eq(catalog.schema_version, 1)
 #assert(catalog.structured_spec_available)
 #assert.eq(catalog.supported_output_ids, ("svg",))
-#assert.eq(catalog.presets.len(), 10)
+#assert.eq(catalog.presets.map(preset => preset.id), (
+  "editor-light", "editor-dark", "one-dark", "gruvbox-light", "gruvbox-dark",
+  "ayu-light", "ayu-dark", "brutalist", "spotless", "cyberpunk", "ghibli",
+))
 #assert.eq(catalog.presets.at(0).id, "editor-light")
 #assert.eq(catalog.presets.at(0).qualified_cells, ())
 #assert.eq(merman-capabilities().metadata_ids, ("theme-catalog",))

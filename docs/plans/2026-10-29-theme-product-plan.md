@@ -91,17 +91,27 @@ Verification:
   application, strict rejection, report-path protection, batch ordering, output integrity,
   compatibility silence and transaction behavior. No-feature and SVG-only builds also passed.
 - CLI asset generation and currentness checks passed under both existing temporal environments.
+- All-target/all-feature CLI Clippy passed with `-D warnings`.
 - Full Web package smoke passed using the verified unchanged `c43e3f7b8611` WASM inputs.
 - 509 prepared Playground tests passed, including 178 runtime/store and 32 config/appearance
   tests; TypeScript, changed-surface ESLint and the production artifact graph passed.
 - Chromium custom-theme, design-scope and initialization scenarios passed. The final changed
   ergonomics suite passed all 13 cases; 320px, mid-width and shortened mobile checks passed.
+- Firefox and WebKit startup/render/Compare/focus smoke passed.
 - A real Ghibli preview used `"Open Sans", "Noto Sans SC", sans-serif`; explicit Georgia and
   return-to-inherit were observed. The CLI audit recipe now emits `unsupported-geometry` with
   the matching JSON report while retaining the supported stroke.
 - Independent correctness and adversarial reviews found five edge cases; all were repaired,
   covered by targeted tests and re-reviewed without remaining findings.
 - `cargo fmt --all -- --check`, `git diff --check` and indexed path-length checks passed.
+
+The first remote run passed hygiene, Windows/macOS core, Node WASM/N-API, Python, platform
+bindings and the Web package owner. Typst progressed past its repaired shared support test,
+then exposed another old ten-preset assertion in its package-level API fixture. That fixture
+now verifies the complete ID projection including Ghibli. Reusing the exact CI-uploaded plugin
+with Typst 0.15.1, all 20 package tests passed locally, including nine expected failures. The
+follow-up changes only this fixture and documentation; its current-head owner checks remain
+the final remote evidence.
 
 The unchanged renderer corpus was not rebuilt again for host/UI/CLI-only implementation work.
 CI remains the owner of the full SDK/OS matrix and Linux SVG containment. This work does not
