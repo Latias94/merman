@@ -24,10 +24,13 @@ separate facts reported by the installed catalog and each render's metadata.
 | **One Dark · Class** | **Gruvbox Light · XY Chart** |
 | ![One Dark Class diagram with dark surfaces and a blue relationship](one-dark.png) | ![Gruvbox Light XY Chart with a cream canvas, teal bars and an olive line](gruvbox-light.png) |
 
-These previews were exported as native PNG on macOS from the included sources and settings.
-Host font resolution affects the result; the commands below reproduce the workflow with the
-matching runtime. Pixel identity across hosts is not guaranteed. The shared Flowchart source
-and settings let you compare Brutalist and Cyberpunk without changing the diagram.
+These previews were exported as native PNG on macOS with `--font-measurement native` from
+the included sources and settings. Measurement and painting share the same operation's font
+context. Font-agnostic deterministic estimates can be narrower than the final host glyphs;
+for example, Spotless's semibold note needs native measurement to fit this host's text.
+The commands below reproduce the workflow with a matching runtime, while pixel identity
+across hosts is not guaranteed. The shared Flowchart source and settings let you compare
+Brutalist and Cyberpunk without changing the diagram.
 
 All presets remain alpha, and the catalog has no qualified output cells. Dedicated design
 scope records family-specific styling, while base styling records a shared appearance.
@@ -86,16 +89,17 @@ font installation and rasterization remain host-dependent.
 
 ## Native CLI
 
-From this directory, with a matching PNG-capable CLI, reproduce all six images:
+From this directory, with a CLI built with PNG, native-fonts, and system-fonts capabilities,
+reproduce all six images:
 
 ```text
 merman-cli capabilities
-merman-cli render brutalist.mmd --theme-preset brutalist --config-file brutalist.config.json -f png -o brutalist.png
-merman-cli render ghibli.mmd --theme-preset ghibli -f png -o ghibli.png
-merman-cli render spotless.mmd --theme-preset spotless -f png -o spotless.png
-merman-cli render brutalist.mmd --theme-preset cyberpunk --config-file brutalist.config.json -f png -o cyberpunk.png
-merman-cli render one-dark.mmd --theme-preset one-dark --config-file one-dark.config.json -f png -o one-dark.png --theme-report one-dark.report.json
-merman-cli render gruvbox-light.mmd --theme-preset gruvbox-light -f png -o gruvbox-light.png
+merman-cli render brutalist.mmd --theme-preset brutalist --config-file brutalist.config.json --font-measurement native -f png -o brutalist.png
+merman-cli render ghibli.mmd --theme-preset ghibli --font-measurement native -f png -o ghibli.png
+merman-cli render spotless.mmd --theme-preset spotless --font-measurement native -f png -o spotless.png
+merman-cli render brutalist.mmd --theme-preset cyberpunk --config-file brutalist.config.json --font-measurement native -f png -o cyberpunk.png
+merman-cli render one-dark.mmd --theme-preset one-dark --config-file one-dark.config.json --font-measurement native -f png -o one-dark.png --theme-report one-dark.report.json
+merman-cli render gruvbox-light.mmd --theme-preset gruvbox-light --font-measurement native -f png -o gruvbox-light.png
 ```
 
 Use `-f svg -o brutalist.svg` or `-f pdf -o brutalist.pdf` with the same source, preset, and
@@ -104,6 +108,12 @@ automatically. `--theme-report` writes the actual render's evidence separately f
 `--theme-portability require-portable` enforces the renderer's strict policy. These host-font
 examples do not meet that strict policy. Web supplies SVG; Playground's PNG/JPEG export uses
 browser Canvas. Check the loaded artifact for available outputs.
+
+For a controlled font set, replace `--font-measurement native` with
+`--font-file /path/to/regular.ttf --font-file /path/to/bold.ttf --font-system off`.
+Explicit font files select native measurement and painting together. Use the appropriate
+weights and glyph coverage for the recipe. See the [host text measurement guide](../../bindings/HOST_TEXT_MEASUREMENT.md)
+for native contexts and browser measurement callbacks.
 
 Font stacks name host fonts and do not embed or download them. Open Sans and Noto Sans SC
 are Ghibli's preferred fonts, with a generic sans-serif fallback. Text measurements and font

@@ -12,7 +12,7 @@ Apply reusable visual designs through Rust, Web, native CLI, or the Playground. 
 
 Brutalist, Spotless, Cyberpunk, and Ghibli draw their visual design references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid). Thanks to the Modern Mermaid Team for those designs. Merman adapts selected visual mechanisms into typed recipes with its own rendering and family coverage; the [gallery's design references](docs/rendering/theme-gallery/README.md#design-references-and-license) record the pinned source and retained MIT notice.
 
-These are real Merman native PNG exports. The [six-theme gallery](docs/rendering/theme-gallery/README.md) includes every source, configuration, and reproduction command.
+These are real Merman native PNG exports, with native font measurement sharing the painting font context to size labels. The [six-theme gallery](docs/rendering/theme-gallery/README.md) includes every source, configuration, and reproduction command.
 
 | Brutalist · Flowchart | Ghibli · Pie |
 | --- | --- |
