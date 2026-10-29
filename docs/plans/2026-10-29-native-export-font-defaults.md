@@ -48,3 +48,39 @@ System font acquisition and shaping can increase native export cost. This correc
 for the selected host and does not establish browser parity, identical cross-host pixels,
 complete glyph coverage, or a general performance improvement. Existing budgets and explicit
 fixed-font inputs remain the controls for bounded and reproducible operations.
+
+## Related native filter findings
+
+The fixed-font containment test also detected an older maintenance-line Sequence defect:
+Neo CSS referenced `#drop-shadow` while the writer emitted a diagram-prefixed definition.
+Native SVG parsing discarded the unresolved-filter note frame. Main already scoped those
+references; the maintenance patch reuses the same helper and preserves custom filters.
+Four existing Sequence residual receipts change only their four CSS filter references. Using
+the existing canonical-signature function, reversing those references reproduces every old
+signature exactly; source, upstream bytes, geometry, text, modes, and precision are unchanged.
+
+A targeted search found the same missing scoping on GitGraph tag backgrounds on both lines.
+The patch maps that one CSS owner to its actual definition. Integration coverage checks four
+Redux themes, two diagram IDs, and unchanged custom URL/function filters. Other audited shared
+Neo, Mindmap, State, Flowchart, and Timeline paths already scope their built-in references.
+
+## Verification record
+
+- Main's complete CLI inventory ran 617 tests with one separate intentional skip. The first
+  run passed 614 and exposed three old CSS/help expectations; all affected targets passed
+  after correction. Fifteen explicit-font-only contracts and all five selected exact process
+  profiles (SVG, PNG, JPEG, PDF, parallel PDF) passed.
+- Both lines passed the three fixed-font containment tests, covering nine real Sequence note
+  cases. Main's actual default Spotless PNG equals its explicit-native output byte-for-byte.
+- Main passed 16 isolated feature consumers, 49 representative feature builds, all-target and
+  all-feature CLI Clippy, generated assets, representative dependency closures, and legal
+  reports/projections. The focused release/install Python contracts passed.
+- Maintenance passed all 573 CLI tests with one separate intentional skip, all five selected
+  exact process profiles, 166 Sequence contracts, its GitGraph contract, all-feature CLI
+  Clippy, generated assets, 112 focused Python contracts, closures, and legal material checks.
+  The complete structure/parity/parity-root SVG comparison passed after the reviewed
+  Sequence receipt refresh. Main's 67 GitGraph integration tests and its final complete
+  structure/parity/parity-root SVG comparison also passed.
+- Maintenance commit `674a56cba` is proposed separately in
+  [PR #255](https://github.com/Latias94/merman/pull/255), with real before/after native exports.
+  Remote CI owns the remaining cross-platform matrix; pending jobs are not local passes.
