@@ -304,3 +304,32 @@ After merging mainline, core plus xtask pass 3,044 tests. Sequence/Gantt/Mindmap
 tests, with one pre-existing ignored test. The real Dart ABI contract entrypoint passes after
 the merge. Archive/qualification Python tests pass 45 cases. WASI host tests before the merge
 pass all 17 cases, including actual SVG/PNG, ownership, quotas, and error recovery.
+
+Fresh full generated drift also passes after the mainline merge. The native artifact recipe
+passes header compilation and current plus alpha.5 consumer execution (three tests). The full
+release SVG comparison passes all 37 entries in structure/parity/parity-root at three decimals.
+WASI protocol tests pass 19 cases in the existing pinned host environment, and changed crates
+pass Clippy with all features/all targets and warnings denied when the native-font dependency
+owners are selected together. The narrower Clippy selection first exposed two pre-existing
+feature-dependent dead-code warnings in export; selecting its actual owner features resolves
+that recipe mismatch without suppressions or production edits.
+
+The complete non-strict feature-matrix command passes 16 isolated consumer configurations and
+all 49 build cases after validating 42 exact artifact profiles. The strict cross-target release
+matrix remains with its release owner. Cargo commands were executed serially with two build jobs.
+
+A subsequent independent maintenance review found two Sequence details missed by the first owner
+tests: unused actors still participate in source-order spacing and shared row-height measurement,
+and central connection-circle offsets depend only on the body autonumber switch. The corrections
+retain full source measurements before selecting visible actor slots and separate the circle
+switch from configured number visibility. Hidden math labels retain measurement artifacts with
+zero terminal emissions. The regression set now checks hidden middle actors with long messages,
+hidden tall wrapped labels, and left/right central connections before, during and after autonumber.
+The earlier deletion-equivalence assertion was replaced with the actual upstream measurement rule.
+
+The final Sequence review corrections pass all 344 Sequence unit and SVG-owner tests, including
+math occurrence admission and measurement-sidecar reuse. Clippy all features/all targets with
+warnings denied passes again after those changes.
+
+The complete release SVG matrix passes again after the Sequence corrections: all 37 entries,
+all three DOM modes, unchanged reviewed diagnostic receipts and three-decimal policy.
