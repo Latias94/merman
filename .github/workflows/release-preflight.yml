@@ -1199,9 +1199,9 @@ jobs:
             --max-compressed-mb 99
 
   sdk-archives:
-    needs:
-      - validate-inputs
-      - versions-and-packages
+    # The SDK owner validates its immutable source and workspace version independently.
+    # Join package gates at release-preflight-evidence without serializing artifact builds.
+    needs: validate-inputs
     permissions:
       contents: read
       actions: read
