@@ -216,27 +216,58 @@ impl<'input> Lexer<'input> {
         self.input.as_bytes().get(self.pos).copied()
     }
 
-    pub(super) fn peek2(&self) -> Option<[u8; 2]> {
-        if self.pos + 1 >= self.input.len() {
-            return None;
-        }
-        Some([
-            self.input.as_bytes()[self.pos],
-            self.input.as_bytes()[self.pos + 1],
-        ])
+    pub(super) fn starts_with_kw(&self, kw: &str) -> bool {
+        // Jison compiles literal keywords with JavaScript's ASCII word boundary.
+        self.input[self.pos..]
+            .strip_prefix(kw)
+            .is_some_and(|suffix| {
+                !suffix
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+            })
     }
 
-    pub(super) fn starts_with_kw(&self, kw: &str) -> bool {
+    pub(super) fn lex_reserved_token_error(&mut self) -> Option<LexError> {
         let rest = &self.input[self.pos..];
-        if !rest.starts_with(kw) {
-            return false;
+        // Jison compiles these INITIAL keyword rules with an ASCII word boundary before
+        // NODE_STRING. Presentation statements are scanned as a whole below, but their keyword
+        // still requires a SPACE token before args.
+        // INTERPOLATE and LINK_TARGET have no standalone identifier use; their valid argument
+        // positions are consumed inside the click/linkStyle scanners instead.
+        let keyword = [
+            "style",
+            "linkStyle",
+            "classDef",
+            "class",
+            "subgraph",
+            "interpolate",
+            "_self",
+            "_blank",
+            "_parent",
+            "_top",
+        ]
+        .into_iter()
+        .find(|keyword| self.starts_with_kw(keyword))?;
+        if matches!(
+            keyword,
+            "style" | "linkStyle" | "classDef" | "class" | "subgraph"
+        ) {
+            let suffix = &rest[keyword.len()..];
+            if suffix.is_empty()
+                || suffix.chars().next().is_some_and(is_ecmascript_trim_char)
+                || (keyword == "subgraph" && suffix.starts_with(';'))
+            {
+                return None;
+            }
         }
-        let after = self.pos + kw.len();
-        if after >= self.input.len() {
-            return true;
-        }
-        let b = self.input.as_bytes()[after];
-        !b.is_ascii_alphanumeric() && b != b'_' && b != b'-'
+
+        let start = self.pos;
+        self.pos += keyword.len();
+        Some(LexError::with_span(
+            format!("Unexpected flowchart keyword {keyword}"),
+            SourceSpan::new(start, self.pos),
+        ))
     }
 
     pub(super) fn skip_ws(&mut self) {
@@ -289,29 +320,12 @@ impl<'input> Lexer<'input> {
                 self.pos += 1;
                 Some((start, Tok::Sep, self.pos))
             }
-            b';' => {
+            b';' if !self.allow_header_direction => {
                 self.pos += 1;
                 Some((start, Tok::Sep, self.pos))
             }
             _ => None,
         }
-    }
-
-    pub(super) fn lex_comment(&mut self) -> Option<(usize, Tok, usize)> {
-        let start = self.pos;
-        let Some([b'%', b'%']) = self.peek2() else {
-            return None;
-        };
-        // Consume until newline or EOF. If newline exists, emit Sep to keep statement boundaries.
-        self.pos += 2;
-        while let Some(b) = self.peek() {
-            if b == b'\n' {
-                self.pos += 1;
-                return Some((start, Tok::Sep, self.pos));
-            }
-            self.pos += 1;
-        }
-        None
     }
 
     pub(super) fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
@@ -320,14 +334,11 @@ impl<'input> Lexer<'input> {
         }
         let start = self.pos;
         let rest = &self.input[self.pos..];
-        for d in ["TB", "TD", "BT", "LR", "RL"] {
+        for d in ["TB", "TD", "BT", "LR", "RL", "BR"] {
             if rest.starts_with(d) {
                 let after = self.pos + d.len();
-                if after < self.input.len() {
-                    let b = self.input.as_bytes()[after];
-                    if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' {
-                        continue;
-                    }
+                if !self.header_direction_has_separator(after) {
+                    return None;
                 }
                 self.pos = after;
                 self.allow_header_direction = false;
@@ -346,11 +357,8 @@ impl<'input> Lexer<'input> {
             };
             if let Some(d) = mapped {
                 let after = self.pos + 1;
-                if after < self.input.len() {
-                    let next = self.input.as_bytes()[after];
-                    if next.is_ascii_alphanumeric() || next == b'_' || next == b'-' {
-                        return None;
-                    }
+                if !self.header_direction_has_separator(after) {
+                    return None;
                 }
                 self.pos = after;
                 self.allow_header_direction = false;
@@ -361,11 +369,23 @@ impl<'input> Lexer<'input> {
         None
     }
 
+    fn header_direction_has_separator(&self, after: usize) -> bool {
+        let rest = &self.input[after..];
+        let after_space = rest.trim_start_matches(|ch| ch != '\n' && is_ecmascript_trim_char(ch));
+        // flow.jison FirstStmtSeparator permits a direct semicolon or whitespace plus newline.
+        // Diagram.fromText appends a newline, so the public EOF spelling is equivalent.
+        rest.starts_with(';') || after_space.is_empty() || after_space.starts_with('\n')
+    }
+
     pub(super) fn lex_direction_stmt(
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
-        if !self.starts_with_kw("direction") {
+        if !self.input[self.pos..]
+            .strip_prefix("direction")
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(is_ecmascript_trim_char)
+        {
             return None;
         }
         self.pos += "direction".len();
@@ -723,7 +743,11 @@ impl<'input> Lexer<'input> {
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
-        if !self.starts_with_kw("click") {
+        if !self.input[self.pos..]
+            .strip_prefix("click")
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(is_ecmascript_trim_char)
+        {
             return None;
         }
         self.pos += "click".len();
@@ -926,7 +950,9 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let first = bytes[start];
-        if first.is_ascii_alphanumeric() || first == b'_' {
+        // Ordinary comments are removed by preprocessing. Mermaid's NODE_STRING includes `%`,
+        // so remaining markers belong to identifiers and must reach the grammar unchanged.
+        if first.is_ascii_alphanumeric() || matches!(first, b'_' | b'%') {
             self.pos += 1;
         } else if let Some(len) = non_ascii_id_char_len(self.input, start) {
             self.pos += len;
@@ -942,7 +968,7 @@ impl<'input> Lexer<'input> {
                 break;
             }
             let b = bytes[self.pos];
-            if b.is_ascii_alphanumeric() || b == b'_' {
+            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'%') {
                 self.pos += 1;
                 continue;
             }

@@ -1098,21 +1098,6 @@ fn process_frontmatter_controlled(
     let mut keys = Vec::new();
     let mut rewrite_safe = true;
 
-    if config_nesting_exceeds_limit_controlled(yaml_body, control)? {
-        return Ok(FrontmatterCapture {
-            result: Err(Error::InvalidFrontMatterYaml {
-                message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
-            }),
-            full: Some(location.full),
-            body: Some(location.body),
-            indent: location.indent.to_string(),
-            keys,
-            has_config: false,
-            rewrite_safe: false,
-            fields: None,
-        });
-    }
-
     control.checkpoint()?;
     let parsed = if capture_mode.collects() {
         let captured = crate::yaml_config::parse_yaml_value_capture_controlled(
@@ -2828,6 +2813,59 @@ mod tests {
         let mut source = PreprocessedSource::new(input);
         transform(&mut source);
         source.into_text()
+    }
+
+    #[test]
+    fn frontmatter_depth_ignores_brackets_in_yaml_comments_and_block_scalars() {
+        let brackets = "[".repeat(MAX_CONFIG_NESTING_DEPTH + 1);
+        for (body, expected_css) in [
+            (format!("# {brackets}\nconfig:\n  theme: dark\n"), None),
+            (
+                format!("config:\n  theme: dark\n  themeCSS: |-\n    {brackets}\n"),
+                Some(brackets.as_str()),
+            ),
+        ] {
+            let input = format!("---\n{body}---\nerror\n");
+            let result = preprocess_diagram_with_known_type(
+                &input,
+                &DetectorRegistry::default(),
+                Some("error"),
+            )
+            .expect("brackets in comments and scalars do not add YAML collections");
+
+            assert_eq!(result.config.get_str("theme"), Some("dark"));
+            assert_eq!(result.config.get_str("themeCSS"), expected_css);
+            assert_eq!(result.code(), "error\n");
+        }
+    }
+
+    #[test]
+    fn frontmatter_depth_rejects_actual_flow_and_block_collections() {
+        let depth = MAX_CONFIG_NESTING_DEPTH + 1;
+        for body in [
+            format!(
+                "config:\n  values: {}0{}\n",
+                "[".repeat(depth),
+                "]".repeat(depth)
+            ),
+            format!("config:\n  values:\n    {}0\n", "- ".repeat(depth)),
+        ] {
+            let input = format!("---\n{body}---\nerror\n");
+            let error = preprocess_diagram_with_known_type(
+                &input,
+                &DetectorRegistry::default(),
+                Some("error"),
+            )
+            .expect_err("real collection depth remains bounded by the YAML parser");
+            let Error::InvalidFrontMatterYaml { message } = error else {
+                panic!("unexpected frontmatter error: {error}");
+            };
+            assert!(
+                message.contains("recursion limit exceeded")
+                    || message.contains("config nesting exceeds"),
+                "unexpected YAML error: {message}"
+            );
+        }
     }
 
     #[test]
