@@ -116,7 +116,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
-          targets: aarch64-linux-android,wasm32-unknown-unknown
+          targets: aarch64-linux-android,wasm32-unknown-unknown,wasm32-wasip1
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2

@@ -70,6 +70,13 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_strict_preflight_installs_the_wasi_compile_target(self) -> None:
+        packages = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "versions-and-packages")
+        self.assertIn("verify-feature-matrix --strict", packages)
+        target_line = re.search(r"(?m)^\s+targets:\s*([^\n]+)$", packages)
+        self.assertIsNotNone(target_line)
+        self.assertIn("wasm32-wasip1", target_line.group(1).split(","))
+
     def test_sdk_native_qualification_uses_native_errors_and_relocatable_libraries(self) -> None:
         package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
         self.assertIn("python scripts/sdk_qualify.py", package)
