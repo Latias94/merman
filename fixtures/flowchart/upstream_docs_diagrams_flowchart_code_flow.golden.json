@@ -301,7 +301,7 @@
       },
       {
         "id": "flowDetector",
-        "label": "flowDetector.ts<br/>detector(txt, config)",
+        "label": "flowDetector.ts<br>detector(txt, config)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -320,7 +320,7 @@
       },
       {
         "id": "flowDetectorV2",
-        "label": "flowDetector-v2.ts<br/>detector(txt, config)",
+        "label": "flowDetector-v2.ts<br>detector(txt, config)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -339,7 +339,7 @@
       },
       {
         "id": "elkDetector",
-        "label": "elk/detector.ts<br/>detector(txt, config)",
+        "label": "elk/detector.ts<br>detector(txt, config)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -434,7 +434,7 @@
       },
       {
         "id": "flowDiagram",
-        "label": "flowDiagram.ts<br/>diagram object",
+        "label": "flowDiagram.ts<br>diagram object",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -567,7 +567,7 @@
       },
       {
         "id": "flowParser",
-        "label": "parser/flowParser.ts<br/>newParser.parse(src)",
+        "label": "parser/flowParser.ts<br>newParser.parse(src)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -586,7 +586,7 @@
       },
       {
         "id": "RemoveWhitespace",
-        "label": "Remove trailing whitespace<br/>src.replace(/}\\s*\\n/g, '}\\n')",
+        "label": "Remove trailing whitespace<br>src.replace(/}\\s*\\n/g, '}\\n')",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -605,7 +605,7 @@
       },
       {
         "id": "flowJison",
-        "label": "parser/flow.jison<br/>flowJisonParser.parse(newSrc)",
+        "label": "parser/flow.jison<br>flowJisonParser.parse(newSrc)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -738,7 +738,7 @@
       },
       {
         "id": "FlowDBClass",
-        "label": "flowDb.ts<br/>FlowDB class",
+        "label": "flowDb.ts<br>FlowDB class",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -757,7 +757,7 @@
       },
       {
         "id": "DBInit",
-        "label": "constructor()<br/>- Initialize counters<br/>- Bind methods<br/>- Setup toolTips<br/>- Call clear()",
+        "label": "constructor()<br>- Initialize counters<br>- Bind methods<br>- Setup toolTips<br>- Call clear()",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -795,7 +795,7 @@
       },
       {
         "id": "addVertex",
-        "label": "addVertex(id, textObj, type, style,<br/>classes, dir, props, metadata)",
+        "label": "addVertex(id, textObj, type, style,<br>classes, dir, props, metadata)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1004,7 +1004,7 @@
       },
       {
         "id": "CreateVertex",
-        "label": "Create FlowVertex object<br/>- id, labelType, domId<br/>- styles[], classes[]",
+        "label": "Create FlowVertex object<br>- id, labelType, domId<br>- styles[], classes[]",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1042,7 +1042,7 @@
       },
       {
         "id": "ParseMetadata",
-        "label": "Parse YAML metadata<br/>yaml.load(yamlData)",
+        "label": "Parse YAML metadata<br>yaml.load(yamlData)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1061,7 +1061,7 @@
       },
       {
         "id": "SetVertexProps",
-        "label": "Set vertex properties<br/>- shape, label, icon, form<br/>- pos, img, constraint, w, h",
+        "label": "Set vertex properties<br>- shape, label, icon, form<br>- pos, img, constraint, w, h",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1099,7 +1099,7 @@
       },
       {
         "id": "CreateEdge",
-        "label": "Create FlowEdge object<br/>- start, end, type, text<br/>- labelType, classes[]",
+        "label": "Create FlowEdge object<br>- start, end, type, text<br>- labelType, classes[]",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1118,7 +1118,7 @@
       },
       {
         "id": "ProcessLinkText",
-        "label": "Process link text<br/>- sanitizeText()<br/>- strip quotes",
+        "label": "Process link text<br>- sanitizeText()<br>- strip quotes",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1137,7 +1137,7 @@
       },
       {
         "id": "SetEdgeProps",
-        "label": "Set edge properties<br/>- type, stroke, length",
+        "label": "Set edge properties<br>- type, stroke, length",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1156,7 +1156,7 @@
       },
       {
         "id": "GenerateEdgeId",
-        "label": "Generate edge ID<br/>getEdgeId(start, end, counter)",
+        "label": "Generate edge ID<br>getEdgeId(start, end, counter)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1175,7 +1175,7 @@
       },
       {
         "id": "ValidateEdgeLimit",
-        "label": "Validate edge limit<br/>maxEdges check",
+        "label": "Validate edge limit<br>maxEdges check",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1251,7 +1251,7 @@
       },
       {
         "id": "ProcessSubGraphs",
-        "label": "Process subgraphs<br/>- parentDB Map<br/>- subGraphDB Map",
+        "label": "Process subgraphs<br>- parentDB Map<br>- subGraphDB Map",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1270,7 +1270,7 @@
       },
       {
         "id": "AddNodeFromVertex",
-        "label": "addNodeFromVertex()<br/>for each vertex",
+        "label": "addNodeFromVertex()<br>for each vertex",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1289,7 +1289,7 @@
       },
       {
         "id": "ProcessEdgeTypes",
-        "label": "destructEdgeType()<br/>arrowTypeStart, arrowTypeEnd",
+        "label": "destructEdgeType()<br>arrowTypeStart, arrowTypeEnd",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1346,7 +1346,7 @@
       },
       {
         "id": "CreateBaseNode",
-        "label": "Create base node<br/>- id, label, parentId<br/>- cssStyles, cssClasses<br/>- shape, domId, tooltip",
+        "label": "Create base node<br>- id, label, parentId<br>- cssStyles, cssClasses<br>- shape, domId, tooltip",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1403,7 +1403,7 @@
       },
       {
         "id": "flowRendererV3",
-        "label": "flowRenderer-v3-unified.ts<br/>draw(text, id, version, diag)",
+        "label": "flowRenderer-v3-unified.ts<br>draw(text, id, version, diag)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1422,7 +1422,7 @@
       },
       {
         "id": "RenderInit",
-        "label": "Initialize rendering<br/>- getConfig()<br/>- handle securityLevel<br/>- getDiagramElement()",
+        "label": "Initialize rendering<br>- getConfig()<br>- handle securityLevel<br>- getDiagramElement()",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1441,7 +1441,7 @@
       },
       {
         "id": "GetLayoutData",
-        "label": "diag.db.getData()<br/>as LayoutData",
+        "label": "diag.db.getData()<br>as LayoutData",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1460,7 +1460,7 @@
       },
       {
         "id": "SetupLayoutData",
-        "label": "Setup layout data<br/>- type, layoutAlgorithm<br/>- direction, spacing<br/>- markers, diagramId",
+        "label": "Setup layout data<br>- type, layoutAlgorithm<br>- direction, spacing<br>- markers, diagramId",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1517,7 +1517,7 @@
       },
       {
         "id": "ProcessLinks",
-        "label": "Process vertex links<br/>- create anchor elements<br/>- handle click events",
+        "label": "Process vertex links<br>- create anchor elements<br>- handle click events",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1536,7 +1536,7 @@
       },
       {
         "id": "ShapeSystem",
-        "label": "flowChartShapes.js<br/>Shape Functions",
+        "label": "flowChartShapes.js<br>Shape Functions",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1726,7 +1726,7 @@
       },
       {
         "id": "stylesTS",
-        "label": "styles.ts<br/>getStyles(options)",
+        "label": "styles.ts<br>getStyles(options)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1745,7 +1745,7 @@
       },
       {
         "id": "StyleOptions",
-        "label": "FlowChartStyleOptions<br/>- arrowheadColor, border2<br/>- clusterBkg, mainBkg<br/>- fontFamily, textColor",
+        "label": "FlowChartStyleOptions<br>- arrowheadColor, border2<br>- clusterBkg, mainBkg<br>- fontFamily, textColor",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1764,7 +1764,7 @@
       },
       {
         "id": "GenerateCSS",
-        "label": "Generate CSS styles<br/>- .label, .cluster-label<br/>- .node, .edgePath<br/>- .flowchart-link, .edgeLabel",
+        "label": "Generate CSS styles<br>- .label, .cluster-label<br>- .node, .edgePath<br>- .flowchart-link, .edgeLabel",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1802,7 +1802,7 @@
       },
       {
         "id": "TypeSystem",
-        "label": "types.ts<br/>Type Definitions",
+        "label": "types.ts<br>Type Definitions",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -1897,7 +1897,7 @@
       },
       {
         "id": "FlowVertexTypeParam",
-        "label": "FlowVertexTypeParam<br/>Shape types",
+        "label": "FlowVertexTypeParam<br>Shape types",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -2353,7 +2353,7 @@
       },
       {
         "id": "Dagre",
-        "label": "dagre<br/>(default)",
+        "label": "dagre<br>(default)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -2372,7 +2372,7 @@
       },
       {
         "id": "DagreWrapper",
-        "label": "dagre-wrapper<br/>(v2 renderer)",
+        "label": "dagre-wrapper<br>(v2 renderer)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -2391,7 +2391,7 @@
       },
       {
         "id": "ELK",
-        "label": "elk<br/>(external package)",
+        "label": "elk<br>(external package)",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -2467,7 +2467,7 @@
       },
       {
         "id": "ParserTests",
-        "label": "parser/*.spec.js files<br/>- flow-text.spec.js<br/>- flow-edges.spec.js<br/>- flow-style.spec.js<br/>- subgraph.spec.js",
+        "label": "parser/*.spec.js files<br>- flow-text.spec.js<br>- flow-edges.spec.js<br>- flow-style.spec.js<br>- subgraph.spec.js",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",

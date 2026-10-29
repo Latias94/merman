@@ -29,7 +29,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "Important information!<br />You can write notes.<br />And\\nthey\\ncan\\nbe\\nmulti-\\nline.",
+        "label": "Important information!<br>You can write notes.<br>And\\nthey\\ncan\\nbe\\nmulti-\\nline.",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -47,7 +47,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "Important information!<br />You can write notes.<br />And\\nthey\\ncan\\nbe\\nmulti-\\nline.",
+        "label": "Important information!<br>You can write notes.<br>And\\nthey\\ncan\\nbe\\nmulti-\\nline.",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

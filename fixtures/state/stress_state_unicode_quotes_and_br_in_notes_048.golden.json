@@ -117,7 +117,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br>\npunctuation: ,.;:!? () [] {} / \\\\ |",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -135,7 +135,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br>\npunctuation: ,.;:!? () [] {} / \\\\ |",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

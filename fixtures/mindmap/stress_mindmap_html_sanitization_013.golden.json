@@ -23,7 +23,7 @@
       {
         "id": "1",
         "domId": "node_1",
-        "label": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a>",
+        "label": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a>",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
@@ -41,7 +41,7 @@
       {
         "id": "2",
         "domId": "node_2",
-        "label": "<img src=x>",
+        "label": "<img src=\"x\">",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
@@ -95,14 +95,14 @@
           "id": 1,
           "nodeId": "html",
           "level": 2,
-          "descr": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a>",
+          "descr": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a>",
           "type": 2,
           "children": [
             {
               "id": 2,
               "nodeId": "xss",
               "level": 4,
-              "descr": "<img src=x>",
+              "descr": "<img src=\"x\">",
               "type": 2,
               "children": [],
               "width": 200,

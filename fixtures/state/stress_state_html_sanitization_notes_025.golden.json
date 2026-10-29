@@ -72,7 +72,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a><br/>\n<img src=x>",
+        "label": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n<img src=\"x\">",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -90,7 +90,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a><br/>\n<img src=x>",
+        "label": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n<img src=\"x\">",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

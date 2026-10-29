@@ -62,7 +62,7 @@
       },
       {
         "id": "C",
-        "label": "x &lt; y and y > z",
+        "label": "x &lt; y and y &gt; z",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",

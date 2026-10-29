@@ -1307,7 +1307,7 @@ A@{
     .unwrap();
     let nodes = res.model["nodes"].as_array().unwrap();
     assert_eq!(nodes.len(), 1);
-    assert_eq!(nodes[0]["label"], json!("This is a<br/>multiline string"));
+    assert_eq!(nodes[0]["label"], json!("This is a<br>multiline string"));
 }
 
 #[test]

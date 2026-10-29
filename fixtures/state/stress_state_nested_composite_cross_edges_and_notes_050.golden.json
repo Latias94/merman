@@ -163,7 +163,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "Composite note<br/>line2",
+        "label": "Composite note<br>line2",
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -181,7 +181,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "Composite note<br/>line2",
+        "label": "Composite note<br>line2",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

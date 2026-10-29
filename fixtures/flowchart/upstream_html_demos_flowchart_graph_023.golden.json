@@ -44,7 +44,7 @@
     "nodes": [
       {
         "id": "A",
-        "label": "cylindrical<br />shape<br />test",
+        "label": "cylindrical<br>shape<br>test",
         "labelType": "text",
         "shape": "cylinder",
         "layoutShape": "cylinder",
@@ -123,7 +123,7 @@
       },
       {
         "id": "C",
-        "label": "Let me think...<br />Do I want something for work,<br />something to spend every free second with,<br />or something to get around?",
+        "label": "Let me think...<br>Do I want something for work,<br>something to spend every free second with,<br>or something to get around?",
         "labelType": "text",
         "shape": "cylinder",
         "layoutShape": "cylinder",

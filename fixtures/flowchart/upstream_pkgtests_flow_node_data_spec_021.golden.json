@@ -19,7 +19,7 @@
     "nodes": [
       {
         "id": "A",
-        "label": "This is a<br/>multiline string",
+        "label": "This is a<br>multiline string",
         "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",

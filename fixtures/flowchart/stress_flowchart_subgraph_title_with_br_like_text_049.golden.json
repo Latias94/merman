@@ -84,7 +84,7 @@
           "a",
           "b"
         ],
-        "title": "title contains literal <br/> sequence",
+        "title": "title contains literal <br> sequence",
         "classes": [],
         "styles": [],
         "dir": "TB",

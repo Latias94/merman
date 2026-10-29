@@ -51,7 +51,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for text shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for text shape",
         "labelType": "markdown",
         "shape": "text",
         "layoutShape": "text",
@@ -89,7 +89,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for card shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for card shape",
         "labelType": "markdown",
         "shape": "card",
         "layoutShape": "card",
@@ -127,7 +127,7 @@
       },
       {
         "id": "n22",
-        "label": "This is **bold** </br>and <strong>strong</strong> for lin-rect shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for lin-rect shape",
         "labelType": "markdown",
         "shape": "lin-rect",
         "layoutShape": "lin-rect",
@@ -165,7 +165,7 @@
       },
       {
         "id": "n33",
-        "label": "This is **bold** </br>and <strong>strong</strong> for diamond shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for diamond shape",
         "labelType": "markdown",
         "shape": "diamond",
         "layoutShape": "diamond",
@@ -203,7 +203,7 @@
       },
       {
         "id": "n44",
-        "label": "This is **bold** </br>and <strong>strong</strong> for hexagon shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for hexagon shape",
         "labelType": "markdown",
         "shape": "hexagon",
         "layoutShape": "hexagon",
