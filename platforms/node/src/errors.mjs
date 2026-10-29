@@ -174,6 +174,18 @@ export class MermanInvalidTransportError extends MermanError {
 export { NODE_TRANSPORT_FIELD_LIMITS, NODE_TRANSPORT_LIMITS, NODE_WIRE_CONTRACT };
 
 export function parseTransportJsonText(value, label, limits) {
+  assertTransportJsonTextLimits(value, label, limits);
+  try {
+    return JSON.parse(value);
+  } catch (cause) {
+    throw new MermanInvalidTransportError(
+      `Merman transport returned invalid ${label} JSON.`,
+      cause,
+    );
+  }
+}
+
+function assertTransportJsonTextLimits(value, label, limits) {
   if (typeof value !== "string") {
     throw new MermanInvalidTransportError(`Merman transport ${label} must be JSON text.`);
   }
@@ -187,14 +199,6 @@ export function parseTransportJsonText(value, label, limits) {
     );
   }
   scanBoundedJsonText(value, label, limits);
-  try {
-    return JSON.parse(value);
-  } catch (cause) {
-    throw new MermanInvalidTransportError(
-      `Merman transport returned invalid ${label} JSON.`,
-      cause,
-    );
-  }
 }
 
 export function encodeTransportJson(value, label, limits) {
@@ -220,7 +224,8 @@ export function encodeTransportJson(value, label, limits) {
       cause,
     );
   }
-  parseTransportJsonText(text, label, limits);
+  // JSON.stringify guarantees syntax for the controlled clone; retain all wire-limit checks.
+  assertTransportJsonTextLimits(text, label, limits);
   return text;
 }
 
