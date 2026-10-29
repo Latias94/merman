@@ -1,12 +1,13 @@
 #![cfg(feature = "layout-cytoscape")]
 
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
+use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::model::MindmapDiagramLayout;
 use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use serde_json::json;
 
 fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -30,6 +31,105 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
         .expect("render svg")
         .svg()
         .to_owned()
+}
+
+#[test]
+fn mindmap_root_viewport_consumes_effective_padding_and_use_max_width() {
+    for padding in [0.0, 24.5] {
+        for use_max_width in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  layout: tidy-tree\n  look: classic\n  htmlLabels: false\n  mindmap:\n    padding: {padding}\n    useMaxWidth: {use_max_width}\n---\nmindmap\n  root[Root]\n"
+            );
+            let parsed = Engine::new()
+                .with_site_config(MermaidConfig::from_value(json!({
+                    "mindmap": {"padding": 3, "useMaxWidth": !use_max_width}
+                })))
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let config = parsed.metadata().effective_config.as_value();
+            assert_eq!(
+                config.pointer("/mindmap/padding").and_then(|v| v.as_f64()),
+                Some(padding)
+            );
+            assert_eq!(
+                config
+                    .pointer("/mindmap/useMaxWidth")
+                    .and_then(|v| v.as_bool()),
+                Some(use_max_width)
+            );
+
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact =
+                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+            let projection = artifact.layout_json().unwrap();
+            let layout: MindmapDiagramLayout =
+                serde_json::from_value(projection["layout"]["MindmapDiagram"].clone()).unwrap();
+            assert_eq!(layout.nodes.len(), 1);
+            // Mermaid fixes rectangle node padding independently of the root viewBox margin.
+            let node = &layout.nodes[0];
+            let expected = [
+                node.x - node.width / 2.0 - padding,
+                node.y - node.height / 2.0 - padding,
+                node.width + 2.0 * padding,
+                node.height + 2.0 * padding,
+            ];
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let root = document.root_element();
+            let view_box = root
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|part| part.parse::<f64>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(view_box.len(), 4);
+            for (actual, expected) in view_box.iter().zip(expected) {
+                assert!(
+                    (actual - expected).abs() < 0.001,
+                    "viewBox={view_box:?}, expected={expected}, padding={padding}"
+                );
+            }
+            if use_max_width {
+                assert_eq!(root.attribute("width"), Some("100%"));
+                assert_eq!(root.attribute("height"), None);
+                let max_width = root
+                    .attribute("style")
+                    .unwrap()
+                    .strip_prefix("max-width: ")
+                    .unwrap()
+                    .strip_suffix("px;")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert!((max_width - expected[2]).abs() < 0.001);
+            } else {
+                assert_eq!(root.attribute("style"), None);
+                let width = root.attribute("width").unwrap().parse::<f64>().unwrap();
+                let height = root.attribute("height").unwrap().parse::<f64>().unwrap();
+                assert!((width - expected[2]).abs() < 0.001);
+                assert!((height - expected[3]).abs() < 0.001);
+            }
+        }
+    }
+}
+
+#[test]
+fn mindmap_root_viewport_defaults_match_explicit_mermaid_defaults() {
+    let source = "---\nconfig:\n  layout: tidy-tree\n  look: classic\n  htmlLabels: false\n---\nmindmap\n  root[Root]\n";
+    let explicit = "---\nconfig:\n  layout: tidy-tree\n  look: classic\n  htmlLabels: false\n  mindmap:\n    padding: 10\n    useMaxWidth: true\n---\nmindmap\n  root[Root]\n";
+    let default_svg = render_mindmap_svg_from_text(source, "mindmap-root-defaults");
+    assert_eq!(
+        default_svg,
+        render_mindmap_svg_from_text(explicit, "mindmap-root-defaults")
+    );
+    let document = roxmltree::Document::parse(&default_svg).unwrap();
+    let root = document.root_element();
+    assert_eq!(root.attribute("width"), Some("100%"));
+    assert_eq!(root.attribute("height"), None);
+    assert!(root.attribute("style").unwrap().starts_with("max-width: "));
 }
 
 fn layout_mindmap_typed(

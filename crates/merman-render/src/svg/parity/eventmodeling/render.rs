@@ -135,6 +135,14 @@ fn push_box_html_label(
     Ok(())
 }
 
+fn eventmodeling_css(diagram_id: SvgDiagramId<'_>, theme: &EventModelingTheme) -> String {
+    format!(
+        "#{diagram_id} .em-swimlane text,#{diagram_id} .em-box span {{ font-family: {}; color: {}; }}\
+#{diagram_id} .em-relation {{ fill: none; }}",
+        theme.font_family_css, theme.text_color
+    )
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -149,12 +157,4 @@ mod tests {
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
         assert!(out.is_empty());
     }
-}
-
-fn eventmodeling_css(diagram_id: SvgDiagramId<'_>, theme: &EventModelingTheme) -> String {
-    format!(
-        "#{diagram_id} .em-swimlane text,#{diagram_id} .em-box span {{ font-family: {}; color: {}; }}\
-#{diagram_id} .em-relation {{ fill: none; }}",
-        theme.font_family_css, theme.text_color
-    )
 }

@@ -538,6 +538,54 @@ fn gantt_explicit_whitespace_title_overrides_frontmatter_without_trimming() {
 }
 
 #[test]
+fn gantt_svg_tick_interval_uses_config_fallback_and_body_precedence_in_utc() {
+    for (body_interval, expected) in [
+        ("", &["2024-02-01"][..]),
+        (
+            "tickInterval 1day\n",
+            &[
+                "2024-01-30",
+                "2024-01-31",
+                "2024-02-01",
+                "2024-02-02",
+                "2024-02-03",
+            ][..],
+        ),
+    ] {
+        let source = format!(
+            r#"---
+config:
+  gantt:
+    tickInterval: 1month
+    topAxis: true
+---
+gantt
+dateFormat YYYY-MM-DD
+axisFormat %Y-%m-%d
+{body_interval}todayMarker off
+section Delivery
+Task: task, 2024-01-30, 2024-02-03
+"#,
+        );
+        let svg = render_gantt_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Gantt SVG XML");
+        let axes = document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("grid"))
+            .collect::<Vec<_>>();
+        assert_eq!(axes.len(), 2, "both bottom and top axes must render");
+        for (index, axis) in axes.iter().enumerate() {
+            let labels = axis
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| node.text().expect("axis tick label"))
+                .collect::<Vec<_>>();
+            assert_eq!(labels, expected, "axis {index}, body: {body_interval:?}");
+        }
+    }
+}
+
+#[test]
 fn gantt_svg_frontmatter_config_fields_affect_visible_output() {
     let svg = render_gantt_svg_from_text(
         r#"---

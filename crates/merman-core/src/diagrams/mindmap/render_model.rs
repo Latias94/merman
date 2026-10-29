@@ -107,7 +107,9 @@ pub(crate) fn render_model_to_compat_json_controlled(
         }
         edges.push(mindmap_edge_to_compat_json(edge));
     }
-    let config = ManagedSemanticJson::from_value(mindmap_compat_config(meta));
+    let config = ManagedSemanticJson::from_value(crate::config::clone_value_nonrecursive(
+        meta.effective_config.as_value(),
+    ));
     control.checkpoint()?;
 
     if model.nodes.is_empty() {
@@ -178,19 +180,6 @@ fn hex_digit(value: u8) -> u8 {
         b'a'..=b'f' => value - b'a' + 10,
         _ => unreachable!("generated ID contains only lowercase hexadecimal digits"),
     }
-}
-
-fn mindmap_compat_config(meta: &ParseMetadata) -> Value {
-    let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
-    if meta.config.as_value().get("layout").is_none()
-        && let Some(object) = config.as_object_mut()
-    {
-        object.insert(
-            "layout".to_string(),
-            Value::String("cose-bilkent".to_string()),
-        );
-    }
-    config
 }
 
 fn mindmap_node_to_compat_json(node: &MindmapDiagramRenderNode) -> Value {

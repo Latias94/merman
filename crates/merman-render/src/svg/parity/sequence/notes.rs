@@ -38,7 +38,11 @@ pub(super) fn render_sequence_note(
         return Ok(());
     };
     let (x, y) = node_left_top(n);
-    let cx = x + (n.width / 2.0);
+    let (text_x, text_anchor) = match ctx.sanitize_config.get_str("sequence.noteAlign") {
+        Some("left" | "start") => ((x + ctx.note_margin).round(), "start"),
+        Some("right" | "end") => ((x + n.width - ctx.note_margin).round(), "end"),
+        _ => (x + n.width / 2.0, "middle"),
+    };
     let text_y = sequence_drawn_text_first_y(y, ctx.note_margin);
     let _ = write!(out, r#"<g data-et="note" data-id="i{}">"#, escape_attr(id));
     let _ = write!(
@@ -85,9 +89,23 @@ pub(super) fn render_sequence_note(
             ctx.note_text_style,
             ctx.checkpoints.text(),
         )?;
-        render_sequence_note_lines(out, lines.iter().map(String::as_str), cx, text_y, ctx)?;
+        render_sequence_note_lines(
+            out,
+            lines.iter().map(String::as_str),
+            text_x,
+            text_y,
+            text_anchor,
+            ctx,
+        )?;
     } else {
-        render_sequence_note_lines(out, crate::text::split_html_br_lines(raw), cx, text_y, ctx)?;
+        render_sequence_note_lines(
+            out,
+            crate::text::split_html_br_lines(raw),
+            text_x,
+            text_y,
+            text_anchor,
+            ctx,
+        )?;
     }
     out.push_str("</g>");
     ctx.checkpoints.checkpoint()
@@ -96,8 +114,9 @@ pub(super) fn render_sequence_note(
 fn render_sequence_note_lines<'a>(
     out: &mut String,
     lines: impl IntoIterator<Item = &'a str>,
-    cx: f64,
+    text_x: f64,
     text_y: f64,
+    text_anchor: &str,
     ctx: &SequenceNoteRenderContext<'_>,
 ) -> Result<()> {
     let drawn_style = sequence_drawn_text_style(ctx.note_text_style, ctx.sanitize_config);
@@ -114,8 +133,8 @@ fn render_sequence_note_lines<'a>(
         let y = sequence_drawn_text_y(text_y, ctx.note_margin, preceding_height);
         let _ = write!(
             &mut *out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{css}"><tspan x="{x}">{text}</tspan></text>"#,
-            x = fmt(cx),
+            r#"<text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{css}"><tspan x="{x}">{text}</tspan></text>"#,
+            x = fmt(text_x),
             y = fmt(y),
             css = escape_attr(&css),
             text = super::escape_prepared_text(text)
@@ -146,6 +165,7 @@ mod tests {
             ["first", "", "last"],
             50.0,
             10.0,
+            "middle",
             &super::SequenceNoteRenderContext {
                 nodes_by_id: &Default::default(),
                 measurer: &crate::text::DeterministicTextMeasurer::default(),
@@ -195,6 +215,7 @@ mod tests {
                 ["first", "", "#38;"],
                 50.0,
                 crate::sequence::sequence_drawn_text_first_y(10.25, margin),
+                "middle",
                 &super::SequenceNoteRenderContext {
                     nodes_by_id: &Default::default(),
                     measurer: &probe,

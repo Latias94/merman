@@ -273,8 +273,10 @@ impl<'a> ParsePipeline<'a> {
                 }
             }
             ResolvedSemanticParser::Custom(parser) => {
-                let control = OperationControl::new();
-                parser(code, meta, &control)
+                let control = OperationControl::new().for_phase(OperationPhase::Parse);
+                let parsed = parser(code, meta, &control);
+                control.checkpoint()?;
+                parsed
                     .map_err(Error::from)?
                     .map(CompatibilitySemanticParse::custom)
             }
@@ -754,6 +756,7 @@ impl<'a> ParsePipeline<'a> {
 
         let mut model = match parse_res {
             Ok(model) => model,
+            Err(err @ Error::OperationCancelled(_)) => return Err(err),
             Err(err) => {
                 if !self.options.suppress_errors {
                     return Err(source_map.remap_parse_error(err));
@@ -906,7 +909,7 @@ impl<'a> ParsePipeline<'a> {
         code: &str,
         meta: &ParseMetadata,
     ) -> Result<RenderSemanticParseOutput> {
-        let control = OperationControl::new();
+        let control = OperationControl::new().for_phase(OperationPhase::Parse);
         self.parse_render_semantic_model_controlled(code, meta, &control)
             .map_err(Error::from)?
     }
