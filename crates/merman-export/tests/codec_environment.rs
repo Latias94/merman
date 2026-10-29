@@ -2,7 +2,7 @@
 
 #[test]
 fn legacy_codecs_preserve_native_system_fonts_without_the_native_fonts_feature() {
-    assert!(cfg!(feature = "system-fonts"));
+    const { assert!(cfg!(feature = "system-fonts")) };
     assert_eq!(
         merman_export::system_font_discovery_available(),
         cfg!(not(target_family = "wasm"))

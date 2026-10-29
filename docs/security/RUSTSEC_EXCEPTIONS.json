@@ -10,31 +10,31 @@
       "reason": "Pinned usvg 0.47 and the published krilla-svg 0.8.1 and ratex 0.1.15 dependency closures still resolve ttf-parser 0.25.1. Published resvg/usvg 0.48+ provides a partial migration path, but does not remove the remaining application, PDF, and math dependency paths.",
       "dependency_paths": [
         [
-          "merman-export@0.9.2",
+          "merman-export@0.9.3",
           "krilla-svg@0.8.1",
           "fontdb@0.23.0",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-export@0.9.2",
+          "merman-export@0.9.3",
           "krilla@0.8.2",
           "rustybuzz@0.20.1",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-export@0.9.2",
+          "merman-export@0.9.3",
           "usvg@0.47.0",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-render@0.9.2",
+          "merman-render@0.9.3",
           "ratex-svg@0.1.15",
           "ab_glyph@0.2.32",
           "owned_ttf_parser@0.25.1",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-render@0.9.2",
+          "merman-render@0.9.3",
           "ratex-svg@0.1.15",
           "ratex-unicode-font@0.1.15",
           "ttf-parser@0.25.1"
@@ -60,6 +60,12 @@
         "rust-render-native-svg",
         "rust-static-svg",
         "rustdoc-static-svg",
+        "sdk-native-full",
+        "sdk-native-math",
+        "sdk-native-standard",
+        "sdk-wasi-full",
+        "sdk-wasi-math",
+        "sdk-wasi-standard",
         "web-full",
         "web-render"
       ],
@@ -78,12 +84,12 @@
       "reason": "Pinned usvg 0.47 and the published krilla-svg 0.8.1 dependency closure still resolve rustybuzz 0.20.1. Published resvg/usvg 0.48+ provides a partial migration path, but does not remove the remaining application, PDF, and test dependency paths.",
       "dependency_paths": [
         [
-          "merman-export@0.9.2",
+          "merman-export@0.9.3",
           "krilla@0.8.2",
           "rustybuzz@0.20.1"
         ],
         [
-          "merman-export@0.9.2",
+          "merman-export@0.9.3",
           "usvg@0.47.0",
           "rustybuzz@0.20.1"
         ]
@@ -103,7 +109,13 @@
         "rust-export-native-sdk",
         "rust-export-pdf",
         "rust-export-png",
-        "rust-native-sdk"
+        "rust-native-sdk",
+        "sdk-native-full",
+        "sdk-native-math",
+        "sdk-native-standard",
+        "sdk-wasi-full",
+        "sdk-wasi-math",
+        "sdk-wasi-standard"
       ],
       "upstream_issue": "https://github.com/harfbuzz/rustybuzz/issues/166",
       "owner": "Latias94",

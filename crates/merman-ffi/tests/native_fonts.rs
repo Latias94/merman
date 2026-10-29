@@ -78,10 +78,12 @@ fn font_constructor_is_appended_without_changing_the_abi3_minimum() {
         api.struct_size,
         MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE
     );
-    assert!(
-        MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE
-            > MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE
-    );
+    const {
+        assert!(
+            MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE
+                > MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE
+        );
+    }
 }
 
 #[cfg(not(feature = "native-fonts"))]
