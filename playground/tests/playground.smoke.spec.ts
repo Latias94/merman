@@ -253,15 +253,22 @@ test("automatic and explicit default themes remain distinct in the presentation 
   await waitForPreviewSvg(page);
 
   await page.getByRole("button", { name: "Theme", exact: true }).click();
-  const compatibility = page.getByLabel("Mermaid base theme", { exact: true });
+  const panel = page.getByRole("region", { name: "Theme panel", exact: true });
+  const compatibility = panel.getByLabel("Mermaid base theme", { exact: true });
+  const status = page.locator("footer");
   await expect(compatibility).toHaveValue("auto");
   await compatibility.selectOption("default");
   await waitForPreviewSvg(page);
-  await expect(page.locator("footer")).toContainText("Default");
-
   await expect(compatibility).toHaveValue("default");
+  await expect(status).toContainText("Theme: Automatic (diagram default)");
+  await panel.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(status).toContainText("Theme: Default");
+
   await compatibility.selectOption("auto");
-  await expect(page.locator("footer")).toContainText("Automatic (diagram default)");
+  await expect(compatibility).toHaveValue("auto");
+  await expect(status).toContainText("Theme: Default");
+  await panel.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(status).toContainText("Theme: Automatic (diagram default)");
   errors.assertNone();
 });
 
