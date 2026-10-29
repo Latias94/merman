@@ -276,7 +276,7 @@ fn generated_manpages_have_deterministic_metadata_and_descriptions() {
 }
 
 #[test]
-fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
+fn complete_profile_assets_expose_native_encoded_defaults_and_font_controls() {
     let script = read_asset("completions/merman-cli.bash");
     for command in ["render", "batch", "mmdc"] {
         let options = bash_options(&script, command);
@@ -300,11 +300,12 @@ fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
             ["off".to_owned(), "on".to_owned()].into_iter().collect()
         );
         let man = read_asset(&format!("man/merman-cli-{command}.1"));
-        assert!(man.contains("Select shared text measurement"));
-        assert!(man.contains("deterministic by default"));
-        assert!(man.contains("native enables actual fonts and system discovery"));
-        assert!(man.contains("Control bounded system font discovery"));
-        assert!(man.contains("off with explicit sources unless on is requested"));
+        assert!(man.contains("Text measurement: SVG defaults to deterministic"));
+        assert!(man.contains("PNG/JPEG/PDF use native fonts for shared layout and painting"));
+        assert!(man.contains("Explicit deterministic keeps approximate layout"));
+        assert!(man.contains("Control system font discovery"));
+        assert!(man.contains("native encoded output enables it by default"));
+        assert!(man.contains("Explicit font sources stay closed unless on is selected"));
         assert!(man.contains("Maximum uncached native font shaping probes per diagram"));
         assert!(man.contains("default: 16384"));
         assert!(!man.contains("title horizontal bounds only"));
@@ -319,16 +320,16 @@ fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
     ] {
         let completion = read_asset(asset);
         assert!(
-            completion.contains("deterministic by default"),
-            "{asset} omits the default measurement policy"
+            completion.contains("SVG defaults to deterministic"),
+            "{asset} omits the default SVG measurement policy"
         );
         assert!(
-            completion.contains("native enables actual fonts and system discovery"),
-            "{asset} omits the native measurement opt-in"
+            completion.contains("PNG/JPEG/PDF use native fonts for shared layout and painting"),
+            "{asset} omits the native encoded-output default"
         );
         assert!(
-            completion.contains("Control bounded system font discovery"),
-            "{asset} omits bounded system discovery"
+            completion.contains("Control system font discovery"),
+            "{asset} omits system font discovery controls"
         );
         assert!(
             completion.contains("font-max-measurements"),

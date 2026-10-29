@@ -140,7 +140,11 @@ def release_capabilities_subcontract(
     *,
     capability_ids: set[str],
 ) -> dict[str, object]:
-    """Project the release metadata shared by archive and installation checks."""
+    """Project the release metadata shared by archive and installation checks.
+
+    SVG defaults stay deterministic; encoded Mermaid output requires bounded
+    system discovery before layout. Experimental platform queries are excluded.
+    """
     capabilities = [
         {
             "id": capability["id"],
@@ -160,10 +164,15 @@ def release_capabilities_subcontract(
         "capabilities": capabilities,
         "outputs": outputs,
         "native_fonts": {
-            "default_policy_scope": "mermaid-graphical-input",
+            "default_policy_scope": "mermaid-svg-input",
             "default_measurement": "deterministic",
             "default_font_source": "none",
             "default_system_discovery": "disabled",
+            "encoded_output_defaults": {
+                "measurement": "native",
+                "font_source": "bounded-system-discovery",
+                "system_discovery": "before-layout",
+            },
             "system_resources_bounded": True,
             "selected_font_bytes_bounded": True,
             "legacy_export_paths": (

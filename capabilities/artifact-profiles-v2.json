@@ -183,7 +183,7 @@
     },
     {
       "id": "cli-release",
-      "description": "Complete command-line release build with ELK, math, and compiled native-fonts/system-fonts capabilities; Mermaid graphical output defaults to deterministic measurement without font discovery, with native fonts and bounded system discovery available through runtime opt-in.",
+      "description": "Complete command-line release build with ELK, math, and native-fonts/system-fonts capabilities; Mermaid SVG defaults to deterministic measurement, while PNG/JPEG/PDF share native measurement and painting with bounded system discovery. Explicit font sources remain closed unless system fallback is selected.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-cli",

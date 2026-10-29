@@ -108,6 +108,18 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
 
     def test_complete_formula_matches_runtime_and_profile_contract(self) -> None:
         with self.installation_fixture() as fixture:
+            native = fixture.capabilities["native_fonts"]
+            self.assertEqual(native["default_policy_scope"], "mermaid-svg-input")
+            self.assertEqual(native["default_measurement"], "deterministic")
+            self.assertEqual(native["default_font_source"], "none")
+            self.assertEqual(native["default_system_discovery"], "disabled")
+            self.assertEqual(native["encoded_output_defaults"], {
+                "measurement": "native",
+                "font_source": "bounded-system-discovery",
+                "system_discovery": "before-layout",
+            })
+            self.assertEqual(fixture.capabilities["schema_version"], 2)
+            self.assertEqual(fixture.capabilities["cli_contract_version"], 6)
             self.assertTrue(
                 verifier.verify_homebrew_install(
                     formula_version="0.8.0",
@@ -411,8 +423,9 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                         runner=fixture.run,
                     )
 
-    def test_installed_cli_rejects_implicit_native_font_defaults(self) -> None:
+    def test_installed_cli_rejects_native_defaults_for_mermaid_svg(self) -> None:
         implicit_defaults = (
+            ("default_policy_scope", "mermaid-graphical-input"),
             ("default_measurement", "native"),
             ("default_font_source", "bounded-system-discovery"),
             ("default_system_discovery", "before-layout"),
@@ -443,6 +456,9 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
             elif isinstance(value, str):
                 wrong_value = "experimental-system-font-query"
                 wrong_type = None
+            elif isinstance(value, dict):
+                wrong_value = {**value, "unknown": None}
+                wrong_type = []
             else:
                 wrong_value = list(reversed(value))
                 wrong_type = {}
@@ -465,6 +481,82 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                             contract_root=fixture.contract_root,
                             runner=fixture.run,
                         )
+
+    def test_encoded_output_defaults_have_exact_object_shape(self) -> None:
+        defaults = valid_capabilities_payload()["native_fonts"]["encoded_output_defaults"]
+        for value in (None, [], "native", True, {}, {**defaults, "unknown": None}):
+            with self.subTest(value=value), self.installation_fixture() as fixture:
+                fixture.capabilities["native_fonts"]["encoded_output_defaults"] = value
+                with self.assertRaisesRegex(
+                    verifier.HomebrewVerificationError, "native_fonts.*encoded_output_defaults"
+                ):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
+    def test_encoded_output_default_fields_have_exact_types_and_values(self) -> None:
+        rejected_values = {
+            "measurement": ("deterministic", "unknown", None, [], {}, True, 1),
+            "font_source": (
+                "none", "platform-managed-system-query", "unknown", None, [], {}, True, 1,
+            ),
+            "system_discovery": (
+                "disabled", "first-use", "platform-initialization-then-on-demand-families",
+                "unknown", None, [], {}, True, 1,
+            ),
+        }
+        for field, values in rejected_values.items():
+            for case in ("missing", *values):
+                with self.subTest(field=field, case=case), self.installation_fixture() as fixture:
+                    defaults = fixture.capabilities["native_fonts"]["encoded_output_defaults"]
+                    if case == "missing":
+                        defaults.pop(field)
+                    else:
+                        defaults[field] = case
+                    with self.assertRaisesRegex(
+                        verifier.HomebrewVerificationError,
+                        f"native_fonts.*encoded_output_defaults.*{field}",
+                    ):
+                        verifier.verify_homebrew_install(
+                            formula_version="0.8.0",
+                            support_assets_since=SUPPORT_ASSETS_SINCE,
+                            prefix=fixture.prefix,
+                            binary=fixture.binary,
+                            contract_root=fixture.contract_root,
+                            runner=fixture.run,
+                        )
+
+    def test_installed_release_rejects_non_release_encoded_output_policies(self) -> None:
+        for defaults in (
+            {
+                "measurement": "deterministic",
+                "font_source": "none",
+                "system_discovery": "disabled",
+            },
+            {
+                "measurement": "native",
+                "font_source": "platform-managed-system-query",
+                "system_discovery": "platform-initialization-then-on-demand-families",
+            },
+        ):
+            with self.subTest(defaults=defaults), self.installation_fixture() as fixture:
+                fixture.capabilities["native_fonts"]["encoded_output_defaults"] = defaults
+                with self.assertRaisesRegex(
+                    verifier.HomebrewVerificationError, "native_fonts.*encoded_output_defaults"
+                ):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
 
     def test_capability_and_output_metadata_are_exact(self) -> None:
         for field in ("capabilities", "outputs"):
@@ -556,6 +648,28 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     result.stdout = result.stdout.replace(
                         b'"system_resources_bounded": true',
                         b'"system_resources_bounded": false, "system_resources_bounded": true',
+                        1,
+                    )
+                return result
+
+            with self.assertRaisesRegex(verifier.HomebrewVerificationError, "duplicate JSON key"):
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=runner,
+                )
+
+    def test_duplicate_encoded_output_default_json_keys_are_rejected(self) -> None:
+        with self.installation_fixture() as fixture:
+            def runner(command, **kwargs):
+                result = fixture.run(command, **kwargs)
+                if command[1:] == ["capabilities", "--json"]:
+                    result.stdout = result.stdout.replace(
+                        b'"encoded_output_defaults": {"measurement": "native",',
+                        b'"encoded_output_defaults": {"measurement": "deterministic", "measurement": "native",',
                         1,
                     )
                 return result
