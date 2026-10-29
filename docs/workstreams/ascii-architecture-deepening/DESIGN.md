@@ -1,7 +1,14 @@
 # ASCII Architecture Deepening
 
-Status: Active
-Last updated: 2026-06-02
+Status: Completed
+Last updated: 2026-10-29
+
+AAD-010 through AAD-100 are complete; the final recorded implementation verification is dated
+2026-06-26 in [Evidence And Gates](EVIDENCE_AND_GATES.md). This document preserves the original
+architecture rationale and the June 2 boundary-routing proposal. Its descriptions of then-current
+limitations are historical. Current support boundaries belong to the
+[ASCII support documentation](../../../crates/merman-ascii/README.md) and
+[gap registry](../../../crates/merman-ascii/ASCII_GAP_REGISTRY.md).
 
 ## Why This Lane Exists
 
@@ -107,9 +114,9 @@ Graph, relation graph, and sequence work should proceed as vertical slices. Each
 one seam, migrate one meaningful caller, and prove that the interface is smaller than the
 implementation it hides. Do not add pass-through modules solely for testability.
 
-## Closeout Condition
+## Acceptance Boundary
 
-This lane can close when:
+The completed lane used these acceptance conditions:
 
 - all five target concepts have landed or a load-bearing deferral is documented;
 - each landed seam has focused tests and package-level `merman-ascii` verification;
@@ -117,7 +124,7 @@ This lane can close when:
 - redundant implementations are removed where the new module supersedes them;
 - final gates are recorded in `EVIDENCE_AND_GATES.md`.
 
-## Reopened Follow-On
+## Follow-On Work
 
 This lane was closed on 2026-05-30 after the original five deepening targets landed, then resumed
 for follow-on ASCII graph architecture work that still fits this lane's purpose: making flowchart
@@ -129,17 +136,18 @@ The first reopened slice, AAD-080, shipped a bounded `FlowSubgraph.dir` subset:
 - local direction applies only to edges whose endpoints both stay inside the same subgraph;
 - support docs and the ASCII gap registry now document this subset honestly.
 
-The next follow-on is not another local heuristic in `layout.rs`. It is a routing-seam expansion:
-cross-boundary mixed-direction flowchart routing for edges that enter or leave a direction-bearing
-subgraph.
+The follow-on design focused on a routing-seam expansion: cross-boundary mixed-direction
+flowchart routing for edges that enter or leave a direction-bearing subgraph. AAD-090 and AAD-100
+subsequently completed the bounded routing, route-extent, and group-topology work recorded in
+[Evidence And Gates](EVIDENCE_AND_GATES.md#evidence-log).
 
-## Cross-Boundary Direction Design
+## Historical Cross-Boundary Direction Design
 
 ### Problem
 
-The current graph stack has enough information to place nodes with a local subgraph direction and to
-route purely internal edges with that local direction. It does not yet have a first-class model for
-an edge whose path crosses the boundary between:
+At the June 2 design checkpoint, the graph stack could place nodes with a local subgraph direction
+and route purely internal edges with that direction. The missing model described an edge whose
+path crosses the boundary between:
 
 - a root graph using one canonical direction, and
 - a subgraph using another canonical direction.
@@ -154,7 +162,7 @@ seam, not as accidental placement side effects.
 
 ### Desired Properties
 
-The follow-on implementation should satisfy these constraints:
+The design required these constraints:
 
 - local subgraph direction remains authoritative for the internal segment of a cross-boundary edge;
 - the root direction remains authoritative for the external segment outside the subgraph;
@@ -186,7 +194,7 @@ Extend graph routing around three explicit concepts:
 
 ### Implementation Order
 
-The next implementation slice should stay narrow:
+The proposed implementation order was:
 
 1. classify boundary context in `graph::routing::plan::select`;
 2. introduce one planned boundary-anchor strategy for the shipped subset:

@@ -2,23 +2,24 @@
 
 Status: current contract
 
-This document describes the current low-level C-compatible transport implemented by
-`merman-ffi`. The generated header
+This document owns host integration rules for the C-compatible transport implemented by
+[`merman-ffi`](../../crates/merman-ffi/src/lib.rs). The [native ABI descriptor](../../contracts/abi/merman-v3.json)
+owns the machine-readable contract, and its generated header
 [`crates/merman-ffi/include/merman.h`](../../crates/merman-ffi/include/merman.h) is the
 authoritative wire definition. ABI 2 is removed and is not accepted by ABI 3 discovery.
 
 ## Build
 
-The descriptor-owned `c-abi-native` profile is the exact recipe for the complete host C artifact
-used by release examples and Flutter packaging.
+The descriptor-owned `c-abi-native` profile is the complete host reference recipe. Flutter
+packaging uses its own target-set recipes; see [package surfaces](../release/PACKAGE_SURFACES.md).
 
 ```sh
 # Complete C ABI reference artifact; platform prebuilts use their own default SKU.
-cargo build -p merman-ffi --profile native-sdk --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
+python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
 
 # Smaller explicit artifacts.
-cargo build -p merman-ffi --release --no-default-features --features svg
-cargo build -p merman-ffi --release --no-default-features --features analysis
+cargo build -p merman-ffi --release --no-default-features --features svg,diagram-flowchart
+cargo build -p merman-ffi --release --no-default-features --features analysis,diagram-flowchart
 ```
 
 `merman-ffi` produces `cdylib`, `staticlib`, and `rlib`. C and C-compatible hosts must ship a
@@ -68,7 +69,11 @@ macros identify each complete table boundary. Release consumers require the comp
 prefix through `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; they must not treat the
 smaller minimum prefix as the complete release surface, fall back to the older constructor, or
 discard constructor services. The controlled entry point is append-only so the original ABI 3
-operation-request record remains byte-for-byte stable.
+operation-request record remains byte-for-byte stable. The independent memory-only font
+constructor, `engine_new_with_fonts`, is appended at slot `11`; hosts using it also require
+`MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE`. Its configuration, input lifetimes,
+strict glyph coverage, and callback conflicts are documented in the
+[C font-service guide](../../crates/merman-ffi/README.md#memory-only-fonts).
 
 The returned digests have separate roles:
 
@@ -96,6 +101,10 @@ before typed access. It cannot safely probe dangling or unreadable pointers and 
 concurrent mutation into a typed status; those remain caller contract violations. The void
 `result_free` operation treats a safely allocated misaligned result record as invalid and releases
 nothing.
+
+Result storage must not overlap input records or borrowed input bytes. Constructor outputs also
+follow the disjoint-storage rules below; shared read-only input bytes may overlap only where the
+constructor contract permits it.
 
 ## Runtime Catalog
 
@@ -446,8 +455,7 @@ The callback and `user_data` are immutable constructor state. The host may relea
 `MermanNativeTextMeasureRequest` fields valid only during the callback and writes a size-tagged
 `MermanNativeTextMeasureResult`. The generated
 [`merman_text_measurement_abi.h`](../../crates/merman-ffi/include/merman_text_measurement_abi.h)
-defines the independent text-measurement protocol version, 22 operation codes, and required result
-kinds.
+defines the independent text-measurement protocol version, operation codes, and required result kinds.
 
 Use the same display font system that will render the final SVG. A host that cannot answer an
 operation accurately should initialize the result, set `handled = 0`, and return
@@ -470,7 +478,11 @@ renderer checkpoint.
 ## Contract Evolution Rules
 
 - Native ABI 3 is the current contract. Rebuild ABI 2, prerelease ABI 3, and partial-table consumers
-  against this release-matched header; see [ABI 3 migration](ABI3_MIGRATION.md).
+  against the generated header and native library from the same Merman release. Replace
+  per-operation symbol lookup with [table discovery](#discovery), raw engine destruction with
+  `engine_try_close`, and host-side buffer freeing with [token-based result cleanup](#results-errors-and-ownership).
+  Use the [versioned upgrade index](../release/README.md#workspace-upgrades) for changes between
+  published releases; ABI `3` is a protocol version, not a workspace release number.
 - Treat the ABI version and descriptor-derived minimum-prefix layout digest as the runtime
   compatibility check. Treat
   the full descriptor digest, capability catalog digest, package version, and generated

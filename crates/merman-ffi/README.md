@@ -253,7 +253,7 @@ The public feature names describe callable capabilities:
 
 This crate exports only the native C ABI discovery surface. Android JNI transport code lives in the internal `merman-android-jni` crate, so C ABI artifacts cannot acquire JNI exports through a feature combination.
 
-Use the generated runtime catalog to determine what the loaded artifact actually supports. The full wire contract, status semantics, callback rules, and C snippets are in [the FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md); ABI 2 and pre-freeze ABI 3 hosts must follow [the ABI 3 migration guide](https://github.com/Latias94/merman/blob/main/docs/bindings/ABI3_MIGRATION.md).
+Use the generated runtime catalog to determine what the loaded artifact actually supports. The full wire contract, status semantics, callback rules, and C snippets are in [the FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md); ABI 2 and pre-freeze ABI 3 hosts must follow its [contract evolution rules](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md#contract-evolution-rules).
 
 ## Platform Wrappers
 

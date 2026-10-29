@@ -95,63 +95,6 @@ fn wasi_cannot_materialize_a_native_runtime_policy() {
 }
 
 #[test]
-fn checked_in_descriptor_matches_the_runtime_layout_and_quotas() {
-    let descriptor: Value =
-        serde_json::from_str(include_str!("../../../contracts/abi/merman-wasi-v1.json")).unwrap();
-    assert_eq!(descriptor["abi_version"], ABI_VERSION);
-    assert_eq!(descriptor["binding_transport"], "wasi");
-    assert_eq!(descriptor["semantic_target"], "native");
-    assert_eq!(
-        descriptor["descriptor"]["size_bytes"],
-        RESULT_DESCRIPTOR_SIZE
-    );
-    let names = [
-        "version",
-        "size",
-        "status",
-        "engine",
-        "media_ptr",
-        "media_len",
-        "data_ptr",
-        "data_len",
-        "json_ptr",
-        "json_len",
-    ];
-    for (index, name) in names.into_iter().enumerate() {
-        assert_eq!(descriptor["descriptor"]["fields"][index]["name"], name);
-        assert_eq!(
-            descriptor["descriptor"]["fields"][index]["offset"],
-            index * 4
-        );
-    }
-    let limits = crate::runtime::Limits::default();
-    for (key, value) in [
-        ("live_inputs", limits.inputs),
-        ("input_bytes_each", limits.input_size),
-        ("input_bytes_total", limits.input_bytes),
-        ("envelope_bytes", limits.json_bytes),
-        ("live_results", limits.results),
-        ("result_bytes_each_including_descriptor", limits.result_size),
-        (
-            "result_bytes_total_including_descriptors",
-            limits.result_bytes,
-        ),
-        ("live_engines", limits.engines),
-        (
-            "engine_font_input_bytes_each_before_deduplication",
-            limits.engine_font_bytes,
-        ),
-        (
-            "engine_font_input_bytes_total_before_deduplication",
-            limits.font_bytes,
-        ),
-    ] {
-        assert_eq!(descriptor["limits"][key], value);
-    }
-    assert_eq!(descriptor["exports"].as_array().unwrap().len(), 9);
-}
-
-#[test]
 fn catalog_is_owned_and_uses_the_independent_abi_epoch() {
     let mut runtime = Runtime::default();
     let result = runtime.runtime_catalog();

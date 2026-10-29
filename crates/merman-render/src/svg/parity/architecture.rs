@@ -4,7 +4,6 @@ mod foreign_object;
 mod geometry;
 mod icons;
 mod labels;
-mod model;
 mod nodes;
 mod render;
 mod root;

@@ -77,7 +77,7 @@ Exit criteria:
 
 - Reduced file sizes for the largest renderers (`flowchart.rs`, `class.rs`) without behavior change.
 
-### R4: Generalized measurement-profile tooling
+### R4: Browser measurement evidence
 
 Deliverables:
 
@@ -87,4 +87,5 @@ Deliverables:
 
 Exit criteria:
 
-- Generated profiles validate against an independent corpus without adding a runtime fixture path.
+- Browser/font residuals remain attributable verification evidence. Production measurement uses
+  the deterministic measurer or explicit host services without fixture-keyed answers.

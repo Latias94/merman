@@ -113,6 +113,29 @@ struct ThemeAcceptanceEvidenceSnapshot {
     mermaid_compatibility_residual_count: usize,
 }
 
+/// Immutable native font measurement diagnostics from one completed SVG operation.
+///
+/// This snapshot does not retain font services or describe later painting operations.
+#[cfg(feature = "native-fonts")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeFontDiagnostics {
+    identity: String,
+    selected_faces: Vec<String>,
+}
+
+#[cfg(feature = "native-fonts")]
+impl NativeFontDiagnostics {
+    /// Context policy and initially admitted bytes, not a cross-process font fingerprint.
+    pub fn identity(&self) -> &str {
+        &self.identity
+    }
+
+    /// Names and collection indices selected by successful native shaping probes.
+    pub fn selected_faces(&self) -> &[String] {
+        &self.selected_faces
+    }
+}
+
 /// Immutable evidence captured by a completed SVG operation.
 ///
 /// The evidence is created only by the renderer after SVG emission/postprocessing succeeds. It
@@ -126,6 +149,8 @@ pub struct RenderEvidence {
     theme_evidence: ThemeEvidenceSummary,
     theme_diagnostics: Box<[ThemeDiagnostic]>,
     required_capabilities: Box<[merman_render::RenderCapability]>,
+    #[cfg(feature = "native-fonts")]
+    native_font_diagnostics: Option<NativeFontDiagnostics>,
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
     #[cfg(any(
@@ -179,6 +204,8 @@ impl RenderEvidence {
             theme_evidence,
             theme_diagnostics,
             required_capabilities: required_capabilities.into_boxed_slice(),
+            #[cfg(feature = "native-fonts")]
+            native_font_diagnostics: None,
             #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
             root_applied_capabilities,
             #[cfg(any(
@@ -198,6 +225,24 @@ impl RenderEvidence {
                 mermaid_compatibility_residual_count,
             },
         }
+    }
+
+    #[cfg(feature = "native-fonts")]
+    pub(super) fn with_native_font_diagnostics(
+        mut self,
+        context: Option<&merman_export::NativeFontContext>,
+    ) -> Self {
+        self.native_font_diagnostics = context.map(|context| NativeFontDiagnostics {
+            identity: context.identity().to_owned(),
+            selected_faces: context.selected_faces(),
+        });
+        self
+    }
+
+    /// Native measurement diagnostics frozen at SVG completion, when native fonts were selected.
+    #[cfg(feature = "native-fonts")]
+    pub fn native_font_diagnostics(&self) -> Option<&NativeFontDiagnostics> {
+        self.native_font_diagnostics.as_ref()
     }
 
     pub const fn execution_path(&self) -> super::OperationExecutionPath {

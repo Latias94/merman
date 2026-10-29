@@ -55,21 +55,7 @@ pub fn layout_indexed_with_work_control<W: WorkControl + ?Sized>(
     work_control.charge(projection_work)?;
 
     let mut sim = SimGraph::from_indexed(nodes, edges);
-
-    let forest = sim.get_flat_forest(work_control)?;
-    if !forest.is_empty() {
-        sim.position_nodes_radially(&forest, work_control)?;
-    }
-
-    sim.run_spring_embedder(work_control)?;
-    admit_dynamic_work(
-        work_control,
-        sim.nodes
-            .len()
-            .checked_mul(2)
-            .ok_or(WorkFailure::ArithmeticOverflow)?,
-    )?;
-    sim.transform_to_origin();
+    sim.run_layout(work_control)?;
 
     let mut out: Vec<Point> = Vec::with_capacity(sim.nodes.len());
     for n in &sim.nodes {
@@ -108,44 +94,20 @@ pub fn layout_with_work_control<W: WorkControl + ?Sized>(
     graph.validate()?;
     work_control.charge(projection_work)?;
     let mut sim = SimGraph::from_graph(graph);
-
-    // COSE-Bilkent port for flat graphs (as used by Mermaid mindmap via Cytoscape).
-    // This follows the upstream `cose-base` control flow:
-    // - `getFlatForest()` + `positionNodesRadially(...)`
-    // - `reduceTrees()` / `growTree()` scaffolding (currently disabled until parity is verified)
-    // - spring embedder ticks
-    // - `doPostLayout()` -> `transform(0,0)` to move the graph into positive coordinates
-    let forest = sim.get_flat_forest(work_control)?;
-    if !forest.is_empty() {
-        sim.position_nodes_radially(&forest, work_control)?;
-    } else {
-        // Fallback: keep all nodes at their provided initial positions (typically (0,0)).
-        // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
-    }
-    sim.run_spring_embedder(work_control)?;
-    admit_dynamic_work(
-        work_control,
-        sim.nodes
-            .len()
-            .checked_mul(2)
-            .ok_or(WorkFailure::ArithmeticOverflow)?,
-    )?;
-    sim.transform_to_origin();
+    sim.run_layout(work_control)?;
 
     let mut positions: std::collections::BTreeMap<String, Point> =
         std::collections::BTreeMap::new();
-    let nodes = std::mem::take(&mut sim.nodes);
-    for n in nodes {
+    for (input, n) in graph.nodes.iter().zip(sim.nodes) {
         let x = n.center_x();
         let y = n.center_y();
-        positions.insert(n.id, Point { x, y });
+        positions.insert(input.id.clone(), Point { x, y });
     }
     Ok(LayoutResult { positions })
 }
 
 #[derive(Debug, Clone)]
 struct SimNode {
-    id: String,
     width: f64,
     height: f64,
     half_width: f64,
@@ -575,6 +537,36 @@ impl SimGraph {
     }
 
     fn from_indexed(nodes_in: &[IndexedNode], edges_in: &[IndexedEdge]) -> Self {
+        Self::from_parts(nodes_in.iter().copied(), edges_in.iter().copied())
+    }
+
+    fn from_graph(graph: &Graph) -> Self {
+        let mut id_to_idx: HashMap<&str, usize> =
+            HashMap::with_capacity_and_hasher(graph.nodes.len(), Default::default());
+        for (idx, n) in graph.nodes.iter().enumerate() {
+            id_to_idx.insert(n.id.as_str(), idx);
+        }
+
+        Self::from_parts(
+            graph.nodes.iter().map(|n| IndexedNode {
+                width: n.width,
+                height: n.height,
+                x: n.x,
+                y: n.y,
+            }),
+            graph.edges.iter().map(|e| IndexedEdge {
+                a: id_to_idx[e.source.as_str()],
+                b: id_to_idx[e.target.as_str()],
+            }),
+        )
+    }
+
+    // Public entry points validate endpoints before either adapter constructs the simulation.
+    fn from_parts(
+        nodes_in: impl ExactSizeIterator<Item = IndexedNode>,
+        edges_in: impl ExactSizeIterator<Item = IndexedEdge>,
+    ) -> Self {
+        let node_count = nodes_in.len();
         let mut nodes: Vec<SimNode> = Vec::with_capacity(nodes_in.len());
         for n in nodes_in {
             let w = n.width.max(1.0);
@@ -582,7 +574,6 @@ impl SimGraph {
             let hw = w * 0.5;
             let hh = h * 0.5;
             nodes.push(SimNode {
-                id: String::new(),
                 width: w,
                 height: h,
                 half_width: hw,
@@ -605,6 +596,7 @@ impl SimGraph {
             });
         }
 
+        // Mirror cytoscape-cose-bilkent: retain the first edge for each unordered node pair.
         let mut seen_pairs: HashSet<(usize, usize)> =
             HashSet::with_capacity_and_hasher(edges_in.len(), Default::default());
         let mut edges: Vec<SimEdge> = Vec::with_capacity(edges_in.len());
@@ -613,9 +605,6 @@ impl SimGraph {
             if a == b {
                 continue;
             }
-            if a >= nodes.len() || b >= nodes.len() {
-                continue;
-            }
             let (u, v) = if a < b { (a, b) } else { (b, a) };
             if !seen_pairs.insert((u, v)) {
                 continue;
@@ -630,79 +619,29 @@ impl SimGraph {
             nodes,
             edges,
             grid: SimGrid::default(),
-            repulsion_seen: vec![0u32; nodes_in.len()],
+            repulsion_seen: vec![0u32; node_count],
             repulsion_seen_gen: 1,
         }
     }
 
-    fn from_graph(graph: &Graph) -> Self {
-        let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len());
-        for n in &graph.nodes {
-            let w = n.width.max(1.0);
-            let h = n.height.max(1.0);
-            let hw = w * 0.5;
-            let hh = h * 0.5;
-            nodes.push(SimNode {
-                id: n.id.clone(),
-                width: w,
-                height: h,
-                half_width: hw,
-                half_height: hh,
-                left: n.x - hw,
-                top: n.y - hh,
-                edges: Vec::new(),
-                surrounding: Vec::new(),
-                active: true,
-                start_x: 0,
-                finish_x: 0,
-                start_y: 0,
-                finish_y: 0,
-                spring_fx: 0.0,
-                spring_fy: 0.0,
-                repulsion_fx: 0.0,
-                repulsion_fy: 0.0,
-                gravitation_fx: 0.0,
-                gravitation_fy: 0.0,
-            });
+    fn run_layout<W: WorkControl + ?Sized>(&mut self, work_control: &mut W) -> Result<()> {
+        // Keep both public surfaces on the same upstream sequence: radial forest seeding,
+        // spring ticks, then layout-base's transform to positive coordinates. Non-forest graphs
+        // retain their supplied initial positions before spring ticks.
+        let forest = self.get_flat_forest(work_control)?;
+        if !forest.is_empty() {
+            self.position_nodes_radially(&forest, work_control)?;
         }
-
-        let mut id_to_idx: HashMap<&str, usize> =
-            HashMap::with_capacity_and_hasher(graph.nodes.len(), Default::default());
-        for (idx, n) in graph.nodes.iter().enumerate() {
-            id_to_idx.insert(n.id.as_str(), idx);
-        }
-
-        // Mirror the cytoscape-cose-bilkent behavior: only keep one edge between any two nodes.
-        let mut seen_pairs: HashSet<(usize, usize)> =
-            HashSet::with_capacity_and_hasher(graph.edges.len(), Default::default());
-        let mut edges: Vec<SimEdge> = Vec::with_capacity(graph.edges.len());
-        for e in &graph.edges {
-            let Some(&a) = id_to_idx.get(e.source.as_str()) else {
-                continue;
-            };
-            let Some(&b) = id_to_idx.get(e.target.as_str()) else {
-                continue;
-            };
-            if a == b {
-                continue;
-            }
-            let (u, v) = if a < b { (a, b) } else { (b, a) };
-            if !seen_pairs.insert((u, v)) {
-                continue;
-            }
-            let ei = edges.len();
-            edges.push(SimEdge { a, b, active: true });
-            nodes[a].edges.push(ei);
-            nodes[b].edges.push(ei);
-        }
-
-        Self {
-            nodes,
-            edges,
-            grid: SimGrid::default(),
-            repulsion_seen: vec![0u32; graph.nodes.len()],
-            repulsion_seen_gen: 1,
-        }
+        self.run_spring_embedder(work_control)?;
+        admit_dynamic_work(
+            work_control,
+            self.nodes
+                .len()
+                .checked_mul(2)
+                .ok_or(WorkFailure::ArithmeticOverflow)?,
+        )?;
+        self.transform_to_origin();
+        Ok(())
     }
 
     fn edge_other_end(&self, edge_idx: usize, node_idx: usize) -> usize {
@@ -2430,9 +2369,10 @@ fn decide_directions_for_overlapping_nodes(a: &SimNode, b: &SimNode) -> (i32, i3
 mod tests {
     use super::{
         IndexedEdge, IndexedNode, NoopWorkControl, SimGraph, SimGrid, SimGridCells, SimGridPlan,
-        SimGridStorageKind, layout_indexed, layout_indexed_with_work_control,
+        SimGridStorageKind, layout, layout_indexed, layout_indexed_with_work_control,
+        layout_with_work_control,
     };
-    use crate::{Error, WorkControl, WorkFailure};
+    use crate::{BoundsExtras, Compound, Edge, Error, Graph, Node, WorkControl, WorkFailure};
 
     #[derive(Debug, Default)]
     struct RecordingWorkControl {
@@ -2574,6 +2514,40 @@ mod tests {
         }
     }
 
+    fn graph_from_indexed(nodes: &[IndexedNode], edges: &[IndexedEdge]) -> Graph {
+        Graph {
+            nodes: nodes
+                .iter()
+                .enumerate()
+                .map(|(index, node)| Node {
+                    id: format!("node-{index}"),
+                    parent: None,
+                    width: node.width,
+                    height: node.height,
+                    x: node.x,
+                    y: node.y,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: edges
+                .iter()
+                .enumerate()
+                .map(|(index, edge)| Edge {
+                    id: format!("edge-{index}"),
+                    source: format!("node-{}", edge.a),
+                    target: format!("node-{}", edge.b),
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: None,
+                    target_anchor: None,
+                    ideal_length: 0.0,
+                    elasticity: 0.0,
+                })
+                .collect(),
+            compounds: Vec::new(),
+        }
+    }
+
     fn assert_close(a: f64, b: f64) {
         let eps = 1e-3;
         assert!((a - b).abs() <= eps, "expected {a} ~= {b} (eps={eps})");
@@ -2603,6 +2577,97 @@ mod tests {
         assert_close(out[1].y, 32.0);
         assert_close(out[2].x, 39.460938);
         assert_close(out[2].y, 32.0);
+    }
+
+    #[test]
+    fn graph_and_indexed_layouts_preserve_positions_and_work_budgets() {
+        let (mut cycle_nodes, _) = basic_nodes_and_edges();
+        cycle_nodes[0].width = 0.0;
+        cycle_nodes[1].height = -1.0;
+        cycle_nodes[2].x = 100.0;
+        cycle_nodes[2].y = -30.0;
+        cycle_nodes.push(IndexedNode {
+            width: 10.0,
+            height: 10.0,
+            x: -200.0,
+            y: 90.0,
+        });
+        let cycle_edges = vec![
+            IndexedEdge { a: 2, b: 0 },
+            IndexedEdge { a: 0, b: 1 },
+            IndexedEdge { a: 1, b: 2 },
+            IndexedEdge { a: 0, b: 2 },
+            IndexedEdge { a: 2, b: 0 },
+            IndexedEdge { a: 1, b: 1 },
+        ];
+
+        for (nodes, edges) in [
+            (Vec::new(), Vec::new()),
+            mixed_size_tree_nodes_and_edges(),
+            (cycle_nodes, cycle_edges),
+        ] {
+            let mut graph = graph_from_indexed(&nodes, &edges);
+            if let Some(node) = graph.nodes.first_mut() {
+                node.parent = Some("group".to_string());
+                graph.compounds.push(Compound {
+                    id: "group".to_string(),
+                    parent: None,
+                });
+            }
+            let mut indexed_work = RecordingWorkControl::unbounded();
+            let expected = layout_indexed_with_work_control(&nodes, &edges, &mut indexed_work)
+                .expect("indexed layout");
+            let mut graph_work = RecordingWorkControl::unbounded();
+            let actual = layout_with_work_control(&graph, &mut graph_work).expect("graph layout");
+            let actual_points = graph
+                .nodes
+                .iter()
+                .map(|node| actual.positions[&node.id])
+                .collect::<Vec<_>>();
+            assert_points_identical(&actual_points, &expected);
+            assert_eq!(actual.positions.len(), nodes.len());
+            assert_eq!(
+                graph_work.used,
+                indexed_work.used + nodes.len() + graph.compounds.len()
+            );
+
+            let mut exact = RecordingWorkControl::limited(graph_work.used);
+            let exact_result =
+                layout_with_work_control(&graph, &mut exact).expect("exact graph budget");
+            let exact_points = graph
+                .nodes
+                .iter()
+                .map(|node| exact_result.positions[&node.id])
+                .collect::<Vec<_>>();
+            assert_points_identical(&exact_points, &expected);
+            if graph_work.used > 0 {
+                let mut below = RecordingWorkControl::limited(graph_work.used - 1);
+                assert!(matches!(
+                    layout_with_work_control(&graph, &mut below),
+                    Err(Error::WorkFailure(WorkFailure::Interrupted))
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn graph_layout_preserves_last_duplicate_id_for_endpoints_and_results() {
+        let (nodes, _) = basic_nodes_and_edges();
+        let mut graph = graph_from_indexed(&nodes, &[IndexedEdge { a: 0, b: 1 }]);
+        graph.nodes[2].id = graph.nodes[0].id.clone();
+        let expected = layout_indexed(&nodes, &[IndexedEdge { a: 2, b: 1 }])
+            .expect("last matching node owns the edge");
+
+        let actual = layout(&graph).expect("duplicate ids retain their existing semantics");
+
+        assert_eq!(actual.positions.len(), 2);
+        assert_points_identical(
+            &[
+                actual.positions[&graph.nodes[1].id],
+                actual.positions[&graph.nodes[2].id],
+            ],
+            &[expected[1], expected[2]],
+        );
     }
 
     #[test]

@@ -757,7 +757,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::Svg,
             source,
             options_json,
@@ -769,11 +769,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request(
-            OperationKey::Png,
-            source,
-            options_json,
-        )))
+        self.execute_data(operation_request(OperationKey::Png, source, options_json))
     }
 
     pub fn render_png_result(
@@ -789,11 +785,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request(
-            OperationKey::Jpeg,
-            source,
-            options_json,
-        )))
+        self.execute_data(operation_request(OperationKey::Jpeg, source, options_json))
     }
 
     pub fn render_jpeg_result(
@@ -809,11 +801,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request(
-            OperationKey::Pdf,
-            source,
-            options_json,
-        )))
+        self.execute_data(operation_request(OperationKey::Pdf, source, options_json))
     }
 
     pub fn render_pdf_result(
@@ -829,7 +817,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::Ascii,
             source,
             options_json,
@@ -849,7 +837,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::SemanticJson,
             source,
             options_json,
@@ -861,7 +849,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::LayoutJson,
             source,
             options_json,
@@ -873,7 +861,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::EdgeGeometryJson,
             source,
             options_json,
@@ -885,7 +873,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::SvgPlanJson,
             source,
             options_json,
@@ -897,7 +885,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::AnalysisJson,
             source,
             options_json,
@@ -909,7 +897,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::AnalysisFactsJson,
             source,
             options_json,
@@ -922,7 +910,7 @@ impl Merman {
         uri: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request_with_uri(
+        string_operation_output(self.execute_data(operation_request_with_uri(
             OperationKey::DocumentAnalysisJson,
             source,
             uri,
@@ -936,7 +924,7 @@ impl Merman {
         uri: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request_with_uri(
+        string_operation_output(self.execute_data(operation_request_with_uri(
             OperationKey::DocumentAnalysisFactsJson,
             source,
             uri,
@@ -949,7 +937,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanValidationResult, MermanError> {
-        validation_operation_output(self.execute(operation_request(
+        validation_operation_output(self.execute_data(operation_request(
             OperationKey::ValidationJson,
             source,
             options_json,
@@ -1085,6 +1073,17 @@ impl Merman {
     }
 }
 
+impl Merman {
+    fn execute_data(&self, request: MermanOperationRequestV4) -> Result<Vec<u8>, MermanError> {
+        native_artifact_contract()
+            .execute_once_data(binding_operation_request(
+                &request,
+                options_bytes(request.options_json.as_deref()),
+            ))
+            .map_err(MermanError::from_binding)
+    }
+}
+
 #[uniffi::export]
 impl MermanEngine {
     #[uniffi::constructor]
@@ -1117,7 +1116,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::Svg,
             source,
             options_json,
@@ -1129,11 +1128,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request(
-            OperationKey::Png,
-            source,
-            options_json,
-        )))
+        self.execute_data(operation_request(OperationKey::Png, source, options_json))
     }
 
     pub fn render_png_result(
@@ -1149,11 +1144,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request(
-            OperationKey::Jpeg,
-            source,
-            options_json,
-        )))
+        self.execute_data(operation_request(OperationKey::Jpeg, source, options_json))
     }
 
     pub fn render_jpeg_result(
@@ -1169,11 +1160,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request(
-            OperationKey::Pdf,
-            source,
-            options_json,
-        )))
+        self.execute_data(operation_request(OperationKey::Pdf, source, options_json))
     }
 
     pub fn render_pdf_result(
@@ -1212,7 +1199,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::Ascii,
             source,
             options_json,
@@ -1232,7 +1219,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::SemanticJson,
             source,
             options_json,
@@ -1244,7 +1231,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::LayoutJson,
             source,
             options_json,
@@ -1256,7 +1243,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::EdgeGeometryJson,
             source,
             options_json,
@@ -1268,7 +1255,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::SvgPlanJson,
             source,
             options_json,
@@ -1280,7 +1267,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::AnalysisJson,
             source,
             options_json,
@@ -1292,7 +1279,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request(
+        string_operation_output(self.execute_data(operation_request(
             OperationKey::AnalysisFactsJson,
             source,
             options_json,
@@ -1305,7 +1292,7 @@ impl MermanEngine {
         uri: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request_with_uri(
+        string_operation_output(self.execute_data(operation_request_with_uri(
             OperationKey::DocumentAnalysisJson,
             source,
             uri,
@@ -1319,7 +1306,7 @@ impl MermanEngine {
         uri: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request_with_uri(
+        string_operation_output(self.execute_data(operation_request_with_uri(
             OperationKey::DocumentAnalysisFactsJson,
             source,
             uri,
@@ -1332,7 +1319,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanValidationResult, MermanError> {
-        validation_operation_output(self.execute(operation_request(
+        validation_operation_output(self.execute_data(operation_request(
             OperationKey::ValidationJson,
             source,
             options_json,
@@ -1357,6 +1344,17 @@ impl MermanEngine {
 }
 
 impl MermanEngine {
+    fn execute_data(&self, request: MermanOperationRequestV4) -> Result<Vec<u8>, MermanError> {
+        self.with_reusable_operation(|engine| {
+            engine
+                .execute_data(binding_operation_request(
+                    &request,
+                    options_bytes(request.options_json.as_deref()),
+                ))
+                .map_err(MermanError::from_binding)
+        })
+    }
+
     fn with_reusable_operation<T>(
         &self,
         run: impl FnOnce(&BindingEngine) -> Result<T, MermanError>,
@@ -1611,25 +1609,9 @@ fn uniffi_ascii_output_plan(plan: &BindingAsciiOutputPlan) -> MermanAsciiOutputP
     }
 }
 
-fn binary_operation_output(
-    result: Result<MermanOperationResult, MermanError>,
-) -> Result<Vec<u8>, MermanError> {
-    result.map(|result| result.data)
-}
-
-fn string_operation_output(
-    result: Result<MermanOperationResult, MermanError>,
-) -> Result<String, MermanError> {
-    let result = result?;
-    String::from_utf8(result.data)
+fn string_operation_output(result: Result<Vec<u8>, MermanError>) -> Result<String, MermanError> {
+    String::from_utf8(result?)
         .map_err(|error| MermanError::internal(format!("operation output was not UTF-8: {error}")))
-}
-
-fn validation_operation_output(
-    result: Result<MermanOperationResult, MermanError>,
-) -> Result<MermanValidationResult, MermanError> {
-    let result = result?;
-    validation_output(Ok(result.data))
 }
 
 fn string_output(result: Result<Vec<u8>, BindingError>) -> Result<String, MermanError> {
@@ -1638,10 +1620,10 @@ fn string_output(result: Result<Vec<u8>, BindingError>) -> Result<String, Merman
         .map_err(|err| MermanError::internal(format!("binding output was not UTF-8: {err}")))
 }
 
-fn validation_output(
-    result: Result<Vec<u8>, BindingError>,
+fn validation_operation_output(
+    result: Result<Vec<u8>, MermanError>,
 ) -> Result<MermanValidationResult, MermanError> {
-    let bytes = result.map_err(MermanError::from_binding)?;
+    let bytes = result?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|err| MermanError::internal(format!("validation JSON decode failed: {err}")))?;
     let object = value
@@ -1867,6 +1849,215 @@ mod tests {
                 phase: "admission".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn data_execution_preserves_full_error_and_cancellation_order() {
+        let api = engine();
+        let reusable = reusable_engine(None);
+        let cancelled = MermanOperationControl::new(None);
+        cancelled.cancel();
+        for (operation_id, uri, control, status, reason) in [
+            (
+                "unknown-operation",
+                None,
+                Some(Arc::clone(&cancelled)),
+                BindingStatus::UnsupportedOperation,
+                None,
+            ),
+            (
+                "document-analysis-json",
+                None,
+                Some(Arc::clone(&cancelled)),
+                BindingStatus::InvalidArgument,
+                None,
+            ),
+            (
+                "semantic-json",
+                Some("file:///diagram.mmd"),
+                Some(Arc::clone(&cancelled)),
+                BindingStatus::InvalidArgument,
+                None,
+            ),
+            (
+                "semantic-json",
+                None,
+                None,
+                BindingStatus::OptionsJsonError,
+                None,
+            ),
+            (
+                "semantic-json",
+                None,
+                Some(Arc::clone(&cancelled)),
+                BindingStatus::Cancelled,
+                Some("requested"),
+            ),
+            (
+                "semantic-json",
+                None,
+                Some(MermanOperationControl::new(Some(0))),
+                BindingStatus::Cancelled,
+                Some("deadline_exceeded"),
+            ),
+        ] {
+            let request = MermanOperationRequestV4 {
+                operation_id: operation_id.to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: uri.map(str::to_string),
+                options_json: Some("{".to_string()),
+                control,
+            };
+            for (data, full) in [
+                (
+                    api.execute_data(request.clone()),
+                    api.execute(request.clone()),
+                ),
+                (
+                    reusable.execute_data(request.clone()),
+                    reusable.execute(request),
+                ),
+            ] {
+                let data_error = data.expect_err("data request must publish no output");
+                let full_error = full.expect_err("full request must publish no output");
+                assert_eq!(format!("{data_error:?}"), format!("{full_error:?}"));
+                let MermanError::Binding {
+                    code,
+                    resource,
+                    cancellation,
+                    ..
+                } = data_error;
+                assert_eq!(code, status.code(), "{operation_id}");
+                assert_eq!(resource, None);
+                assert_eq!(
+                    cancellation,
+                    reason.map(|reason| MermanCancelledDetails {
+                        reason: reason.to_string(),
+                        phase: "admission".to_string(),
+                    }),
+                    "{operation_id}"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn data_execution_preserves_resource_limits_and_reusable_output() {
+        let api = engine();
+        let reusable = reusable_engine(Some(
+            r#"{"resources":{"limits":{"max_source_bytes":64}}}"#.to_string(),
+        ));
+        let source = "flowchart TD\nA --> B".to_string();
+        let options = Some(r#"{"resources":{"limits":{"max_source_bytes":1}}}"#.to_string());
+        let control = MermanOperationControl::new(None);
+        let mut request =
+            operation_request(OperationKey::SemanticJson, source.clone(), options.clone());
+        request.control = Some(Arc::clone(&control));
+        for (data, full, named) in [
+            (
+                api.execute_data(request.clone()),
+                api.execute(request.clone()),
+                api.parse_json(source.clone(), options.clone()),
+            ),
+            (
+                reusable.execute_data(request.clone()),
+                reusable.execute(request.clone()),
+                reusable.parse_json(source.clone(), options),
+            ),
+        ] {
+            let data_error = data.unwrap_err();
+            let full_error = full.unwrap_err();
+            let named_error = named.unwrap_err();
+            assert_eq!(format!("{data_error:?}"), format!("{full_error:?}"));
+            assert_eq!(format!("{named_error:?}"), format!("{full_error:?}"));
+            let MermanError::Binding { code, resource, .. } = data_error;
+            assert_eq!(code, BindingStatus::ResourceLimitExceeded.code());
+            let resource = resource.expect("structured source resource limit");
+            assert_eq!(resource.limit_id, "max_source_bytes");
+            assert_eq!(resource.max, 1);
+        }
+
+        control
+            .clone_control()
+            .checkpoint()
+            .expect("caller control remains usable");
+        request.options_json = None;
+        for (data, full, named) in [
+            (
+                api.execute_data(request.clone()),
+                api.execute(request.clone()),
+                api.parse_json(source.clone(), None),
+            ),
+            (
+                reusable.execute_data(request.clone()),
+                reusable.execute(request),
+                reusable.parse_json(source, None),
+            ),
+        ] {
+            let full = full.expect("resource failure must leave the engine usable");
+            assert_eq!(data.unwrap(), full.data);
+            assert_eq!(named.unwrap().as_bytes(), full.data);
+            assert_eq!(full.metadata.operation_id, "semantic-json");
+            assert_eq!(full.metadata.byte_length, full.data.len() as u64);
+            let metadata: Value = serde_json::from_str(&full.metadata.raw_json).unwrap();
+            assert_eq!(metadata["byte_length"], full.metadata.byte_length);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn data_execution_preserves_admission_and_service_error_order() {
+        let measurer = CountingTextMeasurer::new();
+        let reusable = callback_engine(None, measurer.clone());
+        let cancelled = MermanOperationControl::new(None);
+        cancelled.cancel();
+        let mut request = operation_request(
+            OperationKey::SemanticJson,
+            "flowchart TD\nA --> B".to_string(),
+            Some(r#"{"environment":{"text_measurement":"deterministic"}}"#.to_string()),
+        );
+        for (control, status) in [
+            (None, BindingStatus::InvalidArgument),
+            (Some(Arc::clone(&cancelled)), BindingStatus::Cancelled),
+        ] {
+            request.control = control;
+            let data_error = reusable.execute_data(request.clone()).unwrap_err();
+            let full_error = reusable.execute(request.clone()).unwrap_err();
+            assert_eq!(format!("{data_error:?}"), format!("{full_error:?}"));
+            let MermanError::Binding { code, message, .. } = data_error;
+            assert_eq!(code, status.code());
+            if status == BindingStatus::InvalidArgument {
+                assert!(message.contains("host-text-measurement"));
+            }
+        }
+        assert_eq!(measurer.calls(), 0);
+
+        request.operation_id = "unknown-operation".to_string();
+        request.options_json = Some("{".to_string());
+        {
+            let _operation = reusable.admission.enter_operation().unwrap();
+            for callback_active in [false, true] {
+                let _callback =
+                    callback_active.then(|| reusable.admission.enter_callback().unwrap());
+                let data_error = reusable.execute_data(request.clone()).unwrap_err();
+                let full_error = reusable.execute(request.clone()).unwrap_err();
+                assert_eq!(format!("{data_error:?}"), format!("{full_error:?}"));
+                if callback_active {
+                    assert_reentrant_error(&data_error);
+                } else {
+                    assert_busy_error(&data_error);
+                }
+            }
+        }
+        reusable.close().unwrap();
+        let data_error = reusable.execute_data(request.clone()).unwrap_err();
+        let full_error = reusable.execute(request).unwrap_err();
+        assert_eq!(format!("{data_error:?}"), format!("{full_error:?}"));
+        let MermanError::Binding { code, message, .. } = data_error;
+        assert_eq!(code, BindingStatus::InvalidArgument.code());
+        assert!(message.contains("closed"));
+        assert_eq!(measurer.calls(), 0);
     }
 
     fn reusable_engine(options_json: Option<String>) -> Arc<MermanEngine> {
@@ -2722,7 +2913,11 @@ mod tests {
     fn engine_exposes_real_png_output() {
         let source = "flowchart TD\nA[Hello] --> B[World]".to_string();
         let bytes = engine().render_png(source.clone(), None).unwrap();
-        let result = engine().render_png_result(source, None).unwrap();
+        let result = engine().render_png_result(source.clone(), None).unwrap();
+        let reusable = reusable_engine(None);
+        assert_eq!(reusable.render_png(source.clone(), None).unwrap(), bytes);
+        let reusable_result = reusable.render_png_result(source, None).unwrap();
+        assert_eq!(reusable_result, result);
         assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
         assert_eq!(result.data, bytes);
         assert_eq!(result.metadata.byte_length, result.data.len() as u64);
@@ -3354,17 +3549,46 @@ mod tests {
     #[cfg(feature = "analysis")]
     #[test]
     fn engine_validates_source() {
-        let result = engine()
-            .validate("flowchart TD\nA[Hello]".to_string(), None)
-            .unwrap();
-
-        assert!(result.valid);
-        assert_eq!(result.code_name, BindingStatus::Ok.code_name());
-
-        let result = engine().validate("".to_string(), None).unwrap();
-        assert!(!result.valid);
-        assert_eq!(result.code_name, BindingStatus::NoDiagram.code_name());
-        assert!(result.error.unwrap().contains("no Mermaid diagram"));
+        let api = engine();
+        let reusable = reusable_engine(None);
+        for (source, valid, status) in [
+            ("flowchart TD\nA[Hello]", true, BindingStatus::Ok),
+            ("", false, BindingStatus::NoDiagram),
+        ] {
+            let result = api.validate(source.to_string(), None).unwrap();
+            assert_eq!(result.valid, valid);
+            assert_eq!(result.code_name, status.code_name());
+            if !valid {
+                assert!(
+                    result
+                        .error
+                        .as_ref()
+                        .unwrap()
+                        .contains("no Mermaid diagram")
+                );
+            }
+            assert_eq!(reusable.validate(source.to_string(), None).unwrap(), result);
+            for full in [
+                api.execute(operation_request(
+                    OperationKey::ValidationJson,
+                    source.to_string(),
+                    None,
+                )),
+                reusable.execute(operation_request(
+                    OperationKey::ValidationJson,
+                    source.to_string(),
+                    None,
+                )),
+            ] {
+                let full = full.unwrap();
+                let payload: Value = serde_json::from_slice(&full.data).unwrap();
+                assert_eq!(payload["valid"], result.valid);
+                assert_eq!(payload["code"], result.code);
+                assert_eq!(payload["code_name"], result.code_name);
+                assert_eq!(full.metadata.operation_id, "validation-json");
+                assert_eq!(full.metadata.byte_length, full.data.len() as u64);
+            }
+        }
     }
 
     #[test]

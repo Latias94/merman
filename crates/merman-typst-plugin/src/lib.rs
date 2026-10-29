@@ -282,11 +282,9 @@ fn execute_typst_operation(
     source: &[u8],
     options_json: &[u8],
 ) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
-    typst_artifact_contract()
-        .execute_once(
-            BindingOperationRequest::new(operation_id, source).with_options_json(options_json),
-        )
-        .map(merman_bindings_core::BindingOperationResult::into_data)
+    typst_artifact_contract().execute_once_data(
+        BindingOperationRequest::new(operation_id, source).with_options_json(options_json),
+    )
 }
 
 fn typst_binding_error_payload(
@@ -615,6 +613,59 @@ mod tests {
             merman_bindings_core::BindingStatus::UnsupportedOperation
         );
         assert!(error.message().contains("not exposed by target `typst`"));
+    }
+
+    #[test]
+    fn typst_data_execution_matches_full_errors() {
+        for (operation_id, options_json) in [
+            ("unknown-operation", b"{".as_slice()),
+            ("semantic-json", b"".as_slice()),
+            ("svg", b"{".as_slice()),
+            ("svg", b"".as_slice()),
+            ("analysis-json", b"{".as_slice()),
+        ] {
+            let full_error = typst_artifact_contract()
+                .execute_once(
+                    BindingOperationRequest::new(operation_id, b"").with_options_json(options_json),
+                )
+                .expect_err("invalid request must fail through the full executor");
+            let data_error = execute_typst_operation(operation_id, b"", options_json)
+                .expect_err("invalid request must fail through the data executor");
+            assert_eq!(data_error, full_error, "{operation_id}");
+        }
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn typst_data_execution_preserves_svg_output_and_resource_ceiling() {
+        let source = b"flowchart TD\nA[Hello] --> B[World]";
+        let options_json =
+            typst_options_json(br#"{"svg":{"diagram_id":"typst-data-output"}}"#).unwrap();
+        let full = typst_artifact_contract()
+            .execute_once(
+                BindingOperationRequest::new("svg", source).with_options_json(&options_json),
+            )
+            .unwrap();
+        let data = execute_typst_operation("svg", source, &options_json).unwrap();
+        assert_eq!(data, full.data());
+        assert_eq!(full.metadata().operation_id(), "svg");
+        assert_eq!(full.metadata().byte_length(), data.len() as u64);
+
+        let limited_options =
+            typst_options_json(br#"{"resources":{"limits":{"max_source_bytes":1}}}"#).unwrap();
+        let full_error = typst_artifact_contract()
+            .execute_once(
+                BindingOperationRequest::new("svg", source).with_options_json(&limited_options),
+            )
+            .unwrap_err();
+        let data_error = execute_typst_operation("svg", source, &limited_options).unwrap_err();
+        assert_eq!(data_error, full_error);
+        let resource = data_error
+            .resource_details()
+            .expect("source resource limit");
+        assert_eq!(resource.limit_id, "max_source_bytes");
+        assert_eq!(resource.profile, "constrained");
+        assert_eq!(resource.max, 1);
     }
 
     #[cfg(feature = "svg")]

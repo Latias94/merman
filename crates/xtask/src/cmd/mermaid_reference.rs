@@ -1,5 +1,4 @@
 use crate::XtaskError;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1261,31 +1260,25 @@ fn verify_builtin_registry_inventory(
                 registry.source_sha256
             ));
         }
-        let (actual_ids, inventory_path) = if kind == "built-in diagram" {
-            if !mermaid_runtime_verified {
-                continue;
-            }
-            (
-                installed_builtin_diagram_ids(root, bundle),
-                root.join(&bundle.reference_cli.workspace)
-                    .join("node_modules")
-                    .join(&bundle.release.package),
-            )
-        } else {
-            (
-                builtin_layout_ids_from_checkout(&checkout, &bundle.release.source.commit, &source),
-                source_path.clone(),
-            )
-        };
-        match actual_ids {
+    }
+
+    // Layout IDs are reviewed metadata tied to the source digest above. Inferring
+    // them from TypeScript text cannot establish which loaders a runtime registers.
+    if mermaid_runtime_verified {
+        let registry = &bundle.builtin_registry.diagrams;
+        let inventory_path = root
+            .join(&bundle.reference_cli.workspace)
+            .join("node_modules")
+            .join(&bundle.release.package);
+        match installed_builtin_diagram_ids(root, bundle) {
             Ok(actual_ids) if actual_ids != registry.ids => failures.push(format!(
-                "{kind} registry inventory drift at {}: expected {:?}, found {actual_ids:?}",
+                "built-in diagram registry inventory drift at {}: expected {:?}, found {actual_ids:?}",
                 inventory_path.display(),
                 registry.ids
             )),
             Ok(_) => {}
             Err(reason) => failures.push(format!(
-                "cannot extract {kind} registry inventory from {}: {reason}",
+                "cannot extract built-in diagram registry inventory from {}: {reason}",
                 inventory_path.display()
             )),
         }
@@ -1326,93 +1319,6 @@ fn installed_builtin_diagram_ids(
     ensure_unique_registry_ids(&ids, "diagram")?;
     if ids.is_empty() {
         return Err("Mermaid diagram metadata API returned no registered diagrams".to_string());
-    }
-    Ok(ids)
-}
-
-// The selected source commit authenticates both files. This is the one upstream ELK
-// registration shape, not a TypeScript evaluator: changed registration requires review.
-fn builtin_layout_ids_from_checkout(
-    checkout: &Path,
-    commit: &str,
-    source: &str,
-) -> Result<Vec<String>, String> {
-    let mut ids = extract_builtin_layout_ids(source)?;
-    if source.contains("...elkLayoutLoaders()") {
-        // Read the companion constant from the exact commit, not an unverified working-tree file.
-        let object = format!(
-            "{commit}:packages/mermaid/src/rendering-util/layout-algorithms/elk/algorithms.ts"
-        );
-        let output = Command::new("git")
-            .args(["show", &object])
-            .current_dir(checkout)
-            .output()
-            .map_err(|error| format!("cannot read pinned ELK algorithms: {error}"))?;
-        if !output.status.success() {
-            return Err(format!(
-                "cannot read pinned ELK algorithms: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        let algorithms = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
-        ids.extend(extract_builtin_elk_layout_ids(source, &algorithms)?);
-    }
-    ensure_unique_registry_ids(&ids, "layout")?;
-    Ok(ids)
-}
-
-fn extract_builtin_elk_layout_ids(source: &str, algorithms: &str) -> Result<Vec<String>, String> {
-    if !source.contains("{ name: 'elk', loader, algorithm: 'elk.layered' }")
-        || !source.contains(
-            "...ELK_ALGORITHMS.map((algorithm) => ({ name: algorithm, loader, algorithm }))",
-        )
-    {
-        return Err(
-            "unrecognized built-in ELK registration; review the selected source".to_string(),
-        );
-    }
-    let declaration = "export const ELK_ALGORITHMS = [";
-    let start = algorithms
-        .find(declaration)
-        .ok_or_else(|| "missing ELK_ALGORITHMS declaration".to_string())?;
-    let algorithms =
-        crate::util::extract_string_array_at(algorithms, start + declaration.len() - 1)
-            .map_err(|error| error.to_string())?;
-    let mut ids = vec!["elk".to_string()];
-    ids.extend(algorithms);
-    ensure_unique_registry_ids(&ids, "ELK layout")?;
-    Ok(ids)
-}
-
-fn extract_builtin_layout_ids(source: &str) -> Result<Vec<String>, String> {
-    let start = source
-        .find("const registerDefaultLayoutLoaders")
-        .ok_or_else(|| "missing registerDefaultLayoutLoaders declaration".to_string())?;
-    let tail = &source[start..];
-    let end = tail
-        .find("registerDefaultLayoutLoaders();")
-        .ok_or_else(|| "missing registerDefaultLayoutLoaders invocation".to_string())?;
-    let registry = &tail[..end];
-    let name_re =
-        Regex::new(r#"(?m)^\s*name\s*:\s*(?:\"(?P<double>[^\"]+)\"|'(?P<single>[^']+)')\s*,?\s*$"#)
-            .expect("layout name regex is valid");
-    let name_property_re =
-        Regex::new(r"(?m)^\s*name\s*:").expect("layout name property regex is valid");
-    let ids = name_re
-        .captures_iter(registry)
-        .filter_map(|captures| {
-            captures
-                .name("double")
-                .or_else(|| captures.name("single"))
-                .map(|id| id.as_str().to_string())
-        })
-        .collect::<Vec<_>>();
-    if ids.len() != name_property_re.find_iter(registry).count() {
-        return Err("a default layout name is not a static string literal".to_string());
-    }
-    ensure_unique_registry_ids(&ids, "layout")?;
-    if ids.is_empty() {
-        return Err("no static layout names were found".to_string());
     }
     Ok(ids)
 }
@@ -2873,53 +2779,38 @@ mod tests {
     }
 
     #[test]
-    fn builtin_layout_inventory_extractor_includes_conditional_default_loaders() {
-        let source = r#"
-const registerDefaultLayoutLoaders = () => {
-  registerLayoutLoaders([
-    {
-      name: 'dagre',
-    },
-    ...(injected.includeLargeFeatures
-      ? [
-          {
-            name: 'cose-bilkent',
-          },
-        ]
-      : []),
-  ]);
-};
-registerDefaultLayoutLoaders();
-"#;
-        assert_eq!(
-            extract_builtin_layout_ids(source).expect("extract default layouts"),
-            ["dagre", "cose-bilkent"]
-        );
-    }
+    fn builtin_registry_sources_require_matching_digests_and_existing_files() {
+        let temporary = tempfile::tempdir().expect("temporary reference checkout");
+        let mut bundle =
+            load_bundle(&crate::cmd::workspace_root().join(BUNDLE_RELATIVE_PATH)).unwrap();
+        let checkout = temporary
+            .path()
+            .join(bundle.release.source.checkout_path.as_deref().unwrap());
+        let source = "export const loaders = makeLoaders();\n";
+        for registry in [
+            &mut bundle.builtin_registry.diagrams,
+            &mut bundle.builtin_registry.layouts,
+        ] {
+            registry.source_sha256 = registry_source_sha256(source);
+            let path = checkout.join(&registry.source_path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, source).unwrap();
+        }
+        let mut failures = Vec::new();
+        verify_builtin_registry_inventory(temporary.path(), &bundle, false, &mut failures);
+        assert!(failures.is_empty(), "{failures:?}");
 
-    #[test]
-    fn builtin_elk_registration_expands_the_pinned_algorithm_list() {
-        let source = "{ name: 'elk', loader, algorithm: 'elk.layered' },\n...ELK_ALGORITHMS.map((algorithm) => ({ name: algorithm, loader, algorithm }))";
-        let algorithms = "export const ELK_ALGORITHMS = ['elk.stress', 'elk.force', 'elk.mrtree', 'elk.sporeOverlap', 'elk.box', 'elk.rectpacking'] as const;";
-        assert_eq!(
-            extract_builtin_elk_layout_ids(source, algorithms).unwrap(),
-            [
-                "elk",
-                "elk.stress",
-                "elk.force",
-                "elk.mrtree",
-                "elk.sporeOverlap",
-                "elk.box",
-                "elk.rectpacking"
-            ]
-        );
-        assert!(
-            extract_builtin_elk_layout_ids(
-                &source.replace("name: algorithm", "name: 'other'"),
-                algorithms
-            )
-            .is_err()
-        );
+        let layout_path = checkout.join(&bundle.builtin_registry.layouts.source_path);
+        fs::write(&layout_path, "export const loaders = changedLoaders();\n").unwrap();
+        verify_builtin_registry_inventory(temporary.path(), &bundle, false, &mut failures);
+        assert_eq!(failures.len(), 1, "{failures:?}");
+        assert!(failures[0].contains("built-in layout registry source digest drift"));
+
+        failures.clear();
+        fs::remove_file(layout_path).unwrap();
+        verify_builtin_registry_inventory(temporary.path(), &bundle, false, &mut failures);
+        assert_eq!(failures.len(), 1, "{failures:?}");
+        assert!(failures[0].contains("built-in layout registry source is missing"));
     }
 
     #[test]

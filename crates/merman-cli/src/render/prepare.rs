@@ -115,19 +115,22 @@ pub(super) enum PreparedGraphicalOutput {
 
 #[cfg(feature = "svg")]
 impl PreparedGraphicalOutput {
-    #[cfg(feature = "native-fonts")]
+    #[cfg(all(
+        feature = "native-fonts",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
     pub(super) fn with_font_context(
         mut self,
-        _context: Option<merman::svg::export::NativeFontContext>,
+        context: Option<merman::svg::export::NativeFontContext>,
     ) -> Self {
         match &mut self {
             Self::Svg => {}
             #[cfg(feature = "png")]
-            Self::Png { options } => options.font_context = _context,
+            Self::Png { options } => options.font_context = context,
             #[cfg(feature = "jpeg")]
-            Self::Jpeg { options } => options.font_context = _context,
+            Self::Jpeg { options } => options.font_context = context,
             #[cfg(feature = "pdf")]
-            Self::Pdf { options } => options.font_context = _context,
+            Self::Pdf { options } => options.font_context = context,
         }
         self
     }

@@ -133,6 +133,24 @@ fn find_cycles_returns_multiple_cycles() {
 }
 
 #[test]
+fn find_cycles_preserves_node_and_cycle_order_across_multiple_sccs() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    for id in ["zeta", "theta", "solo", "alpha", "beta", "orphan"] {
+        g.ensure_node(id);
+    }
+    g.set_path(&["alpha", "zeta", "alpha"]);
+    g.set_path(&["beta", "theta", "beta"]);
+    g.set_edge("alpha", "theta");
+    g.set_edge("solo", "solo");
+    g.set_edge("solo", "orphan");
+
+    assert_eq!(
+        alg::find_cycles(&g),
+        vec![vec!["solo"], vec!["theta", "beta"], vec!["zeta", "alpha"]]
+    );
+}
+
+#[test]
 fn preorder_returns_singleton_root() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
     g.ensure_node("a");

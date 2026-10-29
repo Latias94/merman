@@ -3,9 +3,12 @@
 Status: Current
 Last updated: 2026-10-28
 
-This guide explains how native hosts should use Merman's text-measurement callback and where the
-remaining headless-rendering limits are. It complements the exact C ABI contract in
-[`FFI_PROTOCOL.md`](FFI_PROTOCOL.md#host-text-measurement).
+This guide owns display-stack integration, callback result semantics, and measurement lifecycle
+guidance. The [text-measurement descriptor](../../contracts/abi/text-measurement-v1.json) owns
+operation codes and result kinds; the
+[shared decoder](../../crates/merman-bindings-core/src/text_measurement.rs) validates host results.
+The [C protocol](FFI_PROTOCOL.md#host-text-measurement) owns the enclosing ABI records and
+caller-memory rules.
 
 ## Native CLI And Library Policy
 
@@ -93,8 +96,9 @@ Merman uses a layered strategy instead of pretending there is one universal font
 Earlier releases embedded a Headless Chrome 131 profile for a bounded set of fonts, glyphs, DOM
 shapes, and sizes. That corpus improved its measured cases but remained an approximation for every
 unmeasured font or host and materially enlarged all SVG-capable artifacts. ADR-0086 removes those
-tables while retaining this callback seam. A heavier Rust-side discovery, shaping, and layout
-engine remains a possible future opt-in capability, not a baseline dependency.
+tables while retaining this callback seam. Rust and C hosts can now opt into the
+[native font context](../../crates/merman-ffi/README.md#memory-only-fonts) described above; bindings
+without that constructor keep their existing measurement contract.
 
 ## Quick Decision Checklist
 

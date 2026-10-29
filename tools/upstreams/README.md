@@ -18,6 +18,12 @@ content digests, built-in registry inputs, and generated projections. Registry s
 use UTF-8 source with CRLF normalized to LF, matching Git blobs across checkout platforms. It deliberately
 contains no oracle, candidate, deferred-major, browser-admission, or attestation payload.
 
+Built-in layout IDs are reviewed inventory metadata. The standing verifier checks their structure
+and registry source digest; it does not interpret TypeScript registration code or claim that the
+inventory proves runtime layout availability. Built-in diagram IDs are also checked through
+Mermaid's installed metadata API after package content verification. Rendering and SVG parity
+checks exercise the selected layouts.
+
 `MERMAID_SELECTION_DECISION.json` is the compact reviewed decision receipt. The bundle stores only
 its path and SHA-256. The receipt binds the previous and current selection identity digests, their
 exact changed fields, the official npm command/version and package identities used during

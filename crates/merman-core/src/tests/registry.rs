@@ -1036,7 +1036,7 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
         "  broken[unterminated\n",
         "  after\n",
     );
-    crate::preprocess::reset_public_parse_preprocess_count();
+    crate::preprocess::reset_preprocess_count();
     crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
 
     let snapshot = MermaidEngine::new()
@@ -1062,7 +1062,7 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
             .iter()
             .any(|prefix| prefix == "initialize")
     );
-    assert_eq!(crate::preprocess::public_parse_preprocess_count(), 1);
+    assert_eq!(crate::preprocess::preprocess_count(), 1);
     assert_eq!(
         crate::diagrams::mindmap::mindmap_syntax_construction_count(),
         1

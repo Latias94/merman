@@ -367,7 +367,7 @@ fn write_central_connection_circles(
     from: &str,
     to: &str,
     line_y: f64,
-    sequence_number_visible: bool,
+    autonumber_visible: bool,
 ) {
     let Some(decoration) = msg.central_decoration() else {
         return;
@@ -396,7 +396,7 @@ fn write_central_connection_circles(
         }
     };
 
-    if sequence_number_visible {
+    if autonumber_visible {
         match decoration {
             SequenceCentralDecoration::Target if is_reverse => {
                 to_center += circle_offset(is_left_to_right, true);
@@ -447,7 +447,11 @@ pub(super) fn render_sequence_messages(
     theme_receipt: &mut crate::sequence::SequenceMessageThemeReceipt,
     sequence_number_receipt: &mut crate::sequence::SequenceNumberLabelThemeReceipt,
 ) -> crate::Result<()> {
-    let mut sequence_number_visible = false;
+    let show_sequence_numbers = ctx
+        .sanitize_config
+        .get_bool("sequence.showSequenceNumbers")
+        .unwrap_or(false);
+    let mut autonumber_visible = false;
     let mut sequence_number = 1.0;
     let mut sequence_number_step = 1.0;
     let mut activation_bounds = SequenceAutonumberActivationBounds::new(ctx.activation_width);
@@ -471,7 +475,7 @@ pub(super) fn render_sequence_messages(
         match msg.semantic_kind() {
             SequenceMessageKind::Autonumber => {
                 if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
-                    sequence_number_visible = autonumber.visible;
+                    autonumber_visible = autonumber.visible;
                     if let Some(start) = autonumber.start {
                         sequence_number = start;
                     }
@@ -496,6 +500,7 @@ pub(super) fn render_sequence_messages(
         let Some(signal_semantics) = msg.signal_semantics() else {
             continue;
         };
+        let sequence_number_visible = autonumber_visible || show_sequence_numbers;
         let current_sequence_number = sequence_number;
         // Mermaid advances the sequence index for every signal, even while autonumber is hidden.
         sequence_number = round_sequence_number(sequence_number + sequence_number_step);
@@ -675,7 +680,7 @@ pub(super) fn render_sequence_messages(
                     .unwrap_or_default(),
                 style = style
             );
-            write_central_connection_circles(out, ctx, msg, from, to, y, sequence_number_visible);
+            write_central_connection_circles(out, ctx, msg, from, to, y, autonumber_visible);
         } else {
             let _ = write!(
                 out,
@@ -690,15 +695,7 @@ pub(super) fn render_sequence_messages(
                 marker_end = marker_end.as_deref().unwrap_or(""),
                 style = style
             );
-            write_central_connection_circles(
-                out,
-                ctx,
-                msg,
-                from,
-                to,
-                p0.y,
-                sequence_number_visible,
-            );
+            write_central_connection_circles(out, ctx, msg, from, to, p0.y, autonumber_visible);
         }
 
         if sequence_number_visible {

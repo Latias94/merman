@@ -21,6 +21,69 @@ fn svg(args: &[&str], source: &str) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
+fn measurement_notices(stderr: &str) -> Vec<&str> {
+    stderr
+        .lines()
+        .filter(|line| line.starts_with("native measurement faces: "))
+        .collect()
+}
+
+#[test]
+fn native_measurement_diagnostics_describe_the_executing_svg() {
+    let font = font();
+    let context = merman::svg::export::NativeFontOptions::default()
+        .with_font_file(&font)
+        .load(&merman::OperationControl::new())
+        .unwrap();
+    let expected = format!(
+        "native measurement faces: Cousine-Regular#0; context {}",
+        context.identity()
+    );
+    let source = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Native measurement]\n";
+    for command in ["render", "mmdc"] {
+        let temp = tempfile::tempdir().unwrap();
+        let output_path = temp.path().join("native-fonts.svg");
+        let output_path = output_path.to_str().unwrap();
+        let input = if command == "render" {
+            "-"
+        } else {
+            "--input=-"
+        };
+        let mut args = vec![
+            command,
+            input,
+            "--output",
+            output_path,
+            "--font-file",
+            &font,
+            "--font-system=off",
+        ];
+        let output = run_with_stdin(&args, source);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{command}: {stderr}");
+        assert!(
+            std::fs::read_to_string(output_path)
+                .unwrap()
+                .contains("<svg")
+        );
+        assert_eq!(
+            measurement_notices(&stderr),
+            [expected.as_str()],
+            "{command}"
+        );
+
+        args.push("--quiet");
+        let output = run_with_stdin(&args, source);
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        assert!(
+            std::fs::read_to_string(output_path)
+                .unwrap()
+                .contains("<svg")
+        );
+    }
+}
+
 #[test]
 fn exhausted_measurement_budget_explains_how_to_retry() {
     let font = font();
@@ -125,13 +188,19 @@ fn batch_measurement_budget_applies_to_each_diagram() {
         &font,
         "--font-system=off",
         "--font-max-measurements=8",
-        "--quiet",
     ];
+    #[cfg(feature = "parallel-markdown")]
+    args.extend(["--jobs", "2"]);
     let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{}", stderr);
+    let notices = measurement_notices(&stderr);
+    assert_eq!(notices.len(), 10, "{stderr}");
     assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        notices
+            .iter()
+            .all(|notice| notice.contains("Cousine-Regular#0; context ")),
+        "{stderr}"
     );
     for i in 1..=10 {
         assert!(
@@ -977,6 +1046,16 @@ fn native_mermaid_binary_exports_paint_with_the_font_used_for_layout() {
             "{format}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let expected_notice = format!(
+            "native measurement faces: Cousine-Regular#0; context {}",
+            context.identity()
+        );
+        assert_eq!(
+            measurement_notices(&stderr),
+            [expected_notice.as_str()],
+            "{format}: {stderr}"
+        );
         let (expected, fonts) = match format {
             #[cfg(feature = "png")]
             "png" => {
@@ -1053,6 +1132,15 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(output.stdout.starts_with(magic));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("raw SVG uses the selected font context for painting"),
+            "{format}: {stderr}"
+        );
+        assert!(
+            measurement_notices(&stderr).is_empty(),
+            "{format}: {stderr}"
+        );
         let rejected = run_with_stdin(
             &[
                 "render",

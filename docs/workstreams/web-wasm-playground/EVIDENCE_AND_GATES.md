@@ -539,7 +539,7 @@ Changes:
   does not report computed `import(url)` calls. Bootstrap blob imports remain separately digest-bound.
 - Injected the Playground pause-coordinator capability into the browser Benchmark factory. Benchmark
   feature and corpus closures now fail if either can reach the Compare artifact root.
-- Added the checked [validation migration ledger](../../../playground/scripts/validation-migration-ledger.json),
+- Added the checked [validation migration ledger](https://github.com/Latias94/merman/blob/0ce21f1cc/playground/scripts/validation-migration-ledger.json),
   mapping each removed or retained gate to its stable invariant and proving tests.
 - Added explicit ESLint and Node TypeScript project coverage for `scripts/**/*.mjs`.
 

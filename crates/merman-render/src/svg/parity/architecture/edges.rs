@@ -4,6 +4,7 @@ use crate::architecture_metrics::{
 };
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
+use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
 
 use super::super::{
     SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt, fmt_into, fmt_string,
@@ -14,15 +15,14 @@ use super::labels::{
     svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
     write_svg_text_lines,
 };
-use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
 use crate::model::ArchitectureDiagramLayout;
 
-pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess, O: SvgOutput> {
+pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) layout: &'a ArchitectureDiagramLayout,
-    pub(super) model: &'a M,
+    pub(super) model: &'a ArchitectureDiagramModel,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) text_measurer: &'a dyn TextMeasurer,
@@ -126,7 +126,7 @@ fn write_architecture_edge_id_attr(
 fn write_architecture_edge_path(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
-    edge: super::model::ArchitectureEdgeRef<'_>,
+    edge: &ArchitectureEdgeModel,
     points: ArchitectureEdgePoints,
     edge_inline_style: Option<&str>,
 ) {
@@ -143,7 +143,7 @@ fn write_architecture_edge_path(
     out.push(',');
     fmt_into(out, points.end_y);
     out.push_str(r#" " class="edge" id=""#);
-    write_architecture_edge_id_attr(out, diagram_id, "L", edge.lhs_id, edge.rhs_id, 0);
+    write_architecture_edge_id_attr(out, diagram_id, "L", &edge.lhs_id, &edge.rhs_id, 0);
     out.push('"');
     if let Some(style) = edge_inline_style {
         out.push_str(r#" style=""#);
@@ -305,12 +305,16 @@ fn architecture_edge_segment_bounds(points: ArchitectureEdgePoints) -> Bounds {
 }
 
 fn architecture_edge_label_plan(
-    edge: super::model::ArchitectureEdgeRef<'_>,
+    edge: &ArchitectureEdgeModel,
     points: ArchitectureEdgePoints,
     settings: &ArchitectureRenderSettings,
     text_measurer: &dyn TextMeasurer,
 ) -> Option<ArchitectureEdgeLabelPlan> {
-    let label = edge.title.map(str::trim).filter(|t| !t.is_empty())?;
+    let label = edge
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())?;
     let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {
         (true, true) => "X",
         (false, false) => "Y",
@@ -431,8 +435,8 @@ fn architecture_edge_label_plan(
     })
 }
 
-pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
-    ctx: &mut ArchitectureEdgeRenderContext<'_, M, O>,
+pub(super) fn push_architecture_edges<O: SvgOutput>(
+    ctx: &mut ArchitectureEdgeRenderContext<'_, O>,
 ) -> crate::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
@@ -453,144 +457,144 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
     let group_edge_label_bottom_px = ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
     let is_junction = |id: &str| junction_bounds.contains_key(id);
 
-    let layout_edge_points: Vec<(f64, f64, f64, f64, f64, f64)> = layout
-        .edges
-        .iter()
-        .map(|e| {
-            // Architecture layout edges are expected to be 3-point polylines.
-            // Be defensive and fall back to zeros if the snapshot is malformed.
-            let p0 = e.points.first().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-            let pm = e.points.get(1).map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-            let p2 = e.points.last().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-            (p0.0, p0.1, pm.0, pm.1, p2.0, p2.1)
-        })
-        .collect();
+    let edge_points = |edge_idx: usize, edge: &ArchitectureEdgeModel| -> ArchitectureEdgePoints {
+        // Prefer layout-provided points: this is where we model Mermaid/Cytoscape edge routing.
+        //
+        // The layout points represent raw Cytoscape endpoints; Mermaid applies group/junction
+        // endpoint shifts later, during SVG emission.
+        let (raw_start_x, raw_start_y, mid_x, mid_y, raw_end_x, raw_end_y) = layout
+            .edges
+            .get(edge_idx)
+            .map(|layout_edge| {
+                // A present layout edge keeps zero fallbacks for missing polyline points.
+                let points = &layout_edge.points;
+                let p0 = points.first().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+                let pm = points.get(1).map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+                let p2 = points.last().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+                (p0.0, p0.1, pm.0, pm.1, p2.0, p2.1)
+            })
+            .unwrap_or_else(|| {
+                let (sx, sy) = node_xy
+                    .get(edge.lhs_id.as_str())
+                    .copied()
+                    .unwrap_or((0.0, 0.0));
+                let (tx, ty) = node_xy
+                    .get(edge.rhs_id.as_str())
+                    .copied()
+                    .unwrap_or((0.0, 0.0));
 
-    let edge_points =
-        |edge_idx: usize, edge: super::model::ArchitectureEdgeRef<'_>| -> ArchitectureEdgePoints {
-            // Prefer layout-provided points: this is where we model Mermaid/Cytoscape edge routing.
-            //
-            // The layout points represent raw Cytoscape endpoints; Mermaid applies group/junction
-            // endpoint shifts later, during SVG emission.
-            let (raw_start_x, raw_start_y, mid_x, mid_y, raw_end_x, raw_end_y) = layout_edge_points
-                .get(edge_idx)
-                .copied()
-                .unwrap_or_else(|| {
-                    let (sx, sy) = node_xy.get(edge.lhs_id).copied().unwrap_or((0.0, 0.0));
-                    let (tx, ty) = node_xy.get(edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+                let (sx, sy) = match edge.lhs_dir {
+                    'L' => (sx, sy + settings.half_icon),
+                    'R' => (sx + settings.icon_size_px, sy + settings.half_icon),
+                    'T' => (sx + settings.half_icon, sy),
+                    'B' => (sx + settings.half_icon, sy + settings.icon_size_px),
+                    _ => (sx + settings.half_icon, sy + settings.half_icon),
+                };
+                let (tx, ty) = match edge.rhs_dir {
+                    'L' => (tx, ty + settings.half_icon),
+                    'R' => (tx + settings.icon_size_px, ty + settings.half_icon),
+                    'T' => (tx + settings.half_icon, ty),
+                    'B' => (tx + settings.half_icon, ty + settings.icon_size_px),
+                    _ => (tx + settings.half_icon, ty + settings.half_icon),
+                };
 
-                    let (sx, sy) = match edge.lhs_dir {
-                        'L' => (sx, sy + settings.half_icon),
-                        'R' => (sx + settings.icon_size_px, sy + settings.half_icon),
-                        'T' => (sx + settings.half_icon, sy),
-                        'B' => (sx + settings.half_icon, sy + settings.icon_size_px),
-                        _ => (sx + settings.half_icon, sy + settings.half_icon),
-                    };
-                    let (tx, ty) = match edge.rhs_dir {
-                        'L' => (tx, ty + settings.half_icon),
-                        'R' => (tx + settings.icon_size_px, ty + settings.half_icon),
-                        'T' => (tx + settings.half_icon, ty),
-                        'B' => (tx + settings.half_icon, ty + settings.icon_size_px),
-                        _ => (tx + settings.half_icon, ty + settings.half_icon),
-                    };
-
-                    let (mx, my) = if (sx - tx).abs() > 1e-6 && (sy - ty).abs() > 1e-6 {
-                        // Match upstream Mermaid: choose the bend based on the *source* dir.
-                        if is_arch_dir_y(edge.lhs_dir) {
-                            (sx, ty)
-                        } else {
-                            (tx, sy)
-                        }
+                let (mx, my) = if (sx - tx).abs() > 1e-6 && (sy - ty).abs() > 1e-6 {
+                    // Match upstream Mermaid: choose the bend based on the *source* dir.
+                    if is_arch_dir_y(edge.lhs_dir) {
+                        (sx, ty)
                     } else {
-                        ((sx + tx) / 2.0, (sy + ty) / 2.0)
-                    };
-                    (sx, sy, mx, my, tx, ty)
-                });
-
-            let mut start_x = raw_start_x;
-            let mut start_y = raw_start_y;
-            let mut end_x = raw_end_x;
-            let mut end_y = raw_end_y;
-
-            let lhs_group = edge.lhs_group.unwrap_or(false);
-            if lhs_group {
-                if is_arch_dir_x(edge.lhs_dir) {
-                    start_x += if edge.lhs_dir == 'L' {
-                        -group_edge_shift
-                    } else {
-                        group_edge_shift
-                    };
+                        (tx, sy)
+                    }
                 } else {
-                    start_y += if edge.lhs_dir == 'T' {
-                        -group_edge_shift
-                    } else {
-                        group_edge_shift + group_edge_label_bottom_px
-                    };
-                }
-            }
-            if !lhs_group && is_junction(edge.lhs_id) {
-                if is_arch_dir_x(edge.lhs_dir) {
-                    start_x += if edge.lhs_dir == 'L' {
-                        settings.half_icon
-                    } else {
-                        -settings.half_icon
-                    };
-                } else {
-                    start_y += if edge.lhs_dir == 'T' {
-                        settings.half_icon
-                    } else {
-                        -settings.half_icon
-                    };
-                }
-            }
+                    ((sx + tx) / 2.0, (sy + ty) / 2.0)
+                };
+                (sx, sy, mx, my, tx, ty)
+            });
 
-            let rhs_group = edge.rhs_group.unwrap_or(false);
-            if rhs_group {
-                if is_arch_dir_x(edge.rhs_dir) {
-                    end_x += if edge.rhs_dir == 'L' {
-                        -group_edge_shift
-                    } else {
-                        group_edge_shift
-                    };
-                } else {
-                    end_y += if edge.rhs_dir == 'T' {
-                        -group_edge_shift
-                    } else {
-                        group_edge_shift + group_edge_label_bottom_px
-                    };
-                }
-            }
-            if !rhs_group && is_junction(edge.rhs_id) {
-                if is_arch_dir_x(edge.rhs_dir) {
-                    end_x += if edge.rhs_dir == 'L' {
-                        settings.half_icon
-                    } else {
-                        -settings.half_icon
-                    };
-                } else {
-                    end_y += if edge.rhs_dir == 'T' {
-                        settings.half_icon
-                    } else {
-                        -settings.half_icon
-                    };
-                }
-            }
+        let mut start_x = raw_start_x;
+        let mut start_y = raw_start_y;
+        let mut end_x = raw_end_x;
+        let mut end_y = raw_end_y;
 
-            ArchitectureEdgePoints {
-                start_x,
-                start_y,
-                mid_x,
-                mid_y,
-                end_x,
-                end_y,
+        let lhs_group = edge.lhs_group.unwrap_or(false);
+        if lhs_group {
+            if is_arch_dir_x(edge.lhs_dir) {
+                start_x += if edge.lhs_dir == 'L' {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift
+                };
+            } else {
+                start_y += if edge.lhs_dir == 'T' {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift + group_edge_label_bottom_px
+                };
             }
-        };
+        }
+        if !lhs_group && is_junction(&edge.lhs_id) {
+            if is_arch_dir_x(edge.lhs_dir) {
+                start_x += if edge.lhs_dir == 'L' {
+                    settings.half_icon
+                } else {
+                    -settings.half_icon
+                };
+            } else {
+                start_y += if edge.lhs_dir == 'T' {
+                    settings.half_icon
+                } else {
+                    -settings.half_icon
+                };
+            }
+        }
+
+        let rhs_group = edge.rhs_group.unwrap_or(false);
+        if rhs_group {
+            if is_arch_dir_x(edge.rhs_dir) {
+                end_x += if edge.rhs_dir == 'L' {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift
+                };
+            } else {
+                end_y += if edge.rhs_dir == 'T' {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift + group_edge_label_bottom_px
+                };
+            }
+        }
+        if !rhs_group && is_junction(&edge.rhs_id) {
+            if is_arch_dir_x(edge.rhs_dir) {
+                end_x += if edge.rhs_dir == 'L' {
+                    settings.half_icon
+                } else {
+                    -settings.half_icon
+                };
+            } else {
+                end_y += if edge.rhs_dir == 'T' {
+                    settings.half_icon
+                } else {
+                    -settings.half_icon
+                };
+            }
+        }
+
+        ArchitectureEdgePoints {
+            start_x,
+            start_y,
+            mid_x,
+            mid_y,
+            end_x,
+            end_y,
+        }
+    };
 
     // Edges (including conservative label bounds).
-    if model.edges_len() != 0 {
+    if !model.edges.is_empty() {
         let arrow_size = settings.icon_size_px / 6.0;
         let arrow_points = ArchitectureArrowPoints::new(arrow_size);
-        for (edge_idx, edge) in model.edges().enumerate() {
+        for (edge_idx, edge) in model.edges.iter().enumerate() {
             let points = edge_points(edge_idx, edge);
             let lhs_arrow = (edge.lhs_into == Some(true)).then(|| {
                 architecture_arrow_geometry(
@@ -689,9 +693,9 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                     crate::architecture::ArchitectureEdgeTerminalEmission {
                         index: edge_idx,
                         #[cfg(merman_internal_theme_acceptance)]
-                        lhs_id: edge.lhs_id.into(),
+                        lhs_id: edge.lhs_id.as_str().into(),
                         #[cfg(merman_internal_theme_acceptance)]
-                        rhs_id: edge.rhs_id.into(),
+                        rhs_id: edge.rhs_id.as_str().into(),
                         label: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_label,
                             #[cfg(merman_internal_theme_acceptance)]
@@ -804,6 +808,94 @@ mod tests {
             rhs_group: None,
             title: Some(title.to_string()),
         }
+    }
+
+    #[test]
+    fn architecture_edges_preserve_missing_and_short_layout_point_fallbacks() {
+        let mut edge = render_edge("");
+        edge.title = None;
+        let model = ArchitectureDiagramModel {
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            nodes: Vec::new(),
+            groups: Vec::new(),
+            edges: vec![edge],
+            layout_hints: Vec::new(),
+        };
+        let request = SvgRenderOptions {
+            diagram_id: Some("architecture".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        with_test_svg_execution(crate::DiagramFamilyId::ARCHITECTURE, &request, |options| {
+            let diagram_id = options.diagram_id_or("architecture");
+            let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
+                None,
+                &merman_core::presentation::PresentationConfig::empty_object(),
+            );
+            let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
+            settings.icon_size_px = 20.0;
+            settings.half_icon = 10.0;
+            let node_xy =
+                rustc_hash::FxHashMap::from_iter([("api", (10.0, 20.0)), ("db", (110.0, 80.0))]);
+            let junction_bounds = rustc_hash::FxHashMap::default();
+            let measurer = DeterministicTextMeasurer::default();
+
+            for (points, expected_path) in [
+                (None, "M 30,30 L 110,30 L110,90 "),
+                (Some(Vec::new()), "M 0,0 L 0,0 L0,0 "),
+                (Some(vec![(3.0, 5.0)]), "M 3,5 L 0,0 L3,5 "),
+                (Some(vec![(3.0, 5.0), (7.0, 11.0)]), "M 3,5 L 7,11 L7,11 "),
+                (
+                    Some(vec![(3.0, 5.0), (7.0, 11.0), (13.0, 17.0)]),
+                    "M 3,5 L 7,11 L13,17 ",
+                ),
+            ] {
+                let layout = ArchitectureDiagramLayout {
+                    nodes: Vec::new(),
+                    edges: points
+                        .into_iter()
+                        .map(|points| {
+                            let mut edge = layout_edge("edge-0");
+                            edge.points = points
+                                .into_iter()
+                                .map(|(x, y)| LayoutPoint { x, y })
+                                .collect();
+                            edge
+                        })
+                        .collect(),
+                    cytoscape_service_bounds: Vec::new(),
+                    fcose_compound_bounds: Vec::new(),
+                    bounds: None,
+                };
+                let mut content_bounds = None;
+                let mut out = String::new();
+                let mut edge_style_emitted = false;
+                let mut ctx = ArchitectureEdgeRenderContext {
+                    out: &mut out,
+                    diagram_id,
+                    layout: &layout,
+                    model: &model,
+                    node_xy: &node_xy,
+                    settings: &settings,
+                    text_measurer: &measurer,
+                    content_bounds: &mut content_bounds,
+                    junction_bounds: &junction_bounds,
+                    edge_inline_style: None,
+                    edge_style_emitted: &mut edge_style_emitted,
+                    surface_styles: None,
+                    typography_emission: None,
+                    checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
+                };
+
+                push_architecture_edges(&mut ctx).unwrap();
+
+                assert!(
+                    out.contains(&format!(r#"<path d="{expected_path}""#)),
+                    "{out}"
+                );
+            }
+        });
     }
 
     #[test]

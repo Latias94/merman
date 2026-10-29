@@ -152,7 +152,11 @@ pub(super) fn render_sequence_note(
         return Ok(());
     };
     let (x, y) = node_left_top(n);
-    let cx = x + (n.width / 2.0);
+    let (text_x, text_anchor) = match ctx.sanitize_config.get_str("sequence.noteAlign") {
+        Some("left" | "start") => ((x + ctx.note_margin).round(), "start"),
+        Some("right" | "end") => ((x + n.width - ctx.note_margin).round(), "end"),
+        _ => (x + n.width / 2.0, "middle"),
+    };
     let text_y = sequence_drawn_text_first_y(y, ctx.note_margin);
     let shadow = ctx
         .paint
@@ -241,9 +245,23 @@ pub(super) fn render_sequence_note(
             ctx.note_text_style,
             ctx.checkpoints.text(),
         )?;
-        render_sequence_note_lines(out, lines.iter().map(String::as_str), cx, text_y, ctx)?;
+        render_sequence_note_lines(
+            out,
+            lines.iter().map(String::as_str),
+            text_x,
+            text_y,
+            text_anchor,
+            ctx,
+        )?;
     } else {
-        render_sequence_note_lines(out, crate::text::split_html_br_lines(raw), cx, text_y, ctx)?;
+        render_sequence_note_lines(
+            out,
+            crate::text::split_html_br_lines(raw),
+            text_x,
+            text_y,
+            text_anchor,
+            ctx,
+        )?;
     }
     out.push_str("</g>");
     ctx.checkpoints.checkpoint()
@@ -252,8 +270,9 @@ pub(super) fn render_sequence_note(
 fn render_sequence_note_lines<'a>(
     out: &mut impl SvgOutput,
     lines: impl IntoIterator<Item = &'a str>,
-    cx: f64,
+    text_x: f64,
     text_y: f64,
+    text_anchor: &str,
     ctx: &SequenceNoteRenderContext<'_>,
 ) -> Result<()> {
     let drawn_style = sequence_drawn_text_style(ctx.note_text_style, ctx.sanitize_config);
@@ -278,9 +297,13 @@ fn render_sequence_note_lines<'a>(
                 ctx.text_shadow.write_definition(
                     out,
                     text,
-                    cx,
+                    text_x,
                     y,
-                    super::text_effect::TextShadowBaseline::NoteMiddle,
+                    match text_anchor {
+                        "start" => super::text_effect::TextShadowBaseline::NoteStart,
+                        "end" => super::text_effect::TextShadowBaseline::NoteEnd,
+                        _ => super::text_effect::TextShadowBaseline::NoteMiddle,
+                    },
                     ctx.note_typography.terminal_text_style(),
                     ctx.measurer,
                 )
@@ -293,8 +316,8 @@ fn render_sequence_note_lines<'a>(
             .unwrap_or_default();
         let _ = write!(
             &mut *out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{style}"{filter}><tspan x="{x}">{text}</tspan></text>"#,
-            x = fmt(cx),
+            r#"<text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{style}"{filter}><tspan x="{x}">{text}</tspan></text>"#,
+            x = fmt(text_x),
             y = fmt(y),
             style = escape_attr_display(&style),
             text = super::escape_prepared_text(text)
@@ -352,6 +375,7 @@ mod tests {
                     ["first", "", "last"],
                     50.0,
                     10.0,
+                    "middle",
                     &super::SequenceNoteRenderContext {
                         is_neo: typography.compat_binding().is_neo,
                         text_shadow: &text_shadow,
@@ -431,6 +455,7 @@ mod tests {
                         ["first", "", "#38;"],
                         50.0,
                         crate::sequence::sequence_drawn_text_first_y(10.25, margin),
+                        "middle",
                         &super::SequenceNoteRenderContext {
                             is_neo: typography.compat_binding().is_neo,
                             text_shadow: &text_shadow,

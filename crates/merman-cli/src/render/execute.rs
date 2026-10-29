@@ -130,23 +130,8 @@ fn execute_graphical_with_pipeline(
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "native-fonts")]
-    let font_context = prepared
-        .font_context
-        .as_ref()
-        .map(|context| context.for_operation(control));
-    #[cfg(feature = "native-fonts")]
-    let graphical_output = prepared
-        .output
-        .clone()
-        .with_font_context(font_context.clone());
-    #[cfg(feature = "native-fonts")]
-    let graphical_output = &graphical_output;
-    #[cfg(not(feature = "native-fonts"))]
-    let graphical_output = &prepared.output;
-    #[cfg(feature = "native-fonts")]
-    if let Some(context) = &font_context {
+    if prepared.font_context.is_some() {
         crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
-        context.check().map_err(super::prepare::native_font_error)?;
         let message = if matches!(&prepared.source, PreparedGraphicalSource::Mermaid(_)) {
             "native fonts: shared layout, wrapping, bounds and computed lengths use the selected font context; missing glyphs fall back to deterministic measurement; SVG fonts are not embedded"
         } else {
@@ -163,23 +148,24 @@ fn execute_graphical_with_pipeline(
         PreparedGraphicalSource::Mermaid(renderer) => {
             let mut svg = renderer.svg.clone();
             svg.pipeline = Some(pipeline.clone());
-            #[cfg(feature = "native-fonts")]
-            if let Some(context) = &font_context {
-                svg.environment = svg
-                    .environment
-                    .with_native_font_context(context.clone())
-                    .map_err(super::prepare::native_font_error)?;
-            }
-            let target = graphical_output.target(svg);
+            let target = prepared.output.target(svg);
             let output =
                 renderer
                     .renderer
                     .render(renderer.request(source, target, control.clone()))?;
             #[cfg(feature = "native-fonts")]
-            if let Some(context) = &font_context {
+            if prepared.font_context.is_some() {
                 crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
-                context.check().map_err(super::prepare::native_font_error)?;
-                let faces = context.selected_faces();
+            }
+            #[cfg(feature = "native-fonts")]
+            if let Some(diagnostics) = match &output {
+                merman::RenderOutput::Svg(Some(svg)) => svg.evidence().native_font_diagnostics(),
+                merman::RenderOutput::Document(Some(document)) => {
+                    document.evidence().native_font_diagnostics()
+                }
+                _ => None,
+            } {
+                let faces = diagnostics.selected_faces();
                 if !faces.is_empty() {
                     crate::diagnostics::DiagnosticSink::new(
                         prepared.quiet || !prepared.font_diagnostics,
@@ -188,11 +174,11 @@ fn execute_graphical_with_pipeline(
                     .info(format!(
                         "native measurement faces: {}; context {}",
                         merman::normalize_terminal_diagnostic(&faces.join(", ")),
-                        context.identity()
+                        diagnostics.identity()
                     ));
                 }
             }
-            match (graphical_output, output) {
+            match (&prepared.output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
                     report_fallback_css_residual(
                         prepared.quiet,
@@ -336,13 +322,29 @@ fn execute_graphical_with_pipeline(
         }
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         PreparedGraphicalSource::RawSvg(environment) => {
+            // Raw SVG bypasses the facade's per-operation font activation.
+            #[cfg(feature = "native-fonts")]
+            let output = {
+                let font_context = prepared
+                    .font_context
+                    .as_ref()
+                    .map(|context| context.for_operation(control));
+                if let Some(context) = &font_context {
+                    context.check().map_err(super::prepare::native_font_error)?;
+                }
+                prepared.output.clone().with_font_context(font_context)
+            };
+            #[cfg(feature = "native-fonts")]
+            let output = &output;
+            #[cfg(not(feature = "native-fonts"))]
+            let output = &prepared.output;
             let session = environment
                 .begin_session_with_control(control.clone())
                 .map_err(merman::RenderError::from)?;
             let svg = pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(merman::RenderError::from)?;
-            execute_raw_svg(prepared, graphical_output, svg, permit, control, stderr)
+            execute_raw_svg(prepared, output, svg, permit, control, stderr)
         }
     }
 }

@@ -189,11 +189,6 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
     },
 
-    svgPlan(input) {
-      assertConfiguredOperation(input);
-      return svgPlanJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
-    },
-
     validate,
   };
 }

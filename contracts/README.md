@@ -1,14 +1,13 @@
 # Contracts
 
-This directory owns machine-readable contracts that are projected into multiple runtime and tool
-surfaces.
+This directory contains shared machine-readable contracts. Each descriptor has an implementation
+or generator that consumes it; this index only identifies those owners.
 
-- `abi/` owns the native ABI and host text-measurement protocol descriptors.
-- `editor-language/` owns the parser-backed safe-rename policy shared by Rust and Web analysis
-  payload types. Syntax highlighting is owned by the Tree-sitter Mermaid distribution.
-- `tree-sitter/` contains composed language receipts. Merman projects public family IDs, internal
-  variants, and authoring-header suggestions into them; each language package owns its accepted
-  syntax, CST roots, query schema, evidence, and support tiers.
+| Contract | Consumers and maintenance |
+| --- | --- |
+| [ABI descriptors](abi/README.md) | Native C ABI generation, cross-platform host text measurement, and the independent WASI transport. |
+| [Rename policy](editor-language/rename-policy-v1.json) | [The editor-language generator](../crates/xtask/src/cmd/editor_rename_policy.rs) projects the parser-backed safe-rename policy into Rust and Web analysis types. Use `gen-editor-language-contract` and `verify-editor-language-contract`. |
 
-Edit the descriptors here and use their documented `xtask` generators. Generated Rust, C,
-TypeScript, Kotlin, Dart, Python, and editor files remain in the surface that consumes them.
+Generated files remain with their consuming surfaces. Capability IDs and artifact recipes belong
+to [the capability descriptors](../capabilities/README.md). Tree-sitter syntax, queries, and
+provenance belong to [the grammar distribution](../distribution/tree-sitter-mermaid/README.md).

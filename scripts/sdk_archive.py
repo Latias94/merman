@@ -441,12 +441,12 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
     add(repo_root, f"{font_root}/manifest.json", "fonts/manifest.json")
 
     wasi = target == WASI_TARGET
-    contract_path = f"contracts/abi/merman-{'wasi-v1' if wasi else 'v3'}.json"
-    contract = _json(_input(repo_root, contract_path))
-    if type(contract.get("abi_version")) is not int or contract["abi_version"] != catalog["transport_api_version"]:
-        raise ArchiveVerificationError("packaged ABI contract disagrees with artifact catalog")
-    add(repo_root, contract_path)
     if not wasi:
+        contract_path = "contracts/abi/merman-v3.json"
+        contract = _json(_input(repo_root, contract_path))
+        if type(contract.get("abi_version")) is not int or contract["abi_version"] != catalog["transport_api_version"]:
+            raise ArchiveVerificationError("packaged ABI contract disagrees with artifact catalog")
+        add(repo_root, contract_path)
         files.update(native_consumer_files(repo_root, target, version))
         if _header_version(files["include/merman.h"], "MERMAN_NATIVE_ABI_VERSION") != catalog["transport_api_version"]:
             raise ArchiveVerificationError("native header ABI version disagrees with artifact catalog")

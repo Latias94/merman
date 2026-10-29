@@ -832,22 +832,12 @@ fn prepare_er_family<'parsed>(
     let base_font_size =
         crate::er::ErBaseFontSizePlan::resolve(execution.resolved_theme(), &meta.effective_config);
     let font_size_override = base_font_size.layout_override_px();
-    #[cfg(feature = "layout-elk")]
-    let layout =
-        crate::er::layout_er_diagram_typed_with_elk_operation_seed_and_resolved_typography(
-            model,
-            meta.effective_config.as_value(),
-            execution.text_measurer(),
-            execution.elk_operation_seed(),
-            Some(inherited_font_stack.font_family_css()),
-            font_size_override,
-            execution.work_meter(),
-        )?;
-    #[cfg(not(feature = "layout-elk"))]
     let layout = crate::er::layout_er_diagram_typed_with_resolved_typography(
         model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
+        #[cfg(feature = "layout-elk")]
+        execution.elk_operation_seed(),
         Some(inherited_font_stack.font_family_css()),
         font_size_override,
         execution.work_meter(),

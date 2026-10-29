@@ -1288,31 +1288,40 @@ end
 
 #[test]
 fn sequence_builtin_route_reuses_control_block_message_metrics_through_svg_emission() {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed =
-        parse_sequence_for_render(&MermaidEngine::new(), SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE);
-    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
-        .expect("prepare Sequence artifact");
-    let rendered = artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render Sequence artifact");
-    let (_, family_report) = rendered.into_completion().into_output_and_report();
-
-    let dimension_calls = family_report
-        .session_report()
-        .measurement()
-        .entries()
-        .iter()
-        .filter(|entry| {
-            entry.provenance().operation == TextMeasurementOperation::MermaidCalculateTextDimensions
-        })
-        .map(|entry| entry.count())
-        .sum::<u64>();
-
-    assert_eq!(
-        dimension_calls, 36,
-        "the fixed Mermaid control-block corpus should retain title probes while reusing the four messages' built-in bounds; dropping the sidecar adds six duplicate message probes"
-    );
+    for (hide_unused, idle, expected_calls) in [
+        (false, "", 36),
+        (true, "", 36),
+        (true, "participant Idle\n", 38),
+    ] {
+        let source = SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE
+            .replace("participant A\n", &format!("{idle}participant A\n"));
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({ "sequence": { "hideUnusedParticipants": hide_unused } }),
+        ));
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let parsed = parse_sequence_for_render(&engine, &source);
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .expect("prepare Sequence artifact");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Sequence artifact");
+        let (_, family_report) = rendered.into_completion().into_output_and_report();
+        let dimension_calls = family_report
+            .session_report()
+            .measurement()
+            .entries()
+            .iter()
+            .filter(|entry| {
+                entry.provenance().operation
+                    == TextMeasurementOperation::MermaidCalculateTextDimensions
+            })
+            .map(|entry| entry.count())
+            .sum::<u64>();
+        assert_eq!(
+            dimension_calls, expected_calls,
+            "hideUnusedParticipants={hide_unused}, idle={idle:?}: source actor measurement adds two probes; SVG block replay must reuse the retained message allocation and sidecar"
+        );
+    }
 }
 
 #[test]
@@ -2482,6 +2491,280 @@ fn sequence_svg_uses_resolved_add_message_lifecycle_ownership() {
 }
 
 #[test]
+fn sequence_config_hide_unused_participants_shares_layout_and_svg_actor_set() {
+    let body = concat!(
+        "sequenceDiagram\n",
+        "box probe-hidden-box\nparticipant IdleBox\nend\n",
+        "box Team\nparticipant Idle\nparticipant A\nparticipant C\n",
+        "participant NoteOnly\nparticipant ActivatedOnly\nend\n",
+        "create participant B\ndestroy A\n",
+        "loop pending\nNote over C: pending\nNote over NoteOnly: independent\nend\n",
+        "autonumber\nactivate C\ndeactivate C\n",
+        "activate ActivatedOnly\ndeactivate ActivatedOnly\n",
+        "C->>B: create\nA--xC: destroy\n",
+    );
+    for mirror in [false, true] {
+        let source = |hide, body: &str| {
+            let config = serde_json::json!({
+                "look": "classic",
+                "sequence": { "hideUnusedParticipants": hide, "mirrorActors": mirror }
+            });
+            format!("---\nconfig: {config}\n---\n{body}")
+        };
+        let hidden_source = source(true, body);
+        let layout = layout_sequence_from_text(&hidden_source);
+        let unfiltered = layout_sequence_from_text(&source(false, body));
+        // Hiding retains source measurements; it does not delete declarations before layout.
+        for node in layout
+            .nodes
+            .iter()
+            .filter(|node| node.id.starts_with("actor-"))
+        {
+            let source_node = unfiltered
+                .nodes
+                .iter()
+                .find(|source| source.id == node.id)
+                .unwrap();
+            assert_eq!(
+                node.height, source_node.height,
+                "source height for {}",
+                node.id
+            );
+            assert_eq!(node.y, source_node.y, "lifecycle ownership for {}", node.id);
+        }
+        let width = |layout: &SequenceDiagramLayout| {
+            let bounds = layout.bounds.as_ref().expect("Sequence bounds");
+            bounds.max_x - bounds.min_x
+        };
+        assert!(width(&layout) < width(&unfiltered));
+        let actor = |id: &str| {
+            layout
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .unwrap_or_else(|| panic!("missing lifecycle actor {id}"))
+        };
+        assert!(actor("actor-top-B").y > actor("actor-top-A").y.max(actor("actor-top-C").y));
+        assert!(
+            actor("actor-bottom-A").y < actor("actor-bottom-B").y.min(actor("actor-bottom-C").y)
+        );
+        for id in ["Idle", "IdleBox"] {
+            assert!(!layout.nodes.iter().any(|node| {
+                node.id == format!("actor-top-{id}") || node.id == format!("actor-bottom-{id}")
+            }));
+            assert!(
+                !layout
+                    .edges
+                    .iter()
+                    .any(|edge| edge.id == format!("lifeline-{id}"))
+            );
+        }
+
+        let svg = render_sequence_svg_from_text(&hidden_source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        for class in ["actor actor-top", "actor actor-bottom"] {
+            let mut names = document
+                .descendants()
+                .filter(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+                .filter_map(|node| node.attribute("name"))
+                .collect::<Vec<_>>();
+            names.sort_unstable();
+            let expected = if class == "actor actor-top" || mirror {
+                vec!["A", "ActivatedOnly", "B", "C", "NoteOnly"]
+            } else {
+                vec![]
+            };
+            assert_eq!(names, expected, "actor set for {class}, mirror={mirror}");
+        }
+        let frames = |document: &roxmltree::Document<'_>| {
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+                .map(|node| {
+                    ["x", "y", "width", "height"].map(|name| {
+                        node.attribute(name)
+                            .expect("box geometry")
+                            .parse::<f64>()
+                            .expect("numeric box geometry")
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            frames(&document).len(),
+            1,
+            "the all-hidden box must disappear"
+        );
+        let frame = frames(&document)[0];
+        assert!(frame.iter().all(|value| value.is_finite()));
+        for id in ["A", "C", "NoteOnly", "ActivatedOnly"] {
+            let node = actor(&format!("actor-top-{id}"));
+            assert!(frame[0] <= node.x - node.width / 2.0);
+            assert!(frame[0] + frame[2] >= node.x + node.width / 2.0);
+        }
+        assert!(!document.descendants().any(|node| {
+            node.is_text()
+                && node
+                    .text()
+                    .is_some_and(|text| text.contains("probe-hidden-box"))
+        }));
+    }
+}
+
+#[test]
+fn sequence_hidden_middle_actor_preserves_source_message_adjacency() {
+    for signal in ["A->>B", "B->>A"] {
+        let source = |hide, message: &str| {
+            let config = serde_json::json!({
+                "look": "classic",
+                "sequence": {
+                    "hideUnusedParticipants": hide, "width": 150,
+                    "actorMargin": 50, "wrapPadding": 10
+                }
+            });
+            format!(
+                "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A\nparticipant Idle\nparticipant B\nloop scope\n{signal}: {message}\nend\n"
+            )
+        };
+        let long_source = source(true, &"W".repeat(96));
+        let layout = layout_sequence_from_text(&long_source);
+        let short = layout_sequence_from_text(&source(true, "hi"));
+        let center = |layout: &SequenceDiagramLayout, id: &str| {
+            layout.nodes.iter().find(|node| node.id == id).unwrap().x
+        };
+        assert_eq!(
+            center(&layout, "actor-top-B") - center(&layout, "actor-top-A"),
+            200.0
+        );
+        for id in ["actor-top-A", "actor-top-B"] {
+            assert_eq!(center(&layout, id), center(&short, id));
+        }
+        assert!(!layout.nodes.iter().any(|node| node.id.ends_with("-Idle")));
+
+        let svg = render_sequence_svg_from_text(&long_source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        for id in ["A", "B"] {
+            let actor = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("actor actor-top")
+                        && node.attribute("name") == Some(id)
+                })
+                .unwrap();
+            let x = actor.attribute("x").unwrap().parse::<f64>().unwrap();
+            let width = actor.attribute("width").unwrap().parse::<f64>().unwrap();
+            assert_eq!(x + width / 2.0, center(&layout, &format!("actor-top-{id}")));
+        }
+        assert!(
+            text_rows_by_class(&svg, "messageText")
+                .iter()
+                .any(|text| text.contains(&"W".repeat(96)))
+        );
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.attribute("name") == Some("Idle"))
+        );
+    }
+}
+
+#[test]
+fn sequence_hidden_wrapped_actor_keeps_the_full_source_row_height() {
+    for look in ["classic", "neo"] {
+        let source = |hide| {
+            let config = serde_json::json!({
+                "look": look,
+                "sequence": { "hideUnusedParticipants": hide, "wrap": true }
+            });
+            format!(
+                concat!(
+                    "---\nconfig: {}\n---\nsequenceDiagram\n",
+                    "participant Idle as one<br/>two<br/>three<br/>four<br/>five<br/>six\n",
+                    "participant A\nparticipant B\nA->>B: hi\n"
+                ),
+                config
+            )
+        };
+        let full = layout_sequence_from_text(&source(false));
+        let hidden_source = source(true);
+        let visible = layout_sequence_from_text(&hidden_source);
+        let full_row_height = full
+            .nodes
+            .iter()
+            .filter(|node| node.id.starts_with("actor-top-"))
+            .map(|node| node.height)
+            .fold(0.0_f64, f64::max);
+        assert!(
+            full_row_height > 65.0,
+            "the hidden actor must determine the row height"
+        );
+        for id in ["A", "B"] {
+            let actor = visible
+                .nodes
+                .iter()
+                .find(|node| node.id == format!("actor-top-{id}"))
+                .unwrap();
+            assert_eq!(
+                actor.height, full_row_height,
+                "{look}: shared row height for {id}"
+            );
+        }
+        for edge in visible
+            .edges
+            .iter()
+            .filter(|edge| edge.id.starts_with("msg-"))
+        {
+            let source_edge = full
+                .edges
+                .iter()
+                .find(|source| source.id == edge.id)
+                .unwrap();
+            assert_eq!(
+                edge.points[0].y, source_edge.points[0].y,
+                "{look}: first message row"
+            );
+        }
+        let svg = render_sequence_svg_from_text(&hidden_source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.attribute("name") == Some("Idle"))
+        );
+        for actor in document.descendants().filter(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        }) {
+            assert_eq!(
+                actor.attribute("height").unwrap().parse::<f64>().unwrap(),
+                full_row_height
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_config_hide_unused_participants_all_hidden_has_finite_bounds() {
+    let source = concat!(
+        "---\nconfig: {sequence: {hideUnusedParticipants: true}}\n---\n",
+        "sequenceDiagram\nparticipant Idle\n",
+    );
+    let layout = layout_sequence_from_text(source);
+    assert!(layout.nodes.is_empty());
+    assert!(layout.edges.is_empty());
+    let svg = render_sequence_svg_from_text(source);
+    let document = roxmltree::Document::parse(&svg).expect("valid empty Sequence SVG");
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.attribute("name") == Some("Idle"))
+    );
+    let (view_box, _) = root_view_box_and_max_width(&svg);
+    assert!(view_box.iter().all(|value| value.is_finite()));
+    assert!(view_box[2] > 0.0 && view_box[3] > 0.0);
+}
+
+#[test]
 fn sequence_svg_supersedes_consecutive_same_kind_lifecycle_declarations() {
     let created = layout_sequence_from_environment(
         concat!(
@@ -2627,6 +2910,70 @@ fn sequence_reverse_message_align_uses_the_normalized_message_interval() {
     assert_eq!(right_anchor, "end");
     assert!((left_x - (left_edge + wrap_padding)).abs() < f64::EPSILON);
     assert!((right_x - (right_edge - wrap_padding)).abs() < f64::EPSILON);
+}
+
+#[test]
+fn sequence_config_note_align_positions_every_wrapped_and_unwrapped_line() {
+    for wrap in [false, true] {
+        let mut reference_rect = None;
+        for (align, anchor) in [("left", "start"), ("center", "middle"), ("right", "end")] {
+            let note_margin = 7.25;
+            let config = serde_json::json!({
+                "look": "classic",
+                "sequence": { "noteAlign": align, "noteMargin": note_margin, "wrap": wrap }
+            });
+            let source = format!(
+                "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A\nparticipant B\nNote over A,B: first<br/>second\n"
+            );
+            let svg = render_sequence_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+            let rect = document
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("note"))
+                .expect("note rectangle");
+            let geometry = ["x", "y", "width", "height"].map(|name| {
+                rect.attribute(name)
+                    .expect("note geometry")
+                    .parse::<f64>()
+                    .expect("numeric note geometry")
+            });
+            if let Some(reference) = reference_rect {
+                assert_eq!(geometry, reference, "noteAlign must preserve note geometry");
+            } else {
+                reference_rect = Some(geometry);
+            }
+            let [left, _, width, _] = geometry;
+            let expected_x = match anchor {
+                "start" => (left + note_margin).round(),
+                "end" => (left + width - note_margin).round(),
+                _ => left + width / 2.0,
+            };
+            let texts = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some("noteText")
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(texts.len(), 2, "both note lines must survive, wrap={wrap}");
+            for text in texts {
+                assert_eq!(text.attribute("text-anchor"), Some(anchor));
+                for node in std::iter::once(text)
+                    .chain(text.children().filter(|node| node.has_tag_name("tspan")))
+                {
+                    let x = node
+                        .attribute("x")
+                        .expect("note text x")
+                        .parse::<f64>()
+                        .unwrap();
+                    assert!(
+                        (x - expected_x).abs() < 0.001,
+                        "{align} note x, wrap={wrap}"
+                    );
+                }
+            }
+            assert_eq!(text_rows_by_class(&svg, "noteText"), ["first", "second"]);
+        }
+    }
 }
 
 #[test]
@@ -2931,6 +3278,79 @@ A->>B: Visible resumed"#,
         vec!["10".to_string(), "25".to_string()],
         "reenabling autonumber should preserve its step and include hidden signals in the counter"
     );
+}
+
+#[test]
+fn sequence_config_show_sequence_numbers_includes_autonumber_off() {
+    let ordinary = "sequenceDiagram\nA->>B: first\nB->>B: self\n";
+    let directives = concat!(
+        "sequenceDiagram\nautonumber 10 5\nA->>B: first\n",
+        "autonumber off\nB->>B: second\nB-->>A: third\n",
+        "autonumber\nA->>B: fourth\n",
+    );
+    for (show, source, expected) in [
+        (false, ordinary, vec![]),
+        (true, ordinary, vec!["1", "2"]),
+        (false, directives, vec!["10", "25"]),
+        (true, directives, vec!["10", "15", "20", "25"]),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({ "sequence": { "showSequenceNumbers": show } }),
+        ));
+        let svg = render_sequence_svg_from_text_with_engine(engine, source);
+        assert_eq!(text_rows_by_class(&svg, "sequenceNumber"), expected);
+    }
+}
+
+#[test]
+fn sequence_config_numbering_keeps_central_circles_bound_to_autonumber() {
+    let body = concat!(
+        "sequenceDiagram\nparticipant A\nparticipant B\n",
+        "A()->>B: plain LTR\nB()->>A: plain RTL\n",
+        "autonumber\nA()->>B: numbered LTR\nB()->>A: numbered RTL\n",
+        "autonumber off\nA()->>B: off LTR\nB()->>A: off RTL\n",
+    );
+    for show in [false, true] {
+        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            serde_json::json!({ "look": "classic", "sequence": { "showSequenceNumbers": show } }),
+        ));
+        let svg = render_sequence_svg_from_text_with_engine(engine, body);
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let center = |id: &str| {
+            let actor = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("actor actor-top")
+                        && node.attribute("name") == Some(id)
+                })
+                .unwrap();
+            actor.attribute("x").unwrap().parse::<f64>().unwrap()
+                + actor.attribute("width").unwrap().parse::<f64>().unwrap() / 2.0
+        };
+        let a = center("A");
+        let b = center("B");
+        let circles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("circle")
+                    && node.attribute("r") == Some("5")
+                    && node.attribute("width") == Some("10")
+            })
+            .map(|node| node.attribute("cx").unwrap().parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            circles,
+            [a, b, a + 16.5, b - 16.5, a, b],
+            "showSequenceNumbers={show}"
+        );
+        let expected = if show {
+            vec!["1", "2", "3", "4", "5", "6"]
+        } else {
+            vec!["3", "4"]
+        };
+        assert_eq!(text_rows_by_class(&svg, "sequenceNumber"), expected);
+    }
 }
 
 #[test]

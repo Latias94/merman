@@ -285,7 +285,6 @@ _PACKAGE_DOCUMENT_OWNER_RULES = (
     ("tools/vscode-extension/", {"hygiene", "vscode"}),
 )
 _HYGIENE_SCRIPT_PREFIXES = (
-    "scripts/adr_",
     "scripts/artifact_",
     "scripts/capability_",
     "scripts/crates_io_",
@@ -294,7 +293,6 @@ _HYGIENE_SCRIPT_PREFIXES = (
     "scripts/release-",
     "scripts/release_",
     "scripts/sync-release-",
-    "scripts/test_adr_",
     "scripts/test_artifact_",
     "scripts/test_crates_io_",
     "scripts/test_generate_rust_license_",

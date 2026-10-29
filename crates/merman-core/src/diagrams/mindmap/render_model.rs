@@ -389,7 +389,9 @@ pub(crate) fn render_model_to_compat_json_controlled(
         }
         edges.push(mindmap_edge_to_compat_json(edge));
     }
-    let config = ManagedJson::from_value(mindmap_compat_config(meta));
+    let config = ManagedJson::from_value(crate::json_value::clone_value_nonrecursive(
+        meta.effective_config.as_value(),
+    ));
     control.checkpoint()?;
 
     if model.nodes.is_empty() {
@@ -462,20 +464,6 @@ fn hex_digit(value: u8) -> u8 {
         b'a'..=b'f' => value - b'a' + 10,
         _ => unreachable!("generated ID contains only lowercase hexadecimal digits"),
     }
-}
-
-#[cfg(feature = "compat-json")]
-fn mindmap_compat_config(meta: &PresentationMetadata) -> Value {
-    let mut config = crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value());
-    if meta.config.as_value().get("layout").is_none()
-        && let Some(object) = config.as_object_mut()
-    {
-        object.insert(
-            "layout".to_string(),
-            Value::String("cose-bilkent".to_string()),
-        );
-    }
-    config
 }
 
 #[cfg(feature = "compat-json")]

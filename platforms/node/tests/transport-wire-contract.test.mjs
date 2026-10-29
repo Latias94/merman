@@ -213,6 +213,62 @@ test("bounded JSON encoding counts escaped and Unicode output bytes exactly", ()
   );
 });
 
+test("bounded JSON encoding checks wire limits without parsing its controlled output", (t) => {
+  const value = { values: [null, true, false, -1.25e3, "é😀"] };
+  const expected = JSON.stringify(value);
+  const parse = t.mock.method(JSON, "parse", () => {
+    throw new Error("Encoding must not materialize the JSON output.");
+  });
+
+  assert.equal(
+    encodeTransportJson(value, "boundary", NODE_TRANSPORT_LIMITS.binding_options),
+    expected,
+  );
+  assert.equal(parse.mock.callCount(), 0);
+});
+
+test("bounded JSON encoding retains exact structural and string limits", () => {
+  const value = { a: "é😀", b: [null] };
+  const expected = JSON.stringify(value);
+  const limits = {
+    ...NODE_TRANSPORT_LIMITS.binding_options,
+    max_depth: 2,
+    max_members: 2,
+    max_tokens: 6,
+    max_string_utf8_bytes: 6,
+  };
+  assert.equal(encodeTransportJson(value, "boundary", limits), expected);
+
+  for (const [field, message] of [
+    ["max_depth", /structural depth limit/i],
+    ["max_members", /member-work limit/i],
+    ["max_tokens", /token-work limit/i],
+    ["max_string_utf8_bytes", /string exceeding.*field limit/i],
+  ]) {
+    assert.throws(
+      () => encodeTransportJson(value, "boundary", {
+        ...limits,
+        [field]: limits[field] - 1,
+      }),
+      (error) => {
+        assert.ok(error instanceof MermanInvalidTransportError);
+        assert.match(error.cause?.message ?? error.message, message);
+        return true;
+      },
+      field,
+    );
+  }
+});
+
+test("external JSON text still requires native syntax validation", () => {
+  for (const text of ['{"value":true,}', '"\\q"', "true false"]) {
+    assert.throws(
+      () => parseTransportJsonText(text, "boundary", NODE_TRANSPORT_LIMITS.binding_options),
+      /invalid boundary JSON/i,
+    );
+  }
+});
+
 test("bounded JSON preparse matches Rust finite-number semantics", () => {
   const limits = NODE_TRANSPORT_LIMITS.binding_options;
   assert.equal(

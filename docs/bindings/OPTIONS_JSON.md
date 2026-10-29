@@ -1,7 +1,11 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-10-09
+
+This guide owns the shared JSON input reference. Parsing and request overlays are implemented by
+[`merman-bindings-core`](../../crates/merman-bindings-core/src/common.rs);
+[resource contracts](../../crates/merman-bindings-core/src/resource_contract.rs) own limit metadata
+and generated builders. Transport guides own language-specific invocation and error types.
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -703,10 +707,8 @@ batch job. `unbounded-for-trusted-input` must only be used inside an outer trust
 | Library-based documentation/static export | `trusted-native` | Finite per-diagram policy; bound concurrent jobs | Choose SVG policy for the downstream consumer |
 | Exceptional fully trusted diagram | Finite override of the reported limit; unbounded only if deliberately required | Host owns deadlines, concurrency and outer process limits | Caller owns final output limits |
 
-The general `interactive` layout allowance is 14,100,000 work units; `trusted-native` allows
-15,000,000 and `constrained` 125,000. These are the current source defaults after alpha.7; published
-alpha.7 still carries the former interactive ceiling.
-The two general-purpose profiles retain different source/model/output capacities. `constrained` deliberately accepts
+Read exact profile capacities from the loaded runtime catalog. The two general-purpose profiles
+retain different source/model/output capacities. `constrained` deliberately accepts
 a smaller workload; it is not a claim that every ordinary document fits that profile. Work units
 are not milliseconds, nodes, or bytes. Adding a deadline does not silently raise a work ceiling.
 See the [host integration guide](../integration/RESOURCE_POLICY.md) for complete Rust recipes and

@@ -157,7 +157,7 @@ These are verified local source-gate results at the 2026-10-12 preparation check
 | Native, WASM, size, and package-content checks | Require final-source owner results; compilation and static declarations do not replace these artifact checks. |
 | Dated source and immutable preflight | The approved intended date is 2026-10-12 for workspace 0.9.0 and Typst wrapper 0.5.0. Commit the dated documentation, freeze that 40-character source SHA, and require a successful `release-preflight.yml` run for version 0.9.0 and that exact SHA before publication. No successful immutable preflight or registry publication is asserted at this checkpoint. |
 
-See the [0.8.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md), [Typst preparation guide](TYPST_050_PREPARATION.md), and [owner checklist](RELEASING.md#090-preparation-checklist). Dated publication snapshots below retain their original release context.
+See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md), [Typst preparation guide](TYPST_050_PREPARATION.md), and [release evidence procedure](RELEASING.md#release-evidence). Dated publication snapshots below retain their original release context.
 The source also carries experimental compiled-theme integration. It is not part of immutable `0.8.0` artifacts, and any `0.9.0` claim remains subject to the matching artifact, theme evidence, and owner gates above.
 
 ## 0.8.0 Publication Snapshot
@@ -294,6 +294,12 @@ frozen `0.3.0`/`0.4.0` registry artifacts. Select the next package release durin
 For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
 
 ## Publish Order
+
+Cargo rewrites workspace path dependencies to registry dependencies when packaging. A dependent
+crate's `cargo package` or `cargo publish --dry-run` therefore requires the matching dependency
+versions to exist on crates.io. Before they are available, use the registry-independent checks in
+the [release preflight](RELEASING.md#release-preflight); local dry runs cover only the
+registry-satisfiable batches.
 
 Cargo metadata is the publish-order authority. Inspect the current dependency-safe projection with:
 

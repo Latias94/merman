@@ -15,6 +15,10 @@ separate concern from cluster/edge/title viewBox orchestration.
 node rendered-bounds preparation, including shape-specific RoughJS bbox approximations and layout
 label metric fallback rules.
 
+The extraction kept this as a sibling module to minimize path churn. It preserved partial-metric
+fallbacks: some shapes use stored dimensions only when both width and height exist, while others
+intentionally treat a missing dimension as zero.
+
 ## In Scope
 
 - Add `crates/merman-render/src/svg/parity/flowchart/viewbox_node_bounds.rs`.

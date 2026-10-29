@@ -1,9 +1,9 @@
 //! Structured Cargo feature-matrix verification.
 
+use super::artifact_profiles::CargoPackage;
 use crate::XtaskError;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 use std::process::Command;
 
 #[allow(dead_code)]
@@ -393,36 +393,6 @@ struct FeatureMatrixOptions {
 }
 
 #[derive(Debug, Deserialize)]
-struct CargoMetadata {
-    packages: Vec<CargoPackage>,
-    workspace_members: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct CargoPackage {
-    id: String,
-    name: String,
-    manifest_path: PathBuf,
-    #[serde(default)]
-    features: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
-    metadata: serde_json::Value,
-    #[serde(default)]
-    dependencies: Vec<CargoDependency>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct CargoDependency {
-    name: String,
-    kind: Option<String>,
-    uses_default_features: bool,
-    #[serde(default)]
-    optional: bool,
-    #[serde(default)]
-    features: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
 struct CargoDistRecipe {
     features: Vec<String>,
 }
@@ -448,14 +418,14 @@ pub(crate) fn verify_feature_matrix(args: Vec<String>) -> Result<(), XtaskError>
     if let Some(message) = super::capability_surface::verify_capability_surface_artifacts()? {
         return Err(matrix_error(message));
     }
-    let artifact_profiles =
-        super::artifact_profiles::load_artifact_profile_catalog().map_err(matrix_error)?;
+    let (artifact_profiles, packages) =
+        super::artifact_profiles::load_feature_matrix_inputs().map_err(matrix_error)?;
     println!(
         "validated {} exact artifact build profile(s)",
         artifact_profiles.profile_count()
     );
 
-    let graph = FeatureGraph::load()?;
+    let graph = FeatureGraph::from_packages(packages).map_err(matrix_error)?;
     let report = graph.validate()?;
     println!(
         "feature-matrix structure packages={} capability_leaves={} empty_defaults={} published_defaults={} feature_allowlists={} forwarding_edges={} dependency_feature_boundaries={} transport_engines={} product_contracts={}",
@@ -541,35 +511,17 @@ fn matrix_error(message: impl Into<String>) -> XtaskError {
 }
 
 impl FeatureGraph {
+    #[cfg(test)]
     fn load() -> Result<Self, XtaskError> {
         let root = super::workspace_root();
-        let output = Command::new("cargo")
-            .args(["metadata", "--locked", "--no-deps", "--format-version", "1"])
-            .current_dir(&root)
-            .output()
-            .map_err(|error| matrix_error(format!("cannot execute `cargo metadata`: {error}")))?;
-        if !output.status.success() {
-            return Err(matrix_error(format!(
-                "`cargo metadata` failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-        let metadata = serde_json::from_slice::<CargoMetadata>(&output.stdout)
-            .map_err(|error| matrix_error(format!("cannot decode `cargo metadata`: {error}")))?;
-        Self::from_metadata(metadata).map_err(matrix_error)
+        let packages =
+            super::artifact_profiles::load_workspace_packages(&root, true).map_err(matrix_error)?;
+        Self::from_packages(packages).map_err(matrix_error)
     }
 
-    fn from_metadata(metadata: CargoMetadata) -> Result<Self, String> {
-        let workspace_members = metadata
-            .workspace_members
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+    fn from_packages(workspace_packages: Vec<CargoPackage>) -> Result<Self, String> {
         let mut packages = BTreeMap::new();
-        for package in metadata
-            .packages
-            .into_iter()
-            .filter(|package| workspace_members.contains(&package.id))
-        {
+        for package in workspace_packages {
             let name = package.name.clone();
             if packages.insert(name.clone(), package).is_some() {
                 return Err(format!(
@@ -967,13 +919,12 @@ impl FeatureGraph {
                 cli.manifest_path.display()
             ))
         })?;
-        let dist_recipe = serde_json::from_value::<CargoDistRecipe>(dist_metadata.clone())
-            .map_err(|error| {
-                matrix_error(format!(
-                    "{}: invalid published cargo-dist recipe: {error}",
-                    cli.manifest_path.display()
-                ))
-            })?;
+        let dist_recipe = CargoDistRecipe::deserialize(dist_metadata).map_err(|error| {
+            matrix_error(format!(
+                "{}: invalid published cargo-dist recipe: {error}",
+                cli.manifest_path.display()
+            ))
+        })?;
         let published_features = dist_recipe.features.into_iter().collect::<BTreeSet<_>>();
         let cli_defaults = direct_feature_members(cli, "default")?;
         if !published_features.contains("layout-elk") {
@@ -1100,65 +1051,32 @@ impl FeatureGraph {
     }
 
     fn local_closure<'a>(
-        &self,
+        &'a self,
         package_name: &str,
         roots: impl IntoIterator<Item = &'a str>,
-    ) -> Result<BTreeSet<String>, XtaskError> {
-        let package = self.package(package_name)?;
-        let mut visited = BTreeSet::new();
-        let mut pending = roots.into_iter().map(str::to_string).collect::<Vec<_>>();
-        while let Some(feature) = pending.pop() {
-            if !visited.insert(feature.clone()) {
-                continue;
-            }
-            let edges = package.features.get(&feature).ok_or_else(|| {
-                matrix_error(format!(
-                    "{}: unknown feature `{feature}`",
-                    package.manifest_path.display()
-                ))
-            })?;
-            for edge in edges {
-                if !edge.starts_with("dep:")
-                    && !edge.contains('/')
-                    && package.features.contains_key(edge)
-                {
-                    pending.push(edge.clone());
-                }
-            }
-        }
-        Ok(visited)
+    ) -> Result<BTreeSet<&'a str>, XtaskError> {
+        self.package(package_name)?
+            .local_feature_closure(roots)
+            .map_err(matrix_error)
     }
 
-    fn transitive_feature_edges(
-        &self,
+    fn transitive_feature_edges<'a>(
+        &'a self,
         package_name: &str,
-        root: &str,
-    ) -> Result<BTreeSet<String>, XtaskError> {
+        root: &'a str,
+    ) -> Result<BTreeSet<&'a str>, XtaskError> {
         let package = self.package(package_name)?;
-        let mut edges_seen = BTreeSet::new();
-        let mut local_seen = BTreeSet::new();
-        let mut pending = vec![root.to_string()];
-        while let Some(feature) = pending.pop() {
-            if !local_seen.insert(feature.clone()) {
-                continue;
-            }
-            let edges = package.features.get(&feature).ok_or_else(|| {
-                matrix_error(format!(
-                    "{}: forwarding contract references unknown feature `{feature}`",
-                    package.manifest_path.display()
-                ))
-            })?;
-            for edge in edges {
-                edges_seen.insert(edge.clone());
-                if !edge.starts_with("dep:")
-                    && !edge.contains('/')
-                    && package.features.contains_key(edge)
-                {
-                    pending.push(edge.clone());
-                }
-            }
+        if !package.features.contains_key(root) {
+            return Err(matrix_error(format!(
+                "{}: forwarding contract references unknown feature `{root}`",
+                package.manifest_path.display()
+            )));
         }
-        Ok(edges_seen)
+        Ok(self
+            .local_closure(package_name, [root])?
+            .into_iter()
+            .flat_map(|feature| package.features[feature].iter().map(String::as_str))
+            .collect())
     }
 
     fn build_cases(
@@ -1687,6 +1605,8 @@ fn run_host_artifact_case(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::artifact_profiles::CargoDependency;
+    use std::path::PathBuf;
 
     const CLI_RELEASE_FEATURES: &[&str] = &[
         "all-diagrams",
@@ -1698,30 +1618,6 @@ mod tests {
         "layout-elk",
         "markdown",
         "math",
-        "native-fonts",
-        "network-icons",
-        "parallel-markdown",
-        "pdf",
-        "png",
-        "rustdoc",
-        "shell-completions",
-        "svg",
-        "system-clock",
-        "system-fonts",
-        "system-random",
-        "system-timezone",
-        "system-timing",
-    ];
-
-    const CLI_DEFAULT_FEATURES: &[&str] = &[
-        "all-diagrams",
-        "analysis",
-        "ascii",
-        "icons",
-        "jpeg",
-        "layout-cytoscape",
-        "layout-elk",
-        "markdown",
         "native-fonts",
         "network-icons",
         "parallel-markdown",
@@ -1761,6 +1657,7 @@ mod tests {
                 .collect(),
             metadata,
             dependencies: Vec::new(),
+            targets: Vec::new(),
         }
     }
 
@@ -1949,6 +1846,11 @@ mod tests {
     }
 
     fn product_contract_graph() -> FeatureGraph {
+        let cli_defaults = CLI_RELEASE_FEATURES
+            .iter()
+            .copied()
+            .filter(|feature| *feature != "math")
+            .collect::<Vec<_>>();
         graph(vec![
             package(
                 "merman",
@@ -1974,7 +1876,7 @@ mod tests {
             ),
             package_with_metadata(
                 "merman-cli",
-                &[("default", CLI_DEFAULT_FEATURES)],
+                &[("default", &cli_defaults)],
                 serde_json::json!({
                     "dist": {
                         "default-features": false,
@@ -2610,6 +2512,31 @@ mod tests {
         };
 
         let error = graph.validate_feature_forwarding(&[contract]).unwrap_err();
+        assert!(error.to_string().contains("must forward `svg`"), "{error}");
+    }
+
+    #[test]
+    fn forwarding_contract_follows_local_groups_and_cycles() {
+        let mut owner = package(
+            "merman-wasm",
+            &[
+                ("svg", &["renderer"]),
+                ("renderer", &["svg", "merman-bindings-core?/svg"]),
+            ],
+        );
+        let contract = FeatureForwardingContract {
+            package: "merman-wasm",
+            dependency: "merman-bindings-core",
+            features: &["svg"],
+        };
+        graph(vec![owner.clone()])
+            .validate_feature_forwarding(&[contract])
+            .unwrap();
+
+        owner.features.get_mut("renderer").unwrap().pop();
+        let error = graph(vec![owner])
+            .validate_feature_forwarding(&[contract])
+            .unwrap_err();
         assert!(error.to_string().contains("must forward `svg`"), "{error}");
     }
 

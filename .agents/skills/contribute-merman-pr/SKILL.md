@@ -16,7 +16,8 @@ Read these before changing a check or interpreting a failure:
 - `AGENTS.md` and any nearer repository instructions;
 - `docs/development/CI.md`;
 - the relevant owner workflow under `.github/workflows/`;
-- `docs/release/FFI_CONTRACT_READINESS.md` for FFI, artifact-profile, or dependency-boundary work.
+- `docs/release/PACKAGE_SURFACES.md` and the relevant guide under `docs/bindings/` for FFI,
+  artifact-profile, or dependency-boundary work; use `FFI_PROTOCOL.md` for the native C contract.
 
 Treat workflow files, artifact descriptors, and generators as authority. Treat checked-in reports
 and projections as derived outputs. Completion criterion: the changed surface, its owner workflow,

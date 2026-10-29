@@ -187,18 +187,13 @@ test("preserves unavailable and unknown execution evidence without certifying it
   }
 });
 
-test("request identity includes the compiled theme and stores the same-snapshot SVG plan", async () => {
-  const planCalls: {
-    operation: FrozenRenderOperation;
-    result: ReturnType<MermanDomainFacade["svgPlan"]>;
-  }[] = [];
+test("request identity includes the theme selection and SVG pipeline", async (t) => {
+  const renderedOperations: FrozenRenderOperation[] = [];
   const domainFacade: MermanDomainFacade = {
     ...facade(),
-    svgPlan(input) {
-      const operation = input as FrozenRenderOperation;
-      const result = svgPlan({ diagramType: operation.source });
-      planCalls.push({ operation, result });
-      return result;
+    render(operation) {
+      renderedOperations.push(operation as FrozenRenderOperation);
+      return facade().render(operation);
     },
   };
   const workspaceCases: Array<Partial<WorkspaceSnapshot>> = [
@@ -231,9 +226,10 @@ test("request identity includes the compiled theme and stores the same-snapshot 
     compare: fakeCompare([]),
     debounceMs: 0,
   });
+  t.after(() => coordinator.dispose());
 
   for (const workspace of workspaceCases) {
-    const previousPlanCallCount = planCalls.length;
+    const previousRenderCount = renderedOperations.length;
     coordinator.setInput(input("identity", domainFacade, workspace));
     await waitFor(() => coordinator.store.getState().status === "success");
     const state = coordinator.store.getState();
@@ -245,23 +241,13 @@ test("request identity includes the compiled theme and stores the same-snapshot 
       true,
     );
 
-    if (!workspace.themePresetId && !workspace.themeRecipeJson) {
-      assert.equal(planCalls.length, previousPlanCallCount);
-      assert.equal(state.svgPlan, null);
-      continue;
-    }
-
-    assert.equal(planCalls.length, previousPlanCallCount + 1);
-    const planCall = planCalls.at(-1);
-    assert.ok(planCall);
-    assert.equal(planCall.operation, state.snapshot.operation);
-    assert.deepEqual(state.svgPlan, planCall.result);
-    assert.equal(Object.isFrozen(state.svgPlan), true);
-    planCall.result.required_capability_ids.push("late-capability");
-    assert.deepEqual(state.svgPlan?.required_capability_ids, []);
+    assert.equal(renderedOperations.length, previousRenderCount + 1);
+    assert.equal(renderedOperations.at(-1), state.snapshot.operation);
+    coordinator.setInput(input("identity", domainFacade, workspace));
+    assert.equal(coordinator.store.getState(), state);
   }
 
-  assert.equal(planCalls.length, 4);
+  assert.equal(renderedOperations.length, workspaceCases.length);
 });
 
 test("deduplicates only when both the operation and facade authority are unchanged", async () => {
@@ -563,10 +549,6 @@ test("passes one frozen operation to every Merman projection", async () => {
       capture(input);
       return facade().detectDiagram(input);
     },
-    svgPlan(input) {
-      capture(input);
-      return svgPlan();
-    },
     render(input) {
       const operation = capture(input);
       return {
@@ -611,7 +593,7 @@ test("passes one frozen operation to every Merman projection", async () => {
   const state = coordinator.store.getState();
   assert.equal(state.status, "success");
   if (state.status !== "success") return;
-  assert.equal(operations.length, 6);
+  assert.equal(operations.length, 5);
   assert.ok(
     operations.every((operation) => operation === state.snapshot.operation),
   );
@@ -673,31 +655,31 @@ test("external pane geometry cannot change operation identity or enqueue another
   assert.equal(renderOperations.length, 1);
 });
 
-test("keeps a successful render when SVG plan collection fails", async () => {
+test("themed previews do not request an unused SVG plan", async (t) => {
+  let planReads = 0;
+  const domainFacade = facade();
+  Object.defineProperty(domainFacade, "svgPlan", {
+    get() {
+      planReads += 1;
+      throw new Error("SVG plan must not be requested by previews.");
+    },
+  });
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
     debounceMs: 0,
   });
+  t.after(() => coordinator.dispose());
   coordinator.setInput(
     input(
-      "plan-failure",
-      {
-        ...facade(),
-        svgPlan() {
-          throw new Error("SVG plan unavailable.");
-        },
-      },
+      "themed-preview",
+      domainFacade,
       {
         themePresetId: "future-theme",
       },
     ),
   );
   await waitFor(() => coordinator.store.getState().status === "success");
-
-  const state = coordinator.store.getState();
-  assert.equal(state.status, "success");
-  if (state.status !== "success") return;
-  assert.equal(state.svgPlan, null);
+  assert.equal(planReads, 0);
 });
 
 test("publishes the producer-owned Merman artifact without reprojecting it", async () => {
@@ -811,7 +793,6 @@ test("renders ASCII only after the feature is activated", async () => {
   assert.equal(state.merman, initial.merman);
   assert.equal(state.mermaid, initial.mermaid);
   assert.equal(state.diagnostics, initial.diagnostics);
-  assert.equal(state.svgPlan, initial.svgPlan);
   assert.equal(compare.calls.length, 1);
 
   coordinator.setFeatures({
@@ -1606,8 +1587,6 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
       error: null,
       status: "success",
     }),
-    svgPlan: (input: ConfiguredMermanOperationInput) =>
-      svgPlan({ diagramType: input.source }),
   } as unknown as MermanDomainFacade;
 }
 
@@ -1638,22 +1617,6 @@ function renderMetadata(
     byte_length: 0,
     execution_label: label,
     theme_execution_evidence: evidence,
-  };
-}
-
-function svgPlan({
-  diagramType = "flowchart-v2",
-}: {
-  diagramType?: string;
-} = {}): ReturnType<MermanDomainFacade["svgPlan"]> {
-  return {
-    schema_version: 1,
-    planned_operation_id: "svg",
-    diagram_type: diagramType,
-    required_capability_ids: [],
-    missing_capability_ids: [],
-    supported_layout_adaptation_ids: ["none"],
-    ready: true,
   };
 }
 

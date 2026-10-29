@@ -1826,7 +1826,6 @@ struct ConstraintRuntime {
 struct AxisConstraintRuntime {
     node_count: usize,
     dummy_to_nodes: Vec<Vec<usize>>,
-    fixed_nodes: IndexSet<usize>,
     nodes_in_relative: Vec<usize>,
     rel_map: Vec<Vec<AxisRelAdj>>,
     temp_pos: Vec<f64>,
@@ -1863,25 +1862,11 @@ impl ConstraintRuntime {
 
     fn update_displacements(
         &mut self,
-        _nodes: &[SimNode],
         c: &Constraints,
         disps: &mut [(f64, f64)],
         total_iterations: usize,
-        _max_d: f64,
         rng: &mut FcoseRandom,
     ) {
-        // Fixed nodes (not currently exposed by our public API).
-        for &idx in &self.horizontal.fixed_nodes {
-            if idx < disps.len() {
-                disps[idx].0 = 0.0;
-            }
-        }
-        for &idx in &self.vertical.fixed_nodes {
-            if idx < disps.len() {
-                disps[idx].1 = 0.0;
-            }
-        }
-
         // Alignments (match `cose-base` updateDisplacements): average displacements per group.
         for group in &c.align_vertical {
             if group.len() <= 1 {
@@ -1998,7 +1983,6 @@ impl AxisConstraintRuntime {
         let mut rt = Self {
             node_count: n,
             dummy_to_nodes,
-            fixed_nodes: IndexSet::new(),
             nodes_in_relative: nodes_in_relative_set.into_iter().collect(),
             rel_map,
             temp_pos: vec![0.0; key_count],
@@ -2053,10 +2037,6 @@ impl AxisConstraintRuntime {
         let n = self.node_count;
 
         for &key in &self.nodes_in_relative {
-            if self.fixed_nodes.contains(&key) {
-                continue;
-            }
-
             let mut displacement = if key < n {
                 match axis {
                     Axis::Horizontal => disps[key].0,
@@ -3443,14 +3423,7 @@ impl SimGraph {
             );
 
             if let Some(rt) = constraint_rt.as_mut() {
-                rt.update_displacements(
-                    &self.nodes,
-                    constraints,
-                    &mut disps,
-                    total_iterations,
-                    max_d,
-                    rng,
-                );
+                rt.update_displacements(constraints, &mut disps, total_iterations, rng);
             } else {
                 apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
             }

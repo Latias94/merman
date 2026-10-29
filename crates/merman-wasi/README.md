@@ -10,7 +10,9 @@ Its binding transport is `wasi`; its semantic target remains `native`.
 The artifact admits only deterministic runtime policy and an immutable
 `native-font-context` constructor service. The native C ABI's numeric statuses,
 operation codes, tokens and layouts do **not** define this ABI. The authoritative
-wire descriptor is `../../contracts/abi/merman-wasi-v1.json`.
+protocol guide is this README, packaged as `docs/WASI_ABI.md` in WASI SDK archives.
+The implementation lives in `src/wire.rs`, `src/runtime.rs`, and `src/abi.rs`;
+`platforms/wasi/protocol.json` owns the real-host import/export audit policy.
 
 ABI 1 is the initial WASI contract. Unpublished protocol iterations do not have
 compatibility aliases or migration adapters. Its version does not reset the
@@ -64,7 +66,8 @@ API. Exported `memory` is WebAssembly linear memory. Every API name has the
 
 Release statuses are independent ABI values: `0` success, `-1` invalid input
 allocation, `-2` invalid/closed/wrong-kind handle, `-3` busy/reentrant call.
-`free` requires the exact live allocation base, not an interior pointer.
+`alloc` returns zero-initialized input bytes. `free` requires the exact live
+allocation base, not an interior pointer.
 `alloc(0)` and `free(0)` are rejected. Producing calls return `0` only when they
 cannot publish an owned result, including handle exhaustion, or the instance is
 busy. `abi_version` returns `0` during reentry. `result_info` returns `0` for an
@@ -88,7 +91,9 @@ values. Decode bytes explicitly; do not cast to a native host struct.
 Empty segments have pointer and length `0`. No segment is NUL-terminated.
 Constructor success has empty `data`, `application/json` media, and
 `{"version":1,"ok":true}` in `json`; read its engine from the descriptor.
-Catalog and named metadata successes have JSON in `data` and empty `json`.
+Catalog and named metadata successes have `application/json` media, JSON in
+`data`, and empty `json`. Catalog results have engine `0`; named metadata
+results retain the selected engine. The catalog's `transport_api_version` is `1`.
 Execute successes have raw SVG/PNG/other enabled operation output in `data` and
 the unchanged core `BindingOperationMetadata` in `json`. In particular, the
 additive `svg_viewport` carries `min_x, min_y, width, height` in CSS pixels when
@@ -97,12 +102,13 @@ omit that field rather than inventing dimensions or failing the render. PNG
 pixel dimensions remain in its core `output_plan`. This transport never parses
 SVG to invent metadata.
 
-Ordinary errors have descriptor status `1`, engine `0`, empty `data`, and the
-**core error-payload schema** in `json`: `version`, `ok: false`, `code`,
-`code_name`, `kind`, nullable `capability_id`, `message`, and optional structured
-details. `code`/`code_name` belong to that binding payload, **not** to descriptor
-status or the native C ABI. Unknown operations, absent capabilities, option and
-parse errors remain owned ordinary failures and do not poison an engine.
+Ordinary errors have descriptor status `1`, engine `0`, `application/json`
+media, empty `data`, and the **core error-payload schema** in `json`: `version`,
+`ok: false`, `code`, `code_name`, `kind`, nullable `capability_id`, `message`, and
+optional structured details, preserving core byte spans. `code`/`code_name`
+belong to that binding payload, **not** to descriptor status or the native C ABI.
+Unknown operations, absent capabilities, option and parse errors remain owned
+ordinary failures and do not poison an engine.
 
 ## Input envelopes
 
@@ -125,9 +131,14 @@ Configuration is UTF-8 JSON:
 }
 ```
 
-Font `offset`/`length` pairs are relative to the **separately supplied raw font
-blob**, not to linear memory. Supply actual font lengths; the number above is
-illustrative. Font ranges must be nonempty and contained in that blob. Fonts
+Configuration requires `version: 1`; `options`, `fonts`, and `bundled_fonts`
+are optional. An omitted `fonts` array defaults to empty. Configuration and
+request envelopes reject unknown fields and duplicate envelope fields.
+
+Each font entry requires u32 `offset` and `length` fields and rejects unknown
+or duplicate fields. These pairs are relative to the **separately supplied raw
+font blob**, not to linear memory. Supply actual font lengths; the number above
+is illustrative. Font ranges must be nonempty and contained in that blob. Fonts
 are copied into the bounded memory-only font service during construction;
 the host may free both configuration and font input buffers after the call.
 Caller fonts are admitted **before** production bundled fonts, so caller
@@ -146,6 +157,7 @@ Execution uses a separate UTF-8 request envelope and raw source bytes:
 {"version":1,"operation_id":"svg","options":{"svg":{"diagram_id":"example"}}}
 ```
 
+Requests require `version: 1` and a string `operation_id`.
 Optional `uri` is a UTF-8 string for document-analysis operations. `options` is
 borrowed as JSON `RawValue` and passed unchanged to core validation, retaining
 duplicate-field and type errors; it is not normalized into a second options

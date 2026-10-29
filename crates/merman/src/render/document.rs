@@ -152,11 +152,7 @@ impl RenderedDocument {
             merman_render::svg::ResvgCompatibleSvg,
         >,
         required_capabilities: Vec<merman_render::RenderCapability>,
-        #[cfg(all(
-            feature = "native-fonts",
-            any(feature = "png", feature = "jpeg", feature = "pdf")
-        ))]
-        native_fonts: Option<merman_export::NativeFontContext>,
+        #[cfg(feature = "native-fonts")] native_fonts: Option<merman_export::NativeFontContext>,
         #[cfg(all(
             feature = "native-fonts",
             any(feature = "png", feature = "jpeg", feature = "pdf")
@@ -165,7 +161,10 @@ impl RenderedDocument {
     ) -> Self {
         let layout_adaptation = completion.layout_adaptation();
         let (svg, family) = completion.into_output_and_report();
-        let evidence = Arc::new(RenderEvidence::from_family(family, required_capabilities));
+        let evidence = RenderEvidence::from_family(family, required_capabilities);
+        #[cfg(feature = "native-fonts")]
+        let evidence = evidence.with_native_font_diagnostics(native_fonts.as_ref());
+        let evidence = Arc::new(evidence);
         let portability = document_portability_report(&svg, &evidence);
         Self {
             layout_adaptation,
@@ -385,6 +384,15 @@ impl RenderedDocument {
 }
 
 impl SvgOutput {
+    #[cfg(feature = "native-fonts")]
+    pub(super) fn with_native_font_diagnostics(
+        mut self,
+        context: Option<&merman_export::NativeFontContext>,
+    ) -> Self {
+        self.evidence = self.evidence.with_native_font_diagnostics(context);
+        self
+    }
+
     /// Actual width and overflow from explicitly adapted family placement.
     pub const fn layout_adaptation(&self) -> Option<merman_render::LayoutAdaptationObservation> {
         self.layout_adaptation
