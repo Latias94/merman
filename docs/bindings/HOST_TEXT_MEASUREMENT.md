@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-10-28
+Last updated: 2026-10-29
 
 This guide owns display-stack integration, callback result semantics, and measurement lifecycle
 guidance. The [text-measurement descriptor](../../contracts/abi/text-measurement-v1.json) owns
@@ -12,11 +12,17 @@ caller-memory rules.
 
 ## Native CLI And Library Policy
 
-The default CLI graphical path now resolves system fonts before layout; explicit
-font files provide a closed, reproducible alternative. This product default does
-not change `SvgEnvironment::deterministic()` or authorize discovery in bindings.
-FFI, UniFFI, and WASM retain their host-independent defaults and callback conflict
-rules. The runtime clock/random policy is not a font-discovery permission.
+The default CLI graphical path uses deterministic, font-agnostic measurement.
+Native PNG/JPEG/PDF painting can still resolve system fonts under the selected
+export environment, so default label geometry does not guarantee containment of
+the final host glyphs. With the required capabilities, select
+`--font-measurement native` to share a system-font context between measurement
+and painting, or supply explicit `--font-file` / `--font-dir` sources for native
+measurement. Explicit sources form a closed set unless `--font-system on` is
+also selected. SVG does not embed the selected fonts; another viewer can resolve
+them differently. `SvgEnvironment::deterministic()`, FFI, UniFFI, and WASM retain
+their host-independent defaults and callback conflict rules. The runtime
+clock/random policy is not a font-discovery permission.
 
 Rust hosts can supply a `NativeFontContext` to the facade. Each facade render gets
 an operation-local measurement cache and failure state; the selected context remains
