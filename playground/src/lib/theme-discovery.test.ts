@@ -30,7 +30,7 @@ const metadata: SvgRenderMetadata = {
 };
 const publicationId = 1 as RenderPublicationId;
 const batch: CompletedRenderBatch = {
-  status: "success", publishedAt: 1, diagnostics: null, ascii: null, svgPlan: null, mermaid: null,
+  status: "success", publishedAt: 1, diagnostics: null, ascii: null, mermaid: null,
   detection: { status: "available", diagramType: "flowchart", syntaxId: "flowchart-v2", effectiveLayoutId: "dagre", validity: "valid" },
   snapshot: { publicationId, operation: {
     source: workspace.code, configuredSource: workspace.code, configurationError: null,
