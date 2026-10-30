@@ -235,6 +235,21 @@ unrelated working-tree edits and use precise file staging. Completion criterion:
 green, skipped by an intentional documented condition, or shown to be external to the branch with
 reproducible evidence.
 
+## Preserve PR images
+
+Use GitHub attachments for screenshots and comparisons that exist only to explain a PR. Upload
+through the browser or GitHub CLI's `--attach` option when supported; check the installed command's
+help and retain the returned attachment URL. Do not add one-off screenshots to the repository only
+to display them in a PR.
+
+Keep images needed by READMEs, maintained documentation, reproducible examples, or tests in the
+repository. In PR bodies and comments, link those images and their supporting sources through a
+full 40-character commit SHA. Feature-branch URLs can stop resolving after merge and branch deletion.
+
+After updating a PR, re-read its body and verify the rendered image URLs. Confirm a failed `HEAD`
+with `GET` before reporting a broken image; attachment and badge services can handle the methods
+differently. Preserve existing assets and historical evidence when repairing links.
+
 ## Hand off the PR
 
 Before committing or opening a PR:
