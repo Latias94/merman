@@ -901,11 +901,11 @@ mod tests {
         assert_eq!(artifact.surface, Surface::Web);
         assert_eq!(
             string_values(&artifact.features),
-            vec!["all-diagrams", "editor"]
+            vec!["all-diagrams", "editor", "fixes"]
         );
         assert_eq!(
             string_values(&artifact.capabilities),
-            vec!["analysis", "editor"]
+            vec!["analysis", "editor", "fixes"]
         );
         assert!(artifact.outputs.is_empty());
         assert!(!artifact.default_features);
@@ -941,6 +941,7 @@ mod tests {
                 "analysis",
                 "ascii",
                 "editor",
+                "fixes",
                 "layout-cytoscape",
                 "layout-elk",
                 "svg"
@@ -950,6 +951,7 @@ mod tests {
             "analysis",
             "ascii",
             "editor",
+            "fixes",
             "layout-cytoscape",
             "layout-elk",
             "svg",
