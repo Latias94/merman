@@ -4,6 +4,10 @@
 
 Accepted
 
+The development Rust package and data-projection ownership is amended by
+[ADR-0099](0099-model-and-source-boundaries.md). Single family-owned semantic construction and
+the distinct typed, terminal, editor and compatibility projections remain in force.
+
 ## Updated
 
 2026-07-15 for Mermaid `@11.16.0`

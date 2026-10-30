@@ -16,6 +16,7 @@ owners rather than being duplicated across Markdown files.
 | Check diagram coverage and parity evidence | [Alignment dashboard](alignment/STATUS.md) |
 | Embed or export SVG safely | [SVG output pipeline](rendering/SVG_OUTPUT_PIPELINE.md) and [rendering security](security/RENDERING_SECURITY.md) |
 | Understand architecture decisions | [Architecture decision records](adr/) and [alignment authority map](alignment/README.md) |
+| Follow the planned breaking model/source dependency cleanup | [Execution plan](plans/2026-10-30-model-and-source-boundaries.md), [family inventory](plans/2026-10-30-family-data-inventory.md), and [ADR-0099](adr/0099-model-and-source-boundaries.md); implementation pending |
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |
 | Compare releases or substantiate release claims | [Comparative release reports](release/RELEASE_REPORTS.md) |

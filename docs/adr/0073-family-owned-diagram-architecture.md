@@ -8,6 +8,11 @@ in force. Current API clauses also reflect the explicit semantic/presentation ca
 see the [migration reference](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
 The original decision background, date and baseline below are retained as historical context.
 
+[ADR-0099](0099-model-and-source-boundaries.md) selects the next development package/data
+ownership: shared models and markup below source/output owners, with private core family
+construction and explicit fix generation. Its implementation remains pending; single family
+semantics, source mapping and typed operation guarantees continue to apply.
+
 ## Date
 
 2026-07-15

@@ -4,6 +4,11 @@
 
 Accepted
 
+[ADR-0099](0099-model-and-source-boundaries.md) records a maintainer-authorized development
+exception for breaking Rust package paths, convenience APIs and capability defaults within the
+same upstream baseline. Semantic meaning and existing serialization/transport contracts retain
+their stated protection; the source migration requires an appropriate next minor and migration guide.
+
 ## Context
 
 Downstream crates (renderers, UI integrations, CLI tooling) need a stable headless output model to

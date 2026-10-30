@@ -9,6 +9,10 @@ clauses of [ADR-0005](0005-configuration-strategy.md),
 [ADR-0096](0096-prepared-source-output-ownership.md). Their family ownership, parser recovery,
 source mapping, and output lifecycle decisions remain in force.
 
+[ADR-0099](0099-model-and-source-boundaries.md) selects the subsequent development package/API
+ownership for independent model, terminal, graphical and diagnostic consumers. It preserves this
+decision's execution boundary; its planned extraction is not yet an implementation claim.
+
 ## Context
 
 Semantic inspection, terminal output, and language tooling need canonical meaning without
