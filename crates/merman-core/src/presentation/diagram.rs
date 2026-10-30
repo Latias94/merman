@@ -730,7 +730,8 @@ impl RenderDiagramRegistry {
 /// describes data relationships; only this wrapper records successful source construction.
 #[derive(Debug, Clone)]
 pub struct ParsedDiagramRender {
-    presentation: PresentationDiagram,
+    // Keep nested fallible parse results small while the family parser uses the caller's stack.
+    presentation: Box<PresentationDiagram>,
 }
 
 impl ParsedDiagramRender {
@@ -768,7 +769,9 @@ impl ParsedDiagramRender {
             &crate::config::presentation::source_config_construction_policy(),
             control,
         )?
-        .map(|presentation| Self { presentation })
+        .map(|presentation| Self {
+            presentation: Box::new(presentation),
+        })
         .map_err(|error| crate::Error::diagram_parse_fallback(diagram_type, error.to_string())))
     }
 
@@ -779,7 +782,7 @@ impl ParsedDiagramRender {
 
     /// Consumes the source guarantee and retains all presentation data and context.
     pub fn into_presentation(self) -> PresentationDiagram {
-        self.presentation
+        *self.presentation
     }
 
     pub fn metadata(&self) -> &PresentationMetadata {
@@ -796,7 +799,7 @@ impl ParsedDiagramRender {
 
     /// Extracts metadata and model, deliberately omitting output context.
     pub fn into_parts(self) -> (PresentationMetadata, RenderSemanticModel) {
-        let (metadata, model, _) = self.presentation.into_parts();
+        let (metadata, model, _) = (*self.presentation).into_parts();
         (metadata, model)
     }
 
