@@ -120,7 +120,9 @@ pub use merman_core::{DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshot
 #[cfg(feature = "compat-json")]
 pub use merman_core::{DiagramRegistry, DiagramSemanticParser, ParsedDiagram};
 #[cfg(feature = "editor-facts")]
-pub use merman_core::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture};
+pub use merman_core::{
+    ParsedEditorFacts, SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture,
+};
 pub use merman_model::baseline;
 pub use merman_model::config::{MermaidThemeId, MermaidThemeIdParseError};
 pub use merman_model::family::diagram_family_selectors;
