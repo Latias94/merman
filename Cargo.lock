@@ -2586,7 +2586,9 @@ name = "merman-model"
 version = "0.9.3"
 dependencies = [
  "getrandom 0.4.3",
+ "indexmap",
  "jiff",
+ "rustc-hash",
  "serde",
  "serde_json",
  "sha2",

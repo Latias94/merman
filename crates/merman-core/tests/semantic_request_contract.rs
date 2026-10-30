@@ -100,7 +100,7 @@ fn semantic_request_accepts_the_builtin_error_family_without_presentation() {
     };
     assert_eq!(model.diagram_type, "error");
     assert_eq!(model.error_message, None);
-    assert!(merman_core::resources::ModelComplexity::from_semantic_model(&parsed.model).items > 0);
+    assert!(merman_core::resources::model_complexity_from_semantic_model(&parsed.model).items > 0);
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn semantic_request_lenient_family_failure_retains_admitted_metadata_and_error_t
         model.error_message.as_deref(),
         Some(strict.to_string().as_str())
     );
-    let complexity = merman_core::resources::ModelComplexity::from_semantic_model(&parsed.model);
+    let complexity = merman_core::resources::model_complexity_from_semantic_model(&parsed.model);
     assert!(complexity.text_bytes >= strict.to_string().len());
 }
 

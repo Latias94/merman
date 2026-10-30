@@ -6,6 +6,11 @@ These six fixed M0 consumers freeze consumed behavior at
 benchmarks. Commit this fixture before running the base, then retain those receipts before editing
 production code. The driver reads committed source and fixture revisions, never dirty fixture bytes.
 
+The original base fixture is pinned at `2e71bfa333b5e9ae6dcee41bdad2be81c162e444`.
+The current fixture migrates model imports to `merman-model` while retaining the same runtime inputs
+and consumed fields. Use that original fixture revision for the pre-extraction base; use a committed
+current fixture for the candidate. The base has no `merman-model` package.
+
 | Recipe | Fixture feature | Consumed output |
 | --- | --- | --- |
 | `boundary-model` | `model` | Constructed Flowchart/Class/State node identities, labels, edges, direction and State flat-document count. |
@@ -28,7 +33,7 @@ dependencies disable default features. These invocations deliberately reuse the 
 target; do not run another Cargo operation concurrently.
 
 ```powershell
-$fixtureRevision = (git rev-parse HEAD).Trim()
+$fixtureRevision = '2e71bfa333b5e9ae6dcee41bdad2be81c162e444'
 $baseRevision = 'a5c73612fb2288e5effdbb07b3e1c3e683968603'
 $boundaryRecipes = @(
     'boundary-model',
@@ -60,7 +65,7 @@ obtain a smaller artifact.
 
 ```powershell
 $headRevision = (git rev-parse HEAD).Trim()
-$headFixtureRevision = $fixtureRevision
+$headFixtureRevision = (git rev-parse HEAD).Trim()
 foreach ($recipe in $boundaryRecipes) {
     python tools/bench/measure_diagram_selection.py --recipe $recipe --revision $headRevision --fixture-revision $headFixtureRevision --label "$recipe-head" --output "target/bench/experiments/model-source-boundaries/head/$recipe" --target-dir 'F:/SourceCodes/Rust/merman/target' --expect-receipt "target/bench/experiments/model-source-boundaries/base/$recipe/receipt.json"
     if ($LASTEXITCODE -ne 0) { throw "Boundary comparison failed: $recipe" }
@@ -101,7 +106,9 @@ source-parser capability catalog.
   recipe calls no Mermaid parser, but does not claim its Cargo graph is already parser-free.
 - BASE State has no public flat-document builder. Its directly constructed model has an empty
   document/record store. The source route also exercises the parser-produced document. These are
-  separate contracts; direct-model and source-to-ASCII outputs need not equal each other.
+  separate contracts; direct-model and source-to-ASCII outputs need not equal each other. The
+  candidate keeps that same direct graph to preserve comparison; the new checked document builder
+  has separate model/source tests.
 - BASE `source-ascii` selects `model-ascii` and therefore compiles the fixture's model construction
   code too; it calls only the source route. The head recipe may separate feature/import ownership
   while preserving the source consumer's observations.

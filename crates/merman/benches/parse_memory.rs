@@ -594,7 +594,7 @@ fn execute_state_shape(seed: u64) -> Result<Value, String> {
             .root()
             .and_then(|root| model.document.get(root))
             .ok_or("State shape mode requires its canonical root document")?;
-        let complexity = merman_core::resources::ModelComplexity::from_parsed_render(&parsed);
+        let complexity = merman_core::resources::model_complexity_from_parsed_render(&parsed);
         let compatibility = parsed
             .model()
             .compatibility_json(parsed.metadata())

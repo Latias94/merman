@@ -1,20 +1,18 @@
-use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+pub use merman_model::families::state::{
+    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
+};
+
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, json};
-use std::collections::HashMap;
 
 use super::CSS_EDGE_NOTE_EDGE;
+#[cfg(feature = "compat-json")]
 use super::StateDocument;
-use super::complexity::StateRecords;
-use super::model::{
-    StateDiagramModel, StateLinks, StateModelConstruction, StateNode, StateRecord, StateRelation,
-    StateStyleClass,
-};
+use super::model::{StateDiagramModel, StateModelConstruction, StateNode};
 #[cfg(feature = "compat-json")]
 use super::{StateDocumentId, StateStatement};
-use crate::resources::ModelComplexity;
 #[cfg(feature = "compat-json")]
 use crate::{ManagedSemanticJson, PresentationMetadata, Result};
 use crate::{OperationControl, OperationControlResult};
@@ -34,21 +32,6 @@ pub(super) fn projected_document_count() -> usize {
     STATE_PROJECTED_DOCUMENT_COUNT.get()
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct StateDiagramRenderModel {
-    /// Canonical statements and document relationships; nested JSON is an explicit projection.
-    pub document: StateDocument,
-    pub direction: String,
-    pub acc_title: Option<String>,
-    pub acc_descr: Option<String>,
-    pub nodes: Vec<StateDiagramRenderNode>,
-    pub edges: Vec<StateDiagramRenderEdge>,
-    pub relations: Vec<StateRelation>,
-    pub links: HashMap<String, StateLinks>,
-    pub states: HashMap<String, StateRecord>,
-    pub style_classes: IndexMap<String, StateStyleClass>,
-}
-
 pub(super) struct StateNodePresentation {
     pub dom_id: String,
     pub padding: Option<f64>,
@@ -59,289 +42,175 @@ pub(super) struct StateNodePresentation {
     pub min_width: Option<f64>,
 }
 
-impl StateModelConstruction {
-    pub(super) fn into_render_model(
-        self,
-        config: &crate::MermaidConfig,
-        control: &OperationControl,
-    ) -> OperationControlResult<StateDiagramRenderModel> {
-        let StateDiagramModel {
-            document,
-            direction,
-            acc_title,
-            acc_descr,
-            nodes,
-            edges,
-            relations,
-            links,
-            states,
-            style_classes,
-        } = self.model;
-        debug_assert_eq!(nodes.len(), self.presentation.len());
-        let mut render_nodes = Vec::with_capacity(nodes.len());
-        for (index, (node, presentation)) in nodes.into_iter().zip(self.presentation).enumerate() {
-            if index.is_multiple_of(128) {
-                control.checkpoint()?;
-            }
-            render_nodes.push(StateDiagramRenderNode::from_semantic(node, presentation));
+pub(super) fn into_render_model(
+    construction: StateModelConstruction,
+    config: &crate::MermaidConfig,
+    control: &OperationControl,
+) -> OperationControlResult<StateDiagramRenderModel> {
+    let StateDiagramModel {
+        document,
+        direction,
+        acc_title,
+        acc_descr,
+        nodes,
+        edges,
+        relations,
+        links,
+        states,
+        style_classes,
+    } = construction.model;
+    debug_assert_eq!(nodes.len(), construction.presentation.len());
+    let mut render_nodes = Vec::with_capacity(nodes.len());
+    for (index, (node, presentation)) in
+        nodes.into_iter().zip(construction.presentation).enumerate()
+    {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
         }
-        let mut render_edges = Vec::with_capacity(edges.len());
-        for (index, edge) in edges.into_iter().enumerate() {
-            if index.is_multiple_of(128) {
-                control.checkpoint()?;
-            }
-            let arrow_type_end = if edge.classes == CSS_EDGE_NOTE_EDGE {
-                ""
-            } else if config.get_str("look") == Some("neo") {
-                "arrow_barb_neo"
-            } else {
-                "arrow_barb"
-            };
-            render_edges.push(StateDiagramRenderEdge {
-                id: edge.id,
-                start: edge.start,
-                end: edge.end,
-                classes: edge.classes,
-                label: edge.label,
-                arrow_type_end: arrow_type_end.to_string(),
-            });
-        }
-        control.checkpoint()?;
-        Ok(StateDiagramRenderModel {
-            document,
-            direction,
-            acc_title,
-            acc_descr,
-            nodes: render_nodes,
-            edges: render_edges,
-            relations,
-            links,
-            states,
-            style_classes,
-        })
+        render_nodes.push(render_node_from_semantic(node, presentation));
     }
+    let mut render_edges = Vec::with_capacity(edges.len());
+    for (index, edge) in edges.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let arrow_type_end = if edge.classes == CSS_EDGE_NOTE_EDGE {
+            ""
+        } else if config.get_str("look") == Some("neo") {
+            "arrow_barb_neo"
+        } else {
+            "arrow_barb"
+        };
+        render_edges.push(StateDiagramRenderEdge {
+            id: edge.id,
+            start: edge.start,
+            end: edge.end,
+            classes: edge.classes,
+            label: edge.label,
+            arrow_type_end: arrow_type_end.to_string(),
+        });
+    }
+    control.checkpoint()?;
+    Ok(StateDiagramRenderModel {
+        document,
+        direction,
+        acc_title,
+        acc_descr,
+        nodes: render_nodes,
+        edges: render_edges,
+        relations,
+        links,
+        states,
+        style_classes,
+    })
 }
 
-impl StateDiagramRenderModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StateModelFields<'a> {
-    direction: &'a str,
-    #[serde(rename = "accTitle")]
-    acc_title: &'a Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: &'a Option<String>,
-    nodes: &'a [StateDiagramRenderNode],
-    edges: &'a [StateDiagramRenderEdge],
-    relations: &'a [StateRelation],
-    links: &'a HashMap<String, StateLinks>,
-    states: StateRecords<'a>,
-    #[serde(rename = "styleClasses")]
-    style_classes: &'a IndexMap<String, StateStyleClass>,
-}
-
-impl StateDiagramRenderModel {
-    fn fields(&self) -> StateModelFields<'_> {
-        StateModelFields {
-            direction: &self.direction,
-            acc_title: &self.acc_title,
-            acc_descr: &self.acc_descr,
-            nodes: &self.nodes,
-            edges: &self.edges,
-            relations: &self.relations,
-            links: &self.links,
-            states: StateRecords {
-                states: &self.states,
-                include_documents: false,
-            },
-            style_classes: &self.style_classes,
-        }
-    }
-
-    pub(crate) fn model_complexity(&self) -> ModelComplexity {
-        let mut result = ModelComplexity::from_serializable(&self.fields());
-        let documents = self.document.complexities();
-        for state in self.states.values() {
-            if let Some(doc) = state.doc.and_then(|id| documents.get(id.0)).copied() {
-                result.items = result.items.saturating_add(doc.items);
-                result.text_bytes = result.text_bytes.saturating_add(doc.text_bytes);
-                // The old wire shape places a document array below root, states map and state.
-                result.nesting_depth = result.nesting_depth.max(2usize.saturating_add(doc.depth));
-            }
-        }
-        result
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut StateDiagramRenderModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[cfg(feature = "compat-json")]
-impl StateDocument {
-    fn project(
-        &self,
-        root: StateDocumentId,
-        control: &OperationControl,
-    ) -> OperationControlResult<ManagedSemanticJson> {
-        struct Frame<'a> {
-            id: StateDocumentId,
-            index: usize,
-            values: Vec<ManagedSemanticJson>,
-            owner: Option<&'a StateStatement>,
+fn project_document(
+    document: &StateDocument,
+    root: StateDocumentId,
+    control: &OperationControl,
+) -> OperationControlResult<ManagedSemanticJson> {
+    struct Frame<'a> {
+        id: StateDocumentId,
+        index: usize,
+        values: Vec<ManagedSemanticJson>,
+        owner: Option<&'a StateStatement>,
+    }
+    let mut stack = vec![Frame {
+        id: root,
+        index: 0,
+        values: Vec::new(),
+        owner: None,
+    }];
+    let mut steps = 0usize;
+    loop {
+        if steps.is_multiple_of(128) {
+            control.checkpoint()?;
         }
-        let mut stack = vec![Frame {
-            id: root,
-            index: 0,
-            values: Vec::new(),
-            owner: None,
-        }];
-        let mut steps = 0usize;
-        loop {
-            if steps.is_multiple_of(128) {
-                control.checkpoint()?;
-            }
-            steps = steps.saturating_add(1);
-            let frame = stack
-                .last_mut()
-                .expect("root projection frame exists until completion");
-            let statements = &self.documents[frame.id.0];
-            if let Some(stmt) = statements.get(frame.index) {
-                frame.index += 1;
-                if let StateStatement::State(state) = stmt
-                    && let Some(child) = state.doc
-                {
-                    stack.push(Frame {
-                        id: child,
-                        index: 0,
-                        values: Vec::new(),
-                        owner: Some(stmt),
-                    });
-                } else {
-                    frame
-                        .values
-                        .push(super::db::stmt_to_json_shallow(stmt, None));
-                }
-                continue;
-            }
-            let frame = stack.pop().expect("completed frame exists");
-            let doc: ManagedSemanticJson = Value::Array(
+        steps = steps.saturating_add(1);
+        let frame = stack
+            .last_mut()
+            .expect("root projection frame exists until completion");
+        let statements = document.get(frame.id).expect("completed state document");
+        if let Some(stmt) = statements.get(frame.index) {
+            frame.index += 1;
+            if let StateStatement::State(state) = stmt
+                && let Some(child) = state.doc
+            {
+                stack.push(Frame {
+                    id: child,
+                    index: 0,
+                    values: Vec::new(),
+                    owner: Some(stmt),
+                });
+            } else {
                 frame
                     .values
-                    .into_iter()
-                    .map(ManagedSemanticJson::into_unmanaged_value)
-                    .collect(),
-            )
-            .into();
-            #[cfg(test)]
-            STATE_PROJECTED_DOCUMENT_COUNT.set(STATE_PROJECTED_DOCUMENT_COUNT.get() + 1);
-            if let Some(owner) = frame.owner {
-                let value = super::db::stmt_to_json_shallow(owner, Some(doc));
-                stack
-                    .last_mut()
-                    .expect("a nested document has a parent frame")
-                    .values
-                    .push(value);
-            } else {
-                control.checkpoint()?;
-                return Ok(doc);
+                    .push(super::db::stmt_to_json_shallow(stmt, None));
             }
+            continue;
+        }
+        let frame = stack.pop().expect("completed frame exists");
+        let doc: ManagedSemanticJson = Value::Array(
+            frame
+                .values
+                .into_iter()
+                .map(ManagedSemanticJson::into_unmanaged_value)
+                .collect(),
+        )
+        .into();
+        #[cfg(test)]
+        STATE_PROJECTED_DOCUMENT_COUNT.set(STATE_PROJECTED_DOCUMENT_COUNT.get() + 1);
+        if let Some(owner) = frame.owner {
+            let value = super::db::stmt_to_json_shallow(owner, Some(doc));
+            stack
+                .last_mut()
+                .expect("a nested document has a parent frame")
+                .values
+                .push(value);
+        } else {
+            control.checkpoint()?;
+            return Ok(doc);
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderNode {
-    pub id: String,
-    #[serde(default, rename = "labelStyle")]
-    pub label_style: String,
-    #[serde(default)]
-    pub label: Option<Value>,
-    #[serde(default)]
-    pub description: Option<Vec<String>>,
-    #[serde(default, rename = "domId")]
-    pub dom_id: String,
-    #[serde(default, rename = "isGroup")]
-    pub is_group: bool,
-    #[serde(default, rename = "type")]
-    pub node_type: Option<String>,
-    #[serde(default, rename = "parentId")]
-    pub parent_id: Option<String>,
-    #[serde(default, rename = "cssClasses")]
-    pub css_classes: String,
-    #[serde(default, rename = "cssCompiledStyles")]
-    pub css_compiled_styles: Vec<String>,
-    #[serde(default, rename = "cssStyles")]
-    pub css_styles: Vec<String>,
-    #[serde(default)]
-    pub dir: Option<String>,
-    // Kept as parser-internal provenance for the ASCII adapter. Mermaid 11.17.2 no longer
-    // exposes this rollback-era field in the render model or compatibility JSON.
-    #[serde(skip)]
-    pub explicit_dir: Option<bool>,
-    #[serde(default)]
-    pub padding: Option<f64>,
-    #[serde(default)]
-    pub rx: Option<f64>,
-    #[serde(default)]
-    pub ry: Option<f64>,
-    pub shape: String,
-    #[serde(default)]
-    pub position: Option<String>,
-    /// Palette slot assigned to composite state containers by Mermaid's depth-first data fetcher.
-    #[serde(default, rename = "colorIndex")]
-    pub color_index: Option<usize>,
-    /// Width at which state labels wrap; populated from `state.wrappingWidth`.
-    #[serde(default, rename = "wrappingWidth")]
-    pub wrapping_width: Option<f64>,
-    /// Minimum label width for non-container state nodes; populated from `state.minNodeWidth`.
-    #[serde(default, rename = "minWidth")]
-    pub min_width: Option<f64>,
-}
-
-impl StateDiagramRenderNode {
-    fn from_semantic(node: StateNode, presentation: StateNodePresentation) -> Self {
-        Self {
-            id: node.id,
-            label_style: String::new(),
-            label: node.label,
-            description: node.description,
-            dom_id: presentation.dom_id,
-            is_group: node.is_group,
-            node_type: node.node_type,
-            parent_id: node.parent_id,
-            css_classes: node.css_classes,
-            css_compiled_styles: node.css_compiled_styles,
-            css_styles: node.css_styles,
-            dir: node.dir,
-            explicit_dir: node.explicit_dir,
-            padding: presentation.padding,
-            rx: presentation.rx,
-            ry: presentation.ry,
-            shape: node.shape,
-            position: node.position,
-            color_index: presentation.color_index,
-            wrapping_width: presentation.wrapping_width,
-            min_width: presentation.min_width,
-        }
+fn render_node_from_semantic(
+    node: StateNode,
+    presentation: StateNodePresentation,
+) -> StateDiagramRenderNode {
+    StateDiagramRenderNode {
+        id: node.id,
+        label_style: String::new(),
+        label: node.label,
+        description: node.description,
+        dom_id: presentation.dom_id,
+        is_group: node.is_group,
+        node_type: node.node_type,
+        parent_id: node.parent_id,
+        css_classes: node.css_classes,
+        css_compiled_styles: node.css_compiled_styles,
+        css_styles: node.css_styles,
+        dir: node.dir,
+        explicit_dir: node.explicit_dir,
+        padding: presentation.padding,
+        rx: presentation.rx,
+        ry: presentation.ry,
+        shape: node.shape,
+        position: node.position,
+        color_index: presentation.color_index,
+        wrapping_width: presentation.wrapping_width,
+        min_width: presentation.min_width,
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StateDiagramRenderEdge {
-    pub id: String,
-    pub start: String,
-    pub end: String,
-    #[serde(default)]
-    pub classes: String,
-    #[serde(default, rename = "arrowTypeEnd")]
-    pub arrow_type_end: String,
-    #[serde(default)]
-    pub label: String,
 }
 
 #[cfg(feature = "compat-json")]
@@ -428,12 +297,12 @@ fn state_records_to_compat_json(
                         "State document id does not belong to this model",
                     )));
                 }
-                Some(model.document.project(doc, control)?)
+                Some(project_document(&model.document, doc, control)?)
             }
             None => None,
         };
-        let mut record =
-            serde_json::to_value(state.fields()).expect("state scalar fields serialize");
+        let mut record = serde_json::to_value(state.compatibility_fields())
+            .expect("state scalar fields serialize");
         record
             .as_object_mut()
             .expect("state record is an object")

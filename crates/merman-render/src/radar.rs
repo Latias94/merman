@@ -6,7 +6,7 @@ use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
 };
-use crate::resources::{ModelComplexity, OperationWorkMeter};
+use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
@@ -201,7 +201,7 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
 ) -> Result<RadarDiagramLayout> {
     work_meter
         .policy()
-        .check_model_complexity(ModelComplexity::from_radar(model))?;
+        .check_model_complexity(merman_core::resources::model_complexity_from_radar(model))?;
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),

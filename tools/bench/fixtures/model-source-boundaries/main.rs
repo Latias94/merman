@@ -1,4 +1,4 @@
-//! Fixed M0 consumers for a5c73612f. This is fixture-local construction, not a model import API.
+//! Fixed model/source boundary consumers; original M0 fixture is retained at 2e71bfa33. This is fixture-local construction, not a model import API.
 use serde_json::{Value, json};
 use std::error::Error;
 use std::io::{self, Write};
@@ -14,9 +14,9 @@ fn field<'a>(input: &'a Value, name: &str) -> Result<&'a str> {
 #[cfg(feature = "model")]
 mod models {
     use super::*;
-    use merman_core::diagrams::flowchart::FlowchartModel;
-    use merman_core::diagrams::state::{StateDiagramModel, StateEdge, StateNode};
-    use merman_core::models::class_diagram::ClassDiagramModel;
+    use merman_model::families::class::ClassDiagramModel;
+    use merman_model::families::flowchart::FlowchartModel;
+    use merman_model::families::state::{StateDiagramModel, StateEdge, StateNode};
 
     pub struct Models {
         pub flowchart: FlowchartModel,
@@ -114,9 +114,9 @@ fn ascii(input: &Value) -> Result<Value> {
         AsciiDiagram, AsciiOutput, AsciiOutputOutcome, AsciiRenderOptions, AsciiRenderer,
         AsciiResourcePolicy, AsciiSourceContext, AsciiViewportPolicy, OverflowPolicy,
     };
-    use merman_core::{MermaidConfig, OperationControl};
+    use merman_model::{MermaidConfig, OperationControl};
     let renderer = AsciiRenderer::new(AsciiRenderOptions::ascii())?;
-    let context = merman_core::runtime::RuntimePolicy::deterministic().begin_operation()?;
+    let context = merman_model::runtime::RuntimePolicy::deterministic().begin_operation()?;
     let config = MermaidConfig::empty_object();
     #[cfg(not(feature = "source-ascii"))]
     let models = models::Models::new(input)?;
@@ -145,7 +145,7 @@ fn ascii(input: &Value) -> Result<Value> {
                         AsciiDiagram::Class(Box::new(models.class.topology(&config, &control)?))
                     }
                     "state" => AsciiDiagram::State(
-                        merman_core::diagrams::state::StateTerminalView::from_semantic(
+                        merman_model::families::state::StateTerminalView::from_semantic(
                             &models.state,
                         ),
                     ),

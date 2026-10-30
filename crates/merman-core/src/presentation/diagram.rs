@@ -849,19 +849,21 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(_) => {}
             #[cfg(feature = "diagram-state")]
-            Self::State(v) => v.sanitize_common_db_fields(config),
+            Self::State(v) => crate::diagrams::state::sanitize_render_common_db_fields(v, config),
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(v) => v.sanitize_common_db_fields(config),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(v) => v.sanitize_common_db_fields(config),
+            Self::Flowchart(v) => crate::diagrams::flowchart::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(v) => {
                 crate::diagrams::architecture::sanitize_common_db_fields(v, config)
             }
             #[cfg(feature = "diagram-class")]
-            Self::Class(v) => v.sanitize_common_db_fields(config),
+            Self::Class(v) => {
+                crate::models::class_diagram::sanitize_full_common_db_fields(v, config)
+            }
             #[cfg(feature = "diagram-c4")]
             Self::C4(v) => crate::diagrams::c4::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-cynefin")]
@@ -895,7 +897,7 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-block")]
             Self::Block(_) => {}
             #[cfg(feature = "diagram-er")]
-            Self::Er(v) => v.sanitize_common_db_fields(config),
+            Self::Er(v) => crate::diagrams::er::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(v) => {
                 crate::diagrams::quadrant_chart::sanitize_common_db_fields(v, config)

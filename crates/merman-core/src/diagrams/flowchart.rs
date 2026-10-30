@@ -3,6 +3,7 @@
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
 use crate::PresentationMetadata;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::SourceSpan;
 #[cfg(all(
     feature = "compat-json",
@@ -120,6 +121,8 @@ pub(crate) use ast::{
 use ast::{
     FlowchartAst, StatementArena, StatementEvent, StatementId, StatementList, Stmt, SubgraphBlock,
 };
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) use model::sanitize_common_db_fields;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
 #[cfg(all(
@@ -403,7 +406,7 @@ pub(crate) fn parse_semantic_model_controlled(
             control,
         )?;
         if let Ok(model) = &mut construction.model {
-            model.sanitize_common_db_fields(&meta.semantic_config);
+            sanitize_common_db_fields(model, &meta.semantic_config);
         }
         control.checkpoint()?;
         return Ok(construction);
@@ -413,7 +416,7 @@ pub(crate) fn parse_semantic_model_controlled(
         Ok(source) => source
             .into_model_controlled(meta, control)?
             .map(|mut model| {
-                model.sanitize_common_db_fields(&meta.semantic_config);
+                sanitize_common_db_fields(&mut model, &meta.semantic_config);
                 model
             }),
         Err(error) => Err(error),

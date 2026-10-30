@@ -122,7 +122,7 @@ def measure(
     if boundary:
         # This checked-in manifest is the six fixed recipes, not a dependency resolver.
         manifest = boundary_files["Cargo.toml"].decode("utf-8")
-        for package in ("merman-core", "merman-ascii", "merman-render", "merman-analysis"):
+        for package in ("merman-model", "merman-core", "merman-ascii", "merman-render", "merman-analysis"):
             manifest = manifest.replace(
                 json.dumps(f"../../../../crates/{package}"),
                 json.dumps((source / "crates" / package).as_posix()),

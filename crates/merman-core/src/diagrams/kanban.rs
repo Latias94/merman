@@ -153,11 +153,11 @@ impl<'a> KanbanTerminalView<'a> {
     pub fn complexity(self) -> crate::resources::ModelComplexity {
         match self.0 {
             KanbanTerminalBacking::Canonical(model) => {
-                crate::resources::ModelComplexity::from_kanban_semantic(model)
+                crate::resources::model_complexity_from_kanban_semantic(model)
             }
             #[cfg(feature = "presentation")]
             KanbanTerminalBacking::Full(model) => {
-                let mut complexity = crate::resources::ModelComplexity::from_kanban(model);
+                let mut complexity = crate::resources::model_complexity_from_kanban(model);
                 for node in &model.nodes {
                     for text in [
                         node.compatibility.css_classes.as_deref(),
@@ -2763,7 +2763,7 @@ mod semantic_tests {
                 "level": 7, "cssClasses": "host-class", "shape": "host-shape"
             })
         );
-        let base = crate::resources::ModelComplexity::from_kanban(&model);
+        let base = crate::resources::model_complexity_from_kanban(&model);
         assert_eq!(
             terminal.complexity(),
             crate::resources::ModelComplexity::new(
@@ -2818,7 +2818,7 @@ mod semantic_tests {
         );
         assert_eq!(
             terminal.complexity(),
-            crate::resources::ModelComplexity::from_kanban_semantic(&model)
+            crate::resources::model_complexity_from_kanban_semantic(&model)
         );
         assert!(std::ptr::eq(
             terminal.node(1).unwrap().authored().unwrap(),
@@ -2980,7 +2980,7 @@ mod semantic_tests {
         assert_eq!(fallback, serde_json::to_value(&projected).unwrap());
         assert_eq!(
             terminal.complexity(),
-            crate::resources::ModelComplexity::from_kanban(&projected)
+            crate::resources::model_complexity_from_kanban(&projected)
         );
         let ids: Vec<_> = projected
             .nodes

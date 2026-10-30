@@ -4452,7 +4452,7 @@ mod tests {
                 panic!("expected Class")
             };
             policy
-                .check_model_complexity(crate::resources::ModelComplexity::from_render_model(
+                .check_model_complexity(merman_core::resources::model_complexity_from_render_model(
                     parsed.model(),
                 ))
                 .expect("within normal Class model budget");

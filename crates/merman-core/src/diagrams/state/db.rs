@@ -17,8 +17,8 @@ use super::model::StateModelConstruction;
 #[cfg(feature = "presentation")]
 use super::render_model::StateNodePresentation;
 use super::{
-    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDocument, StateDocumentId, StateEdge, StateLink,
-    StateLinks, StateNode, StateNote, StateRecord, StateRelation, StateStatement,
+    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDocumentId, StateDocumentScratch, StateEdge,
+    StateLink, StateLinks, StateNode, StateNote, StateRecord, StateRelation, StateStatement,
     StateStatementNote, StateStatementState, StateStyleClass,
 };
 
@@ -50,7 +50,7 @@ struct StateDbRecord {
 
 #[derive(Debug, Default)]
 pub(super) struct StateDb {
-    document: StateDocument,
+    document: StateDocumentScratch,
     states: HashMap<String, StateDbRecord>,
     state_order: Vec<String>,
     relations: Vec<RelationEdge>,
@@ -109,7 +109,7 @@ impl StateDb {
 
     pub(super) fn set_root_doc(
         &mut self,
-        mut document: StateDocument,
+        mut document: StateDocumentScratch,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         self.translate_doc(&mut document, control)?;
@@ -129,11 +129,11 @@ impl StateDb {
 
     fn translate_state_concurrency_split(
         &mut self,
-        document: &mut StateDocument,
+        document: &mut StateDocumentScratch,
         doc: StateDocumentId,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        let old = std::mem::take(&mut document.documents[doc.0]);
+        let old = std::mem::take(document.get_mut(doc));
         let mut out = Vec::new();
         let mut current = Vec::new();
         let mut saw_divider = false;
@@ -155,13 +155,13 @@ impl StateDb {
             divider.doc = Some(document.push(std::mem::take(&mut current)));
             out.push(StateStatement::State(divider));
         }
-        document.documents[doc.0] = if saw_divider { out } else { current };
+        *document.get_mut(doc) = if saw_divider { out } else { current };
         Ok(())
     }
 
     fn translate_doc(
         &mut self,
-        document: &mut StateDocument,
+        document: &mut StateDocumentScratch,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         let Some(root) = document.root else {
@@ -173,7 +173,7 @@ impl StateDb {
             if inspected.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            let Some(stmt) = document.documents[doc.0].get_mut(*index) else {
+            let Some(stmt) = document.get_mut(*doc).get_mut(*index) else {
                 stack.pop();
                 continue;
             };
@@ -434,9 +434,11 @@ impl StateDb {
             true,
             control,
         )? {
-            Ok(construction) => Ok(Ok(
-                construction.into_render_model(meta.effective_config.as_config(), control)?
-            )),
+            Ok(construction) => Ok(Ok(super::render_model::into_render_model(
+                construction,
+                meta.effective_config.as_config(),
+                control,
+            )?)),
             Err(error) => Ok(Err(error)),
         }
     }
@@ -593,6 +595,14 @@ impl StateDb {
             links.insert(key, declarations);
         }
 
+        let document = match document.finish_controlled(control)? {
+            Ok(document) => document,
+            Err(error) => {
+                return Ok(Err(Error::Internal(crate::InternalFailure::new(format!(
+                    "State document construction invariant failed: {error}"
+                )))));
+            }
+        };
         control.checkpoint()?;
         Ok(Ok(StateModelConstruction {
             model: StateDiagramModel {
@@ -879,7 +889,7 @@ impl From<OperationCancelled> for StateBuildError {
 }
 
 fn build_state_graph(
-    document: &StateDocument,
+    document: &StateDocumentScratch,
     states: &HashMap<String, StateDbRecord>,
     classes: &IndexMap<String, StyleClass>,
     config: &MermaidConfig,
@@ -896,7 +906,7 @@ fn build_state_graph(
     let mut graph_item_count: usize = 0;
 
     struct StateGraphContext<'a> {
-        document: &'a StateDocument,
+        document: &'a StateDocumentScratch,
         control: &'a OperationControl,
         states: &'a HashMap<String, StateDbRecord>,
         classes: &'a IndexMap<String, StyleClass>,
@@ -942,7 +952,12 @@ fn build_state_graph(
                 ctx.control.checkpoint()?;
             }
             inspected = inspected.saturating_add(1);
-            let Some(item) = ctx.document.documents[frame.doc.0].get(frame.index) else {
+            let Some(item) = ctx
+                .document
+                .get(frame.doc)
+                .expect("scratch document exists")
+                .get(frame.index)
+            else {
                 stack.pop();
                 continue;
             };
@@ -1098,7 +1113,7 @@ fn build_state_graph(
         if entry.node_type.is_none()
             && let Some(doc_id) = parsed_item.doc
         {
-            let doc = &ctx.document.documents[doc_id.0];
+            let doc = ctx.document.get(doc_id).expect("scratch document exists");
             entry.node_type = Some("group".to_string());
             entry.is_group = true;
             let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
@@ -1511,7 +1526,7 @@ mod tests {
             "click Done \"https://example.com/only\" \"Only tip\"\n",
         );
         let control = OperationControl::new();
-        let mut document = StateDocument::default();
+        let mut document = StateDocumentScratch::default();
         let root = state_grammar::RootParser::new()
             .parse(&mut document, Lexer::new(source))
             .expect("real State grammar accepts the ownership fixture");
@@ -1542,7 +1557,7 @@ mod tests {
             }
         }
 
-        let document_storage = db.document.documents.as_ptr();
+        let document_storage = db.document.root_statements().as_ptr();
         let common = (
             db.direction.as_ref().unwrap().as_ptr(),
             db.acc_title.as_ref().unwrap().as_ptr(),
@@ -1621,7 +1636,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(render_model::projected_document_count(), 0);
-        assert_eq!(model.document.documents.as_ptr(), document_storage);
+        assert_eq!(
+            model
+                .document
+                .get(model.document.root().unwrap())
+                .unwrap()
+                .as_ptr(),
+            document_storage
+        );
         assert_eq!(
             (
                 model.direction.as_ptr(),
@@ -1790,7 +1812,7 @@ mod tests {
             "style Ready fill:green,font-weight:bold\nReady --> Done\n",
         );
         let control = OperationControl::new();
-        let mut document = StateDocument::default();
+        let mut document = StateDocumentScratch::default();
         let root = state_grammar::RootParser::new()
             .parse(&mut document, Lexer::new(source))
             .expect("real State grammar accepts the slack fixture");
@@ -1954,7 +1976,7 @@ mod tests {
         use crate::diagrams::state::{Lexer, state_grammar};
 
         let control = OperationControl::new();
-        let mut document = StateDocument::default();
+        let mut document = StateDocumentScratch::default();
         let root = state_grammar::RootParser::new()
             .parse(
                 &mut document,
@@ -1963,7 +1985,7 @@ mod tests {
             .unwrap();
         document.root = Some(root);
         // The legacy hidden-note representation is programmatic, not authored grammar syntax.
-        let [StateStatement::State(state)] = document.documents[root.0].as_mut_slice() else {
+        let [StateStatement::State(state)] = document.get_mut(root).as_mut_slice() else {
             panic!("real grammar produces the positioned-note owner");
         };
         state.note.as_mut().unwrap().position = None;

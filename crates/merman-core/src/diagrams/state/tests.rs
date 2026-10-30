@@ -84,10 +84,7 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
     assert!(db::dom_id_count() > 0);
     assert_eq!(semantic.direction, render.direction);
     assert_eq!(semantic.document.root(), render.document.root());
-    assert_eq!(
-        semantic.document.documents.len(),
-        render.document.documents.len()
-    );
+    assert_eq!(semantic.document.len(), render.document.len());
     assert_eq!(semantic.nodes.len(), render.nodes.len());
     assert_eq!(semantic.edges.len(), render.edges.len());
     for (semantic, render) in semantic.nodes.iter().zip(&render.nodes) {
@@ -209,7 +206,11 @@ fn state_flat_documents_preserve_dividers_and_nested_semantic_order() {
     let statements = model.document.get(root).expect("root statements");
     assert_eq!(statements.len(), 3);
     assert_eq!(
-        model.document.documents.iter().map(Vec::len).sum::<usize>(),
+        model
+            .document
+            .iter()
+            .map(|(_, statements)| statements.len())
+            .sum::<usize>(),
         13
     );
     let outer = model.states["Outer"].doc.expect("outer document id");
@@ -420,7 +421,7 @@ fn state_divider_assignment_cancellation_releases_completed_grammar_documents() 
         source.push_str(&format!("S{index}\n--\n"));
     }
     source.push_str("}\n");
-    let mut document = StateDocument::default();
+    let mut document = StateDocumentScratch::default();
     let root = state_grammar::RootParser::new()
         .parse(&mut document, Lexer::new(&source))
         .unwrap();

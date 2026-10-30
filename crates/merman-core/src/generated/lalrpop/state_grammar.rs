@@ -1,7 +1,7 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: fdec1a4db285d64f90c3b3124ed8c27463a42d181f5808b79f88a520c2f58eb3
+// sha3: d420087c813bdfd5e0be47015374f0a1b273bffbf81949e868072a76007eb676
 // features:
-use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocument, StateDocumentId, Tok};
+use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocumentScratch as StateDocument, StateDocumentId, Tok};
 use crate::SourceSpan;
 #[allow(unused_extern_crates)]
 extern crate lalrpop_util as ___lalrpop_util;
@@ -14,7 +14,7 @@ extern crate alloc;
 #[allow(explicit_outlives_requirements, non_snake_case, non_camel_case_types, unused_mut, unused_variables, unused_imports, unused_parens, clippy::needless_lifetimes, clippy::type_complexity, clippy::needless_return, clippy::too_many_arguments, clippy::match_single_binding, clippy::clone_on_copy, clippy::unit_arg)]
 mod ___parse___Root {
 
-    use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocument, StateDocumentId, Tok};
+    use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocumentScratch as StateDocument, StateDocumentId, Tok};
     use crate::SourceSpan;
     #[allow(unused_extern_crates)]
     extern crate lalrpop_util as ___lalrpop_util;

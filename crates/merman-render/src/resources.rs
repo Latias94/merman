@@ -617,7 +617,7 @@ impl RenderResourcePolicy {
         &self,
         model: &RenderSemanticModel,
     ) -> Result<(), ResourceLimitExceeded> {
-        let complexity = ModelComplexity::from_render_model(model);
+        let complexity = merman_core::resources::model_complexity_from_render_model(model);
         self.check_model_complexity(complexity)
     }
 
@@ -625,7 +625,8 @@ impl RenderResourcePolicy {
         &self,
         parsed: &ParsedDiagramRender,
     ) -> Result<(), ResourceLimitExceeded> {
-        let mut complexity = ModelComplexity::from_render_model(parsed.model());
+        let mut complexity =
+            merman_core::resources::model_complexity_from_render_model(parsed.model());
         complexity.text_bytes = complexity
             .text_bytes
             .saturating_add(parsed.retained_render_context_bytes());

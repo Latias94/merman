@@ -16,7 +16,7 @@ Status: M0 complete, M1 in progress, 2026-10-30. This records implementation of 
 | --- | --- | --- |
 | M0 | Complete | All six independent consumers compiled and passed both runtime inputs, repeated-output checks and raw/stripped equivalence. |
 | M1 | In progress | Shared lifecycle/config/runtime extraction passed core/model tests and output-consumer compilation; full model-dependent policy/identity migration remains open. |
-| M2 | In progress | First ten canonical payloads and shared warning facts moved; 2351 core/model tests passed. Remaining payloads and final consumer admission are open. |
+| M2 | In progress | Fourteen canonical payloads moved, including Flowchart/Class/ER/State and their required full data/context; 2362 core/model tests passed. Remaining payloads and final consumer admission are open. |
 | M3–M8 | Open | No implementation or acceptance result yet. |
 
 Existing correctness results at the prerequisite retain their original scope in the [dependency review](../research/2026-10-30-dependency-review.md). New consumer baselines and implementation gates will be recorded here as they complete. Do not infer a runtime improvement from the package boundary or rewrite historical measurement hashes.
@@ -81,3 +81,55 @@ The first group's model-only production graph excludes core, YAML/JSON5, HTML5 r
 admission. Its all-features model run passed 56 tests (`3d96d9ab-096f-4991-a5a4-8d9925138567`);
 production-library Clippy with `-D warnings`, formatting and the facade
 `all-diagrams,svg,ascii,analysis` consumer check passed. No external package version changed.
+
+## M2 Flowchart, Class and ER checkpoint
+
+Thirteen of 34 canonical payloads now have a model-package owner. Flowchart's public model and
+subgraph CSS provenance move separately from its parser-private node/edge/syntax records. Pure
+Flowchart render labels/context are `presentation-data`. Class keeps one canonical model, one real
+full presentation view and controlled borrowed topology; ER retains its canonical graph and exact
+alias/label selection. Core sanitizers and original-source adapters remain source-owned.
+
+Class DB retains private mutable style observations and selects first witnesses at the same events;
+it passes the completed four-witness set to the shared facts constructor at model construction.
+Witness payloads retain private storage and read accessors. These are declared data APIs and do not
+certify a caller's parse history. The Class vocabulary constants have one shared owner. Minimal
+Class entity decoding is defined once in the shared text module and reused by core and full Class
+views.
+
+Generic `ModelComplexity` construction, Serde counting and iterative JSON traversal now belong to
+model. Core's parsed/full/semantic enum adapters are ordinary source-owner functions. Existing
+source/output consumers call those adapters while their data dependencies migrate; no foreign
+inherent impl or duplicate complexity algorithm is introduced. Shared JSON counts preserve raw
+cardinality, logical versus container depth, saturation and bounded scratch behavior.
+
+The combined core/model nextest run passed 2354 tests (`008b070b-996e-4bfd-b3fb-6c1049afcfb9`).
+Agentflow-only, Class-only and empty core checks passed. The bounded independent review found no
+correctness blocker in witness capture, COW/context pairing, complexity counts or caller migration.
+State's flat-document construction boundary is integrated in the same implementation batch.
+
+## M2 State completed-document boundary
+
+State raises the canonical data inventory to fourteen of 34 payloads. The model package owns the
+flat document/statement/ID types, canonical and actual full node/edge/model data, borrowed terminal
+views, flat serializers and pure complexity. Grammar, DB, render preparation and Mermaid-JSON
+expansion/routing remain source-owned. The grammar takes `StateDocumentScratch`; the existing
+LALRPOP generator refreshes the checked-in parser and its source digest.
+
+`StateDocumentBuilder` separates mutable construction from completed immutable storage. Its
+controlled completion validates root, child indices, unique ownership and reachability with iterative
+traversal. State records may continue sharing references into the completed tree. Private ID storage
+and document fields remain private, with allocation-order reads and completed-tree accessors.
+Cancellation is checked before validation failure and during traversal. Private source-construction
+invariant failures use the internal error channel; original grammar diagnostics retain their own
+channel. New boundary controls cover invalid roots/children/cycles/duplicates/unreachable documents,
+record sharing, borrowed canonical/full data, deep clone/drop/statistics and cancellation.
+
+The completed-tree validation adds linear work and scratch proportional to the document count. It
+establishes a real cross-package construction invariant; no runtime speedup is attributed to it.
+Original source recovery/concurrency and deep lifecycle tests remain required. The combined
+core/model run passed all 2362 tests (`7e0e1883-51a0-41d7-9091-70aee38b95d9`). Model all-features
+passed 79 tests (`e3d6b2e1-0738-4ce7-8e11-4e999b770ef6`), production-library Clippy passed with
+`-D warnings`, and facade `all-diagrams,svg,ascii,analysis` compiled. Existing LALRPOP generation and
+verification passed. A bounded independent review found no State tree/lifecycle/error blocker.
+All 1397 ASCII runtime tests passed (`7eed2dbd-3129-4121-b4e9-c658b250103b`), including terminal safety, fallback, cancellation and resource owners. The eight fixed-consumer staging/receipt tests also passed after migrating the model fixture imports. A committed independent model consumer observation follows; these are partial implementation results rather than completion of M2 or the whole plan.

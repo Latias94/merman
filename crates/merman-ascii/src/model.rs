@@ -185,7 +185,9 @@ impl<'a> AsciiDiagram<'a> {
     pub(crate) fn complexity(&self) -> ModelComplexity {
         match self {
             #[cfg(feature = "diagram-class")]
-            Self::Class(model) => model.complexity(),
+            Self::Class(model) => {
+                merman_core::models::class_diagram::class_topology_complexity(model)
+            }
             #[cfg(feature = "diagram-er")]
             Self::Er(model) => ModelComplexity::from_serializable(model),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]

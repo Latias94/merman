@@ -6,6 +6,10 @@ use crate::diagrams::scan::{
 };
 
 mod ast;
+pub(crate) use ast::StateDocumentScratch;
+pub(crate) use model::sanitize_common_db_fields;
+#[cfg(feature = "presentation")]
+pub(crate) use render_model::sanitize_common_db_fields as sanitize_render_common_db_fields;
 mod complexity;
 mod db;
 #[cfg(test)]

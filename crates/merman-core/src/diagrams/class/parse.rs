@@ -271,7 +271,10 @@ pub(crate) fn parse_class_semantic_model_controlled(
             editor_facts,
         }) => {
             let mut model = db.into_semantic_model(&metadata.diagram_type);
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            crate::models::class_diagram::sanitize_common_db_fields(
+                &mut model,
+                &metadata.semantic_config,
+            );
             SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]

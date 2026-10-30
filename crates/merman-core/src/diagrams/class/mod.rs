@@ -4,17 +4,10 @@ include_checked_in_lalrpop_parser!(
     "class_grammar.rs"
 );
 
-pub(crate) const LINE_SOLID: i32 = 0;
-pub(crate) const LINE_DOTTED: i32 = 1;
-
-pub(crate) const REL_AGGREGATION: i32 = 0;
-pub(crate) const REL_EXTENSION: i32 = 1;
-pub(crate) const REL_COMPOSITION: i32 = 2;
-pub(crate) const REL_DEPENDENCY: i32 = 3;
-pub(crate) const REL_LOLLIPOP: i32 = 4;
-pub(crate) const REL_NONE: i32 = -1;
-
-pub(crate) const MERMAID_DOM_ID_PREFIX: &str = "classId-";
+pub(crate) use merman_model::families::class::{
+    LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
+    REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
+};
 
 mod ast;
 mod db;

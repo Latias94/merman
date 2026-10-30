@@ -11,6 +11,7 @@ pub mod operation;
 pub mod resources;
 pub mod runtime;
 pub mod source;
+pub mod text;
 pub mod time;
 pub mod warnings;
 

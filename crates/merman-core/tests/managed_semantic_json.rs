@@ -269,7 +269,7 @@ fn managed_json_lifecycle_child() {
                 .unwrap()
                 .unwrap();
             assert_eq!(
-                merman_core::resources::ModelComplexity::from_render_model(typed.model())
+                merman_core::resources::model_complexity_from_render_model(typed.model())
                     .nesting_depth,
                 4_999
             );

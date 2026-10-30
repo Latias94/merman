@@ -2126,7 +2126,7 @@ mod tests {
             nested = Value::Array(vec![nested]);
         }
         let model = sequence_model_with_property(nested);
-        let complexity = merman_core::resources::ModelComplexity::from_render_model(&model);
+        let complexity = merman_core::resources::model_complexity_from_render_model(&model);
 
         let exact_policy = crate::AsciiResourcePolicy::unbounded()
             .with_limit(
@@ -2204,7 +2204,7 @@ mod tests {
     #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_preflight_charges_json_items_as_layout_work() {
         let model = sequence_model_with_property(Value::Array(vec![Value::Null; 4_096]));
-        let mut complexity = merman_core::resources::ModelComplexity::from_render_model(&model);
+        let mut complexity = merman_core::resources::model_complexity_from_render_model(&model);
         complexity.items +=
             merman_core::resources::ModelComplexity::from_json(&serde_json::json!({})).items;
         assert!(complexity.items > 4_096);

@@ -20,7 +20,7 @@ use crate::diagrams::mindmap::MindmapDiagramModel;
 use crate::diagrams::mindmap::MindmapDiagramRenderModel;
 #[cfg(feature = "diagram-radar")]
 use crate::diagrams::radar::RadarDiagramModel;
-#[cfg(feature = "diagram-requirement")]
+#[cfg(all(test, feature = "diagram-requirement"))]
 use crate::diagrams::requirement::RequirementDiagramModel;
 #[cfg(feature = "diagram-sequence")]
 use crate::diagrams::sequence::SequenceDiagramModel;
@@ -32,11 +32,6 @@ use crate::diagrams::zenuml::{ZenumlDiagramModel, ZenumlStatementKind};
 use crate::models::class_diagram::ClassDiagram;
 #[cfg(feature = "diagram-class")]
 use crate::models::class_diagram::ClassTopologyView;
-use serde::Serialize;
-use serde::ser::{
-    SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
-    SerializeTupleStruct, SerializeTupleVariant,
-};
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
@@ -338,7 +333,7 @@ impl InputResourcePolicy {
         &self,
         model: &RenderSemanticModel,
     ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_model_complexity(ModelComplexity::from_render_model(model))
+        self.check_model_complexity(model_complexity_from_render_model(model))
     }
 
     #[cfg(feature = "presentation")]
@@ -346,14 +341,14 @@ impl InputResourcePolicy {
         &self,
         parsed: &ParsedDiagramRender,
     ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_model_complexity(ModelComplexity::from_parsed_render(parsed))
+        self.check_model_complexity(model_complexity_from_parsed_render(parsed))
     }
 
     pub fn check_semantic_model(
         &self,
         model: &crate::SemanticDiagramModel,
     ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_model_complexity(ModelComplexity::from_semantic_model(model))
+        self.check_model_complexity(model_complexity_from_semantic_model(model))
     }
 
     pub fn check_model_complexity(
@@ -487,836 +482,378 @@ pub struct InputResourceLimitOverride {
     pub value: usize,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ModelComplexity {
-    pub items: usize,
-    pub text_bytes: usize,
-    pub nesting_depth: usize,
+#[cfg(feature = "diagram-sequence")]
+use merman_model::resources::JsonValueComplexity;
+pub use merman_model::resources::ModelComplexity;
+#[cfg(any(
+    feature = "diagram-kanban",
+    feature = "diagram-sequence",
+    feature = "diagram-treemap"
+))]
+use merman_model::resources::json_value_complexity;
+
+/// Counts canonical semantics and their paired parser-owned rendering text.
+#[cfg(feature = "presentation")]
+pub fn model_complexity_from_parsed_render(parsed: &ParsedDiagramRender) -> ModelComplexity {
+    let mut complexity = model_complexity_from_render_model(parsed.model());
+    complexity.text_bytes = complexity
+        .text_bytes
+        .saturating_add(parsed.retained_render_context_bytes());
+    complexity
 }
 
-impl ModelComplexity {
-    pub const fn new(items: usize, text_bytes: usize, nesting_depth: usize) -> Self {
-        Self {
-            items,
-            text_bytes,
-            nesting_depth,
+#[cfg(feature = "presentation")]
+pub fn model_complexity_from_render_model(model: &RenderSemanticModel) -> ModelComplexity {
+    match model {
+        RenderSemanticModel::Error(model) => ModelComplexity::from_serializable(model),
+        RenderSemanticModel::CustomJson(model) => {
+            let mut complexity = ModelComplexity::from_json(model.value());
+            complexity.text_bytes = complexity
+                .text_bytes
+                .saturating_add(model.model_name().len());
+            complexity
+        }
+        #[cfg(feature = "diagram-mindmap")]
+        RenderSemanticModel::Mindmap(model) => {
+            MindmapComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-state")]
+        RenderSemanticModel::State(model) => model.model_complexity(),
+        #[cfg(feature = "diagram-sequence")]
+        RenderSemanticModel::Sequence(model) => {
+            SequenceComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-zenuml")]
+        RenderSemanticModel::Zenuml(model) => {
+            ZenumlComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        RenderSemanticModel::Flowchart(model) => {
+            FlowchartComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-architecture")]
+        RenderSemanticModel::Architecture(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-class")]
+        RenderSemanticModel::Class(model) => {
+            let mut complexity = ClassComplexity::topology_from_model(model).as_model_complexity();
+            complexity.text_bytes = ModelComplexity::from_serializable(model.model())
+                .text_bytes
+                .saturating_add(model.presentation().retained_bytes());
+            complexity
+        }
+        #[cfg(feature = "diagram-c4")]
+        RenderSemanticModel::C4(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-cynefin")]
+        RenderSemanticModel::Cynefin(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-railroad")]
+        RenderSemanticModel::Railroad(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-kanban")]
+        RenderSemanticModel::Kanban(model) => model_complexity_from_kanban(model),
+        #[cfg(feature = "diagram-gantt")]
+        RenderSemanticModel::Gantt(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-pie")]
+        RenderSemanticModel::Pie(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-packet")]
+        RenderSemanticModel::Packet(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-timeline")]
+        RenderSemanticModel::Timeline(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-journey")]
+        RenderSemanticModel::Journey(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-requirement")]
+        RenderSemanticModel::Requirement(model) => ModelComplexity::from_requirement(model),
+        #[cfg(feature = "diagram-sankey")]
+        RenderSemanticModel::Sankey(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-radar")]
+        RenderSemanticModel::Radar(model) => model_complexity_from_radar(model.as_semantic_model()),
+        #[cfg(feature = "diagram-info")]
+        RenderSemanticModel::Info(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-treemap")]
+        RenderSemanticModel::Treemap(model) => {
+            TreemapComplexity::from_render_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-block")]
+        RenderSemanticModel::Block(model) => model.model_complexity(),
+        #[cfg(feature = "diagram-er")]
+        RenderSemanticModel::Er(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-quadrant-chart")]
+        RenderSemanticModel::QuadrantChart(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-xychart")]
+        RenderSemanticModel::XyChart(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-git-graph")]
+        RenderSemanticModel::GitGraph(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-tree-view")]
+        RenderSemanticModel::TreeView(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-ishikawa")]
+        RenderSemanticModel::Ishikawa(model) => {
+            IshikawaComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-event-modeling")]
+        RenderSemanticModel::EventModeling(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-venn")]
+        RenderSemanticModel::Venn(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-wardley")]
+        RenderSemanticModel::Wardley(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-usecase")]
+        RenderSemanticModel::Usecase(model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(model) => ModelComplexity::from_serializable(model),
+    }
+}
+
+pub fn model_complexity_from_semantic_model(
+    model: &crate::SemanticDiagramModel,
+) -> ModelComplexity {
+    match *model {
+        crate::SemanticDiagramModel::Error(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-agentflow")]
+        crate::SemanticDiagramModel::Agentflow(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-git-graph")]
+        crate::SemanticDiagramModel::GitGraph(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-class")]
+        crate::SemanticDiagramModel::Class(ref model) => {
+            let mut complexity = ModelComplexity::from_serializable(model);
+            complexity.nesting_depth = complexity
+                .nesting_depth
+                .max(class_namespace_depth(&model.namespaces));
+            complexity
+        }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        crate::SemanticDiagramModel::Flowchart(ref model) => {
+            FlowchartComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-sequence")]
+        crate::SemanticDiagramModel::Sequence(ref model) => {
+            SequenceComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-state")]
+        crate::SemanticDiagramModel::State(ref model) => model.model_complexity(),
+        #[cfg(feature = "diagram-cynefin")]
+        crate::SemanticDiagramModel::Cynefin(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-info")]
+        crate::SemanticDiagramModel::Info(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-pie")]
+        crate::SemanticDiagramModel::Pie(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-packet")]
+        crate::SemanticDiagramModel::Packet(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-tree-view")]
+        crate::SemanticDiagramModel::TreeView(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-quadrant-chart")]
+        crate::SemanticDiagramModel::QuadrantChart(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-radar")]
+        crate::SemanticDiagramModel::Radar(ref model) => model_complexity_from_radar(model),
+        #[cfg(feature = "diagram-sankey")]
+        crate::SemanticDiagramModel::Sankey(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-venn")]
+        crate::SemanticDiagramModel::Venn(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-er")]
+        crate::SemanticDiagramModel::Er(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-architecture")]
+        crate::SemanticDiagramModel::Architecture(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-gantt")]
+        crate::SemanticDiagramModel::Gantt(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-c4")]
+        crate::SemanticDiagramModel::C4(ref model) => ModelComplexity::from_serializable(model),
+        #[cfg(feature = "diagram-block")]
+        crate::SemanticDiagramModel::Block(ref model) => model_complexity_from_block(model),
+        #[cfg(feature = "diagram-kanban")]
+        crate::SemanticDiagramModel::Kanban(ref model) => {
+            model_complexity_from_kanban_semantic(model)
+        }
+        #[cfg(feature = "diagram-mindmap")]
+        crate::SemanticDiagramModel::Mindmap(ref model) => {
+            MindmapComplexity::from_semantic_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-xychart")]
+        crate::SemanticDiagramModel::XyChart(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-ishikawa")]
+        crate::SemanticDiagramModel::Ishikawa(ref model) => {
+            IshikawaComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-treemap")]
+        crate::SemanticDiagramModel::Treemap(ref model) => {
+            TreemapComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-requirement")]
+        crate::SemanticDiagramModel::Requirement(ref model) => {
+            ModelComplexity::from_requirement(model)
+        }
+        #[cfg(feature = "diagram-usecase")]
+        crate::SemanticDiagramModel::Usecase(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-event-modeling")]
+        crate::SemanticDiagramModel::EventModeling(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-wardley")]
+        crate::SemanticDiagramModel::Wardley(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-railroad")]
+        crate::SemanticDiagramModel::Railroad(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-zenuml")]
+        crate::SemanticDiagramModel::Zenuml(ref model) => {
+            ZenumlComplexity::from_model(model).as_model_complexity()
+        }
+        #[cfg(feature = "diagram-journey")]
+        crate::SemanticDiagramModel::Journey(ref model) => {
+            ModelComplexity::from_serializable(model)
+        }
+        #[cfg(feature = "diagram-timeline")]
+        crate::SemanticDiagramModel::Timeline(ref model) => {
+            ModelComplexity::from_serializable(model)
         }
     }
+}
 
-    /// Counts canonical semantics and their paired parser-owned rendering text.
-    #[cfg(feature = "presentation")]
-    pub fn from_parsed_render(parsed: &ParsedDiagramRender) -> Self {
-        let mut complexity = Self::from_render_model(parsed.model());
-        complexity.text_bytes = complexity
-            .text_bytes
-            .saturating_add(parsed.retained_render_context_bytes());
-        complexity
-    }
-
-    #[cfg(feature = "presentation")]
-    pub fn from_render_model(model: &RenderSemanticModel) -> Self {
-        match model {
-            RenderSemanticModel::Error(model) => Self::from_serializable(model),
-            RenderSemanticModel::CustomJson(model) => {
-                let mut complexity = Self::from_json(model.value());
-                complexity.text_bytes = complexity
-                    .text_bytes
-                    .saturating_add(model.model_name().len());
-                complexity
-            }
-            #[cfg(feature = "diagram-mindmap")]
-            RenderSemanticModel::Mindmap(model) => {
-                MindmapComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-state")]
-            RenderSemanticModel::State(model) => model.model_complexity(),
-            #[cfg(feature = "diagram-sequence")]
-            RenderSemanticModel::Sequence(model) => {
-                SequenceComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-zenuml")]
-            RenderSemanticModel::Zenuml(model) => {
-                ZenumlComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            RenderSemanticModel::Flowchart(model) => {
-                FlowchartComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-architecture")]
-            RenderSemanticModel::Architecture(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-class")]
-            RenderSemanticModel::Class(model) => {
-                let mut complexity =
-                    ClassComplexity::topology_from_model(model).as_model_complexity();
-                complexity.text_bytes = Self::from_serializable(model.model())
-                    .text_bytes
-                    .saturating_add(model.presentation().retained_bytes());
-                complexity
-            }
-            #[cfg(feature = "diagram-c4")]
-            RenderSemanticModel::C4(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-cynefin")]
-            RenderSemanticModel::Cynefin(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-railroad")]
-            RenderSemanticModel::Railroad(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-kanban")]
-            RenderSemanticModel::Kanban(model) => Self::from_kanban(model),
-            #[cfg(feature = "diagram-gantt")]
-            RenderSemanticModel::Gantt(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-pie")]
-            RenderSemanticModel::Pie(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-packet")]
-            RenderSemanticModel::Packet(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-timeline")]
-            RenderSemanticModel::Timeline(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-journey")]
-            RenderSemanticModel::Journey(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-requirement")]
-            RenderSemanticModel::Requirement(model) => Self::from_requirement(model),
-            #[cfg(feature = "diagram-sankey")]
-            RenderSemanticModel::Sankey(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-radar")]
-            RenderSemanticModel::Radar(model) => Self::from_radar(model.as_semantic_model()),
-            #[cfg(feature = "diagram-info")]
-            RenderSemanticModel::Info(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-treemap")]
-            RenderSemanticModel::Treemap(model) => {
-                TreemapComplexity::from_render_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-block")]
-            RenderSemanticModel::Block(model) => model.model_complexity(),
-            #[cfg(feature = "diagram-er")]
-            RenderSemanticModel::Er(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-quadrant-chart")]
-            RenderSemanticModel::QuadrantChart(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-xychart")]
-            RenderSemanticModel::XyChart(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-git-graph")]
-            RenderSemanticModel::GitGraph(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-tree-view")]
-            RenderSemanticModel::TreeView(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-ishikawa")]
-            RenderSemanticModel::Ishikawa(model) => {
-                IshikawaComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-event-modeling")]
-            RenderSemanticModel::EventModeling(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-venn")]
-            RenderSemanticModel::Venn(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-wardley")]
-            RenderSemanticModel::Wardley(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-usecase")]
-            RenderSemanticModel::Usecase(model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-agentflow")]
-            RenderSemanticModel::Agentflow(model) => Self::from_serializable(model),
+#[cfg(feature = "diagram-block")]
+pub fn model_complexity_from_block(
+    model: &crate::diagrams::block::BlockDiagramModel,
+) -> ModelComplexity {
+    let mut complexity = ModelComplexity::from_serializable(model);
+    let mut pending = model
+        .root
+        .map(|root| vec![(root, 0usize)])
+        .unwrap_or_default();
+    let mut visited = vec![false; model.blocks_flat.len()];
+    while let Some((index, depth)) = pending.pop() {
+        let Some(node) = model.blocks_flat.get(index) else {
+            continue;
+        };
+        if std::mem::replace(&mut visited[index], true) {
+            continue;
         }
-    }
-
-    pub fn from_semantic_model(model: &crate::SemanticDiagramModel) -> Self {
-        match *model {
-            crate::SemanticDiagramModel::Error(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-agentflow")]
-            crate::SemanticDiagramModel::Agentflow(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-git-graph")]
-            crate::SemanticDiagramModel::GitGraph(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-class")]
-            crate::SemanticDiagramModel::Class(ref model) => {
-                let mut complexity = Self::from_serializable(model);
-                complexity.nesting_depth = complexity
-                    .nesting_depth
-                    .max(class_namespace_depth(&model.namespaces));
-                complexity
-            }
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            crate::SemanticDiagramModel::Flowchart(ref model) => {
-                FlowchartComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-sequence")]
-            crate::SemanticDiagramModel::Sequence(ref model) => {
-                SequenceComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-state")]
-            crate::SemanticDiagramModel::State(ref model) => model.model_complexity(),
-            #[cfg(feature = "diagram-cynefin")]
-            crate::SemanticDiagramModel::Cynefin(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-info")]
-            crate::SemanticDiagramModel::Info(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-pie")]
-            crate::SemanticDiagramModel::Pie(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-packet")]
-            crate::SemanticDiagramModel::Packet(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-tree-view")]
-            crate::SemanticDiagramModel::TreeView(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-quadrant-chart")]
-            crate::SemanticDiagramModel::QuadrantChart(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-radar")]
-            crate::SemanticDiagramModel::Radar(ref model) => Self::from_radar(model),
-            #[cfg(feature = "diagram-sankey")]
-            crate::SemanticDiagramModel::Sankey(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-venn")]
-            crate::SemanticDiagramModel::Venn(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-er")]
-            crate::SemanticDiagramModel::Er(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-architecture")]
-            crate::SemanticDiagramModel::Architecture(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-gantt")]
-            crate::SemanticDiagramModel::Gantt(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-c4")]
-            crate::SemanticDiagramModel::C4(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-block")]
-            crate::SemanticDiagramModel::Block(ref model) => Self::from_block(model),
-            #[cfg(feature = "diagram-kanban")]
-            crate::SemanticDiagramModel::Kanban(ref model) => Self::from_kanban_semantic(model),
-            #[cfg(feature = "diagram-mindmap")]
-            crate::SemanticDiagramModel::Mindmap(ref model) => {
-                MindmapComplexity::from_semantic_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-xychart")]
-            crate::SemanticDiagramModel::XyChart(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-ishikawa")]
-            crate::SemanticDiagramModel::Ishikawa(ref model) => {
-                IshikawaComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-treemap")]
-            crate::SemanticDiagramModel::Treemap(ref model) => {
-                TreemapComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-requirement")]
-            crate::SemanticDiagramModel::Requirement(ref model) => Self::from_requirement(model),
-            #[cfg(feature = "diagram-usecase")]
-            crate::SemanticDiagramModel::Usecase(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-event-modeling")]
-            crate::SemanticDiagramModel::EventModeling(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-wardley")]
-            crate::SemanticDiagramModel::Wardley(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-railroad")]
-            crate::SemanticDiagramModel::Railroad(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-zenuml")]
-            crate::SemanticDiagramModel::Zenuml(ref model) => {
-                ZenumlComplexity::from_model(model).as_model_complexity()
-            }
-            #[cfg(feature = "diagram-journey")]
-            crate::SemanticDiagramModel::Journey(ref model) => Self::from_serializable(model),
-            #[cfg(feature = "diagram-timeline")]
-            crate::SemanticDiagramModel::Timeline(ref model) => Self::from_serializable(model),
-        }
-    }
-
-    /// Counts the stable serialized model shape used by JSON-returning transport operations.
-    ///
-    /// A model whose serializer refuses the generic depth boundary receives saturated complexity
-    /// so resource policy rejects it without panicking. Use [`Self::from_json`] for an exact count
-    /// of a managed JSON value at arbitrary depth.
-    pub fn from_serializable<T: Serialize + ?Sized>(model: &T) -> Self {
-        let mut counter = ModelComplexitySerializer::default();
-        if model.serialize(&mut counter).is_err() {
-            return Self::new(usize::MAX, usize::MAX, usize::MAX);
-        }
-        counter.finish()
-    }
-
-    /// Counts JSON's serialized shape without invoking a recursive serializer.
-    pub fn from_json(model: &serde_json::Value) -> Self {
-        let complexity = json_value_complexity(model, 0);
-        Self::new(
-            complexity.items.max(1),
-            complexity.text_bytes,
-            complexity.container_depth,
-        )
-    }
-
-    #[cfg(feature = "diagram-block")]
-    pub fn from_block(model: &crate::diagrams::block::BlockDiagramModel) -> Self {
-        let mut complexity = Self::from_serializable(model);
-        let mut pending = model
-            .root
-            .map(|root| vec![(root, 0usize)])
-            .unwrap_or_default();
-        let mut visited = vec![false; model.blocks_flat.len()];
-        while let Some((index, depth)) = pending.pop() {
-            let Some(node) = model.blocks_flat.get(index) else {
-                continue;
-            };
-            if std::mem::replace(&mut visited[index], true) {
-                continue;
-            }
-            complexity.nesting_depth = complexity.nesting_depth.max(depth);
-            pending.extend(
-                node.children
-                    .iter()
-                    .map(|child| (*child, depth.saturating_add(1))),
-            );
-        }
-        complexity
-    }
-
-    #[cfg(feature = "diagram-kanban")]
-    pub fn from_kanban_semantic(model: &KanbanDiagramModel) -> Self {
-        let mut complexity = Self::new(
-            model.nodes.len(),
-            0,
-            kanban_nesting_depth(
-                model
-                    .nodes
-                    .iter()
-                    .map(|node| (node.id.as_str(), node.parent_id.as_deref())),
-            ),
+        complexity.nesting_depth = complexity.nesting_depth.max(depth);
+        pending.extend(
+            node.children
+                .iter()
+                .map(|child| (*child, depth.saturating_add(1))),
         );
-        for node in &model.nodes {
-            for text in [
-                Some(node.id.as_str()),
-                Some(node.label.as_str()),
-                node.parent_id.as_deref(),
-                node.ticket.as_deref(),
-                node.priority.as_deref(),
-                node.assigned.as_deref(),
-                node.icon.as_deref(),
-                node.css_classes.as_deref(),
-                node.shape.as_deref(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                complexity.text_bytes = complexity.text_bytes.saturating_add(text.len());
-            }
-            if let Some(metadata) = &node.metadata {
-                let metadata = json_value_complexity(metadata.as_value(), 0);
-                complexity.items = complexity.items.saturating_add(metadata.items);
-                complexity.text_bytes = complexity.text_bytes.saturating_add(metadata.text_bytes);
-                complexity.nesting_depth = complexity.nesting_depth.max(metadata.nesting_depth);
-            }
-        }
-        complexity
     }
+    complexity
+}
 
-    #[cfg(all(feature = "diagram-kanban", feature = "presentation"))]
-    pub fn from_kanban(model: &KanbanDiagramRenderModel) -> Self {
-        let text_bytes = model.nodes.iter().fold(0usize, |total, node| {
-            [
-                Some(node.id.as_str()),
-                Some(node.label.as_str()),
-                node.parent_id.as_deref(),
-                node.ticket.as_deref(),
-                node.priority.as_deref(),
-                node.assigned.as_deref(),
-                node.icon.as_deref(),
-            ]
-            .into_iter()
-            .flatten()
-            .fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            })
-        });
-        let nesting_depth = kanban_nesting_depth(
+#[cfg(feature = "diagram-kanban")]
+pub fn model_complexity_from_kanban_semantic(model: &KanbanDiagramModel) -> ModelComplexity {
+    let mut complexity = ModelComplexity::new(
+        model.nodes.len(),
+        0,
+        kanban_nesting_depth(
             model
                 .nodes
                 .iter()
                 .map(|node| (node.id.as_str(), node.parent_id.as_deref())),
-        );
-        Self::new(model.nodes.len(), text_bytes, nesting_depth)
-    }
-
-    #[cfg(feature = "diagram-radar")]
-    pub fn from_radar(model: &RadarDiagramModel) -> Self {
-        let common_text_bytes = [
-            model.title.as_deref(),
-            model.acc_title.as_deref(),
-            model.acc_descr.as_deref(),
-            Some(model.options.graticule.as_str()),
+        ),
+    );
+    for node in &model.nodes {
+        for text in [
+            Some(node.id.as_str()),
+            Some(node.label.as_str()),
+            node.parent_id.as_deref(),
+            node.ticket.as_deref(),
+            node.priority.as_deref(),
+            node.assigned.as_deref(),
+            node.icon.as_deref(),
+            node.css_classes.as_deref(),
+            node.shape.as_deref(),
         ]
         .into_iter()
         .flatten()
-        .fold(0usize, |total, value| total.saturating_add(value.len()));
-        let axis_text_bytes = model.axes.iter().fold(0usize, |total, axis| {
-            total
-                .saturating_add(axis.name.len())
-                .saturating_add(axis.label.len())
-        });
-        let (curve_items, curve_text_bytes) =
-            model
-                .curves
-                .iter()
-                .fold((0usize, 0usize), |(items, text_bytes), curve| {
-                    (
-                        items.saturating_add(curve.entries.len()),
-                        text_bytes
-                            .saturating_add(curve.name.len())
-                            .saturating_add(curve.label.len()),
-                    )
-                });
-        Self::new(
-            model
-                .axes
-                .len()
-                .saturating_add(model.curves.len())
-                .saturating_add(curve_items),
-            common_text_bytes
-                .saturating_add(axis_text_bytes)
-                .saturating_add(curve_text_bytes),
-            0,
-        )
+        {
+            complexity.text_bytes = complexity.text_bytes.saturating_add(text.len());
+        }
+        if let Some(metadata) = &node.metadata {
+            let metadata = json_value_complexity(metadata.as_value(), 0);
+            complexity.items = complexity.items.saturating_add(metadata.items);
+            complexity.text_bytes = complexity.text_bytes.saturating_add(metadata.text_bytes);
+            complexity.nesting_depth = complexity.nesting_depth.max(metadata.nesting_depth);
+        }
     }
+    complexity
+}
 
-    #[cfg(feature = "diagram-requirement")]
-    pub fn from_requirement(model: &RequirementDiagramModel) -> Self {
-        let common_text_bytes = [
-            model.acc_title.as_deref(),
-            model.acc_descr.as_deref(),
-            Some(model.direction.as_str()),
+#[cfg(all(feature = "diagram-kanban", feature = "presentation"))]
+pub fn model_complexity_from_kanban(model: &KanbanDiagramRenderModel) -> ModelComplexity {
+    let text_bytes = model.nodes.iter().fold(0usize, |total, node| {
+        [
+            Some(node.id.as_str()),
+            Some(node.label.as_str()),
+            node.parent_id.as_deref(),
+            node.ticket.as_deref(),
+            node.priority.as_deref(),
+            node.assigned.as_deref(),
+            node.icon.as_deref(),
         ]
         .into_iter()
         .flatten()
-        .fold(0usize, |total, value| total.saturating_add(value.len()));
-        let requirement_text_bytes = model.requirements.iter().fold(0usize, |total, node| {
-            let total = [
-                node.name.as_str(),
-                node.node_type.as_str(),
-                node.requirement_id.as_str(),
-                node.text.as_str(),
-                node.risk.as_str(),
-                node.verify_method.as_str(),
-            ]
-            .into_iter()
-            .fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
+        .fold(total, |subtotal, value| {
+            subtotal.saturating_add(value.len())
+        })
+    });
+    let nesting_depth = kanban_nesting_depth(
+        model
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node.parent_id.as_deref())),
+    );
+    ModelComplexity::new(model.nodes.len(), text_bytes, nesting_depth)
+}
+
+#[cfg(feature = "diagram-radar")]
+pub fn model_complexity_from_radar(model: &RadarDiagramModel) -> ModelComplexity {
+    let common_text_bytes = [
+        model.title.as_deref(),
+        model.acc_title.as_deref(),
+        model.acc_descr.as_deref(),
+        Some(model.options.graticule.as_str()),
+    ]
+    .into_iter()
+    .flatten()
+    .fold(0usize, |total, value| total.saturating_add(value.len()));
+    let axis_text_bytes = model.axes.iter().fold(0usize, |total, axis| {
+        total
+            .saturating_add(axis.name.len())
+            .saturating_add(axis.label.len())
+    });
+    let (curve_items, curve_text_bytes) =
+        model
+            .curves
+            .iter()
+            .fold((0usize, 0usize), |(items, text_bytes), curve| {
+                (
+                    items.saturating_add(curve.entries.len()),
+                    text_bytes
+                        .saturating_add(curve.name.len())
+                        .saturating_add(curve.label.len()),
+                )
             });
-            node.css_styles
-                .iter()
-                .chain(&node.classes)
-                .fold(total, |subtotal, value| {
-                    subtotal.saturating_add(value.len())
-                })
-        });
-        let element_text_bytes = model.elements.iter().fold(0usize, |total, node| {
-            let total = [
-                node.name.as_str(),
-                node.element_type.as_str(),
-                node.doc_ref.as_str(),
-            ]
-            .into_iter()
-            .fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            });
-            node.css_styles
-                .iter()
-                .chain(&node.classes)
-                .fold(total, |subtotal, value| {
-                    subtotal.saturating_add(value.len())
-                })
-        });
-        let relationship_text_bytes =
-            model
-                .relationships
-                .iter()
-                .fold(0usize, |total, relationship| {
-                    [
-                        relationship.rel_type.as_str(),
-                        relationship.src.as_str(),
-                        relationship.dst.as_str(),
-                    ]
-                    .into_iter()
-                    .fold(total, |subtotal, value| {
-                        subtotal.saturating_add(value.len())
-                    })
-                });
-        let class_text_bytes = model.classes.iter().fold(0usize, |total, (key, class)| {
-            class.styles.iter().chain(&class.text_styles).fold(
-                total
-                    .saturating_add(key.len())
-                    .saturating_add(class.id.len()),
-                |subtotal, value| subtotal.saturating_add(value.len()),
-            )
-        });
-        Self::new(
-            model
-                .requirements
-                .len()
-                .saturating_add(model.elements.len())
-                .saturating_add(model.relationships.len())
-                .saturating_add(model.classes.len()),
-            common_text_bytes
-                .saturating_add(requirement_text_bytes)
-                .saturating_add(element_text_bytes)
-                .saturating_add(relationship_text_bytes)
-                .saturating_add(class_text_bytes),
-            0,
-        )
-    }
-}
-
-#[derive(Debug, Default)]
-struct ModelComplexitySerializer {
-    items: usize,
-    text_bytes: usize,
-    current_depth: usize,
-    max_depth: usize,
-}
-
-impl ModelComplexitySerializer {
-    fn enter(&mut self) {
-        self.current_depth = self.current_depth.saturating_add(1);
-        self.max_depth = self.max_depth.max(self.current_depth);
-    }
-
-    fn leave(&mut self) {
-        self.current_depth = self.current_depth.saturating_sub(1);
-    }
-
-    fn finish(self) -> ModelComplexity {
-        ModelComplexity::new(
-            self.items.max(1),
-            self.text_bytes,
-            self.max_depth.saturating_sub(1),
-        )
-    }
-}
-
-#[derive(Debug)]
-struct ModelComplexitySerializationError;
-
-impl std::fmt::Display for ModelComplexitySerializationError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("model complexity serialization failed")
-    }
-}
-
-impl std::error::Error for ModelComplexitySerializationError {}
-
-impl serde::ser::Error for ModelComplexitySerializationError {
-    fn custom<T: std::fmt::Display>(_message: T) -> Self {
-        Self
-    }
-}
-
-struct ModelCompound<'a> {
-    counter: &'a mut ModelComplexitySerializer,
-    count_items: bool,
-}
-
-impl<'a> ModelCompound<'a> {
-    fn new(counter: &'a mut ModelComplexitySerializer, count_items: bool) -> Self {
-        counter.enter();
-        Self {
-            counter,
-            count_items,
-        }
-    }
-
-    fn serialize_value<T: Serialize + ?Sized>(
-        &mut self,
-        value: &T,
-    ) -> Result<(), ModelComplexitySerializationError> {
-        if self.count_items {
-            self.counter.items = self.counter.items.saturating_add(1);
-        }
-        value.serialize(&mut *self.counter)
-    }
-}
-
-impl Drop for ModelCompound<'_> {
-    fn drop(&mut self) {
-        self.counter.leave();
-    }
-}
-
-impl SerializeSeq for ModelCompound<'_> {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-
-    fn serialize_element<T: Serialize + ?Sized>(
-        &mut self,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        self.serialize_value(value)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-}
-
-impl SerializeTuple for ModelCompound<'_> {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-
-    fn serialize_element<T: Serialize + ?Sized>(
-        &mut self,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        self.serialize_value(value)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-}
-
-impl SerializeTupleStruct for ModelCompound<'_> {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-
-    fn serialize_field<T: Serialize + ?Sized>(
-        &mut self,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        self.serialize_value(value)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-}
-
-impl SerializeTupleVariant for ModelCompound<'_> {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-
-    fn serialize_field<T: Serialize + ?Sized>(
-        &mut self,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        self.serialize_value(value)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-}
-
-impl SerializeMap for ModelCompound<'_> {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-
-    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<Self::Ok, Self::Error> {
-        self.serialize_value(key)
-    }
-
-    fn serialize_value<T: Serialize + ?Sized>(
-        &mut self,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        value.serialize(&mut *self.counter)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-}
-
-impl SerializeStruct for ModelCompound<'_> {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-
-    fn serialize_field<T: Serialize + ?Sized>(
-        &mut self,
-        _key: &'static str,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        value.serialize(&mut *self.counter)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-}
-
-impl SerializeStructVariant for ModelCompound<'_> {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-
-    fn serialize_field<T: Serialize + ?Sized>(
-        &mut self,
-        _key: &'static str,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        value.serialize(&mut *self.counter)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-}
-
-impl<'a> serde::Serializer for &'a mut ModelComplexitySerializer {
-    type Ok = ();
-    type Error = ModelComplexitySerializationError;
-    type SerializeSeq = ModelCompound<'a>;
-    type SerializeTuple = ModelCompound<'a>;
-    type SerializeTupleStruct = ModelCompound<'a>;
-    type SerializeTupleVariant = ModelCompound<'a>;
-    type SerializeMap = ModelCompound<'a>;
-    type SerializeStruct = ModelCompound<'a>;
-    type SerializeStructVariant = ModelCompound<'a>;
-
-    fn serialize_bool(self, _value: bool) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_i8(self, _value: i8) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_i16(self, _value: i16) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_i32(self, _value: i32) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_i64(self, _value: i64) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_i128(self, _value: i128) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_u8(self, _value: u8) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_u16(self, _value: u16) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_u32(self, _value: u32) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_u64(self, _value: u64) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_u128(self, _value: u128) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_f32(self, _value: f32) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_f64(self, _value: f64) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_char(self, value: char) -> Result<Self::Ok, Self::Error> {
-        self.text_bytes = self.text_bytes.saturating_add(value.len_utf8());
-        Ok(())
-    }
-
-    fn serialize_str(self, value: &str) -> Result<Self::Ok, Self::Error> {
-        self.text_bytes = self.text_bytes.saturating_add(value.len());
-        Ok(())
-    }
-
-    fn serialize_bytes(self, value: &[u8]) -> Result<Self::Ok, Self::Error> {
-        self.items = self.items.saturating_add(value.len());
-        Ok(())
-    }
-
-    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
-        value.serialize(self)
-    }
-
-    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_unit_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        _variant: &'static str,
-    ) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_newtype_struct<T: Serialize + ?Sized>(
-        self,
-        _name: &'static str,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        value.serialize(self)
-    }
-
-    fn serialize_newtype_variant<T: Serialize + ?Sized>(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        _variant: &'static str,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        value.serialize(self)
-    }
-
-    fn serialize_seq(self, _length: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        Ok(ModelCompound::new(self, true))
-    }
-
-    fn serialize_tuple(self, _length: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        Ok(ModelCompound::new(self, true))
-    }
-
-    fn serialize_tuple_struct(
-        self,
-        _name: &'static str,
-        _length: usize,
-    ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        Ok(ModelCompound::new(self, true))
-    }
-
-    fn serialize_tuple_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        _variant: &'static str,
-        _length: usize,
-    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        Ok(ModelCompound::new(self, true))
-    }
-
-    fn serialize_map(self, _length: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        Ok(ModelCompound::new(self, true))
-    }
-
-    fn serialize_struct(
-        self,
-        _name: &'static str,
-        _length: usize,
-    ) -> Result<Self::SerializeStruct, Self::Error> {
-        Ok(ModelCompound::new(self, false))
-    }
-
-    fn serialize_struct_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        _variant: &'static str,
-        _length: usize,
-    ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Ok(ModelCompound::new(self, false))
-    }
-
-    fn collect_str<T: std::fmt::Display + ?Sized>(
-        self,
-        value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
-        self.text_bytes = self.text_bytes.saturating_add(value.to_string().len());
-        Ok(())
-    }
-
-    fn is_human_readable(&self) -> bool {
-        true
-    }
+    ModelComplexity::new(
+        model
+            .axes
+            .len()
+            .saturating_add(model.curves.len())
+            .saturating_add(curve_items),
+        common_text_bytes
+            .saturating_add(axis_text_bytes)
+            .saturating_add(curve_text_bytes),
+        0,
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2260,30 +1797,6 @@ fn kanban_nesting_depth<'a>(
     depths.into_iter().max().unwrap_or(0)
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct JsonValueComplexity {
-    items: usize,
-    text_bytes: usize,
-    nesting_depth: usize,
-    container_depth: usize,
-}
-
-#[cfg(feature = "diagram-sequence")]
-impl JsonValueComplexity {
-    fn merge(&mut self, other: Self) {
-        self.items = self.items.saturating_add(other.items);
-        self.text_bytes = self.text_bytes.saturating_add(other.text_bytes);
-        self.nesting_depth = self.nesting_depth.max(other.nesting_depth);
-        self.container_depth = self.container_depth.max(other.container_depth);
-    }
-}
-
-enum JsonTraversalFrame<'a> {
-    Value(&'a serde_json::Value, usize),
-    Array(std::slice::Iter<'a, serde_json::Value>, usize),
-    Object(serde_json::map::Iter<'a>, usize),
-}
-
 #[cfg(feature = "diagram-sequence")]
 fn json_map_complexity(
     map: &serde_json::Map<String, serde_json::Value>,
@@ -2299,57 +1812,6 @@ fn json_map_complexity(
     };
     for value in map.values() {
         complexity.merge(json_value_complexity(value, value_depth));
-    }
-    complexity
-}
-
-/// Counts an arbitrary JSON subtree without recursive calls or width-proportional scratch space.
-fn json_value_complexity(value: &serde_json::Value, initial_depth: usize) -> JsonValueComplexity {
-    let mut complexity = JsonValueComplexity::default();
-    let mut pending = vec![JsonTraversalFrame::Value(value, initial_depth)];
-    while let Some(frame) = pending.pop() {
-        match frame {
-            JsonTraversalFrame::Value(value, depth) => {
-                complexity.nesting_depth = complexity.nesting_depth.max(depth);
-                match value {
-                    serde_json::Value::String(value) => {
-                        complexity.text_bytes = complexity.text_bytes.saturating_add(value.len());
-                    }
-                    serde_json::Value::Array(values) => {
-                        complexity.container_depth = complexity.container_depth.max(depth);
-                        complexity.items = complexity.items.saturating_add(values.len());
-                        pending.push(JsonTraversalFrame::Array(
-                            values.iter(),
-                            depth.saturating_add(1),
-                        ));
-                    }
-                    serde_json::Value::Object(values) => {
-                        complexity.container_depth = complexity.container_depth.max(depth);
-                        complexity.items = complexity.items.saturating_add(values.len());
-                        pending.push(JsonTraversalFrame::Object(
-                            values.iter(),
-                            depth.saturating_add(1),
-                        ));
-                    }
-                    serde_json::Value::Null
-                    | serde_json::Value::Bool(_)
-                    | serde_json::Value::Number(_) => {}
-                }
-            }
-            JsonTraversalFrame::Array(mut values, depth) => {
-                if let Some(value) = values.next() {
-                    pending.push(JsonTraversalFrame::Array(values, depth));
-                    pending.push(JsonTraversalFrame::Value(value, depth));
-                }
-            }
-            JsonTraversalFrame::Object(mut values, depth) => {
-                if let Some((key, value)) = values.next() {
-                    complexity.text_bytes = complexity.text_bytes.saturating_add(key.len());
-                    pending.push(JsonTraversalFrame::Object(values, depth));
-                    pending.push(JsonTraversalFrame::Value(value, depth));
-                }
-            }
-        }
     }
     complexity
 }
@@ -2417,7 +1879,7 @@ mod tests {
         let model =
             RenderSemanticModel::CustomJson(crate::CustomJsonRenderModel::new("custom", value));
         assert_eq!(
-            ModelComplexity::from_render_model(&model),
+            model_complexity_from_render_model(&model),
             ModelComplexity::new(5_000, 10, 4_999),
         );
         drop(model);
@@ -2565,14 +2027,14 @@ mod tests {
                 .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
                 .unwrap()
                 .unwrap();
-            assert_eq!(ModelComplexity::from_render_model(full.model()), complexity);
+            assert_eq!(model_complexity_from_render_model(full.model()), complexity);
             assert_eq!(
                 full.retained_render_context_bytes(),
                 "G".len() + std::mem::size_of::<usize>(),
                 "the presentation context retains only the group color ordinal, not another CSS owner",
             );
             assert_eq!(
-                ModelComplexity::from_parsed_render(&full).text_bytes,
+                model_complexity_from_parsed_render(&full).text_bytes,
                 complexity.text_bytes + full.retained_render_context_bytes(),
             );
         }
@@ -2588,7 +2050,7 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-        let model_complexity = ModelComplexity::from_render_model(parsed.model());
+        let model_complexity = model_complexity_from_render_model(parsed.model());
         assert!(parsed.retained_render_context_bytes() > 0);
 
         let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
@@ -2715,7 +2177,7 @@ mod tests {
             let parsed = crate::SemanticParser::new()
                 .parse_diagram_sync(&source)
                 .unwrap();
-            let complexity = ModelComplexity::from_semantic_model(&parsed.model);
+            let complexity = model_complexity_from_semantic_model(&parsed.model);
             assert_eq!(complexity.nesting_depth, depth);
             let exact = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
                 .with_limit(InputResourceLimitId::MaxModelNestingDepth, depth)
@@ -2859,7 +2321,7 @@ mod tests {
                 .collect(),
         };
 
-        assert_eq!(ModelComplexity::from_kanban(&root).nesting_depth, 3);
+        assert_eq!(model_complexity_from_kanban(&root).nesting_depth, 3);
     }
 
     #[cfg(all(feature = "diagram-gantt", feature = "presentation"))]
@@ -2870,7 +2332,7 @@ mod tests {
         };
 
         let empty = RenderSemanticModel::Gantt(GanttDiagramRenderModel::default());
-        let complexity = ModelComplexity::from_render_model(&empty);
+        let complexity = model_complexity_from_render_model(&empty);
         assert_eq!(complexity.items, 1);
         assert_eq!(complexity.text_bytes, 0);
         InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
@@ -2894,7 +2356,7 @@ mod tests {
         let mut full = GanttDiagramRenderModel::default();
         full.tasks.push(task);
         let full = RenderSemanticModel::Gantt(full);
-        assert_eq!(ModelComplexity::from_render_model(&full), expected);
+        assert_eq!(model_complexity_from_render_model(&full), expected);
         InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelItems, expected.items)
             .unwrap()
@@ -2913,7 +2375,7 @@ mod tests {
         let parsed = crate::SemanticParser::new()
             .parse_diagram_sync(&source)
             .unwrap();
-        let complexity = ModelComplexity::from_semantic_model(&parsed.model);
+        let complexity = model_complexity_from_semantic_model(&parsed.model);
         assert_eq!(complexity.nesting_depth, 20);
         let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelNestingDepth, 19)
@@ -2947,10 +2409,10 @@ mod tests {
         let canonical_text = ModelComplexity::from_serializable(model.model()).text_bytes;
         // The published DOM ordinals, collapsed membership and collision remaps own 194 bytes.
         assert_eq!(
-            ModelComplexity::from_render_model(parsed.model()).text_bytes,
+            model_complexity_from_render_model(parsed.model()).text_bytes,
             canonical_text + 194
         );
-        let exact_text = ModelComplexity::from_parsed_render(&parsed).text_bytes;
+        let exact_text = model_complexity_from_parsed_render(&parsed).text_bytes;
         let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         policy
             .with_limit(InputResourceLimitId::MaxModelTextBytes, exact_text)
@@ -2980,7 +2442,7 @@ mod tests {
             panic!("XYChart model")
         };
         let expected = ModelComplexity::from_serializable(&model.semantic);
-        assert_eq!(ModelComplexity::from_render_model(parsed.model()), expected);
+        assert_eq!(model_complexity_from_render_model(parsed.model()), expected);
         InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelItems, expected.items)
             .unwrap()
@@ -3020,7 +2482,7 @@ mod tests {
                     metadata: Some(value.into()),
                 }],
             };
-            let complexity = ModelComplexity::from_kanban_semantic(&model);
+            let complexity = model_complexity_from_kanban_semantic(&model);
             assert_eq!(complexity.items, depth + 2);
             assert_eq!(complexity.text_bytes, 17);
             assert_eq!(complexity.nesting_depth, depth + 1);
@@ -3148,7 +2610,7 @@ mod tests {
             let parsed = crate::SemanticParser::new()
                 .parse_diagram_sync(&source)
                 .unwrap();
-            let complexity = ModelComplexity::from_semantic_model(&parsed.model);
+            let complexity = model_complexity_from_semantic_model(&parsed.model);
 
             assert_eq!(complexity.nesting_depth, depth + 1);
         }

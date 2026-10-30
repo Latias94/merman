@@ -2108,7 +2108,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
             .expect("typed model parse")
             .expect("flowchart diagram");
-        let complexity = merman::resources::ModelComplexity::from_render_model(parsed.model());
+        let complexity = merman::resources::model_complexity_from_render_model(parsed.model());
 
         for (limit, exact) in [
             ("max_model_items", complexity.items),

@@ -87,7 +87,9 @@ impl Operation {
         let Some(parsed) = parsed else {
             return Ok(None);
         };
-        self.admit_model(ModelComplexity::from_semantic_model(&parsed.model))?;
+        self.admit_model(
+            merman_core::resources::model_complexity_from_semantic_model(&parsed.model),
+        )?;
         Ok(Some(SemanticArtifact {
             parsed: Box::new(parsed),
             operation: self.into_execution(),
@@ -136,7 +138,7 @@ impl Operation {
         let Some(parsed) = parsed else {
             return Ok(None);
         };
-        let complexity = ModelComplexity::from_parsed_render(&parsed);
+        let complexity = merman_core::resources::model_complexity_from_parsed_render(&parsed);
         self.admit_model(complexity)?;
         let prepared = PreparedSource::new(
             parsed,

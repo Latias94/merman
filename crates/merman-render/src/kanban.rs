@@ -1,9 +1,9 @@
 use crate::Result;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
+use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
-use crate::resources::{ModelComplexity, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::KanbanDiagramRenderModel;
 use merman_core::svg_security::{
@@ -419,7 +419,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
 ) -> Result<KanbanPreparedArtifact> {
     work_meter
         .policy()
-        .check_model_complexity(ModelComplexity::from_kanban(model))?;
+        .check_model_complexity(merman_core::resources::model_complexity_from_kanban(model))?;
     work_meter.charge(kanban_layout_work_units(model))?;
     let typography = KanbanTypographyPlan::resolve(theme, effective_config);
     let capture_style_facts = typography.typography_requested()

@@ -19,10 +19,17 @@ artifact-profile-required = true
 [features]
 default = []
 test-support = []
+presentation-data = []
 diagram-architecture = []
 diagram-c4 = []
 diagram-cynefin = []
 diagram-event-modeling = []
+diagram-er = ["dep:indexmap"]
+diagram-state = ["dep:indexmap"]
+diagram-class = ["dep:indexmap"]
+diagram-flowchart = ["dep:indexmap", "dep:rustc-hash"]
+diagram-swimlane = ["dep:indexmap", "dep:rustc-hash"]
+diagram-agentflow = ["dep:indexmap", "dep:rustc-hash"]
 diagram-quadrant-chart = []
 diagram-requirement = []
 diagram-sankey = []
@@ -45,6 +52,8 @@ system-random = ["dep:getrandom", "getrandom/std"]
 system-timing = ["dep:web-time"]
 
 [dependencies]
+indexmap = { workspace = true, features = ["serde"], optional = true }
+rustc-hash = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
 thiserror.workspace = true

@@ -348,6 +348,14 @@ struct PaintClassDefinition {
     style_event_ordinal: usize,
 }
 
+#[derive(Debug, Default)]
+struct StylePrecedenceObservations {
+    assignment_before_definition_copy: Option<class_typed::ClassStylePrecedenceWitness>,
+    definition_before_assignment_no_backfill: Option<class_typed::ClassStylePrecedenceWitness>,
+    inline_paint: Option<class_typed::ClassStyleDeclarationWitness>,
+    classdef_typography: Option<class_typed::ClassStyleDeclarationWitness>,
+}
+
 #[derive(Debug)]
 pub(super) struct ClassDb<'a> {
     direction: String,
@@ -358,7 +366,7 @@ pub(super) struct ClassDb<'a> {
     namespaces: IndexMap<String, Namespace>,
     namespace_stack: Vec<String>,
     style_classes: IndexMap<String, StyleClass>,
-    style_precedence_facts: class_typed::ClassStylePrecedenceFacts,
+    style_precedence_facts: StylePrecedenceObservations,
     explicit_css_assignments: BTreeMap<String, ExplicitCssAssignment>,
     paint_class_definitions: BTreeMap<String, PaintClassDefinition>,
     next_style_event_ordinal: usize,
@@ -379,7 +387,7 @@ impl<'a> ClassDb<'a> {
             namespaces: IndexMap::new(),
             namespace_stack: Vec::new(),
             style_classes: IndexMap::new(),
-            style_precedence_facts: class_typed::ClassStylePrecedenceFacts::default(),
+            style_precedence_facts: StylePrecedenceObservations::default(),
             explicit_css_assignments: BTreeMap::new(),
             paint_class_definitions: BTreeMap::new(),
             next_style_event_ordinal: 0,
@@ -548,18 +556,18 @@ impl<'a> ClassDb<'a> {
                     if let Some(definition) = prior_definition.as_ref()
                         && self
                             .style_precedence_facts
-                            .definition_before_assignment_no_backfill_witness()
+                            .definition_before_assignment_no_backfill
                             .is_none()
                     {
                         self.style_precedence_facts
                             .definition_before_assignment_no_backfill =
-                            Some(class_typed::ClassStylePrecedenceWitness {
-                                class_name: css_class.to_string(),
-                                target: class_name.clone(),
-                                styles: definition.styles.clone(),
-                                earlier_style_event_ordinal: definition.style_event_ordinal,
-                                later_style_event_ordinal: style_event_ordinal,
-                            });
+                            Some(class_typed::ClassStylePrecedenceWitness::new(
+                                css_class.to_string(),
+                                class_name.clone(),
+                                definition.styles.clone(),
+                                definition.style_event_ordinal,
+                                style_event_ordinal,
+                            ));
                     }
                     self.explicit_css_assignments
                         .entry(css_class.to_string())
@@ -641,15 +649,15 @@ impl<'a> ClassDb<'a> {
             .cloned()
             .collect::<Vec<_>>();
         if !paint_styles.is_empty()
-            && self.style_precedence_facts.inline_paint_witness().is_none()
+            && self.style_precedence_facts.inline_paint.is_none()
             && self.classes.contains_key(id)
         {
             self.style_precedence_facts.inline_paint =
-                Some(class_typed::ClassStyleDeclarationWitness {
-                    target: id.to_string(),
-                    styles: paint_styles,
+                Some(class_typed::ClassStyleDeclarationWitness::new(
+                    id.to_string(),
+                    paint_styles,
                     style_event_ordinal,
-                });
+                ));
         }
         let Some(c) = self.classes.get_mut(id) else {
             return;
@@ -677,34 +685,31 @@ impl<'a> ClassDb<'a> {
             .cloned()
             .collect::<Vec<_>>();
         if !typography_styles.is_empty()
-            && self
-                .style_precedence_facts
-                .classdef_typography_witness()
-                .is_none()
+            && self.style_precedence_facts.classdef_typography.is_none()
         {
             self.style_precedence_facts.classdef_typography =
-                Some(class_typed::ClassStyleDeclarationWitness {
-                    target: id.to_string(),
-                    styles: typography_styles,
+                Some(class_typed::ClassStyleDeclarationWitness::new(
+                    id.to_string(),
+                    typography_styles,
                     style_event_ordinal,
-                });
+                ));
         }
         if !paint_styles.is_empty()
             && self
                 .style_precedence_facts
-                .assignment_before_definition_copy_witness()
+                .assignment_before_definition_copy
                 .is_none()
             && let Some(assignment) = self.explicit_css_assignments.get(id)
         {
             self.style_precedence_facts
                 .assignment_before_definition_copy =
-                Some(class_typed::ClassStylePrecedenceWitness {
-                    class_name: id.to_string(),
-                    target: assignment.target.clone(),
-                    styles: paint_styles.clone(),
-                    earlier_style_event_ordinal: assignment.style_event_ordinal,
-                    later_style_event_ordinal: style_event_ordinal,
-                });
+                Some(class_typed::ClassStylePrecedenceWitness::new(
+                    id.to_string(),
+                    assignment.target.clone(),
+                    paint_styles.clone(),
+                    assignment.style_event_ordinal,
+                    style_event_ordinal,
+                ));
         }
         if !paint_styles.is_empty() {
             self.paint_class_definitions.insert(
@@ -1164,7 +1169,14 @@ impl<'a> ClassDb<'a> {
             namespaces,
             namespace_facade_aliases,
             style_classes,
-            style_precedence_facts: self.style_precedence_facts,
+            style_precedence_facts: class_typed::ClassStylePrecedenceFacts::from_witnesses(
+                self.style_precedence_facts
+                    .assignment_before_definition_copy,
+                self.style_precedence_facts
+                    .definition_before_assignment_no_backfill,
+                self.style_precedence_facts.inline_paint,
+                self.style_precedence_facts.classdef_typography,
+            ),
             constants: class_typed::ClassConstants {
                 line_type: class_typed::ClassLineTypeConstants {
                     line: LINE_SOLID,
