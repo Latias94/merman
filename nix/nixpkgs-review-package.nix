@@ -70,7 +70,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   postInstall = ''
     installShellCompletion --cmd merman-cli \
-      --bash crates/merman-cli/assets/completions/merman-cli.bash \
+      --bash --name merman-cli crates/merman-cli/assets/completions/merman-cli.bash \
       --zsh crates/merman-cli/assets/completions/_merman-cli \
       --fish crates/merman-cli/assets/completions/merman-cli.fish
     install -Dm0644 crates/merman-cli/assets/completions/merman-cli.ps1 \
