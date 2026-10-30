@@ -4,7 +4,9 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.9.3] - 2026-10-29
+## [0.9.3] - 2026-10-30
+
+- Sequence diagrams and GitGraph tag backgrounds resolve their diagram-scoped built-in Neo shadows. Sequence viewports include box-frame strokes and restored built-in Neo shadows to prevent clipping. [#255](https://github.com/Latias94/merman/pull/255)
 
 - Flowchart preserves percent-containing node IDs, and YAML frontmatter no longer mistakes brackets in comments or block text for nested collections. [#241](https://github.com/Latias94/merman/pull/241), [#251](https://github.com/Latias94/merman/pull/251)
 - Correct label sizing, configured fonts, literal text, and HTML/entity handling across SVG diagrams, including wrapped Swimlane edge labels and valid Class-note XML. Review updated output snapshots. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)

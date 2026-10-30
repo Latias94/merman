@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.9.3] - 2026-10-29
+## [0.9.3] - 2026-10-30
 
 This maintenance release targets Mermaid 12.1.0 and retains the Presentation API, Options JSON schema 2, and existing transport versions. Review regenerated SVG and image snapshots after upgrading.
 
@@ -16,8 +16,14 @@ Text-measurement protocol 1 keeps operations 0..21; existing hosts need no new e
 - Native C and WASI engines accept caller-supplied font bytes and use the same fonts for label measurement and image painting. Bundled Cousine provides a fallback; supply additional fonts for CJK or emoji, and install matching fonts wherever SVG is viewed. The C ABI 3 constructor is appended without changing the existing API prefix. [#245](https://github.com/Latias94/merman/pull/245)
 - Web `createRenderSession({ iconPacks })` and Node `createNodeEngine({ iconPacks })` accept already-loaded Iconify JSON for instance-local icon rendering. The host controls loading and credentials; separate engines do not share registrations. [#247](https://github.com/Latias94/merman/pull/247)
 
+### Changed
+
+- CLI `render`, `batch`, and `mmdc` Mermaid-to-PNG/JPEG/PDF exports use native text measurement by default when the CLI includes `system-fonts`, sharing fonts between layout and painting. Host fonts can change wrapping, dimensions, and snapshots. Native measurement rejects `--css-file` / `themeCSS`; to retain previous layout estimates and admitted CSS behavior, use `--font-measurement deterministic` without font sources. Painting can still discover system fonts. See the [CLI font guide](crates/merman-cli/README.md#explicit-fonts). [#255](https://github.com/Latias94/merman/pull/255)
+- CLI capability discovery scopes `native_fonts.default_policy_scope` to `mermaid-svg-input` and adds `encoded_output_defaults` for encoded Mermaid output. Consumers of the previous scope string should read the output-specific defaults. Mermaid SVG, raw SVG geometry, and library/binding defaults retain their existing policies; capabilities schema 2 and CLI contract 6 are retained. [#255](https://github.com/Latias94/merman/pull/255)
+
 ### Fixed
 
+- Sequence diagrams and GitGraph tag backgrounds resolve their diagram-scoped built-in Neo shadows, preventing missing Sequence note frames in native exports. Sequence viewports include box-frame strokes and restored built-in Neo shadows to prevent clipping. Custom filter URLs and CSS functions retain their existing behavior. [#255](https://github.com/Latias94/merman/pull/255)
 - Labels and titles reserve space for the fonts, weights, styles, whitespace, and visible text actually rendered, avoiding clipping and misplaced text across Class, Flowchart, Sequence, State, Block, ER, Requirement, and other affected diagrams. Browser measurement also preserves valid zero and subpixel typography. [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - HTML labels use bounded HTML5 recovery and namespace-aware SVG/XHTML serialization. Class notes no longer produce invalid XML entities, Kanban break markup renders as intended, and literal angle brackets and escaped text retain their intended rendered content. See the [before/after examples](docs/assets/text-stages/README.md). [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - Formula labels remain visible in native PNG, JPEG, and PDF exports, including glyph paint, fraction bars, Unicode bounds, clipping, and Sequence placement. Native formula output with nonempty caller-scoped CSS now fails explicitly when its paint cannot be preserved; omit that CSS or export parity SVG for browser rendering. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)

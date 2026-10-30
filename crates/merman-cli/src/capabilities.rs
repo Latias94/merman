@@ -42,6 +42,7 @@ struct NativeFontsView {
     default_measurement: &'static str,
     default_font_source: &'static str,
     default_system_discovery: &'static str,
+    encoded_output_defaults: EncodedFontDefaultsView,
     system_resources_bounded: bool,
     selected_font_bytes_bounded: bool,
     legacy_export_paths: &'static str,
@@ -55,6 +56,14 @@ struct NativeFontsView {
     system_discovery_runtime_available: bool,
     embeds_fonts_in_svg: bool,
     context_scope: &'static str,
+}
+
+#[cfg(feature = "native-fonts")]
+#[derive(Serialize)]
+struct EncodedFontDefaultsView {
+    measurement: &'static str,
+    font_source: &'static str,
+    system_discovery: &'static str,
 }
 
 #[derive(Serialize)]
@@ -172,10 +181,29 @@ pub(crate) fn write_compiled_capabilities(
         cli_contract_version: CLI_CONTRACT_VERSION,
         #[cfg(feature = "native-fonts")]
         native_fonts: NativeFontsView {
-            default_policy_scope: "mermaid-graphical-input",
+            default_policy_scope: "mermaid-svg-input",
             default_measurement: "deterministic",
             default_font_source: "none",
             default_system_discovery: "disabled",
+            encoded_output_defaults: if cfg!(feature = "experimental-system-font-query") {
+                EncodedFontDefaultsView {
+                    measurement: "native",
+                    font_source: "platform-managed-system-query",
+                    system_discovery: "platform-initialization-then-on-demand-families",
+                }
+            } else if cfg!(feature = "system-fonts") {
+                EncodedFontDefaultsView {
+                    measurement: "native",
+                    font_source: "bounded-system-discovery",
+                    system_discovery: "before-layout",
+                }
+            } else {
+                EncodedFontDefaultsView {
+                    measurement: "deterministic",
+                    font_source: "none",
+                    system_discovery: "disabled",
+                }
+            },
             system_resources_bounded: cfg!(feature = "system-fonts")
                 && !cfg!(feature = "experimental-system-font-query"),
             selected_font_bytes_bounded: true,

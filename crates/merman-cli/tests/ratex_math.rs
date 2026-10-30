@@ -482,6 +482,8 @@ mod native_exports {
                     "ratex",
                     "--css-file",
                     css_path,
+                    "--font-measurement",
+                    "deterministic",
                     "-",
                 ],
                 MATH,
@@ -523,7 +525,12 @@ mod native_exports {
                     "ratex",
                 ];
                 if styled {
-                    args.extend(["--css-file", css_path]);
+                    args.extend([
+                        "--css-file",
+                        css_path,
+                        "--font-measurement",
+                        "deterministic",
+                    ]);
                 }
                 args.push("-");
                 let output = run_with_stdin(&args, source);

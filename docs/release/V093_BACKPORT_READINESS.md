@@ -1,22 +1,34 @@
 # 0.9.3 release readiness
 
-Reviewed on 2026-10-29 in Asia/Shanghai. This is a preparation record, not a publication receipt.
+Reviewed on 2026-10-30 in Asia/Shanghai. This is a preparation record, not a publication receipt. Publication is on hold until the maintainer explicitly authorizes it.
 
 ## Decision and source boundary
 
-Prepare a compatible 0.9.3 patch with text-measurement protocol 1 frozen at its 22 published operations (0..21). The selected candidate addresses the audited public Rust enum break by deferring the host literal-height extension and restoring the pre-operation-22 `Wrapped` metrics callback contract. It also preserves the published `MermanNativeApi` Rust struct literal contract while exposing the new font constructor through a separate extended table. Selected host geometry and provenance remain authoritative; exact host height for ER generic literal markup remains a documented limitation. The enum consumer probe and post-repair FFI tests pass. All eight selected public-crate API comparisons pass, including the corrected transport discriminant. Final all-targets candidate lint passes; immutable-source preflight remains required. The new SDKs still require complete qualification at the final release commit; ordinary PR CI and local tests do not replace immutable release preflight.
+Prepare 0.9.3 with the published Rust contracts retained: text-measurement protocol 1 has its 22 operations (0..21), `MermanNativeApi` retains its old Rust struct-literal shape, and the existing transport discriminants are preserved. The October 29 candidate passed all eight selected public-crate API comparisons, complete PR CI, and immutable-source preflight including all 18 SDK archives and three native/WASI/CLI comparisons. The October 30 merge adds maintenance PR #255's CLI font-policy and shared SVG fixes. That new source must pass fresh CI and immutable-source preflight before publication; the earlier successful artifacts must not be relabeled.
 
 | Identity | Reviewed value |
 | --- | --- |
 | Previous workspace publication | `v0.9.2`, commit `8e303a43b548c9e40e73f0bc657925d66e7d4fb5`, published 2026-10-22 in Asia/Shanghai |
-| Maintenance target | `origin/release/0.9.x`, commit `b1f662e430f16204190fc05c8387573c6d5aea3e` |
-| Development comparison | `origin/main`, commit `dc3ca0f22d34bc4306c81b237b7ed5c974d4ca1d` |
-| Changelog range | `v0.9.2..b1f662e430f16204190fc05c8387573c6d5aea3e`; the base is an ancestor of the target |
-| Preparation branch | `docs/release-0.9.3-readiness-20261029`, based on the reviewed maintenance target |
-| Intended version and date | `0.9.3`; the root and five platform changelog sections are dated 2026-10-29 for release preparation, with final-source qualification and publication pending |
+| Maintenance target | `origin/release/0.9.x`, commit `b3fde2be3a946cf69dc19d5145d67a53638cd2ae` |
+| Development comparison | `origin/main`, commit `75f93d9eda78b60076d3d3304799a70f581f9e86` |
+| Changelog range | `v0.9.2..b3fde2be3a946cf69dc19d5145d67a53638cd2ae`; the base is an ancestor of the target |
+| Preparation branch | `docs/release-0.9.3-readiness-20261029`, merging the reviewed maintenance target |
+| Intended version and date | `0.9.3`; the root and five platform changelog sections are dated 2026-10-30 for release preparation, with final-source qualification and publication pending |
 | Compatibility baseline | Mermaid `12.1.0`, source `21f72f07ea22c0af48a3149c550654e80d8e40cb`, Presentation API, Options JSON schema 2 |
 
-The initial GitHub release inspection found no intervening workspace prerelease or 0.9.3 release. SDK preview archives and local qualification are not public SDK releases. The outcome ledger therefore consolidates the four maintenance integrations into their final state since 0.9.2; corrections to newly introduced SDKs are part of their initial feature outcome. Previously published release sections remain unchanged. The refs above identify the original audit boundary; no final candidate SHA or successful immutable preflight is asserted here.
+The GitHub release inspection still finds 0.9.2 as the latest workspace release. SDK preview archives and qualification runs are not public SDK releases. The outcome ledger consolidates maintenance changes since 0.9.2; corrections to newly introduced SDKs are part of their initial feature outcome. Previously published release sections remain unchanged.
+
+## October 30 maintenance merge and qualification boundary
+
+Candidate `a965d8ec6ad23f115aff53a7e9af1ef599e33634` passed [CI 40877827127](https://github.com/Latias94/merman/actions/runs/40877827127), [Performance 40877827109](https://github.com/Latias94/merman/actions/runs/40877827109), and [Release Preflight 40877895362](https://github.com/Latias94/merman/actions/runs/40877895362). The preflight contains 18 successful SDK archive lanes and three successful native/WASI/CLI parity lanes. Linux CI passed 9,865 tests with seven skips, and the Chromium root-viewport oracle checked 3,720 fixtures with zero blocking containment failures. These receipts belong only to that source.
+
+Maintenance [PR #255](https://github.com/Latias94/merman/pull/255) was subsequently merged at `b3fde2be3a946cf69dc19d5145d67a53638cd2ae`; its own [CI 40918589225](https://github.com/Latias94/merman/actions/runs/40918589225) passed. The preparation branch incorporates its CLI shared measurement/painting fonts, scoped Sequence/GitGraph Neo filters, and Sequence box paint bounds. Review image/PDF and SVG snapshots after upgrading. Native CLI measurement rejects post-layout `--css-file` and `themeCSS`; `--font-measurement deterministic` without font sources retains previous layout estimates and admitted CSS behavior, while painting can still discover system fonts. Explicit fonts form a closed set unless system fallback is requested. No-font environments must supply usable font assets for native measurement.
+
+The CLI default change applies to Mermaid-to-PNG/JPEG/PDF when its `system-fonts` capability is compiled. Mermaid SVG, raw SVG geometry, library/binding defaults, Mermaid 12.1.0, Options schema 2, C ABI 3, and the 22-operation callback protocol keep their existing boundaries. Capabilities schema 2 / CLI contract 6 scopes the existing defaults to `mermaid-svg-input` and adds `encoded_output_defaults`; automation must read the appropriate output scope. Main's newer theme APIs and schema evolution are outside this maintenance release.
+
+The follow-up review covers all 18 main commits in `dc3ca0f22d34..75f93d9eda78`. Main's font-context fix `b5c8a7c0aeba` and GitGraph filter fix `2e40340da214` are already equivalent to maintenance `674a56cba158`; the intermediate host-guide change `3a2ae3e85b80` is superseded by that final policy. Maintenance `c47641276508` also includes the Sequence box shadow viewport repair. No additional code backport is identified in this new interval. Ghibli/typed-theme APIs, theme reports, and Playground theme work remain on main.
+
+Commit the merged changes and generated receipts before dispatching a new non-publishing preflight with the final immutable source. Keep the workflow ref, requested source, and eventual tag commit identical. The sections below retain the original October 29 audit and earlier qualification attempts with their historical source boundaries; their pending statements are not the current status of the successful `a965d8ec6` run. The maintainer's publication hold remains in effect regardless of CI results.
 
 ## Compatibility resolution and release gates
 
@@ -64,6 +76,8 @@ The original ledger compares the published 0.9.2 state with the reviewed mainten
 | SDK fonts and metadata | No memory-font constructor -> appended C ABI 3 slot and WASI ABI 1 using shared measurement/painting fonts and dimensions; published Rust table retained with a separate extended font table | Supply fonts for missing scripts; SVG viewers still need matching fonts; Rust font consumers discover `MermanNativeApiWithFonts` | #245, `merman-ffi` prefix and old-literal compatibility tests, post-repair FFI selection, and `merman-wasi` runtime tests; Added, same-boundary SDK repairs folded in |
 | JavaScript icons | No engine-local loaded packs -> `createRenderSession({ iconPacks })` and `createNodeEngine({ iconPacks })` | Host owns acquisition and credentials; registries are instance-local | [#247](https://github.com/Latias94/merman/pull/247), Web/Node source and contract tests; Added |
 | Text geometry | Font/content/whitespace mismatches -> measurement follows emitted text and typography across affected families | Review SVG and export snapshots | #247, [#250](https://github.com/Latias94/merman/pull/250), terminal-consumer and browser typography regressions; Fixed |
+| CLI encoded-output fonts | Layout estimates and painting fonts differ -> shared native font context by default when CLI `system-fonts` is compiled | Review host-dependent wrapping and snapshots; use deterministic measurement without font sources for previous layout/CSS behavior | [#255](https://github.com/Latias94/merman/pull/255), CLI font-policy and capability regressions; Changed |
+| Built-in Neo shadows and Sequence bounds | Unscoped filters and clipped box paint -> diagram-scoped filters and viewports containing box strokes/shadows | Review Sequence/GitGraph output snapshots; shared by all SVG bindings | #255, renderer filter and viewport regressions; Fixed |
 | HTML and SVG text | Streaming repair and inconsistent entity stages -> bounded HTML5 recovery and namespace-aware serialization | Class notes remain valid XML; literal text and Kanban breaks display consistently | #247/#250, parser snapshots and text-stage comparisons; Fixed |
 | Native formulas | Successful but blank or mispainted output -> visible glyphs/rules with corrected bounds and Sequence placement | Nonempty caller-scoped CSS with native formulas is rejected; omit CSS or use browser parity SVG | #245/#247/#250, CLI formula-presence and independent paint controls; Fixed |
 | Swimlane wrapping | Measured lines clipped by nowrap fallback -> complete wrapped native labels | Review affected outputs | #245, [issue #242](https://github.com/Latias94/merman/issues/242); Fixed |
@@ -74,7 +88,7 @@ The original ledger compares the published 0.9.2 state with the reviewed mainten
 | Dependency security | Older selected DOMPurify/Tokio/JavaScript graphs -> reviewed upgrades and legal projections | Rebuild from updated locks; retained exceptions remain governed | #245/#247, dependency audit and owner locks; Security |
 | Build and validation maintenance | Old platform locks/tools, Windows Node download handling, memory provenance and fuzz owner issues -> current owner-compatible workflow inputs | Supports package construction and reliable checks; no runtime speed claim | #245/#247/#250, internal-only or folded into delivery/security outcomes |
 
-The complete changed-path inventory contains 2,229 paths. Generated upstream SVG recaptures, parser/DOM signatures, research captures, fuzz seeds, legal mirrors, and tests substantiate the outcomes above; they are not separate product features. Documentation-only 0.9.2 publication commits remain historical receipts. Independent Typst, grammar, Roughr, and VS Code versions are not advanced by this workspace preparation.
+The initial October 29 changed-path inventory contains 2,229 paths. Generated upstream SVG recaptures, parser/DOM signatures, research captures, fuzz seeds, legal mirrors, and tests substantiate the outcomes above; they are not separate product features. Documentation-only 0.9.2 publication commits remain historical receipts. Independent Typst, grammar, Roughr, and VS Code versions are not advanced by this workspace preparation.
 
 ## Additional main backports selected during review
 
@@ -113,7 +127,7 @@ The publisher currently fails closed on pre-existing asset names and has no auto
 
 ## Attribution and local preparation
 
-Verified GitHub metadata identifies `@Latias94` as the author of all four maintenance PRs; the range has no external implementation author or co-author trailer. Issue #242 is reported by `@nerzhulart`; issue #243 is requested by `@mrueg`. The root 0.9.3 Contributors entry credits each account once. Package changelogs are curated projections of the same outcomes and retain the capabilities and contracts of their own artifacts.
+Verified GitHub metadata identifies `@Latias94` as the author of the maintenance PRs, including #255; the range has no external implementation author or co-author trailer. Issue #242 is reported by `@nerzhulart`; issue #243 is requested by `@mrueg`. The root 0.9.3 Contributors entry credits each account once. Package changelogs are curated projections of the same outcomes and retain the capabilities and contracts of their own artifacts.
 
 Local evidence is retained under the primary checkout's ignored `target/release-review-20261029/`. The version owner ran with the manifest-pinned npm 12.2.1 through an isolated npx process, leaving the global npm installation unchanged. Its first offline attempt encountered uncached locked packages and left the caller clean; after fetching the exact locked workspace, fuzz, and Node graphs, the same projector succeeded. No unrelated dependency update was performed. The old local `v0.7.0-alpha.1` tag disagrees with the remote tag; it was preserved, and fresh branch refs were fetched without overwriting tags. That historical mismatch does not affect the verified 0.9.2 base.
 
