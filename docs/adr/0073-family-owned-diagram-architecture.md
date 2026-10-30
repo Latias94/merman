@@ -10,7 +10,7 @@ The original decision background, date and baseline below are retained as histor
 
 [ADR-0099](0099-model-and-source-boundaries.md) selects the next development package/data
 ownership: shared models and markup below source/output owners, with private core family
-construction and explicit fix generation. Its implementation remains pending; single family
+construction and explicit fix generation. Its execution plan tracks partial implementation; single family
 semantics, source mapping and typed operation guarantees continue to apply.
 
 ## Date

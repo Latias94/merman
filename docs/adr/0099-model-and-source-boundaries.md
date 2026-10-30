@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted as the development architecture direction on 2026-10-30, with explicit maintainer authorization for breaking Rust source changes. Implementation is pending under the [execution plan](../plans/2026-10-30-model-and-source-boundaries.md). Acceptance of this decision is not a claim that dependencies, package sizes or runtime costs have already changed.
+Accepted as the development architecture direction on 2026-10-30, with explicit maintainer authorization for breaking Rust source changes. Implementation is in progress under the [execution plan](../plans/2026-10-30-model-and-source-boundaries.md); the [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) gives completed ownership moves and measurements. Acceptance of this decision alone does not establish dependency, package-size or runtime improvements.
 
 This decision amends the Rust package/API ownership clauses of [ADR-0010](0010-semantic-model-boundary.md), [ADR-0011](0011-semantic-model-versioning.md), [ADR-0073](0073-family-owned-diagram-architecture.md), [ADR-0091](0091-selectable-diagram-families.md) and [ADR-0098](0098-semantic-presentation-capabilities.md). Their single semantic construction, pinned Mermaid behavior, deep lifecycle, source admission, requested projections and operation contracts remain in force.
 

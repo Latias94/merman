@@ -133,3 +133,28 @@ passed 79 tests (`e3d6b2e1-0738-4ce7-8e11-4e999b770ef6`), production-library Cli
 `-D warnings`, and facade `all-diagrams,svg,ascii,analysis` compiled. Existing LALRPOP generation and
 verification passed. A bounded independent review found no State tree/lifecycle/error blocker.
 All 1397 ASCII runtime tests passed (`7eed2dbd-3129-4121-b4e9-c658b250103b`), including terminal safety, fallback, cancellation and resource owners. The eight fixed-consumer staging/receipt tests also passed after migrating the model fixture imports. A committed independent model consumer observation follows; these are partial implementation results rather than completion of M2 or the whole plan.
+
+## Partial independent model consumer result
+
+The committed `17f1a112bf7a25fd56ae0597b7977880b34648b8` library and migrated fixture were compared with
+the original M0 source/fixture receipts using `boundary-model --expect-receipt`. The two runtime
+inputs and exact consumed Flowchart/Class/State outputs match. Target, toolchain, profile and fixture
+feature are unchanged; only the model import/dependency owner migrated.
+
+| Observation | M0 base | M2 checkpoint |
+| --- | ---: | ---: |
+| External normal/build package versions | 74 | 16 |
+| Raw release executable bytes | 540672 | 541184 |
+| Stripped executable bytes | 540672 | 541184 |
+
+The independent production tree excludes core, Mermaid grammar, YAML/JSON5, HTML5 recovery, URL
+normalization and CSS admission. It retains Serde/JSON, ordered maps, hash and error/proc-macro
+dependencies used by these types. No external package version was added to the matched consumer.
+The graph reduction is real; the executable is 512 bytes larger (0.0947%), so this is not a binary
+size improvement. No compile-time or runtime speed claim follows from the package count.
+
+Raw evidence is retained at ignored `target/bench/experiments/model-source-boundaries/`:
+`m2-boundary-model/receipt.json`, `m2-model-consumer-comparison.json` and
+`m2-graph-family-validation.json`. This result covers the fixed direct-model consumer only. ASCII,
+graphical/export and diagnostics closures, the remaining twenty payloads and M6–M8 final admission
+are still open; it does not substitute for those owners.

@@ -11,7 +11,7 @@ source mapping, and output lifecycle decisions remain in force.
 
 [ADR-0099](0099-model-and-source-boundaries.md) selects the subsequent development package/API
 ownership for independent model, terminal, graphical and diagnostic consumers. It preserves this
-decision's execution boundary; its planned extraction is not yet an implementation claim.
+decision's execution boundary; its execution plan records actual extraction progress and evidence.
 
 ## Context
 
