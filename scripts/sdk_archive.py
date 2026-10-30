@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import hashlib
 import importlib.util
 import io
@@ -37,6 +38,9 @@ else:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# SDK static libraries retain ThinLTO bitcode alongside native objects. A member may use
+# the existing 512 MiB aggregate allowance; archive and total extraction budgets stay fixed.
+SDK_LIMITS = replace(DEFAULT_LIMITS, max_member_size=DEFAULT_LIMITS.max_total_size)
 PROFILES = tuple(f"sdk-{kind}-{flavor}" for kind in ("native", "wasi")
                  for flavor in ("standard", "math", "full"))
 NATIVE_TARGETS = (
@@ -117,7 +121,7 @@ def _input(root: Path, relative: str) -> Path:
         if current.is_symlink():
             raise ArchiveVerificationError(f"SDK input must not traverse a symlink: {current}")
     require_regular_input(current, "SDK input")
-    if current.stat().st_size > DEFAULT_LIMITS.max_member_size:
+    if current.stat().st_size > SDK_LIMITS.max_member_size:
         raise ArchiveVerificationError(f"SDK input exceeds archive member budget: {current}")
     return current
 
@@ -494,7 +498,7 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
     }
     files["manifest.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
     _validate_member_set([ArchiveMember(name, _member_path(name), False, len(data), 0o644, None)
-                          for name, data in files.items()], limits=DEFAULT_LIMITS)
+                          for name, data in files.items()], limits=SDK_LIMITS)
     output_dir = Path(output_dir)
     if output_dir.is_symlink():
         raise ArchiveVerificationError("SDK output directory must not be a symlink")
@@ -523,7 +527,7 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
                     info.mode = 0o644
                     info.mtime = 0
                     archive.addfile(info, io.BytesIO(data))
-        if staged.stat().st_size > DEFAULT_LIMITS.max_archive_size:
+        if staged.stat().st_size > SDK_LIMITS.max_archive_size:
             raise ArchiveVerificationError("SDK archive exceeds compressed size budget")
         digest = sha256_file(staged)
         with archive_path.open("xb") as destination, staged.open("rb") as source:
@@ -546,6 +550,7 @@ def verify_sdk_archive(*, repo_root: Path, profile: str, target: str, archive: P
         raise ArchiveVerificationError("SDK archive version differs from its pinned source")
     with verified_archive_contents(
         Path(archive), Path(checksum), package_name=f"merman-{profile}", target=target, version=version,
+        limits=SDK_LIMITS,
     ) as extracted:
         manifest = _json(_input(extracted.root, "manifest.json"))
         for key, value in (("schema_version", 1), ("version", version), ("source_commit", source_commit),
@@ -577,7 +582,8 @@ def verify_sdk_archive(*, repo_root: Path, profile: str, target: str, archive: P
             if manifest.get(key) != value:
                 raise ArchiveVerificationError(f"SDK archive manifest {key} differs from actual catalog")
         if verified_output_dir is not None:
-            destination = persist_verified_archive(extracted, Path(verified_output_dir) / extracted.archive.name)
+            destination = persist_verified_archive(
+                extracted, Path(verified_output_dir) / extracted.archive.name, limits=SDK_LIMITS)
             with Path(str(destination) + ".sha256").open("x", encoding="ascii") as stream:
                 stream.write(f"{extracted.digest}  {destination.name}\n")
             return destination

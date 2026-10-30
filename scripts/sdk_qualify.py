@@ -85,7 +85,7 @@ def verify_installed_consumer(archive: Path, profile: str, target: str, version:
                               *, repo_root: Path) -> None:
     with verified_archive_contents(
         archive, Path(str(archive) + ".sha256"), package_name="merman-" + profile,
-        target=target, version=version,
+        target=target, version=version, limits=sdk_archive.SDK_LIMITS,
     ) as extracted, tempfile.TemporaryDirectory(prefix="merman-sdk-consumer-") as temporary:
         build = Path(temporary)
         binaries = build_consumer(extracted.root, build, repo_root=repo_root)
@@ -112,7 +112,7 @@ def verify_installed_wasi_examples(*, archive: Path, profile: str, version: str,
                                    repo_root: Path, output_dir: Path) -> None:
     with verified_archive_contents(
         archive, Path(str(archive) + ".sha256"), package_name="merman-" + profile,
-        target=sdk_archive.WASI_TARGET, version=version,
+        target=sdk_archive.WASI_TARGET, version=version, limits=sdk_archive.SDK_LIMITS,
     ) as extracted:
         prefix = extracted.root
         module = prefix / "lib/merman_wasi.wasm"

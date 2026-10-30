@@ -214,6 +214,11 @@ Only explicit public inputs are copied; build directories and test fixtures are 
 `SOURCE_AVAILABILITY.md` records the exact commit and corresponding source paths,
 including the Rust ELK implementation for full profiles.
 
+SDK packaging and verification allow a single member up to 512 MiB, accommodating native
+static libraries that retain ThinLTO bitcode. The compressed archive and total extracted
+payload each remain limited to 512 MiB, with the existing member-count and path limits.
+The shared CLI/LSP archive verifier retains its separate 256 MiB single-member limit.
+
 `release-sdk.yml` reuses the existing release trust and artifact conventions; it
 does not add another release framework. Its reusable and manual interfaces take
 only `source_ref` and `release_tag`. Preflight passes its
