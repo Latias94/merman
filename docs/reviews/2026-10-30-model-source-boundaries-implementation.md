@@ -603,3 +603,45 @@ Java or Cargo configuration. One Android environment preparation command did acc
 so no guessed restoration was attempted. The default toolchain was unchanged; required Android
 targets were installed. The incident and target-install evidence are retained in
 `target/m8-product-tools-20261031-android/rust-targets-receipt.json`.
+
+## Final independent-consumer measurements
+
+The six frozen consumers were remeasured at `d049531b3c62deb4c45aea5df428e33d283acee6`
+against base `a5c73612fb2288e5effdbb07b3e1c3e683968603`. Rust production and committed
+consumer sources are fixed at that candidate; later host-qualification and documentation edits
+are outside these recipes. Both runtime-fed inputs matched their baseline consumed outputs for
+every consumer, including repeated output and raw/stripped equivalence. The Windows target,
+Rust 1.95.0 toolchain, optimization policy and unrelated dependency versions stayed fixed.
+
+| Consumer | External versions, base → candidate | Release bytes, base → candidate | Byte change |
+| --- | ---: | ---: | ---: |
+| `boundary-model` | 82 → 18 | 540,672 → 541,696 | +0.19% |
+| `boundary-model-ascii` | 84 → 28 | 3,875,840 → 2,367,488 | -38.92% |
+| `boundary-source-ascii` | 84 → 84 | 3,790,336 → 3,822,080 | +0.84% |
+| `boundary-presentation-svg` | 114 → 114 | 7,020,032 → 6,842,368 | -2.53% |
+| `boundary-analysis-diagnostics` | 87 → 82 | 2,151,936 → 2,119,680 | -1.50% |
+| `boundary-analysis-fixes` | 87 → 87 | 2,159,104 → 2,189,312 | +1.40% |
+
+Counts include distinct external normal/build name/version pairs, including proc macros, and
+exclude path packages. No consumer gained an external version. The diagnostics-only consumer
+removes the writer and its otherwise unused `autocfg`, `base64`, `nohash-hasher` and `num-traits`
+closure. Fix generation retains that functionality and its dependency set. Raw and stripped PE
+byte counts are equal for these receipts; both artifacts and strip identities are preserved.
+
+The largest structural benefit belongs to callers that already own models. Package extraction
+does not make source parsing cheaper by itself: the complete source/ASCII control still needs
+its 84-version stack, and its executable grew by 31,744 bytes. Likewise, the direct-model binary
+already allowed linker elimination of unused parser code and grew by 1,024 bytes despite the
+large compile-graph reduction. The fixes binary grew by 30,208 bytes after introducing explicit
+requested-generation ownership. These small artifact controls are recorded as increases; they
+are not converted into a size-reduction or runtime-performance claim.
+
+The frozen `boundary-presentation-svg` recipe includes source parsing and is a complete
+source/SVG control. Its unchanged dependency count does not disprove the independent output
+cut, and its byte change is not a measurement of direct model rendering. Parser-free Render and
+Export are proven separately by the strict independent normal/build consumers. Required shared
+markup, XML/CSS, layout, math and font work remains at its actual output owner.
+
+Raw receipts, exact commands, lock/input/output hashes and added/removed version lists are in
+`target/bench/experiments/model-source-boundaries/final-fixed-consumer-comparisons.json` and its
+six indexed receipt directories. These are graph/size observations, not latency measurements.
