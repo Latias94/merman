@@ -120,7 +120,7 @@ pub(super) fn render_sequence_actor_popup_menus(
                 continue;
             };
             let security_level_loose = sanitize_config.get_str("securityLevel") == Some("loose");
-            let href = merman_core::utils::sanitize_url(href);
+            let href = merman_markup::url::sanitize_url(href);
             let href = prepare_mermaid_navigation_href(
                 &href,
                 MermaidNavigationSecurity::from_security_level_loose(security_level_loose),

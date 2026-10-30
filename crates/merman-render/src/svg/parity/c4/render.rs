@@ -5,7 +5,7 @@ use crate::svg::parity::roughjs_common::paths::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
     roughjs_paths_for_hand_drawn_svg_path,
 };
-use merman_core::diagrams::c4::{C4Boundary, C4DiagramModel, C4Shape};
+use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Shape};
 type C4SvgModelShape = C4Shape;
 type C4SvgModelBoundary = C4Boundary;
 

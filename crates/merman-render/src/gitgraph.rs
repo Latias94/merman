@@ -4,7 +4,7 @@ use crate::model::{
     Bounds, GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::git_graph::{GitGraphCommit, GitGraphDiagramModel};
+use merman_model::families::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 use std::collections::HashMap;
 
 mod css_binding;
@@ -852,8 +852,8 @@ mod tests {
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
     use merman_core::presentation::PresentationConfig;
+    use merman_model::families::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
     use serde_json::json;
     use std::cell::RefCell;
 

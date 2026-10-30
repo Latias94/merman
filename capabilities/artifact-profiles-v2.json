@@ -777,6 +777,31 @@
       }
     },
     {
+      "id": "rust-markup",
+      "description": "Shared markup and style operations without Mermaid source parsing or an output backend.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-markup",
+        "manifest": "crates/merman-markup/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [],
+        "target": {
+          "name": "merman_markup",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "diagram_families": [],
+        "capabilities": [],
+        "runtime_ids": [],
+        "outputs": []
+      }
+    },
+    {
       "id": "rust-model",
       "description": "Shared Mermaid values and execution contracts without a source parser or output backend.",
       "semantic_target": "native",

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::pie::PieDiagramRenderModel;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::pie::PieDiagramModel;
 
 use crate::config::config_string;
 use crate::diagram_theme::{
@@ -99,16 +99,13 @@ pub(crate) struct PieThemePlan {
 
 impl PieThemePlan {
     #[cfg(test)]
-    pub(crate) fn baseline(
-        model: &PieDiagramRenderModel,
-        effective_config: &serde_json::Value,
-    ) -> Self {
+    pub(crate) fn baseline(model: &PieDiagramModel, effective_config: &serde_json::Value) -> Self {
         let effective_config = PresentationConfig::from_value(effective_config.clone());
         Self::baseline_with_config(model, &effective_config, None, model.title.as_deref())
     }
 
     fn baseline_with_config(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         title: Option<&str>,
@@ -136,7 +133,7 @@ impl PieThemePlan {
 
     #[cfg(test)]
     pub(crate) fn resolve(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
@@ -151,7 +148,7 @@ impl PieThemePlan {
     }
 
     pub(crate) fn resolve_with_title(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         title: Option<&str>,
@@ -246,7 +243,7 @@ impl PieThemePlan {
 
     fn resolve_rules(
         &mut self,
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: &ResolvedDiagramTheme,
         work_meter: &OperationWorkMeter,
@@ -972,13 +969,13 @@ mod tests {
         ThemeRuleSet, ThemeStylePatch,
     };
     use crate::resources::RenderResourcePolicy;
-    use merman_core::diagrams::pie::PieSection;
+    use merman_model::families::pie::PieSection;
     use serde_json::json;
 
     #[test]
     fn bound_css_preserves_raw_values_and_color_fallbacks_without_typed_theme() {
         let plan = PieThemePlan::baseline(
-            &PieDiagramRenderModel::default(),
+            &PieDiagramModel::default(),
             &json!({"themeVariables": {
                 "textColor": "var(--section-color)",
                 "taskTextDarkColor": "currentColor",
@@ -1016,7 +1013,7 @@ mod tests {
             .resolve(DiagramFamilyId::PIE);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let plan = PieThemePlan::resolve(
-            &PieDiagramRenderModel::default(),
+            &PieDiagramModel::default(),
             &PresentationConfig::from_value(json!({})),
             Some(&theme),
             &meter,
@@ -1045,7 +1042,7 @@ mod tests {
     }
 
     fn palette_plan(colors: &[&str]) -> (PieThemePlan, Vec<String>) {
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.sections = colors
             .iter()
             .enumerate()
@@ -1069,7 +1066,7 @@ mod tests {
     }
 
     fn static_fill_plan(fill: CanvasPaint) -> (PieThemePlan, Vec<String>) {
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.sections = ["Alpha", "Beta"]
             .into_iter()
             .map(|label| PieSection {

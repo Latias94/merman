@@ -1075,7 +1075,7 @@ where
         crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
     let layout = crate::treemap::layout_treemap_diagram_typed_with_work_meter(
-        &merman_core::diagrams::treemap::TreemapDiagramRenderModel::default(),
+        &merman_model::families::treemap::TreemapDiagramRenderModel::default(),
         None,
         config.as_value(),
         work.as_ref(),

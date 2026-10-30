@@ -1,6 +1,6 @@
 use crate::config::{config_css_number_or_string, config_string};
 use crate::svg::PreparedCommonCss;
-use merman_core::theme_color::{ColorChannel, ThemeColor, invert};
+use merman_markup::theme_color::{ColorChannel, ThemeColor, invert};
 
 #[derive(Debug)]
 pub(crate) struct TreemapCssBinding {

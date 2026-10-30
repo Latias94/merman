@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::diagrams::quadrant_chart::{
+use merman_core::presentation::PresentationConfig;
+use merman_model::families::quadrant_chart::{
     QuadrantChartDiagramModel, QuadrantChartPointModel, QuadrantChartStyles,
 };
-use merman_core::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,

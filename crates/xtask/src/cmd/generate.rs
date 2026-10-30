@@ -3183,8 +3183,9 @@ pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError
             .join("dist")
             .join("purify.cjs.js")
     });
-    let out_path = out_path
-        .unwrap_or_else(|| PathBuf::from("crates/merman-core/src/generated/dompurify_defaults.rs"));
+    let out_path = out_path.unwrap_or_else(|| {
+        PathBuf::from("crates/merman-markup/src/generated/dompurify_defaults.rs")
+    });
 
     if !src_path_was_explicit && !src_path.exists() {
         return Err(XtaskError::MissingReference(

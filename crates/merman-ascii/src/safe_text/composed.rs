@@ -4,7 +4,7 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use merman_core::entities::{DecodedHtmlFragment, visit_decoded_html_entity_fragments};
+use merman_model::text::{DecodedHtmlFragment, visit_decoded_html_entity_fragments};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -924,7 +924,7 @@ fn invalid_composed_text_plan() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
     use std::cell::Cell;
 
     fn policy_with_limit(id: AsciiResourceLimitId, max: usize) -> AsciiResourcePolicy {

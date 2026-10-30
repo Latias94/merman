@@ -2,7 +2,7 @@ use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
-use merman_core::diagrams::sequence::{SequenceControlKind, SequenceControlRole};
+use merman_model::families::sequence::{SequenceControlKind, SequenceControlRole};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy)]

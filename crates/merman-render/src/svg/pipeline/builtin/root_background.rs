@@ -122,8 +122,8 @@ fn set_background_in_style_attr(style: &str, background_color: &str) -> String {
         };
         return format!("{style}{separator} background-color: {background_color};");
     }
-    let decoded = merman_core::entities::decode_html_entities_to_unicode(style);
-    let background_color = merman_core::entities::decode_html_entities_to_unicode(background_color);
+    let decoded = merman_model::text::decode_html_entities_to_unicode(style);
+    let background_color = merman_model::text::decode_html_entities_to_unicode(background_color);
     let mut parser = Parser::new(&decoded);
     let mut declarations = Vec::new();
     let mut replaced = false;

@@ -6,10 +6,12 @@
 
 pub mod config;
 pub mod families;
+pub mod family;
 pub mod json;
 pub mod operation;
 pub mod resources;
 pub mod runtime;
+pub mod semantic;
 pub mod source;
 pub mod text;
 pub mod time;
@@ -23,3 +25,5 @@ pub use operation::{
     OperationResourceOverride, OperationResourceProvenance,
 };
 pub use source::SourceSpan;
+
+pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata};

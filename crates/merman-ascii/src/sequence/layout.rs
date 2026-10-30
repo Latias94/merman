@@ -14,7 +14,7 @@ use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::NormalizedLabelPlan;
 #[cfg(test)]
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -347,7 +347,7 @@ mod tests {
     };
     use crate::sequence::render::render_sequence_diagram_with_execution;
     use crate::sequence::tree::SequenceTreeBuilder;
-    use merman_core::{CancelReason, OperationControl};
+    use merman_model::{CancelReason, OperationControl};
     use unicode_segmentation::UnicodeSegmentation;
 
     const FIRST_LABEL: &str = "abcdefghijklmno";

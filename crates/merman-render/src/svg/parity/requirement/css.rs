@@ -141,7 +141,7 @@ mod tests {
         let plan = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
             None,
             &config,
-            &merman_core::diagrams::requirement::RequirementDiagramModel {
+            &merman_model::families::requirement::RequirementDiagramModel {
                 acc_title: None,
                 acc_descr: None,
                 direction: String::new(),

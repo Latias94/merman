@@ -272,8 +272,8 @@ fn layout_allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{OperationControl, OperationPhase};
 
     #[test]
     fn normalized_trimmed_plan_preserves_grapheme_boundaries() {

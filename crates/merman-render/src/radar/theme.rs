@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::radar::RadarDiagramModel;
 
 use crate::config::{config_css_number_or_string, config_string, value_at};
 use crate::diagram_theme::{
@@ -625,7 +625,7 @@ impl RadarSeriesPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
-        model: &RadarDiagramRenderModel,
+        model: &RadarDiagramModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline(effective_config.as_value(), model);
@@ -696,7 +696,7 @@ impl RadarSeriesPaintPlan {
         Ok(plan)
     }
 
-    pub(crate) fn baseline(config: &serde_json::Value, model: &RadarDiagramRenderModel) -> Self {
+    pub(crate) fn baseline(config: &serde_json::Value, model: &RadarDiagramModel) -> Self {
         Self {
             colors: std::array::from_fn(|index| {
                 config_string(config, &["themeVariables", &format!("cScale{index}")])
@@ -871,7 +871,7 @@ mod tests {
                 "cScale11": " &<]]>色 ", "radar": {"cScale0": "also ignored"}
             }
         });
-        let plan = RadarSeriesPaintPlan::baseline(&config, &RadarDiagramRenderModel::default());
+        let plan = RadarSeriesPaintPlan::baseline(&config, &RadarDiagramModel::default());
         assert_eq!(plan.colors().len(), 12);
         assert_eq!(plan.colors()[0], "var(--series)");
         assert_eq!(plan.colors()[1], "");

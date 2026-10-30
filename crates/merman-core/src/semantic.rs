@@ -8,149 +8,42 @@ mod snapshot;
 #[cfg(feature = "editor-facts")]
 pub use snapshot::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture};
 
-/// Configuration and source metadata needed to interpret a diagram's meaning.
-#[derive(Debug, Clone)]
-pub struct SemanticMetadata {
-    pub diagram_type: String,
-    /// Source-authored config projection used by Mermaid's public parse metadata. It follows
-    /// upstream secure keys unless the host explicitly supplies its own `secure` policy.
-    pub config: MermaidConfig,
-    /// Effective semantic config after the site's secure-key and CSS-value admission, before
-    /// theme materialization.
-    pub semantic_config: MermaidConfig,
-    pub title: Option<String>,
-}
+pub use merman_model::semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata};
 
-/// A typed semantic result for the selected built-in diagram families.
-#[non_exhaustive]
-#[derive(Debug)]
-pub enum SemanticDiagramModel {
-    /// Canonical infrastructure model for an explicit or suppressed parser error.
-    Error(crate::diagrams::error_diagram::ErrorDiagramModel),
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    Flowchart(crate::diagrams::flowchart::FlowchartModel),
-    #[cfg(feature = "diagram-sequence")]
-    Sequence(crate::diagrams::sequence::SequenceDiagramModel),
-    #[cfg(feature = "diagram-state")]
-    State(crate::diagrams::state::StateDiagramModel),
-    #[cfg(feature = "diagram-timeline")]
-    Timeline(crate::diagrams::timeline::TimelineDiagramModel),
-    #[cfg(feature = "diagram-cynefin")]
-    Cynefin(crate::diagrams::cynefin::CynefinDiagramModel),
-    #[cfg(feature = "diagram-info")]
-    Info(crate::diagrams::info::InfoDiagramModel),
-    #[cfg(feature = "diagram-journey")]
-    Journey(crate::diagrams::journey::JourneyDiagramModel),
-    #[cfg(feature = "diagram-pie")]
-    Pie(crate::diagrams::pie::PieDiagramModel),
-    #[cfg(feature = "diagram-packet")]
-    Packet(crate::diagrams::packet::PacketDiagramModel),
-    #[cfg(feature = "diagram-tree-view")]
-    TreeView(crate::diagrams::tree_view::TreeViewDiagramModel),
-    #[cfg(feature = "diagram-quadrant-chart")]
-    QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartDiagramModel),
-    #[cfg(feature = "diagram-radar")]
-    Radar(crate::diagrams::radar::RadarDiagramModel),
-    #[cfg(feature = "diagram-sankey")]
-    Sankey(crate::diagrams::sankey::SankeyDiagramModel),
-    #[cfg(feature = "diagram-venn")]
-    Venn(crate::diagrams::venn::VennDiagramModel),
-    #[cfg(feature = "diagram-requirement")]
-    Requirement(crate::diagrams::requirement::RequirementDiagramModel),
-    #[cfg(feature = "diagram-usecase")]
-    Usecase(crate::diagrams::usecase::UsecaseDiagramModel),
-    #[cfg(feature = "diagram-event-modeling")]
-    EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramModel),
-    #[cfg(feature = "diagram-wardley")]
-    Wardley(crate::diagrams::wardley::WardleyDiagramModel),
-    #[cfg(feature = "diagram-railroad")]
-    Railroad(crate::diagrams::railroad::RailroadDiagramModel),
-    #[cfg(feature = "diagram-zenuml")]
-    Zenuml(crate::diagrams::zenuml::ZenumlDiagramModel),
-    #[cfg(feature = "diagram-er")]
-    Er(crate::diagrams::er::ErDiagramModel),
-    #[cfg(feature = "diagram-architecture")]
-    Architecture(crate::diagrams::architecture::ArchitectureDiagramModel),
-    #[cfg(feature = "diagram-gantt")]
-    Gantt(crate::diagrams::gantt::GanttDiagramModel),
-    #[cfg(feature = "diagram-c4")]
-    C4(crate::diagrams::c4::C4DiagramModel),
-    #[cfg(feature = "diagram-ishikawa")]
-    Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramModel),
-    #[cfg(feature = "diagram-treemap")]
-    Treemap(crate::diagrams::treemap::TreemapDiagramModel),
-    #[cfg(feature = "diagram-block")]
-    Block(crate::diagrams::block::BlockDiagramModel),
-    #[cfg(feature = "diagram-kanban")]
-    Kanban(crate::diagrams::kanban::KanbanDiagramModel),
-    #[cfg(feature = "diagram-mindmap")]
-    Mindmap(crate::diagrams::mindmap::MindmapDiagramModel),
-    #[cfg(feature = "diagram-xychart")]
-    XyChart(crate::diagrams::xychart::XyChartDiagramModel),
-    #[cfg(feature = "diagram-agentflow")]
-    Agentflow(crate::diagrams::agentflow::AgentflowDiagramModel),
-    #[cfg(feature = "diagram-git-graph")]
-    GitGraph(crate::diagrams::git_graph::GitGraphDiagramModel),
-    #[cfg(feature = "diagram-class")]
-    Class(crate::diagrams::class::ClassDiagramModel),
-}
-
-impl SemanticDiagramModel {
-    /// Consumes the model and returns its source-mapped semantic warning facts.
-    pub fn into_warning_facts(self) -> Vec<crate::DiagramWarningFact> {
-        #[allow(unreachable_patterns)]
-        match self {
-            #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow(model) => model.warning_facts,
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(model) => model.warning_facts,
-            #[cfg(feature = "diagram-block")]
-            Self::Block(model) => model.warning_facts,
-            #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(model) => model.warning_facts,
-            _ => Vec::new(),
+fn remap_semantic_source_positions(
+    model: &mut SemanticDiagramModel,
+    source: &crate::PreprocessedSource,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
+    control.checkpoint()?;
+    #[allow(unreachable_patterns)]
+    let facts: &mut [crate::DiagramWarningFact] = match model {
+        #[cfg(feature = "diagram-agentflow")]
+        SemanticDiagramModel::Agentflow(model) => {
+            let (line_offset, column_offset) = source.parser_position_offset();
+            crate::diagrams::agentflow::offset_diagnostic_positions(
+                model,
+                line_offset,
+                column_offset,
+            );
+            &mut model.warning_facts
         }
-    }
-
-    fn remap_source_positions(
-        &mut self,
-        source: &crate::PreprocessedSource,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        control.checkpoint()?;
-        #[allow(unreachable_patterns)]
-        let facts: &mut [crate::DiagramWarningFact] = match self {
-            #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow(model) => {
-                let (line_offset, column_offset) = source.parser_position_offset();
-                model.offset_diagnostic_positions(line_offset, column_offset);
-                &mut model.warning_facts
-            }
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(model) => &mut model.warning_facts,
-            #[cfg(feature = "diagram-block")]
-            Self::Block(model) => &mut model.warning_facts,
-            #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(model) => &mut model.warning_facts,
-            _ => &mut [],
-        };
-        for (index, fact) in facts.iter_mut().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            source.remap_warning_fact_spans(fact);
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        SemanticDiagramModel::Flowchart(model) => &mut model.warning_facts,
+        #[cfg(feature = "diagram-block")]
+        SemanticDiagramModel::Block(model) => &mut model.warning_facts,
+        #[cfg(feature = "diagram-git-graph")]
+        SemanticDiagramModel::GitGraph(model) => &mut model.warning_facts,
+        _ => &mut [],
+    };
+    for (index, fact) in facts.iter_mut().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
         }
-        control.checkpoint()
+        source.remap_warning_fact_spans(fact);
     }
+    control.checkpoint()
 }
-
-/// Metadata and canonical family model returned by [`SemanticParser`].
-#[derive(Debug)]
-pub struct ParsedSemanticDiagram {
-    pub metadata: SemanticMetadata,
-    pub model: SemanticDiagramModel,
-}
-
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
 /// Enabled families publish their canonical parser through the family catalog.
@@ -424,7 +317,7 @@ impl SemanticParser {
                     };
                     let outcome = match construction.model {
                         Ok(mut model) => {
-                            model.remap_source_positions(&source, control)?;
+                            remap_semantic_source_positions(&mut model, &source, control)?;
                             SemanticParseOutcome::Parsed(model)
                         }
                         Err(error) => SemanticParseOutcome::Failed(source.remap_parse_error(error)),
@@ -642,7 +535,7 @@ impl SemanticParser {
                 }));
             }
         };
-        model.remap_source_positions(&source, control)?;
+        remap_semantic_source_positions(&mut model, &source, control)?;
         control.checkpoint()?;
         Ok(Ok(ParsedSemanticDiagram { metadata, model }))
     }

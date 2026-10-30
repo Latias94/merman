@@ -9113,12 +9113,10 @@ fn family_artifact_rejects_planned_family_drift() {
         .unwrap()
         .expect("flowchart source should produce a render model");
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
-    let FamilyRenderArtifact {
-        metadata, family, ..
-    } = artifact;
+    let FamilyRenderArtifact { family, .. } = artifact;
 
     let error = match FamilyRenderArtifact::new(
-        metadata,
+        &parsed,
         family,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
     ) {
@@ -10415,16 +10413,49 @@ fn layout_json_projects_its_paired_semantics_and_layout() {
         )
         .expect("parse Treemap render model")
         .expect("detect Treemap family");
-    let compatibility = parsed
-        .model()
-        .compatibility_json(parsed.metadata())
-        .unwrap();
+    let compatibility = parsed.compatibility_json().unwrap();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
     let projected = artifact.layout_json().unwrap();
     assert_eq!(projected["semantic"], compatibility);
     assert_eq!(projected["meta"]["diagram_type"], "treemap");
     assert!(projected["layout"]["TreemapDiagram"].is_object());
     assert_eq!(artifact.layout_json().unwrap(), projected);
+}
+
+#[test]
+fn layout_json_keeps_empty_output_facts_after_preparing_canonical_payloads() {
+    let engine = MermaidEngine::new();
+    for (diagram_type, header) in [
+        ("info", "info"),
+        ("pie", "pie"),
+        ("journey", "journey"),
+        ("timeline", "timeline"),
+        ("packet", "packet-beta"),
+        ("radar", "radar-beta"),
+    ] {
+        for source in ["", header] {
+            let parsed = engine
+                .parse_diagram_for_render_model_with_type_sync(
+                    diagram_type,
+                    source,
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let expected = parsed.compatibility_json().unwrap();
+            let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
+            let projected = artifact.layout_json().unwrap();
+            assert_eq!(
+                projected["semantic"], expected,
+                "{diagram_type}: {source:?}"
+            );
+            if source.is_empty() {
+                assert_eq!(projected["semantic"], json!({}), "{diagram_type}");
+            } else {
+                assert_eq!(projected["semantic"]["type"], diagram_type);
+            }
+        }
+    }
 }
 
 #[test]

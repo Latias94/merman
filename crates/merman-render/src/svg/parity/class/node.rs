@@ -1,8 +1,8 @@
 use crate::class::ClassPreparedSvgTitle;
 use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
-use merman_core::models::class_diagram::ClassMember;
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
+use merman_model::families::class::ClassMember;
 use std::time::Duration;
 
 use super::super::SvgDiagramId;
@@ -1392,7 +1392,7 @@ mod typography_tests {
         }
     }
 
-    fn class_node() -> merman_core::models::class_diagram::ClassNode {
+    fn class_node() -> merman_model::families::class::ClassNode {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nclass Vehicle {\n+owner\n+name\n+drive()\n+stop()\n}",

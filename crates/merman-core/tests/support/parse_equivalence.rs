@@ -91,12 +91,9 @@ pub fn assert_pair(
                 capability.render_model_kind,
                 "catalog model kind: {source}"
             );
-            let projected = typed
-                .model()
-                .compatibility_json(typed.metadata())
-                .unwrap_or_else(|error| {
-                    panic!("accepted typed model has no lossless projection: {error}\n{source}")
-                });
+            let projected = typed.compatibility_json().unwrap_or_else(|error| {
+                panic!("accepted typed model has no lossless projection: {error}\n{source}")
+            });
             assert_eq!(
                 semantic.model, projected,
                 "complete semantic projection: {source}"

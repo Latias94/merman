@@ -14,7 +14,7 @@ use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{LogicalExtent, ResourceContext};
 use crate::safe_text::DeferredTextRegistry;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 mod collision;
 
@@ -1234,8 +1234,8 @@ fn node_index(
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl};
 
     #[test]
     fn horizontal_owner_scan_has_an_exact_work_boundary() {

@@ -164,7 +164,7 @@ pub(crate) fn normalize_html_entities_for_xml(value: &str) -> Cow<'_, str> {
         }
 
         let reference = &value[amp..=semicolon];
-        let decoded = merman_core::entities::decode_html_entities_to_unicode(reference);
+        let decoded = merman_model::text::decode_html_entities_to_unicode(reference);
         if decoded.as_ref() != reference {
             push_xml_escaped(&mut out, decoded.as_ref());
         } else {

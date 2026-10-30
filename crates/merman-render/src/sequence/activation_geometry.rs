@@ -1,6 +1,6 @@
 use super::{SequenceLayoutCheckpoints, sequence_activation_start_x};
 use crate::model::{LayoutEdge, LayoutNode};
-use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessageKind};
+use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]

@@ -14,7 +14,7 @@ use crate::graph::model::{
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 use rustc_hash::FxHashMap as HashMap;
 
 pub(super) fn apply_subgraph_direction_overrides(
@@ -399,7 +399,7 @@ mod tests {
     use crate::graph::model::GraphGroupStyle;
     use crate::options::AsciiRenderOptions;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,

@@ -1328,7 +1328,7 @@ fn html_node_glow_does_not_inherit_sibling_cluster_styles() {
 
 #[test]
 fn html_edge_label_glow_keeps_the_composited_background_outside_the_filter() {
-    use merman_core::theme_color::{ColorChannel, ThemeColor};
+    use merman_markup::theme_color::{ColorChannel, ThemeColor};
     for padding in [
         merman_render::diagram_theme::InsetsPx::all(0.0),
         merman_render::diagram_theme::InsetsPx {

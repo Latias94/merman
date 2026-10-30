@@ -305,7 +305,7 @@ pub(crate) fn render_math_html_label(
         return None;
     }
     let rendered = math_renderer?.render_html_label(text, config)?;
-    Some(merman_core::sanitize::sanitize_xhtml(
+    Some(merman_markup::sanitize::sanitize_xhtml(
         &rendered,
         config.as_config(),
     ))
@@ -989,7 +989,7 @@ mod tests {
             html.contains(r#"width="0.97153em""#),
             "unexpected SVG size: {html}"
         );
-        let sanitized = merman_core::sanitize::sanitize_text(&html, config.as_config());
+        let sanitized = merman_markup::sanitize::sanitize_text(&html, config.as_config());
         assert!(
             sanitized.contains("<svg") && sanitized.contains("<path"),
             "sanitizer should preserve RaTeX inline SVG: {sanitized}"

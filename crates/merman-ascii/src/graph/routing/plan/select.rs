@@ -104,7 +104,7 @@ pub(in crate::graph::routing) struct EdgeRouteRequest<'a> {
 #[cfg(test)]
 pub(in crate::graph::routing) fn plan_edge_route(request: EdgeRouteRequest<'_>) -> EdgeRoutePlan {
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
     let label = request
         .edge

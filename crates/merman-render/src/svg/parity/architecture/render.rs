@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::architecture_metrics::architecture_estimate_service_bounds;
 use crate::model::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
-use merman_core::diagrams::architecture::{
+use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
 };
 

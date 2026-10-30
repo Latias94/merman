@@ -24,7 +24,7 @@ pub(crate) fn render_stacked_boxes_with_deferred_options_with_execution(
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut layout_resources =
-        execution.resource_context(resources, merman_core::OperationPhase::Layout);
+        execution.resource_context(resources, merman_model::OperationPhase::Layout);
     let lines = stacked_box_lines_ordered_impl(
         boxes,
         options.terminal_width_profile,

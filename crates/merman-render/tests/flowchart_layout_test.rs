@@ -1,5 +1,5 @@
-use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_model::families::flowchart::FlowchartModel;
 use merman_render::Error;
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};

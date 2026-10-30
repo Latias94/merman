@@ -5,7 +5,7 @@ use crate::elk_edge_geometry;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-use merman_core::diagrams::usecase::{UsecaseDiagramModel, UsecaseLabelType};
+use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseLabelType};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -144,7 +144,7 @@ pub(crate) fn requires_math(
         return false;
     }
     let has_math = |(text, kind): (&str, UsecaseLabelType)| {
-        let sanitized = merman_core::sanitize::sanitize_text(text, config.as_config());
+        let sanitized = merman_markup::sanitize::sanitize_text(text, config.as_config());
         crate::math::contains_delimited_math(&create_text_source(&sanitized, kind))
     };
     let mut labels = model

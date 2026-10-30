@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::radar::RadarDiagramModel;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -44,7 +44,7 @@ impl RadarTextPaintPlan {
     pub(crate) fn baseline_with_binding(
         binding: &super::RadarCssBinding,
         layout: &RadarDiagramLayout,
-        model: &RadarDiagramRenderModel,
+        model: &RadarDiagramModel,
         title: Option<&str>,
     ) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl RadarTextPaintPlan {
         config: &PresentationConfig,
         binding: &super::RadarCssBinding,
         layout: &RadarDiagramLayout,
-        model: &RadarDiagramRenderModel,
+        model: &RadarDiagramModel,
         title: Option<&str>,
         title_plan: &super::RadarTitleThemePlan,
         work_meter: &OperationWorkMeter,

@@ -951,12 +951,12 @@ mod tests {
         );
         assert_eq!(git_graph.commits.len(), 1);
 
-        let info =
+        let (info, _) =
             crate::diagrams::info::parse_info_model_for_render(&source("info"), &metadata("info"))
                 .unwrap();
         assert!(info.show_info);
 
-        let packet = crate::diagrams::packet::parse_packet_model_for_render(
+        let (packet, _) = crate::diagrams::packet::parse_packet_model_for_render(
             &source("packet"),
             &metadata("packet"),
         )
@@ -964,14 +964,14 @@ mod tests {
         assert_eq!(packet.title.as_deref(), Some("Final title"));
         assert_eq!(packet.packet.len(), 1);
 
-        let pie =
+        let (pie, _) =
             crate::diagrams::pie::parse_pie_model_for_render(&source("pie"), &metadata("pie"))
                 .unwrap();
         assert_eq!(pie.title.as_deref(), Some("Final title"));
         assert!(pie.show_data);
         assert_eq!(pie.sections.len(), 1);
 
-        let radar = crate::diagrams::radar::parse_radar_model_for_render(
+        let (radar, _) = crate::diagrams::radar::parse_radar_model_for_render(
             &source("radar"),
             &metadata("radar"),
         )

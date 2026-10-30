@@ -2,7 +2,7 @@ use crate::config::json_f64;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
-use merman_core::diagrams::treemap::TreemapDiagramRenderModel;
+use merman_model::families::treemap::TreemapDiagramRenderModel;
 use serde_json::Value;
 
 pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
@@ -276,7 +276,7 @@ fn join_class_styles_with_work(
 
 fn clone_node_styles_with_work(
     node: &HierNode,
-    classes: &std::collections::BTreeMap<String, merman_core::diagrams::treemap::TreemapClassDef>,
+    classes: &std::collections::BTreeMap<String, merman_model::families::treemap::TreemapClassDef>,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<Vec<String>>> {
     if let Some(styles) = node.css_compiled_styles.as_deref() {
@@ -678,7 +678,7 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
 
 #[cfg(test)]
 mod tests {
-    use merman_core::diagrams::treemap::{
+    use merman_model::families::treemap::{
         TreemapClassDef, TreemapDiagramModel, TreemapDiagramRenderModel, TreemapNode,
     };
 

@@ -663,7 +663,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     if request.wrap_mode == WrapMode::HtmlLike {
         let source =
             flowchart_label_html_source(request.raw_label, request.label_type, request.config);
-        let xhtml = merman_core::sanitize::sanitize_xhtml(&source, request.config.as_config());
+        let xhtml = merman_markup::sanitize::sanitize_xhtml(&source, request.config.as_config());
         return flowchart_html_label_metrics_for_layout(request, &xhtml);
     }
     if request.label_type == "markdown" {
@@ -785,7 +785,7 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
                 }
                 Ok(quick_xml::events::Event::Text(text)) => {
                     let decoded =
-                        merman_core::entities::decode_html_entities_to_unicode(text.as_ref());
+                        merman_model::text::decode_html_entities_to_unicode(text.as_ref());
                     let has_text = !trim_html_collapsible_ascii_whitespace(&decoded).is_empty();
                     if paragraph_depth > 0 {
                         paragraph_has_text |= has_text;
@@ -796,7 +796,7 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
                 }
                 Ok(quick_xml::events::Event::GeneralRef(reference)) => {
                     let encoded = format!("&{};", reference.as_ref());
-                    let decoded = merman_core::entities::decode_html_entities_to_unicode(&encoded);
+                    let decoded = merman_model::text::decode_html_entities_to_unicode(&encoded);
                     let has_text = !trim_html_collapsible_ascii_whitespace(&decoded).is_empty();
                     paragraph_has_text |= paragraph_depth > 0 && has_text;
                     markdown_has_unwrapped_text |= element_depth == 0 && has_text;
@@ -995,7 +995,7 @@ fn measure_flowchart_html_images(
     fn normalize_text_block(input: &str) -> String {
         // The scanner separates already-sanitized markup before measuring its DOM text. Decode
         // the XHTML representation once so entities do not become visible glyph spellings.
-        let input = merman_core::entities::decode_html_entities_to_unicode(input);
+        let input = merman_model::text::decode_html_entities_to_unicode(input);
         let mut out = String::with_capacity(input.len());
         let mut last_space = false;
         for ch in input.chars() {
@@ -1147,7 +1147,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
             {
                 // Decode each DOM text run independently. Decoding after removing every tag would
                 // incorrectly join `&cop<strong>y;</strong>` into the entity `&copy;`.
-                let decoded = merman_core::entities::decode_html_entities_to_unicode(run.as_str());
+                let decoded = merman_model::text::decode_html_entities_to_unicode(run.as_str());
                 for ch in decoded.chars() {
                     if ch == '\u{00A0}' {
                         out.push(ch);
@@ -1803,7 +1803,7 @@ mod tests {
         let config =
             PresentationConfig::from_value(serde_json::json!({ "securityLevel": "strict" }));
         let html = flowchart_label_html_source("head<img", "html", &config);
-        let xhtml = merman_core::sanitize::sanitize_xhtml(&html, config.as_config());
+        let xhtml = merman_markup::sanitize::sanitize_xhtml(&html, config.as_config());
         let document = roxmltree::Document::parse(&xhtml)
             .expect("HTML5 recovery closes the paragraph after discarding the incomplete image");
         assert!(!document.descendants().any(|node| node.has_tag_name("img")));

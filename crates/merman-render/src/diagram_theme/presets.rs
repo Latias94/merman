@@ -366,7 +366,7 @@ mod tests {
                 }
             }
 
-            let rgba = merman_core::theme_color::ThemeColor::parse(color)
+            let rgba = merman_markup::theme_color::ThemeColor::parse(color)
                 .unwrap_or_else(|_| panic!("expected a Mermaid-compatible color, got {color}"))
                 .rgba_channels();
             0.2126 * linear_channel(rgba.red)

@@ -146,7 +146,7 @@ impl Canvas {
             height,
             TerminalWidthProfile::Unicode,
             AsciiResourcePolicy::for_profile(
-                merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+                merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
             ),
         )
         .expect("test canvas extent must be representable")
@@ -163,7 +163,7 @@ impl Canvas {
             height,
             width_profile,
             AsciiResourcePolicy::for_profile(
-                merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+                merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
             ),
         )
         .expect("test canvas extent must be representable")
@@ -200,7 +200,7 @@ impl Canvas {
     ) -> crate::Result<Self> {
         let extent = resources.grid_extent(width, height)?;
         Self::from_extent_with_checkpoint(extent, width_profile, resources.scoped(), || {
-            execution.checkpoint(merman_core::OperationPhase::Emit)
+            execution.checkpoint(merman_model::OperationPhase::Emit)
         })
     }
 
@@ -731,7 +731,7 @@ impl Canvas {
         execution: AsciiExecution<'_>,
     ) -> crate::Result<String> {
         self.resources =
-            execution.resource_context(&self.resources, merman_core::OperationPhase::Emit);
+            execution.resource_context(&self.resources, merman_model::OperationPhase::Emit);
         let resources = self.resources.clone();
         resources.transaction(|_| {
             self.finish_encoded(options.color_mode, options.color_theme, trim, execution)
@@ -767,7 +767,7 @@ impl Canvas {
         let mut counted = CountingTerminalOutput::new(&self.resources);
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut counted)?;
         let encoded_bytes = counted.bytes();
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         self.resources
             .check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
         Ok(Some(encoded_bytes))
@@ -781,7 +781,7 @@ impl Canvas {
         execution: AsciiExecution<'_>,
         encoded_bytes: usize,
     ) -> crate::Result<String> {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         let mut output = CheckedOutput::try_prebudgeted(&self.resources, encoded_bytes)?;
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut output)?;
         let output = output.finish();
@@ -805,7 +805,7 @@ impl Canvas {
         let mut trim_pass_work = 0usize;
         let preserve_roles = color_mode != AsciiColorMode::Plain;
         for row_start in (0..self.cells.len()).step_by(self.width) {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             let (row_end, inspected) = if trim {
                 let row = admit_trimmed_row(
                     &self.cells[row_start..row_start + self.width],
@@ -834,9 +834,9 @@ impl Canvas {
         let remaining_work = self
             .resources
             .checked_work_add(encoder_work, remaining_trim_work)?;
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         self.resources.check_usage(remaining_work, document_cells)?;
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         self.resources.charge_usage(remaining_work, document_cells)
     }
 
@@ -850,7 +850,7 @@ impl Canvas {
     ) -> crate::Result<()> {
         let preserve_roles = color_mode != AsciiColorMode::Plain;
         for row_start in (0..self.cells.len()).step_by(self.width) {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             let row_end = if trim {
                 row_start
                     + controlled_trimmed_row(
@@ -954,7 +954,7 @@ fn admit_trimmed_row(
     let mut end = cells.len();
     let mut inspected = 0usize;
     while let Some(cell) = end.checked_sub(1).and_then(|index| cells.get(index)) {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         inspected += 1;
         if !cell.is_trimmable_blank(preserve_roles) {
@@ -973,7 +973,7 @@ fn controlled_trimmed_row(
     let mut end = cells.len();
     let mut inspected = 0usize;
     while let Some(cell) = end.checked_sub(1).and_then(|index| cells.get(index)) {
-        execution.checkpoint_loop(merman_core::OperationPhase::Emit, inspected)?;
+        execution.checkpoint_loop(merman_model::OperationPhase::Emit, inspected)?;
         inspected += 1;
         if !cell.is_trimmable_blank(preserve_roles) {
             break;
@@ -1128,7 +1128,7 @@ fn finish_styled_line_iter_with_observer<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    let resources = execution.resource_context(resources, merman_core::OperationPhase::Emit);
+    let resources = execution.resource_context(resources, merman_model::OperationPhase::Emit);
     resources.transaction(|resources| {
         let Some(encoded_bytes) =
             admit_styled_line_iter(lines.clone(), options, trim, resources, deferred, execution)?
@@ -1162,7 +1162,7 @@ where
     let mut line_count = 0usize;
     let mut width = 0usize;
     for line in lines.clone() {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         line_count = resources.checked_grid_add(line_count, 1)?;
         width = width.max(line.len());
     }
@@ -1178,7 +1178,7 @@ where
     let mut trim_pass_work = 0usize;
     let preserve_color = options.color_mode != AsciiColorMode::Plain;
     for line in lines.clone() {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         let (row_end, inspected) = if trim {
             let row = admit_trimmed_row(
                 line.surface_cells(),
@@ -1198,7 +1198,7 @@ where
         trim_pass_work = document_resources.checked_work_add(trim_pass_work, inspected)?;
         if let Some(deferred) = deferred {
             for cell in &line.surface_cells()[..row_end] {
-                execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                execution.checkpoint(merman_model::OperationPhase::Emit)?;
                 if let Some(id) = cell.deferred_text_id() {
                     encoder_pass_work = document_resources
                         .checked_work_add(encoder_pass_work, deferred.replay_work_units(id)?)?;
@@ -1211,9 +1211,9 @@ where
     // materialization scans together with the two encoder passes before either pass starts.
     let remaining_trim_work = document_resources.checked_work_mul(trim_pass_work, 2)?;
     let remaining_work = document_resources.checked_work_add(encoder_work, remaining_trim_work)?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     document_resources.check_usage(remaining_work, document_cells)?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     document_resources.charge_usage(remaining_work, document_cells)?;
 
     let mut counted = CountingTerminalOutput::new(resources);
@@ -1227,7 +1227,7 @@ where
         &mut counted,
     )?;
     let encoded_bytes = counted.bytes();
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     resources.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
     Ok(Some(encoded_bytes))
 }
@@ -1244,7 +1244,7 @@ fn materialize_styled_line_iter<'a, I>(
 where
     I: Iterator<Item = &'a crate::text::StyledLine>,
 {
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     let mut output = CheckedOutput::try_prebudgeted(resources, encoded_bytes)?;
     encode_styled_line_iter_to_sink(
         lines,
@@ -1277,7 +1277,7 @@ where
     match options.color_mode {
         AsciiColorMode::Plain => {
             for line in lines {
-                execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                execution.checkpoint(merman_model::OperationPhase::Emit)?;
                 let row_end = if trim {
                     controlled_trimmed_row(line.surface_cells(), false, execution)?.end
                 } else {
@@ -1290,7 +1290,7 @@ where
         AsciiColorMode::Ansi16 | AsciiColorMode::Ansi256 | AsciiColorMode::TrueColor => {
             let mode = options.color_mode;
             for line in lines {
-                execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                execution.checkpoint(merman_model::OperationPhase::Emit)?;
                 let row_end = if trim {
                     controlled_trimmed_row(line.surface_cells(), true, execution)?.end
                 } else {
@@ -1313,7 +1313,7 @@ where
         }
         AsciiColorMode::Html => {
             for line in lines {
-                execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                execution.checkpoint(merman_model::OperationPhase::Emit)?;
                 let row_end = if trim {
                     controlled_trimmed_row(line.surface_cells(), true, execution)?.end
                 } else {
@@ -1569,7 +1569,7 @@ fn visit_primary_cells(
 ) -> crate::Result<()> {
     let mut offset = 0usize;
     let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| {
-        execution.checkpoint(merman_core::OperationPhase::Emit)
+        execution.checkpoint(merman_model::OperationPhase::Emit)
     });
     while let Some(cell) = cells.get(offset).copied() {
         checkpoints.checkpoint_primary_cell()?;
@@ -1710,7 +1710,9 @@ mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
-    use merman_core::{CancelReason, OperationControl, OperationPhase, resources::ResourceProfile};
+    use merman_model::{
+        CancelReason, OperationControl, OperationPhase, resources::ResourceProfile,
+    };
 
     fn policy_with_limit(id: AsciiResourceLimitId, limit: usize) -> AsciiResourcePolicy {
         AsciiResourcePolicy::default()

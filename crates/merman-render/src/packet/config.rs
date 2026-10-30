@@ -1,5 +1,5 @@
 use crate::config::{config_bool, config_css_number_or_string, config_f64};
-use merman_core::diagrams::packet::{PacketBitsPerRowError, validate_packet_bits_per_row};
+use merman_model::families::packet::{PacketBitsPerRowError, validate_packet_bits_per_row};
 use serde_json::Value;
 use std::borrow::Cow;
 
@@ -106,7 +106,7 @@ impl<'a> PacketConfigView<'a> {
         };
         // Preserve the declaration parser's second delimiter normalization after JSON projection.
         value.truncate(value.trim_end_matches(';').trim_end().len());
-        if merman_core::style::is_safe_css_declaration_value(&value) {
+        if merman_markup::style::is_safe_css_declaration_value(&value) {
             Cow::Owned(value)
         } else {
             Cow::Borrowed(default_value)
@@ -148,7 +148,7 @@ pub(crate) struct PacketStyleSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::packet::DEFAULT_PACKET_BITS_PER_ROW;
+    use merman_model::families::packet::DEFAULT_PACKET_BITS_PER_ROW;
     use serde_json::json;
 
     #[test]

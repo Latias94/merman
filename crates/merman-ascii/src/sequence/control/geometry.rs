@@ -228,7 +228,7 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::OperationPhase;
+    use merman_model::OperationPhase;
 
     #[test]
     fn boundary_snapshot_accepts_exact_work_and_rejects_max_minus_one() {

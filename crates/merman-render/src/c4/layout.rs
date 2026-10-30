@@ -9,7 +9,7 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
-use merman_core::diagrams::c4::{C4Boundary, C4DiagramModel};
+use merman_model::families::c4::{C4Boundary, C4DiagramModel};
 use serde_json::Value;
 use std::collections::HashMap;
 

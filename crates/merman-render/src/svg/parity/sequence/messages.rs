@@ -13,7 +13,7 @@ use crate::sequence::{
     measure_sequence_drawn_line_height, sequence_activation_stack_bounds,
     sequence_drawn_text_style, sequence_drawn_text_y,
 };
-use merman_core::diagrams::sequence::{
+use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
     SequenceMessageMarker, SequenceMessageStroke,
 };
@@ -264,7 +264,7 @@ fn message_data_attrs(msg_id: &str, from: &str, to: &str) -> String {
     )
 }
 
-fn is_reverse_arrow_type(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
+fn is_reverse_arrow_type(msg: &merman_model::families::sequence::SequenceMessage) -> bool {
     msg.signal_semantics()
         .is_some_and(|semantics| semantics.direction == SequenceMessageDirection::Reverse)
 }
@@ -290,7 +290,7 @@ impl SequenceAutonumberActivationBounds {
 
     fn handle_directive(
         &mut self,
-        msg: &merman_core::diagrams::sequence::SequenceMessage,
+        msg: &merman_model::families::sequence::SequenceMessage,
         ctx: &SequenceMessageRenderContext<'_>,
     ) -> bool {
         match msg.semantic_kind() {
@@ -330,7 +330,7 @@ impl SequenceAutonumberActivationBounds {
 fn sequence_number_marker_x(
     activation_bounds: &SequenceAutonumberActivationBounds,
     ctx: &SequenceMessageRenderContext<'_>,
-    msg: &merman_core::diagrams::sequence::SequenceMessage,
+    msg: &merman_model::families::sequence::SequenceMessage,
     from: &str,
     to: &str,
     startx: f64,
@@ -363,7 +363,7 @@ fn sequence_number_marker_x(
 fn write_central_connection_circles(
     out: &mut impl SvgOutput,
     ctx: &SequenceMessageRenderContext<'_>,
-    msg: &merman_core::diagrams::sequence::SequenceMessage,
+    msg: &merman_model::families::sequence::SequenceMessage,
     from: &str,
     to: &str,
     line_y: f64,
@@ -913,7 +913,7 @@ mod tests {
         let actors = [
             (
                 "Alice".to_string(),
-                merman_core::diagrams::sequence::SequenceActor {
+                merman_model::families::sequence::SequenceActor {
                     name: "Alice".to_string(),
                     description: "Alice".to_string(),
                     actor_type: "participant".to_string(),
@@ -924,7 +924,7 @@ mod tests {
             ),
             (
                 "Bob".to_string(),
-                merman_core::diagrams::sequence::SequenceActor {
+                merman_model::families::sequence::SequenceActor {
                     name: "Bob".to_string(),
                     description: "Bob".to_string(),
                     actor_type: "participant".to_string(),
@@ -937,7 +937,7 @@ mod tests {
         .into_iter()
         .collect();
         let messages = (0..4)
-            .map(|index| merman_core::diagrams::sequence::SequenceMessage {
+            .map(|index| merman_model::families::sequence::SequenceMessage {
                 id: index.to_string(),
                 from: Some("Alice".to_string()),
                 to: Some("Bob".to_string()),
@@ -1097,7 +1097,7 @@ mod tests {
                 actor_order: Vec::new(),
                 actors: BTreeMap::new(),
                 boxes: Vec::new(),
-                messages: vec![merman_core::diagrams::sequence::SequenceMessage {
+                messages: vec![merman_model::families::sequence::SequenceMessage {
                     id: "0".to_string(),
                     from: Some("Alice".to_string()),
                     to: Some("Bob".to_string()),

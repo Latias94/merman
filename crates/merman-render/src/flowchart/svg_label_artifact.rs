@@ -1313,19 +1313,19 @@ impl FlowchartSvgLabelSidecarBuilder {
             request.label_type,
             request.config,
         );
-        let xhtml = match merman_core::sanitize::sanitize_xhtml_with_sink(
+        let xhtml = match merman_markup::sanitize::sanitize_xhtml_with_sink(
             &html,
             request.config.as_config(),
             &sink,
         ) {
             Ok(xhtml) => xhtml,
-            Err(merman_core::sanitize::SanitizeFailure::Output(
+            Err(merman_markup::sanitize::SanitizeFailure::Output(
                 crate::html::HtmlOutputError::Operation(error),
             )) => {
                 self.record_prepared_work_error(error);
                 return failed_prepared_metrics();
             }
-            Err(merman_core::sanitize::SanitizeFailure::Output(
+            Err(merman_markup::sanitize::SanitizeFailure::Output(
                 crate::html::HtmlOutputError::Limit { attempted },
             )) => {
                 if let Err(error) = work

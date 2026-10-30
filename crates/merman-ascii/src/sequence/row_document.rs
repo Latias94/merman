@@ -13,7 +13,7 @@ use crate::resource::{
 };
 use crate::safe_text::visit_safe_line_graphemes;
 use crate::terminal::{SurfaceCellCheckpoints, TerminalCellText, primary_width_with_checkpoints};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 #[derive(Debug)]
 pub(super) struct SequenceRowDocument {
@@ -441,7 +441,7 @@ mod tests {
     use super::*;
     use crate::operation::AsciiExecution;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
 
     #[test]
     fn styled_sequence_rows_stream_through_one_output_budget_in_every_mode() {
@@ -507,7 +507,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Emit
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
     }
 

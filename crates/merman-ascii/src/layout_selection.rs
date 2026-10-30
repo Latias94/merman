@@ -93,7 +93,7 @@ pub(crate) fn select(
         LayoutCandidate::Overflow(_) => (0, 0),
     };
     let compact_ledger = execution
-        .new_resource_context(merman_core::OperationPhase::Layout)
+        .new_resource_context(merman_model::OperationPhase::Layout)
         .scoped()
         .with_retained_output(retained_bytes, retained_cells);
     let compact_execution = execution
@@ -146,7 +146,7 @@ mod tests {
     use super::*;
     use crate::resource::ResourceContext;
     use crate::{AsciiResourceLimitId, AsciiResourcePolicy, TerminalWidthProfile};
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
 
     fn over_width() -> AsciiError {
         AsciiError::PrimaryViewportOverflow {

@@ -513,7 +513,7 @@ pub(super) fn blank_line_with_checkpoints(
     let line_base = ResourceContext::new(resources.policy());
     let line_resources = line_base.controlled(
         checkpoints.execution().cloned_control(),
-        merman_core::OperationPhase::Layout,
+        merman_model::OperationPhase::Layout,
     );
     SequenceLine::try_blank_with_resources_and_checkpoint(
         width,
@@ -555,7 +555,7 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::options::TerminalWidthProfile;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn extent_ledger_accepts_exact_grid_and_document_limits() {

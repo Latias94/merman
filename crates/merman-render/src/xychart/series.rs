@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::diagrams::xychart::{XyChartDiagramRenderModel, XyChartPlotType};
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::xy_chart::{XyChartDiagramRenderModel, XyChartPlotType};
 
 use crate::chart_palette::plot_color_from_palette;
 use crate::diagram_theme::{

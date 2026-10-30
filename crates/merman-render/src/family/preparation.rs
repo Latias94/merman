@@ -301,7 +301,7 @@ fn prepare_railroad_family<'parsed>(
 
 #[inline(never)]
 fn prepare_error_family<'parsed>(
-    model: &'parsed diagrams::error_diagram::ErrorDiagramModel,
+    model: &'parsed diagrams::error::ErrorDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -323,7 +323,7 @@ fn prepare_error_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-info")]
 fn prepare_info_family<'parsed>(
-    model: &'parsed diagrams::info::InfoDiagramRenderModel,
+    model: &'parsed diagrams::info::InfoDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -616,7 +616,7 @@ fn prepare_gantt_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-pie")]
 fn prepare_pie_family<'parsed>(
-    model: &'parsed diagrams::pie::PieDiagramRenderModel,
+    model: &'parsed diagrams::pie::PieDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -644,7 +644,7 @@ fn prepare_pie_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-timeline")]
 fn prepare_timeline_family<'parsed>(
-    model: &'parsed diagrams::timeline::TimelineDiagramRenderModel,
+    model: &'parsed diagrams::timeline::TimelineDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -683,7 +683,7 @@ fn prepare_timeline_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-journey")]
 fn prepare_journey_family<'parsed>(
-    model: &'parsed diagrams::journey::JourneyDiagramRenderModel,
+    model: &'parsed diagrams::journey::JourneyDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -727,7 +727,7 @@ fn prepare_journey_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-radar")]
 fn prepare_radar_family<'parsed>(
-    model: &'parsed diagrams::radar::RadarDiagramRenderModel,
+    model: &'parsed diagrams::radar::RadarDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -897,7 +897,7 @@ fn prepare_quadrant_chart_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-xychart")]
 fn prepare_xy_chart_family<'parsed>(
-    model: &'parsed diagrams::xychart::XyChartDiagramRenderModel,
+    model: &'parsed diagrams::xy_chart::XyChartDiagramRenderModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1028,7 +1028,7 @@ fn prepare_tree_view_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-packet")]
 fn prepare_packet_family<'parsed>(
-    model: &'parsed diagrams::packet::PacketDiagramRenderModel,
+    model: &'parsed diagrams::packet::PacketDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1269,7 +1269,7 @@ fn prepare_zenuml_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-event-modeling")]
 fn prepare_eventmodeling_family<'parsed>(
-    model: &'parsed diagrams::eventmodeling::EventModelingDiagramModel,
+    model: &'parsed diagrams::event_modeling::EventModelingDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1347,7 +1347,7 @@ pub(super) fn prepare_class_render<'parsed>(
     context.ensure_portable_before_svg()?;
     let execution = LayoutExecution::new(options, context.execution());
     let family = prepare_class_family(model, meta, &execution)?;
-    FamilyRenderArtifact::new(meta, family, context)
+    FamilyRenderArtifact::new(parsed, family, context)
 }
 
 #[inline(never)]
@@ -1366,7 +1366,7 @@ pub(super) fn prepare_architecture_render<'parsed>(
     context.ensure_portable_before_svg()?;
     let execution = LayoutExecution::new(options, context.execution());
     let family = prepare_architecture_family(model, meta, &execution)?;
-    FamilyRenderArtifact::new(meta, family, context)
+    FamilyRenderArtifact::new(parsed, family, context)
 }
 
 #[inline(never)]
@@ -1569,5 +1569,5 @@ pub(super) fn prepare_non_class_render<'parsed>(
             });
         }
     };
-    FamilyRenderArtifact::new(meta, family, context)
+    FamilyRenderArtifact::new(parsed, family, context)
 }

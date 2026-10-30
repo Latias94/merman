@@ -347,7 +347,7 @@ fn schema_three_serializes_requested_and_selected_layout_without_conflating_fall
 #[test]
 fn auto_sequence_retains_canonical_document_under_the_same_exact_cell_budget() {
     use merman_ascii::{AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::{OperationControl, runtime::RuntimePolicy};
+    use merman_model::{OperationControl, runtime::RuntimePolicy};
     use unicode_width::UnicodeWidthStr;
 
     let model = parse_model(&local_semantic_input(
@@ -381,8 +381,8 @@ fn auto_sequence_retains_canonical_document_under_the_same_exact_cell_budget() {
                 &support::full_model::view(&model),
                 merman_ascii::AsciiSourceContext {
                     diagram_type: model.kind(),
-                    config: &merman_core::MermaidConfig::empty_object(),
-                    semantic_config: &merman_core::MermaidConfig::empty_object(),
+                    config: &merman_model::MermaidConfig::empty_object(),
+                    semantic_config: &merman_model::MermaidConfig::empty_object(),
                     title: None,
                 },
                 AsciiViewportPolicy::with_max_width(105).overflow(OverflowPolicy::Allow),

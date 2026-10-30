@@ -1,4 +1,4 @@
-use merman_core::models::class_diagram::{ClassDiagram, ClassInterface, ClassNode};
+use merman_model::families::class::{ClassDiagram, ClassInterface, ClassNode};
 use rustc_hash::FxHashMap;
 
 /// Immutable terminal styles for every semantic node, including the baseline path.

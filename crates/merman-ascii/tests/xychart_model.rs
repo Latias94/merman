@@ -4,11 +4,11 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
     AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
-use merman_core::diagrams::xychart::{
+use merman_core::{MermaidEngine, OperationControl, ParseOptions, RenderSemanticModel};
+use merman_model::families::xy_chart::{
     XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartDiagramModel, XyChartDiagramRenderModel,
     XyChartDisplayPolicy, XyChartPlotModel, XyChartPlotType,
 };
-use merman_core::{MermaidEngine, OperationControl, ParseOptions, RenderSemanticModel};
 use std::path::Path;
 use support::{render_controlled_model, render_model_with_resources};
 

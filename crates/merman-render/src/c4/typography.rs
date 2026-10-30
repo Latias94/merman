@@ -71,7 +71,7 @@ impl C4TypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
         title: Option<&str>,
-        model: &merman_core::diagrams::c4::C4DiagramModel,
+        model: &merman_model::families::c4::C4DiagramModel,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);

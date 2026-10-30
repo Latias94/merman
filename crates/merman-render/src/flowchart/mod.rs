@@ -14,7 +14,7 @@ mod style;
 mod svg_label_artifact;
 mod theme_evidence;
 
-pub(crate) use merman_core::diagrams::flowchart::{
+pub(crate) use merman_model::families::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
 use std::ops::Deref;

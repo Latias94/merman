@@ -1,7 +1,9 @@
 #![cfg(feature = "all-diagrams")]
 #![cfg(feature = "compat-json")]
 
-use merman_core::{BuiltinRenderSemantic, MermaidEngine, ParseOptions};
+#[cfg(feature = "test-support")]
+use merman_core::BuiltinRenderSemantic;
+use merman_core::{MermaidEngine, ParseOptions};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};

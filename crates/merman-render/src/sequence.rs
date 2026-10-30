@@ -5,8 +5,10 @@ use crate::resources::OperationWorkMeter;
 use crate::resources::RenderResourcePolicy;
 use crate::text::TextMeasurer;
 use merman_core::OperationPhase;
-use merman_core::diagrams::sequence::{SequenceControlKind, SequenceDiagramModel, SequenceMessage};
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::sequence::{
+    SequenceControlKind, SequenceDiagramModel, SequenceMessage,
+};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -929,7 +931,7 @@ mod resource_tests {
         }
     }
 
-    fn sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramModel {
+    fn sequence_model(source: &str) -> merman_model::families::sequence::SequenceDiagramModel {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()

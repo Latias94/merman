@@ -1,5 +1,5 @@
 use super::*;
-use merman_core::diagrams::cynefin::CynefinDiagramModel;
+use merman_model::families::cynefin::CynefinDiagramModel;
 
 pub(crate) fn render_cynefin_diagram_svg_model(
     layout: &CynefinDiagramLayout,

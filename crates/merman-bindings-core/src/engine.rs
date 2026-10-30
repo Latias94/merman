@@ -1248,8 +1248,7 @@ impl SemanticOperationEngine {
             .map_err(common::input_resource_limit_error)?;
 
         let model = parsed
-            .model()
-            .compatibility_json_controlled(parsed.metadata(), control)
+            .compatibility_json_controlled(control)
             .map_err(BindingError::cancelled)?
             .map_err(common::core_error)?;
         control

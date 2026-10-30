@@ -107,7 +107,7 @@ impl BlockMarkerPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -138,7 +138,7 @@ impl BlockMarkerPaintPlan {
     fn resolve_paint(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         _layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {

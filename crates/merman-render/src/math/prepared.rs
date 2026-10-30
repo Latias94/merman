@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use merman_core::OperationPhase;
 use merman_core::presentation::PresentationConfig;
-use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
 
 use super::MathRenderer;
 use crate::html::{HtmlOutputError, HtmlSanitizeSink};
@@ -386,7 +386,7 @@ impl ConfiguredMathBackend {
                     ));
                 }
                 let Ok(color) =
-                    merman_core::theme_color::ThemeColor::parse(request.foreground.trim())
+                    merman_markup::theme_color::ThemeColor::parse(request.foreground.trim())
                 else {
                     return Ok(MathPreparationOutcome::Unavailable(
                         MathPreparationUnavailable::UnsupportedPaint,
@@ -783,7 +783,7 @@ fn browser_payload(
         &parse_work,
         OperationPhase::Layout,
     );
-    let rendered = match merman_core::sanitize::sanitize_xhtml_with_sink(
+    let rendered = match merman_markup::sanitize::sanitize_xhtml_with_sink(
         rendered,
         request.config.as_config(),
         &body_sink,
@@ -1542,7 +1542,7 @@ mod tests {
                                 else {
                                     continue;
                                 };
-                                let actual = merman_core::theme_color::ThemeColor::parse(value)
+                                let actual = merman_markup::theme_color::ThemeColor::parse(value)
                                     .unwrap()
                                     .rgba_channels();
                                 for (actual, expected) in

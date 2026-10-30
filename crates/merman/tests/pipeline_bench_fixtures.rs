@@ -51,10 +51,7 @@ fn pipeline_state_identity_preserves_repeated_parse_values() {
                 )
                 .unwrap()
                 .unwrap();
-            parsed
-                .model()
-                .compatibility_json(parsed.metadata())
-                .unwrap()
+            parsed.compatibility_json().unwrap()
         })
         .collect::<Vec<_>>();
     for projection in &projections[1..] {

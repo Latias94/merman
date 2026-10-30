@@ -2583,7 +2583,7 @@ fn classify_invalid_source_style(raw: &str) -> (crate::diagram_theme::SourceStyl
 
 fn admitted_flowchart_source_paint(value: &str) -> bool {
     value.trim().eq_ignore_ascii_case("none")
-        || merman_core::theme_color::ThemeColor::parse(value.trim()).is_ok()
+        || merman_markup::theme_color::ThemeColor::parse(value.trim()).is_ok()
 }
 
 fn admitted_flowchart_source_stroke_width(value: &str) -> Option<f32> {

@@ -7,8 +7,8 @@ use crate::graph::routing::label::{RoutedLabelCatalog, RoutedLabelPlacement, Rou
 use crate::graph::routing::plan::{MarkerAnchor, MarkerAnchors, PlannedCellId};
 use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
 use crate::{AsciiRenderOptions, TerminalWidthProfile};
-use merman_core::resources::ResourceProfile;
-use merman_core::{CancelReason, OperationControl, OperationPhase};
+use merman_model::resources::ResourceProfile;
+use merman_model::{CancelReason, OperationControl, OperationPhase};
 
 mod labels;
 mod markers;

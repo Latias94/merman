@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::usecase::{UsecaseLabelPlan, UsecaseNodePlan, UsecasePreparedArtifact};
-use merman_core::diagrams::usecase::{
+use merman_model::families::usecase::{
     UsecaseActorType, UsecaseAnimation, UsecaseDiagramModel, UsecaseLabelType, UsecaseNodeKind,
     UsecaseRelationshipType,
 };
@@ -695,7 +695,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 .map(|value| {
                     format!(
                         ", stereotype {}",
-                        merman_core::sanitize::sanitize_text(value, config.as_config())
+                        merman_markup::sanitize::sanitize_text(value, config.as_config())
                     )
                 })
                 .unwrap_or_default();

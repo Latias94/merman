@@ -26,7 +26,7 @@ const CORRECTED_UNICODE_FIXTURES: &[(&str, &str)] = &[
 ];
 
 fn assert_corrected_fixture_geometry(input: &str, rendered: &str) {
-    use merman_core::diagrams::sequence::SequenceMessageStroke;
+    use merman_model::families::sequence::SequenceMessageStroke;
 
     let model = parse_sequence_render_model(input);
     let rows = rendered

@@ -1147,7 +1147,7 @@ pub struct TimelineSectionLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-timeline")]
 pub struct TimelineDiagramLayout {
-    pub direction: merman_core::diagrams::timeline::TimelineDirection,
+    pub direction: merman_model::families::timeline::TimelineDirection,
     pub bounds: Option<Bounds>,
     pub left_margin: f64,
     pub base_x: f64,

@@ -8,11 +8,11 @@ use futures::executor::block_on;
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::presentation::PresentationConfig;
 use merman_core::{
     DiagramFamilyId, MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
 };
+use merman_model::families::flowchart::FlowchartModel;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx,

@@ -726,7 +726,7 @@ pub(crate) fn is_supported_css_font_style_value(value: &str) -> bool {
 }
 
 pub(crate) fn is_supported_css_color_value(value: &str) -> bool {
-    merman_core::theme_color::ThemeColor::parse(value.trim()).is_ok()
+    merman_markup::theme_color::ThemeColor::parse(value.trim()).is_ok()
 }
 
 pub(crate) fn is_safe_browser_css_color_value(value: &str) -> bool {

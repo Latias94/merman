@@ -7,10 +7,10 @@ use crate::text::{
     TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines_with_checkpoint,
 };
 use crate::{Error, Result};
-use merman_core::diagrams::eventmodeling::{
+use merman_core::presentation::PresentationConfig;
+use merman_model::families::event_modeling::{
     EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
 };
-use merman_core::presentation::PresentationConfig;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -608,7 +608,7 @@ impl EventModelingPreparedHtmlLabel {
         );
         let sanitize_author = |raw: &str| {
             eventmodeling_sanitize_result(
-                merman_core::sanitize::sanitize_text_with_sink(
+                merman_markup::sanitize::sanitize_text_with_sink(
                     raw,
                     label_config.as_config(),
                     &author_sink,
@@ -659,7 +659,7 @@ impl EventModelingPreparedHtmlLabel {
         // Keep entity-authored angle brackets encoded until this HTML parse consumes them.
         // Only this sanitized, XML-serialized terminal may be written beneath the XHTML span.
         let xhtml = eventmodeling_sanitize_result(
-            merman_core::sanitize::sanitize_xhtml_with_sink(
+            merman_markup::sanitize::sanitize_xhtml_with_sink(
                 &html,
                 fragment_config.as_config(),
                 &sink,
@@ -682,13 +682,13 @@ impl EventModelingPreparedHtmlLabel {
 fn eventmodeling_sanitize_result(
     result: std::result::Result<
         String,
-        merman_core::sanitize::SanitizeFailure<crate::html::HtmlOutputError>,
+        merman_markup::sanitize::SanitizeFailure<crate::html::HtmlOutputError>,
     >,
     owner_bytes: usize,
     work_meter: &OperationWorkMeter,
 ) -> Result<String> {
     use crate::html::HtmlOutputError;
-    use merman_core::sanitize::SanitizeFailure;
+    use merman_markup::sanitize::SanitizeFailure;
 
     match result {
         Ok(text) => Ok(text),

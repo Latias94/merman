@@ -4,11 +4,11 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
     TerminalWidthProfile,
 };
-use merman_core::diagrams::sequence::{
+use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+use merman_model::families::sequence::{
     SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,
 };
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use support::render_model;

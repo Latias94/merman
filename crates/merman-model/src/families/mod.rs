@@ -1,7 +1,11 @@
 //! Canonical family data, independently selected from source parsers and output handlers.
 
+#[cfg(feature = "diagram-agentflow")]
+pub mod agentflow;
 #[cfg(feature = "diagram-architecture")]
 pub mod architecture;
+#[cfg(feature = "diagram-block")]
+pub mod block;
 #[cfg(feature = "diagram-c4")]
 pub mod c4;
 #[cfg(feature = "diagram-class")]
@@ -23,8 +27,26 @@ pub mod flowchart;
 pub mod gantt;
 #[cfg(feature = "diagram-git-graph")]
 pub mod git_graph;
+#[cfg(feature = "diagram-info")]
+pub mod info;
+#[cfg(feature = "diagram-ishikawa")]
+pub mod ishikawa;
+#[cfg(feature = "diagram-journey")]
+pub mod journey;
+#[cfg(feature = "diagram-kanban")]
+pub mod kanban;
+#[cfg(feature = "diagram-mindmap")]
+pub mod mindmap;
+#[cfg(feature = "diagram-packet")]
+pub mod packet;
+#[cfg(feature = "diagram-pie")]
+pub mod pie;
 #[cfg(feature = "diagram-quadrant-chart")]
 pub mod quadrant_chart;
+#[cfg(feature = "diagram-radar")]
+pub mod radar;
+#[cfg(feature = "diagram-railroad")]
+pub mod railroad;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 #[cfg(feature = "diagram-sankey")]
@@ -33,16 +55,19 @@ pub mod sankey;
 pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
+#[cfg(feature = "diagram-timeline")]
+pub mod timeline;
 #[cfg(feature = "diagram-tree-view")]
 pub mod tree_view;
+#[cfg(feature = "diagram-treemap")]
+pub mod treemap;
+#[cfg(feature = "diagram-usecase")]
+pub mod usecase;
 #[cfg(feature = "diagram-venn")]
 pub mod venn;
 #[cfg(feature = "diagram-wardley")]
 pub mod wardley;
-#[cfg(feature = "diagram-zenuml")]
-pub mod zenuml;
-
-#[cfg(feature = "diagram-mindmap")]
-pub mod mindmap;
 #[cfg(feature = "diagram-xychart")]
 pub mod xy_chart;
+#[cfg(feature = "diagram-zenuml")]
+pub mod zenuml;

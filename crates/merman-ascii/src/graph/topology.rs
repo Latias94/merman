@@ -258,7 +258,7 @@ mod tests {
     use super::*;
     use crate::graph::model::{GraphDirection, GraphGroupStyle};
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     #[test]
     fn nested_topology_construction_accepts_exact_work_and_rejects_max_minus_one() {

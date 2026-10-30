@@ -8,7 +8,7 @@ use crate::model::{
 };
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
-use merman_core::diagrams::radar::RadarDiagramRenderModel;
+use merman_model::families::radar::RadarDiagramModel;
 use serde_json::Value;
 
 mod axis_paint;
@@ -26,7 +26,7 @@ pub(crate) use theme::{
 };
 
 pub(crate) fn effective_title<'a>(
-    model: &'a RadarDiagramRenderModel,
+    model: &'a RadarDiagramModel,
     diagram_title: Option<&'a str>,
 ) -> Option<&'a str> {
     model
@@ -53,7 +53,7 @@ struct RadarLayoutWork {
 }
 
 impl RadarLayoutWork {
-    fn from_model(model: &RadarDiagramRenderModel, ticks: usize) -> Self {
+    fn from_model(model: &RadarDiagramModel, ticks: usize) -> Self {
         let axes = model.axes.len();
         let curves = model.curves.len();
         Self {
@@ -172,7 +172,7 @@ fn closed_round_curve_path(points: &[LayoutPoint], tension: f64) -> String {
 
 #[cfg(test)]
 pub(crate) fn layout_radar_diagram_typed(
-    model: &RadarDiagramRenderModel,
+    model: &RadarDiagramModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<RadarDiagramLayout> {
@@ -183,7 +183,7 @@ pub(crate) fn layout_radar_diagram_typed(
 /// Lays out a Radar model under the resource policy owned by the render operation.
 #[cfg(test)]
 pub(crate) fn layout_radar_diagram_typed_with_resource_policy(
-    model: &RadarDiagramRenderModel,
+    model: &RadarDiagramModel,
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
@@ -194,7 +194,7 @@ pub(crate) fn layout_radar_diagram_typed_with_resource_policy(
 
 /// Lays out a Radar model under the cumulative work meter owned by the render operation.
 pub(crate) fn layout_radar_diagram_typed_with_work_meter(
-    model: &RadarDiagramRenderModel,
+    model: &RadarDiagramModel,
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
@@ -365,14 +365,12 @@ mod tests {
     use super::{layout_radar_diagram_typed, layout_radar_diagram_typed_with_resource_policy};
     use crate::text::DeterministicTextMeasurer;
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
-    use merman_core::diagrams::radar::{
-        RadarAxis, RadarCurve, RadarDiagramRenderModel, RadarOptions,
-    };
+    use merman_model::families::radar::{RadarAxis, RadarCurve, RadarDiagramModel, RadarOptions};
     use serde_json::json;
 
     #[test]
     fn radar_legend_layout_uses_mermaid_step_y() {
-        let mut model = RadarDiagramRenderModel::default();
+        let mut model = RadarDiagramModel::default();
         model.title = Some("Radar".to_string());
         model.axes = vec![
             RadarAxis {
@@ -420,7 +418,7 @@ mod tests {
 
     #[test]
     fn radar_work_budget_is_checked_before_the_layout_allocates_shapes() {
-        let mut model = RadarDiagramRenderModel::default();
+        let mut model = RadarDiagramModel::default();
         model.options.ticks = json!(3);
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
@@ -443,7 +441,7 @@ mod tests {
 
     #[test]
     fn radar_polygon_work_is_aggregated_before_allocating_points() {
-        let mut model = RadarDiagramRenderModel::default();
+        let mut model = RadarDiagramModel::default();
         model.axes = vec![
             RadarAxis {
                 name: "a".to_string(),
@@ -477,7 +475,7 @@ mod tests {
 
     #[test]
     fn radar_too_large_unsigned_tick_count_is_rejected_without_integer_wraparound() {
-        let mut model = RadarDiagramRenderModel::default();
+        let mut model = RadarDiagramModel::default();
         model.options.ticks = json!(u64::MAX);
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,

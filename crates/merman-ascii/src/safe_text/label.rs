@@ -1623,12 +1623,12 @@ mod cancellation_tests {
 
     use super::*;
     use crate::operation::AsciiExecution;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn trimmed_label_keeps_a_complete_leading_grapheme() {
         let policy = AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let resources = ResourceContext::new(policy);
         let label = try_build_normalized_label_lines(

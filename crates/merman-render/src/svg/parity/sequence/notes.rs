@@ -10,7 +10,7 @@ use crate::sequence::{
     measure_sequence_drawn_line_height, sequence_drawn_text_first_y, sequence_drawn_text_style,
     sequence_drawn_text_y, sequence_note_final_wrapped_lines,
 };
-use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessageKind};
+use merman_model::families::sequence::{SequenceMessage, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
 use crate::diagram_theme::{SvgFilterRegion, SvgShadowEffect, SvgShadowEvidenceRecorder};

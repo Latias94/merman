@@ -4,7 +4,7 @@ use crate::architecture_metrics::{
 };
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
-use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
 
 use super::super::{
     SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt, fmt_into, fmt_string,
@@ -726,7 +726,7 @@ mod tests {
     use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+    use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
     use std::fmt;
     use std::ops::Range;
 

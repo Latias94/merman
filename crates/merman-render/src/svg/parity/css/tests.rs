@@ -310,7 +310,7 @@ fn pie_css_honors_mermaid_11_16_theme_options() {
 
     let mut css = String::new();
     let paint_plan = crate::pie::PieThemePlan::baseline(
-        &merman_core::diagrams::pie::PieDiagramRenderModel::default(),
+        &merman_model::families::pie::PieDiagramModel::default(),
         &cfg,
     );
     write_pie_css(&mut css, "pie", &paint_plan, false).unwrap();

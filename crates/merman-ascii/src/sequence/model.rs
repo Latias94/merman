@@ -11,8 +11,8 @@ use crate::options::{SequenceLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::LabelBreakPolicy;
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
-use merman_core::OperationPhase;
-use merman_core::diagrams::sequence::{
+use merman_model::OperationPhase;
+use merman_model::families::sequence::{
     SequenceCentralDecoration as CoreSequenceCentralDecoration, SequenceControlRole,
     SequenceDiagramModel, SequenceMessage as CoreSequenceMessage,
     SequenceMessageDirection as CoreSequenceMessageDirection,
@@ -23,7 +23,7 @@ use merman_core::diagrams::sequence::{
 use std::collections::HashMap;
 
 pub(super) use super::lifecycle::SequenceActorLifecycle;
-pub(super) use merman_core::diagrams::sequence::{SequenceControlKind, SequenceNotePlacement};
+pub(super) use merman_model::families::sequence::{SequenceControlKind, SequenceNotePlacement};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
@@ -117,7 +117,7 @@ impl SequenceParticipantLabel {
     #[cfg(test)]
     pub(super) fn from_raw(raw: &str, wrap: bool, width_profile: TerminalWidthProfile) -> Self {
         let policy = crate::resource::AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let mut resources = ResourceContext::new(policy);
         let execution = AsciiExecution::for_test(&policy);
@@ -809,12 +809,14 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
-    use merman_core::resources::ResourceProfile;
     use merman_core::{
         MermaidEngine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
     };
+    use merman_model::resources::ResourceProfile;
 
-    fn parse_sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramModel {
+    fn parse_sequence_model(
+        source: &str,
+    ) -> merman_model::families::sequence::SequenceDiagramModel {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("sequence cancellation fixture should parse")
@@ -847,7 +849,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Semantic
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
         assert_eq!(resources.layout_work_used(), 0);
     }

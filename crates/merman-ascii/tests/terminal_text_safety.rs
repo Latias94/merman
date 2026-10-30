@@ -2,8 +2,8 @@ mod support;
 
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions, TerminalWidthProfile};
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::git_graph::{GitGraphBranch, GitGraphDiagramModel};
-use merman_core::models::class_diagram::ClassDiagram;
+use merman_model::families::class::ClassDiagram;
+use merman_model::families::git_graph::{GitGraphBranch, GitGraphDiagramModel};
 use support::{parse_model, render_model};
 use unicode_width::UnicodeWidthStr;
 

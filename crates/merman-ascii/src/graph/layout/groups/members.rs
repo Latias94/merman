@@ -271,7 +271,7 @@ mod tests {
         GraphNodeSideConstraint, GraphNodeStyle,
     };
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     #[test]
     fn group_placement_entry_accepts_exact_work_and_rejects_at_limit_minus_one() {

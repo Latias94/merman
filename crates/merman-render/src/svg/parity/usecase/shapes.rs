@@ -1,5 +1,5 @@
 use super::*;
-use merman_core::diagrams::usecase::UsecaseNode;
+use merman_model::families::usecase::UsecaseNode;
 
 pub(super) fn write_dagre_helper(
     out: &mut String,

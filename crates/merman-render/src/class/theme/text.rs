@@ -420,7 +420,7 @@ impl ClassTextThemePlan {
 
     /// Source-owned font sizes need portability evidence even without a typed theme.
     pub(crate) fn root_dependent_source_residuals(
-        model: &merman_core::models::class_diagram::ClassDiagram,
+        model: &merman_model::families::class::ClassDiagram,
         diagram_use_html_labels: bool,
         control: &merman_core::OperationControl,
     ) -> merman_core::OperationControlResult<Vec<crate::diagram_theme::SourceStyleResidual>> {

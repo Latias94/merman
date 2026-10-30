@@ -18,100 +18,19 @@ use serde_json::Value;
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, json};
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct TreemapNode {
-    pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub children: Option<Vec<usize>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<crate::json_value::ManagedJson>,
-    #[serde(
-        default,
-        rename = "classSelector",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub class_selector: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct TreemapDiagramModel {
-    pub acc_title: Option<String>,
-    pub acc_descr: Option<String>,
-    pub title: Option<String>,
-    pub root: TreemapNode,
-    /// Flat records; child IDs are indices into this vector.
-    pub nodes: Vec<TreemapNode>,
-    pub classes: std::collections::BTreeMap<String, TreemapClassDef>,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct TreemapClassDef {
-    pub id: String,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-impl TreemapDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
-}
-
+pub use merman_model::families::treemap::{TreemapClassDef, TreemapDiagramModel, TreemapNode};
 #[cfg(feature = "presentation")]
-#[derive(Debug, Clone, Default)]
-pub struct TreemapVisuals {
-    pub root_styles: Option<Vec<String>>,
-    /// Explicit full-model overrides, indexed by canonical node ID.
-    pub node_styles: Vec<Option<Vec<String>>>,
-}
+pub use merman_model::families::treemap::{
+    TreemapDiagramRenderModel, TreemapOutputPresence, TreemapVisuals,
+};
 
-#[cfg(feature = "presentation")]
-#[derive(Debug, Clone, Default)]
-pub struct TreemapDiagramRenderModel {
-    pub semantic: TreemapDiagramModel,
-    pub visuals: TreemapVisuals,
-    #[cfg(feature = "compat-json")]
-    compatibility_empty: bool,
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::Deref for TreemapDiagramRenderModel {
-    type Target = TreemapDiagramModel;
-    fn deref(&self) -> &Self::Target {
-        &self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::DerefMut for TreemapDiagramRenderModel {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl TreemapDiagramRenderModel {
-    pub fn from_semantic_model(semantic: TreemapDiagramModel) -> Self {
-        Self {
-            semantic,
-            ..Self::default()
-        }
-    }
-
-    pub fn compiled_styles(&self, index: Option<usize>) -> Option<&[String]> {
-        match index {
-            Some(index) => self
-                .visuals
-                .node_styles
-                .get(index)
-                .and_then(Option::as_deref),
-            None => self.visuals.root_styles.as_deref(),
-        }
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut TreemapDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,7 +190,7 @@ struct SpannedValue {
 }
 
 struct TreemapSemanticSource {
-    #[cfg(feature = "compat-json")]
+    #[cfg(feature = "presentation")]
     present: bool,
     title: Option<String>,
     acc_title: Option<String>,
@@ -464,10 +383,10 @@ fn render_model_to_compat_json_unchecked(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<crate::ManagedSemanticJson>> {
     control.checkpoint()?;
-    if model.compatibility_empty || model.root.children.is_none() {
+    if model.output_presence() == TreemapOutputPresence::Empty {
         return Ok(Ok(crate::ManagedSemanticJson::from_value(json!({}))));
     }
-    let root = match model.project_root_controlled(control)? {
+    let root = match project_root_controlled(model, control)? {
         Ok(root) => root,
         Err(message) => return Ok(Err(treemap_error(&meta.diagram_type, message, None))),
     };
@@ -541,7 +460,7 @@ fn treemap_compatibility_output_preflight(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<()>> {
     control.checkpoint()?;
-    if model.compatibility_empty || model.root.children.is_none() {
+    if model.output_presence() == TreemapOutputPresence::Empty {
         return Ok(Ok(()));
     }
 
@@ -1001,101 +920,74 @@ fn render_node_to_json_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-impl TreemapDiagramRenderModel {
-    fn validate_child_relationships_controlled(
-        &self,
-        control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<std::result::Result<(), &'static str>> {
-        let mut seen = vec![false; self.nodes.len()];
-        let mut stack = vec![&self.root];
-        while let Some(node) = stack.pop() {
-            control.checkpoint()?;
+fn project_root_controlled(
+    model: &TreemapDiagramRenderModel,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<crate::ManagedSemanticJson, &'static str>> {
+    let root_id = model.nodes.len();
+    let mut completed = vec![None::<crate::ManagedSemanticJson>; root_id + 1];
+    let mut seen = vec![false; root_id + 1];
+    let mut stack = vec![(root_id, false)];
+    while let Some((id, expanded)) = stack.pop() {
+        control.checkpoint()?;
+        let node = if id == root_id {
+            &model.root
+        } else {
+            &model.nodes[id]
+        };
+        if expanded {
+            let mut projected = render_node_to_json_controlled(
+                node,
+                model.compiled_styles((id != root_id).then_some(id)),
+                &model.classes,
+                control,
+            )?;
+            let mut children = node.children.as_ref().map(|_| Vec::new());
+            if let Some(ids) = &node.children {
+                for &child in ids {
+                    control.checkpoint()?;
+                    let Some(value) = completed[child].take() else {
+                        return Ok(Err("invalid treemap child relationship"));
+                    };
+                    children.as_mut().expect("children slot exists").push(value);
+                }
+            }
+            if let Some(children) = children {
+                projected
+                    .as_value_mut()
+                    .as_object_mut()
+                    .expect("node projection is an object")
+                    .insert(
+                        "children".to_string(),
+                        Value::Array(
+                            children
+                                .into_iter()
+                                .map(crate::ManagedSemanticJson::into_unmanaged_value)
+                                .collect(),
+                        ),
+                    );
+            }
+            completed[id] = Some(projected);
+        } else {
+            if std::mem::replace(&mut seen[id], true) {
+                return Ok(Err("cyclic or repeated treemap child relationship"));
+            }
+            stack.push((id, true));
             if let Some(children) = &node.children {
                 for &child in children.iter().rev() {
                     control.checkpoint()?;
-                    let Some(record) = self.nodes.get(child) else {
+                    if child >= root_id {
                         return Ok(Err("treemap child ID is out of range"));
-                    };
-                    if std::mem::replace(&mut seen[child], true) {
-                        return Ok(Err("cyclic or repeated treemap child relationship"));
                     }
-                    stack.push(record);
+                    stack.push((child, false));
                 }
             }
         }
-        Ok(Ok(()))
     }
-
-    fn project_root_controlled(
-        &self,
-        control: &crate::OperationControl,
-    ) -> crate::OperationControlResult<std::result::Result<crate::ManagedSemanticJson, &'static str>>
-    {
-        let root_id = self.nodes.len();
-        let mut completed = vec![None::<crate::ManagedSemanticJson>; root_id + 1];
-        let mut seen = vec![false; root_id + 1];
-        let mut stack = vec![(root_id, false)];
-        while let Some((id, expanded)) = stack.pop() {
-            control.checkpoint()?;
-            let node = if id == root_id {
-                &self.root
-            } else {
-                &self.nodes[id]
-            };
-            if expanded {
-                let mut projected = render_node_to_json_controlled(
-                    node,
-                    self.compiled_styles((id != root_id).then_some(id)),
-                    &self.classes,
-                    control,
-                )?;
-                let mut children = node.children.as_ref().map(|_| Vec::new());
-                if let Some(ids) = &node.children {
-                    for &child in ids {
-                        control.checkpoint()?;
-                        let Some(value) = completed[child].take() else {
-                            return Ok(Err("invalid treemap child relationship"));
-                        };
-                        children.as_mut().expect("children slot exists").push(value);
-                    }
-                }
-                if let Some(children) = children {
-                    projected
-                        .as_value_mut()
-                        .as_object_mut()
-                        .expect("node projection is an object")
-                        .insert(
-                            "children".to_string(),
-                            Value::Array(
-                                children
-                                    .into_iter()
-                                    .map(crate::ManagedSemanticJson::into_unmanaged_value)
-                                    .collect(),
-                            ),
-                        );
-                }
-                completed[id] = Some(projected);
-            } else {
-                if std::mem::replace(&mut seen[id], true) {
-                    return Ok(Err("cyclic or repeated treemap child relationship"));
-                }
-                stack.push((id, true));
-                if let Some(children) = &node.children {
-                    for &child in children.iter().rev() {
-                        control.checkpoint()?;
-                        if child >= root_id {
-                            return Ok(Err("treemap child ID is out of range"));
-                        }
-                        stack.push((child, false));
-                    }
-                }
-            }
-        }
-        control.checkpoint()?;
-        Ok(Ok(completed[root_id]
-            .take()
-            .expect("root projection completed")))
-    }
+    control.checkpoint()?;
+    Ok(Ok(completed[root_id]
+        .take()
+        .expect("root projection completed")))
 }
 
 #[cfg(feature = "compat-json")]
@@ -1189,15 +1081,17 @@ impl TreemapSemanticSource {
         self,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
-        #[cfg(feature = "compat-json")]
-        let compatibility_empty = !self.present;
+        let output_presence = if self.present {
+            TreemapOutputPresence::Model
+        } else {
+            TreemapOutputPresence::Empty
+        };
         let semantic = self.into_semantic_model_controlled(control)?;
-        Ok(TreemapDiagramRenderModel {
+        Ok(TreemapDiagramRenderModel::from_parts(
             semantic,
-            visuals: TreemapVisuals::default(),
-            #[cfg(feature = "compat-json")]
-            compatibility_empty,
-        })
+            TreemapVisuals::default(),
+            output_presence,
+        ))
     }
 }
 
@@ -1256,7 +1150,7 @@ pub(crate) fn parse_treemap_semantic_model_controlled(
         None => {
             let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
             let mut model = source.into_semantic_model_controlled(control)?;
-            model.sanitize_common_db_fields(&meta.semantic_config);
+            sanitize_common_db_fields(&mut model, &meta.semantic_config);
             Ok(model)
         }
     };
@@ -1277,7 +1171,7 @@ fn treemap_semantic_source_from_parsed_controlled(
     let (arena, roots) = build_hierarchy_controlled(&flat_items, control)?;
     control.checkpoint()?;
     Ok(TreemapSemanticSource {
-        #[cfg(feature = "compat-json")]
+        #[cfg(feature = "presentation")]
         present: parsed.present,
         title: parsed.title,
         acc_title: parsed.acc_title,
@@ -2022,6 +1916,34 @@ impl<'a> Parser<'a> {
         let token = &self.rest()[..idx];
         self.pos += idx;
         Some(token.to_string())
+    }
+}
+
+#[cfg(all(test, feature = "presentation"))]
+mod presentation_data_tests {
+    use super::*;
+
+    #[test]
+    fn full_construction_keeps_empty_presence_without_json_selection() {
+        let meta = PresentationMetadata {
+            diagram_type: "treemap".into(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        let control = crate::OperationControl::new();
+        let empty = parse_treemap_model_for_render_controlled("", &meta, &control)
+            .unwrap()
+            .unwrap();
+        let header = parse_treemap_model_for_render_controlled("treemap\n", &meta, &control)
+            .unwrap()
+            .unwrap();
+        assert_eq!(empty.output_presence(), TreemapOutputPresence::Empty);
+        assert_eq!(header.output_presence(), TreemapOutputPresence::Model);
+        assert_eq!(
+            serde_json::to_value(&empty.semantic).unwrap(),
+            serde_json::to_value(&header.semantic).unwrap()
+        );
     }
 }
 
@@ -2793,7 +2715,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 let control = crate::OperationControl::new();
                 control.cancel_after_checkpoints(4 * DEPTH + 5);
                 assert!(matches!(
-                    model.project_root_controlled(&control),
+                    project_root_controlled(&model, &control),
                     Err(crate::OperationCancelled { .. })
                 ));
                 let projection =
@@ -2817,7 +2739,16 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         let mut output = Vec::new();
         json.write_json(&mut output).unwrap();
         assert!(!output.is_empty());
-        let empty = TreemapDiagramRenderModel::default();
+        let manual = TreemapDiagramRenderModel::default();
+        let projected = render_model_to_compat_json(&manual, &meta()).unwrap();
+        assert_eq!(projected["type"], "treemap");
+        assert_eq!(projected["root"]["name"], "");
+        assert_eq!(projected["nodes"], json!([]));
+        let empty = TreemapDiagramRenderModel::from_parts(
+            manual.semantic,
+            manual.visuals,
+            TreemapOutputPresence::Empty,
+        );
         assert_eq!(
             render_model_to_compat_json(&empty, &meta()).unwrap(),
             json!({})

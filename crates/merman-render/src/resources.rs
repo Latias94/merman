@@ -1,15 +1,3 @@
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-use merman_core::diagrams::flowchart::FlowchartModel;
-#[cfg(feature = "diagram-mindmap")]
-use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
-#[cfg(feature = "diagram-zenuml")]
-use merman_core::diagrams::zenuml::ZenumlDiagramModel;
-#[cfg(feature = "diagram-class")]
-use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::resources::{
     InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitPhase, InputResourcePolicy,
     InputResourcePolicyRestrictionError,
@@ -23,6 +11,18 @@ use merman_core::{
     OperationResourceDomain, OperationResourceLimitExceeded, OperationResourceOverride,
     OperationResourceProvenance, ParsedDiagramRender, RenderSemanticModel,
 };
+#[cfg(feature = "diagram-class")]
+use merman_model::families::class::ClassDiagram;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+use merman_model::families::flowchart::FlowchartModel;
+#[cfg(feature = "diagram-mindmap")]
+use merman_model::families::mindmap::MindmapDiagramRenderModel;
+#[cfg(feature = "diagram-zenuml")]
+use merman_model::families::zenuml::ZenumlDiagramModel;
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
@@ -760,7 +760,7 @@ impl RenderResourcePolicy {
     #[cfg(feature = "diagram-sequence")]
     pub fn check_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
+        model: &merman_model::families::sequence::SequenceDiagramModel,
     ) -> Result<SequenceComplexity, ResourceLimitExceeded> {
         self.input
             .check_sequence_complexity(model)
@@ -1320,7 +1320,7 @@ impl OperationWorkMeter {
     #[cfg(feature = "diagram-sequence")]
     pub(crate) fn preflight_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
+        model: &merman_model::families::sequence::SequenceDiagramModel,
         operation_phase: OperationPhase,
     ) -> Result<SequenceComplexity, OperationWorkError> {
         self.resource_checkpoint(operation_phase)?;
@@ -1732,10 +1732,10 @@ pub struct ResourceLimitOverride {
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
-    use merman_core::diagrams::flowchart::{
+    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_model::families::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
     };
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
     use std::collections::HashSet;
 
     #[test]

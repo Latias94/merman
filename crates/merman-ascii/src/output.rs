@@ -4,7 +4,7 @@ use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::text::display_width_with_profile;
 use crate::{AsciiDiagram, AsciiError, AsciiSourceContext, Result};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 use serde::Serialize;
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -830,7 +830,7 @@ fn preflight_semantic_model(
 ) -> Result<()> {
     execution.checkpoint(OperationPhase::Semantic)?;
     let complexity = model.complexity();
-    let config = merman_core::resources::ModelComplexity::from_json(source.config.as_value());
+    let config = merman_model::resources::ModelComplexity::from_json(source.config.as_value());
     let resources = execution.new_resource_context(OperationPhase::Semantic);
     resources.check_nesting_depth(complexity.nesting_depth)?;
     resources.check_nesting_depth(config.nesting_depth)?;
@@ -842,7 +842,7 @@ fn preflight_semantic_model(
 }
 
 enum SemanticFallbackError {
-    Cancelled(merman_core::OperationCancelled),
+    Cancelled(merman_model::OperationCancelled),
     Resource(AsciiError),
     Unavailable,
 }
@@ -1521,7 +1521,7 @@ mod tests {
         model: &merman_core::RenderSemanticModel,
         execution: AsciiExecution<'_>,
     ) -> Result<()> {
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let config = merman_model::MermaidConfig::from_value(serde_json::json!({}));
         super::preflight_semantic_model(
             &crate::full_test_support::view(model),
             AsciiSourceContext {
@@ -1623,10 +1623,10 @@ mod tests {
 
     #[test]
     fn reflow_preserves_graphemes_and_fits_bound() {
-        let context = merman_core::runtime::RuntimePolicy::deterministic()
+        let context = merman_model::runtime::RuntimePolicy::deterministic()
             .begin_operation()
             .expect("operation context");
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let resources = crate::AsciiResourcePolicy::default();
         let execution = crate::operation::AsciiExecution::new(&control, &resources);
         let text = reflow_text("é 👩‍💻 超长", 4, TerminalWidthProfile::Unicode, execution)
@@ -1746,7 +1746,7 @@ mod tests {
 
     #[test]
     fn bounded_semantic_projection_rejects_json_before_flattening() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let resources = crate::AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 4)
             .expect("positive output limit");
@@ -1764,7 +1764,7 @@ mod tests {
 
     #[test]
     fn bounded_semantic_projection_reports_semantic_cancellation() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(0);
         let resources = crate::AsciiResourcePolicy::default();
         let execution = crate::operation::AsciiExecution::new(&control, &resources);
@@ -1877,7 +1877,7 @@ mod tests {
             .expect("flowchart should parse")
             .expect("flowchart should be detected");
         let (metadata, model) = parsed.into_parts();
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(0);
         let resources = crate::AsciiResourcePolicy::default();
         let execution = crate::operation::AsciiExecution::new(&control, &resources);
@@ -2069,7 +2069,7 @@ mod tests {
 
     #[test]
     fn serialized_semantic_projection_observes_semantic_cancellation_before_first_row() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(0);
         let resources = crate::AsciiResourcePolicy::default();
         let execution = crate::operation::AsciiExecution::new(&control, &resources);
@@ -2102,7 +2102,7 @@ mod tests {
 
     #[test]
     fn serialized_projection_records_the_operation_terminal() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let policy = crate::AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 256)
             .expect("positive output limit");
@@ -2134,7 +2134,7 @@ mod tests {
                 complexity.nesting_depth,
             )
             .expect("positive nesting limit");
-        let exact_control = merman_core::OperationControl::new();
+        let exact_control = merman_model::OperationControl::new();
         let exact_execution = crate::operation::AsciiExecution::new(&exact_control, &exact_policy);
         preflight_semantic_model(&model, exact_execution)
             .expect("the exact JSON nesting boundary should pass");
@@ -2145,7 +2145,7 @@ mod tests {
                 complexity.nesting_depth - 1,
             )
             .expect("positive nesting limit");
-        let below_control = merman_core::OperationControl::new();
+        let below_control = merman_model::OperationControl::new();
         let below_execution = crate::operation::AsciiExecution::new(&below_control, &below_policy);
         let error = preflight_semantic_model(&model, below_execution)
             .expect_err("the N-1 JSON nesting boundary should fail before serde");
@@ -2176,7 +2176,7 @@ mod tests {
                 complexity.nesting_depth,
             )
             .expect("positive nesting limit");
-        let exact_control = merman_core::OperationControl::new();
+        let exact_control = merman_model::OperationControl::new();
         let exact_execution = crate::operation::AsciiExecution::new(&exact_control, &exact_policy);
         preflight_semantic_model(&model, exact_execution)
             .expect("the exact subgraph metadata boundary should pass");
@@ -2187,7 +2187,7 @@ mod tests {
                 complexity.nesting_depth - 1,
             )
             .expect("positive nesting limit");
-        let below_control = merman_core::OperationControl::new();
+        let below_control = merman_model::OperationControl::new();
         let below_execution = crate::operation::AsciiExecution::new(&below_control, &below_policy);
         let error = preflight_semantic_model(&model, below_execution)
             .expect_err("the N-1 subgraph metadata boundary should fail before serde");
@@ -2206,13 +2206,13 @@ mod tests {
         let model = sequence_model_with_property(Value::Array(vec![Value::Null; 4_096]));
         let mut complexity = merman_core::resources::model_complexity_from_render_model(&model);
         complexity.items +=
-            merman_core::resources::ModelComplexity::from_json(&serde_json::json!({})).items;
+            merman_model::resources::ModelComplexity::from_json(&serde_json::json!({})).items;
         assert!(complexity.items > 4_096);
 
         let exact_policy = crate::AsciiResourcePolicy::unbounded()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, complexity.items)
             .expect("positive work limit");
-        let exact_control = merman_core::OperationControl::new();
+        let exact_control = merman_model::OperationControl::new();
         let exact_execution = crate::operation::AsciiExecution::new(&exact_control, &exact_policy);
         preflight_semantic_model(&model, exact_execution)
             .expect("the exact JSON item work boundary should pass");
@@ -2223,7 +2223,7 @@ mod tests {
                 complexity.items - 1,
             )
             .expect("positive work limit");
-        let below_control = merman_core::OperationControl::new();
+        let below_control = merman_model::OperationControl::new();
         let below_execution = crate::operation::AsciiExecution::new(&below_control, &below_policy);
         let error = preflight_semantic_model(&model, below_execution)
             .expect_err("the N-1 JSON item work boundary should fail before serde");
@@ -2260,7 +2260,7 @@ mod tests {
                 "payload".to_string(),
                 Value::Array((0..4_096).map(Value::from).collect()),
             );
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let resources = crate::AsciiResourcePolicy::unbounded()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 256)
             .expect("positive output limit");
@@ -2300,7 +2300,7 @@ mod tests {
                 "payload".to_string(),
                 Value::Array((0..4_096).map(Value::from).collect()),
             );
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(64);
         let resources = crate::AsciiResourcePolicy::unbounded();
         let execution = crate::operation::AsciiExecution::new(&control, &resources);

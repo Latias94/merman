@@ -47,13 +47,11 @@ fn simple_xhtml_text(fragment: &str) -> Option<Cow<'_, str>> {
     if inner.contains('<') || inner.contains('>') {
         return None;
     }
-    Some(merman_core::entities::decode_html_entities_to_unicode(
-        inner,
-    ))
+    Some(merman_model::text::decode_html_entities_to_unicode(inner))
 }
 
 pub(crate) fn state_markdown_label_plain_text(text: &str) -> Option<Cow<'_, str>> {
-    let decoded = merman_core::entities::restore_mermaid_entity_spelling(text);
+    let decoded = merman_model::text::restore_mermaid_entity_spelling(text);
     let source = crate::text::split_html_br_lines(decoded.as_ref()).join("\n");
     let lines = crate::text::mermaid_markdown_to_lines(&source, true);
     if lines.len() != 1
@@ -85,7 +83,7 @@ pub(crate) fn state_value_to_label_text(value: &serde_json::Value) -> String {
 }
 
 fn escape_xml_attribute(value: &str) -> String {
-    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let decoded = merman_model::text::decode_html_entities_to_unicode(value);
     let mut out = String::with_capacity(decoded.len());
     for ch in decoded.chars() {
         if !crate::xml::is_xml_1_0_char(ch) {
@@ -281,7 +279,7 @@ pub(super) fn state_svg_markdown_word_lines(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> Vec<Vec<(String, crate::text::MermaidMarkdownWordType)>> {
-    let decoded = merman_core::entities::restore_mermaid_entity_spelling(text);
+    let decoded = merman_model::text::restore_mermaid_entity_spelling(text);
     let source = crate::text::split_html_br_lines(decoded.as_ref()).join("\n");
     crate::text::mermaid_markdown_to_wrapped_word_lines(
         measurer, &source, style, max_width, wrap_mode,
@@ -290,7 +288,7 @@ pub(super) fn state_svg_markdown_word_lines(
 
 /// Mirror nonMarkdownToLines: split source breaks and words before decoding SVG entities.
 pub(super) fn state_svg_plain_lines(text: &str) -> Vec<String> {
-    let decoded = merman_core::entities::restore_mermaid_entity_spelling(text);
+    let decoded = merman_model::text::restore_mermaid_entity_spelling(text);
     let source = decoded.replace("\\n", "\n");
     source
         .split('\n')

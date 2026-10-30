@@ -3,7 +3,7 @@ use crate::journey::{
     JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
     JourneyCssBinding,
 };
-use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+use merman_model::families::journey::JourneyDiagramModel;
 
 fn fmt_task_face_y(v: Option<f64>) -> String {
     v.map(|x| fmt(x).to_string())
@@ -398,7 +398,7 @@ fn journey_css_with_resolved_typography(
 )]
 pub(crate) fn render_journey_diagram_svg_model(
     layout: &crate::model::JourneyDiagramLayout,
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     task_theme: &crate::journey::JourneyTaskTheme,
     typography_theme: &crate::journey::JourneyTypographyThemePlan,
     text_paint: &crate::journey::JourneyTextPaintPlan,
@@ -827,8 +827,8 @@ mod tests {
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::journey::JourneyDiagramRenderModel;
     use merman_core::presentation::PresentationConfig;
+    use merman_model::families::journey::JourneyDiagramModel;
 
     fn bounded_journey_layout() -> crate::model::JourneyDiagramLayout {
         crate::model::JourneyDiagramLayout {
@@ -912,7 +912,7 @@ mod tests {
         );
         render_journey_diagram_svg_model(
             &layout,
-            &JourneyDiagramRenderModel::default(),
+            &JourneyDiagramModel::default(),
             &task_theme,
             &typography_theme,
             &crate::journey::JourneyTextPaintPlan::resolve(
@@ -1155,7 +1155,7 @@ mod tests {
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
-                &JourneyDiagramRenderModel::default(),
+                &JourneyDiagramModel::default(),
                 &task_theme,
                 &typography_theme,
                 &crate::journey::JourneyTextPaintPlan::resolve(
@@ -1219,7 +1219,7 @@ mod tests {
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
-                &JourneyDiagramRenderModel::default(),
+                &JourneyDiagramModel::default(),
                 &task_theme,
                 &typography_theme,
                 &crate::journey::JourneyTextPaintPlan::resolve(

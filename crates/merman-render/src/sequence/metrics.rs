@@ -137,7 +137,7 @@ pub(super) fn measure_svg_like_with_html_br(
 /// the browser then decodes one entity layer. Encoded markup remains literal text,
 /// and nested references must not be decoded again by the XML writer.
 pub(crate) fn prepare_sequence_text_line(raw: &str) -> std::borrow::Cow<'_, str> {
-    merman_core::entities::decode_mermaid_entities_to_unicode(raw)
+    merman_model::text::decode_mermaid_entities_to_unicode(raw)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

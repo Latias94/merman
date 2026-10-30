@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use merman_core::presentation::PresentationConfig;
-use merman_core::theme_color::{darken, lighten};
+use merman_markup::theme_color::{darken, lighten};
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,

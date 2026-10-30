@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::xychart::XyChartPlotType;
+use merman_model::families::xy_chart::XyChartPlotType;
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
 
@@ -828,7 +828,7 @@ pub(crate) fn render_xychart_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
+    use merman_model::families::xy_chart::XyChartDiagramRenderModel;
     use std::fmt;
     use std::ops::Range;
 

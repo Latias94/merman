@@ -225,7 +225,7 @@ fn radar_binding_resolves_style_roles() {
     assert_eq!(radar.curve_stroke_width, 6.0);
     let series = crate::radar::RadarSeriesPaintPlan::baseline(
         &cfg,
-        &merman_core::diagrams::radar::RadarDiagramRenderModel::default(),
+        &merman_model::families::radar::RadarDiagramModel::default(),
     );
     let series_colors = series.colors();
     assert_eq!(series_colors[0], "#303030");
@@ -254,7 +254,7 @@ fn radar_binding_uses_default_style_roles() {
     assert_eq!(radar.curve_stroke_width, 2.0);
     let series = crate::radar::RadarSeriesPaintPlan::baseline(
         &cfg,
-        &merman_core::diagrams::radar::RadarDiagramRenderModel::default(),
+        &merman_model::families::radar::RadarDiagramModel::default(),
     );
     let series_colors = series.colors();
     assert_eq!(series_colors[0], "hsl(240, 100%, 76.2745098039%)");

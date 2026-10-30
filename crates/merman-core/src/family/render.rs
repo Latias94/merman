@@ -150,29 +150,56 @@ render_parser_controlled!(
     RenderSemanticModel::Gantt
 );
 #[cfg(feature = "diagram-pie")]
-render_parser_controlled!(
-    render_pie,
-    crate::diagrams::pie::parse_pie_model_for_render_controlled,
-    RenderSemanticModel::Pie
-);
+pub(super) fn render_pie(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    control.checkpoint()?;
+    let result = crate::diagrams::pie::parse_pie_model_for_render_controlled(code, meta, control)?
+        .map(|(model, output_data)| RenderSemanticParseOutput::pie(model, output_data));
+    control.checkpoint()?;
+    Ok(result)
+}
 #[cfg(feature = "diagram-packet")]
-render_parser_controlled!(
-    render_packet,
-    crate::diagrams::packet::parse_packet_model_for_render_controlled,
-    RenderSemanticModel::Packet
-);
+pub(super) fn render_packet(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    control.checkpoint()?;
+    let result =
+        crate::diagrams::packet::parse_packet_model_for_render_controlled(code, meta, control)?
+            .map(|(model, output_data)| RenderSemanticParseOutput::packet(model, output_data));
+    control.checkpoint()?;
+    Ok(result)
+}
 #[cfg(feature = "diagram-timeline")]
-render_parser_controlled!(
-    render_timeline,
-    crate::diagrams::timeline::parse_timeline_model_for_render_controlled,
-    RenderSemanticModel::Timeline
-);
+pub(super) fn render_timeline(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    control.checkpoint()?;
+    let result =
+        crate::diagrams::timeline::parse_timeline_model_for_render_controlled(code, meta, control)?
+            .map(|(model, output_data)| RenderSemanticParseOutput::timeline(model, output_data));
+    control.checkpoint()?;
+    Ok(result)
+}
 #[cfg(feature = "diagram-journey")]
-render_parser_controlled!(
-    render_journey,
-    crate::diagrams::journey::parse_journey_model_for_render_controlled,
-    RenderSemanticModel::Journey
-);
+pub(super) fn render_journey(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    control.checkpoint()?;
+    let result =
+        crate::diagrams::journey::parse_journey_model_for_render_controlled(code, meta, control)?
+            .map(|(model, output_data)| RenderSemanticParseOutput::journey(model, output_data));
+    control.checkpoint()?;
+    Ok(result)
+}
 #[cfg(feature = "diagram-requirement")]
 render_parser_controlled!(
     render_requirement,
@@ -186,17 +213,31 @@ render_parser_controlled!(
     RenderSemanticModel::Sankey
 );
 #[cfg(feature = "diagram-radar")]
-render_parser_controlled!(
-    render_radar,
-    crate::diagrams::radar::parse_radar_model_for_render_controlled,
-    RenderSemanticModel::Radar
-);
+pub(super) fn render_radar(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    control.checkpoint()?;
+    let result =
+        crate::diagrams::radar::parse_radar_model_for_render_controlled(code, meta, control)?
+            .map(|(model, output_data)| RenderSemanticParseOutput::radar(model, output_data));
+    control.checkpoint()?;
+    Ok(result)
+}
 #[cfg(feature = "diagram-info")]
-render_parser_controlled!(
-    render_info,
-    crate::diagrams::info::parse_info_model_for_render_controlled,
-    RenderSemanticModel::Info
-);
+pub(super) fn render_info(
+    code: &str,
+    meta: &PresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    control.checkpoint()?;
+    let result =
+        crate::diagrams::info::parse_info_model_for_render_controlled(code, meta, control)?
+            .map(|(model, output_data)| RenderSemanticParseOutput::info(model, output_data));
+    control.checkpoint()?;
+    Ok(result)
+}
 #[cfg(feature = "diagram-treemap")]
 render_parser_controlled!(
     render_treemap,

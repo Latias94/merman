@@ -5,7 +5,7 @@ use merman_core::{OperationControl, SemanticParser};
 
 fn render(source: &str, options: AsciiRenderOptions) -> String {
     let parsed = SemanticParser::new().parse_diagram_sync(source).unwrap();
-    let context = merman_core::runtime::RuntimePolicy::deterministic()
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .unwrap();
     AsciiRenderer::new(options)

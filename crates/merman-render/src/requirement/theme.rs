@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::diagrams::requirement::RequirementDiagramModel;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::requirement::RequirementDiagramModel;
 
 use super::source_typography::RequirementNodeTypography;
 use crate::diagram_theme::{
@@ -866,7 +866,7 @@ mod tests {
 
     #[test]
     fn unthemed_plan_keeps_config_without_per_node_evidence() {
-        use merman_core::diagrams::requirement::RequirementElement;
+        use merman_model::families::requirement::RequirementElement;
 
         let config = PresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Config Sans, Arial",

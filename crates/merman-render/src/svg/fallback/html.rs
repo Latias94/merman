@@ -250,7 +250,7 @@ fn decode_html_entities_streaming<E>(
     text: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<String, E> {
-    use merman_core::entities::{
+    use merman_model::text::{
         DecodedHtmlFragment, visit_decoded_html_entity_fragments_with_checkpoints,
     };
 

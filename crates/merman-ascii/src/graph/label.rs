@@ -135,7 +135,7 @@ impl GraphLabel {
     #[cfg(test)]
     pub(super) fn new(raw: &str) -> Self {
         let resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
         Self::try_new_with_profile(raw, TerminalWidthProfile::Unicode, &resources)
             .expect("test graph labels should fit the unbounded policy")
@@ -1060,7 +1060,7 @@ mod tests {
     };
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use crate::{AsciiError, TerminalWidthProfile};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     #[test]
     fn graph_label_splits_html_breaks() {

@@ -719,14 +719,14 @@ impl std::fmt::Display for RenderCapability {
 use crate::environment::RenderSession;
 use crate::environment::{RoutedTextMeasurer, TextMeasurementPhase};
 use merman_core::OperationPhase;
+#[cfg(feature = "diagram-class")]
+use merman_model::families::class::ClassDiagram;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-use merman_core::diagrams::flowchart::FlowchartModel;
-#[cfg(feature = "diagram-class")]
-use merman_core::models::class_diagram::ClassDiagram;
+use merman_model::families::flowchart::FlowchartModel;
 
 pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RenderResourceLimitId,
@@ -839,7 +839,7 @@ pub enum Error {
     #[error(transparent)]
     OperationResourceTerminal(merman_core::OperationLedgerError),
     #[error(transparent)]
-    Color(#[from] merman_core::theme_color::ColorError),
+    Color(#[from] merman_markup::theme_color::ColorError),
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
@@ -1244,7 +1244,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     )?;
     layout_flowchart_typed_with_render_labels_by_engine(
         model,
-        &merman_core::diagrams::flowchart::FlowchartRenderContext::default(),
+        &merman_model::families::flowchart::FlowchartRenderContext::default(),
         effective_config,
         options,
         None,
@@ -1259,7 +1259,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 ))]
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     model: &FlowchartModel,
-    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
+    render_label_sources: &merman_model::families::flowchart::FlowchartRenderContext,
     effective_config: &merman_core::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,

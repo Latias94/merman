@@ -7,8 +7,6 @@ use crate::diagram::legacy_warning_messages;
 use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
-#[cfg(feature = "presentation")]
-use crate::resources::ModelComplexity;
 use crate::sanitize::sanitize_text;
 #[cfg(feature = "editor-facts")]
 use crate::{
@@ -47,262 +45,12 @@ pub(crate) fn block_syntax_construction_count() -> usize {
     BLOCK_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-/// Flat Block records in Mermaid database insertion order.
-///
-/// Child indices address `blocks_flat`; compatibility serialization expands the nested wire shape.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct BlockDiagramModel {
-    pub blocks_flat: Vec<BlockNode>,
-    pub edges: Vec<BlockEdge>,
-    pub warning_facts: Vec<DiagramWarningFact>,
-    pub class_defs: IndexMap<String, BlockClassDef>,
-    pub root: Option<usize>,
-}
-
+pub use merman_model::families::block::{BlockClassDef, BlockDiagramModel, BlockEdge, BlockNode};
 #[cfg(feature = "presentation")]
-#[derive(Clone, Copy, Default)]
-struct BlockRecordMetrics {
-    items: usize,
-    text_bytes: usize,
-    container_depth: usize,
-}
-
-impl BlockDiagramModel {
-    /// Returns the canonical root composite, when present.
-    pub fn root(&self) -> Option<&BlockNode> {
-        self.root.and_then(|index| self.blocks_flat.get(index))
-    }
-
-    /// Resolves a direct child index without constructing a subtree.
-    pub fn block(&self, index: usize) -> Option<&BlockNode> {
-        self.blocks_flat.get(index)
-    }
-
-    #[cfg(feature = "presentation")]
-    fn record_metrics(&self) -> std::result::Result<Vec<BlockRecordMetrics>, String> {
-        let mut metrics = vec![BlockRecordMetrics::default(); self.blocks_flat.len()];
-        let mut state = vec![0u8; self.blocks_flat.len()];
-        for start in 0..self.blocks_flat.len() {
-            let mut stack = vec![(start, false)];
-            while let Some((index, complete)) = stack.pop() {
-                let Some(block) = self.blocks_flat.get(index) else {
-                    return Err(format!("invalid Block child index {index}"));
-                };
-                if complete {
-                    let mut value = BlockRecordMetrics {
-                        items: block
-                            .classes
-                            .len()
-                            .saturating_add(block.styles.len())
-                            .saturating_add(block.directions.len())
-                            .saturating_add(block.children.len()),
-                        text_bytes: block
-                            .id
-                            .len()
-                            .saturating_add(block.label.len())
-                            .saturating_add(block.block_type.len()),
-                        container_depth: 2,
-                    };
-                    for text in block
-                        .classes
-                        .iter()
-                        .chain(&block.styles)
-                        .chain(&block.directions)
-                    {
-                        value.text_bytes = value.text_bytes.saturating_add(text.len());
-                    }
-                    for &child in &block.children {
-                        value.items = value.items.saturating_add(metrics[child].items);
-                        value.text_bytes =
-                            value.text_bytes.saturating_add(metrics[child].text_bytes);
-                        value.container_depth = value
-                            .container_depth
-                            .max(metrics[child].container_depth.saturating_add(2));
-                    }
-                    metrics[index] = value;
-                    state[index] = 2;
-                } else if state[index] != 2 {
-                    if state[index] == 1 {
-                        return Err("cyclic Block child indices".to_string());
-                    }
-                    state[index] = 1;
-                    stack.push((index, true));
-                    stack.extend(block.children.iter().rev().map(|&child| (child, false)));
-                }
-            }
-        }
-        Ok(metrics)
-    }
-
-    /// Counts the previous typed wire shape without allocating repeated descendant output.
-    #[cfg(feature = "presentation")]
-    fn wire_model_complexity(&self) -> ModelComplexity {
-        let Ok(metrics) = self.record_metrics() else {
-            return ModelComplexity::new(usize::MAX, usize::MAX, usize::MAX);
-        };
-        let mut result = ModelComplexity::new(self.blocks_flat.len(), 0, 1);
-        for value in metrics {
-            result.items = result.items.saturating_add(value.items);
-            result.text_bytes = result.text_bytes.saturating_add(value.text_bytes);
-            result.nesting_depth = result
-                .nesting_depth
-                .max(value.container_depth.saturating_add(1));
-        }
-        for (value, empty) in [
-            (
-                ModelComplexity::from_serializable(&self.edges),
-                self.edges.is_empty(),
-            ),
-            (
-                ModelComplexity::from_serializable(&self.class_defs),
-                self.class_defs.is_empty(),
-            ),
-            (
-                ModelComplexity::from_serializable(&self.warning_facts),
-                self.warning_facts.is_empty(),
-            ),
-        ] {
-            result.items = result
-                .items
-                .saturating_add(if empty { 0 } else { value.items });
-            result.text_bytes = result.text_bytes.saturating_add(value.text_bytes);
-            result.nesting_depth = result
-                .nesting_depth
-                .max(value.nesting_depth.saturating_add(1));
-        }
-        result.items = result.items.max(1);
-        result
-    }
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct BlockClassDef {
-    pub id: String,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct BlockNode {
-    pub id: String,
-    pub label: String,
-    pub block_type: String,
-    /// Indices of direct children in the owning model's `blocks_flat` records.
-    pub children: Vec<usize>,
-    pub columns: Option<i64>,
-    pub width_in_columns: Option<i64>,
-    pub width: Option<i64>,
-    pub classes: Vec<String>,
-    pub styles: Vec<String>,
-    pub directions: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct BlockEdge {
-    pub id: String,
-    pub start: String,
-    pub end: String,
-    #[serde(default, rename = "arrowTypeEnd")]
-    pub arrow_type_end: Option<String>,
-    #[serde(default, rename = "arrowTypeStart")]
-    pub arrow_type_start: Option<String>,
-    #[serde(default)]
-    pub label: String,
-}
-
-#[cfg(feature = "compat-json")]
-#[derive(Debug, Clone, Copy, Default)]
-enum CompatibilityFieldPresence {
-    #[default]
-    Omitted,
-    Present,
-}
-
-#[cfg(feature = "compat-json")]
-impl CompatibilityFieldPresence {
-    fn from_option<T>(value: &Option<T>) -> Self {
-        if value.is_some() {
-            Self::Present
-        } else {
-            Self::Omitted
-        }
-    }
-
-    fn is_present(self) -> bool {
-        matches!(self, Self::Present)
-    }
-}
-
-#[cfg(feature = "compat-json")]
-#[derive(Debug, Clone, Copy, Default)]
-struct BlockNodeCompatibility {
-    styles: CompatibilityFieldPresence,
-    directions: CompatibilityFieldPresence,
-}
-
-#[cfg(feature = "presentation")]
-#[derive(Debug, Clone, Default)]
-pub struct BlockVisuals {
-    /// Palette slots in canonical insertion order; the root has no slot.
-    pub color_indices: Vec<Option<usize>>,
-}
-
-#[cfg(feature = "compat-json")]
-#[derive(Debug, Clone, Default)]
-struct BlockCompatibility {
-    nodes: Vec<BlockNodeCompatibility>,
-    edge_directions: Vec<Option<Vec<String>>>,
-}
-
-#[cfg(feature = "presentation")]
-#[derive(Debug, Clone, Default)]
-pub struct BlockDiagramRenderModel {
-    pub semantic: BlockDiagramModel,
-    pub visuals: BlockVisuals,
-    #[cfg(feature = "compat-json")]
-    compatibility: BlockCompatibility,
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::Deref for BlockDiagramRenderModel {
-    type Target = BlockDiagramModel;
-    fn deref(&self) -> &Self::Target {
-        &self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::DerefMut for BlockDiagramRenderModel {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl BlockDiagramRenderModel {
-    pub fn root(&self) -> Option<&BlockNode> {
-        self.semantic.root().or_else(|| {
-            self.semantic
-                .blocks_flat
-                .iter()
-                .find(|block| block.id == "root")
-        })
-    }
-
-    pub fn from_semantic_model(semantic: BlockDiagramModel) -> Self {
-        Self {
-            semantic,
-            ..Self::default()
-        }
-    }
-
-    pub(crate) fn model_complexity(&self) -> ModelComplexity {
-        self.semantic.wire_model_complexity()
-    }
-}
+pub use merman_model::families::block::{
+    BlockDiagramRenderModel, BlockFieldPresence, BlockNodeFieldPresence, BlockProjectionFacts,
+    BlockVisuals,
+};
 
 #[derive(Debug, Clone, Default)]
 struct Block {
@@ -392,11 +140,7 @@ impl BlockDb {
         let entry = self
             .classes
             .entry(id.to_string())
-            .or_insert_with(|| BlockClassDef {
-                id: id.to_string(),
-                styles: Vec::new(),
-                text_styles: Vec::new(),
-            });
+            .or_insert_with(|| BlockClassDef::new(id));
 
         for raw in style_attributes.split(',') {
             let fixed = raw.split(';').next().unwrap_or("").trim().to_string();
@@ -612,7 +356,7 @@ impl PopulateFrame {
 fn block_render_node_to_value_shallow(
     block: &BlockNode,
     color_index: Option<usize>,
-    compatibility: BlockNodeCompatibility,
+    compatibility: BlockNodeFieldPresence,
     children: Vec<Value>,
 ) -> Value {
     let mut obj = Map::new();
@@ -633,13 +377,16 @@ fn block_render_node_to_value_shallow(
     if let Some(v) = block.width_in_columns {
         obj.insert("widthInColumns".to_string(), json!(v));
     }
-    if compatibility.directions.is_present() {
+    if compatibility
+        .directions
+        .is_present(!block.directions.is_empty())
+    {
         obj.insert("directions".to_string(), json!(&block.directions));
     }
     if !block.classes.is_empty() {
         obj.insert("classes".to_string(), json!(&block.classes));
     }
-    if compatibility.styles.is_present() {
+    if compatibility.styles.is_present(!block.styles.is_empty()) {
         obj.insert("styles".to_string(), json!(&block.styles));
     }
 
@@ -696,12 +443,7 @@ fn block_render_node_to_value_controlled(
             .get(frame.index)
             .copied()
             .flatten();
-        let compatibility = model
-            .compatibility
-            .nodes
-            .get(frame.index)
-            .copied()
-            .unwrap_or_default();
+        let compatibility = model.node_field_presence(frame.index);
         let value = block_render_node_to_value_shallow(block, color_index, compatibility, children);
         let value = ManagedSemanticJson::from(value);
         if let Some(parent) = stack.last_mut() {
@@ -779,8 +521,8 @@ struct BlockModelOutput {
     semantic: BlockDiagramModel,
     #[cfg(feature = "presentation")]
     visuals: BlockVisuals,
-    #[cfg(feature = "compat-json")]
-    compatibility: BlockCompatibility,
+    #[cfg(feature = "presentation")]
+    projection_facts: BlockProjectionFacts,
 }
 
 fn block_db_to_model(
@@ -792,8 +534,10 @@ fn block_db_to_model(
     let mut blocks_flat = Vec::with_capacity(db.blocks.len());
     #[cfg(feature = "presentation")]
     let mut visuals = BlockVisuals::default();
-    #[cfg(feature = "compat-json")]
-    let mut compatibility = BlockCompatibility::default();
+    #[cfg(feature = "presentation")]
+    let mut node_presence = Vec::new();
+    #[cfg(feature = "presentation")]
+    let mut edge_directions = Vec::new();
     for (index, block) in db.blocks.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
@@ -802,11 +546,11 @@ fn block_db_to_model(
         if _presentation_requested {
             visuals.color_indices.push(block.color_index);
         }
-        #[cfg(feature = "compat-json")]
+        #[cfg(feature = "presentation")]
         if _presentation_requested {
-            compatibility.nodes.push(BlockNodeCompatibility {
-                styles: CompatibilityFieldPresence::from_option(&block.styles),
-                directions: CompatibilityFieldPresence::from_option(&block.directions),
+            node_presence.push(BlockNodeFieldPresence {
+                styles: BlockFieldPresence::from_option(&block.styles),
+                directions: BlockFieldPresence::from_option(&block.directions),
             });
         }
         blocks_flat.push(block_to_semantic_node(block));
@@ -816,11 +560,11 @@ fn block_db_to_model(
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        #[cfg(feature = "compat-json")]
+        #[cfg(feature = "presentation")]
         let mut edge = edge;
-        #[cfg(feature = "compat-json")]
+        #[cfg(feature = "presentation")]
         if _presentation_requested {
-            compatibility.edge_directions.push(edge.directions.take());
+            edge_directions.push(edge.directions.take());
         }
         edges.push(block_to_semantic_edge(edge));
     }
@@ -835,8 +579,15 @@ fn block_db_to_model(
         },
         #[cfg(feature = "presentation")]
         visuals,
-        #[cfg(feature = "compat-json")]
-        compatibility,
+        #[cfg(feature = "presentation")]
+        projection_facts: if _presentation_requested {
+            BlockProjectionFacts::Explicit {
+                nodes: node_presence,
+                edge_directions,
+            }
+        } else {
+            BlockProjectionFacts::Model
+        },
     })
 }
 
@@ -846,12 +597,11 @@ fn block_db_to_render_model(
     control: &OperationControl,
 ) -> OperationControlResult<BlockDiagramRenderModel> {
     let output = block_db_to_model(db, true, control)?;
-    Ok(BlockDiagramRenderModel {
-        semantic: output.semantic,
-        visuals: output.visuals,
-        #[cfg(feature = "compat-json")]
-        compatibility: output.compatibility,
-    })
+    Ok(BlockDiagramRenderModel::from_parts(
+        output.semantic,
+        output.visuals,
+        output.projection_facts,
+    ))
 }
 
 struct BlockSemanticSource {
@@ -1572,15 +1322,15 @@ struct Parser<'input, 'control> {
     editor_facts: EditorSemanticFacts,
     #[cfg(feature = "editor-facts")]
     editor_demand: EditorFactsDemand,
-    #[cfg(feature = "compat-json")]
-    compatibility_requested: bool,
+    #[cfg(feature = "presentation")]
+    presentation_requested: bool,
 }
 
 impl<'input, 'control> Parser<'input, 'control> {
     fn new(
         input: &'input str,
         #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-        _compatibility_requested: bool,
+        _presentation_requested: bool,
         control: &'control OperationControl,
     ) -> Self {
         Self {
@@ -1593,8 +1343,8 @@ impl<'input, 'control> Parser<'input, 'control> {
             declared_entities: HashSet::new(),
             #[cfg(feature = "editor-facts")]
             editor_demand,
-            #[cfg(feature = "compat-json")]
-            compatibility_requested: _compatibility_requested,
+            #[cfg(feature = "presentation")]
+            presentation_requested: _presentation_requested,
             #[cfg(feature = "editor-facts")]
             editor_facts: EditorSemanticFacts::new(),
         }
@@ -2396,9 +2146,9 @@ impl<'input, 'control> Parser<'input, 'control> {
                 end: Some(right.block.id.clone()),
                 arrow_type_end: Some(arrow_type_end),
                 arrow_type_start: Some("arrow_open".to_string()),
-                #[cfg(feature = "compat-json")]
+                #[cfg(feature = "presentation")]
                 directions: self
-                    .compatibility_requested
+                    .presentation_requested
                     .then(|| right.block.directions.clone())
                     .flatten(),
                 ..Default::default()
@@ -2928,7 +2678,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     meta: &PresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
-    if let Err(message) = model.record_metrics() {
+    if let Err(message) = model.validate_child_relationships() {
         return Ok(Err(Error::diagram_parse_fallback("block", message)));
     }
     let mut blocks = Vec::<ManagedSemanticJson>::new();
@@ -2950,16 +2700,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
         .edges
         .iter()
         .enumerate()
-        .map(|(index, edge)| {
-            block_render_edge_to_value(
-                edge,
-                model
-                    .compatibility
-                    .edge_directions
-                    .get(index)
-                    .and_then(Option::as_deref),
-            )
-        })
+        .map(|(index, edge)| block_render_edge_to_value(edge, model.edge_directions(index)))
         .collect::<Vec<_>>();
     let config =
         ManagedSemanticJson::from(crate::json_value::clone_value_nonrecursive_with_control(
@@ -3030,6 +2771,46 @@ pub(crate) fn parse_block_with_warning_facts(
         model.semantic.warning_facts,
     ))
 }
+#[cfg(all(test, feature = "presentation"))]
+mod presentation_data_tests {
+    use super::*;
+
+    #[test]
+    fn full_construction_keeps_empty_and_omitted_fields_without_json_selection() {
+        let mut db = BlockDb::default();
+        db.clear();
+        let absent = db.insert_block(Block::new("absent".into()));
+        let explicit = db.insert_block(Block {
+            id: "explicit".into(),
+            styles: Some(Vec::new()),
+            directions: Some(Vec::new()),
+            ..Default::default()
+        });
+        db.edges.push(Block {
+            directions: Some(Vec::new()),
+            ..Default::default()
+        });
+        let model = block_db_to_render_model(db, &OperationControl::new()).unwrap();
+        assert!(matches!(
+            model.projection_facts(),
+            BlockProjectionFacts::Explicit { .. }
+        ));
+        assert_eq!(
+            model.node_field_presence(absent).styles,
+            BlockFieldPresence::Omitted
+        );
+        assert_eq!(
+            model.node_field_presence(explicit).styles,
+            BlockFieldPresence::Present
+        );
+        assert_eq!(
+            model.node_field_presence(explicit).directions,
+            BlockFieldPresence::Present
+        );
+        assert_eq!(model.edge_directions(0), Some([].as_slice()));
+    }
+}
+
 #[cfg(all(test, feature = "compat-json"))]
 mod tests {
     use super::*;

@@ -339,6 +339,8 @@ use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_pat
     )
 )]
 use style::is_text_style_key;
+#[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+use util::decode_mermaid_entities_for_render_text;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -347,11 +349,10 @@ use style::is_text_style_key;
     )
 )]
 use util::{
-    config_bool, config_f64, config_string, css_rgba_fade, decode_mermaid_entities_for_render_text,
-    escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into, fmt, fmt_display,
-    fmt_into, fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
-    json_stringify_points_into, normalize_css_font_family, scoped_drop_shadow, scoped_svg_id,
-    scoped_svg_url, theme_token,
+    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_attr_into,
+    escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
+    fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
+    normalize_css_font_family, scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
 };
 pub(crate) use util::{escape_attr, escape_xml};
 

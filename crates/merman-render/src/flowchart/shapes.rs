@@ -155,7 +155,7 @@ impl FlowchartShape {
 }
 
 pub(crate) fn validate_flowchart_model_shapes(
-    model: &merman_core::diagrams::flowchart::FlowchartModel,
+    model: &merman_model::families::flowchart::FlowchartModel,
 ) -> Result<()> {
     for node in &model.nodes {
         FlowchartShape::resolve(node.layout_shape.as_deref().unwrap_or("squareRect"))?;

@@ -81,7 +81,7 @@ impl TerminalFonts {
             .find(|attribute| attribute.key.as_ref().eq_ignore_ascii_case("style"))
         {
             let declarations =
-                merman_core::entities::decode_html_entities_to_unicode(attribute.value.as_ref());
+                merman_model::text::decode_html_entities_to_unicode(attribute.value.as_ref());
             visit_parsed_style_declarations(&declarations, |declaration| {
                 if matches!(
                     declaration.property(),

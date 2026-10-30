@@ -2194,7 +2194,8 @@ Dana-->>Bob: Done
             assert_eq!(model.boxes[0].actor_keys, ["Carol"]);
             assert_eq!(model.created_actors["Dana"], 3);
             assert_eq!(model.destroyed_actors["Dana"], 4);
-            model.to_compat_json(&parsed.metadata().diagram_type)
+            crate::diagrams::sequence::render_model_to_compat_json(model, parsed.metadata())
+                .unwrap()
         }
         other => panic!("sequence render parse should return typed model, got {other:?}"),
     };
@@ -2380,7 +2381,7 @@ line "Series 2" [2 "early", 3 "late"]
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
             assert_eq!(model.plots[1].title.as_deref(), Some("Series 2"));
             assert_eq!(model.plots[1].point_labels, vec!["early", "late"]);
-            model.to_compat_json(parsed.metadata())
+            crate::diagrams::xychart::render_model_to_compat_json(model, parsed.metadata()).unwrap()
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
     };
@@ -2440,7 +2441,7 @@ bar "Series 1" [1, 2]
             assert!(!model.display.y_axis.show_title);
             assert!(!model.display.y_axis.show_tick);
             assert!(!model.display.y_axis.show_axis_line);
-            model.to_compat_json(parsed.metadata())
+            crate::diagrams::xychart::render_model_to_compat_json(model, parsed.metadata()).unwrap()
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
     };

@@ -5,7 +5,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::diagrams::ishikawa::{IshikawaDiagramModel, IshikawaNode};
+use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
 use serde_json::Value;
 use std::collections::HashMap;
 

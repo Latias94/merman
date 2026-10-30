@@ -5,8 +5,10 @@ use merman_ascii::{
     AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::er::{ErAttribute, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship};
 use merman_core::{MermaidEngine, OperationControl, ParseOptions};
+use merman_model::families::er::{
+    ErAttribute, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship,
+};
 use std::path::Path;
 use support::{render_controlled_model, render_model, render_model_with_resources};
 

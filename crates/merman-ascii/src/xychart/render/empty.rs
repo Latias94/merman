@@ -10,7 +10,7 @@ use crate::safe_text::{
     push_optional_document_field,
 };
 use crate::xychart::XyChartView;
-use merman_core::diagrams::xychart::{
+use merman_model::families::xy_chart::{
     XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartPlotModel,
 };
 
@@ -133,11 +133,11 @@ mod tests {
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::xychart::plot::TerminalChartCardinality;
-    use merman_core::diagrams::xychart::{
+    use merman_model::families::xy_chart::{
         XyChartAxisModel, XyChartDiagramModel, XyChartDiagramRenderModel, XyChartDisplayPolicy,
         XyChartPlotModel, XyChartPlotType,
     };
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     fn zero_slot_model() -> XyChartDiagramRenderModel {
         XyChartDiagramRenderModel {

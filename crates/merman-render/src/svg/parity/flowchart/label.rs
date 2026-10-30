@@ -38,7 +38,7 @@ fn flowchart_label_html_impl(
         return html;
     }
     let html = crate::graph_label::flowchart_label_html_source(label, label_type, config);
-    merman_core::sanitize::sanitize_xhtml(&html, config.as_config())
+    merman_markup::sanitize::sanitize_xhtml(&html, config.as_config())
 }
 
 pub(in crate::svg::parity) fn flowchart_label_plain_text(

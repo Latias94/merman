@@ -1,6 +1,20 @@
 //! Shared resource profiles, admission policy, and pure model complexity accounting.
 
+mod data;
 mod input;
+#[cfg(feature = "diagram-block")]
+pub use crate::families::block::model_complexity_from_block;
+#[cfg(all(feature = "diagram-kanban", feature = "presentation-data"))]
+pub use crate::families::kanban::model_complexity_from_kanban;
+#[cfg(feature = "diagram-kanban")]
+pub use crate::families::kanban::model_complexity_from_kanban_semantic;
+#[cfg(feature = "diagram-treemap")]
+pub use crate::families::treemap::TreemapComplexity;
+#[cfg(feature = "diagram-ishikawa")]
+pub use data::IshikawaComplexity;
+#[cfg(feature = "diagram-radar")]
+pub use data::model_complexity_from_radar;
+pub use data::model_complexity_from_semantic_model;
 pub use input::*;
 #[cfg(any(
     feature = "diagram-flowchart",

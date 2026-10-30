@@ -14,10 +14,10 @@ use super::{
 };
 use crate::Result;
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::sequence::{
+use merman_core::presentation::PresentationConfig;
+use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
 };
-use merman_core::presentation::PresentationConfig;
 use std::collections::HashMap;
 
 const SEQUENCE_BLOCK_CONTROL_LABELS: [&str; 6] = ["loop", "alt", "opt", "par", "critical", "break"];
@@ -583,8 +583,8 @@ mod tests {
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::sequence::SequenceMathSidecar;
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
     use merman_core::presentation::PresentationConfig;
+    use merman_model::families::sequence::{SequenceMessage, SequenceMessagePayload};
     use std::collections::HashMap;
 
     struct ExpectedBlockLabelMeasurer;

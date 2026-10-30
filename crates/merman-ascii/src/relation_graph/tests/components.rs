@@ -1,5 +1,5 @@
 use super::*;
-use merman_core::{CancelReason, OperationControl, OperationPhase};
+use merman_model::{CancelReason, OperationControl, OperationPhase};
 
 fn render_test_relation_components<R>(
     boxes: &[RelationGraphBox],

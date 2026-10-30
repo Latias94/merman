@@ -33,7 +33,7 @@ pub use geometry::{
     BlockAllocatedBounds, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
 };
 
-pub(crate) type BlockNode = merman_core::diagrams::block::BlockNode;
+pub(crate) type BlockNode = merman_model::families::block::BlockNode;
 
 // Mermaid createFormattedText pads the SVG edge label's background on all four sides.
 pub(crate) const SVG_EDGE_LABEL_BACKGROUND_PADDING: f64 = 2.0;
@@ -72,7 +72,7 @@ struct BlockPreparedHtmlLabel {
 
 impl BlockPreparedLabels {
     fn prepare(
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         sources: &HashMap<&str, source::BlockNodeSource<'_>>,
         html_labels: bool,
         config: &PresentationConfig,
@@ -126,7 +126,7 @@ impl BlockPreparedHtmlLabel {
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
         use crate::html::{HtmlOutputError, HtmlSanitizeSink};
-        use merman_core::sanitize::SanitizeFailure;
+        use merman_markup::sanitize::SanitizeFailure;
 
         // Include the map/vector owner slot, as in the existing prepared-label sidecars.
         const OWNER_SLOT_BYTES: usize = 192;
@@ -152,12 +152,12 @@ impl BlockPreparedHtmlLabel {
                 return Ok(String::new());
             }
             let text =
-                merman_core::sanitize::sanitize_text_with_sink(raw, config.as_config(), &sink)?;
+                merman_markup::sanitize::sanitize_text_with_sink(raw, config.as_config(), &sink)?;
             let html = format!(
                 "<p>{}</p>",
                 text.replace("\\n", "<br />").replace('\n', "<br />")
             );
-            merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink)
+            merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink)
         })();
         let xhtml = match fragment {
             Ok(xhtml) => xhtml,
@@ -1026,7 +1026,7 @@ fn collect_nodes(root: usize, records: &[SizedBlock], out: &mut Vec<LayoutNode>)
 
 #[cfg(test)]
 pub(crate) fn layout_block_diagram_typed(
-    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    model: &merman_model::families::block::BlockDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<BlockDiagramLayout> {
@@ -1055,7 +1055,7 @@ pub(crate) fn layout_block_diagram_typed(
     reason = "Block preparation keeps layout settings, typography, and operation services explicit."
 )]
 pub(crate) fn layout_block_diagram_typed_with_text_style(
-    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    model: &merman_model::families::block::BlockDiagramRenderModel,
     padding: f64,
     shape_settings: BlockShapeSettings,
     html_labels: bool,

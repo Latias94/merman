@@ -13,8 +13,8 @@ use crate::text::StyledLine;
 #[cfg(test)]
 use crate::text::display_width_with_profile;
 use crate::{AsciiCharset, AsciiError, AsciiRenderOptions, Result};
-use merman_core::OperationPhase;
-use merman_core::diagrams::xychart::{
+use merman_model::OperationPhase;
+use merman_model::families::xy_chart::{
     XyChartAxisModel, XyChartDiagramModel, XyChartPlotModel, XyChartPlotType,
 };
 use std::borrow::Cow;
@@ -3005,7 +3005,7 @@ pub(super) fn format_tick_number(value: f64, step: f64) -> String {
 mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::{CancelReason, OperationControl};
+    use merman_model::{CancelReason, OperationControl};
 
     fn default_resources() -> AsciiResourcePolicy {
         AsciiResourcePolicy::default()

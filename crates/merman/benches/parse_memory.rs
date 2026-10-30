@@ -396,8 +396,7 @@ fn verify_result(
             ));
             // This temporary compatibility projection is dropped before the result-drop sample.
             let json = parsed
-                .model()
-                .compatibility_json(parsed.metadata())
+                .compatibility_json()
                 .map_err(|error| error.to_string())?;
             verify_model(&json, family, scale, seed);
         }
@@ -596,8 +595,7 @@ fn execute_state_shape(seed: u64) -> Result<Value, String> {
             .ok_or("State shape mode requires its canonical root document")?;
         let complexity = merman_core::resources::model_complexity_from_parsed_render(&parsed);
         let compatibility = parsed
-            .model()
-            .compatibility_json(parsed.metadata())
+            .compatibility_json()
             .map_err(|error| error.to_string())?;
         verify_model(&compatibility, Family::State, scale, seed);
         let mut compatibility_bytes = Vec::new();

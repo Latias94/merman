@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::radar::RadarDiagramRenderModel;
+use merman_model::families::radar::RadarDiagramModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
@@ -174,7 +174,7 @@ fn write_radar_axes(
 #[cfg(test)]
 pub(crate) fn render_radar_diagram_svg_model(
     layout: &RadarDiagramLayout,
-    model: &RadarDiagramRenderModel,
+    model: &RadarDiagramModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
@@ -215,7 +215,7 @@ pub(crate) fn render_radar_diagram_svg_model(
 )]
 pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     layout: &RadarDiagramLayout,
-    model: &RadarDiagramRenderModel,
+    model: &RadarDiagramModel,
     series_paint: &crate::radar::RadarSeriesPaintPlan,
     title_theme: &crate::radar::RadarTitleThemePlan,
     axis_paint: &crate::radar::RadarAxisPaintPlan,
@@ -546,17 +546,14 @@ mod tests {
                     curves: Vec::new(),
                     legend_items: Vec::new(),
                 },
-                &RadarDiagramRenderModel::default(),
+                &RadarDiagramModel::default(),
                 None,
             ),
             None,
             None,
             &typography,
-            crate::radar::RadarSeriesPaintPlan::baseline(
-                config,
-                &RadarDiagramRenderModel::default(),
-            )
-            .colors(),
+            crate::radar::RadarSeriesPaintPlan::baseline(config, &RadarDiagramModel::default())
+                .colors(),
             |_, _| {},
         )
         .expect("String-backed Radar CSS writer");
@@ -758,7 +755,7 @@ mod tests {
         let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &options, |options| {
             render_radar_diagram_svg_model(
                 &layout,
-                &RadarDiagramRenderModel::default(),
+                &RadarDiagramModel::default(),
                 &serde_json::json!({}),
                 None,
                 options,
@@ -802,7 +799,7 @@ mod tests {
         let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &options, |options| {
             render_radar_diagram_svg_model(
                 &layout,
-                &RadarDiagramRenderModel::default(),
+                &RadarDiagramModel::default(),
                 &serde_json::json!({"radar": {"useMaxWidth": false}}),
                 None,
                 options,
@@ -858,7 +855,7 @@ mod tests {
         let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &request, |options| {
             render_radar_diagram_svg_model(
                 &layout,
-                &RadarDiagramRenderModel::default(),
+                &RadarDiagramModel::default(),
                 &serde_json::json!({}),
                 None,
                 options,

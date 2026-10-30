@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::eventmodeling::EventModelingDiagramModel;
+use merman_model::families::event_modeling::EventModelingDiagramModel;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
 

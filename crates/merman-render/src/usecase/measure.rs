@@ -4,7 +4,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::text::{
     WrapMode, measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
 };
-use merman_core::diagrams::usecase::{
+use merman_model::families::usecase::{
     UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
     UsecaseRelationshipType,
 };
@@ -460,7 +460,8 @@ pub(super) fn measure(
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
     let config = full_config.as_value();
-    let sanitize = |text: &str| merman_core::sanitize::sanitize_text(text, full_config.as_config());
+    let sanitize =
+        |text: &str| merman_markup::sanitize::sanitize_text(text, full_config.as_config());
     let min_width = number(config, "minNodeWidth", 120.0);
     let wrapping_width = Some(number(config, "wrappingWidth", 120.0));
     let html = config
@@ -912,7 +913,7 @@ mod tests {
     use super::*;
     use crate::resources::RenderResourcePolicy;
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::usecase::{
+    use merman_model::families::usecase::{
         UsecaseActorType, UsecaseBoundary, UsecaseClassDef, UsecaseNode, UsecaseNote,
         UsecaseRelationship,
     };

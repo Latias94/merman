@@ -421,8 +421,7 @@ fn bench_parse(c: &mut Criterion) {
                 .unwrap_or_else(|error| panic!("parse/{name} preflight failed: {error}"))
                 .unwrap_or_else(|| panic!("parse/{name} preflight returned no render model"));
             let projection = parsed
-                .model()
-                .compatibility_json(parsed.metadata())
+                .compatibility_json()
                 .unwrap_or_else(|error| panic!("parse/{name} projection failed: {error}"));
             json_output_identity("typed_render_model", &projection)
         };
@@ -512,12 +511,9 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
                 .unwrap_or_else(|| {
                     panic!("parse_cold_engine/{name} preflight returned no render model")
                 });
-            let projection = parsed
-                .model()
-                .compatibility_json(parsed.metadata())
-                .unwrap_or_else(|error| {
-                    panic!("parse_cold_engine/{name} projection failed: {error}")
-                });
+            let projection = parsed.compatibility_json().unwrap_or_else(|error| {
+                panic!("parse_cold_engine/{name} projection failed: {error}")
+            });
             json_output_identity("typed_render_model", &projection)
         };
         let preflight = output_identity();

@@ -1,4 +1,4 @@
-use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessageKind};
+use merman_model::families::sequence::{SequenceMessage, SequenceMessageKind};
 use std::collections::BTreeMap;
 
 pub(crate) fn sequence_activation_start_x(center_x: f64, stacked_size: usize, width: f64) -> f64 {

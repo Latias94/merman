@@ -9,7 +9,7 @@ use crate::safe_text::{
 };
 use crate::text::display_width_with_profile;
 #[cfg(test)]
-use merman_core::diagrams::mindmap::{
+use merman_model::families::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
 use std::collections::hash_map::Entry;
@@ -56,7 +56,7 @@ pub(super) fn render_mindmap_diagram<'a>(
     render_mindmap_with_resources(
         model.into(),
         options,
-        execution.new_resource_context(merman_core::OperationPhase::Layout),
+        execution.new_resource_context(merman_model::OperationPhase::Layout),
         execution,
     )
 }
@@ -68,7 +68,7 @@ fn render_mindmap_with_resources(
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let layout_resources =
-        execution.resource_context(&resources, merman_core::OperationPhase::Layout);
+        execution.resource_context(&resources, merman_model::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let chars = MindmapChars::from_options(options);
     let nodes_by_id = index_nodes(model, document.resources_mut(), execution)?;
@@ -101,7 +101,7 @@ fn render_mindmap_with_resources(
         .try_reserve(nodes_by_id.len())
         .map_err(|_| layout_allocation_error())?;
     let mut stack = Vec::new();
-    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
+    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
 
     for (index, root_id) in roots.iter().enumerate() {
         if index > 0 {
@@ -132,7 +132,7 @@ fn render_mindmap_with_resources(
                     visiting.remove(&node_id);
                 }
                 MindmapFrame::Enter(frame) => {
-                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                    execution.checkpoint(merman_model::OperationPhase::Emit)?;
                     let MindmapEnterFrame {
                         node_index,
                         prefix,
@@ -180,7 +180,7 @@ fn render_mindmap_with_resources(
                     };
 
                     for (child_index, child_id) in children.iter().enumerate().rev() {
-                        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                        execution.checkpoint(merman_model::OperationPhase::Emit)?;
                         let Some(child_index_in_model) = nodes_by_id.get(child_id) else {
                             continue;
                         };
@@ -225,7 +225,7 @@ fn index_nodes<'a>(
         .try_reserve(model.node_count())
         .map_err(|_| layout_allocation_error())?;
     for (index, node) in model.nodes().enumerate() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         charge_node_id(node.id, resources)?;
         charge_text_layout(resources, node.node_id)?;
         if out.insert(node.id, index).is_some() {
@@ -361,7 +361,7 @@ fn root_ids<'a>(
 
     let mut roots = Vec::new();
     for node in model.nodes() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         charge_node_id(node.id, resources)?;
         if !incoming.contains(&node.id) {
@@ -415,7 +415,7 @@ fn append_disconnected_component_roots<'a>(
     }
 
     for node in model.nodes() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         if reachable.contains(&node.id) {
             continue;
@@ -454,13 +454,13 @@ fn mark_reachable_component<'a>(
     stack.push(root_id);
 
     while let Some(node_id) = stack.pop() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         let Some(children) = children_by_id.get(&node_id) else {
             continue;
         };
         for child_id in children.iter().rev().copied() {
-            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
             resources.charge_layout_work(1)?;
             if nodes_by_id.contains_key(&child_id) && reachable.insert(child_id) {
                 stack.push(child_id);
@@ -581,8 +581,8 @@ fn layout_allocation_error() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::OperationControl;
-    use merman_core::resources::ResourceProfile;
+    use merman_model::OperationControl;
+    use merman_model::resources::ResourceProfile;
 
     const DEEP_NESTING: usize = 256;
 

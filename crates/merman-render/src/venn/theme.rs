@@ -37,7 +37,7 @@ impl VennTypographyThemePlan {
         effective_config: &PresentationConfig,
         _title: Option<&str>,
         layout: &VennDiagramLayout,
-        model: &merman_core::diagrams::venn::VennDiagramModel,
+        model: &merman_model::families::venn::VennDiagramModel,
         title_theme: &VennTitleThemePlan,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {

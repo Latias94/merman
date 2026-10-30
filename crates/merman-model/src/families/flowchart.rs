@@ -1,5 +1,7 @@
 //! Canonical Flowchart data shared by Flowchart, Swimlane, and Agentflow consumers.
 
+pub mod shapes;
+
 use crate::warnings::DiagramWarningFact;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;

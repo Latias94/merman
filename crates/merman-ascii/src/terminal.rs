@@ -2035,7 +2035,7 @@ fn deferred_text_requires_resolver() -> AsciiError {
 #[cfg(test)]
 fn unbounded_test_policy() -> AsciiResourcePolicy {
     AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     )
 }
 
@@ -2043,7 +2043,7 @@ fn unbounded_test_policy() -> AsciiResourcePolicy {
 mod tests {
     use super::*;
     use crate::resource::AsciiResourceLimitExceeded;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
     use std::mem::size_of;
 
     #[test]

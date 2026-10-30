@@ -1,6 +1,6 @@
 # Model/source boundaries implementation record
 
-Status: M0 complete, M1 in progress, 2026-10-30. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
+Status: M0 complete; M1–M3 implemented with integration/retirement work still open; M4–M8 in progress, 2026-10-30. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
 
 ## Frozen source and observations
 
@@ -15,9 +15,12 @@ Status: M0 complete, M1 in progress, 2026-10-30. This records implementation of 
 | Slice | Status | Evidence |
 | --- | --- | --- |
 | M0 | Complete | All six independent consumers compiled and passed both runtime inputs, repeated-output checks and raw/stripped equivalence. |
-| M1 | In progress | Shared lifecycle/config/runtime, input-resource policy and optional text helpers moved; pure family statistics are moving with their models. Family identity remains open. |
-| M2 | In progress | Twenty-one canonical payloads moved, including Sequence/Gantt/GitGraph/TreeView/ZenUML/Mindmap/XY. The latest selected-family core/model recipe passed 1364 tests; the remaining thirteen payloads and complete consumer admission are open. |
-| M3–M8 | Open | No implementation or acceptance result yet. |
+| M1 | In progress | Shared lifecycle/config/runtime/resources/text and the pinned data-only identity catalog moved; source provider bindings remain core-owned. Final consumer retirement and M8 admission remain open. |
+| M2 | In progress | All 34 canonical payloads and nine real full-data groups moved. The six redundant wrappers are retired; core/model all-family tests passed 2336 cases. Graphical context/projection admission and old-path retirement remain open. |
+| M3 | In progress | ASCII production uses model directly; all 1397 runtime tests passed. Independent output receipt and remaining product/feature gates are open. |
+| M4 | In progress | Requested-fix implementation is active; no admission result yet. |
+| M5 | In progress | Shared markup implementation extracted and its 55 tests passed; immutable presentation and parser-free Render/Export remain open. |
+| M6–M8 | Open | Final product, retirement and acceptance work remains. |
 
 Existing correctness results at the prerequisite retain their original scope in the [dependency review](../research/2026-10-30-dependency-review.md). New consumer baselines and implementation gates will be recorded here as they complete. Do not infer a runtime improvement from the package boundary or rewrite historical measurement hashes.
 
@@ -191,3 +194,67 @@ families compiled through facade SVG, ASCII and analysis with defaults disabled;
 unused-code warnings in this subset are not a Clippy admission result. Model formatting passed.
 Remaining-family and whole-matrix tests, parser-free ASCII/render/export closures and final
 measurement/legal/package gates remain open. No new size or performance result is claimed.
+
+
+## Complete canonical-data and parser-free ASCII checkpoint
+
+All 34 canonical payloads now have a model-package owner. Agentflow, Usecase, Railroad,
+Ishikawa, Block, Kanban and Treemap retain their original meaning and pure data/lifecycle behavior.
+The nine actual full-data groups and fourteen terminal adapters use their family owners. Info,
+Pie, Journey, Timeline, Packet and Radar use canonical payloads directly, paired with small
+`presentation-data` output declarations in the full context. `PacketRenderBlock` is replaced by
+`PacketBlock`, without an alias. Canonical serde requirements are retained rather than widened
+with defaults from the retired wrappers.
+
+The semantic enum, declared metadata, pure aggregate/family statistics and pinned shape vocabulary
+have shared owners. Source remapping is a core function. One portable catalog declares 35 logical
+identities and 43 diagram-type IDs. Core binds detector order/effects, editor semantics and actual
+callbacks through the closed diagram-type enum; model availability never becomes parser evidence.
+The shared Flowchart payload remains available when Agentflow or Swimlane selects it, while each
+output owner retains its own handler gates.
+
+ASCII production depends directly on model; core is a development-only parser provider for existing
+source-to-terminal tests. Local capability rows use model availability plus local handlers. The
+source facade intersects those observations with actual core parsers, preserving host declarations
+under feature union. Terminal primary/fallback accounting and the original source fixtures remain
+unchanged. Pure generic-type and shape rules move with the text/model owner instead of being
+copied into ASCII.
+
+Shared markup contains the existing HTML5 sanitizer/sink, sanitizer-owned generated DOMPurify
+defaults, URL normalization, structural CSS predicates and Khroma operations. Core and Render use
+this single implementation. Core's source comment cleanup remains source-owned. Existing generator
+and generated-snapshot paths point at the new defaults owner; new package/legal/profile registration
+is prepared through existing owners. Final legal/report and artifact verification remains M6/M8 work.
+
+Validation on Windows with serial two-job Cargo builds:
+
+- Model all features: 121 tests passed (`9454c730-1766-434e-b5be-e40e996cbf3d`); an additional isolated
+  Agentflow/shared-Flowchart enum case passed (`a5f0ffac-d5cd-40dc-b810-4be919aee863`).
+- Markup all features: 55 tests passed (`c4d4a5c9-c946-4870-aa32-bf8b1bf0b1b8`).
+- Core plus model, all families, compatibility JSON, editor facts and terminal text: 2336 tests
+  passed (`b363d6bf-ec13-4a27-b013-d60003309196`).
+- ASCII all families: all 1397 tests passed (`d0681be7-466b-458f-b82b-4a64673021b2`). These counts
+  overlap and are not summed.
+- Production core/model/markup/ASCII all-feature Clippy passed with `-D warnings` after the
+  shape-vocabulary relocation and focused wrapper adaptations. Facade `all-diagrams,svg,ascii`
+  with defaults disabled compiled successfully. Analysis integration remains its separate M4 slice.
+- ASCII all-family, Agentflow-only, Swimlane-only and C4-only production checks passed; empty model checked.
+  The all-family normal/build Cargo tree contains no core, Mermaid grammar, YAML/JSON5, HTML5,
+  URL or CSS admission package. This is actual graph evidence; independent consumed-output/size
+  receipts and the strict feature matrix remain open.
+
+The six full-output declarations are captured without compatibility serialization. Parsed APIs
+consume them explicitly; ordinary canonical-model projection defaults to declared Model output.
+Render's layout envelope now borrows the same context for projection of its prepared family data.
+The focused graphical producer/projector test passed (`76a20590-bd34-49d0-80f0-e7cc070be384`):
+one parameterized case covers empty and header-only construction for all six retired wrappers,
+then compares the actual prepared layout envelope with the paired parsed projection. This run
+compiled 111 test binaries but executed only that case; 5112 unrelated tests were skipped. The
+all-family core presentation recipe without `compat-json` passed 16 focused output-data cases
+(`cb304415-19b3-4eee-92f1-591a1e90586b`), including Gantt and Block/Kanban/Treemap declarations.
+Two test-only Architecture/GitGraph helpers now use presentation gates/controlled construction so
+this producer recipe does not accidentally depend on compatibility serialization. Existing unused
+code warnings in that narrow test recipe remain distinct from production Clippy. The four legal
+projection unit tests and eight fixed-consumer staging/receipt tests passed. Full SVG DOM, final
+consumer sizes/cold compilation and parser-free graphical/export graphs are not claimed by this
+extraction.

@@ -7,7 +7,6 @@ use crate::sanitize::sanitize_text;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
 use crate::{Error, MermaidConfig, Result, SourceSpan};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, json};
@@ -29,13 +28,10 @@ pub(crate) fn kanban_syntax_construction_count() -> usize {
     KANBAN_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-const NODE_TYPE_DEFAULT: i32 = 0;
-const NODE_TYPE_ROUNDED_RECT: i32 = 1;
-const NODE_TYPE_RECT: i32 = 2;
-const NODE_TYPE_CIRCLE: i32 = 3;
-const NODE_TYPE_CLOUD: i32 = 4;
-const NODE_TYPE_BANG: i32 = 5;
-const NODE_TYPE_HEXAGON: i32 = 6;
+use merman_model::families::kanban::{
+    NODE_TYPE_BANG, NODE_TYPE_CIRCLE, NODE_TYPE_CLOUD, NODE_TYPE_DEFAULT, NODE_TYPE_HEXAGON,
+    NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
+};
 
 #[derive(Debug, Clone)]
 struct KanbanNode {
@@ -55,316 +51,13 @@ struct KanbanNode {
     shape: Option<String>,
 }
 
-/// Authored Kanban sections, cards, and card metadata, without visual dimensions.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct KanbanDiagramModel {
-    pub nodes: Vec<KanbanNodeModel>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KanbanNodeModel {
-    pub id: String,
-    pub label: String,
-    pub level: usize,
-    pub node_type: i32,
-    pub span: SourceSpan,
-    pub is_group: bool,
-    pub parent_id: Option<String>,
-    pub ticket: Option<String>,
-    pub priority: Option<String>,
-    pub assigned: Option<String>,
-    pub icon: Option<String>,
-    pub css_classes: Option<String>,
-    pub shape: Option<String>,
-    /// Source-authored metadata, including properties unknown to the renderer.
-    pub metadata: Option<crate::json_value::ManagedJson>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum KanbanTerminalBacking<'a> {
-    Canonical(&'a KanbanDiagramModel),
-    #[cfg(feature = "presentation")]
-    Full(&'a KanbanDiagramRenderModel),
-}
-
-/// Borrows the admitted board without constructing dimensions or copying its cards.
-#[derive(Debug, Clone, Copy)]
-pub struct KanbanTerminalView<'a>(KanbanTerminalBacking<'a>);
-
-impl<'a> KanbanTerminalView<'a> {
-    pub fn from_model(model: &'a KanbanDiagramModel) -> Self {
-        Self(KanbanTerminalBacking::Canonical(model))
-    }
-
-    #[cfg(feature = "presentation")]
-    pub fn from_render(model: &'a KanbanDiagramRenderModel) -> Self {
-        Self(KanbanTerminalBacking::Full(model))
-    }
-
-    pub fn nodes(self) -> impl ExactSizeIterator<Item = KanbanTerminalNode<'a>> {
-        let count = match self.0 {
-            KanbanTerminalBacking::Canonical(model) => model.nodes.len(),
-            #[cfg(feature = "presentation")]
-            KanbanTerminalBacking::Full(model) => model.nodes.len(),
-        };
-        (0..count).map(move |index| self.node_at(index))
-    }
-
-    fn node_at(self, index: usize) -> KanbanTerminalNode<'a> {
-        match self.0 {
-            KanbanTerminalBacking::Canonical(model) => {
-                let node = &model.nodes[index];
-                KanbanTerminalNode {
-                    id: &node.id,
-                    label: &node.label,
-                    is_group: node.is_group,
-                    parent_id: node.parent_id.as_deref(),
-                    ticket: node.ticket.as_deref(),
-                    priority: node.priority.as_deref(),
-                    assigned: node.assigned.as_deref(),
-                    icon: node.icon.as_deref(),
-                    authored: Some(node),
-                }
-            }
-            #[cfg(feature = "presentation")]
-            KanbanTerminalBacking::Full(model) => {
-                let node = &model.nodes[index];
-                KanbanTerminalNode {
-                    id: &node.id,
-                    label: &node.label,
-                    is_group: node.is_group,
-                    parent_id: node.parent_id.as_deref(),
-                    ticket: node.ticket.as_deref(),
-                    priority: node.priority.as_deref(),
-                    assigned: node.assigned.as_deref(),
-                    icon: node.icon.as_deref(),
-                    authored: None,
-                }
-            }
-        }
-    }
-
-    pub fn node(self, index: usize) -> Option<KanbanTerminalNode<'a>> {
-        (index < self.nodes().len()).then(|| self.node_at(index))
-    }
-
-    pub fn complexity(self) -> crate::resources::ModelComplexity {
-        match self.0 {
-            KanbanTerminalBacking::Canonical(model) => {
-                crate::resources::model_complexity_from_kanban_semantic(model)
-            }
-            #[cfg(feature = "presentation")]
-            KanbanTerminalBacking::Full(model) => {
-                let mut complexity = crate::resources::model_complexity_from_kanban(model);
-                for node in &model.nodes {
-                    for text in [
-                        node.compatibility.css_classes.as_deref(),
-                        node.compatibility.shape.as_deref(),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    {
-                        complexity.text_bytes = complexity.text_bytes.saturating_add(text.len());
-                    }
-                }
-                complexity
-            }
-        }
-    }
-}
-
-impl Serialize for KanbanTerminalView<'_> {
-    fn serialize<S: serde::Serializer>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error> {
-        match self.0 {
-            KanbanTerminalBacking::Canonical(model) => {
-                #[derive(Serialize)]
-                struct Wire<'a> {
-                    nodes: CanonicalTerminalNodes<'a>,
-                }
-                Wire {
-                    nodes: CanonicalTerminalNodes(&model.nodes),
-                }
-                .serialize(serializer)
-            }
-            #[cfg(feature = "presentation")]
-            KanbanTerminalBacking::Full(model) => {
-                #[derive(Serialize)]
-                struct Wire<'a> {
-                    nodes: FullTerminalNodes<'a>,
-                }
-                Wire {
-                    nodes: FullTerminalNodes(&model.nodes),
-                }
-                .serialize(serializer)
-            }
-        }
-    }
-}
-
-struct CanonicalTerminalNodes<'a>(&'a [KanbanNodeModel]);
-
-impl Serialize for CanonicalTerminalNodes<'_> {
-    fn serialize<S: serde::Serializer>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error> {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Node<'a> {
-            id: &'a str,
-            label: &'a str,
-            level: usize,
-            node_type: i32,
-            span: &'a SourceSpan,
-            is_group: bool,
-            parent_id: Option<&'a str>,
-            ticket: Option<&'a str>,
-            priority: Option<&'a str>,
-            assigned: Option<&'a str>,
-            icon: Option<&'a str>,
-            css_classes: Option<&'a str>,
-            shape: Option<&'a str>,
-            metadata: Option<&'a Value>,
-        }
-
-        serializer.collect_seq(self.0.iter().map(|node| {
-            Node {
-                id: &node.id,
-                label: &node.label,
-                level: node.level,
-                node_type: node.node_type,
-                span: &node.span,
-                is_group: node.is_group,
-                parent_id: node.parent_id.as_deref(),
-                ticket: node.ticket.as_deref(),
-                priority: node.priority.as_deref(),
-                assigned: node.assigned.as_deref(),
-                icon: node.icon.as_deref(),
-                css_classes: node.css_classes.as_deref(),
-                shape: node.shape.as_deref(),
-                metadata: node
-                    .metadata
-                    .as_ref()
-                    .map(crate::json_value::ManagedJson::as_value),
-            }
-        }))
-    }
-}
-
+pub use merman_model::families::kanban::{
+    KanbanDiagramModel, KanbanNodeModel, KanbanTerminalNode, KanbanTerminalView,
+};
 #[cfg(feature = "presentation")]
-struct FullTerminalNodes<'a>(&'a [KanbanRenderNode]);
-
-#[cfg(feature = "presentation")]
-impl Serialize for FullTerminalNodes<'_> {
-    fn serialize<S: serde::Serializer>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error> {
-        #[derive(Serialize)]
-        struct Node<'a> {
-            #[serde(flatten)]
-            node: &'a KanbanRenderNode,
-            level: usize,
-            #[serde(rename = "cssClasses", skip_serializing_if = "Option::is_none")]
-            css_classes: Option<&'a str>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            shape: Option<&'a str>,
-        }
-        serializer.collect_seq(self.0.iter().map(|node| Node {
-            node,
-            level: node.compatibility.level,
-            css_classes: node.compatibility.css_classes.as_deref(),
-            shape: node.compatibility.shape.as_deref(),
-        }))
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct KanbanTerminalNode<'a> {
-    pub id: &'a str,
-    pub label: &'a str,
-    pub is_group: bool,
-    pub parent_id: Option<&'a str>,
-    pub ticket: Option<&'a str>,
-    pub priority: Option<&'a str>,
-    pub assigned: Option<&'a str>,
-    pub icon: Option<&'a str>,
-    authored: Option<&'a KanbanNodeModel>,
-}
-
-impl<'a> KanbanTerminalNode<'a> {
-    /// Returns all original canonical card fields, including unknown authored metadata.
-    pub fn authored(self) -> Option<&'a KanbanNodeModel> {
-        self.authored
-    }
-}
-
-#[cfg(feature = "presentation")]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct KanbanDiagramRenderModel {
-    #[serde(default)]
-    pub nodes: Vec<KanbanRenderNode>,
-}
-
-#[cfg(feature = "presentation")]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct KanbanRenderNode {
-    pub id: String,
-    pub label: String,
-    #[serde(default, rename = "isGroup")]
-    pub is_group: bool,
-    #[serde(default, rename = "parentId")]
-    pub parent_id: Option<String>,
-    #[serde(default)]
-    pub ticket: Option<String>,
-    #[serde(default)]
-    pub priority: Option<String>,
-    #[serde(default)]
-    pub assigned: Option<String>,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(skip)]
-    compatibility: KanbanRenderNodeCompatibility,
-}
-
-#[cfg(feature = "presentation")]
-#[derive(Debug, Clone, Default)]
-struct KanbanRenderNodeCompatibility {
-    level: usize,
-    #[cfg(feature = "compat-json")]
-    width: i64,
-    #[cfg(feature = "compat-json")]
-    padding: i64,
-    #[cfg(feature = "compat-json")]
-    ticket: Option<String>,
-    #[cfg(feature = "compat-json")]
-    priority: Option<String>,
-    #[cfg(feature = "compat-json")]
-    assigned: Option<String>,
-    #[cfg(feature = "compat-json")]
-    icon: Option<String>,
-    css_classes: Option<String>,
-    shape: Option<String>,
-}
-
-#[cfg(feature = "presentation")]
-impl KanbanRenderNode {
-    /// Creates a render node with no parent or optional card metadata.
-    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            label: label.into(),
-            ..Self::default()
-        }
-    }
-}
+pub use merman_model::families::kanban::{
+    KanbanDiagramRenderModel, KanbanRenderNode, KanbanRenderNodeCompatibility,
+};
 
 #[derive(Debug, Default)]
 struct KanbanDb {
@@ -1870,76 +1563,66 @@ pub(crate) fn parse_kanban_semantic_model_controlled(
 }
 
 #[cfg(feature = "presentation")]
-impl KanbanDiagramModel {
-    fn into_render_model(self, config: &MermaidConfig) -> Result<KanbanDiagramRenderModel> {
-        #[cfg(feature = "compat-json")]
-        let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
-        let base_padding = get_i64(config, "mindmap.padding").unwrap_or(10);
-        let nodes = self
-            .nodes
-            .into_iter()
-            .map(|node| {
-                let _padding = if matches!(
-                    node.node_type,
-                    NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON
-                ) {
-                    base_padding.checked_mul(2).ok_or_else(|| {
-                        Error::diagram_parse_exact(
-                            "kanban",
-                            "node padding exceeds the supported integer range",
-                            node.span,
-                        )
-                    })?
-                } else {
-                    base_padding
-                };
-                Ok(KanbanRenderNode {
-                    id: node.id,
-                    label: node.label,
-                    is_group: node.is_group,
-                    parent_id: node.parent_id,
-                    ticket: node.ticket.clone(),
-                    priority: node.priority.clone(),
-                    assigned: node.assigned.clone(),
-                    icon: node.icon.clone(),
-                    compatibility: KanbanRenderNodeCompatibility {
-                        level: node.level,
-                        #[cfg(feature = "compat-json")]
-                        width,
-                        #[cfg(feature = "compat-json")]
-                        padding: _padding,
-                        #[cfg(feature = "compat-json")]
-                        ticket: node.ticket,
-                        #[cfg(feature = "compat-json")]
-                        priority: node.priority,
-                        #[cfg(feature = "compat-json")]
-                        assigned: node.assigned,
-                        #[cfg(feature = "compat-json")]
-                        icon: node.icon,
-                        css_classes: node.css_classes,
-                        shape: node.shape,
-                    },
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        // Mermaid emits each section followed by every card with that section ID. Repeated
-        // authored section IDs therefore intentionally repeat their matching cards.
-        let (sections, cards): (Vec<_>, Vec<_>) = nodes.into_iter().partition(|node| node.is_group);
-        let mut nodes = Vec::new();
-        for section in sections {
-            let section_id = section.id.clone();
-            nodes.push(section);
-            nodes.extend(
-                cards
-                    .iter()
-                    .filter(|card| card.parent_id.as_deref() == Some(section_id.as_str()))
-                    .cloned(),
-            );
-        }
-        Ok(KanbanDiagramRenderModel { nodes })
+fn into_render_model(
+    model: KanbanDiagramModel,
+    config: &MermaidConfig,
+) -> Result<KanbanDiagramRenderModel> {
+    let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
+    let base_padding = get_i64(config, "mindmap.padding").unwrap_or(10);
+    let nodes = model
+        .nodes
+        .into_iter()
+        .map(|node| {
+            let _padding = if matches!(
+                node.node_type,
+                NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON
+            ) {
+                base_padding.checked_mul(2).ok_or_else(|| {
+                    Error::diagram_parse_exact(
+                        "kanban",
+                        "node padding exceeds the supported integer range",
+                        node.span,
+                    )
+                })?
+            } else {
+                base_padding
+            };
+            let mut rendered = KanbanRenderNode::new(node.id, node.label);
+            rendered.is_group = node.is_group;
+            rendered.parent_id = node.parent_id;
+            rendered.ticket = node.ticket.clone();
+            rendered.priority = node.priority.clone();
+            rendered.assigned = node.assigned.clone();
+            rendered.icon = node.icon.clone();
+            Ok(rendered.with_compatibility(KanbanRenderNodeCompatibility {
+                level: node.level,
+                width,
+                padding: _padding,
+                ticket: node.ticket,
+                priority: node.priority,
+                assigned: node.assigned,
+                icon: node.icon,
+                css_classes: node.css_classes,
+                shape: node.shape,
+            }))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    // Mermaid emits each section followed by every card with that section ID. Repeated
+    // authored section IDs therefore intentionally repeat their matching cards.
+    let (sections, cards): (Vec<_>, Vec<_>) = nodes.into_iter().partition(|node| node.is_group);
+    let mut nodes = Vec::new();
+    for section in sections {
+        let section_id = section.id.clone();
+        nodes.push(section);
+        nodes.extend(
+            cards
+                .iter()
+                .filter(|card| card.parent_id.as_deref() == Some(section_id.as_str()))
+                .cloned(),
+        );
     }
+    Ok(KanbanDiagramRenderModel { nodes })
 }
-
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_kanban(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let model =
@@ -1968,11 +1651,13 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
             control,
         )?,
         |source| {
-            let model = source
-                .db
-                .into_semantic_model(meta.effective_config.as_config())
-                .into_render_model(meta.effective_config.as_config())
-                .and_then(|model| render_model_to_compat_json(&model, meta));
+            let model = into_render_model(
+                source
+                    .db
+                    .into_semantic_model(meta.effective_config.as_config()),
+                meta.effective_config.as_config(),
+            )
+            .and_then(|model| render_model_to_compat_json(&model, meta));
             (model, source.editor_facts.unwrap_or_default())
         },
         KanbanParseFailure::into_error_and_editor_facts,
@@ -2013,7 +1698,7 @@ fn kanban_sections_to_json(model: &KanbanDiagramRenderModel) -> Value {
             .iter()
             .filter(|node| node.is_group)
             .map(|node| {
-                let compat = &node.compatibility;
+                let compat = node.compatibility();
                 let mut out = Map::new();
                 out.insert("id".to_string(), json!(&node.id));
                 out.insert("label".to_string(), json!(&node.label));
@@ -2045,11 +1730,11 @@ fn kanban_nodes_to_json(model: &KanbanDiagramRenderModel, config: &MermaidConfig
     model.nodes.iter().map(|node| {
         if node.is_group {
             json!({"id": node.id, "label": node.label, "isGroup": true, "ticket": node.ticket,
-                "shape": "kanbanSection", "level": node.compatibility.level, "look": look})
+                "shape": "kanbanSection", "level": node.compatibility().level, "look": look})
         } else {
             json!({"id": node.id, "parentId": node.parent_id, "label": node.label, "isGroup": false,
                 "ticket": node.ticket, "priority": node.priority, "assigned": node.assigned, "icon": node.icon,
-                "shape": "kanbanItem", "level": node.compatibility.level, "rx": 5, "ry": 5,
+                "shape": "kanbanItem", "level": node.compatibility().level, "rx": 5, "ry": 5,
                 "cssStyles": ["text-align: left"]})
         }
     }).collect()
@@ -2085,11 +1770,43 @@ pub(crate) fn parse_kanban_model_for_render_controlled(
     Ok(construction
         .map_err(|failure| *failure.error)
         .and_then(|source| {
-            source
-                .db
-                .into_semantic_model(meta.effective_config.as_config())
-                .into_render_model(meta.effective_config.as_config())
+            into_render_model(
+                source
+                    .db
+                    .into_semantic_model(meta.effective_config.as_config()),
+                meta.effective_config.as_config(),
+            )
         }))
+}
+
+#[cfg(all(test, feature = "presentation"))]
+mod presentation_data_tests {
+    use super::*;
+
+    #[test]
+    fn full_construction_keeps_resolved_fields_without_json_selection() {
+        let meta = PresentationMetadata {
+            diagram_type: "kanban".into(),
+            config: MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::from_value(
+                serde_json::json!({"mindmap": {"maxNodeWidth": 333, "padding": 12}}),
+            ),
+            title: None,
+        };
+        let model = parse_kanban_model_for_render_controlled(
+            "kanban\n  backlog[Backlog]\n    work[Work]\n",
+            &meta,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.nodes.len(), 2);
+        for node in &model.nodes {
+            assert_eq!(node.compatibility().width, 333);
+            assert_eq!(node.compatibility().padding, 24);
+        }
+        assert!(model.nodes[1].compatibility().level > model.nodes[0].compatibility().level);
+    }
 }
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -2693,88 +2410,6 @@ mod tests {
 mod semantic_tests {
     use super::*;
 
-    #[test]
-    fn terminal_fallback_serializes_admitted_metadata_beyond_managed_serde_limit() {
-        let mut metadata = Value::String("leaf".to_string());
-        for _ in 0..129 {
-            metadata = Value::Array(vec![metadata]);
-        }
-        let model = KanbanDiagramModel {
-            nodes: vec![KanbanNodeModel {
-                id: "card".to_string(),
-                label: "Card".to_string(),
-                level: 0,
-                node_type: NODE_TYPE_DEFAULT,
-                span: SourceSpan::new(0, 0),
-                is_group: false,
-                parent_id: None,
-                ticket: None,
-                priority: None,
-                assigned: None,
-                icon: None,
-                css_classes: None,
-                shape: None,
-                metadata: Some(crate::json_value::ManagedJson::from_value(metadata)),
-            }],
-        };
-        let typed_error = serde_json::to_value(&model).unwrap_err();
-        assert!(typed_error.to_string().contains("128-container depth"));
-        let terminal = KanbanTerminalView::from_model(&model);
-        assert_eq!(
-            terminal.complexity(),
-            crate::resources::ModelComplexity::new(130, 12, 129)
-        );
-        let fallback = serde_json::to_value(terminal)
-            .expect("admitted terminal metadata must use the caller's nesting policy");
-        let mut value = &fallback["nodes"][0]["metadata"];
-        for _ in 0..129 {
-            let values = value.as_array().unwrap();
-            assert_eq!(values.len(), 1);
-            value = &values[0];
-        }
-        assert_eq!(value.as_str(), Some("leaf"));
-    }
-
-    #[cfg(feature = "presentation")]
-    #[test]
-    fn detached_terminal_fallback_keeps_hidden_authored_facts_without_changing_typed_wire() {
-        let mut node = KanbanRenderNode::new("host", "Host card");
-        node.ticket = Some("MC-42".to_string());
-        node.compatibility = KanbanRenderNodeCompatibility {
-            level: 7,
-            css_classes: Some("host-class".to_string()),
-            shape: Some("host-shape".to_string()),
-            ..Default::default()
-        };
-        let model = KanbanDiagramRenderModel { nodes: vec![node] };
-        let typed = serde_json::to_value(&model).unwrap();
-        assert!(typed["nodes"][0].get("level").is_none());
-        assert!(typed["nodes"][0].get("cssClasses").is_none());
-        assert!(typed["nodes"][0].get("shape").is_none());
-        let terminal = KanbanTerminalView::from_render(&model);
-        let fallback = serde_json::to_value(terminal).unwrap();
-        assert_eq!(fallback.as_object().unwrap().len(), 1);
-        assert_eq!(fallback["nodes"].as_array().unwrap().len(), 1);
-        assert_eq!(
-            fallback["nodes"][0],
-            serde_json::json!({
-                "id": "host", "label": "Host card", "isGroup": false, "parentId": null,
-                "ticket": "MC-42", "priority": null, "assigned": null, "icon": null,
-                "level": 7, "cssClasses": "host-class", "shape": "host-shape"
-            })
-        );
-        let base = crate::resources::model_complexity_from_kanban(&model);
-        assert_eq!(
-            terminal.complexity(),
-            crate::resources::ModelComplexity::new(
-                base.items,
-                base.text_bytes + "host-class".len() + "host-shape".len(),
-                base.nesting_depth
-            )
-        );
-        assert_eq!(serde_json::to_value(&model).unwrap(), typed);
-    }
-
     fn metadata() -> crate::SemanticMetadata {
         crate::SemanticMetadata {
             diagram_type: "kanban".to_string(),
@@ -2946,9 +2581,7 @@ mod semantic_tests {
         .model
         .unwrap();
         assert_eq!(canonical.nodes.len(), 4);
-        let projected = canonical
-            .into_render_model(&MermaidConfig::empty_object())
-            .unwrap();
+        let projected = into_render_model(canonical, &MermaidConfig::empty_object()).unwrap();
         let terminal = KanbanTerminalView::from_render(&projected);
         let mut fallback = serde_json::to_value(terminal).unwrap();
         for (wire, node) in fallback["nodes"]
@@ -2960,18 +2593,18 @@ mod semantic_tests {
             let fields = wire.as_object_mut().unwrap();
             assert_eq!(
                 fields.remove("level").unwrap(),
-                serde_json::json!(node.compatibility.level)
+                serde_json::json!(node.compatibility().level)
             );
             assert_eq!(
                 fields.remove("cssClasses"),
-                node.compatibility
+                node.compatibility()
                     .css_classes
                     .as_ref()
                     .map(|value| serde_json::json!(value))
             );
             assert_eq!(
                 fields.remove("shape"),
-                node.compatibility
+                node.compatibility()
                     .shape
                     .as_ref()
                     .map(|value| serde_json::json!(value))

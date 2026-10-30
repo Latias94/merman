@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::gantt::GanttRenderTask;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::gantt::GanttRenderTask;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
@@ -2037,7 +2037,7 @@ mod tests {
             (GanttRenderTask::default(), GanttTaskBarState::Default),
             (
                 GanttRenderTask {
-                    semantic: merman_core::diagrams::gantt::GanttTask {
+                    semantic: merman_model::families::gantt::GanttTask {
                         crit: true,
                         ..Default::default()
                     },
@@ -2047,7 +2047,7 @@ mod tests {
             ),
             (
                 GanttRenderTask {
-                    semantic: merman_core::diagrams::gantt::GanttTask {
+                    semantic: merman_model::families::gantt::GanttTask {
                         done: true,
                         crit: true,
                         ..Default::default()
@@ -2058,7 +2058,7 @@ mod tests {
             ),
             (
                 GanttRenderTask {
-                    semantic: merman_core::diagrams::gantt::GanttTask {
+                    semantic: merman_model::families::gantt::GanttTask {
                         active: true,
                         done: true,
                         crit: true,
@@ -2209,7 +2209,7 @@ mod tests {
         let resolved = theme.resolve(crate::DiagramFamilyId::GANTT);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::default());
         let task = GanttRenderTask {
-            semantic: merman_core::diagrams::gantt::GanttTask {
+            semantic: merman_model::families::gantt::GanttTask {
                 id: "task-a".to_owned(),
                 ..Default::default()
             },
@@ -2272,7 +2272,7 @@ mod tests {
         for count in [0, 1, 4096] {
             let tasks = vec![
                 GanttRenderTask {
-                    semantic: merman_core::diagrams::gantt::GanttTask {
+                    semantic: merman_model::families::gantt::GanttTask {
                         id: "ordinary-task".to_string(),
                         ..Default::default()
                     },
@@ -2303,7 +2303,7 @@ mod tests {
     fn unthemed_layout_preserves_source_states_without_retaining_evidence_mapping() {
         let tasks = vec![
             GanttRenderTask {
-                semantic: merman_core::diagrams::gantt::GanttTask {
+                semantic: merman_model::families::gantt::GanttTask {
                     id: "later".into(),
                     start_ms: 1000,
                     end_ms: 2000,
@@ -2314,7 +2314,7 @@ mod tests {
                 ..GanttRenderTask::default()
             },
             GanttRenderTask {
-                semantic: merman_core::diagrams::gantt::GanttTask {
+                semantic: merman_model::families::gantt::GanttTask {
                     id: "first".into(),
                     start_ms: 0,
                     end_ms: 2000,
@@ -2324,7 +2324,7 @@ mod tests {
                 ..GanttRenderTask::default()
             },
             GanttRenderTask {
-                semantic: merman_core::diagrams::gantt::GanttTask {
+                semantic: merman_model::families::gantt::GanttTask {
                     id: "tie".into(),
                     start_ms: 0,
                     end_ms: 2000,
@@ -2335,7 +2335,7 @@ mod tests {
             },
         ];
         let plan = GanttTaskTheme::baseline(&tasks);
-        let mut model = merman_core::diagrams::gantt::GanttDiagramRenderModel::default();
+        let mut model = merman_model::families::gantt::GanttDiagramRenderModel::default();
         model.tasks = tasks;
         let layout = crate::gantt::layout_gantt_diagram_typed(
             &model,
@@ -2370,7 +2370,7 @@ mod tests {
     fn layout_binding_maps_render_order_back_to_semantic_occurrences() {
         let tasks = [
             GanttRenderTask {
-                semantic: merman_core::diagrams::gantt::GanttTask {
+                semantic: merman_model::families::gantt::GanttTask {
                     id: "active".to_string(),
                     active: true,
                     ..Default::default()
@@ -2378,7 +2378,7 @@ mod tests {
                 ..GanttRenderTask::default()
             },
             GanttRenderTask {
-                semantic: merman_core::diagrams::gantt::GanttTask {
+                semantic: merman_model::families::gantt::GanttTask {
                     id: "done".to_string(),
                     done: true,
                     ..Default::default()
@@ -2412,7 +2412,7 @@ mod tests {
             .expect("compile Gantt multi-state theme")
             .resolve(crate::DiagramFamilyId::GANTT);
         let task = GanttRenderTask {
-            semantic: merman_core::diagrams::gantt::GanttTask {
+            semantic: merman_model::families::gantt::GanttTask {
                 id: "task".to_string(),
                 active: true,
                 crit: true,

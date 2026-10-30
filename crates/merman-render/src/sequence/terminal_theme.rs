@@ -71,7 +71,7 @@ pub(crate) struct SequencePreparedTerminalTheme {
 
 impl SequencePreparedTerminalTheme {
     pub(super) fn resolve(
-        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
+        model: &merman_model::families::sequence::SequenceDiagramModel,
         config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
@@ -84,8 +84,8 @@ impl SequencePreparedTerminalTheme {
             work_meter.charge(1)?;
             let kind = message.semantic_kind();
             note_count +=
-                usize::from(kind == merman_core::diagrams::sequence::SequenceMessageKind::Note);
-            has_lines |= kind == merman_core::diagrams::sequence::SequenceMessageKind::Signal
+                usize::from(kind == merman_model::families::sequence::SequenceMessageKind::Note);
+            has_lines |= kind == merman_model::families::sequence::SequenceMessageKind::Signal
                 && message.from.is_some()
                 && message.to.is_some();
         }

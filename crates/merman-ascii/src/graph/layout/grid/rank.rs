@@ -903,7 +903,7 @@ const fn dagre_rank_direction(direction: GraphDirection) -> RankDir {
 }
 
 fn checkpoint_layout(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
-    execution.checkpoint_loop(merman_core::OperationPhase::Layout, iteration)
+    execution.checkpoint_loop(merman_model::OperationPhase::Layout, iteration)
 }
 
 struct AsciiDagreWorkControl<'resources, 'execution> {
@@ -948,7 +948,7 @@ impl WorkControl for AsciiDagreWorkControl<'_, '_> {
         }
         if let Err(error) = self
             .execution
-            .checkpoint(merman_core::OperationPhase::Layout)
+            .checkpoint(merman_model::OperationPhase::Layout)
         {
             self.ascii_error = Some(error);
             return Err(WorkError::Interrupted);
@@ -966,8 +966,8 @@ mod tests {
     use super::*;
     use crate::graph::model::GraphGroupStyle;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{OperationControl, OperationPhase};
 
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
@@ -1341,7 +1341,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
     }
 }

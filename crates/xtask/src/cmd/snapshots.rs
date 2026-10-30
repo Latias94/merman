@@ -596,7 +596,7 @@ fn verify_default_config_artifact(tmp_dir: &Path) -> Result<Option<String>, Xtas
 }
 
 fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected_purify = PathBuf::from("crates/merman-core/src/generated/dompurify_defaults.rs");
+    let expected_purify = PathBuf::from("crates/merman-markup/src/generated/dompurify_defaults.rs");
     let actual_purify = tmp_dir.join("dompurify_defaults.actual.rs");
     super::gen_dompurify_defaults(vec![
         "--out".to_string(),

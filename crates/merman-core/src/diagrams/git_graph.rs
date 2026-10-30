@@ -1593,12 +1593,13 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
-#[cfg(all(test, feature = "compat-json"))]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_git_graph_model_for_render(
     code: &str,
     meta: &PresentationMetadata,
 ) -> Result<GitGraphDiagramModel> {
-    Ok(parse_git_graph_semantic_source(code, meta)?.model)
+    parse_git_graph_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(feature = "presentation")]

@@ -15,12 +15,19 @@ use crate::{
 use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
 #[cfg(feature = "presentation")]
 use crate::{PresentationMetadata, Result};
-use serde::{Deserialize, Serialize};
+use merman_model::families::agentflow::ALLOWED_SHAPES;
+pub use merman_model::families::agentflow::{
+    AgentflowAuthoredStyles, AgentflowConnector, AgentflowDiagnostic, AgentflowDiagnosticPosition,
+    AgentflowDiagramModel, AgentflowEdge, AgentflowEdgeAttributes, AgentflowEdgeSemantic,
+    AgentflowNode, AgentflowNodeAttributes, AgentflowSubGraph, AgentflowVertexKind,
+};
+use merman_model::warnings::DiagramWarningFact;
+#[cfg(feature = "compat-json")]
+use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 mod presentation;
-pub use presentation::{AgentflowAuthoredStyles, AgentflowEdgeAttributes, AgentflowNodeAttributes};
 #[cfg(feature = "presentation")]
 mod render_model;
 #[cfg(feature = "presentation")]
@@ -28,280 +35,13 @@ pub use render_model::{
     AgentflowDiagramRenderModel, AgentflowRenderLabelSources, AgentflowVisuals,
 };
 
-/// Semantic kind derived from the authored shape or declaration keyword.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AgentflowVertexKind {
-    Tool,
-    Action,
-    Input,
-    Refdoc,
-    Decision,
-    Connector,
-    Task,
-}
-
-impl AgentflowVertexKind {
-    #[cfg(feature = "presentation")]
-    fn css_class(self) -> &'static str {
-        match self {
-            Self::Tool => "af-kind-tool",
-            Self::Task => "af-kind-task",
-            Self::Input => "af-kind-input",
-            Self::Refdoc => "af-kind-refdoc",
-            Self::Action => "af-kind-action",
-            Self::Decision => "af-kind-decision",
-            Self::Connector => "af-kind-connector",
-        }
-    }
-}
-
-/// The three operators admitted by Mermaid 12 Agentflow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AgentflowEdgeSemantic {
-    Sequence,
-    Reference,
-    Failure,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentflowNode {
-    pub id: String,
-    pub label: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shape: Option<String>,
-    pub vertex_kind: AgentflowVertexKind,
-    #[serde(default, skip_serializing_if = "Map::is_empty")]
-    pub metadata: Map<String, Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentflowEdge {
-    pub start: String,
-    pub end: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(skip)]
-    pub is_user_defined_id: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    pub edge_semantic: AgentflowEdgeSemantic,
-    #[serde(default, rename = "type")]
-    pub edge_type: String,
-    #[serde(default)]
-    pub stroke: String,
-    #[serde(default)]
-    pub length: usize,
-    #[serde(default, skip_serializing_if = "Map::is_empty")]
-    pub metadata: Map<String, Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentflowSubGraph {
-    pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub nodes: Vec<String>,
-    #[serde(default, rename = "type")]
-    pub sub_graph_type: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub direction: Option<String>,
-    #[serde(default, skip_serializing_if = "Map::is_empty")]
-    pub metadata: Map<String, Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentflowConnector {
-    pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Map::is_empty")]
-    pub metadata: Map<String, Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentflowDiagnostic {
-    pub id: String,
-    pub severity: String,
-    pub message: String,
-    pub node_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub position: Option<AgentflowDiagnosticPosition>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentflowDiagnosticPosition {
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
-    pub start_index: usize,
-    pub end_index: usize,
-}
-
-/// Authored Agentflow graph, including CSS, links, and label interpretation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentflowDiagramModel {
-    /// Source-ordered style, interaction, and label facts; no computed DOM identifiers.
-    #[serde(default)]
-    pub authored: AgentflowAuthoredStyles,
-    pub direction: String,
-    #[serde(default)]
-    pub diagnostics: Vec<AgentflowDiagnostic>,
-    #[serde(default)]
-    pub warning_facts: Vec<crate::DiagramWarningFact>,
-    #[serde(default)]
-    pub vertices: Vec<AgentflowNode>,
-    #[serde(default)]
-    pub edges: Vec<AgentflowEdge>,
-    #[serde(default)]
-    pub sub_graphs: Vec<AgentflowSubGraph>,
-    #[serde(default)]
-    pub connectors: Vec<AgentflowConnector>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, rename = "accTitle", skip_serializing_if = "Option::is_none")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr", skip_serializing_if = "Option::is_none")]
-    pub acc_descr: Option<String>,
-}
-
-impl AgentflowDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
-}
-
-impl AgentflowDiagramModel {
-    // Mirror agentflowDb.getData: resolve collapse first, then admit parents in reverse
-    // completion order. Keep the authored membership in the semantic model unchanged.
-    fn containment(&self) -> AgentflowContainment<'_> {
-        let by_id: HashMap<_, _> = self
-            .sub_graphs
-            .iter()
-            .map(|graph| (graph.id.as_str(), graph))
-            .collect();
-        let mut result = AgentflowContainment::default();
-        for graph in &self.sub_graphs {
-            if graph.metadata.get("view").and_then(Value::as_str) != Some("collapsed")
-                || result
-                    .collapsed_replacements
-                    .contains_key(graph.id.as_str())
-            {
-                continue;
-            }
-            let mut visited = HashSet::from([graph.id.as_str()]);
-            let mut pending: Vec<_> = graph.nodes.iter().rev().map(String::as_str).collect();
-            while let Some(id) = pending.pop() {
-                if !visited.insert(id) {
-                    continue;
-                }
-                result.collapsed_replacements.insert(id, &graph.id);
-                if let Some(child_graph) = by_id.get(id) {
-                    pending.extend(child_graph.nodes.iter().rev().map(String::as_str));
-                }
-            }
-        }
-        for graph in self.sub_graphs.iter().rev() {
-            if result
-                .collapsed_replacements
-                .contains_key(graph.id.as_str())
-            {
-                continue;
-            }
-            for child in &graph.nodes {
-                let mut ancestor = Some(graph.id.as_str());
-                while let Some(id) = ancestor {
-                    if id == child {
-                        break;
-                    }
-                    ancestor = result.parents.get(id).copied();
-                }
-                if ancestor.is_some() {
-                    result.diagnostics.push(AgentflowDiagnostic {
-                        id: "CONTAINMENT_VIOLATION".into(), severity: "warning".into(),
-                        message: format!("Container \"{}\" cannot contain \"{}\" because \"{}\" already contains it. The nesting that would close the loop is dropped.", graph.id, child, child),
-                        node_id: child.clone(),
-                        position: None,
-                    });
-                } else {
-                    result.parents.insert(child, &graph.id);
-                }
-            }
-        }
-        result
-    }
-}
-
-#[derive(Default)]
-struct AgentflowContainment<'a> {
-    collapsed_replacements: HashMap<&'a str, &'a str>,
-    parents: HashMap<&'a str, &'a str>,
-    diagnostics: Vec<AgentflowDiagnostic>,
-}
-
-impl<'a> AgentflowContainment<'a> {
-    #[cfg(feature = "presentation")]
-    fn rendered_edge_endpoints(&self, edge: &'a AgentflowEdge) -> Option<(&'a str, &'a str)> {
-        let from = self
-            .collapsed_replacements
-            .get(edge.start.as_str())
-            .copied()
-            .unwrap_or(&edge.start);
-        let to = self
-            .collapsed_replacements
-            .get(edge.end.as_str())
-            .copied()
-            .unwrap_or(&edge.end);
-        (edge.start == edge.end || from != to).then_some((from, to))
-    }
-
-    #[cfg(feature = "presentation")]
-    fn color_ordinals(&self, graphs: &[AgentflowSubGraph]) -> Vec<(String, usize)> {
-        let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
-        for graph in graphs {
-            if let Some(parent) = self.parents.get(graph.id.as_str()) {
-                children.entry(parent).or_default().push(&graph.id);
-            }
-        }
-        let mut order = Vec::with_capacity(graphs.len());
-        let mut seen = HashSet::new();
-        let mut pending: Vec<&str> = graphs
-            .iter()
-            .rev()
-            .filter(|graph| !self.parents.contains_key(graph.id.as_str()))
-            .map(|graph| graph.id.as_str())
-            .collect();
-        while let Some(id) = pending.pop() {
-            if !seen.insert(id) {
-                continue;
-            }
-            order.push((id.to_string(), order.len()));
-            if let Some(children) = children.get(id) {
-                pending.extend(children.iter().rev().copied());
-            }
-        }
-        // getData emits containers in reverse completion order; unreachable ones follow.
-        for graph in graphs.iter().rev() {
-            if seen.insert(&graph.id) {
-                order.push((graph.id.clone(), order.len()));
-            }
-        }
-        order
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut AgentflowDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug)]
@@ -313,7 +53,7 @@ enum ParseFailure {
 struct Construction {
     model: AgentflowDiagramModel,
     #[cfg(feature = "presentation")]
-    visuals: Option<AgentflowVisuals>,
+    visuals: Option<HashMap<String, usize>>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -385,7 +125,7 @@ pub(crate) fn parse_agentflow_semantic_model_controlled(
     Ok(match construction {
         Ok(construction) => {
             let mut model = construction.model;
-            model.sanitize_common_db_fields(&meta.semantic_config);
+            sanitize_common_db_fields(&mut model, &meta.semantic_config);
             SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]
@@ -427,9 +167,11 @@ pub(crate) fn parse_agentflow_model_for_render_controlled(
     )?
     .map(|construction| AgentflowDiagramRenderModel {
         model: construction.model,
-        visuals: construction
-            .visuals
-            .expect("full rendering requests DOM indices"),
+        visuals: AgentflowVisuals::from_node_dom_indices(
+            construction
+                .visuals
+                .expect("full rendering requests DOM indices"),
+        ),
     })
     .map_err(family::CombinedSemanticFailure::into_error))
 }
@@ -632,7 +374,7 @@ struct Parser<'a> {
     declared_entities: HashSet<String>,
     authored: AgentflowAuthoredStyles,
     #[cfg(feature = "presentation")]
-    visuals: Option<AgentflowVisuals>,
+    visuals: Option<HashMap<String, usize>>,
     #[cfg(feature = "presentation")]
     vertex_counter: usize,
     diagnostic_spans: HashMap<String, SourceSpan>,
@@ -681,7 +423,7 @@ impl<'a> Parser<'a> {
             declared_entities: HashSet::new(),
             authored: AgentflowAuthoredStyles::default(),
             #[cfg(feature = "presentation")]
-            visuals: capture_visuals.then(AgentflowVisuals::default),
+            visuals: capture_visuals.then(HashMap::new),
             #[cfg(feature = "presentation")]
             vertex_counter: 0,
             diagnostic_spans: HashMap::new(),
@@ -905,7 +647,7 @@ impl<'a> Parser<'a> {
                     self.authored.nodes.insert(id.clone(), Default::default());
                     #[cfg(feature = "presentation")]
                     if let Some(visuals) = &mut self.visuals {
-                        visuals.node_dom_indices.remove(&id);
+                        visuals.remove(&id);
                     }
                     self.record_vertex_call(&id);
                 }
@@ -992,7 +734,7 @@ impl<'a> Parser<'a> {
             acc_title: self.acc_title.take(),
             acc_descr: self.acc_descr.take(),
         };
-        model.diagnostics.extend(model.containment().diagnostics);
+        model.diagnostics.extend(model.containment_diagnostics());
         for diagnostic in &mut model.diagnostics {
             diagnostic.position = self
                 .diagnostic_spans
@@ -1003,10 +745,8 @@ impl<'a> Parser<'a> {
             .diagnostics
             .iter()
             .map(|diagnostic| {
-                let mut fact = crate::DiagramWarningFact::new(
-                    diagnostic.rule_id(),
-                    diagnostic.message.clone(),
-                );
+                let mut fact =
+                    DiagramWarningFact::new(diagnostic.rule_id(), diagnostic.message.clone());
                 fact.span = self.diagnostic_spans.get(&diagnostic.node_id).copied();
                 fact
             })
@@ -1095,8 +835,7 @@ impl<'a> Parser<'a> {
             .iter_mut()
             .find(|edge| edge.id.as_deref() == Some(&id))
         {
-            self.authored
-                .attach_edge_metadata(&id, &declaration.metadata);
+            presentation::attach_edge_metadata(&mut self.authored, &id, &declaration.metadata);
             edge.metadata.extend(declaration.metadata);
             #[cfg(feature = "editor-facts")]
             self.push_symbol(&id, EditorSemanticKind::Object, id_span, true);
@@ -1253,7 +992,8 @@ impl<'a> Parser<'a> {
             let counter = if count == 0 { 0 } else { count + 1 };
             edge.id = Some(format!("L_{}_{}_{counter}", edge.start, edge.end));
         }
-        self.authored.add_edge(
+        presentation::add_edge(
+            &mut self.authored,
             edge.id.as_deref().expect("edge id is assigned above"),
             label_type,
         );
@@ -1265,7 +1005,6 @@ impl<'a> Parser<'a> {
         #[cfg(feature = "presentation")]
         if let Some(visuals) = &mut self.visuals {
             visuals
-                .node_dom_indices
                 .entry(_id.to_string())
                 .or_insert(self.vertex_counter);
             self.vertex_counter += 1;
@@ -1552,30 +1291,6 @@ const REMOVED_SHAPES: &[&str] = &[
     "curv-trap",
     "curved-trapezoid",
 ];
-const ALLOWED_SHAPES: &[&str] = &[
-    "roundedRect",
-    "subroutine",
-    "subprocess",
-    "subproc",
-    "framed-rectangle",
-    "lean-right",
-    "diamond",
-    "lin-doc",
-    "lined-document",
-    "hexagon",
-    "hex",
-    "connector",
-    "collapsedGroup",
-];
-
-#[cfg(feature = "presentation")]
-fn normalized_render_shape(shape: Option<&str>) -> &str {
-    match shape {
-        Some(shape) if ALLOWED_SHAPES.contains(&shape) => shape,
-        _ => "roundedRect",
-    }
-}
-
 fn shape_diagnostic(node: &AgentflowNode) -> Option<AgentflowDiagnostic> {
     let shape = node.shape.as_deref()?;
     if matches!(shape, "square" | "squareRect" | "rect") || ALLOWED_SHAPES.contains(&shape) {
@@ -1627,27 +1342,31 @@ fn diagnostic_position(source: &str, span: SourceSpan) -> AgentflowDiagnosticPos
     }
 }
 
-impl AgentflowDiagramModel {
-    pub(crate) fn offset_diagnostic_positions(&mut self, line_offset: usize, column_offset: usize) {
-        for diagnostic in &mut self.diagnostics {
-            if let Some(position) = &mut diagnostic.position {
-                position.offset(line_offset, column_offset);
-            }
+pub(crate) fn offset_diagnostic_positions(
+    model: &mut AgentflowDiagramModel,
+    line_offset: usize,
+    column_offset: usize,
+) {
+    for diagnostic in &mut model.diagnostics {
+        if let Some(position) = &mut diagnostic.position {
+            offset_diagnostic_position(position, line_offset, column_offset);
         }
     }
 }
 
-impl AgentflowDiagnosticPosition {
-    fn offset(&mut self, line_offset: usize, column_offset: usize) {
-        if self.start_line == 1 {
-            self.start_column += column_offset;
-        }
-        if self.end_line == 1 {
-            self.end_column += column_offset;
-        }
-        self.start_line += line_offset;
-        self.end_line += line_offset;
+fn offset_diagnostic_position(
+    position: &mut AgentflowDiagnosticPosition,
+    line_offset: usize,
+    column_offset: usize,
+) {
+    if position.start_line == 1 {
+        position.start_column += column_offset;
     }
+    if position.end_line == 1 {
+        position.end_column += column_offset;
+    }
+    position.start_line += line_offset;
+    position.end_line += line_offset;
 }
 
 #[cfg(feature = "compat-json")]
@@ -1676,17 +1395,6 @@ pub(crate) fn offset_compatibility_diagnostic_positions(
                 position[column_key] = Value::from(column + column_offset as u64);
             }
             position[line_key] = Value::from(line + line_offset as u64);
-        }
-    }
-}
-
-impl AgentflowDiagnostic {
-    fn rule_id(&self) -> &'static str {
-        match self.id.as_str() {
-            "SHAPE_REMOVED" => crate::AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
-            "SHAPE_UNSUPPORTED" => crate::AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID,
-            "CONTAINMENT_VIOLATION" => crate::AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID,
-            _ => "merman.semantic.agentflow.diagnostic",
         }
     }
 }

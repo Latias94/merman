@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::requirement::RequirementDiagramModel;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::requirement::RequirementDiagramModel;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,

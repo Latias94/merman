@@ -2,26 +2,26 @@ use super::*;
 
 #[test]
 fn packet_render_model_renders_rows_and_ranges() {
-    let mut model = PacketDiagramRenderModel::default();
+    let mut model = PacketDiagramModel::default();
     model.title = Some("Packet".to_string());
     model.acc_title = Some("Packet title".to_string());
     model.acc_descr = Some("Packet description".to_string());
     model.packet = vec![
         vec![
-            PacketRenderBlock {
+            PacketBlock {
                 start: 0,
                 end: 7,
                 bits: 8,
                 label: "header".to_string(),
             },
-            PacketRenderBlock {
+            PacketBlock {
                 start: 8,
                 end: 15,
                 bits: 8,
                 label: "payload".to_string(),
             },
         ],
-        vec![PacketRenderBlock {
+        vec![PacketBlock {
             start: 16,
             end: 31,
             bits: 16,
@@ -70,8 +70,8 @@ fn packet_parser_split_blocks_render_inclusive_bit_counts() {
 
 #[test]
 fn packet_render_model_rejects_noninclusive_bit_counts() {
-    let mut model = PacketDiagramRenderModel::default();
-    model.packet = vec![vec![PacketRenderBlock {
+    let mut model = PacketDiagramModel::default();
+    model.packet = vec![vec![PacketBlock {
         start: 11,
         end: 31,
         bits: 20,
@@ -94,22 +94,22 @@ fn packet_render_model_rejects_noninclusive_bit_counts() {
 
 #[test]
 fn packet_labels_cannot_forge_following_block_boundaries() {
-    let mut forged = PacketDiagramRenderModel::default();
-    forged.packet = vec![vec![PacketRenderBlock {
+    let mut forged = PacketDiagramModel::default();
+    forged.packet = vec![vec![PacketBlock {
         start: 0,
         end: 7,
         bits: 8,
         label: "header (8 bits) | [8..15] payload".to_string(),
     }]];
-    let mut split = PacketDiagramRenderModel::default();
+    let mut split = PacketDiagramModel::default();
     split.packet = vec![vec![
-        PacketRenderBlock {
+        PacketBlock {
             start: 0,
             end: 7,
             bits: 8,
             label: "header".to_string(),
         },
-        PacketRenderBlock {
+        PacketBlock {
             start: 8,
             end: 15,
             bits: 8,
@@ -123,15 +123,15 @@ fn packet_labels_cannot_forge_following_block_boundaries() {
         "length-framed packet labels must distinguish one authored block from two blocks"
     );
 
-    let mut leading = PacketDiagramRenderModel::default();
-    leading.packet = vec![vec![PacketRenderBlock {
+    let mut leading = PacketDiagramModel::default();
+    leading.packet = vec![vec![PacketBlock {
         start: 0,
         end: 7,
         bits: 8,
         label: " label".to_string(),
     }]];
-    let mut trailing = PacketDiagramRenderModel::default();
-    trailing.packet = vec![vec![PacketRenderBlock {
+    let mut trailing = PacketDiagramModel::default();
+    trailing.packet = vec![vec![PacketBlock {
         start: 0,
         end: 7,
         bits: 8,

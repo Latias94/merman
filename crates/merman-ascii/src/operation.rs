@@ -1,14 +1,14 @@
 //! Operation-scoped state projected into the ASCII backend.
 //!
 //! The projection deliberately contains only the values the terminal backend needs. Parsing,
-//! runtime policy, and cancellation ownership stay in `merman-core`; this crate owns the complete
-//! ASCII layout and output resource policy.
+//! runtime policy, and cancellation remain caller-owned shared contracts; this crate owns the
+//! complete ASCII layout and output resource policy.
 
 use crate::error::Result;
 use crate::options::TerminalWidthProfile;
 use crate::output::{AsciiViewportPolicy, OverflowPolicy};
 use crate::resource::{AsciiResourcePolicy, ResourceContext, operation_terminal_error};
-use merman_core::{OperationControl, OperationPhase};
+use merman_model::{OperationControl, OperationPhase};
 const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
 
 /// Narrow operation projection consumed by the model-to-text backend.

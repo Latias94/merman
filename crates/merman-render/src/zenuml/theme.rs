@@ -1,4 +1,4 @@
-use merman_core::diagrams::zenuml::ZenumlDiagramModel;
+use merman_model::families::zenuml::ZenumlDiagramModel;
 
 use super::{ZenumlDiagramLayout, resolve_zenuml_title};
 use crate::diagram_theme::{

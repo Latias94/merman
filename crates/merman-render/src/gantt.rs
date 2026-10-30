@@ -9,7 +9,7 @@ use merman_core::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime,
 use std::collections::{HashMap, hash_map::Entry};
 use std::fmt::Write as _;
 
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 mod task_bar;
 mod theme;
@@ -1471,8 +1471,8 @@ mod tests {
         format_dayjs_like, layout_gantt_diagram_typed,
     };
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
     use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
+    use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
     #[test]
     fn zero_section_styles_preserves_javascript_nan_class_suffix() {
@@ -1498,7 +1498,7 @@ mod tests {
         model.excludes = vec!["weekends".to_string()];
         model.weekend = "saturday".to_string();
         model.tasks.push(GanttRenderTask {
-            semantic: merman_core::diagrams::gantt::GanttTask {
+            semantic: merman_model::families::gantt::GanttTask {
                 id: "boundary".to_string(),
                 task: "Boundary".to_string(),
                 section: "Boundary".to_string(),

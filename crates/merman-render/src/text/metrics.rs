@@ -2824,9 +2824,9 @@ pub fn unsupported_html_label_style(
         merman_core::OperationPhase::Layout,
     );
     let html =
-        match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink) {
+        match merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink) {
             Ok(html) => html,
-            Err(merman_core::sanitize::SanitizeFailure::Output(
+            Err(merman_markup::sanitize::SanitizeFailure::Output(
                 crate::html::HtmlOutputError::Operation(
                     crate::resources::OperationWorkError::Cancelled(error),
                 ),
@@ -2851,7 +2851,7 @@ pub fn unsupported_html_label_style(
         else {
             continue;
         };
-        let style = merman_core::entities::decode_html_entities_to_unicode(style.value.as_ref());
+        let style = merman_model::text::decode_html_entities_to_unicode(style.value.as_ref());
         let element = opening.name().as_ref().to_ascii_lowercase();
         let mut declarations = Parser::new(&style);
         while !declarations.is_exhausted() {
@@ -3336,7 +3336,7 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
             if saw_semicolon {
                 entity_reference.push(';');
             }
-            let decoded = merman_core::entities::decode_html_entities_to_unicode(&entity_reference);
+            let decoded = merman_model::text::decode_html_entities_to_unicode(&entity_reference);
             for decoded in decoded.chars() {
                 push_char(
                     decoded,
@@ -3683,7 +3683,7 @@ fn markdown_word_line_plain_text_and_width_px(
 
     for (word_idx, (word, ty)) in words.iter().enumerate() {
         let visible_word = match wrap_mode {
-            WrapMode::HtmlLike => merman_core::entities::decode_html_entities_to_unicode(word),
+            WrapMode::HtmlLike => merman_model::text::decode_html_entities_to_unicode(word),
             WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => entity_mode.visible_word(word),
         };
         let bold = *ty == MermaidMarkdownWordType::Strong;

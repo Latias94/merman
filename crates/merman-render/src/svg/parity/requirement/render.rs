@@ -2,7 +2,7 @@ use super::super::roughjs_common::RoughRectSpec;
 use super::super::roughjs_common::parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba;
 use super::super::*;
 use crate::requirement::requirement_color_indices;
-use merman_core::diagrams::requirement::RequirementDiagramModel;
+use merman_model::families::requirement::RequirementDiagramModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
@@ -98,7 +98,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .replace("ﬂ°°", "&#")
             .replace("ﬂ°", "&")
             .replace("¶ß", ";");
-        merman_core::sanitize::sanitize_text(&decoded, sanitize_config.as_config())
+        merman_markup::sanitize::sanitize_text(&decoded, sanitize_config.as_config())
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -1283,7 +1283,7 @@ mod tests {
     };
     use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions, with_test_svg_execution};
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
-    use merman_core::diagrams::requirement::{
+    use merman_model::families::requirement::{
         RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
     };
     use std::cell::Cell;

@@ -35,7 +35,7 @@ fn imported_common_family_fixtures_parse_and_render() {
     let parser = SemanticParser::new();
     let options = AsciiRenderOptions::ascii();
     let renderer = AsciiRenderer::new(options).expect("valid fixture options");
-    let context = merman_core::runtime::RuntimePolicy::deterministic()
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .unwrap();
     let mut failures = Vec::new();

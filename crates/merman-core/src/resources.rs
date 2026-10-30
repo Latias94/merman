@@ -2,48 +2,17 @@
 
 #[cfg(feature = "presentation")]
 use crate::diagram::{ParsedDiagramRender, RenderSemanticModel};
-#[cfg(feature = "diagram-ishikawa")]
-use crate::diagrams::ishikawa::IshikawaDiagramModel;
-#[cfg(feature = "diagram-kanban")]
-use crate::diagrams::kanban::KanbanDiagramModel;
-#[cfg(all(feature = "diagram-kanban", feature = "presentation"))]
-use crate::diagrams::kanban::KanbanDiagramRenderModel;
-#[cfg(feature = "diagram-radar")]
-use crate::diagrams::radar::RadarDiagramModel;
+#[cfg(all(test, feature = "diagram-ishikawa"))]
+use merman_model::families::ishikawa::IshikawaDiagramModel;
+#[cfg(all(test, feature = "diagram-kanban", feature = "presentation"))]
+use merman_model::families::kanban::KanbanDiagramRenderModel;
 #[cfg(all(test, feature = "diagram-requirement"))]
-use crate::diagrams::requirement::RequirementDiagramModel;
-#[cfg(feature = "diagram-treemap")]
-use crate::diagrams::treemap::TreemapDiagramModel;
+use merman_model::families::requirement::RequirementDiagramModel;
+#[cfg(all(test, feature = "diagram-treemap"))]
+use merman_model::families::treemap::TreemapDiagramModel;
 
-#[cfg(feature = "diagram-mindmap")]
-pub use merman_model::resources::MindmapComplexity;
-
-// Temporary resource forwarding while source and output consumers migrate.
-pub use merman_model::resources::{
-    CLI_DEFAULT_RESOURCE_PROFILE, GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
-    INPUT_RESOURCE_LIMIT_COUNT, INPUT_RESOURCE_LIMIT_DESCRIPTORS, InputResourceLimitDescriptor,
-    InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitOverride,
-    InputResourceLimitOverrideError, InputResourceLimitPhase, InputResourcePolicy,
-    InputResourcePolicyRestrictionError, RESOURCE_PROFILE_COUNT, RESOURCE_PROFILE_DESCRIPTORS,
-    ResourceProfile, ResourceProfileDescriptor,
-};
-
-pub use merman_model::resources::ModelComplexity;
-#[cfg(any(feature = "diagram-kanban", feature = "diagram-treemap"))]
-use merman_model::resources::json_value_complexity;
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub use merman_model::resources::FlowchartComplexity;
-#[cfg(feature = "diagram-sequence")]
-pub use merman_model::resources::SequenceComplexity;
-#[cfg(feature = "diagram-zenuml")]
-pub use merman_model::resources::ZenumlComplexity;
-#[cfg(feature = "diagram-class")]
-pub use merman_model::resources::{ClassComplexity, class_namespace_depth};
+// Temporary forwarding during the model/source consumer migration.
+pub use merman_model::resources::*;
 
 /// Counts canonical semantics and their paired parser-owned rendering text.
 #[cfg(feature = "presentation")]
@@ -117,7 +86,7 @@ pub fn model_complexity_from_render_model(model: &RenderSemanticModel) -> ModelC
         #[cfg(feature = "diagram-sankey")]
         RenderSemanticModel::Sankey(model) => ModelComplexity::from_serializable(model),
         #[cfg(feature = "diagram-radar")]
-        RenderSemanticModel::Radar(model) => model_complexity_from_radar(model.as_semantic_model()),
+        RenderSemanticModel::Radar(model) => model_complexity_from_radar(model),
         #[cfg(feature = "diagram-info")]
         RenderSemanticModel::Info(model) => ModelComplexity::from_serializable(model),
         #[cfg(feature = "diagram-treemap")]
@@ -151,454 +120,6 @@ pub fn model_complexity_from_render_model(model: &RenderSemanticModel) -> ModelC
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => ModelComplexity::from_serializable(model),
     }
-}
-
-pub fn model_complexity_from_semantic_model(
-    model: &crate::SemanticDiagramModel,
-) -> ModelComplexity {
-    match *model {
-        crate::SemanticDiagramModel::Error(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-agentflow")]
-        crate::SemanticDiagramModel::Agentflow(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-git-graph")]
-        crate::SemanticDiagramModel::GitGraph(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-class")]
-        crate::SemanticDiagramModel::Class(ref model) => {
-            let mut complexity = ModelComplexity::from_serializable(model);
-            complexity.nesting_depth = complexity
-                .nesting_depth
-                .max(class_namespace_depth(&model.namespaces));
-            complexity
-        }
-        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        crate::SemanticDiagramModel::Flowchart(ref model) => {
-            FlowchartComplexity::from_model(model).as_model_complexity()
-        }
-        #[cfg(feature = "diagram-sequence")]
-        crate::SemanticDiagramModel::Sequence(ref model) => {
-            SequenceComplexity::from_model(model).as_model_complexity()
-        }
-        #[cfg(feature = "diagram-state")]
-        crate::SemanticDiagramModel::State(ref model) => model.model_complexity(),
-        #[cfg(feature = "diagram-cynefin")]
-        crate::SemanticDiagramModel::Cynefin(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-info")]
-        crate::SemanticDiagramModel::Info(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-pie")]
-        crate::SemanticDiagramModel::Pie(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-packet")]
-        crate::SemanticDiagramModel::Packet(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-tree-view")]
-        crate::SemanticDiagramModel::TreeView(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-quadrant-chart")]
-        crate::SemanticDiagramModel::QuadrantChart(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-radar")]
-        crate::SemanticDiagramModel::Radar(ref model) => model_complexity_from_radar(model),
-        #[cfg(feature = "diagram-sankey")]
-        crate::SemanticDiagramModel::Sankey(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-venn")]
-        crate::SemanticDiagramModel::Venn(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-er")]
-        crate::SemanticDiagramModel::Er(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-architecture")]
-        crate::SemanticDiagramModel::Architecture(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-gantt")]
-        crate::SemanticDiagramModel::Gantt(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-c4")]
-        crate::SemanticDiagramModel::C4(ref model) => ModelComplexity::from_serializable(model),
-        #[cfg(feature = "diagram-block")]
-        crate::SemanticDiagramModel::Block(ref model) => model_complexity_from_block(model),
-        #[cfg(feature = "diagram-kanban")]
-        crate::SemanticDiagramModel::Kanban(ref model) => {
-            model_complexity_from_kanban_semantic(model)
-        }
-        #[cfg(feature = "diagram-mindmap")]
-        crate::SemanticDiagramModel::Mindmap(ref model) => {
-            MindmapComplexity::from_semantic_model(model).as_model_complexity()
-        }
-        #[cfg(feature = "diagram-xychart")]
-        crate::SemanticDiagramModel::XyChart(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-ishikawa")]
-        crate::SemanticDiagramModel::Ishikawa(ref model) => {
-            IshikawaComplexity::from_model(model).as_model_complexity()
-        }
-        #[cfg(feature = "diagram-treemap")]
-        crate::SemanticDiagramModel::Treemap(ref model) => {
-            TreemapComplexity::from_model(model).as_model_complexity()
-        }
-        #[cfg(feature = "diagram-requirement")]
-        crate::SemanticDiagramModel::Requirement(ref model) => {
-            ModelComplexity::from_requirement(model)
-        }
-        #[cfg(feature = "diagram-usecase")]
-        crate::SemanticDiagramModel::Usecase(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-event-modeling")]
-        crate::SemanticDiagramModel::EventModeling(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-wardley")]
-        crate::SemanticDiagramModel::Wardley(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-railroad")]
-        crate::SemanticDiagramModel::Railroad(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-zenuml")]
-        crate::SemanticDiagramModel::Zenuml(ref model) => {
-            ZenumlComplexity::from_model(model).as_model_complexity()
-        }
-        #[cfg(feature = "diagram-journey")]
-        crate::SemanticDiagramModel::Journey(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-        #[cfg(feature = "diagram-timeline")]
-        crate::SemanticDiagramModel::Timeline(ref model) => {
-            ModelComplexity::from_serializable(model)
-        }
-    }
-}
-
-#[cfg(feature = "diagram-block")]
-pub fn model_complexity_from_block(
-    model: &crate::diagrams::block::BlockDiagramModel,
-) -> ModelComplexity {
-    let mut complexity = ModelComplexity::from_serializable(model);
-    let mut pending = model
-        .root
-        .map(|root| vec![(root, 0usize)])
-        .unwrap_or_default();
-    let mut visited = vec![false; model.blocks_flat.len()];
-    while let Some((index, depth)) = pending.pop() {
-        let Some(node) = model.blocks_flat.get(index) else {
-            continue;
-        };
-        if std::mem::replace(&mut visited[index], true) {
-            continue;
-        }
-        complexity.nesting_depth = complexity.nesting_depth.max(depth);
-        pending.extend(
-            node.children
-                .iter()
-                .map(|child| (*child, depth.saturating_add(1))),
-        );
-    }
-    complexity
-}
-
-#[cfg(feature = "diagram-kanban")]
-pub fn model_complexity_from_kanban_semantic(model: &KanbanDiagramModel) -> ModelComplexity {
-    let mut complexity = ModelComplexity::new(
-        model.nodes.len(),
-        0,
-        kanban_nesting_depth(
-            model
-                .nodes
-                .iter()
-                .map(|node| (node.id.as_str(), node.parent_id.as_deref())),
-        ),
-    );
-    for node in &model.nodes {
-        for text in [
-            Some(node.id.as_str()),
-            Some(node.label.as_str()),
-            node.parent_id.as_deref(),
-            node.ticket.as_deref(),
-            node.priority.as_deref(),
-            node.assigned.as_deref(),
-            node.icon.as_deref(),
-            node.css_classes.as_deref(),
-            node.shape.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            complexity.text_bytes = complexity.text_bytes.saturating_add(text.len());
-        }
-        if let Some(metadata) = &node.metadata {
-            let metadata = json_value_complexity(metadata.as_value(), 0);
-            complexity.items = complexity.items.saturating_add(metadata.items);
-            complexity.text_bytes = complexity.text_bytes.saturating_add(metadata.text_bytes);
-            complexity.nesting_depth = complexity.nesting_depth.max(metadata.nesting_depth);
-        }
-    }
-    complexity
-}
-
-#[cfg(all(feature = "diagram-kanban", feature = "presentation"))]
-pub fn model_complexity_from_kanban(model: &KanbanDiagramRenderModel) -> ModelComplexity {
-    let text_bytes = model.nodes.iter().fold(0usize, |total, node| {
-        [
-            Some(node.id.as_str()),
-            Some(node.label.as_str()),
-            node.parent_id.as_deref(),
-            node.ticket.as_deref(),
-            node.priority.as_deref(),
-            node.assigned.as_deref(),
-            node.icon.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .fold(total, |subtotal, value| {
-            subtotal.saturating_add(value.len())
-        })
-    });
-    let nesting_depth = kanban_nesting_depth(
-        model
-            .nodes
-            .iter()
-            .map(|node| (node.id.as_str(), node.parent_id.as_deref())),
-    );
-    ModelComplexity::new(model.nodes.len(), text_bytes, nesting_depth)
-}
-
-#[cfg(feature = "diagram-radar")]
-pub fn model_complexity_from_radar(model: &RadarDiagramModel) -> ModelComplexity {
-    let common_text_bytes = [
-        model.title.as_deref(),
-        model.acc_title.as_deref(),
-        model.acc_descr.as_deref(),
-        Some(model.options.graticule.as_str()),
-    ]
-    .into_iter()
-    .flatten()
-    .fold(0usize, |total, value| total.saturating_add(value.len()));
-    let axis_text_bytes = model.axes.iter().fold(0usize, |total, axis| {
-        total
-            .saturating_add(axis.name.len())
-            .saturating_add(axis.label.len())
-    });
-    let (curve_items, curve_text_bytes) =
-        model
-            .curves
-            .iter()
-            .fold((0usize, 0usize), |(items, text_bytes), curve| {
-                (
-                    items.saturating_add(curve.entries.len()),
-                    text_bytes
-                        .saturating_add(curve.name.len())
-                        .saturating_add(curve.label.len()),
-                )
-            });
-    ModelComplexity::new(
-        model
-            .axes
-            .len()
-            .saturating_add(model.curves.len())
-            .saturating_add(curve_items),
-        common_text_bytes
-            .saturating_add(axis_text_bytes)
-            .saturating_add(curve_text_bytes),
-        0,
-    )
-}
-
-/// Computes Treemap model complexity iteratively without serializing a user-controlled node tree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "diagram-treemap")]
-pub struct TreemapComplexity {
-    pub nodes: usize,
-    pub classes: usize,
-    pub label_bytes: usize,
-    pub nesting_depth: usize,
-}
-
-#[cfg(feature = "diagram-treemap")]
-impl TreemapComplexity {
-    pub fn from_model(model: &TreemapDiagramModel) -> Self {
-        Self::from_model_with_styles(model, |_| None)
-    }
-
-    #[cfg(feature = "presentation")]
-    pub fn from_render_model(model: &crate::diagrams::treemap::TreemapDiagramRenderModel) -> Self {
-        Self::from_model_with_styles(&model.semantic, |index| model.compiled_styles(index))
-    }
-
-    fn from_model_with_styles<'a>(
-        model: &'a TreemapDiagramModel,
-        styles: impl Fn(Option<usize>) -> Option<&'a [String]>,
-    ) -> Self {
-        let mut nodes = 0usize;
-        let mut classes = 0usize;
-        let mut label_bytes = [
-            model.acc_title.as_deref(),
-            model.acc_descr.as_deref(),
-            model.title.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .fold(0usize, |total, value| total.saturating_add(value.len()));
-        let mut nesting_depth = 0usize;
-
-        let mut pending = vec![(&model.root, None, 0usize)];
-        let mut visited = vec![false; model.nodes.len()];
-        while let Some((node, index, depth)) = pending.pop() {
-            nodes = nodes.saturating_add(1);
-            nesting_depth = nesting_depth.max(depth);
-            label_bytes = label_bytes
-                .saturating_add(node.name.len())
-                .saturating_add(node.class_selector.as_deref().map_or(0, str::len))
-                .saturating_add(
-                    styles(index)
-                        .unwrap_or(&[])
-                        .iter()
-                        .map(String::len)
-                        .sum::<usize>(),
-                );
-            if let Some(value) = node.value.as_ref() {
-                let value = json_value_complexity(value.as_value(), depth);
-                label_bytes = label_bytes.saturating_add(value.text_bytes);
-                nodes = nodes.saturating_add(value.items);
-                nesting_depth = nesting_depth.max(value.nesting_depth);
-            }
-            if let Some(children) = node.children.as_ref() {
-                for child in children.iter().rev() {
-                    if let Some(record) = model.nodes.get(*child)
-                        && !visited[*child]
-                    {
-                        visited[*child] = true;
-                        pending.push((record, Some(*child), depth.saturating_add(1)));
-                    }
-                }
-            }
-        }
-
-        for (class_name, class_def) in &model.classes {
-            classes = classes.saturating_add(1);
-            label_bytes = label_bytes
-                .saturating_add(class_name.len())
-                .saturating_add(class_def.id.len())
-                .saturating_add(class_def.styles.iter().map(String::len).sum::<usize>())
-                .saturating_add(class_def.text_styles.iter().map(String::len).sum::<usize>());
-        }
-
-        Self {
-            nodes,
-            classes,
-            label_bytes,
-            nesting_depth,
-        }
-    }
-
-    pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(
-            self.nodes.saturating_add(self.classes),
-            self.label_bytes,
-            self.nesting_depth,
-        )
-    }
-}
-
-/// Computes Ishikawa model complexity iteratively without growing the stack with cause depth.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "diagram-ishikawa")]
-pub struct IshikawaComplexity {
-    pub nodes: usize,
-    pub label_bytes: usize,
-    pub nesting_depth: usize,
-}
-
-#[cfg(feature = "diagram-ishikawa")]
-impl IshikawaComplexity {
-    pub fn from_model(model: &IshikawaDiagramModel) -> Self {
-        let mut complexity = Self {
-            nodes: 0,
-            label_bytes: [
-                model.acc_title.as_deref(),
-                model.acc_descr.as_deref(),
-                model.title.as_deref(),
-            ]
-            .into_iter()
-            .flatten()
-            .fold(0usize, |total, value| total.saturating_add(value.len())),
-            nesting_depth: 0,
-        };
-        let Some(root) = model.root.and_then(|id| model.nodes.get(id)) else {
-            return complexity;
-        };
-
-        let mut pending = vec![(root, 0usize)];
-        let mut visited = vec![false; model.nodes.len()];
-        if let Some(root) = model.root {
-            visited[root] = true;
-        }
-        while let Some((node, depth)) = pending.pop() {
-            complexity.nodes = complexity.nodes.saturating_add(1);
-            complexity.label_bytes = complexity.label_bytes.saturating_add(node.text.len());
-            complexity.nesting_depth = complexity.nesting_depth.max(depth);
-            for child in node.children.iter().rev() {
-                if let Some(record) = model.nodes.get(*child)
-                    && !visited[*child]
-                {
-                    visited[*child] = true;
-                    pending.push((record, depth.saturating_add(1)));
-                }
-            }
-        }
-        complexity
-    }
-
-    pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(self.nodes, self.label_bytes, self.nesting_depth)
-    }
-}
-
-#[cfg(feature = "diagram-kanban")]
-fn kanban_nesting_depth<'a>(
-    nodes: impl Iterator<Item = (&'a str, Option<&'a str>)> + Clone,
-) -> usize {
-    let indices = nodes
-        .clone()
-        .enumerate()
-        .map(|(index, (id, _))| (id, index))
-        .collect::<std::collections::HashMap<_, _>>();
-    let parents = nodes
-        .map(|(_, parent)| parent.and_then(|parent| indices.get(parent).copied()))
-        .collect::<Vec<_>>();
-    let mut depths = vec![0usize; parents.len()];
-    let mut completed = vec![false; parents.len()];
-    for start in 0..parents.len() {
-        if completed[start] {
-            continue;
-        }
-        let mut path = Vec::new();
-        let mut positions = std::collections::HashMap::new();
-        let mut cursor = Some(start);
-        while let Some(index) = cursor {
-            if completed[index] || positions.contains_key(&index) {
-                break;
-            }
-            positions.insert(index, path.len());
-            path.push(index);
-            cursor = parents[index];
-        }
-        let mut depth = cursor
-            .filter(|index| completed[*index])
-            .map(|index| depths[index])
-            .unwrap_or(0);
-        for index in path.into_iter().rev() {
-            depth = depth.saturating_add(1);
-            depths[index] = depth;
-            completed[index] = true;
-        }
-    }
-    depths.into_iter().max().unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -980,15 +501,15 @@ mod tests {
     fn generic_model_budget_covers_new_family_models_without_family_knobs() {
         let models = [
             #[cfg(feature = "diagram-kanban")]
-            RenderSemanticModel::Kanban(KanbanDiagramRenderModel {
+            RenderSemanticModel::Kanban(merman_model::families::kanban::KanbanDiagramRenderModel {
                 nodes: vec![crate::diagrams::kanban::KanbanRenderNode::new(
                     "todo", "Todo",
                 )],
             }),
             #[cfg(feature = "diagram-radar")]
             RenderSemanticModel::Radar({
-                let mut model = crate::diagrams::radar::RadarDiagramRenderModel::default();
-                model.axes = vec![crate::diagrams::radar::RadarAxis {
+                let mut model = merman_model::families::radar::RadarDiagramModel::default();
+                model.axes = vec![merman_model::families::radar::RadarAxis {
                     name: "speed".to_string(),
                     label: "Speed".to_string(),
                 }];
@@ -1185,7 +706,7 @@ mod tests {
                 "custom".to_string(),
                 value,
             )]));
-            let model = KanbanDiagramModel {
+            let model = merman_model::families::kanban::KanbanDiagramModel {
                 nodes: vec![KanbanNodeModel {
                     id: "card".to_string(),
                     label: String::new(),

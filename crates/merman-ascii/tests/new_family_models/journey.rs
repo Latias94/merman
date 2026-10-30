@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn journey_render_model_renders_actors_sections_and_scores() {
-    let mut model = JourneyDiagramRenderModel::default();
+    let mut model = JourneyDiagramModel::default();
     model.title = Some("Journey".to_string());
     model.acc_title = Some("Journey title".to_string());
     model.acc_descr = Some("Journey description".to_string());
@@ -45,10 +45,10 @@ fn journey_render_model_renders_actors_sections_and_scores() {
 }
 #[test]
 fn journey_structured_text_framing_distinguishes_actor_list_items() {
-    let mut one_actor = JourneyDiagramRenderModel::default();
+    let mut one_actor = JourneyDiagramModel::default();
     one_actor.actors = vec!["Alice, Bob".to_string()];
 
-    let mut two_actors = JourneyDiagramRenderModel::default();
+    let mut two_actors = JourneyDiagramModel::default();
     two_actors.actors = vec!["Alice".to_string(), "Bob".to_string()];
 
     assert_ne!(

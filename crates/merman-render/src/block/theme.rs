@@ -5,7 +5,7 @@ pub(crate) use css_binding::BlockCssThemeBinding;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
-use merman_core::diagrams::block::BlockClassDef;
+use merman_model::families::block::BlockClassDef;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -75,7 +75,7 @@ impl BlockNodeLabelPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -322,7 +322,7 @@ pub(crate) struct BlockTypographyThemePlan {
 impl BlockTypographyThemePlan {
     pub(crate) fn prepare_class_definitions(
         &mut self,
-        definitions: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDef>,
+        definitions: &indexmap::IndexMap<String, merman_model::families::block::BlockClassDef>,
     ) {
         self.css_binding.prepare_class_definitions(definitions);
     }
@@ -529,7 +529,7 @@ impl BlockNodePaintThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         labels: &BlockNodeLabelPaintPlan,
         work_meter: &OperationWorkMeter,
@@ -773,7 +773,7 @@ impl BlockNodePaintThemePlan {
 
     fn bind_terminals(
         &self,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         labels: &BlockNodeLabelPaintPlan,
         work: &OperationWorkMeter,
@@ -992,7 +992,7 @@ mod tests {
     fn resolve_node_paint(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<BlockNodePaintThemePlan, OperationWorkError> {
@@ -1121,7 +1121,7 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // Empty fragments preserve the earlier source, just as the terminal writer does.
-            let fragment = merman_core::diagrams::block::BlockNode {
+            let fragment = merman_model::families::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
                 ..Default::default()
@@ -1134,7 +1134,7 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // A later non-empty list replaces the corresponding source list.
-            let fragment = merman_core::diagrams::block::BlockNode {
+            let fragment = merman_model::families::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
                 styles: vec!["stroke:#00bb00".to_string()],

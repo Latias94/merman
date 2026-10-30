@@ -21,9 +21,61 @@ pub use merman_ascii::{
     MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
     MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID, MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID,
     MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID, OverflowPolicy, TerminalWidthProfile,
-    ascii_capabilities, ascii_diagrammatic_diagram_types, ascii_resource_profile_value,
-    ascii_supported_diagram_types,
+    ascii_resource_profile_value,
 };
+
+/// Reports terminal support for the source parsers available through this facade.
+///
+/// Independent model consumers can query `merman_ascii::ascii_capabilities` directly. The
+/// source workflow also requires a parser, even when another dependency selects more model data.
+pub fn ascii_capabilities() -> &'static [AsciiCapability] {
+    static CAPABILITIES: std::sync::OnceLock<Vec<AsciiCapability>> = std::sync::OnceLock::new();
+    CAPABILITIES.get_or_init(|| {
+        merman_ascii::ascii_capabilities()
+            .iter()
+            .filter(|capability| {
+                merman_core::diagram_family_capabilities()
+                    .iter()
+                    .any(|family| {
+                        family.has_semantic_parser
+                            && (merman_core::diagram_type_metadata_id(family.diagram_type)
+                                == Some(capability.diagram_type)
+                                || family.logical_family_kind == capability.diagram_type)
+                    })
+            })
+            .copied()
+            .collect()
+    })
+}
+
+/// Returns source-to-terminal families with an available output projection.
+pub fn ascii_supported_diagram_types() -> &'static [&'static str] {
+    static SUPPORTED: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    SUPPORTED.get_or_init(|| {
+        ascii_capabilities()
+            .iter()
+            .filter(|capability| capability.is_supported())
+            .map(|capability| capability.diagram_type)
+            .collect()
+    })
+}
+
+/// Returns source-to-terminal families with a diagrammatic projection.
+pub fn ascii_diagrammatic_diagram_types() -> &'static [&'static str] {
+    static DIAGRAMMATIC: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    DIAGRAMMATIC.get_or_init(|| {
+        ascii_capabilities()
+            .iter()
+            .filter(|capability| {
+                matches!(
+                    capability.primary_projection,
+                    AsciiPrimaryProjection::Diagrammatic
+                )
+            })
+            .map(|capability| capability.diagram_type)
+            .collect()
+    })
+}
 
 /// Terminal-safe projection for ASCII target errors and shared facade diagnostics.
 ///

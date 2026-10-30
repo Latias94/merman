@@ -674,7 +674,9 @@ fn timeline_classic_line_stroke(
             .map(str::to_owned)
             .map(Into::into);
     }
-    merman_core::theme_color::invert(fill).ok().map(Into::into)
+    merman_markup::theme_color::invert(fill)
+        .ok()
+        .map(Into::into)
 }
 
 fn timeline_section_slot(section_class: &str) -> Option<usize> {

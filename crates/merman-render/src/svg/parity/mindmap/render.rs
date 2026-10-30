@@ -134,7 +134,7 @@ fn include_mindmap_path_bounds(
 
 fn mindmap_viewport_bounds_from_layout(
     layout: &MindmapDiagramLayout,
-    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
+    model: &merman_model::families::mindmap::MindmapDiagramRenderModel,
 ) -> Option<Bounds> {
     let mut layout_nodes: std::collections::BTreeMap<&str, &LayoutNode> =
         std::collections::BTreeMap::new();
@@ -574,7 +574,7 @@ fn write_mindmap_edge_label(
 
 pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
-    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
+    model: &merman_model::families::mindmap::MindmapDiagramRenderModel,
     config: &merman_core::presentation::PresentationConfig,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
     prepared_labels: &crate::mindmap::MindmapPreparedLabels,
@@ -744,7 +744,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     diagram_type: "mindmap".to_string(),
                 })?;
             let html = crate::html::resolve_svg_fragment(
-                merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink),
+                merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink),
                 work_meter,
             )?;
             out.push_str(&escape_amp_preserving_entities(&html));
@@ -1688,7 +1688,7 @@ mod tests {
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let model = merman_core::diagrams::mindmap::MindmapDiagramRenderModel::default();
+        let model = merman_model::families::mindmap::MindmapDiagramRenderModel::default();
         let node_palette =
             crate::mindmap::MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter)
                 .unwrap();
@@ -1728,8 +1728,8 @@ mod tests {
                 max_y: 49.0,
             }),
         };
-        let model = merman_core::diagrams::mindmap::MindmapDiagramRenderModel {
-            nodes: vec![merman_core::diagrams::mindmap::MindmapDiagramRenderNode {
+        let model = merman_model::families::mindmap::MindmapDiagramRenderModel {
+            nodes: vec![merman_model::families::mindmap::MindmapDiagramRenderNode {
                 id: "0".to_string(),
                 dom_id: "node_0".to_string(),
                 label: "I am a cloud".to_string(),

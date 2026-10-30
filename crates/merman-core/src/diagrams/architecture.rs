@@ -891,7 +891,7 @@ fn architecture_render_node_to_compat_json(
     }))
 }
 
-#[cfg(all(test, feature = "compat-json"))]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_architecture_model_for_render(
     code: &str,
     meta: &PresentationMetadata,

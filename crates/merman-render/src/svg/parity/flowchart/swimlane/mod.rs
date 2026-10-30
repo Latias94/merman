@@ -3,7 +3,7 @@ use crate::model::SwimlaneLayout;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::model::{FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[cfg(test)]
-use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
+use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 
 mod cluster;

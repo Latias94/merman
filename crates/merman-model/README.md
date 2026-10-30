@@ -8,7 +8,8 @@ or output backend.
 
 The development extraction is tracked by the
 [model/source boundary plan](../../docs/plans/2026-10-30-model-and-source-boundaries.md).
-Select the available `diagram-*` features for canonical family data and `presentation-data` for
-the migrated full data and borrowed presentation views. These flags do not compile source parsers.
+Select `diagram-*` features for canonical family data, `all-diagrams` for every payload, and
+`presentation-data` for full data and borrowed presentation views. These flags do not compile source parsers.
 The [implementation record](../../docs/reviews/2026-10-30-model-source-boundaries-implementation.md)
-tracks the remaining family migration; the complete package/API cleanup is still in progress.
+tracks extraction of all 34 payloads and the remaining presentation, product and public-API cleanup.
+This package is a development-line addition; it was not included in the published 0.9.3 artifacts.

@@ -4772,7 +4772,7 @@ fn assert_sequence_math_glyph_color(root: roxmltree::Node<'_, '_>, expected: [f6
             let Some(value) = glyph.attribute(paint).filter(|value| *value != "none") else {
                 continue;
             };
-            let color = merman_core::theme_color::ThemeColor::parse(value)
+            let color = merman_markup::theme_color::ThemeColor::parse(value)
                 .unwrap_or_else(|error| panic!("invalid math glyph {paint} {value}: {error}"))
                 .rgba_channels();
             let opacity = glyph

@@ -112,9 +112,9 @@ pub(crate) fn dagre_shape_points(
     points
 }
 
-type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
-type MindmapNodeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderNode;
-type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge;
+type MindmapModel = merman_model::families::mindmap::MindmapDiagramRenderModel;
+type MindmapNodeModel = merman_model::families::mindmap::MindmapDiagramRenderNode;
+type MindmapEdgeModel = merman_model::families::mindmap::MindmapDiagramRenderEdge;
 
 /// HTML label fragments prepared once during Mindmap layout and reused by SVG emission.
 ///
@@ -168,28 +168,30 @@ impl MindmapPreparedLabel {
             merman_core::OperationPhase::Layout,
         );
         // createText restores entity references before HTML consumption, not after serialization.
-        let source = merman_core::entities::restore_mermaid_entity_spelling(text);
+        let source = merman_model::text::restore_mermaid_entity_spelling(text);
         let html = crate::text::replace_fontawesome_icons(
             &crate::text::mermaid_markdown_to_xhtml_label_fragment(source.as_ref(), true),
         );
-        let xhtml =
-            match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink)
-            {
-                Ok(xhtml) => xhtml,
-                Err(merman_core::sanitize::SanitizeFailure::Output(
-                    crate::html::HtmlOutputError::Operation(error),
-                )) => return Err(error.into()),
-                Err(merman_core::sanitize::SanitizeFailure::Output(
-                    crate::html::HtmlOutputError::Limit { attempted },
-                )) => {
-                    work_meter.preflight_prepared_text_retained_bytes(
-                        owner_bytes.saturating_add(attempted),
-                    )?;
-                    String::new()
-                }
-                // Preserve the existing sanitizer's fail-closed behavior for malformed input.
-                Err(_) => String::new(),
-            };
+        let xhtml = match merman_markup::sanitize::sanitize_xhtml_with_sink(
+            &html,
+            config.as_config(),
+            &sink,
+        ) {
+            Ok(xhtml) => xhtml,
+            Err(merman_markup::sanitize::SanitizeFailure::Output(
+                crate::html::HtmlOutputError::Operation(error),
+            )) => return Err(error.into()),
+            Err(merman_markup::sanitize::SanitizeFailure::Output(
+                crate::html::HtmlOutputError::Limit { attempted },
+            )) => {
+                work_meter.preflight_prepared_text_retained_bytes(
+                    owner_bytes.saturating_add(attempted),
+                )?;
+                String::new()
+            }
+            // Preserve the existing sanitizer's fail-closed behavior for malformed input.
+            Err(_) => String::new(),
+        };
         // Preserve the terminal's normalization order and whitespace. Indented code may own a
         // trailing line box once its container switches to `white-space: break-spaces`.
         let xhtml = single_image_paragraph_inner(&xhtml)
@@ -281,7 +283,7 @@ pub(crate) fn mindmap_svg_label_source(text: &str) -> std::borrow::Cow<'_, str> 
         .strip_prefix('`')
         .and_then(|text| text.strip_suffix('`'))
         .unwrap_or(text);
-    merman_core::entities::restore_mermaid_entity_spelling(text)
+    merman_model::text::restore_mermaid_entity_spelling(text)
 }
 
 #[cfg(test)]

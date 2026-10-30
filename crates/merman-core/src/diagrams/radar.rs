@@ -19,8 +19,6 @@ use crate::{
 };
 use crate::{Error, Result, SourceSpan, family};
 use serde_json::Value;
-#[cfg(feature = "compat-json")]
-use serde_json::{Map, json};
 
 const MAX_TICKS: i64 = 32;
 
@@ -66,127 +64,20 @@ struct SpannedRadarValue {
     span: SourceSpan,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarAxis {
-    pub name: String,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarCurve {
-    pub name: String,
-    pub label: String,
-    #[serde(default)]
-    pub entries: Vec<Value>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarOptions {
-    #[serde(rename = "showLegend")]
-    pub show_legend: bool,
-    pub ticks: Value,
-    pub max: Option<Value>,
-    pub min: Value,
-    pub graticule: String,
-}
-
-impl Default for RadarOptions {
-    fn default() -> Self {
-        Self {
-            show_legend: true,
-            ticks: Value::from(5),
-            max: None,
-            min: Value::from(0),
-            graticule: "circle".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct RadarDiagramModel {
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub axes: Vec<RadarAxis>,
-    #[serde(default)]
-    pub curves: Vec<RadarCurve>,
-    #[serde(default)]
-    pub options: RadarOptions,
-}
-
 #[cfg(feature = "presentation")]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[serde(transparent)]
-pub struct RadarDiagramRenderModel {
-    model: RadarDiagramModel,
-    #[cfg(feature = "compat-json")]
-    #[serde(skip)]
-    compatibility: RadarCompatibilityOutputState,
-}
+use merman_model::families::radar::RadarOutputData;
+use merman_model::families::radar::{RadarAxis, RadarCurve, RadarDiagramModel, RadarOptions};
 
 #[cfg(feature = "compat-json")]
-#[derive(Debug, Clone, Copy, Default)]
-enum RadarCompatibilityOutputState {
-    Empty,
-    #[default]
-    Model,
-}
+mod compat;
 
-#[cfg(feature = "presentation")]
-impl RadarDiagramRenderModel {
-    #[cfg(feature = "compat-json")]
-    fn empty_compatibility_output() -> Self {
-        Self {
-            compatibility: RadarCompatibilityOutputState::Empty,
-            ..Self::default()
-        }
-    }
-
-    pub fn as_semantic_model(&self) -> &RadarDiagramModel {
-        &self.model
-    }
-
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        self.model.sanitize_common_db_fields(config);
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::Deref for RadarDiagramRenderModel {
-    type Target = RadarDiagramModel;
-
-    fn deref(&self) -> &Self::Target {
-        &self.model
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::DerefMut for RadarDiagramRenderModel {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.model
-    }
-}
-
-impl RadarDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl RadarDiagramRenderModel {
-    fn from_semantic_model(model: RadarDiagramModel) -> Self {
-        Self {
-            model,
-            #[cfg(feature = "compat-json")]
-            compatibility: RadarCompatibilityOutputState::Model,
-        }
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut RadarDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -626,23 +517,24 @@ fn compute_curve_entries_controlled(
 
 #[cfg(feature = "presentation")]
 impl RadarSemanticSource {
-    fn into_render_model(self) -> RadarDiagramRenderModel {
+    fn into_render_parts(self) -> (RadarDiagramModel, RadarOutputData) {
         match self.model {
-            Some(model) => RadarDiagramRenderModel::from_semantic_model(model),
-            None => {
-                #[cfg(feature = "compat-json")]
-                return RadarDiagramRenderModel::empty_compatibility_output();
-                #[cfg(not(feature = "compat-json"))]
-                RadarDiagramRenderModel::default()
-            }
+            Some(model) => (model, RadarOutputData::Model),
+            None => (RadarDiagramModel::default(), RadarOutputData::Empty),
         }
+    }
+
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
+        let (model, output_data) = self.into_render_parts();
+        render_model_to_compat_json(&model, output_data, meta)
     }
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_radar(code: &str, meta: &PresentationMetadata) -> Result<Value> {
-    let model = parse_radar_semantic_source(code, meta)?.into_render_model();
-    render_model_to_compat_json(&model, meta)
+    let (model, output_data) = parse_radar_semantic_source(code, meta)?.into_render_parts();
+    render_model_to_compat_json(&model, output_data, meta)
 }
 
 #[cfg(feature = "compat-json")]
@@ -662,10 +554,7 @@ pub(crate) fn parse_radar_json_and_editor_facts(
         )?,
         |mut source| {
             let editor_facts = source.editor_facts.take().unwrap_or_default();
-            (
-                render_model_to_compat_json(&source.into_render_model(), meta),
-                editor_facts,
-            )
+            (source.into_compat_json(meta), editor_facts)
         },
         family::CombinedSemanticFailure::into_parts,
     );
@@ -677,8 +566,8 @@ pub(crate) fn parse_radar_json_and_editor_facts(
 pub(crate) fn parse_radar_model_for_render(
     code: &str,
     meta: &PresentationMetadata,
-) -> Result<RadarDiagramRenderModel> {
-    parse_radar_semantic_source(code, meta).map(RadarSemanticSource::into_render_model)
+) -> Result<(RadarDiagramModel, RadarOutputData)> {
+    parse_radar_semantic_source(code, meta).map(RadarSemanticSource::into_render_parts)
 }
 
 #[cfg(feature = "presentation")]
@@ -686,7 +575,7 @@ pub(crate) fn parse_radar_model_for_render_controlled(
     code: &str,
     meta: &PresentationMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<RadarDiagramRenderModel>> {
+) -> crate::OperationControlResult<Result<(RadarDiagramModel, RadarOutputData)>> {
     let construction = construct_radar_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -696,31 +585,22 @@ pub(crate) fn parse_radar_model_for_render_controlled(
     )?;
     control.checkpoint()?;
     Ok(construction
-        .map(RadarSemanticSource::into_render_model)
+        .map(RadarSemanticSource::into_render_parts)
         .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &RadarDiagramRenderModel,
+    model: &RadarDiagramModel,
+    output_data: RadarOutputData,
     meta: &PresentationMetadata,
 ) -> Result<Value> {
-    if matches!(model.compatibility, RadarCompatibilityOutputState::Empty) {
-        return Ok(json!({}));
-    }
-    let mut out = Map::with_capacity(8);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("title".to_string(), json!(&model.title));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("axes".to_string(), json!(&model.axes));
-    out.insert("curves".to_string(), json!(&model.curves));
-    out.insert("options".to_string(), json!(&model.options));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    Ok(compat::project(
+        model,
+        output_data,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+    ))
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
@@ -757,7 +637,7 @@ pub(crate) fn parse_radar_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model.unwrap_or_default();
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut model, &metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]
@@ -2255,8 +2135,8 @@ curve mycurve{1,2,3}
             .parse_diagram_sync(text, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let typed = parse_radar_model_for_render(text, &parsed.meta).unwrap();
-        let projection = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
+        let (typed, _output_data) = parse_radar_model_for_render(text, &parsed.meta).unwrap();
+        let projection = render_model_to_compat_json(&typed, _output_data, &parsed.meta).unwrap();
 
         assert_eq!(projection, parsed.model);
         assert_eq!(projection["type"], json!("radar"));
@@ -2270,14 +2150,18 @@ curve mycurve{1,2,3}
             effective_config: crate::presentation::PresentationConfig::empty_object(),
             title: None,
         };
-        let empty = parse_radar_model_for_render("", &empty_meta).unwrap();
+        let (empty, _output_data) = parse_radar_model_for_render("", &empty_meta).unwrap();
         assert_eq!(
-            render_model_to_compat_json(&empty, &empty_meta).unwrap(),
+            render_model_to_compat_json(&empty, _output_data, &empty_meta).unwrap(),
             json!({})
         );
         assert_eq!(
-            render_model_to_compat_json(&RadarDiagramRenderModel::default(), &empty_meta).unwrap()
-                ["type"],
+            render_model_to_compat_json(
+                &RadarDiagramModel::default(),
+                RadarOutputData::default(),
+                &empty_meta
+            )
+            .unwrap()["type"],
             json!("radar")
         );
     }
@@ -2469,5 +2353,51 @@ mod semantic_tests {
             crate::editor::test_work::read(),
             crate::editor::test_work::Counts::default(),
         );
+    }
+}
+
+#[cfg(all(test, feature = "presentation"))]
+mod output_data_tests {
+    use super::*;
+
+    #[test]
+    fn full_producer_preserves_empty_output_independently_of_json_projection() {
+        let meta = crate::PresentationMetadata {
+            diagram_type: "radar".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        let parse = |source| {
+            parse_radar_model_for_render_controlled(source, &meta, &crate::OperationControl::new())
+                .unwrap()
+                .unwrap()
+        };
+        let (empty, empty_output) = parse("");
+        let (header, header_output) = parse("radar-beta");
+        assert_eq!(empty_output, RadarOutputData::Empty);
+        assert_eq!(header_output, RadarOutputData::Model);
+        assert_eq!(RadarOutputData::default(), RadarOutputData::Model);
+        // Identical canonical values must not erase the source producer's distinct output shape.
+        assert_eq!(
+            serde_json::to_value(&empty).unwrap(),
+            serde_json::to_value(&header).unwrap()
+        );
+        #[cfg(feature = "compat-json")]
+        {
+            assert_eq!(
+                render_model_to_compat_json(&empty, empty_output, &meta).unwrap(),
+                serde_json::json!({})
+            );
+            assert_eq!(
+                render_model_to_compat_json(
+                    &RadarDiagramModel::default(),
+                    RadarOutputData::default(),
+                    &meta
+                )
+                .unwrap()["type"],
+                "radar"
+            );
+        }
     }
 }

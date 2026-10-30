@@ -11,7 +11,7 @@ use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
 use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 mod local_direction;
 
@@ -977,8 +977,8 @@ mod tests {
     use super::*;
     use crate::graph::model::GraphGroupStyle;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::OperationControl;
-    use merman_core::resources::ResourceProfile;
+    use merman_model::OperationControl;
+    use merman_model::resources::ResourceProfile;
 
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
@@ -1070,7 +1070,7 @@ mod tests {
             error,
             crate::AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
     }
 }

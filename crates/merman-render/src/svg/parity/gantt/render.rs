@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 // Gantt diagram SVG renderer implementation (split from parity.rs).
 

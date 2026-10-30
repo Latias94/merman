@@ -520,8 +520,8 @@ pub fn unsupported_native_html_style(
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn unsupported_native_flowchart_html_style(
-    model: &merman_core::diagrams::flowchart::FlowchartModel,
-    context: &merman_core::diagrams::flowchart::FlowchartRenderContext,
+    model: &merman_model::families::flowchart::FlowchartModel,
+    context: &merman_model::families::flowchart::FlowchartRenderContext,
     config: &merman_core::presentation::PresentationConfig,
     swimlane: bool,
     control: &OperationControl,
@@ -596,7 +596,7 @@ mod tests {
 
     #[test]
     fn native_admission_cancels_among_flat_records_without_declarations() {
-        let mut model = merman_core::diagrams::block::BlockDiagramRenderModel::default();
+        let mut model = merman_model::families::block::BlockDiagramRenderModel::default();
         model.blocks_flat.resize_with(4_096, Default::default);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(8);

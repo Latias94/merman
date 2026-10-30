@@ -18,7 +18,7 @@ use super::{
 use crate::error::Result;
 use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GridRouteOptions {
@@ -91,7 +91,7 @@ pub(super) fn plan_left_right_grid_path_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
     let label = edge
         .label
@@ -144,7 +144,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     options: GridRouteOptions,
 ) -> Option<RoutePlan> {
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
     let label = edge
         .label

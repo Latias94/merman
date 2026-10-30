@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::mindmap::{MindmapDiagramRenderEdge, MindmapDiagramRenderModel};
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::mindmap::{MindmapDiagramRenderEdge, MindmapDiagramRenderModel};
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,

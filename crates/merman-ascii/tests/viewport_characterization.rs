@@ -6,7 +6,7 @@ use merman_ascii::{
     AsciiViewportPolicy, OverflowPolicy, TerminalWidthProfile,
 };
 use merman_core::RenderSemanticModel;
-use merman_core::resources::ResourceProfile;
+use merman_model::resources::ResourceProfile;
 use support::{
     assert_rectangular_terminal_grid, assert_rectangular_terminal_grid_with_profile,
     local_semantic_input, parse_model, render_model, render_model_report,

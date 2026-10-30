@@ -5,10 +5,10 @@ use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-use merman_core::diagrams::kanban::KanbanDiagramRenderModel;
 use merman_core::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
 };
+use merman_model::families::kanban::KanbanDiagramRenderModel;
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
 pub(crate) const KANBAN_SECTION_PADDING_PX: f64 = 10.0;
@@ -34,7 +34,8 @@ impl<'a> KanbanMarkdown<'a> {
     }
 
     pub(crate) fn render(&self, raw: &str) -> String {
-        let sanitized = merman_core::sanitize::sanitize_text(raw, self.sanitize_config.as_config());
+        let sanitized =
+            merman_markup::sanitize::sanitize_text(raw, self.sanitize_config.as_config());
         crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, self.auto_wrap)
     }
 
@@ -315,7 +316,7 @@ fn prepare_kanban_metadata_label(
     let html = text
         .filter(|text| !text.is_empty())
         .map_or_else(String::new, |text| {
-            merman_core::sanitize::sanitize_xhtml(
+            merman_markup::sanitize::sanitize_xhtml(
                 &format!(
                     "<p>{}</p>",
                     text.replace("\\n", "<br/>").replace('\n', "<br/>")
@@ -873,7 +874,7 @@ mod tests {
     use crate::Error;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+    use merman_model::families::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
     use serde_json::json;
     use std::cell::Cell;
 

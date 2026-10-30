@@ -7,7 +7,7 @@ pub(crate) use theme::{
 use crate::config::{config_bool, config_f64_or};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::diagrams::wardley::{
+use merman_model::families::wardley::{
     WardleyDiagramModel, WardleyFlowDirection, WardleySourceStrategy,
 };
 use serde::Serialize;

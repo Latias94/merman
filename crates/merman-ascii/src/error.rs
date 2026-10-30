@@ -9,7 +9,7 @@ pub type Result<T> = std::result::Result<T, AsciiError>;
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum AsciiError {
     #[error(transparent)]
-    Cancelled(#[from] merman_core::OperationCancelled),
+    Cancelled(#[from] merman_model::OperationCancelled),
     #[error("invalid ASCII render option `{field}`: {message}")]
     InvalidOption {
         field: &'static str,
@@ -27,7 +27,7 @@ pub enum AsciiError {
     #[error(transparent)]
     ResourceLimitExceeded(#[from] AsciiResourceLimitExceeded),
     #[error(transparent)]
-    OperationResourceTerminal(merman_core::OperationLedgerError),
+    OperationResourceTerminal(merman_model::OperationLedgerError),
     #[error(
         "ASCII output exceeds requested width: actual {actual_width} cells > maximum {max_width} ({profile:?})"
     )]

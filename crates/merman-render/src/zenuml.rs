@@ -5,7 +5,7 @@ mod theme;
 use crate::Result;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::zenuml::{
+use merman_model::families::zenuml::{
     ZenumlDiagramModel, ZenumlFragmentKind, ZenumlMessageStyle, ZenumlStatement,
     ZenumlStatementKind,
 };

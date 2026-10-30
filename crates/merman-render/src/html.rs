@@ -3,7 +3,7 @@
 use std::cell::Cell;
 
 use merman_core::OperationPhase;
-use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
 
 use crate::resources::{OperationWorkError, OperationWorkMeter, ResourceLimitPhase};
 
@@ -169,8 +169,11 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
         let parse_work = Cell::new(0);
         let sink = HtmlSanitizeSink::new(4096, &meter, &parse_work, OperationPhase::Emit);
-        let result =
-            merman_core::sanitize::sanitize_xhtml_with_sink("<b>label</b>", &loose_config(), &sink);
+        let result = merman_markup::sanitize::sanitize_xhtml_with_sink(
+            "<b>label</b>",
+            &loose_config(),
+            &sink,
+        );
         let error = resolve_svg_fragment(result, &meter)
             .expect_err("tree allocation must obey the operation work ceiling");
         assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
@@ -188,7 +191,7 @@ mod tests {
             let parse_work = Cell::new(0);
             let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
             assert_eq!(
-                merman_core::sanitize::sanitize_xhtml_with_sink(&span, &loose_config(), &sink)
+                merman_markup::sanitize::sanitize_xhtml_with_sink(&span, &loose_config(), &sink)
                     .unwrap(),
                 span,
             );
@@ -198,7 +201,7 @@ mod tests {
             let parse_work = Cell::new(0);
             let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
             let result =
-                merman_core::sanitize::sanitize_xhtml_with_sink(&div, &loose_config(), &sink);
+                merman_markup::sanitize::sanitize_xhtml_with_sink(&div, &loose_config(), &sink);
             let error = resolve_svg_fragment(result, &meter)
                 .expect_err("ancestor scans must count against the existing work ceiling");
             let crate::Error::ResourceLimitExceeded(limit) = error else {
@@ -273,7 +276,7 @@ mod tests {
             };
             let source = format!("{}label{}", "<div>".repeat(512), "</div>".repeat(512));
             let result =
-                merman_core::sanitize::sanitize_xhtml_with_sink(&source, &loose_config(), &sink);
+                merman_markup::sanitize::sanitize_xhtml_with_sink(&source, &loose_config(), &sink);
             let error = resolve_svg_fragment(result, &meter).expect_err("scan cancellation");
             let crate::Error::Cancelled(cancelled) = error else {
                 panic!("expected parser cancellation");
@@ -308,8 +311,11 @@ mod tests {
                 let meter = OperationWorkMeter::new(policy);
                 let parse_work = Cell::new(0);
                 let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
-                let result =
-                    merman_core::sanitize::sanitize_xhtml_with_sink(input, &loose_config(), &sink);
+                let result = merman_markup::sanitize::sanitize_xhtml_with_sink(
+                    input,
+                    &loose_config(),
+                    &sink,
+                );
                 let error = resolve_svg_fragment(result, &meter)
                     .expect_err("internal parser scans must not become successful empty labels");
                 let crate::Error::ResourceLimitExceeded(limit) = error else {
@@ -322,9 +328,12 @@ mod tests {
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
                 let parse_work = Cell::new(0);
                 let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
-                let output =
-                    merman_core::sanitize::sanitize_xhtml_with_sink(input, &loose_config(), &sink)
-                        .expect("trusted caller does not inherit the core string wrapper ceiling");
+                let output = merman_markup::sanitize::sanitize_xhtml_with_sink(
+                    input,
+                    &loose_config(),
+                    &sink,
+                )
+                .expect("trusted caller does not inherit the core string wrapper ceiling");
                 assert!(output.contains("label"));
             }
         }
@@ -391,7 +400,7 @@ mod tests {
             control: &control,
             epochs: Cell::new(0),
         };
-        let result = merman_core::sanitize::sanitize_xhtml_in_svg_context_with_sink(
+        let result = merman_markup::sanitize::sanitize_xhtml_in_svg_context_with_sink(
             &"<span>label</span>".repeat(64),
             &loose_config(),
             &sink,
@@ -421,9 +430,9 @@ mod tests {
         let sink = HtmlSanitizeSink::new(4096, &meter, &parse_work, OperationPhase::Emit);
         let config = loose_config();
         let input = "<b>label</b>";
-        merman_core::sanitize::sanitize_xhtml_with_sink(input, &config, &sink).unwrap();
+        merman_markup::sanitize::sanitize_xhtml_with_sink(input, &config, &sink).unwrap();
         let first = meter.used();
-        merman_core::sanitize::sanitize_xhtml_with_sink(input, &config, &sink).unwrap();
+        merman_markup::sanitize::sanitize_xhtml_with_sink(input, &config, &sink).unwrap();
         assert!(first > 0);
         assert_eq!(meter.used(), first * 2);
         assert_eq!(meter.projected_svg_bytes(), 0);
@@ -437,8 +446,11 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
         let parse_work = Cell::new(0);
         let sink = HtmlSanitizeSink::new(1, &meter, &parse_work, OperationPhase::Emit);
-        let result =
-            merman_core::sanitize::sanitize_xhtml_with_sink("<b>label</b>", &loose_config(), &sink);
+        let result = merman_markup::sanitize::sanitize_xhtml_with_sink(
+            "<b>label</b>",
+            &loose_config(),
+            &sink,
+        );
         let error = resolve_svg_fragment(result, &meter)
             .expect_err("local fragment growth must preserve SVG limit classification");
         let crate::Error::ResourceLimitExceeded(error) = error else {

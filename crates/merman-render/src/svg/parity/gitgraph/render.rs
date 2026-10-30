@@ -568,7 +568,7 @@ fn gitgraph_commit_tag_label_height_px(
 )]
 pub(crate) fn render_gitgraph_diagram_svg_model(
     layout: &crate::model::GitGraphDiagramLayout,
-    model: &merman_core::diagrams::git_graph::GitGraphDiagramModel,
+    model: &merman_model::families::git_graph::GitGraphDiagramModel,
     node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
     static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
@@ -1921,7 +1921,7 @@ mod tests {
 
     #[test]
     fn gitgraph_typed_body_title_renders_and_overrides_metadata_title() {
-        let model = merman_core::diagrams::git_graph::GitGraphDiagramModel {
+        let model = merman_model::families::git_graph::GitGraphDiagramModel {
             diagram_type: "gitGraph".to_string(),
             commits: Vec::new(),
             branches: Vec::new(),

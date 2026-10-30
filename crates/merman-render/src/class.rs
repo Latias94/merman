@@ -42,9 +42,9 @@ pub(crate) use theme::{
     ClassThemeOutcomes,
 };
 
-type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
-type ClassNode = merman_core::models::class_diagram::ClassNode;
-type ClassNote<'a> = merman_core::models::class_diagram::ClassNoteRenderView<'a>;
+type ClassDiagramModel = merman_model::families::class::ClassDiagram;
+type ClassNode = merman_model::families::class::ClassNode;
+type ClassNote<'a> = merman_model::families::class::ClassNoteRenderView<'a>;
 type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
 
@@ -144,7 +144,7 @@ pub(crate) fn class_layout_work_units(
 }
 
 pub(crate) fn class_member_display_text(
-    member: &merman_core::models::class_diagram::ClassMember,
+    member: &merman_model::families::class::ClassMember,
 ) -> String {
     // Mermaid ClassMember.parseMember preserves internal attribute whitespace in `text`;
     // shapeUtil.addText passes that text directly to createText, including spaces around ':'.
@@ -152,7 +152,7 @@ pub(crate) fn class_member_display_text(
 }
 
 pub(crate) fn class_member_create_text_input(
-    member: &merman_core::models::class_diagram::ClassMember,
+    member: &merman_model::families::class::ClassMember,
 ) -> String {
     class_member_display_text(member)
         .replace('<', "&lt;")
@@ -1810,7 +1810,7 @@ fn class_box_dimensions(
     let title_style_facts = label_style_facts(title_visible_style_facts.as_ref(), &title_text, "");
 
     let capture_fallback_row_metrics = capture_row_metrics && !prepare_html_labels;
-    let measure_rows = |rows: &[merman_core::models::class_diagram::ClassMember]| {
+    let measure_rows = |rows: &[merman_model::families::class::ClassMember]| {
         let mut rows_rect: Option<Rect> = None;
         let mut style_facts = ClassNodeLabelStyleFacts::default();
         let mut metrics_out: Option<Vec<crate::text::TextMetrics>> =
@@ -2105,7 +2105,7 @@ pub(crate) fn class_note_html_fragment(
     mermaid_config: &merman_core::presentation::PresentationConfig,
 ) -> String {
     let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-    let note_html = merman_core::sanitize::sanitize_xhtml(&note_html, mermaid_config.as_config());
+    let note_html = merman_markup::sanitize::sanitize_xhtml(&note_html, mermaid_config.as_config());
     class_normalize_xhtml_br_tags(&note_html)
 }
 
@@ -3943,8 +3943,8 @@ fn compute_bounds(
 mod tests {
     use dugong::graphlib::{Graph, GraphOptions};
     use dugong::{EdgeLabel, GraphLabel, NodeLabel};
-    use merman_core::models::class_diagram::Namespace;
     use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_model::families::class::Namespace;
 
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
@@ -5082,7 +5082,7 @@ mod tests {
     }
 
     fn class_model_with_namespace_chain(count: usize) -> super::ClassDiagramModel {
-        let mut model: merman_core::models::class_diagram::ClassDiagramModel =
+        let mut model: merman_model::families::class::ClassDiagramModel =
             serde_json::from_value(serde_json::json!({
                 "type": "classDiagram",
                 "direction": "TB",

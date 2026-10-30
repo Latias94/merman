@@ -9,7 +9,7 @@ use unicode_width::UnicodeWidthStr;
 
 mod support;
 
-fn parsed_model(source: &str) -> merman_core::ParsedSemanticDiagram {
+fn parsed_model(source: &str) -> merman_model::ParsedSemanticDiagram {
     SemanticParser::new()
         .parse_diagram_sync(source)
         .expect("canonical diagram should parse")
@@ -301,8 +301,8 @@ fn empty_extent_is_reportable_without_special_sentinel_text() {
             &support::full_model::view(&model),
             merman_ascii::AsciiSourceContext {
                 diagram_type: model.kind(),
-                config: &merman_core::MermaidConfig::empty_object(),
-                semantic_config: &merman_core::MermaidConfig::empty_object(),
+                config: &merman_model::MermaidConfig::empty_object(),
+                semantic_config: &merman_model::MermaidConfig::empty_object(),
                 title: None,
             },
             AsciiViewportPolicy::default(),

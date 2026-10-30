@@ -18,7 +18,7 @@ fn parse_class(text: &str) -> ParsedDiagramRender {
         .expect("diagram detected")
 }
 
-fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diagram::ClassDiagram {
+fn class_model(parsed: &ParsedDiagramRender) -> &merman_model::families::class::ClassDiagram {
     let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class render model");
     };

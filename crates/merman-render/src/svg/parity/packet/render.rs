@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::packet::PacketDiagramRenderModel;
+use merman_model::families::packet::PacketDiagramModel;
 
 fn write_packet_css(
     out: &mut impl SvgOutput,
@@ -52,7 +52,7 @@ fn write_packet_css(
 
 pub(crate) fn render_packet_diagram_svg_model(
     layout: &PacketDiagramLayout,
-    model: &PacketDiagramRenderModel,
+    model: &PacketDiagramModel,
     typography_theme: &crate::packet::PacketTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,

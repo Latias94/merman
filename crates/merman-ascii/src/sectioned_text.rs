@@ -181,11 +181,11 @@ mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     #[cfg(feature = "diagram-journey")]
-    use merman_core::diagrams::journey::JourneyTask;
+    use merman_model::families::journey::JourneyTask;
     #[cfg(feature = "diagram-timeline")]
-    use merman_core::diagrams::timeline::TimelineTask;
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::families::timeline::TimelineTask;
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
     fn assert_exact_and_max_minus_one<T: SectionedTextTask>(

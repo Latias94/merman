@@ -115,7 +115,7 @@ mod tests {
         )
         .expect("SVG execution");
         let layout = crate::info::layout_info_diagram_typed(
-            &merman_core::diagrams::info::InfoDiagramRenderModel::default(),
+            &merman_model::families::info::InfoDiagramModel::default(),
             &typography_theme,
         )
         .expect("Info layout");

@@ -1,7 +1,7 @@
 use crate::model::Bounds;
 use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
 use crate::text::TextMeasurer;
-use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureNodeKind};
+use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureNodeKind};
 
 use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
 use super::ArchitectureEmitCheckpoints;
@@ -208,7 +208,7 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                         merman_core::OperationPhase::Emit,
                     );
                     let sanitized = crate::html::resolve_svg_fragment(
-                        merman_core::sanitize::sanitize_xhtml_in_svg_context_with_sink(
+                        merman_markup::sanitize::sanitize_xhtml_in_svg_context_with_sink(
                             icon_text.trim(),
                             sanitize_config.as_config(),
                             &sink,

@@ -2,17 +2,20 @@
 
 use crate::Result;
 use crate::operation::AsciiExecution;
-use merman_core::resources::ModelComplexity;
-use merman_core::{MermaidConfig, SemanticDiagramModel, SemanticMetadata};
+use merman_model::resources::ModelComplexity;
+use merman_model::{MermaidConfig, SemanticDiagramModel, SemanticMetadata};
 use serde::{Serialize, Serializer};
 
-/// Already-admitted source facts needed by terminal interpretation and fallback.
+/// Declared identity and configuration used by terminal interpretation and fallback.
+///
+/// Independent model consumers own these values. Source workflows pass their admitted metadata;
+/// constructing this view does not certify that source parsing or configuration admission ran.
 #[derive(Debug, Clone, Copy)]
 pub struct AsciiSourceContext<'a> {
     pub diagram_type: &'a str,
-    /// Admitted source-authored configuration retained by complete fallback.
+    /// Caller-declared authored configuration retained by complete fallback.
     pub config: &'a MermaidConfig,
-    /// Effective semantic policy, before graphical theme materialization.
+    /// Caller-declared effective semantic policy, before graphical theme materialization.
     pub semantic_config: &'a MermaidConfig,
     pub title: Option<&'a str>,
 }
@@ -28,7 +31,7 @@ impl<'a> From<&'a SemanticMetadata> for AsciiSourceContext<'a> {
     }
 }
 
-/// Borrows one family's admitted data for terminal output.
+/// Borrows one family's canonical or explicit full data for terminal output.
 ///
 /// Canonical parsing and explicit full hosts feed the same family adapters. The
 /// Class variant owns only its derived topology when constructed from canonical
@@ -37,35 +40,35 @@ impl<'a> From<&'a SemanticMetadata> for AsciiSourceContext<'a> {
 #[non_exhaustive]
 pub enum AsciiDiagram<'a> {
     #[cfg(feature = "diagram-class")]
-    Class(Box<merman_core::models::class_diagram::ClassTopologyView<'a>>),
+    Class(Box<merman_model::families::class::ClassTopologyView<'a>>),
     #[cfg(feature = "diagram-er")]
-    Er(&'a merman_core::diagrams::er::ErDiagramModel),
+    Er(&'a merman_model::families::er::ErDiagramModel),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    Flowchart(&'a merman_core::diagrams::flowchart::FlowchartModel),
+    Flowchart(&'a merman_model::families::flowchart::FlowchartModel),
     #[cfg(feature = "diagram-gantt")]
-    Gantt(merman_core::diagrams::gantt::GanttTerminalView<'a>),
+    Gantt(merman_model::families::gantt::GanttTerminalView<'a>),
     #[cfg(feature = "diagram-git-graph")]
-    GitGraph(&'a merman_core::diagrams::git_graph::GitGraphDiagramModel),
+    GitGraph(&'a merman_model::families::git_graph::GitGraphDiagramModel),
     #[cfg(feature = "diagram-journey")]
-    Journey(&'a merman_core::diagrams::journey::JourneyDiagramModel),
+    Journey(&'a merman_model::families::journey::JourneyDiagramModel),
     #[cfg(feature = "diagram-kanban")]
-    Kanban(merman_core::diagrams::kanban::KanbanTerminalView<'a>),
+    Kanban(merman_model::families::kanban::KanbanTerminalView<'a>),
     #[cfg(feature = "diagram-mindmap")]
-    Mindmap(merman_core::diagrams::mindmap::MindmapTerminalView<'a>),
+    Mindmap(merman_model::families::mindmap::MindmapTerminalView<'a>),
     #[cfg(feature = "diagram-packet")]
-    Packet(&'a merman_core::diagrams::packet::PacketDiagramModel),
+    Packet(&'a merman_model::families::packet::PacketDiagramModel),
     #[cfg(feature = "diagram-sequence")]
-    Sequence(&'a merman_core::diagrams::sequence::SequenceDiagramModel),
+    Sequence(&'a merman_model::families::sequence::SequenceDiagramModel),
     #[cfg(feature = "diagram-state")]
-    State(merman_core::diagrams::state::StateTerminalView<'a>),
+    State(merman_model::families::state::StateTerminalView<'a>),
     #[cfg(feature = "diagram-timeline")]
-    Timeline(&'a merman_core::diagrams::timeline::TimelineDiagramModel),
+    Timeline(&'a merman_model::families::timeline::TimelineDiagramModel),
     #[cfg(feature = "diagram-tree-view")]
-    TreeView(&'a merman_core::diagrams::tree_view::TreeViewDiagramModel),
+    TreeView(&'a merman_model::families::tree_view::TreeViewDiagramModel),
     #[cfg(feature = "diagram-xychart")]
     XyChart {
-        model: &'a merman_core::diagrams::xychart::XyChartDiagramModel,
-        display: merman_core::diagrams::xychart::XyChartDisplayPolicy,
+        model: &'a merman_model::families::xy_chart::XyChartDiagramModel,
+        display: merman_model::families::xy_chart::XyChartDisplayPolicy,
     },
     /// Retains an unsupported host family's identity for normal capability admission.
     Unsupported(&'a str),
@@ -77,13 +80,13 @@ impl<'a> AsciiDiagram<'a> {
         source: AsciiSourceContext<'a>,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
-        execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+        execution.checkpoint(merman_model::OperationPhase::Semantic)?;
         Ok(match model {
             #[cfg(feature = "diagram-class")]
             SemanticDiagramModel::Class(model) => {
                 crate::validate_model_identity("class", source.diagram_type)?;
                 let resources =
-                    execution.new_resource_context(merman_core::OperationPhase::Semantic);
+                    execution.new_resource_context(merman_model::OperationPhase::Semantic);
                 // Admit the authored graph before deriving topology maps and copied ids. The
                 // later full preflight also accounts for the derived view, but cannot protect
                 // this allocation boundary retroactively.
@@ -104,23 +107,23 @@ impl<'a> AsciiDiagram<'a> {
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             SemanticDiagramModel::Flowchart(model) => Self::Flowchart(model),
             #[cfg(feature = "diagram-gantt")]
-            SemanticDiagramModel::Gantt(model) => {
-                Self::Gantt(merman_core::diagrams::gantt::GanttTerminalView::from_model(
+            SemanticDiagramModel::Gantt(model) => Self::Gantt(
+                merman_model::families::gantt::GanttTerminalView::from_model(
                     model,
                     source.semantic_config,
-                ))
-            }
+                ),
+            ),
             #[cfg(feature = "diagram-git-graph")]
             SemanticDiagramModel::GitGraph(model) => Self::GitGraph(model),
             #[cfg(feature = "diagram-journey")]
             SemanticDiagramModel::Journey(model) => Self::Journey(model),
             #[cfg(feature = "diagram-kanban")]
             SemanticDiagramModel::Kanban(model) => {
-                Self::Kanban(merman_core::diagrams::kanban::KanbanTerminalView::from_model(model))
+                Self::Kanban(merman_model::families::kanban::KanbanTerminalView::from_model(model))
             }
             #[cfg(feature = "diagram-mindmap")]
             SemanticDiagramModel::Mindmap(model) => Self::Mindmap(
-                merman_core::diagrams::mindmap::MindmapTerminalView::from_semantic(
+                merman_model::families::mindmap::MindmapTerminalView::from_semantic(
                     model,
                     source.semantic_config,
                 ),
@@ -131,7 +134,7 @@ impl<'a> AsciiDiagram<'a> {
             SemanticDiagramModel::Sequence(model) => Self::Sequence(model),
             #[cfg(feature = "diagram-state")]
             SemanticDiagramModel::State(model) => {
-                Self::State(merman_core::diagrams::state::StateTerminalView::from_semantic(model))
+                Self::State(merman_model::families::state::StateTerminalView::from_semantic(model))
             }
             #[cfg(feature = "diagram-timeline")]
             SemanticDiagramModel::Timeline(model) => Self::Timeline(model),
@@ -140,7 +143,7 @@ impl<'a> AsciiDiagram<'a> {
             #[cfg(feature = "diagram-xychart")]
             SemanticDiagramModel::XyChart(model) => Self::XyChart {
                 model,
-                display: merman_core::diagrams::xychart::XyChartDisplayPolicy::from_config(
+                display: merman_model::families::xy_chart::XyChartDisplayPolicy::from_config(
                     source.semantic_config,
                 ),
             },
@@ -185,15 +188,14 @@ impl<'a> AsciiDiagram<'a> {
     pub(crate) fn complexity(&self) -> ModelComplexity {
         match self {
             #[cfg(feature = "diagram-class")]
-            Self::Class(model) => {
-                merman_core::models::class_diagram::class_topology_complexity(model)
-            }
+            Self::Class(model) => merman_model::families::class::class_topology_complexity(model),
             #[cfg(feature = "diagram-er")]
             Self::Er(model) => ModelComplexity::from_serializable(model),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(model) => {
-                let mut complexity = merman_core::resources::FlowchartComplexity::from_model(model)
-                    .as_model_complexity();
+                let mut complexity =
+                    merman_model::resources::FlowchartComplexity::from_model(model)
+                        .as_model_complexity();
                 // Subgraph metadata is opaque authored JSON and is omitted from the legacy
                 // flowchart counters. The ASCII fallback still serializes it, so admit its
                 // exact borrowed shape before invoking generic serde.
@@ -232,7 +234,7 @@ impl<'a> AsciiDiagram<'a> {
             Self::Packet(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(model) => {
-                merman_core::resources::SequenceComplexity::from_model(model).as_model_complexity()
+                merman_model::resources::SequenceComplexity::from_model(model).as_model_complexity()
             }
             #[cfg(feature = "diagram-state")]
             Self::State(model) => model.complexity(),
@@ -259,10 +261,10 @@ impl Serialize for AsciiDiagram<'_> {
                 #[derive(Serialize)]
                 struct Projection<'a> {
                     #[serde(flatten)]
-                    model: &'a merman_core::diagrams::flowchart::FlowchartModel,
+                    model: &'a merman_model::families::flowchart::FlowchartModel,
                     #[serde(rename = "subgraphVertexStyles")]
                     subgraph_vertex_styles:
-                        &'a merman_core::diagrams::flowchart::FlowchartSubgraphStyles,
+                        &'a merman_model::families::flowchart::FlowchartSubgraphStyles,
                     #[serde(rename = "subgraphExplicitDirections")]
                     subgraph_explicit_directions: SubgraphExplicitDirections<'a>,
                 }
@@ -290,10 +292,10 @@ impl Serialize for AsciiDiagram<'_> {
                 #[derive(Serialize)]
                 struct Projection<'a> {
                     #[serde(flatten)]
-                    model: merman_core::diagrams::sequence::SequenceCompatibilityProjection<'a>,
+                    model: merman_model::families::sequence::SequenceCompatibilityProjection<'a>,
                     #[serde(rename = "actorLifecycles")]
                     actor_lifecycles:
-                        &'a Option<Vec<merman_core::diagrams::sequence::SequenceActorLifecycle>>,
+                        &'a Option<Vec<merman_model::families::sequence::SequenceActorLifecycle>>,
                 }
                 Projection {
                     model: model.compatibility_projection("sequence"),
@@ -312,20 +314,23 @@ impl Serialize for AsciiDiagram<'_> {
                 #[derive(Serialize)]
                 struct Projection<'a> {
                     #[serde(flatten)]
-                    model: &'a merman_core::diagrams::xychart::XyChartDiagramModel,
-                    display: &'a merman_core::diagrams::xychart::XyChartDisplayPolicy,
+                    model: &'a merman_model::families::xy_chart::XyChartDiagramModel,
+                    display: &'a merman_model::families::xy_chart::XyChartDisplayPolicy,
                 }
                 Projection { model, display }.serialize(serializer)
             }
-            Self::Unsupported(kind) => Err(serde::ser::Error::custom(format_args!(
-                "unsupported terminal family: {kind}"
-            ))),
+            Self::Unsupported(kind) => {
+                let _ = serializer;
+                Err(serde::ser::Error::custom(format_args!(
+                    "unsupported terminal family: {kind}"
+                )))
+            }
         }
     }
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-struct SubgraphExplicitDirections<'a>(&'a [merman_core::diagrams::flowchart::FlowSubgraph]);
+struct SubgraphExplicitDirections<'a>(&'a [merman_model::families::flowchart::FlowSubgraph]);
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl Serialize for SubgraphExplicitDirections<'_> {

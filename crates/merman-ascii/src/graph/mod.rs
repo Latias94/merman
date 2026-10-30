@@ -49,7 +49,7 @@ mod graph_golden {
     use super::*;
     use crate::operation::AsciiExecution;
     use crate::{AsciiRenderOptions, AsciiResourcePolicy};
-    use merman_core::OperationControl;
+    use merman_model::OperationControl;
     use std::path::Path;
 
     fn fixture_expected(directory: &str, name: &str) -> String {

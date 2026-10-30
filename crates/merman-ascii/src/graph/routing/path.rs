@@ -6,7 +6,7 @@ use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
 use crate::resource::ResourceContext;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -52,7 +52,7 @@ pub(super) fn route_grid_path(
     port_policy: GridPathPortPolicy,
 ) -> Option<GridPathRoute> {
     let policy = crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     );
     let mut resources = ResourceContext::new(policy);
     route_grid_path_with_resources(layouts, from, to, port_policy, &mut resources)
@@ -680,8 +680,8 @@ mod tests {
     use crate::graph::label::GraphLabel;
     use crate::graph::model::{GraphNodeShape, GraphNodeStyle};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{OperationControl, OperationPhase};
 
     #[test]
     fn fixed_port_policy_does_not_substitute_directional_candidates() {
@@ -782,7 +782,7 @@ mod tests {
             error,
             crate::AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
         assert_eq!(resources.layout_work_used(), 1);
     }

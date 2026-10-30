@@ -3,7 +3,7 @@ mod render;
 
 pub(crate) use render::render_xychart_diagram_with_resolved_policy;
 
-use merman_core::diagrams::xychart::{XyChartDiagramModel, XyChartDisplayPolicy};
+use merman_model::families::xy_chart::{XyChartDiagramModel, XyChartDisplayPolicy};
 
 #[derive(Clone, Copy)]
 pub(crate) struct XyChartView<'a> {

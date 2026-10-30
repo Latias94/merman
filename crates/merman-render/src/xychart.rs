@@ -4,7 +4,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::diagrams::xychart::{
+use merman_model::families::xy_chart::{
     XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotModel, XyChartPlotType,
 };
 use serde_json::Value;
@@ -1937,7 +1937,7 @@ mod tests {
 
     fn layout(title: &str, orientation: &str, height: f64, legend: bool) -> XyChartDiagramLayout {
         let model = XyChartDiagramRenderModel {
-            semantic: merman_core::diagrams::xychart::XyChartDiagramModel {
+            semantic: merman_model::families::xy_chart::XyChartDiagramModel {
                 orientation: orientation.to_string(),
                 title: Some(title.to_string()),
                 acc_title: None,

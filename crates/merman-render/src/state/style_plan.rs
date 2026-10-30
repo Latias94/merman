@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use merman_core::diagrams::state::{
+use merman_model::families::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode, StateStyleClass,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -3319,7 +3319,7 @@ fn apply_source_shape_property(
         "fill" | "stroke" => {
             if declaration.is_single_component_value()
                 && (value.eq_ignore_ascii_case("none")
-                    || merman_core::theme_color::ThemeColor::parse(value).is_ok())
+                    || merman_markup::theme_color::ThemeColor::parse(value).is_ok())
             {
                 if declaration.property() == "fill" {
                     *fill = Some(value.to_string());
@@ -3425,7 +3425,7 @@ fn apply_source_text_property(
         }
         "color"
             if declaration.is_single_component_value()
-                && (merman_core::theme_color::ThemeColor::parse(value).is_ok()
+                && (merman_markup::theme_color::ThemeColor::parse(value).is_ok()
                     || value.eq_ignore_ascii_case("currentcolor")) =>
         {
             true
@@ -3707,7 +3707,7 @@ mod tests {
         OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
         ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
     };
-    use merman_core::diagrams::state::{
+    use merman_model::families::state::{
         StateDiagramRenderEdge, StateDiagramRenderNode, StateStyleClass,
     };
     use serde_json::json;

@@ -4,9 +4,7 @@ use crate::model::{
     TimelineTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::timeline::{
-    TimelineDiagramRenderModel, TimelineDirection, TimelineTask,
-};
+use merman_model::families::timeline::{TimelineDiagramModel, TimelineDirection, TimelineTask};
 use std::borrow::Cow;
 
 mod config;
@@ -361,7 +359,7 @@ fn expand_bounds_for_node_text(
 
 #[cfg(test)]
 pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
-    model: &TimelineDiagramRenderModel,
+    model: &TimelineDiagramModel,
     effective_config: &serde_json::Value,
     resolved_font_family_css: Option<&str>,
     resolved_font_size_px: Option<f64>,
@@ -373,7 +371,7 @@ pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
 }
 
 pub(crate) fn layout_timeline_diagram_typed_with_binding(
-    model: &TimelineDiagramRenderModel,
+    model: &TimelineDiagramModel,
     settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
@@ -389,7 +387,7 @@ pub(crate) fn layout_timeline_diagram_typed_with_binding(
 }
 
 fn layout_timeline_horizontal(
-    model: &TimelineDiagramRenderModel,
+    model: &TimelineDiagramModel,
     task_index: &TimelineTaskIndex<'_>,
     settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
@@ -857,7 +855,7 @@ fn layout_vertical_tasks<'a>(
 }
 
 fn layout_timeline_vertical(
-    model: &TimelineDiagramRenderModel,
+    model: &TimelineDiagramModel,
     task_index: &TimelineTaskIndex<'_>,
     settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
@@ -1140,7 +1138,7 @@ mod tests {
         .expect("layout ok")
     }
 
-    fn layout_timeline_model(model: &TimelineDiagramRenderModel) -> TimelineDiagramLayout {
+    fn layout_timeline_model(model: &TimelineDiagramModel) -> TimelineDiagramLayout {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         layout_timeline_diagram_typed_with_resolved_typography(
@@ -1216,7 +1214,7 @@ mod tests {
     #[test]
     fn sectionless_orphan_tasks_keep_model_order() {
         for direction in [TimelineDirection::LeftToRight, TimelineDirection::TopDown] {
-            let mut model = TimelineDiagramRenderModel::default();
+            let mut model = TimelineDiagramModel::default();
             model.direction = direction;
             model.tasks = vec![
                 timeline_task(0, "", None, "First"),

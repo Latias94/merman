@@ -2,7 +2,7 @@ use crate::model::{Bounds, TreeViewDiagramLayout, TreeViewLineLayout, TreeViewNo
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
-use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
+use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
 use serde_json::Value;
 use std::collections::HashMap;
 

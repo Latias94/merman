@@ -416,21 +416,21 @@ pub enum RenderSemanticModel {
     #[cfg(feature = "diagram-gantt")]
     Gantt(crate::diagrams::gantt::GanttDiagramRenderModel),
     #[cfg(feature = "diagram-pie")]
-    Pie(crate::diagrams::pie::PieDiagramRenderModel),
+    Pie(merman_model::families::pie::PieDiagramModel),
     #[cfg(feature = "diagram-packet")]
-    Packet(crate::diagrams::packet::PacketDiagramRenderModel),
+    Packet(merman_model::families::packet::PacketDiagramModel),
     #[cfg(feature = "diagram-timeline")]
-    Timeline(crate::diagrams::timeline::TimelineDiagramRenderModel),
+    Timeline(merman_model::families::timeline::TimelineDiagramModel),
     #[cfg(feature = "diagram-journey")]
-    Journey(crate::diagrams::journey::JourneyDiagramRenderModel),
+    Journey(merman_model::families::journey::JourneyDiagramModel),
     #[cfg(feature = "diagram-requirement")]
     Requirement(crate::diagrams::requirement::RequirementDiagramModel),
     #[cfg(feature = "diagram-sankey")]
     Sankey(crate::diagrams::sankey::SankeyDiagramModel),
     #[cfg(feature = "diagram-radar")]
-    Radar(crate::diagrams::radar::RadarDiagramRenderModel),
+    Radar(merman_model::families::radar::RadarDiagramModel),
     #[cfg(feature = "diagram-info")]
-    Info(crate::diagrams::info::InfoDiagramRenderModel),
+    Info(merman_model::families::info::InfoDiagramModel),
     #[cfg(feature = "diagram-treemap")]
     Treemap(crate::diagrams::treemap::TreemapDiagramRenderModel),
     #[cfg(feature = "diagram-block")]
@@ -459,10 +459,11 @@ pub enum RenderSemanticModel {
     Agentflow(crate::diagrams::agentflow::AgentflowDiagramRenderModel),
 }
 
-/// Parser-owned data needed only while rendering a typed semantic model.
+/// Frozen full-output facts paired with a typed semantic model.
 ///
 /// This context is intentionally separate from [`RenderSemanticModel`] so family models retain
-/// their public construction and serialization contracts.
+/// their public construction and serialization contracts. Its default declares model output;
+/// full source producers explicitly supply any different output shape.
 #[doc(hidden)]
 #[derive(Debug, Clone, Default)]
 pub struct RenderSemanticContext {
@@ -470,6 +471,18 @@ pub struct RenderSemanticContext {
     flowchart: Option<crate::diagrams::flowchart::FlowchartRenderContext>,
     #[cfg(feature = "diagram-class")]
     class_style_precedence_facts: Option<crate::models::class_diagram::ClassStylePrecedenceFacts>,
+    #[cfg(feature = "diagram-info")]
+    info_output_data: merman_model::families::info::InfoOutputData,
+    #[cfg(feature = "diagram-pie")]
+    pie_output_data: merman_model::families::pie::PieOutputData,
+    #[cfg(feature = "diagram-journey")]
+    journey_output_data: merman_model::families::journey::JourneyOutputData,
+    #[cfg(feature = "diagram-timeline")]
+    timeline_output_data: merman_model::families::timeline::TimelineOutputData,
+    #[cfg(feature = "diagram-packet")]
+    packet_output_data: merman_model::families::packet::PacketOutputData,
+    #[cfg(feature = "diagram-radar")]
+    radar_output_data: merman_model::families::radar::RadarOutputData,
 }
 
 impl RenderSemanticContext {
@@ -477,8 +490,7 @@ impl RenderSemanticContext {
     fn for_flowchart(context: crate::diagrams::flowchart::FlowchartRenderContext) -> Self {
         Self {
             flowchart: Some(context),
-            #[cfg(feature = "diagram-class")]
-            class_style_precedence_facts: None,
+            ..Self::default()
         }
     }
 
@@ -488,8 +500,7 @@ impl RenderSemanticContext {
     ) -> Self {
         Self {
             class_style_precedence_facts: Some(style_precedence_facts),
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            flowchart: None,
+            ..Self::default()
         }
     }
 
@@ -509,6 +520,42 @@ impl RenderSemanticContext {
         &self,
     ) -> Option<&crate::models::class_diagram::ClassStylePrecedenceFacts> {
         self.class_style_precedence_facts.as_ref()
+    }
+
+    /// Returns the declared Info output shape frozen during full construction.
+    #[cfg(feature = "diagram-info")]
+    pub fn info_output_data(&self) -> merman_model::families::info::InfoOutputData {
+        self.info_output_data
+    }
+
+    /// Returns the declared Pie output shape frozen during full construction.
+    #[cfg(feature = "diagram-pie")]
+    pub fn pie_output_data(&self) -> merman_model::families::pie::PieOutputData {
+        self.pie_output_data
+    }
+
+    /// Returns the declared Journey output shape frozen during full construction.
+    #[cfg(feature = "diagram-journey")]
+    pub fn journey_output_data(&self) -> merman_model::families::journey::JourneyOutputData {
+        self.journey_output_data
+    }
+
+    /// Returns the declared Timeline output shape frozen during full construction.
+    #[cfg(feature = "diagram-timeline")]
+    pub fn timeline_output_data(&self) -> merman_model::families::timeline::TimelineOutputData {
+        self.timeline_output_data
+    }
+
+    /// Returns the declared Packet output shape frozen during full construction.
+    #[cfg(feature = "diagram-packet")]
+    pub fn packet_output_data(&self) -> merman_model::families::packet::PacketOutputData {
+        self.packet_output_data
+    }
+
+    /// Returns the declared Radar output shape frozen during full construction.
+    #[cfg(feature = "diagram-radar")]
+    pub fn radar_output_data(&self) -> merman_model::families::radar::RadarOutputData {
+        self.radar_output_data
     }
 
     pub(crate) fn retained_text_bytes(&self) -> usize {
@@ -565,6 +612,90 @@ impl RenderSemanticParseOutput {
         }
     }
 
+    #[cfg(feature = "diagram-info")]
+    pub(crate) fn info(
+        model: merman_model::families::info::InfoDiagramModel,
+        output_data: merman_model::families::info::InfoOutputData,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Info(model),
+            context: RenderSemanticContext {
+                info_output_data: output_data,
+                ..RenderSemanticContext::default()
+            },
+        }
+    }
+
+    #[cfg(feature = "diagram-pie")]
+    pub(crate) fn pie(
+        model: merman_model::families::pie::PieDiagramModel,
+        output_data: merman_model::families::pie::PieOutputData,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Pie(model),
+            context: RenderSemanticContext {
+                pie_output_data: output_data,
+                ..RenderSemanticContext::default()
+            },
+        }
+    }
+
+    #[cfg(feature = "diagram-journey")]
+    pub(crate) fn journey(
+        model: merman_model::families::journey::JourneyDiagramModel,
+        output_data: merman_model::families::journey::JourneyOutputData,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Journey(model),
+            context: RenderSemanticContext {
+                journey_output_data: output_data,
+                ..RenderSemanticContext::default()
+            },
+        }
+    }
+
+    #[cfg(feature = "diagram-timeline")]
+    pub(crate) fn timeline(
+        model: merman_model::families::timeline::TimelineDiagramModel,
+        output_data: merman_model::families::timeline::TimelineOutputData,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Timeline(model),
+            context: RenderSemanticContext {
+                timeline_output_data: output_data,
+                ..RenderSemanticContext::default()
+            },
+        }
+    }
+
+    #[cfg(feature = "diagram-packet")]
+    pub(crate) fn packet(
+        model: merman_model::families::packet::PacketDiagramModel,
+        output_data: merman_model::families::packet::PacketOutputData,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Packet(model),
+            context: RenderSemanticContext {
+                packet_output_data: output_data,
+                ..RenderSemanticContext::default()
+            },
+        }
+    }
+
+    #[cfg(feature = "diagram-radar")]
+    pub(crate) fn radar(
+        model: merman_model::families::radar::RadarDiagramModel,
+        output_data: merman_model::families::radar::RadarOutputData,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Radar(model),
+            context: RenderSemanticContext {
+                radar_output_data: output_data,
+                ..RenderSemanticContext::default()
+            },
+        }
+    }
+
     pub(crate) fn model(&self) -> &RenderSemanticModel {
         &self.model
     }
@@ -590,6 +721,8 @@ mod compatibility {
     ///
     /// This trait is sealed because built-in family membership is defined by the pinned Mermaid
     /// catalog. Consumers can use it generically but cannot manufacture a new built-in family.
+    /// Ordinary projections use declared model defaults for separately paired output facts. The
+    /// context-aware method retains those frozen facts when projecting a family-prepared model.
     pub trait BuiltinRenderSemantic: builtin_render_semantic_private::Sealed {
         fn compatibility_json(&self, meta: &PresentationMetadata) -> Result<ManagedSemanticJson>;
 
@@ -603,6 +736,37 @@ mod compatibility {
             control.checkpoint()?;
             Ok(projected)
         }
+
+        /// Projects this model with explicitly paired frozen full-output facts.
+        ///
+        /// The context declares output data; it does not authenticate source admission. Families
+        /// with no separately paired facts retain their ordinary controlled projection.
+        fn compatibility_json_with_context_controlled(
+            &self,
+            meta: &PresentationMetadata,
+            _context: &RenderSemanticContext,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+            self.compatibility_json_controlled(meta, control)
+        }
+    }
+
+    #[cfg(any(
+        feature = "diagram-info",
+        feature = "diagram-pie",
+        feature = "diagram-journey",
+        feature = "diagram-timeline",
+        feature = "diagram-packet",
+        feature = "diagram-radar"
+    ))]
+    fn project_controlled(
+        control: &OperationControl,
+        project: impl FnOnce() -> Result<Value>,
+    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+        control.checkpoint()?;
+        let projected = project().map(ManagedSemanticJson::from);
+        control.checkpoint()?;
+        Ok(projected)
     }
 
     macro_rules! impl_builtin_render_semantic {
@@ -615,6 +779,27 @@ mod compatibility {
                     meta: &PresentationMetadata,
                 ) -> Result<ManagedSemanticJson> {
                     $project(self, meta).map(ManagedSemanticJson::from)
+                }
+            }
+        };
+        ($model:path, $project:path, $output_data:path, $context_getter:ident) => {
+            impl builtin_render_semantic_private::Sealed for $model {}
+
+            impl BuiltinRenderSemantic for $model {
+                fn compatibility_json(
+                    &self,
+                    meta: &PresentationMetadata,
+                ) -> Result<ManagedSemanticJson> {
+                    $project(self, <$output_data>::default(), meta).map(ManagedSemanticJson::from)
+                }
+
+                fn compatibility_json_with_context_controlled(
+                    &self,
+                    meta: &PresentationMetadata,
+                    context: &RenderSemanticContext,
+                    control: &OperationControl,
+                ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+                    project_controlled(control, || $project(self, context.$context_getter(), meta))
                 }
             }
         };
@@ -726,23 +911,31 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-pie")]
     impl_builtin_render_semantic!(
-        crate::diagrams::pie::PieDiagramRenderModel,
-        crate::diagrams::pie::render_model_to_compat_json
+        merman_model::families::pie::PieDiagramModel,
+        crate::diagrams::pie::render_model_to_compat_json,
+        merman_model::families::pie::PieOutputData,
+        pie_output_data
     );
     #[cfg(feature = "diagram-packet")]
     impl_builtin_render_semantic!(
-        crate::diagrams::packet::PacketDiagramRenderModel,
-        crate::diagrams::packet::render_model_to_compat_json
+        merman_model::families::packet::PacketDiagramModel,
+        crate::diagrams::packet::render_model_to_compat_json,
+        merman_model::families::packet::PacketOutputData,
+        packet_output_data
     );
     #[cfg(feature = "diagram-timeline")]
     impl_builtin_render_semantic!(
-        crate::diagrams::timeline::TimelineDiagramRenderModel,
-        crate::diagrams::timeline::render_model_to_compat_json
+        merman_model::families::timeline::TimelineDiagramModel,
+        crate::diagrams::timeline::render_model_to_compat_json,
+        merman_model::families::timeline::TimelineOutputData,
+        timeline_output_data
     );
     #[cfg(feature = "diagram-journey")]
     impl_builtin_render_semantic!(
-        crate::diagrams::journey::JourneyDiagramRenderModel,
-        crate::diagrams::journey::render_model_to_compat_json
+        merman_model::families::journey::JourneyDiagramModel,
+        crate::diagrams::journey::render_model_to_compat_json,
+        merman_model::families::journey::JourneyOutputData,
+        journey_output_data
     );
     #[cfg(feature = "diagram-requirement")]
     impl_builtin_render_semantic!(
@@ -756,13 +949,17 @@ mod compatibility {
     );
     #[cfg(feature = "diagram-radar")]
     impl_builtin_render_semantic!(
-        crate::diagrams::radar::RadarDiagramRenderModel,
-        crate::diagrams::radar::render_model_to_compat_json
+        merman_model::families::radar::RadarDiagramModel,
+        crate::diagrams::radar::render_model_to_compat_json,
+        merman_model::families::radar::RadarOutputData,
+        radar_output_data
     );
     #[cfg(feature = "diagram-info")]
     impl_builtin_render_semantic!(
-        crate::diagrams::info::InfoDiagramRenderModel,
-        crate::diagrams::info::render_model_to_compat_json
+        merman_model::families::info::InfoDiagramModel,
+        crate::diagrams::info::render_model_to_compat_json,
+        merman_model::families::info::InfoOutputData,
+        info_output_data
     );
     #[cfg(feature = "diagram-treemap")]
     impl_builtin_render_semantic_controlled!(
@@ -869,7 +1066,7 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(v) => crate::diagrams::cynefin::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-railroad")]
-            Self::Railroad(v) => v.sanitize_common_db_fields(config),
+            Self::Railroad(v) => crate::diagrams::railroad::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-kanban")]
             Self::Kanban(_) => {}
             #[cfg(feature = "diagram-gantt")]
@@ -877,13 +1074,13 @@ impl RenderSemanticModel {
                 crate::diagrams::gantt::sanitize_common_db_fields(&mut v.model, config)
             }
             #[cfg(feature = "diagram-pie")]
-            Self::Pie(v) => v.sanitize_common_db_fields(config),
+            Self::Pie(v) => crate::diagrams::pie::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-packet")]
-            Self::Packet(v) => v.sanitize_common_db_fields(config),
+            Self::Packet(v) => crate::diagrams::packet::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-timeline")]
-            Self::Timeline(v) => v.sanitize_common_db_fields(config),
+            Self::Timeline(v) => crate::diagrams::timeline::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-journey")]
-            Self::Journey(v) => v.sanitize_common_db_fields(config),
+            Self::Journey(v) => crate::diagrams::journey::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-requirement")]
             Self::Requirement(v) => {
                 crate::diagrams::requirement::sanitize_common_db_fields(v, config)
@@ -891,11 +1088,13 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-sankey")]
             Self::Sankey(_) => {}
             #[cfg(feature = "diagram-radar")]
-            Self::Radar(v) => v.sanitize_common_db_fields(config),
+            Self::Radar(v) => crate::diagrams::radar::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-info")]
             Self::Info(_) => {}
             #[cfg(feature = "diagram-treemap")]
-            Self::Treemap(v) => v.sanitize_common_db_fields(config),
+            Self::Treemap(v) => {
+                crate::diagrams::treemap::sanitize_common_db_fields(&mut v.semantic, config)
+            }
             #[cfg(feature = "diagram-block")]
             Self::Block(_) => {}
             #[cfg(feature = "diagram-er")]
@@ -913,7 +1112,7 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(v) => crate::diagrams::tree_view::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-ishikawa")]
-            Self::Ishikawa(v) => v.sanitize_common_db_fields(config),
+            Self::Ishikawa(v) => crate::diagrams::ishikawa::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(v) => {
                 crate::diagrams::eventmodeling::sanitize_common_db_fields(v, config)
@@ -923,9 +1122,11 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-wardley")]
             Self::Wardley(v) => crate::diagrams::wardley::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-usecase")]
-            Self::Usecase(v) => v.sanitize_common_db_fields(config),
+            Self::Usecase(v) => crate::diagrams::usecase::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow(v) => v.sanitize_common_db_fields(config),
+            Self::Agentflow(v) => {
+                crate::diagrams::agentflow::sanitize_common_db_fields(&mut v.model, config)
+            }
         }
     }
 
@@ -938,7 +1139,11 @@ impl RenderSemanticModel {
         let _ = (line_offset, column_offset);
         #[cfg(feature = "diagram-agentflow")]
         if let Self::Agentflow(model) = self {
-            model.offset_diagnostic_positions(line_offset, column_offset);
+            crate::diagrams::agentflow::offset_diagnostic_positions(
+                &mut model.model,
+                line_offset,
+                column_offset,
+            );
         }
     }
 
@@ -1067,7 +1272,9 @@ impl RenderSemanticModel {
     /// Projects this family-owned typed model into the public compatibility JSON shape.
     ///
     /// Built-in families delegate to their own lossless projector. This never reparses source;
-    /// custom adapters retain their explicitly named JSON boundary.
+    /// custom adapters retain their explicitly named JSON boundary. Output facts held outside this
+    /// value default to their declared model shape. Use `ParsedDiagramRender::compatibility_json`
+    /// to retain the output shape frozen by source construction.
     #[cfg(feature = "compat-json")]
     pub fn compatibility_json(&self, meta: &PresentationMetadata) -> Result<ManagedSemanticJson> {
         let control = OperationControl::new();
@@ -1076,12 +1283,30 @@ impl RenderSemanticModel {
     }
 
     /// Projects the public compatibility JSON while observing the caller's operation control.
+    ///
+    /// Output facts held in a parsed context use their manual defaults here. Parsed consumers use
+    /// `ParsedDiagramRender::compatibility_json_controlled` to retain the paired output shape.
     #[cfg(feature = "compat-json")]
     pub fn compatibility_json_controlled(
         &self,
         meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+        self.compatibility_json_with_context_controlled(
+            meta,
+            &RenderSemanticContext::default(),
+            control,
+        )
+    }
+
+    #[cfg(feature = "compat-json")]
+    fn compatibility_json_with_context_controlled(
+        &self,
+        meta: &PresentationMetadata,
+        context: &RenderSemanticContext,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+        let _ = context;
         let control = control.for_phase(OperationPhase::Semantic);
         control.checkpoint()?;
         let projected = match self {
@@ -1112,21 +1337,33 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-gantt")]
             Self::Gantt(model) => model.compatibility_json_controlled(meta, &control),
             #[cfg(feature = "diagram-pie")]
-            Self::Pie(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Pie(model) => {
+                model.compatibility_json_with_context_controlled(meta, context, &control)
+            }
             #[cfg(feature = "diagram-packet")]
-            Self::Packet(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Packet(model) => {
+                model.compatibility_json_with_context_controlled(meta, context, &control)
+            }
             #[cfg(feature = "diagram-timeline")]
-            Self::Timeline(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Timeline(model) => {
+                model.compatibility_json_with_context_controlled(meta, context, &control)
+            }
             #[cfg(feature = "diagram-journey")]
-            Self::Journey(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Journey(model) => {
+                model.compatibility_json_with_context_controlled(meta, context, &control)
+            }
             #[cfg(feature = "diagram-requirement")]
             Self::Requirement(model) => model.compatibility_json_controlled(meta, &control),
             #[cfg(feature = "diagram-sankey")]
             Self::Sankey(model) => model.compatibility_json_controlled(meta, &control),
             #[cfg(feature = "diagram-radar")]
-            Self::Radar(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Radar(model) => {
+                model.compatibility_json_with_context_controlled(meta, context, &control)
+            }
             #[cfg(feature = "diagram-info")]
-            Self::Info(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Info(model) => {
+                model.compatibility_json_with_context_controlled(meta, context, &control)
+            }
             #[cfg(feature = "diagram-treemap")]
             Self::Treemap(model) => model.compatibility_json_controlled(meta, &control),
             #[cfg(feature = "diagram-block")]
@@ -1328,9 +1565,35 @@ impl ParsedDiagramRender {
     /// Consumes the parsed diagram and returns its canonical metadata/model projection.
     ///
     /// This intentionally omits parser-owned render context. Renderer integrations borrow the
-    /// complete canonical object and its family-specific render-context accessors instead.
+    /// complete canonical object and its family-specific render-context accessors instead. Use the
+    /// parsed compatibility projector when the frozen output shape must be retained.
     pub fn into_parts(self) -> (PresentationMetadata, RenderSemanticModel) {
         (self.meta, self.model)
+    }
+
+    /// Borrows the frozen full-output facts paired with this canonical model.
+    ///
+    /// The context exposes declared data; it does not authenticate source admission.
+    pub fn render_context(&self) -> &RenderSemanticContext {
+        &self.context
+    }
+
+    /// Projects compatibility JSON using this pair's metadata and frozen output facts.
+    #[cfg(feature = "compat-json")]
+    pub fn compatibility_json(&self) -> Result<ManagedSemanticJson> {
+        let control = OperationControl::new();
+        self.compatibility_json_controlled(&control)
+            .expect("a private operation control cannot be cancelled")
+    }
+
+    /// Projects the paired compatibility output while observing the caller's operation control.
+    #[cfg(feature = "compat-json")]
+    pub fn compatibility_json_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+        self.model
+            .compatibility_json_with_context_controlled(&self.meta, &self.context, control)
     }
 
     #[doc(hidden)]
@@ -1547,4 +1810,182 @@ mod registry_clone_tests {
         drop(cloned);
         drop(model);
     }
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-info",
+        feature = "diagram-pie",
+        feature = "diagram-journey",
+        feature = "diagram-timeline",
+        feature = "diagram-packet",
+        feature = "diagram-radar"
+    )
+))]
+mod family_output_tests {
+    use super::*;
+
+    macro_rules! family_output_test {
+        ($name:ident, $diagram_type:literal, $header:literal, $variant:ident,
+         $output_data:path, $accessor:ident, $reset:expr, $count:expr) => {
+            #[test]
+            fn $name() {
+                let engine = crate::MermaidEngine::new();
+                let reset = $reset;
+                let count = $count;
+                let mut empty_canonical = None;
+                for (source, expected_output) in [
+                    ("", <$output_data>::Empty),
+                    ($header, <$output_data>::Model),
+                ] {
+                    reset();
+                    let parsed = engine
+                        .parse_diagram_for_render_model_with_type_sync(
+                            $diagram_type,
+                            source,
+                            crate::ParseOptions::strict(),
+                        )
+                        .unwrap()
+                        .expect("known-type full construction must retain its output facts");
+                    assert_eq!(parsed.render_context().$accessor(), expected_output);
+                    assert_eq!(parsed.clone().render_context().$accessor(), expected_output);
+                    let RenderSemanticModel::$variant(model) = parsed.model() else {
+                        panic!("expected the canonical family payload");
+                    };
+                    let canonical = serde_json::to_value(model).unwrap();
+                    if expected_output == <$output_data>::Empty {
+                        empty_canonical = Some(canonical);
+                    } else {
+                        assert_eq!(empty_canonical.as_ref(), Some(&canonical));
+                    }
+                    assert_eq!(count(), 1);
+                    #[cfg(feature = "compat-json")]
+                    {
+                        let meta = parsed.metadata();
+                        let projected = parsed.compatibility_json().unwrap();
+                        let controlled = parsed
+                            .compatibility_json_controlled(&OperationControl::new())
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(projected, controlled);
+                        let contextual =
+                            BuiltinRenderSemantic::compatibility_json_with_context_controlled(
+                                model,
+                                meta,
+                                parsed.render_context(),
+                                &OperationControl::new(),
+                            )
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(contextual, projected);
+                        assert_eq!(parsed.clone().compatibility_json().unwrap(), projected);
+                        if expected_output == <$output_data>::Empty {
+                            assert_eq!(projected, serde_json::json!({}));
+                        } else {
+                            assert_eq!(projected["type"], $diagram_type);
+                        }
+                        assert_eq!(
+                            BuiltinRenderSemantic::compatibility_json(model, meta).unwrap()["type"],
+                            $diagram_type,
+                        );
+                        assert_eq!(
+                            parsed.model().compatibility_json(meta).unwrap()["type"],
+                            $diagram_type
+                        );
+                        let manual = ParsedDiagramRender::new(meta.clone(), parsed.model().clone());
+                        assert_eq!(manual.render_context().$accessor(), <$output_data>::Model);
+                        assert_eq!(manual.compatibility_json().unwrap()["type"], $diagram_type);
+
+                        let cancelled = OperationControl::new();
+                        cancelled.cancel();
+                        let error = parsed
+                            .compatibility_json_controlled(&cancelled)
+                            .unwrap_err();
+                        assert_eq!(error.phase, OperationPhase::Semantic);
+                        let cancelled_after_projection = OperationControl::new();
+                        cancelled_after_projection.cancel_after_checkpoints(3);
+                        let error = parsed
+                            .compatibility_json_controlled(&cancelled_after_projection)
+                            .unwrap_err();
+                        assert_eq!(error.phase, OperationPhase::Semantic);
+                    }
+                    // All projections and clones consume frozen data without constructing source again.
+                    assert_eq!(count(), 1);
+                }
+            }
+        };
+    }
+
+    #[cfg(feature = "diagram-info")]
+    family_output_test!(
+        info_registry_preserves_paired_output_facts,
+        "info",
+        "info",
+        Info,
+        merman_model::families::info::InfoOutputData,
+        info_output_data,
+        || crate::diagrams::langium_common::reset_family_syntax_construction_count("info"),
+        || crate::diagrams::langium_common::family_syntax_construction_count("info")
+    );
+
+    #[cfg(feature = "diagram-pie")]
+    family_output_test!(
+        pie_registry_preserves_paired_output_facts,
+        "pie",
+        "pie",
+        Pie,
+        merman_model::families::pie::PieOutputData,
+        pie_output_data,
+        || crate::diagrams::langium_common::reset_family_syntax_construction_count("pie"),
+        || crate::diagrams::langium_common::family_syntax_construction_count("pie")
+    );
+
+    #[cfg(feature = "diagram-journey")]
+    family_output_test!(
+        journey_registry_preserves_paired_output_facts,
+        "journey",
+        "journey",
+        Journey,
+        merman_model::families::journey::JourneyOutputData,
+        journey_output_data,
+        crate::diagrams::journey::reset_journey_syntax_construction_count,
+        crate::diagrams::journey::journey_syntax_construction_count
+    );
+
+    #[cfg(feature = "diagram-timeline")]
+    family_output_test!(
+        timeline_registry_preserves_paired_output_facts,
+        "timeline",
+        "timeline",
+        Timeline,
+        merman_model::families::timeline::TimelineOutputData,
+        timeline_output_data,
+        crate::diagrams::timeline::reset_timeline_syntax_construction_count,
+        crate::diagrams::timeline::timeline_syntax_construction_count
+    );
+
+    #[cfg(feature = "diagram-packet")]
+    family_output_test!(
+        packet_registry_preserves_paired_output_facts,
+        "packet",
+        "packet",
+        Packet,
+        merman_model::families::packet::PacketOutputData,
+        packet_output_data,
+        || crate::diagrams::langium_common::reset_family_syntax_construction_count("packet"),
+        || crate::diagrams::langium_common::family_syntax_construction_count("packet")
+    );
+
+    #[cfg(feature = "diagram-radar")]
+    family_output_test!(
+        radar_registry_preserves_paired_output_facts,
+        "radar",
+        "radar-beta",
+        Radar,
+        merman_model::families::radar::RadarOutputData,
+        radar_output_data,
+        || crate::diagrams::langium_common::reset_family_syntax_construction_count("radar"),
+        || crate::diagrams::langium_common::family_syntax_construction_count("radar")
+    );
 }

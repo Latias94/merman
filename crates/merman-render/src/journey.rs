@@ -5,7 +5,7 @@ use crate::model::{
     JourneyTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyTask};
+use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
@@ -131,7 +131,7 @@ fn journey_actor_legend_line_width_px(
 
 #[cfg(test)]
 pub(crate) fn layout_journey_diagram_typed(
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
@@ -143,7 +143,7 @@ pub(crate) fn layout_journey_diagram_typed(
 }
 
 pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     typography: &JourneyTypographyThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
@@ -395,12 +395,12 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
 #[cfg(test)]
 mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+    use merman_model::families::journey::JourneyDiagramModel;
     use serde_json::json;
 
     #[test]
     fn journey_layout_carries_use_max_width_config() {
-        let model = JourneyDiagramRenderModel::default();
+        let model = JourneyDiagramModel::default();
         let measurer = DeterministicTextMeasurer::default();
         let layout = super::layout_journey_diagram_typed(
             &model,

@@ -2,8 +2,8 @@
 //!
 //! Source semantics: Mermaid 12.0.0.
 
-type StateDiagramModel = merman_core::diagrams::state::StateDiagramRenderModel;
-type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
+type StateDiagramModel = merman_model::families::state::StateDiagramRenderModel;
+type StateNode = merman_model::families::state::StateDiagramRenderNode;
 
 mod label;
 pub(crate) use label::{

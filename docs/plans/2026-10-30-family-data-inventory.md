@@ -78,10 +78,10 @@ Typed serde, complete ASCII fallback and Mermaid-compatible JSON are different p
 
 ## Retirement and closeout checklist
 
-- [ ] All 34 canonical payloads have one model-package definition and all core grammar/DB callbacks remain internal to core.
-- [ ] All nine real full-data groups and their pure facts have a final presentation-data owner.
+- [x] All 34 canonical payloads have one model-package definition and all core grammar/DB callbacks remain internal to core.
+- [x] All nine real full-data groups and their pure facts have a presentation-data owner; full metadata/context admission continues in M5.
 - [ ] Full construction preserves irrecoverable projection facts without `compat-json`; independent Render projection and manual-default differences are verified before wrapper deletion.
-- [ ] All fourteen current terminal adapters use shared data; no extra handler is claimed by type availability.
+- [x] All fourteen current terminal adapters use shared data; no extra handler is claimed by type availability.
 - [ ] The six compatibility-only wrappers, old `PacketRenderBlock` name, `core::models`, public core family-model paths and facade glob export are removed after caller migration.
 - [ ] State documents, Class witnesses, Flowchart provenance and Kanban sidecars have explicit construction interfaces with existing bounds.
 - [ ] Source sanitizers/remappers and compatibility routing have no model-to-core edge; shared serializers do not import parser types or core errors.

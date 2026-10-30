@@ -50,7 +50,7 @@ fn valid_property(name: &str, value: &str) -> bool {
         "fill" | "stroke" => {
             value == "none"
                 || ((value.starts_with("rgb(") || value.starts_with("rgba("))
-                    && merman_core::theme_color::ThemeColor::parse(value).is_ok())
+                    && merman_markup::theme_color::ThemeColor::parse(value).is_ok())
         }
         "fill-opacity" | "stroke-opacity" | "opacity" => {
             finite().is_some_and(|value| (0.0..=1.0).contains(&value))

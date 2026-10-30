@@ -1,8 +1,8 @@
 use crate::environment::RenderSession;
 use crate::{Error, LayoutAdaptation, LayoutOptions, RenderCapability, Result};
 use merman_core::OperationPhase;
-use merman_core::diagrams;
 use merman_core::{DiagramFamilyId, ParsedDiagramRender, RenderSemanticModel};
+use merman_model::families as diagrams;
 
 /// Capabilities required by one parsed typed render operation before layout starts.
 ///

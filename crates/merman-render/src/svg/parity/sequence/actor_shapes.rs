@@ -4,7 +4,7 @@ use super::geometry::node_left_top;
 use super::math_label::{record_sequence_katex_terminal_emission, sequence_katex_label};
 use crate::math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE;
 use crate::sequence::{SEQUENCE_GLYPH_BAND_HEIGHT, SequenceActorBands, SequenceMathHeightMode};
-use merman_core::diagrams::sequence::SequenceActor;
+use merman_model::families::sequence::SequenceActor;
 
 pub(super) struct ActorLifelineIdentity<'a> {
     pub(super) actor_id: &'a str,

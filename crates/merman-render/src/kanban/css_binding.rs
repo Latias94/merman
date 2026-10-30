@@ -1,6 +1,6 @@
 use crate::config::{config_bool, config_string};
 use crate::svg::PreparedCommonCss;
-use merman_core::theme_color::{darken, lighten};
+use merman_markup::theme_color::{darken, lighten};
 use serde_json::Value;
 
 use super::KanbanTaskTheme;

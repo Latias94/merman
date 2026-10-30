@@ -5,16 +5,16 @@ use merman_core::{MermaidEngine, ParseOptions};
 mod support;
 
 #[test]
-fn capabilities_follow_compiled_logical_families() {
+fn capabilities_follow_selected_model_families() {
     let capabilities = merman_ascii::ascii_capabilities();
-    let families = merman_core::diagram_family_capabilities();
+    let families = merman_model::family::model_family_capabilities();
     for capability in capabilities {
         assert!(
             families.iter().any(|family| {
-                merman_core::diagram_type_metadata_id(family.logical_family_kind)
+                merman_model::family::diagram_type_metadata_id(family.logical_family_kind)
                     .unwrap_or(family.logical_family_kind)
                     == capability.diagram_type
-                    && family.has_semantic_parser
+                    && family.has_model
             }),
             "unexpected capability row {}",
             capability.diagram_type
@@ -22,9 +22,9 @@ fn capabilities_follow_compiled_logical_families() {
     }
     for family in families
         .iter()
-        .filter(|family| family.has_semantic_parser && family.logical_family_kind != "error")
+        .filter(|family| family.has_model && family.logical_family_kind != "error")
     {
-        let id = merman_core::diagram_type_metadata_id(family.logical_family_kind)
+        let id = merman_model::family::diagram_type_metadata_id(family.logical_family_kind)
             .unwrap_or(family.logical_family_kind);
         assert_eq!(
             capabilities
@@ -65,10 +65,10 @@ fn custom_models_stay_non_renderable_and_cancellation_wins() {
         .unwrap()
         .unwrap();
     let renderer = AsciiRenderer::new(AsciiRenderOptions::default()).unwrap();
-    let context = merman_core::runtime::RuntimePolicy::deterministic()
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .unwrap();
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     assert!(matches!(
         renderer.render_model_report(
             &support::full_model::view(parsed.model()),
@@ -98,7 +98,7 @@ fn custom_models_stay_non_renderable_and_cancellation_wins() {
 fn selected_graph_languages_render_independently() {
     let parser = merman_core::SemanticParser::new();
     let renderer = AsciiRenderer::new(AsciiRenderOptions::default()).unwrap();
-    let context = merman_core::runtime::RuntimePolicy::deterministic()
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .unwrap();
     for (enabled, source, family) in [
@@ -126,7 +126,7 @@ fn selected_graph_languages_render_independently() {
             .render_parsed_report(
                 &parsed,
                 merman_ascii::AsciiViewportPolicy::unrestricted(),
-                &merman_core::OperationControl::new(),
+                &merman_model::OperationControl::new(),
                 &context,
                 AsciiResourcePolicy::default(),
             )
@@ -142,7 +142,7 @@ fn swimlane_report_keeps_logical_family_through_fallback() {
     let parsed = merman_core::SemanticParser::new()
         .parse_diagram_sync("swimlane-beta LR\nA[Start] --> B[Finish]\n")
         .unwrap();
-    let context = merman_core::runtime::RuntimePolicy::deterministic()
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .unwrap();
     let report = AsciiRenderer::default()
@@ -150,7 +150,7 @@ fn swimlane_report_keeps_logical_family_through_fallback() {
             &parsed,
             merman_ascii::AsciiViewportPolicy::with_max_width(4)
                 .overflow(merman_ascii::OverflowPolicy::Fallback),
-            &merman_core::OperationControl::new(),
+            &merman_model::OperationControl::new(),
             &context,
             AsciiResourcePolicy::default(),
         )
@@ -172,7 +172,7 @@ fn git_graph_metadata_and_model_identities_share_one_capability() {
         .unwrap();
     let renderer = AsciiRenderer::default();
     let context = engine.begin_operation().unwrap();
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let resources = AsciiResourcePolicy::default();
     let canonical = merman_core::SemanticParser::new()
         .parse_diagram_sync("gitGraph\ncommit id:\"first\"\n")

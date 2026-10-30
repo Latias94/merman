@@ -1170,11 +1170,11 @@ fn er_entity_source_depth_and_authored_breaks_reach_public_svg_consumers() {
                     panic!("expected typed ER model");
                 };
                 let entity = model.entities.values().next().expect("parsed ER entity");
-                let restored = merman_core::entities::restore_mermaid_entity_spelling(label);
+                let restored = merman_model::text::restore_mermaid_entity_spelling(label);
                 let source_field = if with_attributes {
                     assert_eq!(entity.label, "E");
                     assert_eq!(
-                        merman_core::entities::restore_mermaid_entity_spelling(
+                        merman_model::text::restore_mermaid_entity_spelling(
                             &entity.attributes[0].comment
                         ),
                         restored
@@ -1185,7 +1185,7 @@ fn er_entity_source_depth_and_authored_breaks_reach_public_svg_consumers() {
                     &entity.label
                 };
                 assert_eq!(
-                    merman_core::entities::restore_mermaid_entity_spelling(source_field),
+                    merman_model::text::restore_mermaid_entity_spelling(source_field),
                     restored,
                     "the parser must retain entity depth: {label}"
                 );

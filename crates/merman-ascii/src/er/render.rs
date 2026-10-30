@@ -21,7 +21,7 @@ use crate::safe_text::{
 use crate::text::StyledLine;
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
-use merman_core::diagrams::er::{ErAttribute, ErDiagramModel, ErEntity, ErRelationship};
+use merman_model::families::er::{ErAttribute, ErDiagramModel, ErEntity, ErRelationship};
 use std::collections::{HashMap, hash_map::Entry};
 
 const ER_LEVEL_HORIZONTAL_GAP: usize = 4;
@@ -128,8 +128,8 @@ pub(crate) fn render_er_diagram_with_execution(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    execution.checkpoint(merman_model::OperationPhase::Semantic)?;
+    let transaction = execution.new_resource_context(merman_model::OperationPhase::Semantic);
     transaction.transaction(|_| {
         let result = transaction.transaction_preserving_layout_work(|_| {
             render_er_diagram_impl(model, options, execution)
@@ -149,7 +149,7 @@ fn render_er_diagram_impl(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    let mut resources = execution.new_resource_context(merman_model::OperationPhase::Semantic);
     resources.charge_layout_work(model.direction.len().max(1))?;
     let direction =
         RelationDirection::try_from_model(&model.direction, "er", "unknown ER diagram directions");
@@ -165,19 +165,19 @@ fn render_er_diagram_impl(
         return Ok(String::new());
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    execution.checkpoint(merman_model::OperationPhase::Semantic)?;
     preflight_er_text(model, &mut resources)?;
     charge_er_model_work(model, &mut resources)?;
     let authored_entity_identities = index_unique_er_entity_identities(model, &resources)?;
     let charset = ErCharset::for_options(options);
-    resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
+    resources = execution.resource_context(&resources, merman_model::OperationPhase::Layout);
     let mut deferred_text = DeferredTextRegistry::new();
     let mut boxes = Vec::new();
     boxes
         .try_reserve_exact(model.entities.len())
         .map_err(|_| layout_allocation_failed())?;
     for (authored_identity, entity) in &model.entities {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         boxes.push(render_entity_box(
             authored_identity,
             entity,
@@ -245,7 +245,7 @@ fn render_er_diagram_impl(
         &mut deferred_text,
         execution,
     )?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     Ok(rendered)
 }
 
@@ -303,7 +303,7 @@ fn render_er_components<'model>(
         .try_reserve_exact(relationships.len())
         .map_err(|_| layout_allocation_failed())?;
     for (relationship, label) in relationships.iter().zip(labels) {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         let layout = ErRelationLayout {
             transform: context.direction.transform(),
             relationship,
@@ -1474,8 +1474,8 @@ mod tests {
     use super::*;
     use crate::color::AsciiColorMode;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
     fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
@@ -1517,7 +1517,7 @@ mod tests {
             entity_a: "A".to_string(),
             role_a: "owns".to_string(),
             entity_b: "B".to_string(),
-            rel_spec: merman_core::diagrams::er::ErRelSpec {
+            rel_spec: merman_model::families::er::ErRelSpec {
                 card_a: "ONLY_ONE".to_string(),
                 card_b: "ZERO_OR_MORE".to_string(),
                 rel_type: "IDENTIFYING".to_string(),
@@ -1603,7 +1603,7 @@ mod tests {
                 entity_a: "A".to_string(),
                 role_a: "self<&中".to_string(),
                 entity_b: "A".to_string(),
-                rel_spec: merman_core::diagrams::er::ErRelSpec {
+                rel_spec: merman_model::families::er::ErRelSpec {
                     card_a: "ONLY_ONE".to_string(),
                     card_b: "ZERO_OR_MORE".to_string(),
                     rel_type: "IDENTIFYING".to_string(),
@@ -1613,7 +1613,7 @@ mod tests {
                 entity_a: "A".to_string(),
                 role_a: "linked<&中".to_string(),
                 entity_b: "B".to_string(),
-                rel_spec: merman_core::diagrams::er::ErRelSpec {
+                rel_spec: merman_model::families::er::ErRelSpec {
                     card_a: "ZERO_OR_ONE".to_string(),
                     card_b: "ONE_OR_MORE".to_string(),
                     rel_type: "NON_IDENTIFYING".to_string(),

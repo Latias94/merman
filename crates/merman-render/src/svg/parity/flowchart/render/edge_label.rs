@@ -826,8 +826,8 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 } else {
                     // Preserve the configured div/paragraph composite while making
                     // the filtered paragraph glyph-only.
-                    let color = merman_core::theme_color::ThemeColor::parse(fill)?;
-                    let alpha = color.channel(merman_core::theme_color::ColorChannel::Alpha);
+                    let color = merman_markup::theme_color::ThemeColor::parse(fill)?;
+                    let alpha = color.channel(merman_markup::theme_color::ColorChannel::Alpha);
                     crate::svg::parity::util::css_rgba_fade(fill, 0.5 + 0.5 * alpha)?
                 };
                 let reference = effect.html_reference(out, id);

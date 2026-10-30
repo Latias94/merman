@@ -1629,8 +1629,8 @@ fn layout_allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn reversed_route_preserves_semantic_endpoints() {

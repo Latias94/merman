@@ -8,7 +8,7 @@ use crate::model::{
     Bounds, CynefinDiagramLayout, CynefinDomainLayout, CynefinItemLayout, CynefinTransitionLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::cynefin::CynefinDiagramModel;
+use merman_model::families::cynefin::CynefinDiagramModel;
 
 const DOMAIN_COMPLEX: &str = "complex";
 const DOMAIN_COMPLICATED: &str = "complicated";
@@ -698,13 +698,13 @@ mod tests {
     #[test]
     fn cynefin_layout_caps_confusion_overflow() {
         let model = CynefinDiagramModel {
-            domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
+            domains: vec![merman_model::families::cynefin::CynefinDomainModel {
                 name: DOMAIN_CONFUSION.to_string(),
                 items: vec![
-                    merman_core::diagrams::cynefin::CynefinItemModel { label: "A".into() },
-                    merman_core::diagrams::cynefin::CynefinItemModel { label: "B".into() },
-                    merman_core::diagrams::cynefin::CynefinItemModel { label: "C".into() },
-                    merman_core::diagrams::cynefin::CynefinItemModel { label: "D".into() },
+                    merman_model::families::cynefin::CynefinItemModel { label: "A".into() },
+                    merman_model::families::cynefin::CynefinItemModel { label: "B".into() },
+                    merman_model::families::cynefin::CynefinItemModel { label: "C".into() },
+                    merman_model::families::cynefin::CynefinItemModel { label: "D".into() },
                 ],
             }],
             ..Default::default()
@@ -724,9 +724,9 @@ mod tests {
     #[test]
     fn cynefin_item_width_prefers_a_positive_bbox_over_the_character_fallback() {
         let model = CynefinDiagramModel {
-            domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
+            domains: vec![merman_model::families::cynefin::CynefinDomainModel {
                 name: DOMAIN_COMPLEX.to_string(),
-                items: vec![merman_core::diagrams::cynefin::CynefinItemModel {
+                items: vec![merman_model::families::cynefin::CynefinItemModel {
                     label: "a deliberately long label".into(),
                 }],
             }],
@@ -743,9 +743,9 @@ mod tests {
     fn cynefin_item_width_uses_the_utf16_character_fallback_for_a_zero_bbox() {
         let label = "A\u{1f642}";
         let model = CynefinDiagramModel {
-            domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
+            domains: vec![merman_model::families::cynefin::CynefinDomainModel {
                 name: DOMAIN_COMPLEX.to_string(),
-                items: vec![merman_core::diagrams::cynefin::CynefinItemModel {
+                items: vec![merman_model::families::cynefin::CynefinItemModel {
                     label: label.into(),
                 }],
             }],

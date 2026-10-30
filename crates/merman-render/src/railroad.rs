@@ -7,7 +7,7 @@ use crate::text::{
     TextMeasurer, TextStyle, is_ecmascript_whitespace, trim_ecmascript_whitespace,
     trim_start_ecmascript_whitespace,
 };
-use merman_core::diagrams::railroad::{
+use merman_model::families::railroad::{
     RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRuleModel,
 };
 

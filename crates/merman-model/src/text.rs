@@ -71,3 +71,6 @@ mod html;
 pub use html::*;
 #[cfg(feature = "terminal-text")]
 pub mod terminal;
+
+mod generic;
+pub use generic::{GenericTypesPlan, count_occurrence, parse_generic_types};

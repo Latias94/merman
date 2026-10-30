@@ -10,7 +10,7 @@ use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle,
 use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::diagrams::requirement::{
+use merman_model::families::requirement::{
     RequirementDiagramModel, RequirementElement, RequirementNode,
 };
 use serde_json::Value;
@@ -1279,7 +1279,7 @@ mod tests {
             .expect("valid Requirement model");
             assert_eq!(requirement_layout_work_units(&model), 2);
             model.relationships.push(
-                merman_core::diagrams::requirement::RequirementRelationship {
+                merman_model::families::requirement::RequirementRelationship {
                     rel_type: "satisfies".to_string(),
                     src: element_name.to_string(),
                     dst: requirement_name.to_string(),

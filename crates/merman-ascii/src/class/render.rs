@@ -22,11 +22,11 @@ use crate::safe_text::{
     terminal_text_requires_normalization,
 };
 use crate::text::display_width_with_profile;
-use merman_core::common::GenericTypesPlan;
-use merman_core::models::class_diagram::{
+use merman_model::families::class::{
     ClassInterfaceRenderView, ClassMember, ClassNode, ClassNoteRenderView, ClassRelationRenderView,
     ClassTopologyView,
 };
+use merman_model::text::GenericTypesPlan;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 mod namespace;
@@ -673,8 +673,8 @@ pub(crate) fn render_class_diagram_with_execution(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    execution.checkpoint(merman_model::OperationPhase::Semantic)?;
+    let transaction = execution.new_resource_context(merman_model::OperationPhase::Semantic);
     transaction.transaction(|_| {
         let result = transaction.transaction_preserving_layout_work(|_| {
             render_class_diagram_impl(model, options, execution)
@@ -694,7 +694,7 @@ fn render_class_diagram_impl(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    let mut resources = execution.new_resource_context(merman_model::OperationPhase::Semantic);
     resources.charge_layout_work(model.model().direction.len().max(1))?;
     let direction = RelationDirection::try_from_model(
         &model.model().direction,
@@ -714,8 +714,8 @@ fn render_class_diagram_impl(
     };
     let mut deferred_text = DeferredTextRegistry::new();
     validate_class_namespace_ownership(model, &mut resources)?;
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
+    resources = execution.resource_context(&resources, merman_model::OperationPhase::Layout);
     let endpoint_index = ClassEndpointIndex::new(model, &mut resources)?;
     validate_class_references(model, &endpoint_index, &mut resources)?;
     let relation_labels =
@@ -730,7 +730,7 @@ fn render_class_diagram_impl(
             &mut resources,
             execution,
         )?;
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         return Ok(rendered);
     }
 
@@ -769,7 +769,7 @@ fn render_class_diagram_impl(
         .try_reserve_exact(layout_capacity)
         .map_err(|_| layout_allocation_failed())?;
     for (relation_index, relation) in model.relations().enumerate() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         layouts.push(relation_layout(
             model,
             relation,
@@ -859,7 +859,7 @@ fn render_class_diagram_impl(
         &mut deferred_text,
         execution,
     )?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     Ok(rendered)
 }
 
@@ -952,7 +952,7 @@ fn render_class_boxes<'a>(
         .classes()
         .filter(|(_, class)| !endpoint_index.is_facade(class.node.id.as_str()))
     {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         boxes.push(render_class_box(
             class.node,
             settings.options,
@@ -962,7 +962,7 @@ fn render_class_boxes<'a>(
         )?);
     }
     for interface in model.interfaces() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         boxes.push(render_interface_box(
             interface,
             settings.options,
@@ -972,7 +972,7 @@ fn render_class_boxes<'a>(
         )?);
     }
     for note in model.notes() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         boxes.push(render_note_box(
             note,
             settings.options,
@@ -982,7 +982,7 @@ fn render_class_boxes<'a>(
         )?);
     }
     for (_, namespace) in model.namespaces() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         boxes.push(render_namespace_container_box(
             namespace,
             Vec::new(),
@@ -3133,11 +3133,11 @@ mod tests {
     use crate::color::AsciiColorMode;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagram::RenderSemanticModel;
-    use merman_core::models::class_diagram::{
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::families::class::{
         ClassDiagram, ClassInterface, ClassNote, NamespaceTopologyView,
     };
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::resources::ResourceProfile;
     use std::cell::Cell;
 
     fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
@@ -3271,7 +3271,7 @@ mod tests {
     }
 
     fn render_namespace_identity(id: &str, label: &str) -> String {
-        let namespace = merman_core::models::class_diagram::Namespace {
+        let namespace = merman_model::families::class::Namespace {
             id: id.to_string(),
             label: label.to_string(),
             class_ids: Vec::new(),
@@ -3327,12 +3327,12 @@ mod tests {
             let parsed = merman_core::SemanticParser::new()
                 .parse_diagram_sync(source)
                 .expect("canonical Class fixture should parse");
-            let merman_core::SemanticDiagramModel::Class(model) = &parsed.model else {
+            let merman_model::SemanticDiagramModel::Class(model) = &parsed.model else {
                 panic!("expected a canonical Class model");
             };
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::OperationControl::new();
             let topology_resources = ResourceContext::new(unbounded_policy())
-                .controlled(control.clone(), merman_core::OperationPhase::Semantic);
+                .controlled(control.clone(), merman_model::OperationPhase::Semantic);
             let topology = model
                 .topology_with_admission(&parsed.metadata.semantic_config, &control, |units| {
                     topology_resources.charge_layout_work(units)
@@ -3373,12 +3373,12 @@ mod tests {
                 "classDiagram\nnamespace A.B {\nclass C\n}\nclass note0\nnote for C \"Note\"\n",
             )
             .unwrap();
-        let merman_core::SemanticDiagramModel::Class(model) = &parsed.model else {
+        let merman_model::SemanticDiagramModel::Class(model) = &parsed.model else {
             panic!("expected a canonical Class model");
         };
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let measured = ResourceContext::new(unbounded_policy())
-            .controlled(control.clone(), merman_core::OperationPhase::Semantic);
+            .controlled(control.clone(), merman_model::OperationPhase::Semantic);
         model
             .topology_with_admission(&parsed.metadata.semantic_config, &control, |units| {
                 measured.charge_layout_work(units)
@@ -3390,9 +3390,9 @@ mod tests {
             let policy = unbounded_policy()
                 .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
                 .unwrap();
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::OperationControl::new();
             let resources = ResourceContext::new(policy)
-                .controlled(control.clone(), merman_core::OperationPhase::Semantic);
+                .controlled(control.clone(), merman_model::OperationPhase::Semantic);
             let result = model.topology_with_admission(
                 &parsed.metadata.semantic_config,
                 &control,
@@ -3415,15 +3415,15 @@ mod tests {
         let parsed = merman_core::SemanticParser::new()
             .parse_diagram_sync("classDiagram\nclass C\n")
             .unwrap();
-        let merman_core::SemanticDiagramModel::Class(model) = &parsed.model else {
+        let merman_model::SemanticDiagramModel::Class(model) = &parsed.model else {
             panic!("expected a canonical Class model");
         };
         let policy = unbounded_policy()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let resources = ResourceContext::new(policy)
-            .controlled(control.clone(), merman_core::OperationPhase::Semantic);
+            .controlled(control.clone(), merman_model::OperationPhase::Semantic);
         let first = resources.charge_layout_work(2).unwrap_err();
         control.cancel();
         let replayed = model

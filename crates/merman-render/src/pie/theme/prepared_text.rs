@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::diagrams::pie::PieDiagramRenderModel;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::pie::PieDiagramModel;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -100,7 +100,7 @@ pub(super) struct PiePreparedText {
 
 impl PiePreparedText {
     pub(super) fn new(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         title: Option<&str>,
         config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
@@ -519,7 +519,7 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
-    use merman_core::diagrams::pie::PieSection;
+    use merman_model::families::pie::PieSection;
 
     #[test]
     fn pie_text_visibility_decodes_entities_and_filters_forbidden_xml_scalars() {
@@ -553,7 +553,7 @@ mod tests {
             )
             .unwrap()
             .resolve(DiagramFamilyId::PIE);
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.title = Some("Title".to_owned());
         model.sections = ["#32;\u{1}", "Beta"]
             .map(|label| PieSection {

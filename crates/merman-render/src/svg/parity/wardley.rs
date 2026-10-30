@@ -4,7 +4,7 @@ use crate::wardley::{
     WardleyDominantBaseline, WardleyFontWeight, WardleyLineLayout, WardleyNodeShapeLayout,
     WardleySourceOverlayLayout, WardleyTextAnchor, WardleyTextLayout,
 };
-use merman_core::diagrams::wardley::WardleyDiagramModel;
+use merman_model::families::wardley::WardleyDiagramModel;
 
 fn text_anchor(anchor: WardleyTextAnchor) -> &'static str {
     match anchor {

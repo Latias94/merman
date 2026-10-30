@@ -13,8 +13,8 @@ use crate::relation_graph::{self, RelationGraphBox, RelationGraphBoxStyle, Relat
 use crate::resource::ResourceContext;
 use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_blank};
 use crate::{AsciiError, Result};
-use merman_core::OperationPhase;
-use merman_core::models::class_diagram::{
+use merman_model::OperationPhase;
+use merman_model::families::class::{
     ClassInterfaceRenderView, ClassTopologyView, Namespace, NamespaceTopologyView,
 };
 use std::collections::HashMap;
@@ -1450,9 +1450,9 @@ mod tests {
     use crate::options::AsciiRenderOptions;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::diagram::RenderSemanticModel;
-    use merman_core::models::class_diagram::{ClassDiagram, ClassInterface};
-    use merman_core::resources::ResourceProfile;
     use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::families::class::{ClassDiagram, ClassInterface};
+    use merman_model::resources::ResourceProfile;
 
     fn parsed_class_model(input: &str) -> ClassDiagram {
         let parsed = MermaidEngine::new()
@@ -1572,7 +1572,7 @@ mod tests {
         );
         let model = model.topology_view();
         let unbounded = AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let mut endpoint_resources = ResourceContext::new(unbounded);
         let endpoint_index = ClassEndpointIndex::new(&model, &mut endpoint_resources)
@@ -1763,7 +1763,7 @@ mod tests {
             serde_json::from_value(full).expect("cyclic namespace fixture should deserialize");
         let model = model.topology_view();
         let policy = AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let mut endpoint_resources = ResourceContext::new(policy);
         let endpoint_index = ClassEndpointIndex::new(&model, &mut endpoint_resources)

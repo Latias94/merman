@@ -2329,6 +2329,7 @@ dependencies = [
  "merman-editor-core",
  "merman-export",
  "merman-fixture-render-context",
+ "merman-model",
  "merman-render",
  "merman-theme-authoring-fixtures",
  "merman-theme-contract",
@@ -2370,6 +2371,7 @@ dependencies = [
  "data-encoding",
  "dugong",
  "merman-core",
+ "merman-model",
  "rustc-hash",
  "serde",
  "serde_json",
@@ -2452,21 +2454,18 @@ dependencies = [
  "cssparser",
  "futures",
  "granit-parser",
- "html5ever",
- "htmlize",
  "indexmap",
  "json5",
  "lalrpop-util",
  "merman-fixture-render-context",
+ "merman-markup",
  "merman-model",
  "regex",
  "rustc-hash",
- "ryu-js",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "unicode-general-category",
- "url",
 ]
 
 [[package]]
@@ -2580,6 +2579,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-markup"
+version = "0.9.3"
+dependencies = [
+ "html5ever",
+ "htmlize",
+ "merman-model",
+ "ryu-js",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "merman-model"
 version = "0.9.3"
 dependencies = [
@@ -2616,6 +2627,8 @@ dependencies = [
  "merman-core",
  "merman-fixture-render-context",
  "merman-layout-elk",
+ "merman-markup",
+ "merman-model",
  "merman-theme-contract",
  "merman-unicode-linebreak",
  "pulldown-cmark",

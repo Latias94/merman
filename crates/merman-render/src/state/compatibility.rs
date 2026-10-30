@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use merman_core::diagrams::state::StateDiagramRenderNode;
 use merman_core::presentation::PresentationConfig;
+use merman_model::families::state::StateDiagramRenderNode;
 use serde_json::Value;
 
 use crate::diagram_theme::{ThemeTarget, ThemeTypographyProperty};
@@ -1154,7 +1154,7 @@ fn value_at_dotted_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::state::StateDiagramRenderNode;
+    use merman_model::families::state::StateDiagramRenderNode;
     use serde_json::json;
 
     #[test]

@@ -13,9 +13,9 @@ use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
-#[cfg(test)]
-use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use merman_core::presentation::PresentationConfig;
+#[cfg(test)]
+use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

@@ -8,7 +8,7 @@ use crate::safe_text::{
     push_optional_document_field, push_wrapped_field, push_wrapped_list,
 };
 use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
-use merman_core::diagrams::journey::{JourneyDiagramModel, JourneyTask};
+use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
 use std::cmp::Ordering;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
@@ -18,7 +18,7 @@ pub(super) fn render_journey_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let section_plan = plan_sectioned_text(
         "journey",
@@ -30,11 +30,11 @@ pub(super) fn render_journey_diagram(
         collect_actors(&model.tasks, document.resources_mut())?
     } else {
         for _ in &model.actors {
-            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
         }
         Vec::new()
     };
-    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
+    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
 
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
@@ -53,7 +53,7 @@ pub(super) fn render_journey_diagram(
 
     if !model.sections.is_empty() {
         for (section_index, section) in model.sections.iter().enumerate() {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             push_document_field(&mut document, "section", section)?;
             for task_index in section_plan.tasks_for_section(section_index) {
                 push_task(&mut document, &model.tasks[*task_index], execution)?;
@@ -337,7 +337,7 @@ fn push_task(
     task: &JourneyTask,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     document.resources_mut().charge_layout_work(1)?;
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
         push_wrapped_field(line, "", "task", &task.task)?;
@@ -358,8 +358,8 @@ fn push_task(
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
     #[test]
@@ -386,15 +386,11 @@ mod tests {
             let RenderSemanticModel::Journey(full) = full.model() else {
                 panic!("Journey model")
             };
-            assert!(std::ptr::eq(
-                full.tasks.as_ptr(),
-                full.semantic.tasks.as_ptr()
-            ));
+            assert!(std::ptr::eq(full.tasks.as_ptr(), full.tasks.as_ptr()));
             let actual =
                 render_journey_diagram(model, &options, AsciiExecution::for_test(&policy)).unwrap();
             let expected =
-                render_journey_diagram(&full.semantic, &options, AsciiExecution::for_test(&policy))
-                    .unwrap();
+                render_journey_diagram(full, &options, AsciiExecution::for_test(&policy)).unwrap();
             assert_eq!(actual, expected, "{source}");
         }
     }

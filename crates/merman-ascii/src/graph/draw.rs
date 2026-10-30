@@ -38,7 +38,7 @@ impl<'canvas, 'surface, 'execution> CooperativeSurface<'canvas, 'surface, 'execu
 
     fn checkpoint(&mut self) -> Result<()> {
         self.execution
-            .checkpoint_loop(merman_core::OperationPhase::Emit, self.iteration)?;
+            .checkpoint_loop(merman_model::OperationPhase::Emit, self.iteration)?;
         self.iteration = self.iteration.saturating_add(1);
         Ok(())
     }
@@ -219,11 +219,11 @@ fn render_graph_with_resolved_policy_and_execution_inner(
     }
 
     let mut layout_resources =
-        execution.resource_context(resources, merman_core::OperationPhase::Layout);
+        execution.resource_context(resources, merman_model::OperationPhase::Layout);
     let prepared =
         prepare_graph_render_controlled(graph, &layout_policy, &mut layout_resources, execution)?;
     let mut emit_resources =
-        execution.resource_context(&layout_resources, merman_core::OperationPhase::Emit);
+        execution.resource_context(&layout_resources, merman_model::OperationPhase::Emit);
     paint_graph_render_controlled(prepared, options, &mut emit_resources, execution)
 }
 
@@ -233,11 +233,11 @@ fn prepare_graph_render_controlled(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<PreparedGraphRender> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let charset = GraphCharset::for_policy(layout_policy);
     let graph_layout =
         layout_graph_with_resources_and_execution(graph, layout_policy, resources, execution)?;
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
     let route_scene_plan = routing::prepare_route_scene_with_execution(
         graph,
@@ -263,7 +263,7 @@ fn prepare_graph_render_controlled(
         extent.cells(),
     )?;
     execution.admit_graph_extent(width, height, layout_policy.terminal_width_profile)?;
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let output_transform = OutputTransform::for_direction(graph.direction);
     if !output_transform.is_identity() {
         resources.charge_layout_work(extent.cells())?;
@@ -304,14 +304,14 @@ fn paint_graph_render_controlled(
         resources,
         execution,
     )?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     let mut route_cells = routing::RouteCells::default();
     route_cells
         .try_reserve(route_scene.planned_cell_count())
         .map_err(|_| AsciiError::AllocationFailed {
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     {
         let mut surface = TransformedSurface::new(
             &mut canvas,
@@ -321,22 +321,22 @@ fn paint_graph_render_controlled(
             layout_policy.terminal_width_profile,
         );
         for group_index in &graph_layout.group_background_order {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             if let Some(group) = graph_layout.groups.get(*group_index) {
                 paint_group_background_with_execution(&mut surface, group, execution)?;
             }
         }
         for group in &graph_layout.groups {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             draw_group_frame_with_execution(&mut surface, group, &charset, execution)?;
         }
         for layout in &graph_layout.nodes {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             draw_node_with_execution(&mut surface, layout, &charset, &layout_policy, execution)?;
         }
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     redraw_transformed_node_compartments(
         &mut canvas,
         &graph_layout.nodes,
@@ -359,7 +359,7 @@ fn paint_graph_render_controlled(
         route_scene.paint_routes_with_execution(&mut route_drawing, execution)?;
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     redraw_transformed_node_labels(
         &mut canvas,
         &graph_layout.nodes,
@@ -375,12 +375,12 @@ fn paint_graph_render_controlled(
     )?;
     if output_transform.is_identity() {
         for group in &graph_layout.groups {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             draw_group_title_with_execution(&mut canvas, group, execution)?;
         }
     } else {
         for group in &graph_layout.groups {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             draw_transformed_group_title_with_execution(
                 &mut canvas,
                 group,
@@ -392,7 +392,7 @@ fn paint_graph_render_controlled(
         }
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     canvas.finish_with_options_with_execution(options, execution)
 }
 
@@ -531,7 +531,7 @@ fn paint_background_cells(
     let mut iteration = 0usize;
     for y in top..=bottom {
         for x in left..=right {
-            execution.checkpoint_loop(merman_core::OperationPhase::Emit, iteration)?;
+            execution.checkpoint_loop(merman_model::OperationPhase::Emit, iteration)?;
             canvas.set_background_color(x, y, color);
             iteration += 1;
         }
@@ -1449,7 +1449,7 @@ fn redraw_transformed_node_compartments(
 ) -> Result<()> {
     let mut surface = CooperativeSurface::new(canvas, execution);
     for layout in layouts {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         if layout.shape != GraphNodeShape::StateWithTitle {
             continue;
         }
@@ -1503,7 +1503,7 @@ fn redraw_transformed_node_labels(
 ) -> Result<()> {
     let mut surface = CooperativeSurface::new(canvas, execution);
     for layout in layouts {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         if !node_shape_draws_centered_label(layout.shape) {
             continue;
         }
@@ -1615,8 +1615,8 @@ mod tests {
     use crate::graph::surface::GraphSurface;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::text::display_width_with_profile;
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn canvas_transform_preserves_complete_grapheme_clusters() {

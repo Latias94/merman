@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;
 
-use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
+use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,

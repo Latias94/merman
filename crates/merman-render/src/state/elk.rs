@@ -387,7 +387,7 @@ pub(super) fn layout(
 fn prepare_paint_paths(
     layout: &mut StateDiagramLayout,
     source_nodes: &HashMap<&str, &super::StateNode>,
-    source_edges: &HashMap<&str, &merman_core::diagrams::state::StateDiagramRenderEdge>,
+    source_edges: &HashMap<&str, &merman_model::families::state::StateDiagramRenderEdge>,
     config: &Value,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {

@@ -15,11 +15,11 @@ use merman_layout_elk as elk;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-use merman_core::diagrams::flowchart::{
+use merman_model::families::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
 #[cfg(test)]
-use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
+use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;

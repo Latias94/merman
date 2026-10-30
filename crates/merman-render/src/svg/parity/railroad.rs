@@ -1,6 +1,6 @@
 use super::*;
 use crate::model::RailroadElementLayout;
-use merman_core::diagrams::railroad::RailroadDiagramModel;
+use merman_model::families::railroad::RailroadDiagramModel;
 
 pub(crate) fn render_railroad_diagram_svg_model(
     layout: &RailroadDiagramLayout,

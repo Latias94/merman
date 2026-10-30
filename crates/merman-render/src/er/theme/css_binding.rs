@@ -3,7 +3,7 @@ use crate::config::{
 };
 use crate::family::InheritedFontStackPlan;
 use crate::svg::PreparedCommonCss;
-use merman_core::theme_color::{ColorChannel, ColorError, ThemeColor, rgba};
+use merman_markup::theme_color::{ColorChannel, ColorError, ThemeColor, rgba};
 
 #[derive(Debug)]
 pub(crate) struct ErCssBinding {

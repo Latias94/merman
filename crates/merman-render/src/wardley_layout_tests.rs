@@ -4,7 +4,7 @@ use crate::wardley::{
     WardleyArrowDirection, WardleyFontWeight, WardleyNodeShapeLayout, WardleySourceOverlayLayout,
     layout_wardley_diagram_typed,
 };
-use merman_core::diagrams::wardley::{
+use merman_model::families::wardley::{
     WardleyAccelerator, WardleyAnnotation, WardleyAxes, WardleyDeaccelerator, WardleyDiagramModel,
     WardleyFlowDirection, WardleyLink, WardleyNode, WardleyNote, WardleyPipeline, WardleyPoint,
     WardleySize, WardleySourceStrategy, WardleyTrend,

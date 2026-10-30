@@ -1,7 +1,7 @@
 use crate::Result;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::TextMeasurer;
-use merman_core::diagrams::pie::{PieDiagramRenderModel, PieSection};
+use merman_model::families::pie::{PieDiagramModel, PieSection};
 
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
@@ -13,7 +13,7 @@ pub(crate) use config::{PieConfigView, PieLegendPosition};
 pub(crate) use theme::prepared_text::{PieTextCssEmission, PieTextRole};
 pub(crate) use theme::{PIE_TITLE_CLASS, PieThemePlan, PieThemeReceipt};
 
-fn visible_pie_sections(model: &PieDiagramRenderModel) -> (f64, Vec<&PieSection>) {
+fn visible_pie_sections(model: &PieDiagramModel) -> (f64, Vec<&PieSection>) {
     let total: f64 = model
         .sections
         .iter()
@@ -76,7 +76,7 @@ fn fmt_number(v: f64) -> String {
 
 #[cfg(test)]
 pub(crate) fn layout_pie_diagram_typed(
-    model: &PieDiagramRenderModel,
+    model: &PieDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -92,7 +92,7 @@ pub(crate) fn layout_pie_diagram_typed(
 }
 
 pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
-    model: &PieDiagramRenderModel,
+    model: &PieDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     paint_plan: &PieThemePlan,
@@ -313,7 +313,7 @@ fn pie_fill_for(paint_plan: &PieThemePlan, label: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::diagrams::pie::{PieDiagramRenderModel, PieSection};
+    use merman_model::families::pie::{PieDiagramModel, PieSection};
     use std::sync::Mutex;
 
     #[derive(Default)]
@@ -385,7 +385,7 @@ mod tests {
         }
 
         let title = "TitleTitleTitleTitle";
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.title = Some(title.to_owned());
         model.sections = vec![PieSection {
             label: "Legend".to_owned(),
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn pie_legend_and_title_use_exact_bounding_client_rect_results() {
         let measurer = RecordingBoundingClientRectMeasurer::default();
-        let mut legend_model = PieDiagramRenderModel::default();
+        let mut legend_model = PieDiagramModel::default();
         legend_model.sections = vec![PieSection {
             label: "Legend".to_string(),
             value: 1.0,
@@ -443,7 +443,7 @@ mod tests {
         let legend_max_x = legend_layout.bounds.expect("legend bounds").max_x;
         assert!((legend_max_x - (512.0 + 123.456_789)).abs() < 1e-12);
 
-        let mut title_model = PieDiagramRenderModel::default();
+        let mut title_model = PieDiagramModel::default();
         title_model.title = Some("Title".to_string());
         let title_layout = super::layout_pie_diagram_typed(
             &title_model,
@@ -468,7 +468,7 @@ mod tests {
             serde_json::json!({"pie": {"legendPosition": "top"}}),
         ] {
             let layout = super::layout_pie_diagram_typed(
-                &PieDiagramRenderModel::default(),
+                &PieDiagramModel::default(),
                 None,
                 &config,
                 &measurer,
@@ -488,7 +488,7 @@ mod tests {
         ] {
             let measurer = RecordingBoundingClientRectMeasurer::default();
             let layout = super::layout_pie_diagram_typed(
-                &PieDiagramRenderModel::default(),
+                &PieDiagramModel::default(),
                 Some(title),
                 &serde_json::json!({"pie": {"legendPosition": "top"}}),
                 &measurer,
@@ -512,10 +512,10 @@ mod tests {
             DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
         };
         use crate::resources::RenderResourcePolicy;
-        use merman_core::diagrams::pie::PieSection;
         use merman_core::presentation::PresentationConfig;
+        use merman_model::families::pie::PieSection;
 
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.title = Some("Title".to_string());
         model.sections = ["Legend"]
             .into_iter()
@@ -576,7 +576,7 @@ mod tests {
         };
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.title = Some("Title".to_owned());
         model.sections = vec![PieSection {
             label: "Legend".to_owned(),
