@@ -1,4 +1,4 @@
-use merman_core::time::{CivilDate, CivilDateTime, OffsetDateTime, UtcOffset, Weekday};
+use merman_model::time::{CivilDate, CivilDateTime, OffsetDateTime, UtcOffset, Weekday};
 
 #[test]
 fn civil_dates_support_mermaid_year_boundaries() {

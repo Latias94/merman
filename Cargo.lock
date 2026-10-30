@@ -2451,27 +2451,24 @@ version = "0.9.3"
 dependencies = [
  "cssparser",
  "futures",
- "getrandom 0.4.3",
  "granit-parser",
  "html5ever",
  "htmlize",
  "indexmap",
- "jiff",
  "json5",
  "lalrpop-util",
  "merman-fixture-render-context",
+ "merman-model",
  "regex",
  "rustc-hash",
  "ryu-js",
  "serde",
  "serde_json",
- "sha2",
  "thiserror 2.0.21",
  "unicode-general-category",
  "unicode-segmentation",
  "unicode-width",
  "url",
- "web-time",
 ]
 
 [[package]]
@@ -2582,6 +2579,19 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter",
  "tree-sitter-mermaid",
+]
+
+[[package]]
+name = "merman-model"
+version = "0.9.3"
+dependencies = [
+ "getrandom 0.4.3",
+ "jiff",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "web-time",
 ]
 
 [[package]]

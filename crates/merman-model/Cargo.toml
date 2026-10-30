@@ -1,0 +1,45 @@
+[package]
+name = "merman-model"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Canonical Mermaid data and shared controlled execution contracts."
+documentation = "https://docs.rs/merman-model"
+readme = "README.md"
+keywords = ["mermaid", "diagrams", "model"]
+categories = ["data-structures", "visualization"]
+
+[package.metadata.merman]
+artifact-profile-required = true
+
+[features]
+default = []
+test-support = []
+operation-deadlines = ["dep:web-time"]
+system-clock = []
+system-timezone = [
+    "dep:jiff",
+    "dep:sha2",
+    "jiff/std",
+    "jiff/tz-system",
+    "jiff/tz-fat",
+    "jiff/tzdb-bundle-platform",
+    "jiff/tzdb-zoneinfo",
+    "jiff/tzdb-concatenated",
+    "jiff/perf-inline",
+]
+system-random = ["dep:getrandom", "getrandom/std"]
+system-timing = ["dep:web-time"]
+
+[dependencies]
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
+thiserror.workspace = true
+jiff = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+web-time = { workspace = true, optional = true }

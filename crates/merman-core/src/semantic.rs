@@ -662,8 +662,7 @@ impl SemanticParser {
         let admitted_source = if pre.config.is_empty_object() {
             pre.config.clone()
         } else {
-            self.site_config
-                .source_filtered_overrides(&pre.config, control)?
+            crate::config::source_filtered_overrides(&self.site_config, &pre.config, control)?
         };
         let mut semantic_config = self.site_config.clone();
         if !admitted_source.is_empty_object() {
@@ -688,7 +687,8 @@ impl SemanticParser {
         } else {
             &upstream_defaults
         };
-        let config = source_authority.authored_source_overrides(pre.config, control)?;
+        let config =
+            crate::config::authored_source_overrides(source_authority, pre.config, control)?;
         let title = pre
             .title
             .as_deref()

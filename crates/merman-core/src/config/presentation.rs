@@ -1,10 +1,11 @@
 use super::{
-    MermaidConfig, clone_value_nonrecursive, config_values_equal, drop_value_nonrecursive,
+    MermaidConfig, config_values_equal, drop_value_nonrecursive,
     mirror_legacy_font_family_into_theme_variables_value, replace_value_nonrecursive,
 };
 #[cfg(test)]
 use super::{measure_config_work, record_config_work};
 use crate::{OperationControl, OperationControlResult};
+use merman_model::json::clone_value_nonrecursive;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -443,14 +444,14 @@ impl PresentationConfig {
         let Some((key, parents)) = path.split_last() else {
             if let Some(value) = value {
                 replace_value_nonrecursive(
-                    self.inputs.value_mut(),
+                    self.inputs.as_value_mut(),
                     clone_value_nonrecursive(value),
                 );
             }
             return;
         };
         if let Some(value) = value {
-            let mut parent = self.inputs.value_mut();
+            let mut parent = self.inputs.as_value_mut();
             for segment in parents {
                 if !parent.is_object() {
                     replace_value_nonrecursive(parent, Value::Object(Map::new()));
@@ -474,7 +475,7 @@ impl PresentationConfig {
         } else {
             let parent = parents
                 .iter()
-                .try_fold(self.inputs.value_mut(), |value, segment| {
+                .try_fold(self.inputs.as_value_mut(), |value, segment| {
                     value.as_object_mut()?.get_mut(*segment)
                 });
             if let Some(parent) = parent.and_then(Value::as_object_mut)
@@ -492,19 +493,19 @@ impl PresentationConfig {
     pub fn as_value_mut(&mut self) -> &mut Value {
         self.shadow_theme_compatibility_path("");
         self.record_mutation("", true);
-        self.inputs.value_mut()
+        self.inputs.as_value_mut()
     }
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
         self.shadow_theme_compatibility_path(dotted_path);
         self.record_mutation(dotted_path, true);
-        self.inputs.set_value_raw(dotted_path, value);
+        self.inputs.set_value(dotted_path, value);
     }
 
     pub(crate) fn set_value_explicit(&mut self, dotted_path: &str, value: Value) {
         self.shadow_theme_compatibility_path(dotted_path);
         self.record_mutation(dotted_path, false);
-        self.inputs.set_value_raw(dotted_path, value);
+        self.inputs.set_value(dotted_path, value);
         self.mark_explicit_config_path(dotted_path);
     }
 
@@ -514,7 +515,7 @@ impl PresentationConfig {
         value: Value,
     ) {
         self.record_mutation(dotted_path, false);
-        self.inputs.set_value_raw(dotted_path, value);
+        self.inputs.set_value(dotted_path, value);
     }
 
     pub(crate) fn commit_legacy_theme_variables(&mut self, variables: Map<String, Value>) {
@@ -535,9 +536,10 @@ impl PresentationConfig {
 
     fn deep_merge_with_explicit_ownership(&mut self, other: &Value, explicit: bool) {
         let mut mutation_paths = BTreeSet::new();
-        self.inputs.merge_recording(other, &mut |segments| {
-            mutation_paths.insert(segments.join("."));
-        });
+        self.inputs
+            .merge_with_mutation_observer(other, &mut |segments| {
+                mutation_paths.insert(segments.join("."));
+            });
         for path in mutation_paths {
             self.shadow_theme_compatibility_path(&path);
             self.record_mutation(&path, !explicit);
@@ -548,7 +550,7 @@ impl PresentationConfig {
     }
 
     pub(crate) fn mirror_legacy_font_family(&mut self) {
-        mirror_legacy_font_family_into_theme_variables_value(self.inputs.value_mut());
+        mirror_legacy_font_family_into_theme_variables_value(self.inputs.as_value_mut());
     }
 
     pub(crate) fn seal_detector_mutations(&mut self) {
@@ -600,12 +602,10 @@ impl ThemeParseBinding {
     fn into_tracking_config(self) -> PresentationConfig {
         let ownership = ThemeCompatibilityOwnership::from_config(
             self.clone(),
-            self.compatibility_config.as_ref(),
+            self.compatibility_config.as_value(),
         );
         PresentationConfig {
-            inputs: MermaidConfig {
-                value: self.compatibility_config,
-            },
+            inputs: self.compatibility_config,
             theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
             source_theme_palette: false,
             explicit_config_paths: Arc::new(BTreeSet::new()),
@@ -670,7 +670,7 @@ impl DetectorConfigCheckpoint {
         if !explicit_paths.is_empty() {
             Arc::make_mut(&mut after.explicit_config_paths).extend(explicit_paths.iter().cloned());
         }
-        let values_changed = !Arc::ptr_eq(&self.before.inputs.value, &after.inputs.value)
+        let values_changed = !std::ptr::eq(self.before.inputs.as_value(), after.inputs.as_value())
             && !config_values_equal(self.before.as_value(), after.as_value(), Some(control))?;
         if !values_changed && !transferred_explicit_ownership && explicit_paths.is_empty() {
             return Ok(None);
@@ -865,7 +865,7 @@ pub(crate) enum ThemeParseBindingError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ThemeParseBinding {
     recipe_identity: [u8; 32],
-    compatibility_config: Arc<Value>,
+    compatibility_config: MermaidConfig,
 }
 
 #[doc(hidden)]
@@ -927,7 +927,7 @@ impl ThemeParseBinding {
     ) -> Result<Self, ThemeParseBindingError> {
         Ok(Self {
             recipe_identity,
-            compatibility_config: Arc::new(normalize_theme_compatibility_config(
+            compatibility_config: MermaidConfig::from_value(normalize_theme_compatibility_config(
                 compatibility_config.as_value(),
             )?),
         })
@@ -1398,7 +1398,7 @@ mod tests {
             })),
         )
         .unwrap();
-        let normalized = binding.compatibility_config.as_ref();
+        let normalized = binding.compatibility_config.as_value();
         assert_eq!(normalized["theme"], json!(theme));
         assert_eq!(normalized["darkMode"], json!(true));
         let normalized_variables = normalized["themeVariables"].as_object().unwrap();
@@ -1475,7 +1475,10 @@ mod tests {
         }));
         assert_eq!(working.as_value(), original.as_value());
         assert!(original.has_tracking_theme_compatibility());
-        assert!(Arc::ptr_eq(&working.inputs.value, &original.inputs.value));
+        assert!(std::ptr::eq(
+            working.inputs.as_value(),
+            original.inputs.as_value()
+        ));
         assert_eq!(work.json_cow_copies, 0, "{work:?}");
     }
 
@@ -1507,8 +1510,14 @@ mod tests {
         assert!(framework.config_path_overrides_typed_default("themeVariables.primaryColor"));
         assert_eq!(explicit.mermaid_compatibility_residual_count(), 1);
         assert_eq!(framework.mermaid_compatibility_residual_count(), 2);
-        assert!(Arc::ptr_eq(&explicit.inputs.value, &original.inputs.value));
-        assert!(Arc::ptr_eq(&framework.inputs.value, &original.inputs.value));
+        assert!(std::ptr::eq(
+            explicit.inputs.as_value(),
+            original.inputs.as_value()
+        ));
+        assert!(std::ptr::eq(
+            framework.inputs.as_value(),
+            original.inputs.as_value()
+        ));
         assert_eq!(work.json_cow_copies, 0, "{work:?}");
     }
 
@@ -1527,7 +1536,10 @@ mod tests {
         assert_eq!(working.as_value()["dot.key"], json!(7));
         assert!(working.path_was_mutated_after(&original, ""));
         assert!(working.path_was_mutated_after(&original, "a..b"));
-        assert!(Arc::ptr_eq(&working.inputs.value, &original.inputs.value));
+        assert!(std::ptr::eq(
+            working.inputs.as_value(),
+            original.inputs.as_value()
+        ));
         assert_eq!(work.json_cow_copies, 0, "{work:?}");
 
         for root in [json!(3), json!({"a": null}), json!({"a": [1]})] {

@@ -350,7 +350,7 @@ mod system_timezone_tests {
     #[test]
     fn deterministic_resolver_construction_uses_bounded_stack() {
         let handle = std::thread::Builder::new()
-            .name("merman-core-deterministic-time-zone-small-stack".to_string())
+            .name("merman-model-deterministic-time-zone-small-stack".to_string())
             .stack_size(256 * 1024)
             .spawn(|| std::hint::black_box(LocalTimeZone::utc()))
             .expect("spawn deterministic time-zone construction test");

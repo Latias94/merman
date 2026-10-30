@@ -777,6 +777,31 @@
       }
     },
     {
+      "id": "rust-model",
+      "description": "Shared Mermaid values and execution contracts without a source parser or output backend.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-model",
+        "manifest": "crates/merman-model/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": [],
+        "target": {
+          "name": "merman_model",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "diagram_families": [],
+        "capabilities": [],
+        "runtime_ids": [],
+        "outputs": []
+      }
+    },
+    {
       "id": "rust-native-sdk",
       "description": "Full native SDK facade build for binding owners.",
       "semantic_target": "native",

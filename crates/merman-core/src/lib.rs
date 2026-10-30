@@ -99,7 +99,7 @@ mod theme;
 #[cfg(feature = "presentation")]
 pub mod theme_color;
 mod theme_id;
-pub mod time;
+pub use merman_model::time;
 pub mod utils;
 mod yaml_config;
 

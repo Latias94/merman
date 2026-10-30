@@ -1,4 +1,4 @@
-use crate::json_value::{
+use crate::json::{
     clone_value_nonrecursive, clone_value_nonrecursive_with_control, drop_value_nonrecursive,
 };
 use crate::{OperationControl, OperationControlResult};
@@ -30,8 +30,8 @@ impl ManagedJson {
         &self.value
     }
 
-    #[cfg(any(feature = "presentation", feature = "diagram-zenuml"))]
-    pub(crate) fn as_value_mut(&mut self) -> &mut Value {
+    /// Mutates the unmanaged payload; callers retain responsibility for value admission.
+    pub fn as_value_mut(&mut self) -> &mut Value {
         &mut self.value
     }
 

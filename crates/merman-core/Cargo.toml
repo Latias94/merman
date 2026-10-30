@@ -95,24 +95,15 @@ diagram-zenuml = ["dep:unicode-general-category", "dep:indexmap"]
 # Configuration, sanitization, detection, and family identity remain unconditional.
 # Parsers and typed models are selected independently from explicit system adapters.
 default = []
-operation-deadlines = ["dep:web-time"]
-test-support = []
-system-clock = []
-system-timezone = [
-    "dep:jiff",
-    "dep:sha2",
-    "jiff/std",
-    "jiff/tz-system",
-    "jiff/tz-fat",
-    "jiff/tzdb-bundle-platform",
-    "jiff/tzdb-zoneinfo",
-    "jiff/tzdb-concatenated",
-    "jiff/perf-inline",
-]
-system-random = ["dep:getrandom", "getrandom/std"]
-system-timing = ["dep:web-time"]
+operation-deadlines = ["merman-model/operation-deadlines"]
+test-support = ["merman-model/test-support"]
+system-clock = ["merman-model/system-clock"]
+system-timezone = ["merman-model/system-timezone"]
+system-random = ["merman-model/system-random"]
+system-timing = ["merman-model/system-timing"]
 
 [dependencies]
+merman-model.workspace = true
 cssparser.workspace = true
 htmlize.workspace = true
 indexmap = { workspace = true, features = ["serde"], optional = true }
@@ -127,14 +118,11 @@ unicode-segmentation = { workspace = true, optional = true }
 unicode-width = { workspace = true, optional = true }
 html5ever.workspace = true
 url.workspace = true
-jiff = { workspace = true, optional = true }
-getrandom = { workspace = true, optional = true }
 ryu-js = { workspace = true, optional = true }
 rustc-hash = { workspace = true, optional = true }
-sha2 = { workspace = true, optional = true }
-web-time = { workspace = true, optional = true }
 
 [dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }
 futures = { workspace = true, features = ["executor"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true

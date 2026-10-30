@@ -117,9 +117,11 @@ impl OperationConfigBuilder {
         let source = if overrides.is_empty_object() {
             overrides.clone()
         } else {
-            let source = effective
-                .as_config()
-                .source_filtered_overrides(overrides, control)?;
+            let source = crate::config::source_filtered_overrides(
+                effective.as_config(),
+                overrides,
+                control,
+            )?;
             effective.deep_merge_explicit(source.as_value());
             source
         };
@@ -1060,7 +1062,8 @@ impl<'a> ParsePipeline<'a> {
         } else {
             &upstream_defaults
         };
-        let source_config = authored_authority.authored_source_overrides(pre.config, control)?;
+        let source_config =
+            crate::config::authored_source_overrides(authored_authority, pre.config, control)?;
         let effective_config = match config.finalize(self.engine, &diagram_type, control)? {
             Ok(config) => config,
             Err(error) => return Ok(Err(error)),
