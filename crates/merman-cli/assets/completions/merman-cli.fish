@@ -144,9 +144,9 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-t
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-file -d 'Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-measurement -d 'Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied' -r -f -a "deterministic\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-measurement -d 'Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout' -r -f -a "deterministic\t''
 native\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
 on\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
@@ -158,9 +158,13 @@ ayu-light\t'[alpha] Ayu Light'
 ayu-dark\t'[alpha] Ayu Dark'
 brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
-cyberpunk\t'[alpha] Cyberpunk'"
+cyberpunk\t'[alpha] Cyberpunk'
+ghibli\t'[alpha] Ghibli'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-portability -d 'Renderer portability requirement; require-portable rejects nonportable target output' -r -f -a "best-effort\t''
+require-portable\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-report -d 'Write versioned theme results to a separate JSON file, including render failures' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -262,9 +266,9 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-to
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-file -d 'Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-measurement -d 'Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied' -r -f -a "deterministic\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-measurement -d 'Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout' -r -f -a "deterministic\t''
 native\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
 on\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
@@ -276,9 +280,13 @@ ayu-light\t'[alpha] Ayu Light'
 ayu-dark\t'[alpha] Ayu Dark'
 brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
-cyberpunk\t'[alpha] Cyberpunk'"
+cyberpunk\t'[alpha] Cyberpunk'
+ghibli\t'[alpha] Ghibli'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-portability -d 'Renderer portability requirement; require-portable rejects nonportable target output' -r -f -a "best-effort\t''
+require-portable\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-report -d 'Write versioned theme results to a separate JSON file, including render failures' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -432,9 +440,9 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-tod
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-file -d 'Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-measurement -d 'Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied' -r -f -a "deterministic\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-measurement -d 'Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout' -r -f -a "deterministic\t''
 native\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
 on\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''

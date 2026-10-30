@@ -8,7 +8,7 @@ import {
   DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useAppStore, type UITheme } from "@/src/store";
+import { selectRenderInputSnapshot, useAppStore, type UITheme } from "@/src/store";
 import { DIAGRAM_FONT_VALUES, isDiagramFont } from "@/src/lib/diagram-font";
 import { isMermanSvgPipeline, MERMAN_SVG_PIPELINES } from "@/src/runtime/merman-core";
 import { selectCurrentMermanRenderTime, useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
@@ -24,7 +24,7 @@ const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
 export function ToolbarControls() {
   const { t } = useTranslation();
   const state = useAppStore(useShallow((current) => ({
-    diagramFont: current.diagramFont, setDiagramFont: current.setDiagramFont,
+    diagramFont: selectRenderInputSnapshot(current).diagramFont,
     textMeasurementMode: current.textMeasurementMode, setTextMeasurementMode: current.setTextMeasurementMode,
     svgPipeline: current.svgPipeline, setSvgPipeline: current.setSvgPipeline,
     uiTheme: current.uiTheme, setUITheme: current.setUITheme,
@@ -71,7 +71,12 @@ export function ToolbarControls() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="max-h-[80dvh] overflow-y-auto">
           <DropdownMenuLabel>{t("toolbar.font")}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={state.diagramFont} onValueChange={(value) => state.setDiagramFont(isDiagramFont(value) ? value : "trebuchet")}>
+          <DropdownMenuRadioGroup value={state.diagramFont} onValueChange={(value) => {
+            if (!isDiagramFont(value)) return;
+            const store = useAppStore.getState();
+            if (store.themeEditSession) store.previewThemeSettings({ diagramFont: value });
+            else store.setDiagramFont(value);
+          }}>
             {DIAGRAM_FONT_VALUES.map((font) => <DropdownMenuRadioItem key={font} value={font}>{t(`diagramFonts.${font}`)}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />

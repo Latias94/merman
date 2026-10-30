@@ -5,6 +5,26 @@ use merman_theme_contract::{
     ThemeSupportOutputV1, ThemeSupportQueryV1,
 };
 
+#[cfg(feature = "all-diagrams")]
+#[test]
+fn shared_support_vectors_match_renderer_projection() {
+    let vectors: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
+    ))
+    .expect("shared support vectors are valid JSON");
+    assert!(
+        !vectors.is_empty(),
+        "shared support vectors must not be empty"
+    );
+    for vector in vectors {
+        let query: ThemeSupportQueryV1 =
+            serde_json::from_value(vector["query"].clone()).expect("shared support query is valid");
+        let actual = serde_json::to_value(describe_theme_support(&query))
+            .expect("support descriptor serializes");
+        assert_eq!(actual, vector["expected"], "{}", vector["id"]);
+    }
+}
+
 #[test]
 fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
     let query: ThemeSupportQueryV1 = serde_json::from_str(
@@ -41,6 +61,50 @@ fn known_target_outside_the_family_semantics_is_not_applicable() {
         support.reason_ids(),
         ["theme-support.target-not-applicable-to-family"]
     );
+}
+
+#[test]
+fn pie_discovery_matches_its_static_text_role_consumers() {
+    for target in [ThemeTarget::Title, ThemeTarget::Text, ThemeTarget::Legend] {
+        for facet in [
+            ThemeRuleFacetV1::Fill,
+            ThemeRuleFacetV1::FontSize,
+            ThemeRuleFacetV1::FontWeight,
+            ThemeRuleFacetV1::FontStyle,
+        ] {
+            let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
+                DiagramFamilyId::PIE.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                target.id(),
+                facet,
+            ));
+            assert_eq!(
+                support.state(),
+                ThemeSupportStateV1::Conditional,
+                "{target:?}/{facet:?}"
+            );
+        }
+        for facet in [ThemeRuleFacetV1::FontStack, ThemeRuleFacetV1::LineHeight] {
+            let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
+                DiagramFamilyId::PIE.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                target.id(),
+                facet,
+            ));
+            assert_eq!(
+                support.state(),
+                ThemeSupportStateV1::Unsupported,
+                "{target:?}/{facet:?}"
+            );
+        }
+    }
+    let slice_size = describe_theme_support(&ThemeSupportQueryV1::for_target(
+        DiagramFamilyId::PIE.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::PieSlice.id(),
+        ThemeRuleFacetV1::FontSize,
+    ));
+    assert_eq!(slice_size.state(), ThemeSupportStateV1::Unsupported);
 }
 
 #[test]
@@ -1073,8 +1137,11 @@ fn subject_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule
         (
             DiagramFamilyId::PIE,
             ThemeSupportBaseTypographyPropertyV1::FontSize,
-            ThemeSupportStateV1::Unsupported,
-            &["theme-support.no-supported-route"][..],
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
         ),
         (
             DiagramFamilyId::REQUIREMENT,

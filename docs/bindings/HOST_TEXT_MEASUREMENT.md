@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-10-28
+Last updated: 2026-10-29
 
 This guide owns display-stack integration, callback result semantics, and measurement lifecycle
 guidance. The [text-measurement descriptor](../../contracts/abi/text-measurement-v1.json) owns
@@ -12,11 +12,41 @@ caller-memory rules.
 
 ## Native CLI And Library Policy
 
-The default CLI graphical path now resolves system fonts before layout; explicit
-font files provide a closed, reproducible alternative. This product default does
-not change `SvgEnvironment::deterministic()` or authorize discovery in bindings.
-FFI, UniFFI, and WASM retain their host-independent defaults and callback conflict
-rules. The runtime clock/random policy is not a font-discovery permission.
+The current-source CLI uses two output defaults for Mermaid input. SVG keeps
+deterministic, font-agnostic measurement without system discovery. PNG/JPEG/PDF
+automatically use a native font context when the CLI `system-fonts` capability is
+compiled: bounded system discovery runs before layout, and measurement and painting
+share the selected context. These encoded-output defaults are unreleased; installed
+versions retain their published contract. Layout, wrapping, and image/PDF snapshots
+can change with the selected host fonts.
+
+Supply explicit `--font-file` / `--font-dir` sources for native measurement with
+fixed font assets. They form a closed set unless `--font-system on` is also
+selected. For Mermaid SVG, `--font-measurement native` without sources opts into
+system discovery when available. For encoded output,
+`--font-measurement deterministic` without font sources retains the previous
+layout estimates and native painting; painting can still discover system fonts.
+Custom `--css-file` and `themeCSS` remain rejected with native measurement. Select
+deterministic measurement explicitly to retain their previous admitted CSS behavior.
+A native route with no usable fonts must fail rather than silently report native
+success using deterministic estimates. Individual unsupported probes and missing
+glyphs keep their per-request fallback. Minimal builds without the CLI
+`system-fonts` capability retain deterministic encoded-output defaults and need
+explicit fonts for native measurement.
+
+SVG does not embed the selected fonts; another viewer can resolve them differently.
+Raw SVG conversion is painting-only and does not relayout its geometry.
+`SvgEnvironment::deterministic()`, Rust library defaults, FFI, UniFFI, and WASM
+retain their host-independent defaults and callback conflict rules. ASCII and
+committed Rustdoc generation defaults are also unchanged. The runtime clock/random
+policy does not select the font policy.
+
+CLI discovery remains on capabilities schema 2 / CLI contract 6. Its
+`native_fonts.default_policy_scope` is `mermaid-svg-input`, with the existing
+`default_*` values describing deterministic SVG measurement. The additive
+`encoded_output_defaults` object describes encoded Mermaid output separately;
+see the [CLI capability contract](../../crates/merman-cli/README.md#choose-a-build).
+This runtime-default change does not alter the text-measurement protocol or any ABI.
 
 Rust hosts can supply a `NativeFontContext` to the facade. Each facade render gets
 an operation-local measurement cache and failure state; the selected context remains
@@ -79,8 +109,9 @@ need a small dependency footprint, reproducible headless output, or CI-friendly 
 
 Merman uses a layered strategy instead of pretending there is one universal font measurement answer:
 
-1. The default renderer uses a deterministic, font-agnostic approximation based on stable
-   character classes, Unicode display width, spacing, line height, and width-based wrapping. This
+1. The default library renderer and CLI Mermaid SVG path use a deterministic, font-agnostic
+   approximation based on stable character classes, Unicode display width, spacing, line height,
+   and width-based wrapping. This
    keeps explicit deterministic rendering, CI, and server-side batch rendering dependency-light and
    reproducible without claiming to measure a named font.
 2. Flowchart HTML labels are made non-clipping by default so small browser/font differences are less

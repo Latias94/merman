@@ -138,6 +138,10 @@ pub(crate) fn execute(
     } = prepared;
     crate::operation::checkpoint(&control, merman::OperationPhase::Admission)?;
     let resources = common.resources;
+    let theme_report_path = common.render.theme_report.clone();
+    let theme_report = theme_report_path
+        .as_ref()
+        .map(|_| crate::render::theme_feedback::BatchThemeReport::default());
     let charts = scan_charts(dialect.scanner(), &source, &resources)?;
     crate::operation::checkpoint(&control, merman::OperationPhase::Semantic)?;
     let mut requested = RequestedLayout::resolve(
@@ -241,6 +245,7 @@ pub(crate) fn execute(
                 &control,
                 &staged_bytes,
                 &context.stderr,
+                theme_report.as_ref(),
                 #[cfg(feature = "parallel-markdown")]
                 jobs,
             );
@@ -248,6 +253,24 @@ pub(crate) fn execute(
         }
         None => Ok(Vec::new()),
     };
+    if let Some(path) = &theme_report_path {
+        let report = theme_report.expect("theme report requested").encode();
+        let publication = report.and_then(|bytes| {
+            context
+                .publication
+                .publish_file_controlled(path, &bytes, &publications, &control)
+        });
+        if let Err(error) = publication {
+            drop(manifest_slot);
+            drop(document_slot);
+            if let Err(render_error) = images {
+                crate::diagnostics::DiagnosticSink::new(false, &context.stderr)
+                    .info(format!("theme report failed: {error}"));
+                return abort_staging(context, staging, render_error);
+            }
+            return abort_staging(context, staging, error);
+        }
+    }
     let images = match images {
         Ok(images) => images,
         Err(error) => {

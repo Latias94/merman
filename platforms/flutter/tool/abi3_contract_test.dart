@@ -18,6 +18,7 @@ void main() {
   rejectsMalformedThemePresetMaturity();
   preservesScopedPresetQualification();
   preservesPresetFamilyDesigns();
+  preservesPresetDiscoveryGuidance();
   matchesThePubPackageVersionProjection();
   acceptsSvgCatalogWithOptionalNativeFonts();
   rejectsInconsistentNativeFontServices();
@@ -704,9 +705,45 @@ void preservesPresetFamilyDesigns() {
         '${preset.id}: design metadata must match the shared catalog fixture',
       );
     }
+    _expect(
+      jsonEncode(preset.previewColors) == jsonEncode(json['preview_colors']),
+      '${preset.id}: preview colors must match the shared catalog fixture',
+    );
+    final notes = json['application_notes'] as List;
+    _expect(
+      preset.applicationNotes.length == notes.length,
+      '${preset.id}: application notes must preserve every entry',
+    );
+    for (var index = 0; index < notes.length; index += 1) {
+      final actual = preset.applicationNotes[index];
+      _expect(
+        actual.id == notes[index]['id'] &&
+            actual.familyId == notes[index]['family_id'] &&
+            actual.message == notes[index]['message'] &&
+            jsonEncode(actual.recommendedConfig) ==
+                jsonEncode(notes[index]['recommended_config']),
+        '${preset.id}: application notes must match the shared catalog fixture',
+      );
+    }
+    _expect(
+      preset.maturity == 'alpha' && preset.qualifiedCells.isEmpty,
+      '${preset.id}: discovery guidance must not grant qualification',
+    );
   }
+  final ghibli = MermanThemePreset.fromJson(
+    Map<String, Object?>.from(
+      vectors.singleWhere((entry) => entry['id'] == 'ghibli') as Map,
+    ),
+  );
+  _expect(
+    ghibli.displayName == 'Ghibli' &&
+        ghibli.familyDesigns.single.familyId == 'pie' &&
+        ghibli.familyDesigns.single.treatment == 'dedicated',
+    'Ghibli discovery must advertise only its dedicated Pie design',
+  );
 
   final source = Map<String, Object?>.from(vectors.first as Map);
+
   final missing = Map<String, Object?>.from(source)..remove('family_designs');
   final legacy = MermanThemePreset.fromJson(missing);
   _expect(
@@ -773,6 +810,191 @@ void preservesPresetFamilyDesigns() {
             MermanThemePresetFamilyDesign.fromJson({...valid, field: invalid}),
       );
     }
+  }
+}
+
+void preservesPresetDiscoveryGuidance() {
+  const source = <String, Object?>{
+    'id': 'future-preset',
+    'display_name': 'Future Preset',
+    'appearance': 'light',
+    'maturity': 'alpha',
+    'available': true,
+    'availability_reason_ids': <String>[],
+    'qualified_cells': <Object?>[],
+    'license_expression': 'MIT OR Apache-2.0',
+    'required_attribution': null,
+    'export_kind': 'design',
+  };
+  const note = <String, Object?>{
+    'id': 'future-guidance',
+    'family_id': 'future-family',
+    'message': 'Review these settings before applying them.',
+    'recommended_config': null,
+  };
+  final legacy = MermanThemePreset.fromJson(source);
+  final empty = MermanThemePreset.fromJson({
+    ...source,
+    'preview_colors': <String>[],
+    'application_notes': <Object?>[],
+  });
+  _expect(
+    legacy.previewColors.isEmpty &&
+        legacy.applicationNotes.isEmpty &&
+        empty.previewColors.isEmpty &&
+        empty.applicationNotes.isEmpty,
+    'missing additive metadata and explicit empty arrays must normalize to empty',
+  );
+  _expectThrows<UnsupportedError>(() => legacy.previewColors.clear());
+  _expectThrows<UnsupportedError>(() => legacy.applicationNotes.clear());
+
+  final colors = ['#fedcba', '#123456', '#fedcba'];
+  final choice = <String, Object?>{
+    'enabled': true,
+    'weight': 1.5,
+    'fallback': null,
+  };
+  final choices = <Object?>['one', choice];
+  final config = <String, Object?>{
+    'look': 'classic',
+    'future': <String, Object?>{'choices': choices},
+  };
+  final notes = <Object?>[
+    {
+      ...note,
+      'id': 'z-future-note',
+      'recommended_config': config,
+      'future_field': 1,
+    },
+    {...note, 'id': 'a-future-note'},
+  ];
+  final parsed = MermanThemePreset.fromJson({
+    ...source,
+    'preview_colors': colors,
+    'application_notes': notes,
+  });
+  _expect(
+    jsonEncode(parsed.previewColors) == jsonEncode(colors) &&
+        parsed.applicationNotes.first.id == 'z-future-note' &&
+        parsed.applicationNotes.first.familyId == 'future-family' &&
+        parsed.applicationNotes.first.message == note['message'] &&
+        parsed.applicationNotes.last.id == 'a-future-note' &&
+        parsed.applicationNotes.last.recommendedConfig == null &&
+        jsonEncode(parsed.applicationNotes.first.recommendedConfig) ==
+            jsonEncode(config) &&
+        parsed.familyDesigns.isEmpty &&
+        parsed.available &&
+        parsed.qualifiedCells.isEmpty,
+    'preserve curated order and future IDs without inventing design or qualification',
+  );
+  colors.clear();
+  notes.clear();
+  choice['enabled'] = false;
+  choices.clear();
+  config.clear();
+  final copiedConfig = parsed.applicationNotes.first.recommendedConfig!;
+  final copiedFuture = copiedConfig['future'] as Map;
+  final copiedChoices = copiedFuture['choices'] as List;
+  _expect(
+    parsed.previewColors.length == 3 &&
+        parsed.applicationNotes.length == 2 &&
+        (copiedChoices[1] as Map)['enabled'] == true,
+    'discovery collections and nested config must not retain mutable input',
+  );
+  _expectThrows<UnsupportedError>(() => parsed.previewColors.clear());
+  _expectThrows<UnsupportedError>(() => parsed.applicationNotes.clear());
+  _expectThrows<UnsupportedError>(() => copiedConfig.clear());
+  _expectThrows<UnsupportedError>(() => copiedFuture.clear());
+  _expectThrows<UnsupportedError>(() => copiedChoices.clear());
+  _expectThrows<UnsupportedError>(() => (copiedChoices[1] as Map).clear());
+
+  final withoutConfig = Map<String, Object?>.from(note)
+    ..remove('recommended_config');
+  _expect(
+    MermanThemePresetApplicationNote.fromJson(
+              withoutConfig,
+            ).recommendedConfig ==
+            null &&
+        MermanThemePresetApplicationNote.fromJson({
+          ...note,
+          'recommended_config': <String, Object?>{},
+        }).recommendedConfig!.isEmpty,
+    'notes may omit recommendations or provide an empty object',
+  );
+  for (final invalid in <Object?>[
+    null,
+    1,
+    {},
+    '#123456',
+    [null],
+    [1],
+    [{}],
+    [[]],
+    [''],
+  ]) {
+    _expectContractFailure(
+      () => MermanThemePreset.fromJson({...source, 'preview_colors': invalid}),
+    );
+  }
+  for (final invalid in <Object?>[
+    null,
+    1,
+    {},
+    'note',
+    [null],
+    [1],
+    [[]],
+    [{}],
+  ]) {
+    _expectContractFailure(
+      () =>
+          MermanThemePreset.fromJson({...source, 'application_notes': invalid}),
+    );
+  }
+  for (final field in ['id', 'family_id', 'message']) {
+    final missing = Map<String, Object?>.from(note)..remove(field);
+    _expectContractFailure(
+      () => MermanThemePresetApplicationNote.fromJson(missing),
+    );
+    for (final invalid in <Object?>[
+      null,
+      1,
+      '',
+      {},
+      [],
+      if (field != 'message') 'Invalid Value',
+      if (field != 'message') 'future_id',
+    ]) {
+      _expectContractFailure(
+        () => MermanThemePresetApplicationNote.fromJson({
+          ...note,
+          field: invalid,
+        }),
+      );
+    }
+  }
+  for (final invalid in <Object?>[
+    [],
+    ['classic'],
+    'classic',
+    1,
+    false,
+    {1: 'non-string-key'},
+    {'nested': Object()},
+    {'nested': double.nan},
+    {'nested': double.infinity},
+    {
+      'nested': [Object()],
+    },
+  ]) {
+    _expectContractFailure(
+      () => MermanThemePreset.fromJson({
+        ...source,
+        'application_notes': [
+          {...note, 'recommended_config': invalid},
+        ],
+      }),
+    );
   }
 }
 

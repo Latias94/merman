@@ -125,7 +125,7 @@ for (const theme of SUPPORTED_THEMES) {
     expect(paints[0], theme).not.toBeNull();
     expect(paints[0], theme).toEqual(paints[1]);
     await page.getByRole("button", { name: "Theme", exact: true }).click();
-    await expect(page.getByLabel("Mermaid theme", { exact: true })).toHaveValue(theme);
+    await expect(page.getByLabel("Mermaid base theme", { exact: true })).toHaveValue(theme);
     errors.assertNone();
   });
 }

@@ -153,7 +153,7 @@ test("grants the additional decompression budget only to s3", () => {
 
 test("keeps the complete v2 defaults immutable and independent from caller defaults", () => {
   assert.equal(Object.isFrozen(WORKSPACE_V2_DEFAULTS), true);
-  assert.deepEqual(WORKSPACE_V2_DEFAULTS, DEFAULT_WORKSPACE_SNAPSHOT);
+  assert.deepEqual(WORKSPACE_V2_DEFAULTS, { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramFont: "trebuchet" });
 
   const callerDefaults = {
     ...DEFAULT_WORKSPACE_SNAPSHOT,
@@ -208,10 +208,28 @@ test("uses present current fields and defaults omitted optional fields", () => {
     ),
     {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
+      diagramFont: "trebuchet",
       code: "flowchart TD\nA",
       themePresetId: "future-theme",
     },
   );
+});
+
+test("new inherited fonts are explicit while historical links keep Trebuchet", () => {
+  for (const snapshot of [
+    { ...DEFAULT_WORKSPACE_SNAPSHOT },
+    { ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: CUSTOM_THEME_RECIPE },
+  ]) {
+    assert.equal(snapshot.diagramFont, "inherit");
+    const hash = encodeShareHash(snapshot);
+    assert.deepEqual(decodeShareHash(hash), snapshot);
+    const encoded = hash.slice(hash.indexOf(":") + 1);
+    const payload = JSON.parse(new TextDecoder().decode(unzlibSync(Buffer.from(encoded, "base64url"))));
+    assert.equal(payload.diagramFont, "inherit");
+  }
+  assert.equal(decodeShareHash(s2Payload({}))?.diagramFont, "trebuchet");
+  assert.equal(decodeShareHash(s3Payload({}))?.diagramFont, "trebuchet");
+  assert.equal(decodeShareHash(encodedPayload({ code: "flowchart LR\nA", theme: "default" }))?.diagramFont, "trebuchet");
 });
 
 test("inherits caller defaults when every optional render field is absent", () => {

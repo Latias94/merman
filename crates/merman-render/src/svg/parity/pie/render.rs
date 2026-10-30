@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
+use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX, PieTextRole};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
 const EMPTY_PIE_WIDTH: f64 = 225.0;
 const EMPTY_PIE_HEIGHT: f64 = 450.0;
@@ -40,6 +40,23 @@ fn emitted_attribute_matches(
         .and_then(|element| element.split_once(attribute_prefix))
         .and_then(|(_, value)| value.split_once('"'))
         .is_some_and(|(value, _)| value == expected_value)
+}
+
+fn emitted_text_matches(output: &str, element_start: usize, text: Option<&str>) -> bool {
+    let Some(element) = output
+        .get(element_start..)
+        .filter(|element| element.starts_with("<text "))
+    else {
+        return false;
+    };
+    match text {
+        Some(text) => element.split_once('>').is_some_and(|(_, content)| {
+            content
+                .strip_prefix(escape_xml(text).as_str())
+                .is_some_and(|tail| tail.starts_with("</text>"))
+        }),
+        None => element.starts_with("<text ") && element.ends_with("/>"),
+    }
 }
 
 fn empty_pie_root_viewport_fallback(
@@ -276,8 +293,6 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     let outer_stroke = (!layout.slices.is_empty())
         .then(|| paint_plan.outer_stroke_css())
         .flatten();
-    let title_fill = paint_plan.title_fill_css();
-    let text_fill = paint_plan.text_fill_css();
     let css_emission = write_pie_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
@@ -285,8 +300,8 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         !layout.slices.is_empty(),
     )?;
     if let Some(receipt) = paint_receipt.as_mut() {
-        if paint_plan.typography_requested() {
-            receipt.record_typography_stylesheet(css_emission.font_family());
+        for role in PieTextRole::ALL {
+            receipt.record_text_stylesheet(paint_plan, role, css_emission.text(role));
         }
         if let Some(stroke) = slice_stroke {
             receipt.record_slice_stroke_stylesheet(
@@ -305,16 +320,6 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
                     .outer_stroke()
                     .filter(|emitted| *emitted == stroke),
             );
-        }
-        if title_fill.is_some() {
-            receipt.record_title_stylesheet(
-                paint_plan,
-                crate::pie::PIE_TITLE_CLASS,
-                css_emission.title_fill(),
-            );
-        }
-        if text_fill.is_some() {
-            receipt.record_text_stylesheet(paint_plan, "slice", css_emission.section_text_fill());
         }
     }
     out.push_str(r#"</style><g/>"#);
@@ -379,7 +384,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         paint_receipt.as_mut(),
     )?;
 
-    for slice in &layout.slices {
+    for (slice_index, slice) in layout.slices.iter().enumerate() {
         options.checkpoint_emit()?;
         let text = format!("{}%", slice.percent);
         let element_start = out.len();
@@ -391,13 +396,18 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
             text = escape_xml(&text)
         );
         out.checkpoint()?;
-        if (text_fill.is_some() || paint_plan.typography_requested())
-            && let Some(receipt) = paint_receipt.as_mut()
-        {
+        if let Some(receipt) = paint_receipt.as_mut() {
             let terminal_class =
-                emitted_attribute_matches(out.as_str(), element_start, r#" class=""#, "slice")
-                    .then_some("slice");
-            receipt.record_slice_text(terminal_class, &text);
+                (emitted_attribute_matches(out.as_str(), element_start, r#" class=""#, "slice")
+                    && emitted_text_matches(out.as_str(), element_start, Some(&text)))
+                .then_some(PieTextRole::Section.selector());
+            receipt.record_text(
+                paint_plan,
+                PieTextRole::Section,
+                slice_index,
+                terminal_class,
+                Some(&text),
+            );
         }
     }
 
@@ -427,17 +437,21 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         }
     }
     out.checkpoint()?;
-    if (paint_plan.title_fill_css().is_some() || paint_plan.typography_requested())
-        && let Some(receipt) = paint_receipt.as_mut()
-    {
-        let terminal_class = emitted_attribute_matches(
+    if let Some(receipt) = paint_receipt.as_mut() {
+        let terminal_class = (emitted_attribute_matches(
             out.as_str(),
             title_start,
             r#" class=""#,
             crate::pie::PIE_TITLE_CLASS,
-        )
-        .then_some(crate::pie::PIE_TITLE_CLASS);
-        receipt.record_title_text(terminal_class, title_text);
+        ) && emitted_text_matches(out.as_str(), title_start, title_text))
+        .then_some(PieTextRole::Title.selector());
+        receipt.record_text(
+            paint_plan,
+            PieTextRole::Title,
+            0,
+            terminal_class,
+            title_text,
+        );
     }
 
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
@@ -466,11 +480,8 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         let terminal_fill =
             emitted_attribute_matches(out.as_str(), element_start, r#" style=""#, &escaped_style)
                 .then_some(emitted_fill);
-        let text = if model.show_data {
-            format!("{} [{}]", item.label, fmt(item.value))
-        } else {
-            item.label.clone()
-        };
+        let text = crate::pie::pie_legend_text(&item.label, item.value, model.show_data);
+        let text_start = out.len();
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}">{text}</text>"#,
@@ -482,12 +493,17 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         out.checkpoint()?;
         if let Some(receipt) = paint_receipt.as_mut() {
             receipt.record_legend(paint_plan, legend_index, item.label.as_str(), terminal_fill);
-            if paint_plan.typography_requested() {
-                let terminal_parent_class =
-                    emitted_attribute_matches(out.as_str(), legend_start, r#" class=""#, "legend")
-                        .then_some("legend");
-                receipt.record_legend_text(terminal_parent_class, &text);
-            }
+            let terminal_parent_class =
+                (emitted_attribute_matches(out.as_str(), legend_start, r#" class=""#, "legend")
+                    && emitted_text_matches(out.as_str(), text_start, Some(&text)))
+                .then_some(PieTextRole::Legend.selector());
+            receipt.record_text(
+                paint_plan,
+                PieTextRole::Legend,
+                legend_index,
+                terminal_parent_class,
+                Some(&text),
+            );
         }
     }
 
@@ -495,7 +511,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     let rooted_svg = root_document.complete(out.finish()?)?;
     if paint_receipt.is_some_and(|receipt| !paint_plan.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
-            message: "Pie slice paint receipt did not match the terminal SVG".to_string(),
+            message: "Pie theme receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)

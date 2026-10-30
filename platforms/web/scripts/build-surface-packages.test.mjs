@@ -70,6 +70,22 @@ describe("browser package assembly", () => {
     );
   });
 
+  it("exports preset discovery types through the shared root and every Web package", () => {
+    const contract = loadTypeScriptContract({
+      tsconfigPath: path.join(webRoot, "tsconfig.json"),
+    });
+    const diagnostics = contract.diagnostics();
+    assert.equal(diagnostics.length, 0, contract.formatDiagnostics(diagnostics));
+    const entries = ["index.ts", ...webPackages.map(({ id }) => `package-entries/${id}.ts`)];
+    for (const entry of entries) {
+      const file = path.join(webRoot, "src", entry);
+      assert.ok(contract.exportedTypeNames(file).has("ThemePresetApplicationNote"), entry);
+      const properties = contract.exportedTypePropertyNames(file, "ThemePresetCatalogEntry");
+      assert.ok(properties.has("preview_colors"), entry);
+      assert.ok(properties.has("application_notes"), entry);
+    }
+  });
+
   it("restores the existing package projection when final replacement fails", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-package-"));
     try {

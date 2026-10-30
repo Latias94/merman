@@ -1972,7 +1972,7 @@ mod tests {
         .unwrap();
         let presets = catalog["presets"].as_array().unwrap();
 
-        assert_eq!(presets.len(), 10);
+        assert_eq!(presets.len(), merman::svg::theme_preset_descriptors().len());
         assert!(presets.iter().all(|preset| preset["available"] == false));
         assert!(presets.iter().all(|preset| {
             preset["availability_reason_ids"]

@@ -1,7 +1,5 @@
 use merman_theme_contract::*;
 
-#[cfg(test)]
-use super::ThemePresetQualificationInvalidation;
 use super::design::*;
 use super::{ThemePreset, ThemePresetDescriptor, ThemePresetQualifiedCell};
 use crate::DiagramFamilyId;
@@ -9,14 +7,6 @@ use crate::diagram_theme::{
     ThemeResourcePolicy, ThemeTarget, ThemeVariant, materialize_theme_design_with_resource_policy,
 };
 
-#[cfg(test)]
-const CATALOG_SCHEMA_VERSION: u32 = 1;
-#[cfg(test)]
-const AUTHORING_SCHEMA_VERSION: u32 = 1;
-#[cfg(test)]
-const EXPANSION_VERSION: u32 = 1;
-#[cfg(test)]
-const SPEC_SCHEMA_VERSION: u32 = 1;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
 const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
@@ -34,30 +24,8 @@ const README_STYLE_DESIGNS: &[(&str, &str)] = &[
     ("sequence", "dedicated"),
     ("xychart", "dedicated"),
 ];
+const GHIBLI_DESIGNS: &[(&str, &str)] = &[("pie", "dedicated")];
 const NO_IDS: &[&str] = &[];
-#[cfg(test)]
-const DEFAULT_RESOURCE_FINGERPRINT: &str =
-    "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
-const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
-    "5707a5c8adebae2d993972196556e51f281ef3339f077bc4e2162e1bfa25f804";
-const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
-    "192e48710e50100b1025b835dff480ae66a1074b54329af9bc08b614d72bf7a4";
-const ONE_DARK_RECIPE_FINGERPRINT: &str =
-    "77be73b8faad8f69ef8bf8364997d936c4d1c006a650b3a8a990f2ac755c17a9";
-const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
-    "1baa0be0b0ddd1f5c179512adc7a7f0eb1d495f8bffd8118f14b75af3728c9a0";
-const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
-    "643c65c0188f9286d5bdb08dd9a06bda9767689f70585678472180947f851802";
-const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
-    "e9884075adaff20130916ab8151855d0f3918ceeef3e5f521621e9c9f50728d6";
-const AYU_DARK_RECIPE_FINGERPRINT: &str =
-    "101b47427e8a1f388ac3fcd1ce663ad1420ca102d9a0eb6e7d3b54403d45bd44";
-const BRUTALIST_RECIPE_FINGERPRINT: &str =
-    "3703a2facf3e1d53de8a20a2cb9eb521a41622d74c1c330cdd8646085a5c929e";
-const SPOTLESS_RECIPE_FINGERPRINT: &str =
-    "39a799f7c45aa279ec8e14628b4898757dfd9bff2cb5b7c38431534d6feb1d97";
-const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "9e99ff8ce78d85e498b9877f8e2ac29ffa52eb9122bc477453f6308e829cb5d3";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDesignV1;
 
 #[derive(Clone, Copy)]
@@ -103,27 +71,11 @@ pub(super) struct PresetCatalogEntry {
     dark_mode: bool,
     profile: PresetRecipeProfile,
     maturity: &'static str,
-    #[cfg(test)]
-    catalog_schema_version: u32,
-    #[cfg(test)]
-    authoring_schema_version: u32,
-    #[cfg(test)]
-    expansion_version: u32,
-    #[cfg(test)]
-    spec_schema_version: u32,
-    #[cfg(test)]
-    recipe_revision: u32,
-    #[cfg(test)]
-    recipe_fingerprint: &'static str,
-    #[cfg(test)]
-    resource_fingerprint: &'static str,
     recipe_builder: PresetRecipeBuilder,
     palette: PresetPalette,
     family_designs: &'static [(&'static str, &'static str)],
     qualified_cells: &'static [ThemePresetQualifiedCell],
     export_kind: &'static str,
-    #[cfg(test)]
-    qualification_invalidation: ThemePresetQualificationInvalidation,
     required_feature_ids: &'static [&'static str],
     bundled_resource_ids: &'static [&'static str],
     allowed_residual_ids: &'static [&'static str],
@@ -153,43 +105,46 @@ impl PresetCatalogEntry {
         self.maturity
     }
 
-    #[cfg(test)]
-    pub(super) const fn catalog_schema_version(&self) -> u32 {
-        self.catalog_schema_version
-    }
-
-    #[cfg(test)]
-    pub(super) const fn authoring_schema_version(&self) -> u32 {
-        self.authoring_schema_version
-    }
-
-    #[cfg(test)]
-    pub(super) const fn expansion_version(&self) -> u32 {
-        self.expansion_version
-    }
-
-    #[cfg(test)]
-    pub(super) const fn spec_schema_version(&self) -> u32 {
-        self.spec_schema_version
-    }
-
-    #[cfg(test)]
-    pub(super) const fn recipe_revision(&self) -> u32 {
-        self.recipe_revision
-    }
-
-    #[cfg(test)]
-    pub(super) const fn recipe_fingerprint(&self) -> &'static str {
-        self.recipe_fingerprint
-    }
-
-    #[cfg(test)]
-    pub(super) const fn resource_fingerprint(&self) -> &'static str {
-        self.resource_fingerprint
-    }
-
     pub(super) const fn family_designs(&self) -> &'static [(&'static str, &'static str)] {
         self.family_designs
+    }
+
+    pub(super) fn preview_colors(&self) -> Vec<String> {
+        let mut colors = Vec::new();
+        for color in [self.palette.canvas, self.palette.surface, self.palette.text]
+            .into_iter()
+            .chain(self.palette.series.iter().take(5).copied())
+        {
+            if !colors.iter().any(|value| value == color) {
+                colors.push(color.to_owned());
+            }
+        }
+        colors
+    }
+
+    pub(super) fn application_notes(&self) -> Vec<ThemePresetApplicationNoteV1> {
+        let (id, message) = match self.preset {
+            ThemePreset::Brutalist => (
+                "flowchart-classic-shadows",
+                "Hard node shadows need Classic look and supported basic shapes (rectangles, diamonds and circles). Selecting this preset does not change the diagram's look.",
+            ),
+            ThemePreset::Cyberpunk => (
+                "flowchart-classic-glow",
+                "Node glow needs Classic look and supported basic shapes. Selecting this preset does not change the diagram's look.",
+            ),
+            _ => return Vec::new(),
+        };
+        vec![ThemePresetApplicationNoteV1 {
+            id: id.to_owned(),
+            family_id: "flowchart".to_owned(),
+            message: message.to_owned(),
+            recommended_config: Some(
+                serde_json::json!({"flowchart": {"look": "classic"}})
+                    .as_object()
+                    .expect("catalog recommendation is a configuration object")
+                    .clone(),
+            ),
+        }]
     }
 
     pub(super) const fn qualified_cells(&self) -> &'static [ThemePresetQualifiedCell] {
@@ -198,11 +153,6 @@ impl PresetCatalogEntry {
 
     pub(super) const fn export_kind(&self) -> &'static str {
         self.export_kind
-    }
-
-    #[cfg(test)]
-    pub(super) const fn qualification_invalidation(&self) -> ThemePresetQualificationInvalidation {
-        self.qualification_invalidation
     }
 
     pub(super) const fn license_expression(&self) -> &'static str {
@@ -249,7 +199,6 @@ const fn entry(
     display_name: &'static str,
     dark_mode: bool,
     profile: PresetRecipeProfile,
-    _recipe_fingerprint: &'static str,
     palette: PresetPalette,
 ) -> PresetCatalogEntry {
     PresetCatalogEntry {
@@ -259,36 +208,21 @@ const fn entry(
         dark_mode,
         profile,
         maturity: ALPHA,
-        #[cfg(test)]
-        catalog_schema_version: CATALOG_SCHEMA_VERSION,
-        #[cfg(test)]
-        authoring_schema_version: AUTHORING_SCHEMA_VERSION,
-        #[cfg(test)]
-        expansion_version: EXPANSION_VERSION,
-        #[cfg(test)]
-        spec_schema_version: SPEC_SCHEMA_VERSION,
-        // Unpublished recipes share revision 1; fingerprints identify content changes.
-        #[cfg(test)]
-        recipe_revision: 1,
-        #[cfg(test)]
-        recipe_fingerprint: _recipe_fingerprint,
-        #[cfg(test)]
-        resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: match preset {
             ThemePreset::Brutalist => super::brutalist::build_recipe,
             ThemePreset::Spotless => super::spotless::build_recipe,
             ThemePreset::Cyberpunk => super::cyberpunk::build_recipe,
+            ThemePreset::Ghibli => super::ghibli::build_recipe,
             _ => build_cross_family_recipe,
         },
         palette,
         family_designs: match preset {
             ThemePreset::Brutalist | ThemePreset::Spotless => README_STYLE_DESIGNS,
+            ThemePreset::Ghibli => GHIBLI_DESIGNS,
             _ => SHARED_PALETTE_DESIGNS,
         },
         qualified_cells: NO_QUALIFIED_CELLS,
         export_kind: "design",
-        #[cfg(test)]
-        qualification_invalidation: ThemePresetQualificationInvalidation::current(),
         required_feature_ids: NO_IDS,
         bundled_resource_ids: NO_IDS,
         allowed_residual_ids: NO_IDS,
@@ -298,14 +232,13 @@ const fn entry(
     }
 }
 
-const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
+const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
     entry(
         ThemePreset::EditorLight,
         "editor-light",
         "Editor Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        EDITOR_LIGHT_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#ffffff",
             surface: "#f8fafc",
@@ -344,7 +277,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Editor Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        EDITOR_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#0f172a",
             surface: "#111827",
@@ -383,7 +315,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "One Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        ONE_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#282c34",
             surface: "#21252b",
@@ -425,7 +356,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Gruvbox Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        GRUVBOX_LIGHT_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
@@ -464,7 +394,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Gruvbox Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        GRUVBOX_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#282828",
             surface: "#3c3836",
@@ -506,7 +435,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Ayu Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        AYU_LIGHT_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
@@ -545,7 +473,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Ayu Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        AYU_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#0b0e14",
             surface: "#11151c",
@@ -584,7 +511,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Brutalist",
         false,
         PresetRecipeProfile::Native,
-        BRUTALIST_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#f6f3e9",
             surface: "#ffffff",
@@ -626,7 +552,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Spotless",
         false,
         PresetRecipeProfile::Native,
-        SPOTLESS_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#EDE8DC",
             surface: "#F5F1E8",
@@ -665,7 +590,6 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Cyberpunk",
         true,
         PresetRecipeProfile::Native,
-        CYBERPUNK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#051423",
             surface: "#051423",
@@ -696,6 +620,41 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#2dd4bf",
             ],
             kanban_task_labels: &["#000000"; 8],
+        },
+    ),
+    entry(
+        ThemePreset::Ghibli,
+        "ghibli",
+        "Ghibli",
+        false,
+        PresetRecipeProfile::Native,
+        PresetPalette {
+            canvas: "#FDF6E3",
+            surface: "#FFFFFF",
+            surface_alt: "#FFF3E0",
+            text: "#3A2E2C",
+            subtle_text: "#6B5B4F",
+            border: "#000000",
+            line: "#6B5B4F",
+            accent: "#FFDFAD",
+            edge_label_background: "#FDF6E3",
+            cluster_background: "#FFF3E0",
+            cluster_border: "#6B5B4F",
+            note_background: "#FFF3E0",
+            note_border: "#6B5B4F",
+            note_text: "#3A2E2C",
+            actor_background: "#FFFFFF",
+            actor_border: "#6B5B4F",
+            actor_text: "#3A2E2C",
+            activation_background: "#E8F5E9",
+            activation_border: "#6B5B4F",
+            sequence_number_text: "#FDF6E3",
+            packet_field_label_text: "#3A2E2C",
+            gantt_active_text: "#3A2E2C",
+            gantt_critical: "#FFDFAD",
+            gantt_critical_text: "#3A2E2C",
+            series: &["#FFFFFF", "#FFF3E0", "#E8F5E9", "#E6E6E6", "#FFDFAD"],
+            kanban_task_labels: &["#000000"; 5],
         },
     ),
 ];

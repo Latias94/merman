@@ -95,8 +95,8 @@ pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };
 pub use merman_theme_contract::{
-    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetFamilyDesignV1, ThemePresetMetadataV1,
-    ThemePresetQualifiedCellV1, ThemeRecipeV1,
+    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetApplicationNoteV1,
+    ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1, ThemeRecipeV1,
 };
 pub use merman_theme_contract::{
     ThemeDesignInspection, ThemeDesignReferenceUse, ThemeDesignValueDomain,

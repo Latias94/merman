@@ -1,0 +1,8 @@
+sequenceDiagram
+    participant Client
+    participant Renderer
+    Client->>Renderer: Render with theme
+    activate Renderer
+    Note right of Renderer: Measure and lay out text
+    Renderer-->>Client: Styled SVG
+    deactivate Renderer

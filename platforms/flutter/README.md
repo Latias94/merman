@@ -114,12 +114,25 @@ try {
 
 The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and compiled-theme catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Theme preset and descriptor IDs remain open strings so compatible producers can add values without requiring Dart enum updates.
 
-In the current source interface, `MermanThemePreset.familyDesigns` exposes the catalog's curated
-family treatment. Use a matching artifact that provides this metadata; a package version alone
-does not establish its availability. `base_only` is the shared base appearance with necessary family adaptations;
+In the current source interface, `MermanThemePreset.previewColors` exposes ordered picker swatches,
+`familyDesigns` exposes curated family treatment, and `applicationNotes` contains typed
+`MermanThemePresetApplicationNote` values with an open `id`, `familyId`, readable `message`, and
+nullable `recommendedConfig` map. Use a matching artifact that provides this metadata; a package
+version alone does not establish its availability. Missing additive arrays from older runtimes
+normalize to empty immutable lists; malformed present fields are rejected. Recommendation maps
+and their nested maps/lists are also copied and immutable. `base_only` is the shared base appearance with necessary family adaptations;
 `dedicated` is an intentional family design, and absent or unknown treatments remain unreviewed.
 Unknown values survive decoding. This metadata does not grant qualification or portability and
 must not cause an implicit switch to a different preset when the diagram family changes.
+
+Build the picker from the runtime inventory, using `id` for persistence and `displayName` for
+labels. Ghibli is a normal preset with a dedicated Pie design; all current built-ins remain alpha
+with empty qualification cells. Show applicable notes by `familyId`, preserving unknown IDs and
+their fallback messages. Offer `recommendedConfig` as an explicit action that merges into the
+host's Mermaid configuration while preserving unrelated nested values. Pass accepted settings
+through `site_config` in the operation's options JSON; preset selection alone does not apply them.
+Preview colors and application notes are curated visual guidance. Inspect the actual operation's
+theme execution metadata for its rendering outcome and target admission.
 
 ```dart
 final diagrams = merman.supportedDiagrams();

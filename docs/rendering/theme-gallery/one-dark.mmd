@@ -1,0 +1,9 @@
+classDiagram
+    class Renderer {
+        +render(source) Svg
+    }
+    class DiagramTheme {
+        +colors
+        +typography
+    }
+    Renderer --> DiagramTheme : uses

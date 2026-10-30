@@ -457,6 +457,10 @@ pub(crate) fn preflight(
                 let target = preflight_file_target(target, cwd, &inputs, MissingParent::Reject)?;
                 publications.approve_exact(target)?;
             }
+            #[cfg(feature = "svg")]
+            if let Some(path) = &args.common.render.theme_report {
+                preflight_theme_report(path, cwd, &inputs, &mut publications, None)?;
+            }
             publications.protect(&inputs);
         }
         #[cfg(feature = "markdown")]
@@ -496,8 +500,17 @@ pub(crate) fn preflight(
                 &parent.parent,
                 namespace.directory(),
             )?;
-            publications.approve_transaction_root(transaction_root)?;
             publications.approve_numbered(namespace, parent)?;
+            if let Some(path) = &args.common.render.theme_report {
+                preflight_theme_report(
+                    path,
+                    cwd,
+                    &inputs,
+                    &mut publications,
+                    Some(&transaction_root.expected),
+                )?;
+            }
+            publications.approve_transaction_root(transaction_root)?;
             publications.protect(&inputs);
         }
         #[cfg(feature = "rustdoc")]
@@ -790,6 +803,7 @@ fn anchor_render_inputs(common: &mut crate::invocation::ResolvedRenderCommon, cw
     {
         anchor_optional_path(&mut common.render.theme_file, cwd);
         anchor_optional_path(&mut common.render.theme_design_file, cwd);
+        anchor_optional_path(&mut common.render.theme_report, cwd);
         anchor_optional_path(&mut common.css_file, cwd);
     }
 }
@@ -1580,6 +1594,84 @@ struct FileTarget {
     canonical: PathBuf,
     identity: Option<Arc<same_file::Handle>>,
     parent: DirectoryGuard,
+}
+
+#[cfg(feature = "svg")]
+fn preflight_theme_report(
+    path: &Path,
+    cwd: &Path,
+    inputs: &[ProtectedInput],
+    publications: &mut PublicationGuards,
+    managed_root: Option<&Path>,
+) -> Result<(), CliError> {
+    if path == Path::new("-") {
+        return Err(CliError::InvalidOutput(
+            "--theme-report requires a separate file, not stdout".to_owned(),
+        ));
+    }
+    let target = preflight_file_target(path, cwd, inputs, MissingParent::Reject)?;
+    if managed_root.is_some_and(|root| target.canonical.starts_with(root)) {
+        return Err(CliError::InvalidOutput(
+            "--theme-report must be outside the managed batch output directory".to_owned(),
+        ));
+    }
+    if let Some(identity) = &target.identity {
+        for (name, stream) in [
+            ("stdin", same_file::Handle::stdin()),
+            ("stdout", same_file::Handle::stdout()),
+            ("stderr", same_file::Handle::stderr()),
+        ] {
+            if stream.is_ok_and(|stream| stream == **identity) {
+                return Err(CliError::InvalidOutput(format!(
+                    "theme report {} aliases {name}; choose a separate file",
+                    safe_path(path),
+                )));
+            }
+        }
+    }
+    for scope in &publications.scopes {
+        let aliases = match &scope.matcher {
+            PublicationMatcher::Exact { path, identity } => {
+                target.canonical
+                    == scope
+                        .parent
+                        .expected
+                        .join(path.file_name().expect("file target"))
+                    || (target.parent.expected == scope.parent.expected
+                        && target
+                            .canonical
+                            .file_name()
+                            .zip(path.file_name())
+                            .is_some_and(|(left, right)| {
+                                // Reject case-only output names conservatively on every host.
+                                // New files do not yet have identities to expose this alias.
+                                left.to_string_lossy().to_lowercase()
+                                    == right.to_string_lossy().to_lowercase()
+                            }))
+                    || identities_match(target.identity.as_ref(), identity.as_ref())
+            }
+            #[cfg(feature = "markdown")]
+            PublicationMatcher::Numbered { existing, .. } => existing
+                .values()
+                .any(|identity| identities_match(target.identity.as_ref(), Some(identity))),
+        };
+        if aliases {
+            return Err(CliError::InvalidOutput(format!(
+                "theme report {} aliases an image or document output; choose a separate file",
+                safe_path(path),
+            )));
+        }
+    }
+    publications.approve_exact(target)
+}
+
+#[cfg(feature = "svg")]
+fn identities_match(
+    left: Option<&Arc<same_file::Handle>>,
+    right: Option<&Arc<same_file::Handle>>,
+) -> bool {
+    left.zip(right)
+        .is_some_and(|(left, right)| **left == **right)
 }
 
 #[cfg(feature = "markdown")]

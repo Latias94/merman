@@ -308,6 +308,15 @@ test("keeps the UI font in initialization without authoring a source theme", () 
   assert.equal(input.bindingOptions.svg, undefined);
 });
 
+test("default operation inputs inherit the recipe font instead of injecting a UI default", () => {
+  for (const options of [undefined, { diagramFont: "inherit" as const }, { themePresetId: "ghibli" }]) {
+    const input = configuredMermanOperationInput("pie\n\"Tea\": 4", "auto", "{}", options);
+    assert.equal(input.bindingOptions.site_config?.fontFamily, undefined);
+    assert.equal(input.bindingOptions.site_config?.themeVariables, undefined);
+    assert.equal(input.configuredSource, input.source);
+  }
+});
+
 test("host presets retain only actual user config in the source layer", () => {
   const source = "stateDiagram-v2\nA\nnote right of A : Terminal note";
   for (const configJson of ["{}", '{"htmlLabels":false}']) {

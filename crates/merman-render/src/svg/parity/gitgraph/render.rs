@@ -415,7 +415,7 @@ fn gitgraph_css(
     let tag_label_bkg_fill = terminal.tag_background.as_str();
     let tag_label_bkg_stroke = terminal.tag_border.as_str();
     let tag_label_bkg_filter = if use_color_gen {
-        format!("filter:{};", drop_shadow)
+        format!("filter:{};", scoped_drop_shadow(fragment_id, drop_shadow))
     } else {
         String::new()
     };

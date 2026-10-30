@@ -4,7 +4,7 @@
 .SH NAME
 merman\-cli\-batch \- Render every Mermaid diagram in one Markdown document
 .SH SYNOPSIS
-\fBmerman\-cli batch\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-o\fR|\fB\-\-output\-dir\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-font\-file\fR] [\fB\-\-font\-dir\fR] [\fB\-\-font\-measurement\fR] [\fB\-\-font\-system\fR] [\fB\-\-font\-max\-measurements\fR] [\fB\-\-theme\-preset\fR] [\fB\-\-theme\-file\fR] [\fB\-\-theme\-design\-file\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli batch\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-o\fR|\fB\-\-output\-dir\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-font\-file\fR] [\fB\-\-font\-dir\fR] [\fB\-\-font\-measurement\fR] [\fB\-\-font\-system\fR] [\fB\-\-font\-max\-measurements\fR] [\fB\-\-theme\-preset\fR] [\fB\-\-theme\-file\fR] [\fB\-\-theme\-design\-file\fR] [\fB\-\-theme\-portability\fR] [\fB\-\-theme\-report\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Render every Mermaid diagram in one Markdown document
 .SH OPTIONS
@@ -85,6 +85,8 @@ brutalist: [alpha] Brutalist
 spotless: [alpha] Spotless
 .IP \(bu 2
 cyberpunk: [alpha] Cyberpunk
+.IP \(bu 2
+ghibli: [alpha] Ghibli
 .RE
 .TP
 \fB\-\-theme\-file\fR \fI<THEME_FILE>\fR
@@ -251,7 +253,7 @@ Load a local font file and enable native Mermaid text measurement; repeatable, e
 Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable
 .TP
 \fB\-\-font\-measurement\fR \fI<FONT_MEASUREMENT>\fR
-Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied
+Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout
 .sp
 \fIPossible values:\fR
 .RS 14
@@ -262,7 +264,7 @@ native
 .RE
 .TP
 \fB\-\-font\-system\fR \fI<FONT_SYSTEM>\fR
-Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested
+Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected
 .sp
 \fIPossible values:\fR
 .RS 14
@@ -274,6 +276,23 @@ on
 .TP
 \fB\-\-font\-max\-measurements\fR \fI<COUNT>\fR
 Maximum uncached native font shaping probes per diagram (default: 16384); independent of \-\-resource\-profile
+.SH "THEME FEEDBACK"
+.TP
+\fB\-\-theme\-portability\fR \fI<THEME_PORTABILITY>\fR [default: best\-effort]
+Renderer portability requirement; require\-portable rejects nonportable target output
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+best\-effort
+.IP \(bu 2
+require\-portable
+.RE
+.TP
+\fB\-\-theme\-report\fR \fI<PATH>\fR
+Write versioned theme results to a separate JSON file, including render failures.
+
+The parent directory must exist. Use a path outside the managed output directory for batch. Reports describe rendering before image publication; stdout remains image\-only.
 .SH "LAYOUT VIEWPORT"
 .TP
 \fB\-w\fR, \fB\-\-width\fR \fI<CONTAINER_WIDTH>\fR

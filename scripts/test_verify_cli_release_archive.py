@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_cli_release_archive as verifier
 from ascii_capability_contract import canonical_ascii_capabilities
+from theme_preset_catalog_test_fixture import canonical_theme_preset_catalog
 import release_archive as archive_core
 import release_process as process_core
 
@@ -246,10 +247,15 @@ def valid_capabilities_payload(
         "capabilities": capabilities,
         "outputs": outputs,
         "native_fonts": {
-            "default_policy_scope": "mermaid-graphical-input",
+            "default_policy_scope": "mermaid-svg-input",
             "default_measurement": "deterministic",
             "default_font_source": "none",
             "default_system_discovery": "disabled",
+            "encoded_output_defaults": {
+                "measurement": "native",
+                "font_source": "bounded-system-discovery",
+                "system_discovery": "before-layout",
+            },
             "system_resources_bounded": True,
             "selected_font_bytes_bounded": True,
             "legacy_export_paths": (
@@ -291,13 +297,7 @@ def valid_capabilities_payload(
             "context_scope": "operation-owned",
         },
         "ascii": valid_ascii_capabilities_payload(),
-        "theme_presets": {"schema_version": 1, "presets": [{
-            "id": "brutalist", "display_name": "Brutalist", "appearance": "light",
-            "maturity": "alpha", "available": True, "availability_reason_ids": [],
-            "family_designs": [{"family_id": "flowchart", "treatment": "base_only"}],
-            "qualified_cells": [], "license_expression": "MIT OR Apache-2.0",
-            "required_attribution": None, "export_kind": "complete_spec",
-        }]},
+        "theme_presets": canonical_theme_preset_catalog(),
     }
 
 
@@ -589,7 +589,8 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 "font_catalog_fingerprint": "resource-digest", "scenarios": scenarios,
             }
             public_catalog = valid_capabilities_payload()["theme_presets"]
-            public_catalog["presets"][0]["qualified_cells"] = [{
+            brutalist = next(entry for entry in public_catalog["presets"] if entry["id"] == "brutalist")
+            brutalist["qualified_cells"] = [{
                 "family_id": "state", "output_id": output,
                 "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent",
             } for output in ("png", "svg")]
@@ -626,7 +627,10 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 self.assertEqual(catalog["artifact"]["executable_sha256"], record["cli"]["executable_sha256"])
                 self.assertEqual(catalog["catalog"], record["cli"]["catalog"])
                 self.assertEqual(catalog["qualifications"], [public_qualification])
-                self.assertEqual(catalog["catalog"]["presets"][0]["qualified_cells"], [
+                qualified_preset = next(
+                    entry for entry in catalog["catalog"]["presets"] if entry["id"] == "brutalist"
+                )
+                self.assertEqual(qualified_preset["qualified_cells"], [
                     {"family_id": "state", "output_id": output,
                      "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent"}
                     for output in ("png", "svg")
@@ -1449,16 +1453,25 @@ class RuntimeContractTests(unittest.TestCase):
         expected = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
         self.assertEqual(payload["native_fonts"], expected["native_fonts"])
         native = payload["native_fonts"]
+        self.assertEqual(native["default_policy_scope"], "mermaid-svg-input")
         self.assertEqual(native["default_measurement"], "deterministic")
         self.assertEqual(native["default_font_source"], "none")
         self.assertEqual(native["default_system_discovery"], "disabled")
+        self.assertEqual(native["encoded_output_defaults"], {
+            "measurement": "native",
+            "font_source": "bounded-system-discovery",
+            "system_discovery": "before-layout",
+        })
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["cli_contract_version"], 6)
         self.assertIs(native["system_discovery_compiled"], True)
         self.assertIs(native["system_discovery_runtime_available"], True)
         self.assertEqual(len(native["measurement_operations"]), 23)
         verifier._validate_runtime_capabilities(payload, expected)
 
-    def test_runtime_rejects_implicit_native_font_defaults(self) -> None:
+    def test_runtime_rejects_native_defaults_for_mermaid_svg(self) -> None:
         implicit_defaults = (
+            ("default_policy_scope", "mermaid-graphical-input"),
             ("default_measurement", "native"),
             ("default_font_source", "bounded-system-discovery"),
             ("default_system_discovery", "before-layout"),
@@ -1480,6 +1493,8 @@ class RuntimeContractTests(unittest.TestCase):
                 wrong_value = not value
             elif isinstance(value, str):
                 wrong_value = "unknown"
+            elif isinstance(value, dict):
+                wrong_value = {**value, "unknown": None}
             else:
                 wrong_value = list(reversed(value))
             for case in ("missing", "value", "type"):
@@ -1494,6 +1509,68 @@ class RuntimeContractTests(unittest.TestCase):
                     self.assert_runtime_payload_rejected(
                         PROJECT_ROOT, payload, f"native_fonts.*{field}"
                     )
+
+    def test_runtime_rejects_encoded_output_default_shape_drift(self) -> None:
+        defaults = valid_capabilities_payload()["native_fonts"]["encoded_output_defaults"]
+        for value in (None, [], "native", True, {}, {**defaults, "unknown": None}):
+            with self.subTest(value=value):
+                payload = valid_capabilities_payload()
+                payload["native_fonts"]["encoded_output_defaults"] = value
+                self.assert_runtime_payload_rejected(
+                    PROJECT_ROOT, payload, "native_fonts.*encoded_output_defaults"
+                )
+
+    def test_runtime_rejects_encoded_output_default_field_drift(self) -> None:
+        rejected_values = {
+            "measurement": ("deterministic", "unknown", None, [], {}, True, 1),
+            "font_source": (
+                "none", "platform-managed-system-query", "unknown", None, [], {}, True, 1,
+            ),
+            "system_discovery": (
+                "disabled", "first-use", "platform-initialization-then-on-demand-families",
+                "unknown", None, [], {}, True, 1,
+            ),
+        }
+        for field, values in rejected_values.items():
+            for case in ("missing", *values):
+                with self.subTest(field=field, case=case):
+                    payload = valid_capabilities_payload()
+                    defaults = payload["native_fonts"]["encoded_output_defaults"]
+                    if case == "missing":
+                        defaults.pop(field)
+                    else:
+                        defaults[field] = case
+                    self.assert_runtime_payload_rejected(
+                        PROJECT_ROOT, payload, f"native_fonts.*encoded_output_defaults.*{field}"
+                    )
+
+    def test_runtime_rejects_non_release_encoded_output_policies(self) -> None:
+        for defaults in (
+            {
+                "measurement": "deterministic",
+                "font_source": "none",
+                "system_discovery": "disabled",
+            },
+            {
+                "measurement": "native",
+                "font_source": "platform-managed-system-query",
+                "system_discovery": "platform-initialization-then-on-demand-families",
+            },
+        ):
+            with self.subTest(defaults=defaults):
+                payload = valid_capabilities_payload()
+                payload["native_fonts"]["encoded_output_defaults"] = defaults
+                self.assert_runtime_payload_rejected(
+                    PROJECT_ROOT, payload, "native_fonts.*encoded_output_defaults"
+                )
+
+    def test_runtime_rejects_duplicate_encoded_output_default_keys(self) -> None:
+        payload = json.dumps(valid_capabilities_payload()).encode().replace(
+            b'"encoded_output_defaults": {"measurement": "native",',
+            b'"encoded_output_defaults": {"measurement": "deterministic", "measurement": "native",',
+            1,
+        )
+        self.assert_runtime_payload_rejected(PROJECT_ROOT, payload, "duplicate JSON key")
 
     def test_ascii_contract_covers_every_release_diagram_family(self) -> None:
         contract = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)

@@ -1,7 +1,8 @@
 # Choosing Merman capabilities
 
 This page documents current-source capabilities; installation examples select the published `0.9.1`
-patch. Compiled-theme authoring and Mermaid `12.2.0` alignment remain unreleased. Use the
+patch. Compiled-theme authoring, Mermaid `12.2.0` alignment, and the CLI encoded-output font
+defaults remain unreleased. Use the
 [release index](release/README.md) for installed-version contracts and the
 [0.9.0 upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for the preceding model and output
 changes. Workspace path snippets are for source development. See the
@@ -90,13 +91,23 @@ select their own direct leaf set instead.
 ### Optional CLI Fonts
 
 The current-source default CLI build and official release profile include
-`native-fonts` and `system-fonts`. Ordinary CLI Mermaid SVG, PNG, JPEG, and PDF
-output defaults to deterministic text measurement, without creating a native font
-context or discovering system fonts for layout. Compiling these capabilities keeps
-native rendering available without activating it for every invocation. CLI contract
-6 reports compiled font support separately from the default measurement and discovery
-policy. PNG/JPEG/PDF painting can still load system fonts through the existing codec
-path; deterministic measurement does not guarantee binary export without discovery.
+`native-fonts` and `system-fonts`. Mermaid SVG defaults to deterministic text
+measurement without a native font context or system discovery. Mermaid PNG/JPEG/PDF
+automatically use bounded system discovery before layout and share the resulting
+native context between measurement and painting. These defaults apply to Mermaid
+input in `render`, `batch`, and `mmdc`; raw SVG conversion only paints existing
+geometry and is never relaid out. Host fonts can change wrapping, node sizes and
+image/PDF snapshots.
+
+Capabilities schema 2 / CLI contract 6 retain their versions. In `native_fonts`,
+`default_policy_scope: "mermaid-svg-input"` scopes the existing
+`default_measurement: "deterministic"`, `default_font_source: "none"`, and
+`default_system_discovery: "disabled"` values to SVG. The additive
+`encoded_output_defaults` object reports `measurement: "native"`,
+`font_source: "bounded-system-discovery"`, and `system_discovery: "before-layout"`.
+With no CLI `system-fonts` capability, those three encoded values are
+`deterministic`, `none`, and `disabled`. This discovery and runtime-default change
+does not change an ABI.
 
 Explicit `--font-file` or `--font-dir` sources automatically select native
 measurement with a closed font set, even with `--font-measurement native`; add
@@ -104,9 +115,11 @@ measurement with a closed font set, even with `--font-measurement native`; add
 `--font-measurement native` explicitly permits system discovery when `system-fonts`
 is compiled. `--font-system on` explicitly selects system fonts and native
 measurement. `--font-measurement deterministic` explicitly selects the default
-layout without font sources. `fontFamily` selects among available faces, not a
-file, and alone does not enable native-context discovery. `--runtime native`
-controls other system adapters and alone does not enable native-context discovery.
+SVG estimates or the previous encoded-output estimates without font sources;
+encoded output still uses native painting, which can acquire system fonts through
+the legacy codec path. `fontFamily` selects among available faces, not a file, and
+does not change the output's measurement policy. `--runtime native` controls other
+system adapters and does not select the font policy.
 
 Fixed font files avoid full system catalogue discovery and provide the faster,
 reproducible native route when font contents and Mermaid configuration are pinned.
@@ -119,18 +132,22 @@ explicit fonts and SVG output:
 cargo run -p merman-cli --no-default-features --features diagram-flowchart,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
 ```
 
-Add `png`, `jpeg`, or `pdf` individually for binary output. `native-fonts` alone
-does not enable codecs or system discovery. Cargo features are additive: legacy
-binary exports compile usvg system discovery to preserve existing library/export
-behavior, even when an explicit-font operation uses `--font-system off`. This
-compiled availability does not activate native-context discovery for ordinary CLI
-Mermaid layout; legacy codec painting can still acquire system fonts.
-The separate CLI `system-fonts` feature permits the native context's discovery
-route only when requested through native/system font options. Minimal builds with
-only `native-fonts` retain deterministic defaults and require explicit fonts for
-native measurement. Dependency feature union does not grant the CLI that
-permission. `capabilities --json` reports the compiled dependency capability and
-the CLI runtime policy separately.
+Add `png`, `jpeg`, or `pdf` individually for binary output. Each CLI codec feature
+also selects the CLI's `system-fonts` and `native-fonts` capabilities, so lean codec
+builds receive the same native default and explicit font controls. `native-fonts`
+alone does not enable codecs or system discovery. These CLI combinations do not
+change library codec defaults. Cargo features are additive: compiled system-font
+support remains available when an explicit-font operation uses `--font-system off`,
+but that operation's font set stays closed.
+
+The CLI `system-fonts` feature selects automatic native measurement for Mermaid
+encoded output and permits explicit native/system font options for SVG. Minimal
+builds with only `native-fonts` retain deterministic defaults and require explicit
+fonts for native measurement. Dependency feature union alone does not grant the
+CLI that permission. `capabilities --json` reports the compiled dependency
+capability and the CLI runtime policy separately. If a selected native route cannot
+load usable fonts, it fails instead of silently succeeding with deterministic
+estimates.
 
 The opt-in `experimental-system-font-query` feature selects Fontique-backed,
 on-demand system discovery in CLI builds. It is not part of the default or
@@ -139,6 +156,11 @@ and may map font files outside Merman's scan budgets; actual selected bytes
 still use bounded immutable snapshots shared by measurement and painting.
 Explicit-only requests stay closed. Library callers must explicitly choose
 `NativeFontOptions::load_platform`; ordinary `load` retains bounded discovery.
+In CLI discovery, the encoded defaults report
+`font_source: "platform-managed-system-query"` and
+`system_discovery: "platform-initialization-then-on-demand-families"`. Release
+verification rejects those experimental values and requires bounded discovery
+before layout.
 See the [candidate plan](plans/2026-10-10-system-font-query-candidate.md) for
 validation scope and remaining platform/fallback requirements.
 
@@ -150,7 +172,7 @@ Mermaid `fontFamily`: select your family in Mermaid configuration as well.
 Missing families use the same resolver for measurement and painting.
 
 Explicit sources select native measurement automatically. The shared backend
-handles all 22 text-measurement protocol operations across layout, wrapping,
+handles all 23 text-measurement protocol operations across layout, wrapping,
 SVG bounds, and computed lengths. Diagram families use this backend through
 Merman's existing measurement routes: it is not limited to titles or to one
 diagram family. Font-driven node and label sizing, advances, horizontal/vertical
@@ -168,9 +190,11 @@ Flowchart native mode requires an effective `px` theme font size (the equivalent
 default numeric `16` is accepted); ambiguous numeric/unit spellings and a root
 bold `fontWeight` are rejected where existing layout and CSS disagree. Set bold
 or italic on supported node/class declarations instead.
-For unsupported typography, use explicit compatibility measurement rather than
-silently claiming native layout. ASCII, parser/analysis, library defaults and
-host-owned FFI measurement policies are unchanged.
+For encoded output that needs this CSS or unsupported typography, use
+`--font-measurement deterministic` without font sources to retain the previous
+layout and CSS behavior; existing CSS security admission still applies. ASCII,
+parser/analysis, library defaults and host-owned FFI measurement policies are
+unchanged.
 
 SVG output does not embed fonts or convert text to outlines. Consumers must have
 the same fonts to reproduce measured geometry. Raw SVG supports explicit fonts

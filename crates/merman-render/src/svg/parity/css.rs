@@ -573,6 +573,7 @@ impl PreparedCommonCss {
         feature = "diagram-journey",
         feature = "diagram-kanban",
         feature = "diagram-c4",
+        feature = "diagram-pie",
         feature = "diagram-requirement"
     ))]
     pub(crate) fn font_size_css(&self) -> &str {
@@ -943,15 +944,15 @@ where
 }
 
 /// Structured values emitted for Pie routes whose terminal evidence requires stylesheet proof.
-#[derive(Debug, Default)]
+#[cfg(feature = "diagram-pie")]
+#[derive(Debug)]
 pub(super) struct PieCssEmission<'a> {
     slice_stroke: Option<&'a str>,
     outer_stroke: Option<&'a str>,
-    title_fill: Option<&'a str>,
-    section_text_fill: Option<&'a str>,
-    font_family: Option<&'a str>,
+    text: [crate::pie::PieTextCssEmission<'a>; 3],
 }
 
+#[cfg(feature = "diagram-pie")]
 impl PieCssEmission<'_> {
     pub(super) fn slice_stroke(&self) -> Option<&str> {
         self.slice_stroke
@@ -961,16 +962,8 @@ impl PieCssEmission<'_> {
         self.outer_stroke
     }
 
-    pub(super) fn title_fill(&self) -> Option<&str> {
-        self.title_fill
-    }
-
-    pub(super) fn section_text_fill(&self) -> Option<&str> {
-        self.section_text_fill
-    }
-
-    pub(super) fn font_family(&self) -> Option<&str> {
-        self.font_family
+    pub(super) fn text(&self, role: crate::pie::PieTextRole) -> crate::pie::PieTextCssEmission<'_> {
+        self.text[role.index()]
     }
 }
 
@@ -984,14 +977,18 @@ pub(super) fn write_pie_css<'a, I>(
 where
     I: SvgDiagramIdValue,
 {
+    use crate::pie::PieTextRole;
+
     let values = paint_plan.css_binding();
     let selector_id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
-    values.common.write_prefix(out, selector_id)?;
+    let base_emission = values
+        .common
+        .write_prefix_with_font_emission(out, selector_id)?;
     let id = selector_id;
     let _ = write!(
         out,
-        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .{}{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}"#,
         id,
         values.slice_stroke.css(slices_present),
         values.slice_stroke_width,
@@ -1001,20 +998,47 @@ where
         id,
         values.outer_stroke.css(slices_present),
         values.outer_stroke_width,
-        id,
-        crate::pie::PIE_TITLE_CLASS,
-        values.title_text_size,
-        values.title_text_color,
-        values.common.font_family(),
-        id,
-        values.common.font_family(),
-        values.section_text_color,
-        values.section_text_size,
-        id,
-        values.legend_text_color,
-        values.common.font_family(),
-        values.legend_text_size
     );
+    for role in PieTextRole::ALL {
+        // Preserve Mermaid's baseline declaration order and bytes for each independent role.
+        let _ = write!(out, "#{} .{}{{", id, role.selector());
+        match role {
+            PieTextRole::Title => {
+                let _ = write!(
+                    out,
+                    "text-anchor:middle;font-size:{};fill:{};font-family:{};",
+                    values.text_size(role),
+                    values.text_fill(role),
+                    values.common.font_family()
+                );
+            }
+            PieTextRole::Section => {
+                let _ = write!(
+                    out,
+                    "font-family:{};fill:{};font-size:{};",
+                    values.common.font_family(),
+                    values.text_fill(role),
+                    values.text_size(role)
+                );
+            }
+            PieTextRole::Legend => {
+                let _ = write!(
+                    out,
+                    "fill:{};font-family:{};font-size:{};",
+                    values.text_fill(role),
+                    values.common.font_family(),
+                    values.text_size(role)
+                );
+            }
+        }
+        if let Some(weight) = values.text_weight(role) {
+            let _ = write!(out, "font-weight:{weight};");
+        }
+        if let Some(style) = values.text_style(role) {
+            let _ = write!(out, "font-style:{style};");
+        }
+        out.push('}');
+    }
     out.checkpoint()?;
     values.common.write_root(out, selector_id, fragment_id)?;
     let emission = PieCssEmission {
@@ -1026,15 +1050,16 @@ where
             .outer_stroke_css()
             .filter(|_| slices_present)
             .map(|_| values.outer_stroke.css(true)),
-        title_fill: paint_plan
-            .title_fill_css()
-            .map(|_| values.title_text_color.as_str()),
-        section_text_fill: paint_plan
-            .text_fill_css()
-            .map(|_| values.section_text_color.as_str()),
-        font_family: paint_plan
-            .typography_requested()
-            .then(|| values.common.font_family()),
+        text: PieTextRole::ALL.map(|role| crate::pie::PieTextCssEmission {
+            selector: role.selector(),
+            font_family: values.common.font_family(),
+            font_size: values.text_size(role),
+            base_font_size: base_emission.diagram_root_font_size_css(),
+            nested_font_size: base_emission.nested_svg_font_size_css(),
+            fill: values.text_fill(role),
+            font_weight: values.text_weight(role),
+            font_style: values.text_style(role),
+        }),
     };
     Ok(emission)
 }

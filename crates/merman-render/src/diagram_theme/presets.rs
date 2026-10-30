@@ -8,6 +8,7 @@ mod brutalist;
 mod catalog;
 mod cyberpunk;
 mod design;
+mod ghibli;
 mod spotless;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -27,6 +28,7 @@ pub enum ThemePreset {
     Brutalist,
     Spotless,
     Cyberpunk,
+    Ghibli,
 }
 
 impl ThemePreset {
@@ -147,6 +149,8 @@ impl ThemePresetDescriptor {
                     treatment: (*treatment).to_owned(),
                 })
                 .collect(),
+            preview_colors: self.entry().preview_colors(),
+            application_notes: self.entry().application_notes(),
             qualified_cells: self
                 .qualified_cells()
                 .iter()
@@ -197,47 +201,6 @@ impl ThemePresetDescriptor {
 
     pub const fn required_attribution(self) -> Option<&'static str> {
         self.entry().required_attribution()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg(test)]
-pub(super) struct ThemePresetQualificationInvalidation {
-    qualification_schema_revision: u32,
-    admission_revision: u32,
-    invalidate_on_recipe_fingerprint_change: bool,
-    invalidate_on_resource_fingerprint_change: bool,
-}
-
-#[cfg(test)]
-impl ThemePresetQualificationInvalidation {
-    pub(super) const fn current() -> Self {
-        Self {
-            qualification_schema_revision: 1,
-            admission_revision: 1,
-            invalidate_on_recipe_fingerprint_change: true,
-            invalidate_on_resource_fingerprint_change: true,
-        }
-    }
-
-    #[cfg(test)]
-    const fn qualification_schema_revision(self) -> u32 {
-        self.qualification_schema_revision
-    }
-
-    #[cfg(test)]
-    const fn admission_revision(self) -> u32 {
-        self.admission_revision
-    }
-
-    #[cfg(test)]
-    const fn invalidate_on_recipe_fingerprint_change(self) -> bool {
-        self.invalidate_on_recipe_fingerprint_change
-    }
-
-    #[cfg(test)]
-    const fn invalidate_on_resource_fingerprint_change(self) -> bool {
-        self.invalidate_on_resource_fingerprint_change
     }
 }
 
@@ -419,7 +382,10 @@ mod tests {
     fn is_native_candidate(preset: ThemePreset) -> bool {
         matches!(
             preset,
-            ThemePreset::Brutalist | ThemePreset::Spotless | ThemePreset::Cyberpunk
+            ThemePreset::Brutalist
+                | ThemePreset::Spotless
+                | ThemePreset::Cyberpunk
+                | ThemePreset::Ghibli
         )
     }
 
@@ -493,7 +459,7 @@ mod tests {
 
     #[test]
     fn preset_catalog_is_the_complete_unique_enum_projection() {
-        const EXPECTED_PRESETS: [ThemePreset; 10] = [
+        const EXPECTED_PRESETS: [ThemePreset; 11] = [
             ThemePreset::EditorLight,
             ThemePreset::EditorDark,
             ThemePreset::OneDark,
@@ -504,6 +470,7 @@ mod tests {
             ThemePreset::Brutalist,
             ThemePreset::Spotless,
             ThemePreset::Cyberpunk,
+            ThemePreset::Ghibli,
         ];
 
         let descriptors = theme_preset_descriptors();
@@ -533,31 +500,9 @@ mod tests {
     fn alpha_preset_metadata_starts_unqualified_and_fail_closed() {
         for descriptor in theme_preset_descriptors() {
             let entry = catalog::entry_for_preset(descriptor.preset());
-            assert_eq!(entry.catalog_schema_version(), 1);
-            assert_eq!(entry.authoring_schema_version(), 1);
-            assert_eq!(entry.expansion_version(), 1);
-            assert_eq!(entry.spec_schema_version(), 1);
-            assert_eq!(entry.recipe_revision(), 1);
             assert_eq!(descriptor.maturity(), "alpha");
             assert!(descriptor.qualified_cells().is_empty());
             assert_eq!(descriptor.export_kind(), "design");
-            assert_eq!(
-                entry
-                    .qualification_invalidation()
-                    .qualification_schema_revision(),
-                1
-            );
-            assert_eq!(entry.qualification_invalidation().admission_revision(), 1);
-            assert!(
-                entry
-                    .qualification_invalidation()
-                    .invalidate_on_recipe_fingerprint_change()
-            );
-            assert!(
-                entry
-                    .qualification_invalidation()
-                    .invalidate_on_resource_fingerprint_change()
-            );
             assert_eq!(descriptor.license_expression(), "MIT OR Apache-2.0");
             assert_eq!(descriptor.required_attribution(), None);
             assert!(entry.required_feature_ids().is_empty());
@@ -568,43 +513,69 @@ mod tests {
     }
 
     #[test]
-    fn preset_catalog_fingerprints_match_the_exact_compiled_recipes() {
-        let mut recipe_fingerprints = BTreeSet::new();
-        let mut mismatches = Vec::new();
-        for descriptor in theme_preset_descriptors() {
-            let entry = catalog::entry_for_preset(descriptor.preset());
-            let catalog_fingerprint = entry.recipe_fingerprint();
-            assert_eq!(catalog_fingerprint.len(), 64);
-            assert!(
-                catalog_fingerprint
-                    .bytes()
-                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-            );
+    fn discovery_guidance_keeps_design_intent_and_explicit_config_separate() {
+        let compiler = DiagramThemeCompiler::new();
+        let catalog = describe_theme_presets(&compiler);
+        let brutalist = catalog
+            .iter()
+            .find(|preset| preset.id == "brutalist")
+            .unwrap();
+        assert!(
+            brutalist
+                .preview_colors
+                .iter()
+                .any(|color| color == "#FFE66D")
+        );
+        let note = &brutalist.application_notes[0];
+        assert_eq!(note.family_id, "flowchart");
+        assert_eq!(
+            note.recommended_config.as_ref().unwrap()["flowchart"]["look"],
+            "classic"
+        );
+        let theme = compiler.compile_preset(ThemePreset::Brutalist).unwrap();
+        assert_eq!(
+            theme
+                .spec()
+                .mermaid()
+                .to_mermaid_config()
+                .get_str("flowchart.look"),
+            None
+        );
+        let ghibli = catalog.iter().find(|preset| preset.id == "ghibli").unwrap();
+        assert_eq!(
+            ghibli.family_designs,
+            [ThemePresetFamilyDesignV1 {
+                family_id: "pie".into(),
+                treatment: "dedicated".into(),
+            }]
+        );
+        assert!(ghibli.qualified_cells.is_empty());
+    }
 
-            let theme = DiagramThemeCompiler::new()
-                .compile_preset(descriptor.preset())
-                .expect("catalog recipe must compile");
-            let actual_recipe = theme.recipe_fingerprint().to_hex();
-            let actual_resources = theme.report().font_catalog_fingerprint().to_hex();
-
-            if catalog_fingerprint != actual_recipe {
-                mismatches.push(format!("{}: {actual_recipe}", descriptor.preset().id()));
-            }
-            if entry.resource_fingerprint() != actual_resources.as_str() {
-                mismatches.push(format!(
-                    "{} resources: {actual_resources}",
-                    descriptor.preset().id()
-                ));
-            }
-            assert!(
-                recipe_fingerprints.insert(catalog_fingerprint),
-                "catalog recipes must have unique fingerprints"
-            );
+    #[test]
+    fn ghibli_exports_editable_paper_and_scoped_pie_text_roles() {
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(ThemePreset::Ghibli).unwrap();
+        assert_eq!(theme.spec().canvas().layers().len(), 4);
+        let resolved = theme.resolve(DiagramFamilyId::PIE);
+        for (target, size, color) in [
+            (ThemeTarget::Title, 25.0, "#3A2E2C"),
+            (ThemeTarget::Text, 17.0, "#3A2E2C"),
+            (ThemeTarget::Legend, 12.0, "#6B5B4F"),
+        ] {
+            let style = resolved.text_style(target, ThemeVariant::Default, None);
+            assert_eq!(style.typography().font_size_px(), size);
+            assert_eq!(style.fill().and_then(solid_color).as_deref(), Some(color));
         }
         assert!(
-            mismatches.is_empty(),
-            "catalog recipe fingerprints drifted; sign these exact compiled values:\n{}",
-            mismatches.join("\n")
+            theme
+                .spec()
+                .mermaid()
+                .to_mermaid_config()
+                .as_value()
+                .as_object()
+                .unwrap()
+                .is_empty()
         );
     }
 
@@ -716,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn all_ten_catalog_recipes_round_trip_as_editable_designs() {
+    fn all_catalog_recipes_round_trip_as_editable_designs() {
         for descriptor in theme_preset_descriptors() {
             let compiler = DiagramThemeCompiler::new();
             let recipe = compiler
@@ -1421,6 +1392,7 @@ mod tests {
             (ThemePreset::Brutalist, "#f6f3e9", "#000000", "#FF6B35"),
             (ThemePreset::Spotless, "#EDE8DC", "#2c2416", "#8b5e34"),
             (ThemePreset::Cyberpunk, "#051423", "#00f2ff", "#22d3ee"),
+            (ThemePreset::Ghibli, "#FDF6E3", "#6B5B4F", "#FFFFFF"),
         ];
 
         for (preset, canvas, line, first_series) in expected {

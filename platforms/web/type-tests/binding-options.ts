@@ -1,4 +1,4 @@
-import type { ThemeEffectGraph } from "../src/index.js";
+import type { ThemeEffectGraph, ThemePresetApplicationNote, ThemePresetCatalogEntry } from "../src/index.js";
 import { withResourceOptions } from "../src/runtime-core.js";
 import {
   describeThemeSupport,
@@ -45,6 +45,28 @@ const asciiDiagnostic: BindingDiagnosticErrorDetails = {
 asciiDiagnostic.actual_width;
 
 const resources: ResourceOptions = { profile: "interactive" };
+
+const presetNote: ThemePresetApplicationNote = {
+  id: "future-guidance",
+  family_id: "future-family",
+  message: "Review suggested settings before applying them.",
+  recommended_config: { look: "classic", future: { enabled: true } },
+};
+const informationalPresetNote: ThemePresetApplicationNote = { ...presetNote, recommended_config: null };
+const invalidPresetNote: ThemePresetApplicationNote = {
+  ...presetNote,
+  // @ts-expect-error recommendations are JSON objects or null, never arrays.
+  recommended_config: [],
+};
+declare const discoveredPreset: ThemePresetCatalogEntry;
+const previewColors: string[] = discoveredPreset.preview_colors;
+const applicationNotes: ThemePresetApplicationNote[] = discoveredPreset.application_notes;
+renderSvgResult("flowchart LR\nA --> B", {
+  theme: { preset: discoveredPreset.id },
+  site_config: presetNote.recommended_config ?? {},
+});
+void [previewColors, applicationNotes, informationalPresetNote, invalidPresetNote];
+
 const editorResources: EditorResourceOptions = {
   profile: "constrained",
   limits: { max_source_bytes: 1024, max_document_diagrams: 8 },

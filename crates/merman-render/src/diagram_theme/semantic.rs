@@ -222,7 +222,14 @@ impl ThemeTarget {
             Self::AxisTitle | Self::AxisLabel | Self::AxisTick => {
                 family == DiagramFamilyId::XY_CHART
             }
-            Self::ChartSeries | Self::Axis | Self::Legend => matches!(
+            Self::Legend => matches!(
+                family,
+                DiagramFamilyId::XY_CHART
+                    | DiagramFamilyId::QUADRANT_CHART
+                    | DiagramFamilyId::RADAR
+                    | DiagramFamilyId::PIE
+            ),
+            Self::ChartSeries | Self::Axis => matches!(
                 family,
                 DiagramFamilyId::XY_CHART
                     | DiagramFamilyId::QUADRANT_CHART

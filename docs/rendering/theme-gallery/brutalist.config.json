@@ -1,0 +1,7 @@
+{
+  "htmlLabels": false,
+  "flowchart": {
+    "look": "classic",
+    "layout": "dagre"
+  }
+}

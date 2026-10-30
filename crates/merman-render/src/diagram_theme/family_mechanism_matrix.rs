@@ -769,6 +769,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::C4
             | DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::PIE
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -2162,10 +2163,7 @@ pub(super) fn classify_rule_facet(
     }
     if matches!(
         (family, target),
-        (
-            DiagramFamilyId::PIE | DiagramFamilyId::RAILROAD,
-            ThemeTarget::Title
-        )
+        (DiagramFamilyId::RAILROAD, ThemeTarget::Title)
     ) && matches!(
         selector,
         FamilyThemeSelectorShape::Static {
@@ -2195,7 +2193,10 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::PIE
-        && target == ThemeTarget::Text
+        && matches!(
+            target,
+            ThemeTarget::Title | ThemeTarget::Text | ThemeTarget::Legend
+        )
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -2206,6 +2207,10 @@ pub(super) fn classify_rule_facet(
             facet,
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Typography(
+                ThemeTypographyProperty::FontSize
+                    | ThemeTypographyProperty::FontWeight
+                    | ThemeTypographyProperty::FontStyle
             )
         )
     {

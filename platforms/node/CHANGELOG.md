@@ -11,7 +11,7 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 ### Added
 
 - Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
-- Added artifact-aware discovery for ten alpha presets, including Brutalist, Spotless and Cyberpunk. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
+- Added artifact-aware discovery for the alpha preset inventory, including Brutalist, Spotless, Cyberpunk and Ghibli. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
 
 ## [0.9.2] - 2026-10-22
 

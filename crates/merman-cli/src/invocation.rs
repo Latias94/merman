@@ -429,6 +429,8 @@ pub(crate) struct ResolvedRenderOptions {
     pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
     pub(crate) theme_file: Option<PathBuf>,
     pub(crate) theme_design_file: Option<PathBuf>,
+    pub(crate) theme_portability: crate::cli::ThemePortabilityKind,
+    pub(crate) theme_report: Option<PathBuf>,
     #[cfg(feature = "native-fonts")]
     pub(crate) fonts: crate::cli::FontCliArgs,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
@@ -924,6 +926,8 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         theme_preset: None,
         theme_file: None,
         theme_design_file: None,
+        theme_portability: crate::cli::ThemePortabilityKind::default(),
+        theme_report: None,
         #[cfg(feature = "native-fonts")]
         fonts: args.render.fonts.clone(),
         math_renderer: args.render.math_renderer,
@@ -1562,6 +1566,8 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
         theme_preset: args.theme_preset,
         theme_file: args.theme_file,
         theme_design_file: args.theme_design_file,
+        theme_portability: args.theme_portability,
+        theme_report: args.theme_report,
         #[cfg(feature = "native-fonts")]
         fonts: args.fonts,
         math_renderer: args.math_renderer,
@@ -1764,6 +1770,8 @@ fn validate_graphical_output_options(
         if options.render.theme_preset.is_some()
             || options.render.theme_file.is_some()
             || options.render.theme_design_file.is_some()
+            || options.render.theme_report.is_some()
+            || options.render.theme_portability != crate::cli::ThemePortabilityKind::BestEffort
             || options.render.math_renderer.is_some()
             || options.render.container_width.is_some()
             || options.render.container_height.is_some()
@@ -1812,6 +1820,8 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
     if options.render.theme_preset.is_some()
         || options.render.theme_file.is_some()
         || options.render.theme_design_file.is_some()
+        || options.render.theme_report.is_some()
+        || options.render.theme_portability != crate::cli::ThemePortabilityKind::BestEffort
         || options.render.math_renderer.is_some()
         || options.render.container_width.is_some()
         || options.render.container_height.is_some()

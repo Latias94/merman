@@ -874,7 +874,9 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       ),
       available,
       availability_reason_ids: availabilityReasonIds,
+      preview_colors: normalizeThemePresetPreviewColors(entry.preview_colors, id),
       family_designs: normalizeThemePresetFamilyDesigns(entry.family_designs, id),
+      application_notes: normalizeThemePresetApplicationNotes(entry.application_notes, id),
       qualified_cells: normalizeThemePresetQualifiedCells(entry.qualified_cells, id),
       license_expression: assertNonEmptyStringField(
         entry.license_expression,
@@ -887,6 +889,15 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       export_kind: exportKind,
     };
   });
+}
+
+function normalizeThemePresetPreviewColors(value: unknown, presetId: string): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`Merman WASM returned invalid preview colors for theme preset ${presetId}.`);
+  }
+  // Swatch order is curated; do not sort, deduplicate, or reinterpret color strings.
+  return value.map((color) => assertNonEmptyStringField(color, `theme preset ${presetId} preview color`));
 }
 
 function normalizeThemePresetFamilyDesigns(
@@ -911,6 +922,50 @@ function normalizeThemePresetFamilyDesigns(
     previousFamily = familyId;
     return { family_id: familyId, treatment };
   });
+}
+
+function normalizeThemePresetApplicationNotes(
+  value: unknown,
+  presetId: string
+): ThemePresetCatalogEntry["application_notes"] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`Merman WASM returned invalid application notes for theme preset ${presetId}.`);
+  }
+  return value.map((note) => {
+    const label = `theme preset ${presetId} application note`;
+    if (!isRecord(note)) {
+      throw new Error(`Merman WASM returned an invalid ${label}.`);
+    }
+    const config = note.recommended_config;
+    if (config !== undefined && config !== null && !isRecord(config)) {
+      throw new Error(`Merman WASM returned an invalid ${label} recommended config.`);
+    }
+    return {
+      id: assertRuntimeIdentifier(note.id, `${label} ID`),
+      family_id: assertRuntimeIdentifier(note.family_id, `${label} family ID`),
+      message: assertNonEmptyStringField(note.message, `${label} message`),
+      recommended_config: config === undefined || config === null
+        ? null
+        : cloneThemePresetConfigValue(config, `${label} recommended config`) as Record<string, unknown>,
+    };
+  });
+}
+
+function cloneThemePresetConfigValue(value: unknown, label: string): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean" ||
+      (typeof value === "number" && Number.isFinite(value))) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneThemePresetConfigValue(entry, label));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(Object.entries(value).map(
+      ([key, entry]) => [key, cloneThemePresetConfigValue(entry, label)]
+    ));
+  }
+  throw new Error(`Merman WASM returned a non-JSON value in ${label}.`);
 }
 
 function normalizeThemePresetQualifiedCells(

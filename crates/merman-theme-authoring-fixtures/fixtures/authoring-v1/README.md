@@ -27,8 +27,10 @@ profiles, admission states, public catalog cells, or the C7a release candidate.
 
 `support.json` pins complete successful `describe-theme-support-json` responses to the reviewed
 support-claim revision. It covers rule facets, base typography, ordinal palettes, unsupported
-routes, ASCII applicability, unqualified browser/native outputs, and unknown identifiers. All
-successful queries use schema 1 and its single `rule` subject shape; suffixes in historical
+routes, ASCII applicability, unqualified browser/native outputs, and unknown identifiers.
+Pie role-size, legend-fill and inherited base-size queries cover the new family consumers;
+their conditional state still requires an applicable document surface. All
+successful queries use schema 1 and its versioned subject shapes; suffixes in historical
 fixture IDs identify test cases, not additional supported protocol versions. Compare
 all fields, including the echoed query, claim revision, and ordered reason IDs. An Unverified or
 Unsupported descriptor is a successful query, not a transport error. Review semantic changes
@@ -39,7 +41,8 @@ These static upper bounds do not certify actual document admission or qualify ou
 `preset-catalog.json` freezes the complete ordered preset metadata array under the default
 binding compiler policy on SVG-capable artifacts and Typst's constrained policy. Shared-core, Native C ABI, and UniFFI tests,
 installed Node and Python consumers, Typst plugin smoke, and real Web/WASM smoke compare every field, including availability, appearance,
-maturity, empty qualification cells, export kind, license, and attribution. Do not derive this
+maturity, family design scope, preview colors, application notes, empty qualification cells,
+export kind, license, and attribution. Do not derive this
 oracle at test time from production descriptors. Non-SVG artifacts still require an empty array;
 custom resource ceilings may change availability and need a separate expectation. Output IDs and
 resource limits belong to each artifact profile and are outside this preset-only vector. It does

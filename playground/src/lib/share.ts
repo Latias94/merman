@@ -4,10 +4,7 @@ import { isThemeName } from "@mermanjs/web";
 import { isMermaidThemeSelection } from "./mermaid-theme-name.ts";
 import { isDiagramFont } from "./diagram-font.ts";
 import { exceedsUtf8ByteBudget, utf8ByteLength } from "./utf8.ts";
-import {
-  DEFAULT_WORKSPACE_SNAPSHOT,
-  type WorkspaceSnapshot,
-} from "./workspace-snapshot.ts";
+import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { isMermanSvgPipeline } from "../runtime/merman-core.ts";
 
 const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
@@ -111,7 +108,7 @@ export function encodeShareHash(data: WorkspaceSnapshot): string {
 
 export function decodeShareHash(
   hash: string,
-  legacyDefaults: Readonly<WorkspaceSnapshot> = DEFAULT_WORKSPACE_SNAPSHOT
+  legacyDefaults: Readonly<WorkspaceSnapshot> = WORKSPACE_V2_DEFAULTS
 ): WorkspaceSnapshot | null {
   const fragment = hash.startsWith("#") ? hash : `#${hash}`;
   if (fragment.startsWith(SHARE_V2_PREFIX)) {

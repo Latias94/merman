@@ -2882,6 +2882,66 @@ fn sequence_directly_owns_only_base_font_stack_and_size() {
 }
 
 #[test]
+fn pie_typography_routes_follow_the_bounded_text_consumers() {
+    let typography = TextStyle::default()
+        .with_font_size_px(24.0)
+        .unwrap()
+        .with_font_weight(600)
+        .unwrap();
+    let routes = compile_base_typography_routes(DiagramFamilyId::PIE, &typography);
+    assert!(routes.iter().any(|route| {
+        route.mechanism() == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+            && route.disposition() == FamilyThemeDisposition::TypedAdapter
+    }));
+    assert!(routes.iter().any(|route| {
+        route.mechanism()
+            == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
+            && route.disposition() == FamilyThemeDisposition::Unsupported
+    }));
+    for target in [ThemeTarget::Title, ThemeTarget::Text, ThemeTarget::Legend] {
+        for property in [
+            ThemeTypographyProperty::FontSize,
+            ThemeTypographyProperty::FontWeight,
+            ThemeTypographyProperty::FontStyle,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let facet = FamilyThemeRuleFacet::Typography(property);
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::PIE,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant },
+                        facet
+                    ),
+                    FamilyThemeDisposition::TypedAdapter
+                );
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::PIE,
+                        target,
+                        FamilyThemeSelectorShape::Ordinal {
+                            variant,
+                            selector: OrdinalSelector::Exact(1)
+                        },
+                        facet
+                    ),
+                    FamilyThemeDisposition::Unsupported
+                );
+            }
+        }
+        assert_eq!(
+            classify_rule_facet(
+                DiagramFamilyId::PIE,
+                target,
+                FamilyThemeSelectorShape::Static { variant: None },
+                FamilyThemeRuleFacet::Typography(ThemeTypographyProperty::FontStack)
+            ),
+            FamilyThemeDisposition::Unsupported
+        );
+    }
+}
+
+#[test]
 fn inherited_font_families_directly_own_only_the_base_font_stack() {
     let typography = TextStyle::default()
         .with_font_stack(
@@ -2895,7 +2955,6 @@ fn inherited_font_families_directly_own_only_the_base_font_stack() {
         DiagramFamilyId::MINDMAP,
         DiagramFamilyId::SANKEY,
         DiagramFamilyId::VENN,
-        DiagramFamilyId::PIE,
         DiagramFamilyId::QUADRANT_CHART,
     ] {
         let routes = compile_base_typography_routes(family, &typography);

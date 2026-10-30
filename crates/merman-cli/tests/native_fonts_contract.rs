@@ -926,6 +926,27 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     assert_eq!(native["default_measurement"], "deterministic");
     assert_eq!(native["default_font_source"], "none");
     assert_eq!(native["default_system_discovery"], "disabled");
+    assert_eq!(native["default_policy_scope"], "mermaid-svg-input");
+    let expected_encoded = if cfg!(feature = "experimental-system-font-query") {
+        serde_json::json!({
+            "measurement": "native",
+            "font_source": "platform-managed-system-query",
+            "system_discovery": "platform-initialization-then-on-demand-families",
+        })
+    } else if cfg!(feature = "system-fonts") {
+        serde_json::json!({
+            "measurement": "native",
+            "font_source": "bounded-system-discovery",
+            "system_discovery": "before-layout",
+        })
+    } else {
+        serde_json::json!({
+            "measurement": "deterministic",
+            "font_source": "none",
+            "system_discovery": "disabled",
+        })
+    };
+    assert_eq!(native["encoded_output_defaults"], expected_encoded);
     assert_eq!(native["selected_font_bytes_bounded"], true);
     assert_eq!(
         native["system_resources_bounded"],
@@ -988,6 +1009,151 @@ fn native_measurement_rejects_post_layout_css_without_output() {
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("does not support themeCSS"));
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn default_encoded_output_uses_native_layout_and_retains_explicit_deterministic() {
+    let source = "---\nconfig:\n  fontFamily: monospace\n  htmlLabels: false\n  flowchart:\n    minNodeWidth: 0\n    wrappingWidth: 1000\n---\nflowchart LR\nA[iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii]\n";
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for command in ["render", "mmdc"] {
+        for format in formats {
+            if command == "mmdc" && format == "jpeg" {
+                continue;
+            }
+            let args = if command == "render" {
+                vec!["render", "-", "-f", format, "-o", "-"]
+            } else {
+                vec!["mmdc", "-i", "-", "-e", format, "-o", "-"]
+            };
+            let implicit = run_with_stdin(&args, source);
+            let mut native_args = args.clone();
+            native_args.extend(["--font-measurement", "native"]);
+            let native = run_with_stdin(&native_args, source);
+            let mut deterministic_args = args;
+            deterministic_args.extend(["--font-measurement", "deterministic"]);
+            let deterministic = run_with_stdin(&deterministic_args, source);
+            for output in [&implicit, &native, &deterministic] {
+                assert!(
+                    output.status.success(),
+                    "{command}/{format}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert!(!output.stdout.is_empty());
+            }
+            assert_eq!(implicit.stdout, native.stdout, "{command}/{format}");
+            assert_ne!(implicit.stdout, deterministic.stdout, "{command}/{format}");
+        }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn default_encoded_native_measurement_enforces_its_budget_and_font_policy() {
+    let format = if cfg!(feature = "png") {
+        "png"
+    } else if cfg!(feature = "jpeg") {
+        "jpeg"
+    } else {
+        "pdf"
+    };
+    let source = "flowchart LR\nA[Measure this label] --> B[Destination]\n";
+    let args = ["render", "-", "-f", format, "-o", "-"];
+    let mut limited = args.to_vec();
+    limited.push("--font-max-measurements=1");
+    let output = run_with_stdin(&limited, source);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(output.stdout.is_empty());
+    assert!(stderr.contains("native_font_measurements"), "{stderr}");
+
+    let mut no_fonts = args.to_vec();
+    no_fonts.push("--font-system=off");
+    let output = run_with_stdin(&no_fonts, source);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("leaves no fonts"));
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn default_encoded_native_measurement_requires_explicit_compatibility_for_css() {
+    let css = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(css.path(), ".nodeLabel { letter-spacing: 2px; }").unwrap();
+    let path = css.path().to_str().unwrap();
+    let mut args = vec!["render", "-", "-f", "png", "-o", "-", "--css-file", path];
+    let source = "flowchart LR\nA[Styled label]\n";
+    let rejected = run_with_stdin(&args, source);
+    let stderr = String::from_utf8_lossy(&rejected.stderr);
+    assert_eq!(rejected.status.code(), Some(2), "{stderr}");
+    assert!(rejected.stdout.is_empty());
+    assert!(
+        stderr.contains("--font-measurement deterministic"),
+        "{stderr}"
+    );
+    args.extend(["--font-measurement", "deterministic"]);
+    let compatible = run_with_stdin(&args, source);
+    assert!(
+        compatible.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compatible.stderr)
+    );
+    assert!(compatible.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+}
+
+#[cfg(all(feature = "png", feature = "markdown"))]
+#[test]
+fn batch_default_encoded_output_matches_explicit_native_measurement() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("input.md"),
+        "```mermaid\nflowchart LR\nA[First label] --> B[Second label]\n```\n",
+    )
+    .unwrap();
+    for native in [false, true] {
+        let destination = if native { "native" } else { "implicit" };
+        let mut args = vec![
+            "batch",
+            "input.md",
+            "--format=png",
+            "--output-dir",
+            destination,
+        ];
+        if native {
+            args.push("--font-measurement=native");
+        }
+        let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let images = |directory: &str| {
+        let mut entries = std::fs::read_dir(temp.path().join(directory))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "png"))
+            .map(|path| {
+                (
+                    path.file_name().unwrap().to_owned(),
+                    std::fs::read(&path).unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+    };
+    let implicit = images("implicit");
+    assert_eq!(implicit.len(), 1);
+    assert_eq!(implicit, images("native"));
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

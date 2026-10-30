@@ -27,6 +27,35 @@ export function formatMermaidConfigJson(configJson: string): string {
   return `${JSON.stringify(parseMermaidConfigJson(configJson), null, 2)}\n`;
 }
 
+/** Apply only the catalog's recommended keys, preserving other authored settings. */
+export function mergeRecommendedMermaidConfig(
+  configJson: string,
+  recommended: Readonly<MermaidConfigObject>,
+): string {
+  function assertSafeKeys(value: unknown): void {
+    if (typeof value !== "object" || value === null) return;
+    for (const [key, nested] of Object.entries(value)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        throw new Error(`Mermaid config cannot contain the reserved key "${key}".`);
+      }
+      assertSafeKeys(nested);
+    }
+  }
+  function merge(current: MermaidConfigObject, incoming: Readonly<MermaidConfigObject>): MermaidConfigObject {
+    const result = { ...current, ...incoming };
+    for (const [key, value] of Object.entries(incoming)) {
+      if (!isPlainObject(value)) continue;
+      const previous = Object.hasOwn(current, key) ? current[key] : undefined;
+      result[key] = merge(isPlainObject(previous) ? previous : {}, value);
+    }
+    return result;
+  }
+  const current = parseMermaidConfigJson(configJson);
+  assertSafeKeys(current);
+  assertSafeKeys(recommended);
+  return `${JSON.stringify(merge(current, recommended), null, 2)}\n`;
+}
+
 export function buildMermaidConfig(
   configJson: string,
   theme: string,
@@ -37,8 +66,9 @@ export function buildMermaidConfig(
   if (normalizedTheme !== "auto" && config.theme === undefined) {
     config.theme = normalizedTheme;
   }
-  if (options.diagramFont) {
-    applyDiagramFont(config, diagramFontStack(options.diagramFont));
+  const fontFamily = options.diagramFont && diagramFontStack(options.diagramFont);
+  if (fontFamily) {
+    applyDiagramFont(config, fontFamily);
   }
   return config;
 }
@@ -75,8 +105,8 @@ function safeInitializationConfig(
   }
   // Font values come only from the validated UI enum. User config font/CSS fields
   // remain source directives and therefore pass through Mermaid/Core sanitization.
-  if (options.diagramFont) {
-    const fontFamily = diagramFontStack(options.diagramFont);
+  const fontFamily = options.diagramFont && diagramFontStack(options.diagramFont);
+  if (fontFamily) {
     safe.fontFamily = fontFamily;
     safe.themeVariables = Object.freeze({ fontFamily });
   }

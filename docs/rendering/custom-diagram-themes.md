@@ -5,6 +5,59 @@ contract. Use a matching runtime artifact that exposes theme authoring and catal
 a package version alone does not establish channel availability or feature support. Examples
 assume an initialized SVG-capable runtime.
 
+## Start with a theme
+
+Choose the kind of change you want:
+
+| Choice | Playground | CLI | Web options | Scope |
+| --- | --- | --- | --- | --- |
+| Mermaid's base appearance | **Mermaid theme** | `--theme dark` | `site_config: {theme: "dark"}` | Shared Mermaid configuration; affects both engines in Compare |
+| A Merman visual design | **Merman styling**, preview, **Apply** | `--theme-preset ghibli` | `theme: {preset: "ghibli"}` | Merman recipe: colors, canvas, typography and supported family effects |
+| Your own Merman design | **Import JSON**, preview, **Apply** | `--theme-file theme.json` | `theme: recipe` | The same editable recipe, independent of the installed catalog |
+
+These inputs can be combined. The Mermaid base supplies defaults, and a Merman recipe supplies
+its supported styling. Explicit diagram styles and configuration retain property-specific
+precedence. Choosing a preset does not change the source, layout or look.
+
+For ready-to-run examples, see the [six-theme gallery](theme-gallery/README.md), covering
+Flowchart, Pie, Sequence, Class, and XY Chart. Brutalist, Spotless, Cyberpunk, and Ghibli use
+visual design references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid);
+the [gallery credits](theme-gallery/README.md#design-references-and-license) retain the source
+revision and MIT notice.
+Ghibli has a dedicated Pie design. Brutalist has dedicated Flowchart, Sequence and XY Chart
+designs and a base palette adaptation for Class. The catalog records each preset's scope;
+unlisted families are **not yet reviewed**. A dedicated design does not guarantee every shape,
+effect or export format. Review the actual preview outcome for your diagram.
+
+In Playground the selected preset displays its reviewed families and application notes.
+Use the **Merman preset** selector at the top for direct selection with current-family design
+treatments, or **Browse presets** to compare the recipe color swatches.
+The panel's base theme, font and recommended configuration use the same preview as the Merman
+selection. **Apply** commits these appearance choices together; **Cancel** discards them.
+Recommendations change only their listed keys and preserve unrelated configuration. Source
+directives can still override them. Independent edits in the source/config editor remain live
+through either action. Downloading a recipe does not package Mermaid configuration or a UI font
+override; a workspace share link includes these inputs.
+
+For CLI discovery, run `merman-cli capabilities` to see presets with their design scope and
+settings guidance, or `capabilities --json` for the same structured metadata. In Web:
+
+```ts
+const preset = themeCatalog().presets.find((entry) => entry.id === "ghibli");
+if (!preset?.available) throw new Error("Ghibli is unavailable in this runtime");
+console.log(preset.family_designs, preset.application_notes);
+const { svg, metadata } = renderSvgResult(source, {
+  version: 3,
+  theme: { preset: preset.id },
+});
+// Keep metadata with this SVG when explaining any unapplied styling.
+```
+
+The installed runtime's catalog is authoritative. Preview colors are illustrative recipe
+colors; they are not a rendering or an output qualification. Hosts should show unknown
+application notes using their readable message and offer configuration only as an explicit
+user action.
+
 ## Family configuration and compiled rules
 
 Mermaid compatibility configuration remains a separate input from compiled style rules.
@@ -21,6 +74,21 @@ absent from that palette retain their compiled fallback. Individual explicit var
 source or site configuration keep their property-specific dependencies. Site theme defaults
 and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
 style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
+
+| Input | Ownership |
+| --- | --- |
+| Site/base Mermaid theme, including CLI `--theme` | Fallback palette; does not disable compiled recipe rules |
+| Authored source theme in frontmatter/directives | Materialized source palette takes precedence over compiled paint for present roles |
+| Explicit Mermaid variables or family configuration | Property-specific source/configuration ownership |
+| Compiled recipe rules | Supported defaults for properties not owned by authored values |
+| Recipe canvas | Independent paint; a Mermaid palette selection does not remove it |
+| Playground inherited font | Adds no font override; recipe typography or engine defaults remain available |
+| Explicit Playground font | Host initialization choice; authored source/config fonts can still take precedence |
+
+Moving `theme: forest` from source into `site_config` is therefore a semantic change when a
+Merman recipe is also selected. Keep the location as well as the value when reproducing an
+appearance. Playground lists detected theme, font and look declarations with their source;
+these hints describe authored settings, not an independent certificate of computed SVG styling.
 
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
@@ -65,11 +133,19 @@ compact diagram preview. Drag the separator, or focus it and use the arrow keys,
 panel width on desktop or height in a stacked layout. These two local display preferences are
 remembered separately.
 
-**Mermaid theme** immediately updates the workspace setting shared by both engines. The pinned
+**Mermaid base theme** previews the workspace setting shared by both engines. The pinned
 Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`,
 `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. **Merman styling** is a separate
 selection that affects Merman only. Its preset cards come from the loaded runtime's catalog;
 card swatches illustrate the preset rather than render the current diagram.
+Each card also reports the current family's design treatment. The selected preset lists
+reviewed diagram families and any settings guidance. The render outcome appears directly in
+the panel; optional output details and **Advanced** retain exact evidence for developers.
+
+**Inherit from theme / source** is the initial font choice in new workspaces. It does not inject
+a host font. Select a named font to override it, or return to inheritance to release that
+override. Historical links keep their original Trebuchet default; new links encode inheritance
+explicitly. Fonts are resolved on the receiving host and are not downloaded or embedded.
 
 Choose **Import JSON** to load a standalone version-1 recipe created with the
 [theme design skill](#design-a-theme-with-an-agent) or an external editor. The original authored
@@ -82,14 +158,20 @@ to the applied theme.
 The existing Rust compiler validates each import. A valid recipe updates the preview without
 changing the applied workspace theme. An invalid import reports its error and disables Apply;
 the preview continues using the last valid selection with the current diagram source,
-configuration, and font. Import a corrected file or select a preset to recover. A diagram
-parse/render error does not prevent a valid recipe from being imported, downloaded, or applied.
+configuration, and font. Choose **Restore last valid theme**, import a corrected file, or
+select a preset to recover. A diagram parse/render error does not prevent a valid recipe from
+being imported, downloaded, or applied.
 Files over 256 KiB are rejected before reading and leave the current selection intact.
 
-**Apply** commits the Merman selection and keeps the panel open. **Cancel** closes the panel and
-restores the applied Merman selection. Source, configuration, font, and Mermaid theme changes
-made during the session remain. Pending selections are session-local; download an imported
-recipe before reloading if you need to retain it.
+**Apply** commits the panel's Merman selection, base theme, font and recommended configuration
+together and keeps the panel open. **Cancel** closes the panel and discards those drafts.
+Independent source/configuration edits made during the session remain. A recommendation is
+merged into the latest valid configuration at Apply; invalid live JSON is reported instead
+of being overwritten. Returning to the panel starts from the last applied appearance.
+
+Apply affects the current in-memory workspace; it does not establish local persistence or
+replace the browser address. Save a workspace link and open that link to restore the complete
+scene after reload. Download an imported recipe when you also need a reusable standalone theme.
 
 A Merman preset and a custom recipe are mutually exclusive applied selections. **None** removes
 Merman recipe styling after Apply; it does not remove the Mermaid theme or guarantee a
@@ -178,10 +260,12 @@ Read the loaded runtime's `themeCatalog().presets`. Keep these facts separate:
 | `family_designs` treatment `dedicated` | The catalog records a family-specific design |
 | `family_designs` treatment `base_only` | The shared appearance, with necessary family adaptations |
 | Missing family or unknown treatment | Unreviewed design scope; preserve the value conservatively |
+| `preview_colors` | Representative recipe colors for discovery, not a rendered preview |
+| `application_notes` | Readable family guidance and optional explicit configuration suggestions |
 | `qualified_cells` | Evidence for named scenarios and targets, not every possible diagram |
 | Actual render admission | What this input, output target, resources, and policy can deliver |
 
-The current catalog advertises dedicated mechanism scope for Brutalist and Spotless, but it does
+The current catalog advertises dedicated design scope for Brutalist, Spotless and Ghibli, but it does
 not claim pixel parity with Modern Mermaid. A successful SVG render is not proof of readable dense
 labels, complete effects, or PNG/PDF portability. Cyberpunk carries a layered canvas and scoped
 effects with bounded Flowchart, Sequence and XY Chart SVG/PNG/PDF observations. Larger scenes may
@@ -189,6 +273,9 @@ exceed native export budgets. Brutalist now provides bold borders, ordinal accen
 shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
 without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
 spacing; these targets do not support typed letter-spacing rules.
+Ghibli adds a warm, textured canvas and a five-color muted Pie palette with typed title,
+percentage and legend text sizes. Its fonts resolve on the receiving host. The paper texture
+uses tiled gradients; this does not imply generic pattern or every effect primitive is supported.
 
 Flowchart node, edge and label glow/shadow effects currently require `flowchart.look: classic`.
 The default Neo look does not consume these effect bindings; selecting Cyberpunk alone does not
@@ -212,6 +299,25 @@ or `"best-effort"` for the default behavior. Strict rendering rejects a result t
 with the usual structured render error. It does not pick a different theme. Host fonts and
 browser-dependent output may fail this requirement even when some theme paints were applied.
 `resvg-safe` selects a pipeline and is not a substitute for the explicit policy.
+
+Native CLI exposes the same policy and optional render report:
+
+```text
+merman-cli render diagram.mmd --theme-file theme.json --theme-report theme-result.json -o diagram.svg
+merman-cli render diagram.mmd --theme-file theme.json --theme-portability require-portable -o diagram.svg
+```
+
+Best-effort remains the default. Theme diagnostics go to stderr; image stdout stays clean.
+`--quiet` suppresses human feedback without suppressing an explicitly requested report. Reports
+describe the rendering stage, not successful file publication. Some early input/compile/cancel
+failures happen before a report can be written; check the command's exit status and keep reports
+with the invocation that produced them. See the [CLI guide](../../crates/merman-cli/README.md)
+for batch and report-path constraints.
+
+Catalog `supported_output_ids` names artifact formats, such as `svg`. Support queries instead
+name rendering contexts: choose `standalone-svg` for an independent SVG file or `browser-svg`
+for browser-hosted SVG. `png`, `jpeg` and `pdf` retain the same IDs. Do not forward an artifact's
+`svg` identifier directly into `describeThemeSupport()` or infer one context from the other.
 
 There is no automatic cross-preset fallback. Outside a dedicated design scope, retain the selected
 recipe and explain whether it has base-only or unreviewed styling. A host can offer an explicit
@@ -531,9 +637,11 @@ Modified exports do not inherit the built-in preset's catalog identity, design c
 qualification. Distribution, downloading, caching, and update policy belong to the host.
 
 A saved recipe is not automatically self-contained. A font-stack name does not embed a font;
-document the required host fonts. Caller-supplied font bytes in recipes are rejected. Do not assume
-a recipient has your host fonts or that text layout is identical across hosts. Merman does not add a theme registry, remote loading,
-or automatic font installation as part of this contract.
+document the required host fonts. Caller-supplied font bytes in recipes are rejected. The asset,
+alias and embedding schema remains experimental; its presence in exported types does not promise
+an embedded-font backend. Do not assume a recipient has your host fonts or that text layout is
+identical across hosts. Merman does not add a theme registry, remote loading, or automatic font
+installation as part of this contract.
 
 ### Sequence control surfaces
 

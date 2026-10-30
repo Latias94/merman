@@ -31,5 +31,5 @@ export const DEFAULT_WORKSPACE_SNAPSHOT: Readonly<WorkspaceSnapshot> =
     themeRecipeJson: null,
     svgPipeline: "parity",
     textMeasurementMode: "browser",
-    diagramFont: "trebuchet",
+    diagramFont: "inherit",
   });

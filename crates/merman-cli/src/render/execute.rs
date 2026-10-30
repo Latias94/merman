@@ -46,8 +46,44 @@ pub(crate) fn execute_render(
                     ExecutedArtifact::text(bytes, permit)
                 }
                 #[cfg(feature = "svg")]
-                PreparedSingleOutput::Graphical { renderer, .. } => {
-                    execute_graphical(renderer, &single.source, &single.control, &context.stderr)?
+                PreparedSingleOutput::Graphical {
+                    renderer,
+                    destination,
+                } => {
+                    let mut result = execute_graphical(
+                        renderer,
+                        &single.source,
+                        &single.control,
+                        &context.stderr,
+                        None,
+                    );
+                    if let Some(path) = &renderer.theme_report {
+                        let report = match &mut result {
+                            Ok(artifact) => artifact
+                                .theme_result
+                                .take()
+                                .expect("theme report requested"),
+                            Err(error) => super::theme_feedback::ThemeResult::failed(error),
+                        };
+                        let publication =
+                            report.encode_single(destination.file()).and_then(|bytes| {
+                                context.publication.publish_file_controlled(
+                                    path,
+                                    &bytes,
+                                    &single.publications,
+                                    &single.control,
+                                )
+                            });
+                        if let Err(report_error) = publication {
+                            if let Err(render_error) = result {
+                                crate::diagnostics::DiagnosticSink::new(false, &context.stderr)
+                                    .info(format!("theme report failed: {report_error}"));
+                                return Err(render_error);
+                            }
+                            return Err(report_error);
+                        }
+                    }
+                    result?
                 }
             };
             let destination = match &single.output {
@@ -105,8 +141,9 @@ pub(crate) fn execute_graphical(
     source: &str,
     control: &merman::OperationControl,
     stderr: &SharedWriter,
+    chart: Option<u64>,
 ) -> Result<ExecutedArtifact, CliError> {
-    execute_graphical_with_pipeline(prepared, &prepared.pipeline, source, control, stderr)
+    execute_graphical_with_pipeline(prepared, &prepared.pipeline, source, control, stderr, chart)
 }
 
 #[cfg(feature = "rustdoc")]
@@ -117,7 +154,7 @@ pub(crate) fn execute_rustdoc_svg_raw(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<Vec<u8>, CliError> {
-    execute_graphical_with_pipeline(prepared, pipeline, source, control, stderr)
+    execute_graphical_with_pipeline(prepared, pipeline, source, control, stderr, None)
         .map(ExecutedArtifact::into_bytes)
 }
 
@@ -128,6 +165,7 @@ fn execute_graphical_with_pipeline(
     source: &str,
     control: &merman::OperationControl,
     stderr: &SharedWriter,
+    chart: Option<u64>,
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "native-fonts")]
     if prepared.font_context.is_some() {
@@ -180,6 +218,8 @@ fn execute_graphical_with_pipeline(
             }
             match (&prepared.output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
+                    let theme_result =
+                        theme_feedback(prepared, svg.evidence(), svg.admission(), stderr, chart);
                     report_fallback_css_residual(
                         prepared.quiet,
                         svg.admission()
@@ -187,11 +227,12 @@ fn execute_graphical_with_pipeline(
                             .contains(&merman::TargetAdmissionReason::FallbackCssResidual),
                         stderr,
                     );
-                    let (svg, _evidence) = svg.into_parts();
+                    let (svg, _) = svg.into_parts();
                     #[cfg(feature = "markdown")]
                     let metadata = svg_metadata(&svg);
                     Ok(ExecutedArtifact {
                         bytes: svg.into_bytes(),
+                        theme_result,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -227,8 +268,16 @@ fn execute_graphical_with_pipeline(
                         stderr,
                     );
                     let output = export.encode()?;
+                    let theme_result = theme_feedback(
+                        prepared,
+                        output.evidence(),
+                        output.admission(),
+                        stderr,
+                        chart,
+                    );
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
+                        theme_result,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -265,8 +314,16 @@ fn execute_graphical_with_pipeline(
                         stderr,
                     );
                     let output = export.encode()?;
+                    let theme_result = theme_feedback(
+                        prepared,
+                        output.evidence(),
+                        output.admission(),
+                        stderr,
+                        chart,
+                    );
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
+                        theme_result,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -302,8 +359,16 @@ fn execute_graphical_with_pipeline(
                         stderr,
                     );
                     let output = export.encode()?;
+                    let theme_result = theme_feedback(
+                        prepared,
+                        output.evidence(),
+                        output.admission(),
+                        stderr,
+                        chart,
+                    );
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
+                        theme_result,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -349,6 +414,30 @@ fn execute_graphical_with_pipeline(
     }
 }
 
+#[cfg(feature = "svg")]
+fn theme_feedback(
+    prepared: &PreparedGraphicalRender,
+    evidence: &merman::RenderEvidence,
+    target: &merman::TargetAdmissionReceipt,
+    stderr: &SharedWriter,
+    chart: Option<u64>,
+) -> Option<super::theme_feedback::ThemeResult> {
+    if prepared.theme_feedback_enabled {
+        super::theme_feedback::observe(
+            prepared.theme_requested,
+            prepared.quiet,
+            evidence,
+            target,
+            stderr,
+            chart,
+        );
+    }
+    prepared
+        .theme_report
+        .as_ref()
+        .map(|_| super::theme_feedback::ThemeResult::completed(evidence, target))
+}
+
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn execute_raw_svg(
     prepared: &PreparedGraphicalRender,
@@ -387,6 +476,7 @@ fn execute_raw_svg(
                 stderr,
             );
             Ok(ExecutedArtifact {
+                theme_result: None,
                 bytes: prepared_raster
                     .encode_png()
                     .map_err(merman::RenderError::from)?,
@@ -420,6 +510,7 @@ fn execute_raw_svg(
                 stderr,
             );
             Ok(ExecutedArtifact {
+                theme_result: None,
                 bytes: prepared_raster
                     .encode_jpeg()
                     .map_err(merman::RenderError::from)?,
@@ -449,6 +540,7 @@ fn execute_raw_svg(
                 stderr,
             );
             Ok(ExecutedArtifact {
+                theme_result: None,
                 bytes: prepared_pdf.encode().map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
@@ -533,6 +625,8 @@ fn report_pdf_filter_plan(
 
 pub(crate) struct ExecutedArtifact {
     bytes: Vec<u8>,
+    #[cfg(feature = "svg")]
+    pub(super) theme_result: Option<super::theme_feedback::ThemeResult>,
     _permit: Option<super::admission::BackendPermit>,
     #[cfg(feature = "markdown")]
     title: Option<String>,
@@ -550,6 +644,8 @@ impl ExecutedArtifact {
     fn text(bytes: Vec<u8>, permit: super::admission::BackendPermit) -> Self {
         Self {
             bytes,
+            #[cfg(feature = "svg")]
+            theme_result: None,
             _permit: Some(permit),
             #[cfg(feature = "markdown")]
             title: None,

@@ -10,7 +10,39 @@ mod config;
 mod theme;
 
 pub(crate) use config::{PieConfigView, PieLegendPosition};
+pub(crate) use theme::prepared_text::{PieTextCssEmission, PieTextRole};
 pub(crate) use theme::{PIE_TITLE_CLASS, PieThemePlan, PieThemeReceipt};
+
+fn visible_pie_sections(model: &PieDiagramRenderModel) -> (f64, Vec<&PieSection>) {
+    let total: f64 = model
+        .sections
+        .iter()
+        .filter(|section| section.value.is_finite() && section.value >= 0.0)
+        .map(|section| section.value)
+        .sum();
+    let sections = if total.is_finite() && total > 0.0 {
+        model
+            .sections
+            .iter()
+            .filter(|section| section.value.is_finite() && section.value > 0.0)
+            .filter(|section| (section.value / total) * 100.0 >= 1.0)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    (total, sections)
+}
+
+pub(crate) fn pie_legend_text(label: &str, value: f64, show_data: bool) -> String {
+    if show_data {
+        format!(
+            "{label} [{}]",
+            crate::number_format::canonical_number(value)
+        )
+    } else {
+        label.to_owned()
+    }
+}
 
 fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     // Mermaid pie charts use a "12 o'clock is zero" convention with y increasing downwards.
@@ -93,12 +125,7 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
         _ => centered_legend_start_y,
     };
 
-    let total: f64 = model
-        .sections
-        .iter()
-        .filter(|s| s.value.is_finite() && s.value >= 0.0)
-        .map(|s| s.value)
-        .sum();
+    let (total, pie_sections) = visible_pie_sections(model);
 
     let mut slices: Vec<PieSliceLayout> = Vec::new();
     if total.is_finite() && total > 0.0 {
@@ -108,13 +135,6 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
         // - preserve input order before D3 pie() computes angles (`sort(null)`)
         // - angles are normalized over the filtered set (so drawn slices fill the whole circle)
         // - percentage labels are still computed using the original total
-        let pie_sections: Vec<&PieSection> = model
-            .sections
-            .iter()
-            .filter(|s| s.value.is_finite() && s.value > 0.0)
-            .filter(|s| (s.value / total) * 100.0 >= 1.0)
-            .collect();
-
         let pie_total: f64 = pie_sections.iter().map(|s| s.value).sum();
         if !pie_sections.is_empty() && pie_total.is_finite() && pie_total > 0.0 {
             if pie_sections.len() == 1 {
@@ -180,7 +200,9 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
     let title_style = paint_plan.css_binding().title_measurement_style();
     let mut max_legend_width: f64 = 0.0;
     for sec in &model.sections {
-        let label = if model.show_data {
+        let label = if paint_plan.text_measurement_requested() {
+            pie_legend_text(&sec.label, sec.value, model.show_data)
+        } else if model.show_data {
             format!("{} [{}]", sec.label, fmt_number(sec.value))
         } else {
             sec.label.clone()
@@ -298,6 +320,7 @@ mod tests {
     struct RecordingBoundingClientRectMeasurer {
         calls: Mutex<Vec<String>>,
         font_families: Mutex<Vec<Option<String>>>,
+        styles: Mutex<Vec<TextStyle>>,
     }
 
     impl TextMeasurer for RecordingBoundingClientRectMeasurer {
@@ -322,6 +345,7 @@ mod tests {
                 .lock()
                 .expect("font family measurements")
                 .push(style.font_family.clone());
+            self.styles.lock().unwrap().push(style.clone());
             match text {
                 "Legend" => 123.456_789,
                 "Title" => 1_000.123_456,
@@ -541,5 +565,76 @@ mod tests {
                 .expect("font family measurements"),
             [Some(font_stack.as_css()), Some(font_stack.as_css())]
         );
+    }
+
+    #[test]
+    fn pie_role_measurement_uses_final_sizes_weights_and_styles_with_source_precedence() {
+        use crate::DiagramFamilyId;
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, FontStyle, Specified, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
+        };
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+
+        let mut model = PieDiagramRenderModel::default();
+        model.title = Some("Title".to_owned());
+        model.sections = vec![PieSection {
+            label: "Legend".to_owned(),
+            value: 1.0,
+        }];
+        let mut rules = ThemeRuleSet::default();
+        for (target, size, weight, style) in [
+            (ThemeTarget::Title, 30.0, 650, FontStyle::Italic),
+            (ThemeTarget::Legend, 12.0, 500, FontStyle::Normal),
+        ] {
+            let mut patch = ThemeStylePatch::default();
+            patch.typography.font_size_px = Specified::Value(size);
+            patch.typography.font_weight = Specified::Value(weight);
+            patch.typography.font_style = Specified::Value(style);
+            rules = rules.with_rule(ThemeRule::new(target, patch).for_family(DiagramFamilyId::PIE));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(rules).with_typography(
+                    TypographySpec::default()
+                        .with_default(ThemeTextStyle::default().with_font_size_px(20.0).unwrap())
+                        .with_family_style(
+                            DiagramFamilyId::PIE,
+                            ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
+                        ),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::PIE);
+        let config = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "%%{init: {\"themeVariables\": {\"pieLegendTextSize\": \"1.5em\"}}}%%\npie title Title\n  \"Legend\" : 1\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .metadata()
+            .effective_config
+            .clone();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = super::PieThemePlan::resolve(&model, &config, Some(&theme), &meter).unwrap();
+        let measurer = RecordingBoundingClientRectMeasurer::default();
+        super::layout_pie_diagram_typed_with_paint_plan(
+            &model,
+            None,
+            config.as_value(),
+            &plan,
+            &measurer,
+        )
+        .unwrap();
+        let styles = measurer.styles.lock().unwrap();
+        assert_eq!(styles[0].font_size, 36.0);
+        assert_eq!(styles[0].font_weight.as_deref(), Some("500"));
+        assert_eq!(styles[0].font_style.as_deref(), Some("normal"));
+        assert_eq!(styles[1].font_size, 30.0);
+        assert_eq!(styles[1].font_weight.as_deref(), Some("650"));
+        assert_eq!(styles[1].font_style.as_deref(), Some("italic"));
+        assert_eq!(plan.css_binding().legend_text_size, "1.5em");
+        assert_eq!(plan.css_binding().title_text_size, "30px");
     }
 }

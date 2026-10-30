@@ -5,6 +5,11 @@ sources with four theme selections: no compiled preset, Brutalist, Spotless, and
 They are output examples, not screenshots of Modern Mermaid or a claim of pixel-identical
 reproduction.
 
+The Brutalist, Spotless, and Cyberpunk visual design references come from
+[Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid). The
+[theme gallery credits](../../rendering/theme-gallery/README.md#design-references-and-license)
+record the pinned source and retained MIT license notice.
+
 The sources are copied from the public Cyberpunk fixtures. Every render uses the same
 explicit configuration: SVG text labels, classic Flowchart and Sequence looks, and Dagre
 Flowchart layout. This keeps the presentation configuration fixed while the compiled recipe

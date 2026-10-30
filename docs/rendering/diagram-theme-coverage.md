@@ -633,7 +633,7 @@ sidecars or digest chains. It runs under the explicit workspace cfg through
 consumer whose acceptance imports must fail. These checks do not qualify presets or close the
 remaining C7a authoring/consumer gates. The retired prepared-text marker protocol is not evidence.
 
-Support discovery now has an independent twenty-two-case golden in
+Support discovery now has an independent twenty-seven-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
 first-release revision 1 and checks subject-based rule, base-typography, and ordinal queries across Conditional,
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
@@ -652,9 +652,9 @@ Revision-85 results remain historical. Browser Web packages, a new Typst WASM ar
 other host artifacts still need current-source verification. This is a cross-transport discovery
 contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
-The preset admission runner executes all ten exact catalog recipes, then exports each completed
+The preset admission runner executes the exact catalog recipes, then exports each completed
 document to PNG. Cyberpunk uses the unchanged complete Flowchart, Sequence and XY Chart sources
-from `fixtures/themes/public-cyberpunk`; the other nine presets retain the small
+from `fixtures/themes/public-cyberpunk`; the other presets retain the small
 Flowchart, State and Sequence sources. These admission runs use native SVG labels, system fonts,
 default resource limits and 1x PNG. The shared runner explicitly uses `flowchart.look: classic`,
 `flowchart.layout: dagre`, and `sequence.look: classic`; other families retain their defaults. Public
@@ -662,6 +662,9 @@ preset recipes do not force a look or layout. CLI qualification replays the Rust
 configuration. These observations do not cover HTML labels, PDF, or the default Neo look for
 Flowchart and Sequence. Sequence Neo trees that mix typed preset filters with built-in filters remain
 outside this qualification and retain their strict native admission rejection.
+These historical native qualification profiles cover Brutalist, Spotless and Cyberpunk only.
+Ghibli's dedicated Pie design has separate renderer tests and public gallery sources; adding it
+to the catalog does not create a qualification profile or populate its qualified cells.
 On 2026-09-11 the 60 artifact observations comprised 18 HostDependent Flowchart/State/Sequence outputs from the native
 candidates and 42 Rejected outputs. The seven retained recipes keep explicit Mermaid `base` and `darkMode`
 requests (two compatibility residuals per family). Native candidates omit those requests.
