@@ -313,3 +313,31 @@ contract; original M0 source/fixture remains pinned separately.
 The compatibility-JSON analysis recipe waits for the active immutable-presentation integration.
 Host capability and product recipes, LSP diagnostic/code-action selection, complete independent
 receipts and final retention/installed-product gates remain required before closing M4.
+
+
+## Independent source and analysis checkpoint observations
+
+The remaining committed M3 source lane and both M4 analysis lanes passed `--expect-receipt`
+against their original M0 fixtures. Each consumed both original runtime inputs with exact output
+and report equality; raw and stripped outputs agree. Counts include proc-macro package rows.
+
+| Fixed consumer | Source / fixture commit | External versions, base → candidate | Stripped bytes, base → candidate |
+| --- | --- | ---: | ---: |
+| Source-to-ASCII | `03c6df3c8` / same | 84 → 84 | 3790336 → 3822592 |
+| Analysis diagnostics | `6cdecd98b` / same | 87 → 82 | 2151936 → 2119680 |
+| Analysis fixes | `6cdecd98b` / same | 87 → 87 | 2159104 → 2188800 |
+
+The source workflow still compiles its parser and is 32256 bytes larger (0.85%); no source-workflow
+size reduction is claimed. Diagnostic-only analysis excludes `serde-saphyr` and its four exclusive
+transitive packages (`autocfg`, `base64`, `nohash-hasher`, `num-traits`). The fixes consumer explicitly
+selects the writer and Generate and retains the full original-document edit transaction, including
+CRLF and emoji coordinates. Its artifact is 29696 bytes larger (1.38%); the diagnostic artifact is
+32256 bytes smaller (1.50%). No external package version was added to any of these matched lanes.
+
+Evidence is under ignored `target/bench/experiments/model-source-boundaries/`:
+`m3-boundary-source-ascii/receipt.json`, `m3-source-ascii-consumer-comparison.json`,
+`m4-boundary-analysis-diagnostics/receipt.json`, `m4-analysis-diagnostics-comparison.json`,
+`m4-boundary-analysis-fixes/receipt.json` and `m4-analysis-fixes-comparison.json`. The registration
+indexes these actual results. There is still no controlled cold-compilation or runtime-speed result.
+These fixed observations do not close graphical/export, full host/product integration, retirement,
+SVG DOM, strict feature, package/legal or final M8 requirements.
