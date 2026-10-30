@@ -1,6 +1,6 @@
 # Family data migration inventory
 
-Status: M7 implementation ownership reconciled against the shared worktree on 2026-10-30; theme-acceptance source callers are migrated, with acceptance-cfg validation pending. See [Current implementation reconciliation](#current-implementation-reconciliation-2026-10-30) for the final owners and evidence limits. This is a source inventory, not an M8 execution or completion receipt.
+Status: R3/M7 ownership and retirement reconciliation complete, 2026-10-31. All 34 payloads retain one defining owner; the migrated theme-acceptance callers have passed their dedicated cfg execution. See [Current implementation reconciliation](#current-implementation-reconciliation-2026-10-30) for the final owners and historical evidence limits, and the [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) for M8 execution. This source inventory does not claim cross-platform product qualification.
 
 Original planning status, retained for history: planning checklist, 2026-10-30. Source: `8888358b1873c89049c0e430615c91d406dac224`. Implementation was not complete. This inventory supports [Model, Source, and Consumer Boundaries](2026-10-30-model-and-source-boundaries.md); it is not a new machine input or a source-analysis gate. The original tables, extraction constraints, phase description and checklist below describe that baseline; the appended reconciliation supersedes their ownership status without rewriting the historical inventory.
 
@@ -282,3 +282,20 @@ These rows record inspected source changes, not a Cargo result from this invento
 The Tree-sitter dev dependency also changes the `Cargo.lock` path-package dependency list. The current registry `(name, version, checksum)` set was compared with the prepared Linux cache receipt and still matches all **568** cached archives. The lock-file SHA256 itself has changed: reuse the archive cache, then recheck the final frozen lock and update its fingerprint receipt before Linux owners run. This provisional reconciliation does not replace the final lock receipt.
 
 The source ownership tables and the identified acceptance caller migrations are reconciled; acceptance-cfg validation remains pending. The historical unchecked boxes above are not changed into test-pass claims. Final M8 evidence must still be recorded against the frozen source: ordinary feature/singleton owners, independent normal/build dependency closures, presentation-without-JSON producers, deep lifecycle/cancellation, Linux filesystem/browser owners, legal/package contents and product matrices. Prepared Linux tools or a successful production check alone do not close those acceptance cases.
+
+### Final ownership reconciliation, 2026-10-31
+
+Read-only review at `a2a2363267b5c91a063177b97bd18b14fe771340` reconfirmed all 34 canonical
+payloads, nine full-data groups, fourteen terminal adapters and six wrapper retirements. No
+unresolved duplicate definition, missing family or obsolete public core forwarding path remains.
+The original tables and earlier worktree/lock observations are historical; this reconciliation
+supersedes their pending ownership statements without rewriting the baseline.
+
+The dedicated acceptance cfg executed successfully: 3,154 tests passed with one skip, plus nine
+preset/legacy-projection tests and 54 discovery cases. The complete Render all-feature run passed
+5,574 tests with five skips. The final Linux source staging rechecked the frozen lock and passed
+xtask, Unix filesystem/runtime, browser-reference and fuzz owners. Their distinct execution scopes
+and the source-package/fresh-consumer evidence are recorded in the
+[implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md#m8-final-correctness-owners-2026-10-31).
+These results close R3/M7 and the formerly pending acceptance-cfg callers; product/platform and
+measurement qualification remain separate M8 obligations.

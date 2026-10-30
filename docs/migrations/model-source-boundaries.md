@@ -18,6 +18,8 @@ The model, ASCII, Render, and Export production dependency graphs exclude Mermai
 
 All lower-level packages have empty default features. Select the required `diagram-*` data, source parsers, and output handlers at their respective owners. `all-diagrams` selects every family available at that owner. Selecting a model does not enable a source language or an output handler. Model feature union cannot widen a host's declared capabilities.
 
+Select `merman-model/presentation-data` when constructing or receiving presentation data directly. A full source engine instead requires `presentation` on `merman-core` or the facade. `merman-model/compat-json` also enables `presentation-data`; retaining presentation facts alone does not require the JSON projector.
+
 The `merman` facade keeps its existing default SVG and layout-engine selections. Use `default-features = false` for a deliberately selected source-to-output build. Source-to-ASCII support is the intersection of the source parsers and terminal handlers; direct model consumers use `merman_ascii::ascii_capabilities()`.
 
 ## Update Rust imports

@@ -525,3 +525,81 @@ All 34 workspace packages passed individual `cargo fmt -- --check` runs. The agg
 exceeds Windows' command-line limit; individual package invocation is the equivalent format owner.
 Whitespace checks passed, and published changelog sections remain identical after line-ending
 normalization to the main publication-sync baseline. There has been no push, tag or publication.
+
+## M8 final correctness owners, 2026-10-31
+
+The final Rust source includes the fixes through `a2a2363267b5c91a063177b97bd18b14fe771340`;
+`d049531b3c62deb4c45aea5df428e33d283acee6` additionally pins the Node-WASM optimizer in
+the three build workflows. Results below retain their individual source and recipe identities.
+Overlapping test totals describe different scopes and must not be added together.
+
+| Owner | Final result and scope |
+| --- | --- |
+| Strict feature matrix | 765 checks passed, covering all 46 artifact profiles, exact host/Web/Typst recipes and independent model/output consumers. |
+| SVG DOM | Structure, parity and parity-root checks passed at three decimals, with the existing browser-text diagnostic and reviewed residual policy. |
+| Render all features | 5,574 passed, five skipped; the earlier 3,303-case library run remains a separate checkpoint. |
+| Diagnostics-only analysis | 287 passed. |
+| LSP | 53 diagnostics-only and 54 fixes-capable recipe tests passed. |
+| Native C ABI | 74 exact-recipe tests passed. |
+| UniFFI, WASI and Android libraries | 86 combined all-feature library tests passed. This is library evidence, distinct from installed products below. |
+| Theme acceptance cfg | 3,154 passed, one skipped; nine preset/legacy-projection tests and 54 support-discovery cases also passed. |
+| Public Rustdoc | 46 doctests passed across seven packages, including ten compile-fail examples. |
+| xtask | Complete Windows suite: 693 passed. Complete Linux suite: 695 passed after correcting two stale Web/fixes recipe expectations. |
+| Linux filesystem/runtime | 81 CLI transaction, 46 Markdown/Rustdoc/fix filesystem, 39 runtime/time and one font symlink-replacement tests passed. All fuzz bins compiled after the facade export correction. |
+| Real Linux browser reference | Nine parser-oracle and eight reference-runtime/path-containment tests passed on the task's ext4 source staging. |
+| Legal/package governance | Thirteen license reports, 446 release projections and 28 governed packages passed their existing checks; Cargo deny passed. |
+
+The Class depth-128 parse regression initially overflowed its unchanged 128 KiB Windows stack.
+Debugger/disassembly evidence identified accumulated parsed-result storage before the generated
+LALRPOP reduction frame, rather than recursive namespace processing. `ParsedDiagramRender` now
+stores its private `PresentationDiagram` in a box. Borrowing and consuming APIs retain the same
+value without cloning. This adds one allocation to a successful full render parse, bounds its
+return-slot storage, and passes both the original parse and 256 KiB layout stack tests. Generated
+parsers and test stack sizes were not changed.
+
+The separate Node Cargo lock was refreshed offline after the package extraction. Its external
+version set fell from 150 to 149 solely by removing the unused YAML writer; no external version
+was added or upgraded. Exact locked metadata and all 122 JavaScript contract tests passed. The
+facade also explicitly exports `ParsedEditorFacts`, as required by the existing fuzz consumer.
+
+Both new source packages were actually archived and verified by Cargo, then unpacked into a
+fresh consumer without a copied workspace lock. That consumer resolved offline and exercised
+model, presentation and markup features without core. Package legal contents passed. Receipts
+are retained as `target/m8-package-consumer-receipt.json` and the associated source-package and
+consumer logs; archive identities are tied to their build source, rather than a later docs commit.
+
+## M8 installed products and build tools
+
+All five Web packages built their actual WASM and TypeScript artifacts. Five-package and
+same-process smoke, DOM-safety smoke and TypeScript contracts passed. The Web input suite passed
+182 tests with six conditional skips. Diagnostic-only smoke now checks the frontmatter diagnostic
+and verifies absent edits unless the artifact declares `fixes`; a fixes-capable package must still
+provide them. This preserves the new product boundary in the actual artifact.
+
+Windows N-API passed its exact build/runtime probe, package assembly and verification, two local
+tarball packs, offline installation into a fresh consumer, and the installed-package smoke.
+That smoke exercised SVG, theme authoring, icon registries and saved-recipe exchange in fresh
+processes. The Python UniFFI wheel also built, installed into a fresh environment and passed the
+existing theme and runtime smoke. Android built both declared JNI ABIs (`arm64-v8a`, `x86_64`),
+assembled and verified the AAR, and passed all 46 host Java tests. An initial invocation of the
+nonexistent `testReleaseUnitTest` task was corrected to CI's `testDebugUnitTest`; it was not a
+product failure. No Android instrumentation result is claimed without a device.
+
+Node-WASM's first release build reached Binaryen 117 and reproducibly failed its precomputation
+pass on the generated module. The same preserved wasm-bindgen input optimized successfully with
+Binaryen 132. CI, release preflight and the Node release workflow now install the existing
+repository pin, Binaryen 133, on `PATH`; local source-build instructions match. All 58 workflow
+contracts passed on Linux. Windows' broad workflow-shell test invocation encountered its existing
+Bash/encoding environment mismatch; the new static contract passed there independently. Final
+Node-WASM product qualification passed the complete build owner with 133, package verification,
+local tarball packing, fresh offline installation and the installed-package smoke, without
+disabling release optimization. The old failure and diagnostic replay remain in ignored receipts.
+All five assembled Web WASM artifacts also passed the existing raw, stripped, gzip and Brotli
+budgets unchanged; `target/m8-web-wasm-budgets-final.log` records exact bytes and feature recipes.
+
+Task-local tools and child-process environment settings did not change global Node/npm, proxy,
+Java or Cargo configuration. One Android environment preparation command did accidentally execute
+`rustup set profile`, leaving the global profile at `default`. The previous value was not captured,
+so no guessed restoration was attempted. The default toolchain was unchanged; required Android
+targets were installed. The incident and target-install evidence are retained in
+`target/m8-product-tools-20261031-android/rust-targets-receipt.json`.
