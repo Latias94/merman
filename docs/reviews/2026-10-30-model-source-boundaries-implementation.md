@@ -26,16 +26,16 @@ Existing correctness results at the prerequisite retain their original scope in 
 
 ## M0 consumer baseline
 
-All lanes use Rust 1.95.0 on `x86_64-pc-windows-msvc`, empty dependency defaults and their committed fixed feature recipe. The runner uses release `opt-level=s`, thin LTO, one codegen unit, abort-on-panic, no debug info and no incremental compilation. Builds ran sequentially with one job and the shared development target. External counts are distinct resolved normal/build package versions, excluding path dependencies; they are not linked-library or deployed-service counts. These Windows receipts are distinct from the dependency review's representative Linux-target graph.
+All lanes use Rust 1.95.0 on `x86_64-pc-windows-msvc`, empty dependency defaults and their committed fixed feature recipe. The runner uses release `opt-level=s`, thin LTO, one codegen unit, abort-on-panic, no debug info and no incremental compilation. Builds ran sequentially with one job and the shared development target. External counts are distinct resolved normal/build package versions, including proc-macro packages and excluding path dependencies; they are not linked-library or deployed-service counts. The M3 recount corrected earlier summaries that omitted rows marked `(proc-macro)`: model 74→82, model/ASCII and source/ASCII 76→84, SVG 105→114, diagnostics/fixes 79→87, and the partial M2 model candidate 16→18. Raw receipts, inputs, output hashes and byte observations are unchanged; `dependency-count-reconciliation.json` preserves both count definitions. These Windows receipts are distinct from the dependency review's representative Linux-target graph.
 
 | Fixed consumer | External versions | Raw release bytes | Stripped bytes |
 | --- | ---: | ---: | ---: |
-| `boundary-model` | 74 | 540672 | 540672 |
-| `boundary-model-ascii` | 76 | 3875840 | 3875840 |
-| `boundary-source-ascii` | 76 | 3790336 | 3790336 |
-| `boundary-presentation-svg` | 105 | 7020032 | 7020032 |
-| `boundary-analysis-diagnostics` | 79 | 2151936 | 2151936 |
-| `boundary-analysis-fixes` | 79 | 2159104 | 2159104 |
+| `boundary-model` | 82 | 540672 | 540672 |
+| `boundary-model-ascii` | 84 | 3875840 | 3875840 |
+| `boundary-source-ascii` | 84 | 3790336 | 3790336 |
+| `boundary-presentation-svg` | 114 | 7020032 | 7020032 |
+| `boundary-analysis-diagnostics` | 87 | 2151936 | 2151936 |
+| `boundary-analysis-fixes` | 87 | 2159104 | 2159104 |
 
 Receipts are under ignored `target/bench/experiments/model-source-boundaries/base-<recipe>/receipt.json`; the experiment ledger indexes all six actual runs and output hashes. Each executable consumed `alpha.json` and `beta.json`, and raw/stripped outputs agreed. The eight Python staging/receipt contracts passed before collection. Raw and stripped byte counts happen to match for these PE executables; both files and the stripping-tool identity are retained.
 
@@ -146,7 +146,7 @@ feature are unchanged; only the model import/dependency owner migrated.
 
 | Observation | M0 base | M2 checkpoint |
 | --- | ---: | ---: |
-| External normal/build package versions | 74 | 16 |
+| External normal/build package versions | 82 | 18 |
 | Raw release executable bytes | 540672 | 541184 |
 | Stripped executable bytes | 540672 | 541184 |
 
@@ -258,3 +258,29 @@ code warnings in that narrow test recipe remain distinct from production Clippy.
 projection unit tests and eight fixed-consumer staging/receipt tests passed. Full SVG DOM, final
 consumer sizes/cold compilation and parser-free graphical/export graphs are not claimed by this
 extraction.
+
+
+## Independent M3 model-to-ASCII result
+
+The committed `03c6df3c86edc91248a1617343def817cf2c0323` source and existing fixed consumer were
+compared with the original M0 source/fixture using `boundary-model-ascii --expect-receipt`.
+Both runtime inputs produce identical Flowchart/Class/State primary output, complete width-12
+fallback, and consumed report metadata. Raw and stripped outputs agree. The target, toolchain,
+release profile and consumed operation are unchanged.
+
+| Observation | M0 base | M3 checkpoint |
+| --- | ---: | ---: |
+| External normal/build package versions, including proc macros | 84 | 28 |
+| Raw release executable bytes | 3875840 | 2370560 |
+| Stripped executable bytes | 3875840 | 2370560 |
+
+The complete normal/build tree contains no core, Mermaid grammar, YAML/JSON5, markup package,
+HTML5 recovery, URL normalization or CSS admission. Required character-reference decoding and
+Unicode rules remain present. No external package version was added. The fixed executable is
+1505280 bytes smaller (38.84%); this does not imply faster execution or cold compilation.
+
+Evidence is retained at ignored `target/bench/experiments/model-source-boundaries/`:
+`m3-boundary-model-ascii/receipt.json`, `m3-ascii-consumer-comparison.json` and the count
+reconciliation record above. The experiment registration indexes this checkpoint. This is the
+independent model-to-ASCII lane only. Source-to-ASCII, graphical/export, analysis/fixes, controlled
+cold compilation and final product/feature/legal/package gates remain part of the active goal.
