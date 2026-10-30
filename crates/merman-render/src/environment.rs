@@ -907,9 +907,9 @@ impl RoutedTextMeasurer<'_> {
             | TextMeasurementOperation::SimpleBBoxHeight => TextMeasurementPhase::SvgBBox,
             TextMeasurementOperation::CanvasMeasureTextWidth => TextMeasurementPhase::Layout,
             TextMeasurementOperation::WrapProbeBBoxWidth => TextMeasurementPhase::Wrap,
-            TextMeasurementOperation::Wrapped
-            | TextMeasurementOperation::WrappedWithRawWidth
-            | TextMeasurementOperation::HtmlLineHeight => TextMeasurementPhase::Wrap,
+            TextMeasurementOperation::Wrapped | TextMeasurementOperation::WrappedWithRawWidth => {
+                TextMeasurementPhase::Wrap
+            }
             TextMeasurementOperation::Measure => self.default_phase,
         }
     }
@@ -1061,15 +1061,17 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
     }
 
     fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // Protocol 1 retains the 0.9 host's complete Wrapped metrics contract. Profiles can
+        // specialize literal-line height, but callbacks still own their legacy HTML parsing.
         self.resolve(
             self.request(
-                TextMeasurementOperation::HtmlLineHeight,
+                TextMeasurementOperation::Wrapped,
                 text,
                 style,
                 None,
                 WrapMode::HtmlLike,
             ),
-            decode_host_length,
+            |measurement| decode_host_metrics(measurement).map(|metrics| metrics.height),
             |profile| profile.measure_html_line_height_px(text, style),
         )
     }
@@ -1959,7 +1961,6 @@ mod tests {
                 (19, "raw-bbox-y-offset"),
                 (20, "raw-middle-bbox-y-offset"),
                 (21, "raw-hanging-bbox-y-offset"),
-                (22, "html-line-height"),
             ]
         );
     }
@@ -2188,16 +2189,20 @@ mod tests {
     }
 
     #[test]
-    fn literal_html_line_height_preserves_payload_phase_and_routed_fallback() {
+    fn html_line_height_preserves_legacy_host_metrics_and_routed_fallback() {
         struct LineHost(bool);
         impl HostTextMeasurer for LineHost {
             fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
-                assert_eq!(request.operation, TextMeasurementOperation::HtmlLineHeight);
+                assert_eq!(request.operation, TextMeasurementOperation::Wrapped);
                 assert_eq!(request.phase, TextMeasurementPhase::Wrap);
                 assert_eq!(request.text, "A<br>B&amp;C");
                 assert_eq!(request.wrap_mode, WrapMode::HtmlLike);
                 assert_eq!(request.max_width, None);
-                Ok(self.0.then_some(HostTextMeasurement::Length(31.5)))
+                Ok(self.0.then_some(HostTextMeasurement::Metrics(TextMetrics {
+                    width: 73.0,
+                    height: 31.5,
+                    line_count: 2,
+                })))
             }
         }
         for handled in [false, true] {
@@ -2219,6 +2224,29 @@ mod tests {
                 .text_measurer(TextMeasurementPhase::Layout)
                 .measure_html_line_height_px("A<br>B&amp;C", &style);
             assert_eq!(height, if handled { 31.5 } else { 24.0 });
+            let report = session.text_measurement_report();
+            let entry = &report.entries()[0];
+            assert_eq!(
+                entry.provenance().operation,
+                TextMeasurementOperation::Wrapped
+            );
+            assert_eq!(entry.provenance().phase, TextMeasurementPhase::Wrap);
+            assert_eq!(
+                entry.provenance().source,
+                if handled {
+                    TextMeasurementSource::Host
+                } else {
+                    TextMeasurementSource::Profile
+                },
+            );
+            assert_eq!(
+                entry.provenance().fallback_reason,
+                if handled {
+                    None
+                } else {
+                    Some(HostFallbackReason::Missing)
+                },
+            );
         }
     }
 

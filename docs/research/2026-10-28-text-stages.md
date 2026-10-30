@@ -33,15 +33,9 @@ SVG validation remain explicit contracts.
 
 ## Public measurement contract
 
-Protocol 1 appends `html-line-height` as operation 22 with a non-negative `length`
-result. Codes 0 through 21, the result kinds, and transport ABI versions stay
-unchanged. A host assigns the already-decoded string through `textContent` to an
-unpadded, borderless, nowrap HTML inline-block and returns its client-rect height.
-It must not split literal `<br>` or decode entity spellings again. An exhaustive
-custom host should handle this operation or return unhandled for routed fallback.
-The descriptor and generated C, Android, Flutter, Python, UniFFI, and Web
-projections move together. Maintenance preserves its existing public Class
-payload API; main's separate `Arc` retention changes are not backported.
+Main appends `html-line-height` as operation 22 with a non-negative `length` result. Its host assigns the already-decoded string through `textContent` to an unpadded, borderless, nowrap HTML inline-block and returns its client-rect height without interpreting literal `<br>` or decoding entity spellings again.
+
+The 0.9.3 compatibility review defers that extension on maintenance: protocol 1 retains operations 0 through 21, the published exhaustive Rust/UniFFI enum, result kinds, and transport ABI versions. Existing host callbacks continue receiving `Wrapped` and their complete metrics retain their original meaning and provenance. Such hosts can still count literal `<br>` as a line break; an exact host literal-line operation is not part of this patch. Built-in and explicitly installed infallible profiles keep their specialized literal height. The descriptor and generated C, Android, Flutter, Python, UniFFI, and Web projections move together. Maintenance also preserves its existing public Class payload API; main's separate `Arc` retention changes are not backported.
 
 ## Independent validation
 
@@ -76,6 +70,8 @@ PNG/JPEG/PDF tests cover both rejection and valid unaffected combinations.
   bounded audit is not an exhaustive proof that no text defect remains.
 
 ## Verification record (2026-10-29)
+
+These are the original text-stage integration results before the 0.9.3 compatibility adjustment; they do not qualify the final release source. The [0.9.3 readiness record](../release/V093_BACKPORT_READINESS.md) tracks the compatibility regressions and immutable preflight separately.
 
 The record distinguishes executed local checks from workflow-owned platform evidence.
 The renderer/layout counts below are focused integrated runs, not a new claim that

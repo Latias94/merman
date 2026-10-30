@@ -4,22 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.9.3] - 2026-10-30
 
-### Fixed
+This maintenance release targets Mermaid 12.1.0 and retains the Presentation API, Options JSON schema 2, and existing transport versions. Review regenerated SVG and image snapshots after upgrading.
 
-- GitGraph tag backgrounds reference the diagram-owned built-in Neo shadow filter, matching the emitted definition across multiple diagrams while preserving custom filter URLs and CSS functions.
-- Sequence Neo note, actor, loop-label, and background CSS reference the diagram-owned built-in shadow filter. This prevents unresolved filter URLs from hiding note frames in native exports and keeps custom shadow references unchanged.
-- Improve default Mermaid-to-PNG/JPEG/PDF label geometry by sharing a native font context between layout and painting when the CLI includes `system-fonts`, with bounded system discovery before layout. Wrapping, node sizes, and image/PDF snapshots can change with host fonts. Use `--font-measurement deterministic` without font sources to retain the previous layout estimates and admitted `--css-file` / `themeCSS` behavior while keeping native painting; native measurement rejects those CSS inputs. Mermaid SVG stays deterministic, raw SVG remains painting-only, and explicit fonts stay closed unless `--font-system on` is selected. This CLI policy fix preserves C ABI 3, Options schema 2, Mermaid 12.1, and the published library codec font-discovery semantics. See the [CLI font guide](crates/merman-cli/README.md#explicit-fonts).
-- Custom-parser cancellation retains its Parse phase and bypasses lenient error suppression, including cancellation requested before a callback returns success or failure.
-- Init directives follow the pinned Mermaid 12.1.0 sanitization order: multiple init directives filter legacy `config` before merging; a single legacy `config` uses the actual source detector key, with the `flowchart-v2` exception. Prefer explicit configuration namespaces or frontmatter for consistent overrides.
-- Gantt axes use configured `tickInterval` when the body omits it. Mindmap roots honor `padding` and `useMaxWidth`, and compatibility JSON preserves the final layout selection.
-- Sequence consumes `showSequenceNumbers`, `hideUnusedParticipants`, and `noteAlign` while retaining source actor measurements, lifecycle order, and the existing semantic model.
-- Swimlane HTML edge labels wrap consistently with layout and retain their complete text in native SVG/PNG fallback output. [issue #242](https://github.com/Latias94/merman/issues/242)
+Text-measurement protocol 1 keeps operations 0..21; existing hosts need no new enum match arm. ER generic names containing literal `<br>` may retain extra height with markup-aware callbacks; an extension for exact literal-height callbacks is deferred. See the [host measurement guide](docs/bindings/HOST_TEXT_MEASUREMENT.md). [#250](https://github.com/Latias94/merman/pull/250)
 
 ### Added
 
-- Add descriptor-owned native C and WASI SDK build and archive recipes in standard, math-without-ELK, and full configurations. C ABI 3 gains an appended memory-font constructor without changing its existing prefix; the WASI reactor has its own scalar ABI 1. Both share bounded font bytes for measurement and painting, expose output dimensions, and package artifact-specific capability and license information. This additive maintenance exception retains Mermaid 12.1, Options schema 2, and the published native codec font-discovery semantics. Cross-platform release qualification remains required before publishing these archives. [issue #243](https://github.com/Latias94/merman/issues/243)
+- Native C shared/static SDK archive recipes and a `wasm32-wasip1` WASI reactor enable embedding without a browser or JavaScript runtime. Choose `standard` without math or ELK, `math` with formulas but no ELK, or `full` with both. Generated archives include capability catalogs, checksums, license notices, and runnable C/C++, Go/wazero, and Python/wasmtime examples; WASI exposes SVG and PNG through scalar ABI 1. See the [SDK guide](distribution/sdk/README.md) for target and host requirements. [#241](https://github.com/Latias94/merman/pull/241), [#245](https://github.com/Latias94/merman/pull/245), [issue #243](https://github.com/Latias94/merman/issues/243)
+- Native C and WASI engines accept caller-supplied font bytes and use the same fonts for label measurement and image painting. Bundled Cousine provides a fallback; supply additional fonts for CJK or emoji, and install matching fonts wherever SVG is viewed. The C ABI 3 constructor is appended without changing the existing API prefix. [#245](https://github.com/Latias94/merman/pull/245)
+- Web `createRenderSession({ iconPacks })` and Node `createNodeEngine({ iconPacks })` accept already-loaded Iconify JSON for instance-local icon rendering. The host controls loading and credentials; separate engines do not share registrations. [#247](https://github.com/Latias94/merman/pull/247)
+
+### Changed
+
+- CLI `render`, `batch`, and `mmdc` Mermaid-to-PNG/JPEG/PDF exports use native text measurement by default when the CLI includes `system-fonts`, sharing fonts between layout and painting. Host fonts can change wrapping, dimensions, and snapshots. Native measurement rejects `--css-file` / `themeCSS`; to retain previous layout estimates and admitted CSS behavior, use `--font-measurement deterministic` without font sources. Painting can still discover system fonts. See the [CLI font guide](crates/merman-cli/README.md#explicit-fonts). [#255](https://github.com/Latias94/merman/pull/255)
+- CLI capability discovery scopes `native_fonts.default_policy_scope` to `mermaid-svg-input` and adds `encoded_output_defaults` for encoded Mermaid output. Consumers of the previous scope string should read the output-specific defaults. Mermaid SVG, raw SVG geometry, and library/binding defaults retain their existing policies; capabilities schema 2 and CLI contract 6 are retained. [#255](https://github.com/Latias94/merman/pull/255)
+
+### Fixed
+
+- Sequence diagrams and GitGraph tag backgrounds resolve their diagram-scoped built-in Neo shadows, preventing missing Sequence note frames in native exports. Sequence viewports include box-frame strokes and restored built-in Neo shadows to prevent clipping. Custom filter URLs and CSS functions retain their existing behavior. [#255](https://github.com/Latias94/merman/pull/255)
+- Labels and titles reserve space for the fonts, weights, styles, whitespace, and visible text actually rendered, avoiding clipping and misplaced text across Class, Flowchart, Sequence, State, Block, ER, Requirement, and other affected diagrams. Browser measurement also preserves valid zero and subpixel typography. [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- HTML labels use bounded HTML5 recovery and namespace-aware SVG/XHTML serialization. Class notes no longer produce invalid XML entities, Kanban break markup renders as intended, and literal angle brackets and escaped text retain their intended rendered content. See the [before/after examples](docs/assets/text-stages/README.md). [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- Formula labels remain visible in native PNG, JPEG, and PDF exports, including glyph paint, fraction bars, Unicode bounds, clipping, and Sequence placement. Native formula output with nonempty caller-scoped CSS now fails explicitly when its paint cannot be preserved; omit that CSS or export parity SVG for browser rendering. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- Wrapped Swimlane edge labels retain all measured lines in native SVG and PNG output instead of being forced onto one clipped line. [#245](https://github.com/Latias94/merman/pull/245), [issue #242](https://github.com/Latias94/merman/issues/242)
+- Gantt uses configured `tickInterval` when the diagram body omits it. Mindmap honors root `padding` and `useMaxWidth` and preserves the resolved layout in compatibility JSON. Sequence applies `showSequenceNumbers`, `hideUnusedParticipants`, and `noteAlign` consistently in layout and SVG. [#252](https://github.com/Latias94/merman/pull/252)
+- Init directives follow Mermaid 12.1.0's configuration filtering and merge order. Multiple directives discard legacy `config`; a single directive resolves it using the detected diagram key, including the `flowchart-v2` exception. Use explicit configuration namespaces or frontmatter for consistent overrides. [#252](https://github.com/Latias94/merman/pull/252)
+- Flowchart preserves `%` in node identifiers and recognizes direction and header boundaries consistently with Mermaid, preventing valid targets from being truncated as comments. Separate a header direction from the diagram body with a newline or semicolon; malformed inline headers now fail strict parsing. [#241](https://github.com/Latias94/merman/pull/241)
+- YAML frontmatter accepts brackets inside comments and block text without reporting false nesting-limit errors. Actual nested collections remain subject to the existing depth limit. [#251](https://github.com/Latias94/merman/pull/251)
+- Custom-parser cancellation remains `Error::OperationCancelled` in the Parse phase, including callbacks that cancel before returning success or failure. Lenient parsing no longer turns cancellation into an error diagram. [#252](https://github.com/Latias94/merman/pull/252)
+
+### Security
+
+- Update DOMPurify to 3.4.17 and Tokio to 1.54.1, and refresh affected JavaScript dependency locks. The [dependency policy](docs/DEPENDENCY_POLICY.md) records retained compatibility exceptions. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247)
+
+### Contributors
+
+Thanks [@Latias94](https://github.com/Latias94) for the implementation and maintenance backports, [@nerzhulart](https://github.com/nerzhulart) for the Swimlane report, and [@mrueg](https://github.com/mrueg) for the WASI integration request.
 
 ## [0.9.2] - 2026-10-22
 

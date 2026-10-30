@@ -99,7 +99,7 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 6
       matrix:
         flavor: [standard, math, full]
         platform:
@@ -138,11 +138,19 @@ jobs:
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           toolchain: 1.95.0
+          components: rustfmt, clippy
           targets: ${{ matrix.platform.target }}
       - name: Install the existing license report tool
+        if: matrix.platform.target != 'x86_64-apple-darwin'
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-about@0.9.2
+      - name: Install the license report CLI from locked source on macOS Intel
+        if: matrix.platform.target == 'x86_64-apple-darwin'
+        run: cargo install cargo-about --version 0.9.2 --locked --features cli
+      - name: Verify the license report tool before building SDKs
+        shell: bash
+        run: python -c "import runpy; from pathlib import Path; runpy.run_path('scripts/generate-rust-license-report.py')['verify_cargo_about_version'](Path.cwd())"
       - name: Install pinned host qualification dependencies
         shell: bash
         run: python -m pip install --requirement platforms/wasi/requirements.txt
@@ -193,6 +201,7 @@ jobs:
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           toolchain: 1.95.0
+          components: rustfmt, clippy
       - name: Build the descriptor-owned CLI release recipe once
         run: python scripts/artifact_profile_recipe.py cli-release --build-host --locked
       - name: Stage the comparison CLI with the normal CLI license material

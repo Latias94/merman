@@ -202,7 +202,7 @@ same-named workspace tag; the workflow records the resolved commit in the packag
 and release notes must not claim that separately published channels are byte-identical.
 
 The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24.21.0 and
-npm 12.0.2, enters the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
+npm 12.2.1, enters the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
 the immutable source commit without credentials. The source checkout supplies only the package
 surface descriptor; the trusted revision verifies the downloaded package-group hashes before
 publishing missing packages directly under the final tag. The job must not build, test, or execute
@@ -281,14 +281,17 @@ Preparation or pre-apply validation failures leave the caller worktree unchanged
 reported owner failure, keep the release worktree clean, and rerun the same command; do not copy
 partial files out of the disposable worktree or hand-edit generated locks.
 
-After the version projection succeeds, regenerate the CLI completions, manual pages, and
-Playground catalog from the selected package version, then verify their source gates:
+After the version projection succeeds, regenerate the CLI completions, manual pages,
+Playground catalog, and checked Rustdoc fragments from the selected package version, then verify
+their source gates. Use the default CLI features for Rustdoc so its receipt matches the CI check:
 
 ```sh
 python3 scripts/generate_cli_assets.py --write
 python3 scripts/generate_cli_assets.py --check
 cargo run -p xtask -- gen-playground-example-catalog
 cargo run -p xtask -- verify-playground-example-catalog
+cargo run --locked -p merman-cli -- rustdoc build --config crates/merman/merman-rustdoc.toml --quiet
+cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
 ```
 
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests. For a prerelease, every coupled root workspace dependency must use the exact Cargo requirement `=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`; stable releases continue to use the ordinary compatible requirement. This permits intentional alpha API breaks without allowing a fresh Cargo resolution to mix sibling release lines.

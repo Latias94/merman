@@ -18,6 +18,9 @@ const ABI_VERSION: u32 = 3;
 const SCHEMA_VERSION: u32 = 1;
 const RESULT_SCHEMA_VERSION: u32 = 1;
 const FFI_RUST_OUTPUT: &str = "crates/merman-ffi/src/generated/abi3.rs";
+// The published 0.9 Rust table can be constructed with a struct literal. Keep its fields
+// frozen even though the size-negotiated C table admits appended slots.
+const RUST_09_API_FUNCTION_SLOT_COUNT: usize = 11;
 const FFI_HEADER_OUTPUT: &str = "crates/merman-ffi/include/merman.h";
 const FLUTTER_OPERATION_OUTPUT: &str = "platforms/flutter/lib/src/generated/native_operations.dart";
 const FLUTTER_OPERATION_FIXED_MEMBERS: &[&str] = &[
@@ -1944,11 +1947,28 @@ fn render_rust(
             writeln!(out, "    pub {}: {},", field.name, field.rust_type).unwrap();
         }
         if record.appends_function_slots {
-            for slot in sorted_slots(&descriptor.function_slots) {
+            for slot in sorted_slots(&descriptor.function_slots)
+                .into_iter()
+                .take(RUST_09_API_FUNCTION_SLOT_COUNT)
+            {
                 writeln!(out, "    pub {}: Option<{}>,", slot.id, slot.rust_name).unwrap();
             }
         }
         out.push_str("}\n\n");
+        if record.appends_function_slots {
+            out.push_str("/// Extended ABI 3 table including the memory-font constructor.\n");
+            out.push_str("///\n/// Use `Self::for_discovery` and `Self::as_mut_api_ptr` to negotiate this table.\n");
+            out.push_str("/// The original `MermanNativeApi` retains its published Rust fields.\n");
+            out.push_str("#[repr(C)]\n#[derive(Clone, Copy)]\n#[non_exhaustive]\n");
+            out.push_str("pub struct MermanNativeApiWithFonts {\n");
+            for field in &record.fields {
+                writeln!(out, "    pub {}: {},", field.name, field.rust_type).unwrap();
+            }
+            for slot in sorted_slots(&descriptor.function_slots) {
+                writeln!(out, "    pub {}: Option<{}>,", slot.id, slot.rust_name).unwrap();
+            }
+            out.push_str("}\n\n");
+        }
     }
 
     for callback in &descriptor.callbacks {
@@ -1971,9 +1991,14 @@ fn render_rust(
         .skip(descriptor.minimum_prefix.function_slot_count)
         .collect::<Vec<_>>();
     for slot in &appended_slots {
+        let rust_table = if slot.code < RUST_09_API_FUNCTION_SLOT_COUNT as i32 {
+            "MermanNativeApi"
+        } else {
+            "MermanNativeApiWithFonts"
+        };
         writeln!(
             out,
-            "pub const MERMAN_NATIVE_API_{}_PREFIX_SIZE: u32 =\n    (std::mem::offset_of!(MermanNativeApi, {})\n        + std::mem::size_of::<Option<{}>>()) as u32;\n",
+            "pub const MERMAN_NATIVE_API_{}_PREFIX_SIZE: u32 =\n    (std::mem::offset_of!({rust_table}, {})\n        + std::mem::size_of::<Option<{}>>()) as u32;\n",
             upper_snake(&slot.id),
             slot.id,
             slot.rust_name,

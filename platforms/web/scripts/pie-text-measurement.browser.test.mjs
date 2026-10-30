@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import test from "node:test";
 
 // Run after build:ts with a locally built full WASM artifact in pkg/full.
-test("Browser text consumers preserve literal ER lines and subpixel Pie legends", {
+test("Browser text consumers retain legacy ER wrapped metrics, literal SVG text and subpixel Pie legends", {
   skip: !process.env.PUPPETEER_EXECUTABLE_PATH && "Set PUPPETEER_EXECUTABLE_PATH to run Chromium",
   timeout: 30_000,
 }, async () => {
@@ -59,6 +59,32 @@ test("Browser text consumers preserve literal ER lines and subpixel Pie legends"
         try { return { kind: "length", length: text.getBoundingClientRect().width }; }
         finally { text.remove(); }
       };
+      // Protocol 1 Wrapped treats explicit breaks as rows, including decoded ER generic text.
+      // This is the legacy metrics contract; the final ER terminal still emits literal text.
+      const nativeWrappedMetrics = request => {
+        const control = document.createElement("div");
+        control.style.cssText = "position:fixed;left:-10000px;top:-10000px;visibility:hidden;display:inline-block;padding:0;margin:0;border:0;white-space:nowrap";
+        Object.assign(control.style, {
+          fontFamily: request.font_family,
+          fontSize: `${request.font_size}px`,
+          fontWeight: request.font_weight,
+          fontStyle: request.font_style,
+          lineHeight: `${request.line_height}px`,
+          letterSpacing: `${request.letter_spacing}px`,
+          wordSpacing: `${request.word_spacing}px`,
+        });
+        control.dir = request.direction;
+        for (const [index, line] of request.text.split(/(?:<br\s*\/?>|\r?\n)/gi).entries()) {
+          if (index > 0) control.append(document.createElement("br"));
+          control.append(document.createTextNode(line));
+        }
+        document.body.append(control);
+        try {
+          const rect = control.getBoundingClientRect();
+          return { kind: "metrics", width: rect.width, height: rect.height,
+            line_count: Math.max(1, Math.round(rect.height / request.line_height)) };
+        } finally { control.remove(); }
+      };
       try {
         const er = [];
         for (const attributes of [false, true]) {
@@ -66,7 +92,10 @@ test("Browser text consumers preserve literal ER lines and subpixel Pie legends"
           const requests = [];
           const svgText = renderSvgWithTextMeasurer(source, request => {
             const result = session.measure(request);
-            if (request.operation === "html-line-height") requests.push({ text: request.text, result });
+            if (request.operation === "wrapped" && request.wrap_mode === "html-like" && !request.has_max_width) {
+              requests.push({ text: request.text, phase: request.phase, result,
+                expected: nativeWrappedMetrics(request) });
+            }
             return result;
           }, { version, site_config: { htmlLabels: true, look: "classic", theme: "default",
             fontFamily: "Arial", themeVariables: { fontFamily: "Arial", fontSize: "16px" } },
@@ -82,8 +111,9 @@ test("Browser text consumers preserve literal ER lines and subpixel Pie legends"
           control.style.cssText = "display:inline-block;padding:0;margin:0;border:0;white-space:nowrap;font:16px Arial;line-height:24px";
           control.textContent = expectedText;
           document.body.append(control);
-          er.push({ attributes, requests, height: Number(terminal.getAttribute("height")),
-            expectedHeight: control.getBoundingClientRect().height,
+          er.push({ attributes, requests, text: terminal.textContent, expectedText,
+            height: Number(terminal.getAttribute("height")),
+            literalHeight: control.getBoundingClientRect().height,
             breaks: terminal.querySelectorAll("br").length });
           control.remove(); mount.remove();
         }
@@ -137,12 +167,15 @@ test("Browser text consumers preserve literal ER lines and subpixel Pie legends"
     console.log(JSON.stringify({ browser: await browser.version(), ...evidence }));
     for (const entry of evidence.er) {
       assert.equal(entry.breaks, 0);
-      assert.equal(entry.height, entry.expectedHeight);
-      if (entry.attributes) {
-        const request = entry.requests.find(request => request.text === "A<br>B");
-        assert.ok(request, "ER table header must reach the literal HTML line-height operation");
-        assert.deepEqual(request.result, { kind: "length", length: entry.expectedHeight });
-      }
+      assert.equal(entry.text, entry.expectedText, "ER SVG terminals preserve literal text");
+      const request = entry.requests.find(request => request.text === entry.expectedText);
+      assert.ok(request, "ER name must reach the legacy HTML Wrapped operation");
+      assert.equal(request.phase, "wrap");
+      assert.deepEqual(request.result, request.expected, "Wrapped returns complete legacy metrics");
+      assert.equal(request.result.line_count, entry.attributes ? 2 : 1);
+      assert.equal(entry.height, request.expected.height, "ER retains the host's Wrapped height");
+      assert.equal(entry.height, entry.literalHeight * request.result.line_count,
+        "Legacy Wrapped geometry can reserve multiple rows for one literal ER terminal");
     }
     for (const entry of evidence.pie) {
       assert.ok(entry.identicalSvg, `Pie ${entry.size}px must match independently measured SVG`);

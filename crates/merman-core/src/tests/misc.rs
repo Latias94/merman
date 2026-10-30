@@ -1025,9 +1025,13 @@ fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
             let err = engine
                 .parse_metadata_sync(&source)
                 .expect_err("excessive frontmatter config depth should be rejected");
+            let Error::InvalidFrontMatterYaml { message } = err else {
+                panic!("unexpected error: {err}");
+            };
             assert!(
-                err.to_string().contains("config nesting exceeds"),
-                "unexpected error: {err}"
+                message.contains("config nesting exceeds")
+                    || message.contains("recursion limit exceeded"),
+                "unexpected YAML error: {message}"
             );
         })
         .expect("spawn excessive frontmatter config test");
@@ -1051,9 +1055,13 @@ fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack()
             let err = engine
                 .parse_metadata_sync(&source)
                 .expect_err("excessive inline YAML sequence depth should be rejected");
+            let Error::InvalidFrontMatterYaml { message } = err else {
+                panic!("unexpected error: {err}");
+            };
             assert!(
-                err.to_string().contains("config nesting exceeds"),
-                "unexpected error: {err}"
+                message.contains("config nesting exceeds")
+                    || message.contains("recursion limit exceeded"),
+                "unexpected YAML error: {message}"
             );
         })
         .expect("spawn excessive inline YAML sequence test");

@@ -477,7 +477,7 @@ fn binding_registry_projections() -> BindingRegistryProjections {
             resource_limits: runtime_constructor_resource_limits(key),
         })
         .collect::<Vec<_>>();
-    let transports = BindingTransportKey::ALL
+    let mut transports = BindingTransportKey::ALL
         .iter()
         .copied()
         .map(|key| TransportExposureProjection {
@@ -496,6 +496,7 @@ fn binding_registry_projections() -> BindingRegistryProjections {
                 .collect(),
         })
         .collect::<Vec<_>>();
+    transports.sort_by_key(|transport| transport.id);
 
     BindingRegistryProjections {
         capabilities,

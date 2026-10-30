@@ -116,7 +116,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
-          targets: aarch64-linux-android,wasm32-unknown-unknown
+          targets: aarch64-linux-android,wasm32-unknown-unknown,wasm32-wasip1
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2
@@ -1199,9 +1199,9 @@ jobs:
             --max-compressed-mb 99
 
   sdk-archives:
-    needs:
-      - validate-inputs
-      - versions-and-packages
+    # The SDK owner validates its immutable source and workspace version independently.
+    # Join package gates at release-preflight-evidence without serializing artifact builds.
+    needs: validate-inputs
     permissions:
       contents: read
       actions: read

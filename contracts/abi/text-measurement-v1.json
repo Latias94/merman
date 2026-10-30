@@ -278,14 +278,6 @@
       "code": 21,
       "result_kind": "length",
       "accepts_signed_length": true
-    },
-    {
-      "id": "html_line_height",
-      "external_name": "html-line-height",
-      "rust_variant": "HtmlLineHeight",
-      "code": 22,
-      "result_kind": "length",
-      "accepts_signed_length": false
     }
   ]
 }

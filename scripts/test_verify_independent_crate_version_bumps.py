@@ -44,6 +44,24 @@ class IndependentCrateVersionBumpTests(unittest.TestCase):
 
             self.assertEqual(verifier.verify(root, "v0.1.0", "HEAD"), ())
 
+    def test_npm_install_lock_alone_does_not_republish_the_rust_crate(self) -> None:
+        with repository() as root:
+            (root / "crates/independent/package-lock.json").write_text("{}\n")
+            commit_all(root, "refresh npm install lock")
+
+            self.assertEqual(verifier.verify(root, "v0.1.0", "HEAD"), ())
+
+    def test_npm_lock_does_not_hide_rust_source_changes(self) -> None:
+        with repository() as root:
+            (root / "crates/independent/package-lock.json").write_text("{}\n")
+            (root / "crates/independent/src/lib.rs").write_text("pub fn value() -> u8 { 2 }\n")
+            commit_all(root, "change source and npm lock")
+
+            failures = verifier.verify(root, "v0.1.0", "HEAD")
+
+            self.assertEqual(len(failures), 1)
+            self.assertIn("crates/independent/src/lib.rs", failures[0])
+
 
 def repository() -> tempfile.TemporaryDirectory[Path]:
     return RepositoryFixture()

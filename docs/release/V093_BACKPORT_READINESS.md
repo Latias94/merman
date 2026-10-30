@@ -1,0 +1,177 @@
+# 0.9.3 release readiness
+
+Reviewed on 2026-10-30 in Asia/Shanghai. This is a preparation record, not a publication receipt. Publication is on hold until the maintainer explicitly authorizes it.
+
+## Decision and source boundary
+
+Prepare 0.9.3 with the published Rust contracts retained: text-measurement protocol 1 has its 22 operations (0..21), `MermanNativeApi` retains its old Rust struct-literal shape, and the existing transport discriminants are preserved. The October 29 candidate passed all eight selected public-crate API comparisons, complete PR CI, and immutable-source preflight including all 18 SDK archives and three native/WASI/CLI comparisons. The October 30 merge adds maintenance PR #255's CLI font-policy and shared SVG fixes. That new source must pass fresh CI and immutable-source preflight before publication; the earlier successful artifacts must not be relabeled.
+
+| Identity | Reviewed value |
+| --- | --- |
+| Previous workspace publication | `v0.9.2`, commit `8e303a43b548c9e40e73f0bc657925d66e7d4fb5`, published 2026-10-22 in Asia/Shanghai |
+| Maintenance target | `origin/release/0.9.x`, commit `b3fde2be3a946cf69dc19d5145d67a53638cd2ae` |
+| Development comparison | `origin/main`, commit `75f93d9eda78b60076d3d3304799a70f581f9e86` |
+| Changelog range | `v0.9.2..b3fde2be3a946cf69dc19d5145d67a53638cd2ae`; the base is an ancestor of the target |
+| Preparation branch | `docs/release-0.9.3-readiness-20261029`, merging the reviewed maintenance target |
+| Intended version and date | `0.9.3`; the root and five platform changelog sections are dated 2026-10-30 for release preparation, with final-source qualification and publication pending |
+| Compatibility baseline | Mermaid `12.1.0`, source `21f72f07ea22c0af48a3149c550654e80d8e40cb`, Presentation API, Options JSON schema 2 |
+
+The GitHub release inspection still finds 0.9.2 as the latest workspace release. SDK preview archives and qualification runs are not public SDK releases. The outcome ledger consolidates maintenance changes since 0.9.2; corrections to newly introduced SDKs are part of their initial feature outcome. Previously published release sections remain unchanged.
+
+## October 30 maintenance merge and qualification boundary
+
+Candidate `a965d8ec6ad23f115aff53a7e9af1ef599e33634` passed [CI 40877827127](https://github.com/Latias94/merman/actions/runs/40877827127), [Performance 40877827109](https://github.com/Latias94/merman/actions/runs/40877827109), and [Release Preflight 40877895362](https://github.com/Latias94/merman/actions/runs/40877895362). The preflight contains 18 successful SDK archive lanes and three successful native/WASI/CLI parity lanes. Linux CI passed 9,865 tests with seven skips, and the Chromium root-viewport oracle checked 3,720 fixtures with zero blocking containment failures. These receipts belong only to that source.
+
+Maintenance [PR #255](https://github.com/Latias94/merman/pull/255) was subsequently merged at `b3fde2be3a946cf69dc19d5145d67a53638cd2ae`; its own [CI 40918589225](https://github.com/Latias94/merman/actions/runs/40918589225) passed. The preparation branch incorporates its CLI shared measurement/painting fonts, scoped Sequence/GitGraph Neo filters, and Sequence box paint bounds. Review image/PDF and SVG snapshots after upgrading. Native CLI measurement rejects post-layout `--css-file` and `themeCSS`; `--font-measurement deterministic` without font sources retains previous layout estimates and admitted CSS behavior, while painting can still discover system fonts. Explicit fonts form a closed set unless system fallback is requested. No-font environments must supply usable font assets for native measurement.
+
+The CLI default change applies to Mermaid-to-PNG/JPEG/PDF when its `system-fonts` capability is compiled. Mermaid SVG, raw SVG geometry, library/binding defaults, Mermaid 12.1.0, Options schema 2, C ABI 3, and the 22-operation callback protocol keep their existing boundaries. Capabilities schema 2 / CLI contract 6 scopes the existing defaults to `mermaid-svg-input` and adds `encoded_output_defaults`; automation must read the appropriate output scope. Main's newer theme APIs and schema evolution are outside this maintenance release.
+
+The follow-up review covers all 18 main commits in `dc3ca0f22d34..75f93d9eda78`. Main's font-context fix `b5c8a7c0aeba` and GitGraph filter fix `2e40340da214` are already equivalent to maintenance `674a56cba158`; the intermediate host-guide change `3a2ae3e85b80` is superseded by that final policy. Maintenance `c47641276508` also includes the Sequence box shadow viewport repair. No additional code backport is identified in this new interval. Ghibli/typed-theme APIs, theme reports, and Playground theme work remain on main.
+
+Commit the merged changes and generated receipts before dispatching a new non-publishing preflight with the final immutable source. Keep the workflow ref, requested source, and eventual tag commit identical. The sections below retain the original October 29 audit and earlier qualification attempts with their historical source boundaries; their pending statements are not the current status of the successful `a965d8ec6` run. The maintainer's publication hold remains in effect regardless of CI results.
+
+## Compatibility resolution and release gates
+
+### Public Rust enum compatibility: historical failure and candidate repair
+
+The initial audit found that PR [#250](https://github.com/Latias94/merman/pull/250), commit `0a74e782b`, appended `HtmlLineHeight = 22` to the public, exhaustive `TextMeasurementOperation` enum in `crates/merman-render/src/generated/text_measurement_abi.rs`. The owner descriptor is `contracts/abi/text-measurement-v1.json`; retaining protocol 1 and existing numeric codes did not make that enum extension source-compatible. The same change grew the public `ALL` array from 22 to 23 elements and added a UniFFI enum variant.
+
+A Rust 1.95.0 cross-crate probe extracted the exact enum declaration from each reviewed ref and compiled the same consumer matching all 22 published variants. It succeeded against 0.9.2 and failed against the reviewed maintenance target with `E0004: non-exhaustive patterns: TextMeasurementOperation::HtmlLineHeight not covered`. This remains the historical audit result for those refs; it is not a failure result for the repaired candidate or evidence that a complete public-API comparison has passed.
+
+The selected 0.9.3 candidate resolves this identified extension by restoring the published operations 0..21, the 22-element `ALL` array, and the corresponding generated declarations. `HtmlLineHeight` and its proposed operation 22 are deferred beyond this patch. Existing exhaustive consumers require no new arm, and no `#[non_exhaustive]` migration is introduced. The [host guide](../bindings/HOST_TEXT_MEASUREMENT.md) and dated changelog sections describe the retained contract rather than the superseded breaking-change proposal.
+
+The candidate restores the pre-operation-22 height path: a fallible `HostTextMeasurer` receives `Wrapped` in the Wrap phase with `WrapMode::HtmlLike`, no width constraint, and a complete `metrics` result. Its returned height is retained with host provenance rather than replaced by a built-in estimate. Existing adapters continue interpreting `Wrapped` according to the original HTML/wrapping contract; the request is not redefined as a literal-text operation. Missing, invalid, or failed callbacks retain the configured fallback and its recorded provenance.
+
+Built-in deterministic profiles support literal-line height through the defaulted `measure_html_line_height_px` hook introduced in 0.9.3. An infallible custom Rust `TextMeasurer` profile can override it; its default delegates to wrapped HTML measurement, preserving implementations that do not override it. This hook was absent from the published 0.9.2 API and does not extend the fallible host callback protocol. In particular, ER generic labels may emit `A<br>B` literally through `textContent` while a legacy HTML-aware host measures the spelling as two lines. The selected host height remains authoritative, so exact host height for that literal-markup case is deferred with operation 22.
+
+The working candidate's protocol descriptor diff against `v0.9.2` is empty, and official generation and verification pass. The exact unchanged exhaustive consumer now compiles and runs against the restored enum. Renderer tests report 1,955 passes and one skip, including the legacy-host geometry, provenance/fallback, custom-profile, and ER literal-output controls. These results precede the subsequent FFI table repair and do not establish complete public-API compatibility or immutable preflight.
+
+### Public Rust FFI table compatibility: second break and repair
+
+A second source break affected `merman-ffi::MermanNativeApi`: appending the public `engine_new_with_fonts` field since 0.9.2 left the size-negotiated C ABI valid but rejected existing Rust struct literals that initialize only the published fields. C prefix compatibility alone did not protect that Rust source contract.
+
+The candidate preserves `MermanNativeApi` with its published function slots 0..10. The appended font constructor at slot 11 is available through a separate flat `#[non_exhaustive] MermanNativeApiWithFonts`, initialized with `for_discovery()` and passed to discovery through `as_mut_api_ptr()`. Callers check the returned prefix size and function availability before using the font constructor. The change belongs to the Rust projection in the owning generator, `crates/xtask/src/cmd/native_abi.rs`; it leaves the ABI descriptor, C header, and layout/descriptor digests unchanged from the pre-repair candidate.
+
+After this repair, nextest passes all 70 selected tests with zero skips across the FFI library, `native_fonts`, and `rust_api_09_compatibility` binaries. The external Rust controls cover the unchanged old struct literal, discovery bounded by the old table capacity, and discovery of the extended font table. The earlier 487 passing transport tests predate this repair; the 70-test FFI rerun supplies the post-repair evidence rather than requalifying that entire earlier selection. Full semver checks and final-source preflight remain separate gates.
+
+### Public transport discriminants: third break and repair
+
+The all-features API comparison found that inserting `BindingTransportKey::Wasi` before `Web` changed the published `#[repr(u8)]` value of `Web` from 6 to 7 and changed its derived ordering. The enum was already non-exhaustive, which permits an added variant but does not preserve a moved discriminant. The candidate appends `Wasi` after the existing transports, keeps `Web == 6`, and tests the published ordering and registry lookup. The generated human-readable binding-contract projection sorts by transport ID independently; its name ordering does not determine the Rust representation. The corrected bindings-core all-features API comparison passes, and the final 369-test bindings/C-consumer selection passes with zero skips, including registry lookup and C/Rust layout fingerprints.
+
+### Exact-source release and SDK qualification
+
+The reviewed upstream target declares workspace version 0.9.2. The preparation branch uses the repository-owned version projector to select 0.9.3, and the six current changelog sections are dated 2026-10-29. All compatibility repairs, generated assets, and release notes must be present in the committed immutable release source before qualification. Dating these sections is preparation, not publication. Do not qualify an old 0.9.2 build and relabel it as 0.9.3.
+
+At the initial inspection, `release-sdk.yml` and `release-sdk-publish.yml` each had zero runs. The latest maintenance preflight at that inspection, [39648535313](https://github.com/Latias94/merman/actions/runs/39648535313), belongs to the immutable 0.9.2 source and predates the SDK matrix. PR #245's six local SDK archives are bound to `addd3fd8dfcbb0f9060223381e64cac9c54e4ce2`; later rendering, HTML5, host-measurement, and configuration changes require fresh qualification.
+
+The final source must pass the 18-archive SDK matrix: native Linux x64/ARM64 GNU, macOS x64/ARM64, Windows x64 MSVC, and WASI, each in standard/math/full form, plus the three native/WASI/CLI comparisons. The producer must exercise extracted C/C++ shared/static and Go/wazero/Python/wasmtime consumers and generate each artifact's actual catalog and legal inventory. Linux's admitted host is Ubuntu 24.04; this does not establish musl or older glibc support.
+
+## Verified outcome ledger
+
+The original ledger compares the published 0.9.2 state with the reviewed maintenance target; the custom-measurement and SDK-font rows now record the selected candidate's compatibility repairs. SDKs and instance-local JavaScript icons are first introduced by this release; their pre-publication fixes are folded into those outcomes.
+
+| Surface | 0.9.2 state -> candidate state | User action or impact | Evidence and disposition |
+| --- | --- | --- | --- |
+| Native C / WASI SDK delivery | No official archive recipes -> five native targets plus WASI, standard/math/full recipes and extracted consumer qualification | Choose the transport and profile from its catalog; downloads require the separate SDK publisher | [#245](https://github.com/Latias94/merman/pull/245), [issue #243](https://github.com/Latias94/merman/issues/243); Added |
+| SDK fonts and metadata | No memory-font constructor -> appended C ABI 3 slot and WASI ABI 1 using shared measurement/painting fonts and dimensions; published Rust table retained with a separate extended font table | Supply fonts for missing scripts; SVG viewers still need matching fonts; Rust font consumers discover `MermanNativeApiWithFonts` | #245, `merman-ffi` prefix and old-literal compatibility tests, post-repair FFI selection, and `merman-wasi` runtime tests; Added, same-boundary SDK repairs folded in |
+| JavaScript icons | No engine-local loaded packs -> `createRenderSession({ iconPacks })` and `createNodeEngine({ iconPacks })` | Host owns acquisition and credentials; registries are instance-local | [#247](https://github.com/Latias94/merman/pull/247), Web/Node source and contract tests; Added |
+| Text geometry | Font/content/whitespace mismatches -> measurement follows emitted text and typography across affected families | Review SVG and export snapshots | #247, [#250](https://github.com/Latias94/merman/pull/250), terminal-consumer and browser typography regressions; Fixed |
+| CLI encoded-output fonts | Layout estimates and painting fonts differ -> shared native font context by default when CLI `system-fonts` is compiled | Review host-dependent wrapping and snapshots; use deterministic measurement without font sources for previous layout/CSS behavior | [#255](https://github.com/Latias94/merman/pull/255), CLI font-policy and capability regressions; Changed |
+| Built-in Neo shadows and Sequence bounds | Unscoped filters and clipped box paint -> diagram-scoped filters and viewports containing box strokes/shadows | Review Sequence/GitGraph output snapshots; shared by all SVG bindings | #255, renderer filter and viewport regressions; Fixed |
+| HTML and SVG text | Streaming repair and inconsistent entity stages -> bounded HTML5 recovery and namespace-aware serialization | Class notes remain valid XML; literal text and Kanban breaks display consistently | #247/#250, parser snapshots and text-stage comparisons; Fixed |
+| Native formulas | Successful but blank or mispainted output -> visible glyphs/rules with corrected bounds and Sequence placement | Nonempty caller-scoped CSS with native formulas is rejected; omit CSS or use browser parity SVG | #245/#247/#250, CLI formula-presence and independent paint controls; Fixed |
+| Swimlane wrapping | Measured lines clipped by nowrap fallback -> complete wrapped native labels | Review affected outputs | #245, [issue #242](https://github.com/Latias94/merman/issues/242); Fixed |
+| Family configuration | Ignored Gantt/Mindmap/Sequence settings -> configured intervals, root size, numbering, actor visibility, note alignment and final Mindmap layout | Existing configuration takes effect | [#252](https://github.com/Latias94/merman/pull/252), focused owner regressions and pinned Mermaid source; Fixed |
+| Init directives | Legacy single/multiple admission differs -> pinned 12.1 detector/filter/merge order | Prefer explicit namespaces or frontmatter | #252, `init_config_regression`; Fixed |
+| Parser cancellation | Lenient errors can suppress custom-parser cancellation -> Parse-phase terminal cancellation survives callbacks | Cancelled work no longer becomes an error diagram | #252, `cancellation_regression`; Fixed |
+| Custom measurement | Published operations 0..21 -> the same 22 operations and result kinds retained; host operation 22 deferred | Existing matches and adapters keep their contract and selected host geometry; host height for ER generic labels containing literal `<br>` remains limited | #250, descriptor and generated wrappers, legacy `Wrapped` restoration, exact old-consumer compile/run, and renderer tests; historical enum failure repaired and locally verified |
+| Dependency security | Older selected DOMPurify/Tokio/JavaScript graphs -> reviewed upgrades and legal projections | Rebuild from updated locks; retained exceptions remain governed | #245/#247, dependency audit and owner locks; Security |
+| Build and validation maintenance | Old platform locks/tools, Windows Node download handling, memory provenance and fuzz owner issues -> current owner-compatible workflow inputs | Supports package construction and reliable checks; no runtime speed claim | #245/#247/#250, internal-only or folded into delivery/security outcomes |
+
+The initial October 29 changed-path inventory contains 2,229 paths. Generated upstream SVG recaptures, parser/DOM signatures, research captures, fuzz seeds, legal mirrors, and tests substantiate the outcomes above; they are not separate product features. Documentation-only 0.9.2 publication commits remain historical receipts. Independent Typst, grammar, Roughr, and VS Code versions are not advanced by this workspace preparation.
+
+## Additional main backports selected during review
+
+The preparation branch adds three bounded repairs beyond the reviewed upstream maintenance target. Their release notes are included in the same pending 0.9.3 section; no new Mermaid baseline or development API is imported.
+
+| Source | Maintenance gap and selected repair | Disposition |
+| --- | --- | --- |
+| #241, `0704d37c5`, `c8aa6ce42`, final boundary correction `398c61033` | Flowchart still splits legal percent-containing identifiers as comments and lacks final direction/header rules; adapt the final lexer behavior and source-local regressions | Fixed; final-state adaptation rather than sequential cherry-picks |
+| #251, `612558b16` | Frontmatter counts brackets in YAML comments/block scalars as nested collections; remove that heuristic precheck while retaining the real YAML parser depth limit, input/materialization budgets, and directive protection | Fixed; preserve regression cases for actual collection depth |
+| #241, `64247d7f7` | SDK header macro validation rejects CRLF; use the main regex's optional carriage return and verify matching/mismatched ABI versions for both line endings | Folded into initial SDK delivery; deterministic LF fixtures keep the cross-platform test setup explicit |
+
+The development comparison also inspected #239/#240 publication synchronization, #241 semantic capabilities, #244/#245 SDKs, #246/#247 rendering, #249/#250 text stages, and #251/#252 configuration/cancellation. The maintenance counterparts already contain the applicable font geometry, formula paint, JavaScript icons, HTML5, CSS terminal escapes, Swift projection, and source-order Sequence measurement repairs. Canonical parser accessibility sanitization is present through the maintenance common-db path; the new semantic API is unnecessary for that behavior.
+
+Keep Mermaid 12.2, compiled themes, semantic capability APIs, feature-default changes, new font diagnostics, and metadata/ownership refactors on main. The WASI JSON mirror removal (`a7d769b74`) changes initial archive contents and maintenance responsibility, but does not establish a runtime ABI defect; keep the maintenance guide/catalog/mirror contract together for this release. The graphlib SCC index optimization in `237266bf2` preserves sorting semantics and remains optional performance work.
+
+## CI evidence and its limits
+
+| Integration | Verified head and result | Scope |
+| --- | --- | --- |
+| #245 SDK | `41ea20969f273cfa01b87fc88103be8f477e351c`, 59 success / 4 skipped; [CI](https://github.com/Latias94/merman/actions/runs/40155781939) | Ordinary PR owners; no complete SDK producer run |
+| #247 rendering/icons | `613e6a0b601c28b30fcb642c10b2ae552cb7b67d`, 59 success / 4 skipped; [CI](https://github.com/Latias94/merman/actions/runs/40643570683) | Ordinary PR owners at that source |
+| #250 text stages | `774780864448ff6666791955c71c5439e36bebea`, 59 success / 4 skipped; [CI](https://github.com/Latias94/merman/actions/runs/40795860177) | Includes Web and Swift 5.9 owners; no final-release SDK producer |
+| #252 config/cancellation | `c942af590966844ae4d7f3df95b56fbf4da1a408`, 15 success / 24 skipped; [CI](https://github.com/Latias94/merman/actions/runs/40809711248) | Three-platform build/test and pr-gate pass; Web/native/package owners are skipped by change selection |
+
+The #252 head and reviewed merge commit share tree `e084b8706d6e5af38c919cbb2bfddf4c5de5008f`, so that run has the same source tree. Its skipped jobs are not passes and its result does not qualify the future version-projected commit. Current C ABI evidence includes the old-prefix consumer and memory-font append checks; WASI native unit tests do not establish actual guest execution in both hosts.
+
+## SDK publication boundary
+
+The normal workspace tag publishes CLI/LSP archives and starts crates.io publication. It does not attach SDK archives. `release-preflight.yml` calls the SDK producer without publishing; `release-sdk-publish.yml` later attaches already-qualified artifacts to an existing GitHub Release.
+
+Keep the producer run's `head_sha`, requested `source_ref`, and eventual tag commit equal. A preflight dispatched from an unrelated workflow ref cannot be used merely because its checkout builds the requested source: the SDK publisher checks the run head against the tag. Freeze the workflow ref at the selected source until the matching run is established.
+
+Require all 18 archives and 18 SHA-256 sidecars, their source/version/profile/catalog identities, and final artifact-specific license reports. The publisher attests and uploads those verified bytes without rebuilding or overwriting. Only after the target Release actually contains those 36 matching assets should release notes claim SDK downloads are available.
+
+The publisher currently fails closed on pre-existing asset names and has no automatic partial-upload recovery. If upload is interrupted, inspect existing assets against the same producer bytes before deciding recovery; do not add `--clobber`. Native final-package smoke concentrates on SVG/PNG despite the native catalog's wider output list; broader codec smoke is useful follow-up, not evidence already supplied by the archive matrix.
+
+## Attribution and local preparation
+
+Verified GitHub metadata identifies `@Latias94` as the author of the maintenance PRs, including #255; the range has no external implementation author or co-author trailer. Issue #242 is reported by `@nerzhulart`; issue #243 is requested by `@mrueg`. The root 0.9.3 Contributors entry credits each account once. Package changelogs are curated projections of the same outcomes and retain the capabilities and contracts of their own artifacts.
+
+Local evidence is retained under the primary checkout's ignored `target/release-review-20261029/`. The version owner ran with the manifest-pinned npm 12.2.1 through an isolated npx process, leaving the global npm installation unchanged. Its first offline attempt encountered uncached locked packages and left the caller clean; after fetching the exact locked workspace, fuzz, and Node graphs, the same projector succeeded. No unrelated dependency update was performed. The old local `v0.7.0-alpha.1` tag disagrees with the remote tag; it was preserved, and fresh branch refs were fetched without overwriting tags. That historical mismatch does not affect the verified 0.9.2 base.
+
+The checks below distinguish earlier preparation results, tests before the FFI table repair, and the post-repair FFI rerun. Results are reported by the main agent and remain bounded by those source states; they do not qualify a future immutable release source. The API comparisons and final binding/C-consumer tests pass against these prepared sources; all-targets Clippy passes; immutable-source preflight is required before publication.
+
+| Local check | Result and boundary |
+| --- | --- |
+| Version projection and six changelogs | Recorded 0.9.3 preparation checks pass; historical sections and local documentation links are preserved. The six current sections are now dated 2026-10-29 for source preparation; candidate version, dated-changelog, surface-contract, and unchanged-history checks pass. |
+| CLI generated assets | Owner write/check succeeds, including both temporal environments and source-package membership; all 15 manual pages carry 0.9.3 |
+| Playground catalog | Owner generation and verification succeed at the selected package version |
+| Release and SDK Python owners | 140 tests pass across changelog, projection, surface, SDK archive/qualification, preflight-evidence, and workflow-security modules; the initial Windows CRLF failure is repaired |
+| Core regressions | The full 1,853-test rerun passes all 1,853 tests with zero skips. Earlier stale YAML diagnostic assertions and the Unicode-header separator expectation have been aligned; production guards remain in place. |
+| Renderer regressions | 1,955 passes / one skip before the FFI table repair; this is renderer evidence at that boundary, not a post-repair whole-workspace rerun. |
+| Native export regressions | 103 passes / zero skips before the FFI table repair. |
+| Transport regressions | 487 passes / zero skips before the FFI table repair, including the previous FFI implementation; do not treat this as a full post-repair transport rerun. |
+| Final binding and C layout selection | 369 passes / zero skips across bindings-core and FFI library tests, C consumer smoke, and Rust struct-literal compatibility. The full C header is compared with `MermanNativeApiWithFonts`; the old Rust table is separately checked for capacity and suffix preservation. |
+| Post-repair FFI regressions | 70 passes / zero skips across three binaries: library, `native_fonts`, and `rust_api_09_compatibility`; verifies the repaired old Rust literal and extended font table. This is a separate rerun, not an additive transport total. |
+| Python owner suite | Initial 197-test run: 195 passes, one failure, one skip. The stale expected count of 23 operations was fixed and its targeted test passed. The full rerun now reports `Ran 197 tests` and `OK (skipped=1)`: 196 passes, zero failures, one skip. |
+| Generated bindings and Python DLL smoke | Swift and Dart bindings are regenerated. Python smoke passes against the actual newly built DLL; source-only wrapper checks are not substituted for that runtime evidence. |
+| Web measurement checks | 15 unit tests pass. A full WASM artifact rebuilt from the compatible runtime sources passes all three actual Edge 156 browser tests: DOM probes, Canvas state, and ER/Pie consumers. The ER control confirms legacy Wrapped height 48px versus literal height 24px while preserving literal output and selected host metrics; zero/subpixel Pie controls match their independent DOM probes. |
+| Protocol ownership | Text-measurement descriptor diff against `v0.9.2` is empty; official generation and verification pass. `verify-binding-contract` and `verify-native-abi` also pass after the table and transport changes. The FFI table repair changes the Rust projection owner without changing the ABI descriptor, C header, or digests. |
+| Candidate lint | `cargo clippy --locked --keep-going` with `--all-features --all-targets -- -D warnings` passes for core, render, export, bindings-core, FFI, UniFFI, WASM, WASI, and xtask. Two existing constant assertions in native-font and codec-environment tests were moved to const blocks; runtime behavior is unchanged. |
+| Formatting and repository checks | Per-package `cargo fmt -- --check` passes for the nine affected Rust packages; diff whitespace, 160-unit indexed path budget, six-surface contract, and 406 legal projections pass. A single Windows `cargo fmt --all` invocation exceeds the process argument-length limit; the package checks use the same formatter without that host limitation |
+| Public enum probe | Initial audit: the unchanged 0.9.2 consumer passed against its published enum and failed against the reviewed maintenance enum with E0004. After restoring the published enum, the exact old consumer compiles and runs successfully. |
+| Dependency policy and advisories | `cargo deny check advisories bans licenses sources` passes. All four tracked Cargo locks pass `cargo audit` with zero vulnerabilities against RustSec `40f5be6fb12ed93fc591bf4ab23b7d793b3f2239` (2026-10-28). Existing unmaintained warnings remain: three in the workspace, two in the historical issue and fuzz locks, none in the standalone Node lock. The two governed font exceptions retain their reasons and expiry; current workspace path versions and all six SDK profile closures are now recorded and verified. |
+| npm dependency owners | Seven tracked npm owners pass all 14 pinned npm 12.2.1 audits: production at low severity and full tooling at high severity. Production graphs report zero vulnerabilities. The reference CLI development graph retains three low package records for one KaTeX advisory, GHSA-238p-pmpm-9mq7; no reference baseline upgrade or automatic fix is applied. All tracked npm manifests and locks still equal the audited `e29419b75e2f3cb053879c182bd9faa9f6702140` inputs. |
+| Public API semver checks | Local cargo-semver-checks 0.48.0 reports no semver update required for `merman`, `merman-core`, `merman-render`, `merman-export`, `merman-ffi`, `merman-uniffi`, `merman-wasm`, and the corrected `merman-bindings-core` against `v0.9.2` with all features. Its initial bindings-core failure exposed and verified the repair of the transport discriminant drift above. These checks cover the selected native-target feature graph, not every downstream program or target. CI retains its separately pinned tool. |
+
+Local Cargo work runs sequentially with two build jobs and reuses the primary target directory. The full corrected core selection has now passed; the broader renderer/export/transport selections retain the pre-FFI-repair boundary stated above. This review does not claim a complete downstream/target compatibility proof, a fresh whole-release SVG/root comparison, final package build/load matrix, or SDK producer run for the prepared source. Final-source cross-platform qualification remains outstanding; the matching-WASM ER browser regression passes.
+
+No tag, registry mutation, publishing workflow, or GitHub Release edit is part of this review. The root and five platform release sections are dated for preparation. Commit all repairs and projections, select that immutable source, complete non-publishing preflight from that same commit, and follow the [release operator guide](RELEASING.md) for the explicitly selected publish surfaces. No SDK download availability or publication is claimed by this update.
+
+## Superseded qualification attempt
+
+Non-publishing preflight [40843877088](https://github.com/Latias94/merman/actions/runs/40843877088) and CI [40844066051](https://github.com/Latias94/merman/actions/runs/40844066051) were dispatched for `e29419b75e2f3cb053879c182bd9faa9f6702140`. They were cancelled by the operator while mostly queued after final all-targets Clippy found a test-only constant assertion that should be evaluated in a const block. The assertion was corrected without changing runtime behavior. Those cancelled runs are not qualifying evidence for the subsequent candidate; dispatch again from the updated immutable commit.
+
+## Independent package gate correction
+
+Preflight [40845561483](https://github.com/Latias94/merman/actions/runs/40845561483), sourced from `f73cc57ec6a65e6a8d7cdba22936cfad1c2b7484`, rejects the independent Tree-sitter package because its Cargo build-dependency floor and npm installation lock changed without changing grammar version 0.3.1. Maintenance restores the published compatible `cc = "1.8.0"` requirement, which still admits the audited locked 1.10.0 build, and excludes only the package-root npm installation lock from the Rust crate source guard. Rust/grammar source and Cargo manifest changes remain guarded; paired tests verify that a lock-only refresh passes and a simultaneous source change still fails. The refreshed npm lock is retained under its separate audit owner. No independent grammar release is added to the 0.9.3 scope. The five focused guard tests pass. The official license owner also regenerated all 13 stale report lock digests, then synchronized 406 legal material projections; the report deltas contain only `cargo_lock_sha256`, with no dependency or license-text changes.
+
+## Qualification follow-up before final freeze
+
+Source `364ba1ddf3b0279fe02fcc14742c3bfd1bccaedf` passes complete local archive qualification for WASI standard, WASI full, and Windows x64 native full. Both WASI reactors pass wazero 1.12.0 and wasmtime 50.0.1, extracted Go/Python tests, and matching SVG/PNG example outputs; full additionally exercises formula and ELK controls. Windows full passes native/WASI output comparison and all four installed C/C++ shared/static consumers. Each archive retains its actual source identity, catalog, checksum, and artifact-specific license report. These local receipts do not qualify a later source commit or replace the complete remote matrix.
+
+PR CI [40848349020](https://github.com/Latias94/merman/actions/runs/40848349020) identifies three stale current-recipe `Cargo.lock` digests in the Flowchart label and Sequence repeated/unique memory contracts. Only those input digests are refreshed; historical measurement data, semantic output controls, and metric caps are preserved. All 122 performance contracts pass after the refresh. A separate exit-mapping test now fixes its mocked Git provenance so concurrent workspace edits cannot turn the expected bound/inconclusive outcome into an unrelated source-integrity error.
+
+The complete release-script selection runs 750 tests: 741 pass, eight skip for platform capabilities, and the Bash completion-routing test fails because Windows selects WSL Bash while supplying a Windows temporary path. That exact test passes when run under Linux with the repository's Linux path; no completion implementation or expected routing is weakened. A fresh same-source CI/preflight is still required after the recipe/test-only follow-up.

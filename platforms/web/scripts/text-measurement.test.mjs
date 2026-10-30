@@ -28,7 +28,6 @@ const OPERATION_CONTRACTS = new Map([
     { kind: "length", wrapMode: "svg-like", signed: true },
   ],
   ["raw-bbox-height", { kind: "length", wrapMode: "svg-like" }],
-  ["html-line-height", { kind: "length", wrapMode: "html-like" }],
   ["raw-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
   ["raw-middle-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
   ["raw-hanging-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
@@ -469,7 +468,7 @@ test("browser text measurement session routes exact operations to their DOM prim
       },
     ]);
 
-    assert.equal(OPERATION_CONTRACTS.size, 23);
+    assert.equal(OPERATION_CONTRACTS.size, 22);
     for (const [operation, contract] of OPERATION_CONTRACTS) {
       const result = measure(request("Contract value", 80, operation, contract.wrapMode));
       assert.ok(result, `${operation} should be handled`);

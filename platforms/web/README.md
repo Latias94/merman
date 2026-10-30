@@ -17,7 +17,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version. Version `0.9.1` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
+All public browser packages use one lockstep version. Version `0.9.3` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.
@@ -33,10 +33,10 @@ See the [Astro host integration guide](../../docs/integrations/astro.md) for bro
 ## Quick start
 
 ```sh
-npm install @mermanjs/web@0.9.1
+npm install @mermanjs/web@0.9.3
 ```
 
-For source builds, use the repository's package workspace and lockfile at the `v0.9.1` tag.
+For source builds, use the repository's package workspace and lockfile at the `v0.9.3` tag.
 
 ```ts
 import { initMerman, renderSvgToElement } from "@mermanjs/web";

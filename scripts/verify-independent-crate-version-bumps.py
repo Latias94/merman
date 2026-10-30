@@ -75,7 +75,10 @@ def changed_paths(root: Path, base_ref: str, target_ref: str, package_root: Path
         "--",
         package_root.as_posix(),
     )
-    return tuple(line for line in result.stdout.splitlines() if line)
+    # npm's installation lock belongs to its own package owner and is not a Rust crate source.
+    # Keep every other owned path, including Cargo.toml and generated grammar files, guarded.
+    npm_lock = (package_root / "package-lock.json").as_posix()
+    return tuple(line for line in result.stdout.splitlines() if line and line != npm_lock)
 
 
 def verify(root: Path, base_ref: str, target_ref: str) -> tuple[str, ...]:

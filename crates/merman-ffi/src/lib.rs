@@ -30,6 +30,50 @@ use std::time::Duration;
 include!("generated/text_measurement_abi.rs");
 include!("generated/abi3.rs");
 
+// Both Rust tables start with the exact same ABI 3 prefix. Discovery writes bytes through the
+// legacy pointer type, bounded by the caller's actual table capacity.
+const _: () = {
+    assert!(align_of::<MermanNativeApi>() == align_of::<MermanNativeApiWithFonts>());
+    assert!(
+        size_of::<MermanNativeApi>()
+            == std::mem::offset_of!(MermanNativeApiWithFonts, engine_new_with_fonts)
+    );
+};
+
+impl MermanNativeApiWithFonts {
+    /// Creates an empty table with enough capacity to discover the memory-font constructor.
+    ///
+    /// Pass [`Self::as_mut_api_ptr`] to [`merman_get_native_api`], check its status, then check the
+    /// returned `struct_size` before using an appended slot with an older producer.
+    pub fn for_discovery() -> Self {
+        Self {
+            struct_size: native_struct_size::<Self>(),
+            abi_version: 0,
+            minimum_prefix_layout_digest: static_slice(&[]),
+            full_descriptor_digest: static_slice(&[]),
+            capability_catalog_digest: static_slice(&[]),
+            package_version: static_slice(&[]),
+            runtime_catalog: None,
+            engine_new: None,
+            engine_try_close: None,
+            execute_collect: None,
+            result_free: None,
+            metadata_collect: None,
+            engine_new_with_services: None,
+            operation_control_new: None,
+            operation_control_cancel: None,
+            operation_control_release: None,
+            execute_collect_controlled: None,
+            engine_new_with_fonts: None,
+        }
+    }
+
+    /// Returns this table's prefix pointer for ABI discovery without reducing its capacity.
+    pub fn as_mut_api_ptr(&mut self) -> *mut MermanNativeApi {
+        ptr::from_mut(self).cast()
+    }
+}
+
 const PACKAGE_VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
 #[cfg(feature = "svg")]
 const NATIVE_ICON_PACK_RECORD_LIMIT: usize = 16;
@@ -1425,8 +1469,8 @@ unsafe fn get_native_api_impl(
         }
 
         let capability_catalog_digest = runtime_catalog_digest_bytes()?;
-        let api = MermanNativeApi {
-            struct_size: native_struct_size::<MermanNativeApi>(),
+        let api = MermanNativeApiWithFonts {
+            struct_size: native_struct_size::<MermanNativeApiWithFonts>(),
             abi_version: MERMAN_NATIVE_ABI_VERSION,
             minimum_prefix_layout_digest: static_slice(
                 MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
@@ -2953,7 +2997,6 @@ mod tests {
             operation_control_cancel: None,
             operation_control_release: None,
             execute_collect_controlled: None,
-            engine_new_with_fonts: None,
         }
     }
 
@@ -3349,7 +3392,6 @@ mod tests {
         assert!(api.operation_control_cancel.is_some());
         assert!(api.operation_control_release.is_some());
         assert!(api.execute_collect_controlled.is_some());
-        assert!(api.engine_new_with_fonts.is_some());
     }
 
     #[test]
@@ -3397,7 +3439,7 @@ mod tests {
     fn discovery_requires_the_current_table_and_preserves_tail_storage() {
         #[repr(C)]
         struct ExtendedApiBuffer {
-            api: MermanNativeApi,
+            api: MermanNativeApiWithFonts,
             suffix: [u8; 32],
         }
 
@@ -3409,23 +3451,26 @@ mod tests {
             ),
         };
         let mut buffer = ExtendedApiBuffer {
-            api: empty_api(),
+            api: MermanNativeApiWithFonts::for_discovery(),
             suffix: [0xa5; 32],
         };
         buffer.api.struct_size = native_struct_size::<ExtendedApiBuffer>();
 
         assert_eq!(
-            unsafe { merman_get_native_api(&request, &mut buffer.api) },
+            unsafe { merman_get_native_api(&request, buffer.api.as_mut_api_ptr()) },
             MERMAN_NATIVE_STATUS_OK
         );
         assert_eq!(
             buffer.api.struct_size,
-            native_struct_size::<MermanNativeApi>()
+            native_struct_size::<MermanNativeApiWithFonts>()
         );
-        assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
+        assert!(
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
+                < native_struct_size::<MermanNativeApiWithFonts>()
+        );
         assert_eq!(
             MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE,
-            native_struct_size::<MermanNativeApi>()
+            native_struct_size::<MermanNativeApiWithFonts>()
         );
         assert!(buffer.api.metadata_collect.is_some());
         assert!(buffer.api.engine_new_with_services.is_some());
@@ -3467,7 +3512,7 @@ mod tests {
         // The returned table size is itself safe input capacity for rediscovery.
         buffer.api.struct_size = MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE;
         assert_eq!(
-            unsafe { merman_get_native_api(&request, &mut buffer.api) },
+            unsafe { merman_get_native_api(&request, buffer.api.as_mut_api_ptr()) },
             MERMAN_NATIVE_STATUS_OK
         );
         assert_eq!(
@@ -3477,12 +3522,12 @@ mod tests {
         assert_eq!(buffer.suffix, [0xa5; 32]);
 
         let mut undersized = ExtendedApiBuffer {
-            api: empty_api(),
+            api: MermanNativeApiWithFonts::for_discovery(),
             suffix: [0xa5; 32],
         };
         undersized.api.struct_size = MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1;
         assert_eq!(
-            unsafe { merman_get_native_api(&request, &mut undersized.api) },
+            unsafe { merman_get_native_api(&request, undersized.api.as_mut_api_ptr()) },
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
         assert_eq!(

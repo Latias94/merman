@@ -200,7 +200,6 @@ def release_capabilities_subcontract(
                 "raw-bbox-y-offset",
                 "raw-middle-bbox-y-offset",
                 "raw-hanging-bbox-y-offset",
-                "html-line-height",
             ],
             "measurement_phases": ["layout", "wrap", "svg-bbox", "computed-length"],
             "unsupported_operations": "deterministic-fallback",

@@ -976,14 +976,6 @@ impl NativeFontContext {
                     | Op::TspanBBoxWidth
                     | Op::WrapProbeBBoxWidth
                     | Op::BoundingClientRectWidth => HostTextMeasurement::Length(metrics.width),
-                    Op::HtmlLineHeight => {
-                        // Empty or collapsed whitespace does not create an HTML inline line box.
-                        let empty = request
-                            .text
-                            .bytes()
-                            .all(|byte| matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0c));
-                        HostTextMeasurement::Length(if empty { 0.0 } else { style.font_size * 1.5 })
-                    }
                     Op::SimpleBBoxHeight | Op::RawBBoxHeight | Op::TspanBBoxHeight => {
                         HostTextMeasurement::Length(metrics.height)
                     }

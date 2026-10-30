@@ -75,7 +75,7 @@ class SdkArchiveTests(unittest.TestCase):
     def write(self, relative, text):
         path = self.repo / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8", newline="\n")
         return path
 
     def configure(self, *, wasi=False, flavor="standard", target=None):
@@ -367,10 +367,16 @@ class SdkArchiveTests(unittest.TestCase):
                 output=self.artifacts / "sidecar.json",
             )
 
-    def test_header_version_mismatch_is_rejected(self):
-        self.write("crates/merman-ffi/include/merman.h", "#define MERMAN_NATIVE_ABI_VERSION 99u\n")
-        with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "header ABI"):
-            self.package()
+    def test_header_line_endings_preserve_abi_validation(self):
+        for label, newline in (("lf", "\n"), ("crlf", "\r\n")):
+            with self.subTest(newline=label):
+                self.write("crates/merman-ffi/include/merman.h",
+                           f"#define MERMAN_NATIVE_ABI_VERSION 3u{newline}")
+                self.package(output_dir=self.output / label)
+                self.write("crates/merman-ffi/include/merman.h",
+                           f"#define MERMAN_NATIVE_ABI_VERSION 99u{newline}")
+                with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "header ABI"):
+                    self.package()
 
     def test_font_capability_still_requires_its_provider_and_constructor(self):
         self.assertIn("native-fonts", self.catalog["runtime_catalog"]["capabilities"]["capability_ids"])

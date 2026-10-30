@@ -77,11 +77,10 @@ pub enum TextMeasurementOperation {
     RawBBoxYOffset = 19,
     RawMiddleBBoxYOffset = 20,
     RawHangingBBoxYOffset = 21,
-    HtmlLineHeight = 22,
 }
 
 impl TextMeasurementOperation {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 22] = [
         Self::Measure,
         Self::ComputedLength,
         Self::BBoxX,
@@ -104,7 +103,6 @@ impl TextMeasurementOperation {
         Self::RawBBoxYOffset,
         Self::RawMiddleBBoxYOffset,
         Self::RawHangingBBoxYOffset,
-        Self::HtmlLineHeight,
     ];
 
     pub(crate) const fn index(self) -> usize {
@@ -146,7 +144,7 @@ struct TextMeasurementOperationDescriptor {
     accepts_signed_length: bool,
 }
 
-const TEXT_MEASUREMENT_OPERATION_DESCRIPTORS: [TextMeasurementOperationDescriptor; 23] = [
+const TEXT_MEASUREMENT_OPERATION_DESCRIPTORS: [TextMeasurementOperationDescriptor; 22] = [
     TextMeasurementOperationDescriptor { external_name: "measure", result_kind: TextMeasurementResultKind::Metrics, accepts_signed_length: false },
     TextMeasurementOperationDescriptor { external_name: "computed-length", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: false },
     TextMeasurementOperationDescriptor { external_name: "bbox-x", result_kind: TextMeasurementResultKind::HorizontalExtents, accepts_signed_length: false },
@@ -169,5 +167,4 @@ const TEXT_MEASUREMENT_OPERATION_DESCRIPTORS: [TextMeasurementOperationDescripto
     TextMeasurementOperationDescriptor { external_name: "raw-bbox-y-offset", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: true },
     TextMeasurementOperationDescriptor { external_name: "raw-middle-bbox-y-offset", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: true },
     TextMeasurementOperationDescriptor { external_name: "raw-hanging-bbox-y-offset", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: true },
-    TextMeasurementOperationDescriptor { external_name: "html-line-height", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: false },
 ];

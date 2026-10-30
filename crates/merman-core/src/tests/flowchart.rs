@@ -4083,9 +4083,14 @@ fn parse_diagram_flowchart_preserves_ascii_keyword_boundaries_before_unicode() {
             .parse_diagram_sync("flowchart TD\nend開始 --> B", ParseOptions::default())
             .is_err()
     );
+    assert!(
+        engine
+            .parse_diagram_sync("flowchart TD開始 --> B", ParseOptions::default())
+            .is_err()
+    );
 
     let parsed = engine
-        .parse_diagram_sync("flowchart TD開始 --> B", ParseOptions::default())
+        .parse_diagram_sync("flowchart TD\n開始 --> B", ParseOptions::default())
         .unwrap()
         .unwrap();
     assert_eq!(parsed.model["direction"], "TB");

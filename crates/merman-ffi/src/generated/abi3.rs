@@ -643,6 +643,33 @@ pub struct MermanNativeApi {
     pub operation_control_cancel: Option<MermanNativeOperationControlCancelFn>,
     pub operation_control_release: Option<MermanNativeOperationControlReleaseFn>,
     pub execute_collect_controlled: Option<MermanNativeExecuteCollectControlledFn>,
+}
+
+/// Extended ABI 3 table including the memory-font constructor.
+///
+/// Use `Self::for_discovery` and `Self::as_mut_api_ptr` to negotiate this table.
+/// The original `MermanNativeApi` retains its published Rust fields.
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[non_exhaustive]
+pub struct MermanNativeApiWithFonts {
+    pub struct_size: u32,
+    pub abi_version: u32,
+    pub minimum_prefix_layout_digest: MermanNativeSlice,
+    pub full_descriptor_digest: MermanNativeSlice,
+    pub capability_catalog_digest: MermanNativeSlice,
+    pub package_version: MermanNativeSlice,
+    pub runtime_catalog: Option<MermanNativeRuntimeCatalogFn>,
+    pub engine_new: Option<MermanNativeEngineNewFn>,
+    pub engine_try_close: Option<MermanNativeEngineTryCloseFn>,
+    pub execute_collect: Option<MermanNativeExecuteCollectFn>,
+    pub result_free: Option<MermanNativeResultFreeFn>,
+    pub metadata_collect: Option<MermanNativeMetadataCollectFn>,
+    pub engine_new_with_services: Option<MermanNativeEngineNewWithServicesFn>,
+    pub operation_control_new: Option<MermanNativeOperationControlNewFn>,
+    pub operation_control_cancel: Option<MermanNativeOperationControlCancelFn>,
+    pub operation_control_release: Option<MermanNativeOperationControlReleaseFn>,
+    pub execute_collect_controlled: Option<MermanNativeExecuteCollectControlledFn>,
     pub engine_new_with_fonts: Option<MermanNativeEngineNewWithFontsFn>,
 }
 
@@ -754,7 +781,7 @@ pub const MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE: u32 =
         + std::mem::size_of::<Option<MermanNativeExecuteCollectControlledFn>>()) as u32;
 
 pub const MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE: u32 =
-    (std::mem::offset_of!(MermanNativeApi, engine_new_with_fonts)
+    (std::mem::offset_of!(MermanNativeApiWithFonts, engine_new_with_fonts)
         + std::mem::size_of::<Option<MermanNativeEngineNewWithFontsFn>>()) as u32;
 
 pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[

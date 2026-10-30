@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -70,6 +71,34 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_sdk_installs_and_checks_the_license_cli_before_building(self) -> None:
+        package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
+        self.assertIn("if: matrix.platform.target != 'x86_64-apple-darwin'", package)
+        self.assertIn("if: matrix.platform.target == 'x86_64-apple-darwin'", package)
+        self.assertIn("cargo install cargo-about --version 0.9.2 --locked --features cli", package)
+        self.assertLess(
+            package.index("verify_cargo_about_version"),
+            package.index("python scripts/sdk_qualify.py"),
+        )
+
+    def test_sdk_installs_repository_toolchain_components_before_cargo(self) -> None:
+        required = set(tomllib.loads(read(ROOT / "rust-toolchain.toml"))["toolchain"]["components"])
+        sdk = read(WORKFLOW_ROOT / "release-sdk.yml")
+        for name in ("package", "cli-reference"):
+            with self.subTest(job=name):
+                job = workflow_job(sdk, name)
+                components = re.search(r"(?m)^\s+components:\s*([^\n]+)$", job)
+                self.assertIsNotNone(components)
+                installed = {value.strip() for value in components.group(1).split(",")}
+                self.assertLessEqual(required, installed)
+
+    def test_strict_preflight_installs_the_wasi_compile_target(self) -> None:
+        packages = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "versions-and-packages")
+        self.assertIn("verify-feature-matrix --strict", packages)
+        target_line = re.search(r"(?m)^\s+targets:\s*([^\n]+)$", packages)
+        self.assertIsNotNone(target_line)
+        self.assertIn("wasm32-wasip1", target_line.group(1).split(","))
+
     def test_sdk_native_qualification_uses_native_errors_and_relocatable_libraries(self) -> None:
         package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
         self.assertIn("python scripts/sdk_qualify.py", package)

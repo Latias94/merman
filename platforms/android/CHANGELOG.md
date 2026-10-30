@@ -4,6 +4,17 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.9.3] - 2026-10-30
+
+- Sequence diagrams and GitGraph tag backgrounds resolve their diagram-scoped built-in Neo shadows. Sequence viewports include box-frame strokes and restored built-in Neo shadows to prevent clipping. [#255](https://github.com/Latias94/merman/pull/255)
+
+- Flowchart preserves percent-containing node IDs, and YAML frontmatter no longer mistakes brackets in comments or block text for nested collections. [#241](https://github.com/Latias94/merman/pull/241), [#251](https://github.com/Latias94/merman/pull/251)
+- Correct label sizing, configured fonts, literal text, and HTML/entity handling across SVG diagrams, including wrapped Swimlane edge labels and valid Class-note XML. Review updated output snapshots. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- Apply Gantt `tickInterval`, Mindmap root padding and width settings, and Sequence numbering, participant visibility, and note alignment. Init directives follow Mermaid 12.1.0's filtering and merge order. [#252](https://github.com/Latias94/merman/pull/252)
+- Retain text-measurement protocol 1 and its 22 operations (0..21); the host literal-height extension (operation 22) is deferred. Existing `Wrapped` callbacks keep their original metrics/HTML contract; the [host guide](../../docs/bindings/HOST_TEXT_MEASUREMENT.md) describes the remaining ER height limitation for literal `<br>`. Android JNI API 2 and Options JSON schema 2 remain unchanged. [#250](https://github.com/Latias94/merman/pull/250)
+
+Native C/WASI SDK archives are separate integrations and do not expand the AAR's default capabilities. See the [workspace changelog](../../CHANGELOG.md).
+
 ## [0.9.2] - 2026-10-22
 
 - Host themes keep C4 boundary contents and relationships visible, color Wardley anchors, and apply a coherent ZenUML palette. Diagram-selected Mermaid palettes retain matching text and fills. [#235](https://github.com/Latias94/merman/pull/235), [issue #229](https://github.com/Latias94/merman/issues/229), [issue #230](https://github.com/Latias94/merman/issues/230), [issue #231](https://github.com/Latias94/merman/issues/231), [issue #232](https://github.com/Latias94/merman/issues/232)

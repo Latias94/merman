@@ -180,7 +180,7 @@ configuring Dart OIDC credentials; never replace this boundary with direct `tar 
 
 For Web or Node publication, treat the verified package-group manifest order as publication order. Publish dependency or platform packages first and the default Web package or Node loader last.
 
-Keep release and preflight Web/Node host jobs on Node `24.21.0` and npm `12.0.2`. Preserve the
+Keep release and preflight Web/Node host jobs on Node `24.21.0` and npm `12.2.1`. Preserve the
 Node `24.13.1` GNU and musl container images and their bundled npm 11: their Bullseye and Alpine 3.22
 baselines define native compatibility, and newer official Node images no longer offer those variants.
 A floating tag can change build-tool provenance and npm tarball bytes between retries even when

@@ -130,8 +130,7 @@ enum MermanTextMeasurementOperation {
   rawBBoxHeight(18),
   rawBBoxYOffset(19),
   rawMiddleBBoxYOffset(20),
-  rawHangingBBoxYOffset(21),
-  htmlLineHeight(22);
+  rawHangingBBoxYOffset(21);
 
   const MermanTextMeasurementOperation(this.code);
 
