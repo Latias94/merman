@@ -17,52 +17,22 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, Result, SourceSpan};
+pub use merman_model::families::cynefin::{
+    CynefinDiagramModel, CynefinDomainModel, CynefinItemModel, CynefinTransitionModel,
+};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
 const HEADER: &str = "cynefin-beta";
 const DOMAINS: &[&str] = &["complex", "complicated", "clear", "chaotic", "confusion"];
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinItemModel {
-    pub label: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinDomainModel {
-    pub name: String,
-    #[serde(default)]
-    pub items: Vec<CynefinItemModel>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinTransitionModel {
-    pub from: String,
-    pub to: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub domains: Vec<CynefinDomainModel>,
-    #[serde(default)]
-    pub transitions: Vec<CynefinTransitionModel>,
-}
-
-impl CynefinDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut CynefinDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -116,7 +86,7 @@ impl CynefinParseOutcome {
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_cynefin(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    model.sanitize_common_db_fields(meta.effective_config.as_config());
+    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
 
     render_model_to_compat_json(&model, meta)
 }
@@ -140,7 +110,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
         EditorFactsDemand::Capture,
         control,
     )?;
-    model.sanitize_common_db_fields(meta.effective_config.as_config());
+    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
@@ -186,7 +156,7 @@ pub(crate) fn parse_cynefin_model_for_render(
     meta: &PresentationMetadata,
 ) -> Result<CynefinDiagramModel> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    model.sanitize_common_db_fields(meta.effective_config.as_config());
+    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
     Ok(model)
 }
 
@@ -226,7 +196,7 @@ pub(crate) fn parse_cynefin_semantic_model_controlled(
         Some(error) => Err(error),
         None => {
             let mut model = source.model;
-            model.sanitize_common_db_fields(&meta.semantic_config);
+            sanitize_common_db_fields(&mut model, &meta.semantic_config);
             Ok(model)
         }
     };
@@ -256,7 +226,7 @@ fn parse_cynefin_model_controlled(
         Err(error) => return Ok(Err(error)),
     };
     let mut model = source.model;
-    model.sanitize_common_db_fields(config);
+    sanitize_common_db_fields(&mut model, config);
     Ok(Ok(model))
 }
 

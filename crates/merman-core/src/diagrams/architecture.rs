@@ -12,7 +12,11 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
-use serde::{Deserialize, Serialize};
+pub use merman_model::families::architecture::{
+    ArchitectureDiagramModel, ArchitectureEdgeModel, ArchitectureGroupModel,
+    ArchitectureLayoutDirection, ArchitectureLayoutHintModel, ArchitectureNodeKind,
+    ArchitectureNodeModel,
+};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -44,13 +48,6 @@ struct ArchitectureEdge {
     rhs_into: Option<bool>,
     rhs_group: Option<bool>,
     title: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ArchitectureLayoutDirection {
-    Row,
-    Column,
 }
 
 #[derive(Debug, Clone)]
@@ -593,23 +590,6 @@ fn is_dir(c: char) -> bool {
     matches!(c, 'L' | 'R' | 'T' | 'B')
 }
 
-impl ArchitectureLayoutDirection {
-    fn as_str(self) -> &'static str {
-        match self {
-            ArchitectureLayoutDirection::Row => "row",
-            ArchitectureLayoutDirection::Column => "column",
-        }
-    }
-
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "row" => Some(Self::Row),
-            "column" => Some(Self::Column),
-            _ => None,
-        }
-    }
-}
-
 fn strip_inline_comment(line: &str) -> &str {
     let mut in_quote = false;
     let mut quote_char: Option<char> = None;
@@ -735,7 +715,7 @@ pub(crate) fn parse_architecture_semantic_model_controlled(
         control,
     )?
     .map_model(|mut model| {
-        model.sanitize_common_db_fields(&metadata.semantic_config);
+        sanitize_common_db_fields(&mut model, &metadata.semantic_config);
         model
     }))
 }
@@ -769,30 +749,13 @@ pub(crate) fn parse_architecture_json_and_editor_facts(
     Ok(parsed)
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ArchitectureDiagramModel {
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub nodes: Vec<ArchitectureNodeModel>,
-    #[serde(default)]
-    pub groups: Vec<ArchitectureGroupModel>,
-    #[serde(default)]
-    pub edges: Vec<ArchitectureEdgeModel>,
-    #[serde(default, rename = "layoutHints")]
-    pub layout_hints: Vec<ArchitectureLayoutHintModel>,
-}
-
-impl ArchitectureDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut ArchitectureDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[cfg(feature = "compat-json")]
@@ -926,75 +889,6 @@ fn architecture_render_node_to_compat_json(
         "title": node.title,
         "in": node.in_group,
     }))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ArchitectureNodeKind {
-    #[serde(rename = "service")]
-    Service,
-    #[serde(rename = "junction")]
-    Junction,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArchitectureNodeModel {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub node_type: ArchitectureNodeKind,
-    #[serde(default)]
-    pub edge_indices: Vec<usize>,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(default, rename = "iconText")]
-    pub icon_text: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default, rename = "in")]
-    pub in_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArchitectureGroupModel {
-    pub id: String,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default, rename = "in")]
-    pub in_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArchitectureEdgeModel {
-    #[serde(rename = "lhsId")]
-    pub lhs_id: String,
-    #[serde(rename = "lhsDir")]
-    pub lhs_dir: char,
-    #[serde(default, rename = "lhsInto")]
-    pub lhs_into: Option<bool>,
-    #[serde(default, rename = "lhsGroup")]
-    pub lhs_group: Option<bool>,
-    #[serde(rename = "rhsId")]
-    pub rhs_id: String,
-    #[serde(rename = "rhsDir")]
-    pub rhs_dir: char,
-    #[serde(default, rename = "rhsInto")]
-    pub rhs_into: Option<bool>,
-    #[serde(default, rename = "rhsGroup")]
-    pub rhs_group: Option<bool>,
-    #[serde(default)]
-    pub title: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArchitectureLayoutHintModel {
-    pub direction: ArchitectureLayoutDirection,
-    #[serde(default)]
-    pub members: Vec<String>,
 }
 
 #[cfg(all(test, feature = "compat-json"))]

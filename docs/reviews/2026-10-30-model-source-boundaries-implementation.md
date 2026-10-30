@@ -16,7 +16,8 @@ Status: M0 complete, M1 in progress, 2026-10-30. This records implementation of 
 | --- | --- | --- |
 | M0 | Complete | All six independent consumers compiled and passed both runtime inputs, repeated-output checks and raw/stripped equivalence. |
 | M1 | In progress | Shared lifecycle/config/runtime extraction passed core/model tests and output-consumer compilation; full model-dependent policy/identity migration remains open. |
-| M2–M8 | Open | No implementation or acceptance result yet. |
+| M2 | In progress | First ten canonical payloads and shared warning facts moved; 2351 core/model tests passed. Remaining payloads and final consumer admission are open. |
+| M3–M8 | Open | No implementation or acceptance result yet. |
 
 Existing correctness results at the prerequisite retain their original scope in the [dependency review](../research/2026-10-30-dependency-review.md). New consumer baselines and implementation gates will be recorded here as they complete. Do not infer a runtime improvement from the package boundary or rewrite historical measurement hashes.
 
@@ -62,3 +63,21 @@ Validation on the shared Windows target, with ordinary builds limited to two job
 - A bounded independent static review found no correctness blocker or lost operation/config tests. Core's parse-specific four operation tests and source authorization checks remain at their source owner.
 
 The new package's project licenses and Mermaid source notice were projected through the existing legal owner; no dependency versions changed in this checkpoint. Full legal/report regeneration, source packaging and final closure admission remain M6/M8 work. Configuration/source namespace forwarding is temporary. Family data, shared family identity and model-dependent resource-policy methods remain implementation work; this checkpoint does not close M1 or claim a model-to-ASCII dependency reduction yet.
+
+## M2 family extraction
+
+The first data group contains Error, Architecture, C4, Cynefin, Event Modeling, QuadrantChart, Requirement, Sankey, Venn and Wardley: ten of the 34 canonical payloads. Their 53 public data/vocabulary definitions have one implementation under `merman_model::families`; the nine selectable languages use independent model features, while Error data remains unconditional. Shared warning facts and stable rule IDs also have one model owner.
+
+Core retains each grammar, DB, source scanner, sanitization policy, diagnostics and editor construction. Family sanitizers are source functions accepting shared data. Architecture's source direction recognizer stays in its parser while its pure direction vocabulary/accessor moves. Canonical serde attributes, field order and defaults are retained; no built-in model is recovered through JSON or source replay. Temporary core data re-exports remain scheduled for M7 retirement.
+
+The default model package still excludes family data unless selected and does not advertise a parser. Core forwards only its selected families. Existing source-based family tests remain core-owned and exercise those exact moved types. Model-only selection and all-family source behavior are validated separately; this partial extraction does not complete the full inventory or source/output dependency cuts.
+
+The first family-group source/model run passed all 2351 tests (nextest run
+`4e8c5427-335f-48c6-9c0f-c6170390575c`) under the same all-family core recipe as M1. Default model
+selection independently passed 50 shared-value/lifecycle/time tests before that run. Broader final
+family/output admission remains open.
+
+The first group's model-only production graph excludes core, YAML/JSON5, HTML5 recovery, URL and CSS
+admission. Its all-features model run passed 56 tests (`3d96d9ab-096f-4991-a5a4-8d9925138567`);
+production-library Clippy with `-D warnings`, formatting and the facade
+`all-diagrams,svg,ascii,analysis` consumer check passed. No external package version changed.

@@ -6,46 +6,25 @@ use crate::{
 };
 #[cfg(feature = "compat-json")]
 use crate::{common_db, diagram::ParsedDiagram};
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
-/// Typed semantic model for Merman's built-in suppressed-error diagram.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ErrorDiagramModel {
-    #[serde(rename = "type")]
-    pub diagram_type: String,
-    #[serde(
-        default,
-        rename = "errorMessage",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub error_message: Option<String>,
+pub use merman_model::families::error::ErrorDiagramModel;
+
+pub(crate) fn suppressed_error_model(error: &Error) -> ErrorDiagramModel {
+    ErrorDiagramModel {
+        diagram_type: "error".to_string(),
+        error_message: Some(error.to_string()),
+    }
 }
 
-impl ErrorDiagramModel {
-    pub(crate) fn new(diagram_type: &str) -> Self {
-        Self {
-            diagram_type: diagram_type.to_string(),
-            error_message: None,
-        }
+#[cfg(feature = "compat-json")]
+fn compatibility_json(model: &ErrorDiagramModel) -> Value {
+    let mut output = json!({ "type": model.diagram_type });
+    if let Some(message) = &model.error_message {
+        output["errorMessage"] = json!(message);
     }
-
-    pub(crate) fn suppressed(error: &Error) -> Self {
-        Self {
-            diagram_type: "error".to_string(),
-            error_message: Some(error.to_string()),
-        }
-    }
-
-    #[cfg(feature = "compat-json")]
-    fn compatibility_json(&self) -> Value {
-        let mut model = json!({ "type": self.diagram_type });
-        if let Some(message) = &self.error_message {
-            model["errorMessage"] = json!(message);
-        }
-        model
-    }
+    output
 }
 
 pub(crate) fn canonical_error(
@@ -70,7 +49,7 @@ pub(crate) fn render_model_to_compat_json(
     model: &ErrorDiagramModel,
     _meta: &PresentationMetadata,
 ) -> Result<Value> {
-    Ok(model.compatibility_json())
+    Ok(compatibility_json(model))
 }
 
 #[cfg(feature = "compat-json")]
@@ -92,7 +71,7 @@ pub(crate) fn suppressed_error_diagram(
     error: &Error,
 ) -> ParsedDiagram {
     let meta = suppressed_error_metadata(source_meta);
-    let typed = ErrorDiagramModel::suppressed(error);
+    let typed = suppressed_error_model(error);
     let mut model = render_model_to_compat_json(&typed, &meta)
         .expect("Error typed model must remain JSON-serializable");
     common_db::apply_common_db_sanitization(&mut model, meta.effective_config.as_config());
@@ -108,7 +87,7 @@ pub(crate) fn suppressed_error_render_diagram(
     error: &Error,
 ) -> ParsedDiagramRender {
     let meta = suppressed_error_metadata(source_meta);
-    let model = ErrorDiagramModel::suppressed(error);
+    let model = suppressed_error_model(error);
     ParsedDiagramRender::new(meta, RenderSemanticModel::Error(model))
 }
 

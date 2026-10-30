@@ -30,54 +30,19 @@ pub(crate) fn eventmodeling_syntax_construction_count() -> usize {
     crate::diagrams::langium_common::family_syntax_construction_count("eventmodeling")
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EventModelingFrame {
-    pub name: String,
-    #[serde(rename = "frameKind")]
-    pub frame_kind: String,
-    #[serde(rename = "modelEntityType")]
-    pub model_entity_type: String,
-    #[serde(rename = "entityIdentifier")]
-    pub entity_identifier: String,
-    #[serde(default, rename = "sourceFrames")]
-    pub source_frames: Vec<String>,
-    #[serde(default, rename = "dataInlineValue")]
-    pub data_inline_value: Option<String>,
-    #[serde(default, rename = "dataReference")]
-    pub data_reference: Option<String>,
-}
+pub use merman_model::families::event_modeling::{
+    EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
+};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EventModelingDataEntity {
-    pub name: String,
-    #[serde(rename = "dataBlockValue")]
-    pub data_block_value: String,
+#[cfg(feature = "presentation")]
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut EventModelingDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-/// Domain frames and data entities constructed by the Event Modeling grammar.
-pub struct EventModelingDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub frames: Vec<EventModelingFrame>,
-    #[serde(default, rename = "dataEntities")]
-    pub data_entities: Vec<EventModelingDataEntity>,
-}
-
-impl EventModelingDiagramModel {
-    #[cfg(feature = "presentation")]
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
-}
-
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_eventmodeling(code: &str, meta: &PresentationMetadata) -> Result<Value> {
     construct_eventmodeling_semantic_source(code, meta)

@@ -857,13 +857,15 @@ impl RenderSemanticModel {
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-architecture")]
-            Self::Architecture(v) => v.sanitize_common_db_fields(config),
+            Self::Architecture(v) => {
+                crate::diagrams::architecture::sanitize_common_db_fields(v, config)
+            }
             #[cfg(feature = "diagram-class")]
             Self::Class(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-c4")]
-            Self::C4(v) => v.sanitize_common_db_fields(config),
+            Self::C4(v) => crate::diagrams::c4::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-cynefin")]
-            Self::Cynefin(v) => v.sanitize_common_db_fields(config),
+            Self::Cynefin(v) => crate::diagrams::cynefin::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-railroad")]
             Self::Railroad(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-kanban")]
@@ -879,7 +881,9 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-journey")]
             Self::Journey(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-requirement")]
-            Self::Requirement(v) => v.sanitize_common_db_fields(config),
+            Self::Requirement(v) => {
+                crate::diagrams::requirement::sanitize_common_db_fields(v, config)
+            }
             #[cfg(feature = "diagram-sankey")]
             Self::Sankey(_) => {}
             #[cfg(feature = "diagram-radar")]
@@ -893,7 +897,9 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-er")]
             Self::Er(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-quadrant-chart")]
-            Self::QuadrantChart(v) => v.sanitize_common_db_fields(config),
+            Self::QuadrantChart(v) => {
+                crate::diagrams::quadrant_chart::sanitize_common_db_fields(v, config)
+            }
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-git-graph")]
@@ -903,11 +909,13 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-event-modeling")]
-            Self::EventModeling(v) => v.sanitize_common_db_fields(config),
+            Self::EventModeling(v) => {
+                crate::diagrams::eventmodeling::sanitize_common_db_fields(v, config)
+            }
             #[cfg(feature = "diagram-venn")]
-            Self::Venn(v) => v.sanitize_common_db_fields(config),
+            Self::Venn(v) => crate::diagrams::venn::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-wardley")]
-            Self::Wardley(v) => v.sanitize_common_db_fields(config),
+            Self::Wardley(v) => crate::diagrams::wardley::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-usecase")]
             Self::Usecase(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-agentflow")]

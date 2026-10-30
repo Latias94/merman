@@ -10,7 +10,6 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan};
-use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 #[cfg(test)]
 use std::cell::Cell;
@@ -30,200 +29,14 @@ pub(crate) fn c4_syntax_construction_count() -> usize {
     C4_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum C4Text {
-    Wrapped { text: Value },
-    String(String),
-    Value(Value),
-}
+pub use merman_model::families::c4::{
+    C4Boundary, C4DiagramModel, C4LayoutConfig, C4Relation, C4Shape, C4Text,
+};
 
-impl Default for C4Text {
-    fn default() -> Self {
-        Self::String(String::new())
-    }
-}
-
-impl C4Text {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Wrapped { text } => text.as_str().unwrap_or(""),
-            Self::String(s) => s.as_str(),
-            Self::Value(v) => v.as_str().unwrap_or(""),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct C4LayoutConfig {
-    #[serde(default, rename = "c4ShapeInRow")]
-    pub c4_shape_in_row: i64,
-    #[serde(default, rename = "c4BoundaryInRow")]
-    pub c4_boundary_in_row: i64,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct C4Shape {
-    pub alias: String,
-    #[serde(default, rename = "parentBoundary")]
-    pub parent_boundary: String,
-    #[serde(default, rename = "typeC4Shape")]
-    pub type_c4_shape: C4Text,
-    #[serde(default)]
-    pub label: C4Text,
-    #[serde(default)]
-    pub wrap: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sprite: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub link: Option<Value>,
-    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
-    pub ty: Option<C4Text>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub techn: Option<C4Text>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub descr: Option<C4Text>,
-    #[serde(default, rename = "bgColor", skip_serializing_if = "Option::is_none")]
-    pub bg_color: Option<String>,
-    #[serde(
-        default,
-        rename = "borderColor",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub border_color: Option<String>,
-    #[serde(default, rename = "fontColor", skip_serializing_if = "Option::is_none")]
-    pub font_color: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shadowing: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shape: Option<Value>,
-    #[serde(
-        default,
-        rename = "legendText",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub legend_text: Option<Value>,
-    #[serde(
-        default,
-        rename = "legendSprite",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub legend_sprite: Option<Value>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct C4Boundary {
-    pub alias: String,
-    #[serde(default, rename = "parentBoundary")]
-    pub parent_boundary: String,
-    #[serde(default)]
-    pub label: C4Text,
-    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
-    pub ty: Option<C4Text>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub descr: Option<C4Text>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wrap: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sprite: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub link: Option<Value>,
-    #[serde(default, rename = "nodeType", skip_serializing_if = "Option::is_none")]
-    pub node_type: Option<String>,
-    #[serde(default, rename = "bgColor", skip_serializing_if = "Option::is_none")]
-    pub bg_color: Option<String>,
-    #[serde(
-        default,
-        rename = "borderColor",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub border_color: Option<String>,
-    #[serde(default, rename = "fontColor", skip_serializing_if = "Option::is_none")]
-    pub font_color: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shadowing: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shape: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub techn: Option<Value>,
-    #[serde(
-        default,
-        rename = "legendText",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub legend_text: Option<Value>,
-    #[serde(
-        default,
-        rename = "legendSprite",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub legend_sprite: Option<Value>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct C4Relation {
-    #[serde(rename = "from")]
-    pub from_alias: String,
-    #[serde(rename = "to")]
-    pub to_alias: String,
-    #[serde(rename = "type")]
-    pub rel_type: String,
-    #[serde(default)]
-    pub label: C4Text,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub techn: Option<C4Text>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub descr: Option<C4Text>,
-    #[serde(default)]
-    pub wrap: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sprite: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub link: Option<Value>,
-    #[serde(default, rename = "offsetX", skip_serializing_if = "Option::is_none")]
-    pub offset_x: Option<i64>,
-    #[serde(default, rename = "offsetY", skip_serializing_if = "Option::is_none")]
-    pub offset_y: Option<i64>,
-    #[serde(default, rename = "lineColor", skip_serializing_if = "Option::is_none")]
-    pub line_color: Option<String>,
-    #[serde(default, rename = "textColor", skip_serializing_if = "Option::is_none")]
-    pub text_color: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct C4DiagramModel {
-    #[serde(default, rename = "c4Type")]
-    pub c4_type: String,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub wrap: bool,
-    #[serde(default)]
-    pub layout: C4LayoutConfig,
-    #[serde(default)]
-    pub shapes: Vec<C4Shape>,
-    #[serde(default)]
-    pub boundaries: Vec<C4Boundary>,
-    #[serde(default)]
-    pub rels: Vec<C4Relation>,
-}
-
-impl C4DiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(model: &mut C4DiagramModel, config: &crate::MermaidConfig) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Default)]
@@ -2112,7 +1925,7 @@ pub(crate) fn parse_c4_semantic_model_controlled(
             .model
             .and_then(|source| source.db.into_model())
             .map(|mut model| {
-                model.sanitize_common_db_fields(&meta.semantic_config);
+                sanitize_common_db_fields(&mut model, &meta.semantic_config);
                 model
             }),
         #[cfg(feature = "editor-facts")]

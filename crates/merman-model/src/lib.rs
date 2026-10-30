@@ -5,12 +5,14 @@
 //! opt-in; default operation runtime values are deterministic.
 
 pub mod config;
+pub mod families;
 pub mod json;
 pub mod operation;
 pub mod resources;
 pub mod runtime;
 pub mod source;
 pub mod time;
+pub mod warnings;
 
 pub use config::MermaidConfig;
 pub use json::ManagedJson;

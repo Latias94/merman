@@ -12,6 +12,10 @@ use crate::{
     Error, OperationControl, OperationControlResult, Result, SourceSpan,
     family::CombinedSemanticFailure,
 };
+pub use merman_model::families::requirement::{
+    RequirementClass, RequirementDiagramModel, RequirementElement, RequirementNode,
+    RequirementRelationship,
+};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -33,83 +37,12 @@ pub(crate) fn requirement_syntax_construction_count() -> usize {
     REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequirementNode {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub node_type: String,
-    #[serde(default, rename = "requirementId")]
-    pub requirement_id: String,
-    #[serde(default)]
-    pub text: String,
-    #[serde(default)]
-    pub risk: String,
-    #[serde(default, rename = "verifyMethod")]
-    pub verify_method: String,
-    #[serde(default)]
-    pub css_styles: Vec<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequirementElement {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub element_type: String,
-    #[serde(default, rename = "docRef")]
-    pub doc_ref: String,
-    #[serde(default)]
-    pub css_styles: Vec<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RequirementRelationship {
-    #[serde(rename = "type")]
-    pub rel_type: String,
-    pub src: String,
-    pub dst: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequirementClass {
-    pub id: String,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Requirement declarations, relationships, and authored styles.
-pub struct RequirementDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub direction: String,
-    #[serde(default)]
-    pub requirements: Vec<RequirementNode>,
-    #[serde(default)]
-    pub elements: Vec<RequirementElement>,
-    #[serde(default)]
-    pub relationships: Vec<RequirementRelationship>,
-    #[serde(default)]
-    pub classes: BTreeMap<String, RequirementClass>,
-}
-
-impl RequirementDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut RequirementDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -438,7 +371,7 @@ pub(crate) fn parse_requirement_semantic_model_controlled(
                 .needs_recovery()
                 .then_some(source.editor_facts);
             let mut model = source.model;
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut model, &metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]

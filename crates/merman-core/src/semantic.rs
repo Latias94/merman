@@ -637,7 +637,7 @@ impl SemanticParser {
                 return Ok(Ok(ParsedSemanticDiagram {
                     metadata,
                     model: SemanticDiagramModel::Error(
-                        crate::diagrams::error_diagram::ErrorDiagramModel::suppressed(&error),
+                        crate::diagrams::error_diagram::suppressed_error_model(&error),
                     ),
                 }));
             }

@@ -13,6 +13,14 @@ use crate::diagrams::langium_common::{
     parse_langium_common, parse_langium_string,
 };
 
+fn parse_layout_direction(value: &str) -> Option<ArchitectureLayoutDirection> {
+    match value {
+        "row" => Some(ArchitectureLayoutDirection::Row),
+        "column" => Some(ArchitectureLayoutDirection::Column),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ArchitectureSpannedValue {
     value: String,
@@ -336,7 +344,7 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_alignment(&mut self) -> Result<ArchitectureStatement> {
         self.expect_keyword("align");
         let direction = self.parse_raw_id("invalid align direction")?;
-        if ArchitectureLayoutDirection::parse(&direction.value).is_none() {
+        if parse_layout_direction(&direction.value).is_none() {
             return Err(Error::diagram_parse_exact(
                 "architecture",
                 "invalid align direction",
@@ -1520,7 +1528,7 @@ impl ArchitectureTrace {
             if let Some(ArchitectureStatement::Alignment { direction, members }) =
                 entry.statement.as_ref()
                 && let Err(error) = db.add_layout_hint_controlled(
-                    ArchitectureLayoutDirection::parse(&direction.value)
+                    parse_layout_direction(&direction.value)
                         .expect("validated alignment direction"),
                     members.clone(),
                     control,

@@ -33,31 +33,7 @@ pub(crate) fn sankey_syntax_construction_count() -> usize {
     SANKEY_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SankeyNode {
-    pub id: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SankeyLink {
-    pub source: String,
-    pub target: String,
-    pub value: Value,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct SankeyGraph {
-    #[serde(default)]
-    pub nodes: Vec<SankeyNode>,
-    #[serde(default)]
-    pub links: Vec<SankeyLink>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct SankeyDiagramModel {
-    #[serde(default)]
-    pub graph: SankeyGraph,
-}
+pub use merman_model::families::sankey::{SankeyDiagramModel, SankeyGraph, SankeyLink, SankeyNode};
 
 #[derive(Debug, Default, Clone)]
 struct SankeyDb {

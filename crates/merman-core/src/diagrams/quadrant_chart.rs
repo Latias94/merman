@@ -17,7 +17,7 @@ use crate::{
 use serde_json::{Map, Value, json};
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 #[cfg(test)]
 thread_local! {
@@ -34,62 +34,18 @@ fn quadrant_syntax_construction_count() -> usize {
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QuadrantChartStyles {
-    pub radius: Option<i64>,
-    pub color: Option<String>,
-    pub stroke_color: Option<String>,
-    pub stroke_width: Option<String>,
-}
+pub use merman_model::families::quadrant_chart::{
+    QuadrantChartAxesModel, QuadrantChartDiagramModel, QuadrantChartPointModel,
+    QuadrantChartQuadrantsModel, QuadrantChartStyles,
+};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QuadrantChartPointModel {
-    pub text: String,
-    pub x: f64,
-    pub y: f64,
-    pub class_name: Option<String>,
-    pub styles: QuadrantChartStyles,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QuadrantChartQuadrantsModel {
-    pub quadrant1_text: String,
-    pub quadrant2_text: String,
-    pub quadrant3_text: String,
-    pub quadrant4_text: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QuadrantChartAxesModel {
-    pub x_axis_left_text: String,
-    pub x_axis_right_text: String,
-    pub y_axis_bottom_text: String,
-    pub y_axis_top_text: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct QuadrantChartDiagramModel {
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    pub quadrants: QuadrantChartQuadrantsModel,
-    pub axes: QuadrantChartAxesModel,
-    pub points: Vec<QuadrantChartPointModel>,
-    pub classes: BTreeMap<String, QuadrantChartStyles>,
-}
-
-impl QuadrantChartDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut QuadrantChartDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Default)]
@@ -1481,7 +1437,7 @@ pub(crate) fn parse_quadrant_chart_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model;
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut model, &metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]
