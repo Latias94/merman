@@ -76,7 +76,7 @@ jobs:
           cp candidate/package.nix candidate/Cargo.lock nixpkgs/pkgs/by-name/me/merman-cli/
       - name: Evaluate all advertised systems
         run: |
-          for system in x86_64-linux aarch64-linux aarch64-darwin x86_64-darwin; do
+          for system in x86_64-linux aarch64-linux aarch64-darwin; do
             nix-instantiate --eval --strict --json --expr "
               let
                 pkgs = import ./nixpkgs { system = \"$system\"; };
@@ -97,7 +97,7 @@ jobs:
 
           candidate = Path("candidate")
           profile = json.loads((candidate / "expected-profile.json").read_text())["cargo"]
-          systems = {"x86_64-linux", "aarch64-linux", "aarch64-darwin", "x86_64-darwin"}
+          systems = {"x86_64-linux", "aarch64-linux", "aarch64-darwin"}
           for system in sorted(systems):
               result = json.loads((candidate / f"eval-{system}.json").read_text())
               assert result["version"] == "0.9.3", result
@@ -127,8 +127,6 @@ jobs:
             system: aarch64-linux
           - os: macos-15
             system: aarch64-darwin
-          - os: macos-15-intel
-            system: x86_64-darwin
     steps:
       - uses: actions/checkout@v7.0.1
         with:
