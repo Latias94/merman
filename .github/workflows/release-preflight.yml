@@ -910,6 +910,13 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
 
+      - name: Install pinned wasm-opt for Node WASM
+        uses: sigoden/install-binary@v1.3.0
+        with:
+          repo: WebAssembly/binaryen
+          name: wasm-opt
+          tag: version_133
+
       - name: Build and probe Node WASM candidate
         run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 

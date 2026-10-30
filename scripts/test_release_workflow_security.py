@@ -1163,6 +1163,24 @@ jobs:
                 self.assertIn("commits/$RELEASE_TAG", job)
                 self.assertIn('test "$observed" = "$SOURCE_SHA"', job)
 
+    def test_node_wasm_builds_install_the_same_optimizer_before_building(self) -> None:
+        for workflow_name, job_name in (
+            ("ci.yml", "node-contracts"),
+            ("release-preflight.yml", "node-wasm-package"),
+            ("release-node.yml", "node-wasm-package"),
+        ):
+            with self.subTest(workflow=workflow_name):
+                job = workflow_job(read(WORKFLOW_ROOT / workflow_name), job_name)
+                install = job.index("- name: Install pinned wasm-opt for Node WASM")
+                build = job.index("run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm")
+                self.assertLess(install, build)
+                optimizer = job[install:build]
+                self.assertIn("uses: sigoden/install-binary@v1.3.0", optimizer)
+                self.assertIn("repo: WebAssembly/binaryen", optimizer)
+                self.assertIn("name: wasm-opt", optimizer)
+                self.assertIn("tag: version_133", optimizer)
+                self.assertNotIn("--no-opt", job)
+
     def test_node_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
         text = read(WORKFLOW_ROOT / "release-node.yml")
         validate = workflow_job(text, "validate-inputs")
