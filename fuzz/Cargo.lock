@@ -945,6 +945,8 @@ dependencies = [
  "merman-core",
  "merman-editor-core",
  "merman-export",
+ "merman-markup",
+ "merman-model",
  "merman-render",
  "merman-theme-contract",
  "serde_json",
@@ -956,6 +958,7 @@ name = "merman-analysis"
 version = "0.9.3"
 dependencies = [
  "merman-core",
+ "merman-model",
  "serde",
  "serde-saphyr",
  "serde_json",
@@ -967,7 +970,7 @@ name = "merman-ascii"
 version = "0.9.3"
 dependencies = [
  "dugong",
- "merman-core",
+ "merman-model",
  "rustc-hash",
  "serde",
  "serde_json",
@@ -993,24 +996,17 @@ name = "merman-core"
 version = "0.9.3"
 dependencies = [
  "cssparser",
- "getrandom",
  "granit-parser",
- "html5ever",
- "htmlize",
  "indexmap",
- "jiff",
  "json5",
  "lalrpop-util",
+ "merman-markup",
+ "merman-model",
  "rustc-hash",
- "ryu-js",
  "serde",
  "serde_json",
- "sha2",
  "thiserror 2.0.21",
  "unicode-general-category",
- "unicode-segmentation",
- "unicode-width",
- "url",
 ]
 
 [[package]]
@@ -1019,6 +1015,7 @@ version = "0.9.3"
 dependencies = [
  "merman-analysis",
  "merman-core",
+ "merman-model",
  "serde",
 ]
 
@@ -1038,7 +1035,7 @@ dependencies = [
  "image",
  "krilla",
  "krilla-svg",
- "merman-core",
+ "merman-model",
  "merman-render",
  "quick-xml",
  "resvg",
@@ -1068,6 +1065,7 @@ dependencies = [
  "libfuzzer-sys",
  "merman",
  "merman-ffi",
+ "merman-model",
  "merman-render",
  "roxmltree 0.21.2",
  "tree-sitter",
@@ -1080,6 +1078,35 @@ version = "0.9.3"
 dependencies = [
  "merman-elk-layered",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "merman-markup"
+version = "0.9.3"
+dependencies = [
+ "html5ever",
+ "htmlize",
+ "merman-model",
+ "ryu-js",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "merman-model"
+version = "0.9.3"
+dependencies = [
+ "getrandom",
+ "htmlize",
+ "indexmap",
+ "jiff",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
@@ -1097,8 +1124,9 @@ dependencies = [
  "libm",
  "manatee",
  "memchr",
- "merman-core",
  "merman-layout-elk",
+ "merman-markup",
+ "merman-model",
  "merman-theme-contract",
  "merman-unicode-linebreak",
  "pulldown-cmark",
