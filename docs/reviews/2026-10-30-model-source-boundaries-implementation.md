@@ -1,6 +1,6 @@
 # Model/source boundaries implementation record
 
-Status: M0 complete; M1–M7 implementation integrated, with final validation in progress under M8, 2026-10-30. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
+Status: source ownership and API retirement implemented; final correctness, installed-consumer and measurement checkpoints recorded on 2026-10-31. M6/M8 remain open for outstanding applicable platform qualification. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
 
 ## Frozen source and observations
 
@@ -15,14 +15,14 @@ Status: M0 complete; M1–M7 implementation integrated, with final validation in
 | Slice | Status | Evidence |
 | --- | --- | --- |
 | M0 | Complete | All six independent consumers compiled and passed both runtime inputs, repeated-output checks and raw/stripped equivalence. |
-| M1 | Implemented; final gates pending | Shared lifecycle/config/runtime/resources/text and the pinned data-only identity catalog moved. Source provider bindings remain core-owned; forwarding retirement is integrated. |
-| M2 | Implemented; final gates pending | All 34 canonical payloads and nine real full-data groups moved. Six redundant wrappers are retired. Post-retirement core/model all-feature tests passed 2399 cases; the strict isolated producer case remains part of M8. |
-| M3 | Implemented; final gates pending | ASCII production uses model directly. The fixed model-to-ASCII checkpoint retains exact primary/fallback/report outputs; final consumer measurements and product recipes remain. |
-| M4 | Implemented; final gates pending | Default-off requested fixes and immutable evidence are integrated into CLI/LSP/bindings. Semantic-only recipes passed 287/322 cases and the combined all-feature product libraries passed 937 cases; final exact recipes remain. |
-| M5 | Implemented; final gates pending | Single markup owner, checked immutable presentation and parser-free Render/Export closures are integrated. Render's full library passed 3303 cases; final focused boundary regressions, integration tests and DOM owners remain. |
-| M6 | Implemented; final gates pending | All 46 artifact profiles and closure checks pass. Product recipes, docs and legal projections are migrated; actual package/installed consumers and final recipe execution remain. |
-| M7 | Implemented; final gates pending | Public core model namespaces, old wrappers and source-to-render private bridges are retired. The family inventory records the retained output contracts; acceptance-cfg callers are migrated and await execution. |
-| M8 | In progress | Final feature, DOM, Linux, source-package, installed-product and measurement owners remain required. No publication has run. |
+| M1 | Complete | Shared lifecycle/config/runtime/resources/text and data-only identity have one model owner. Controlled operation, resource and deep-value owners passed. |
+| M2 | Complete | All 34 canonical payloads and nine real full-data groups moved; six wrappers retired. Core/model all-feature tests passed 2,399 cases and the strict matrix admitted the isolated producer without JSON. |
+| M3 | Complete | ASCII uses model directly; fixed independent primary/fallback/report outputs match. Its external closure fell from 84 to 28 without source ingestion. |
+| M4 | Complete | Default-off requested fixes, immutable evidence and host declarations passed diagnostics-only, requested-fix, broad-union and exact product checks. |
+| M5 | Complete | Single markup owner and checked immutable presentation retained parser-free output closures. Full Render passed 5,574 tests, and all three blocking DOM policies passed. |
+| M6 | Implemented; platform qualification open | All 46 profiles, strict feature/closure checks, legal/source-package owners and recorded installed consumers passed. Apple, Linux native package targets and Android device qualification remain applicable. |
+| M7 | Complete | Obsolete public model paths, wrappers and source-to-render bridges retired. The complete family inventory and dedicated theme acceptance cfg passed. |
+| M8 | In progress | Six final consumer measurements and four cold observations passed their fixed-output controls. Outstanding platform evidence is listed below; no publication has run. |
 
 Existing correctness results at the prerequisite retain their original scope in the [dependency review](../research/2026-10-30-dependency-review.md). New consumer baselines and implementation gates will be recorded here as they complete. Do not infer a runtime improvement from the package boundary or rewrite historical measurement hashes.
 
@@ -645,3 +645,118 @@ markup, XML/CSS, layout, math and font work remains at its actual output owner.
 Raw receipts, exact commands, lock/input/output hashes and added/removed version lists are in
 `target/bench/experiments/model-source-boundaries/final-fixed-consumer-comparisons.json` and its
 six indexed receipt directories. These are graph/size observations, not latency measurements.
+
+### Controlled cold compilation observations
+
+The preregistered `base, head, head, base` schedule ran offline with one Cargo job on the same
+Windows host/toolchain/profile. Each model-to-ASCII observation began with a previously absent,
+task-owned target directory. Registry availability was warm; the shared development target was
+not cleared. The timer covered only `cargo build`, with source staging and output verification
+outside that interval.
+
+| Order | Source | Build wall seconds | Consumed outputs |
+| --- | --- | ---: | --- |
+| 1 | Base `a5c73612f` | 131.032 | Match |
+| 2 | Candidate `d049531b3` | 76.040 | Match |
+| 3 | Candidate `d049531b3` | 70.234 | Match |
+| 4 | Base `a5c73612f` | 115.576 | Match |
+
+These four observations are diagnostic and do not meet the separate calibrated confirmation
+requirements for a compilation-speed claim. `cold-observations.json` indexes every receipt and
+initial cache state. Cold artifact sizes retain their own observations; they do not replace the
+frozen size-comparison receipts above.
+
+## Final product qualification checkpoints
+
+The six SDK recipes passed actual build, runtime catalog, archive/checksum/legal verification and
+extracted-consumer owners. WASI standard and math, plus native standard, were admitted at
+`70c88d622ff6dc1baf9220014a95652bf1683e60`. Native math and both full recipes passed at
+`ab9d0877ec024f861a628b3ef9ca84fcc32cd1e8` after the bounded SDK archive correction below.
+No Rust production source, feature recipe or lock changed between those checkpoints.
+
+| SDK recipe | Actual execution |
+| --- | --- |
+| WASI standard / math / full | The same reactor bytes passed wazero 1.12.0 and wasmtime 50.0.1; extracted Go/Python clients passed their tests and SVG/PNG CLI examples. |
+| Native standard / math / full | Windows MSVC C/C++ consumers passed dynamic and static linking; extracted consumers passed all four CTest cases for each recipe. |
+| Native/WASI comparison | Shared explicit font bytes produced matching decoded basic PNG pixels in all three flavors and matching formula pixels in math/full. |
+
+Receipts are indexed by `target/m8-sdk-six-final/results.json` and
+`target/m8-sdk-three-final-index.json`. The latter points to the task-owned D-drive output root,
+used to avoid duplicating large SDK artifacts on the development target volume. Earlier failures
+and source-bound artifacts remain retained.
+
+The exact `cli-release` host recipe also built successfully. Its existing `cli_compare.py`
+owner passed against all three qualified WASI modules with matching explicit fonts, policy,
+scale and background. Standard covered basic/Swimlane, math added a formula, and full added
+explicit ELK: nine paired source cases passed byte-identical SVG and decoded PNG pixel checks.
+The CLI executable SHA256 is
+`5d6a5ad107cde0fe127daf2086f9df964c12cd4ed1bd076a0a07b3f362027b48`.
+The build log is `target/m8-cli-wasi-final/cli-release.log`; successful comparison receipts are
+in `target/m8-cli-wasi-comparisons-dist-final/`. Two earlier temporary runner invocations used
+incorrect output paths and stopped before comparison; they required no product fix or rebuild.
+
+The first math/full WASI module exposed RaTeX 0.1.15's reachable Unicode system-font fallback,
+which retains `path_readlink`. Qualification now distinguishes that exactly typed dependency
+import from ordinary admitted imports. Math/full may link six `i32` arguments and one `i32`
+result; both hosts bind a counter-only denial returning WASI `NOTCAPABLE` (76), without a
+caller/module/memory handle. Standard rejects it. Unknown imports and changed signatures remain
+errors; no preopens or inherited environment were added. Twenty-two Python and four Go unit
+tests passed, including unchanged guest memory and invalid-pointer controls.
+
+Actual missing-glyph and CJK SVG/PNG probes agreed across both runtimes. The CJK SVG request
+returned output, while CJK PNG returned the same structured render error because the closed font
+set could not shape the label. This is not a complete-glyph-coverage result. The dependency denial
+counter remained zero in these actual cases; separate synthetic calls prove fixed failure. The
+original visible red formula oracle remains strict. Extracted examples retain normal WASI
+builtins without filesystem grants; they do not claim the qualification hosts' fixed errno policy.
+
+Native math's 285,226,084-byte static library initially exceeded the generic archive member
+ceiling. An ar/COFF census and independent LLVM section listing found 164,294,148 bytes of
+embedded `.llvmbc` alongside native code, compared with 152,968,944 of standard's 263,625,670
+bytes. Retained ThinLTO bitcode accounts for about 58%, rather than an unexpected font increase.
+SDK packaging/extraction now permits a member to use the existing 512 MiB total allowance.
+Compressed archive and aggregate extracted budgets remain 512 MiB; CLI/LSP retain their 256 MiB
+member ceiling. No bitcode or native code was stripped, and no Rust profile changed. All 56 SDK
+and archive unit tests passed on Windows and Linux, with tiny-budget acceptance, aggregate,
+compressed-size, checksum-bound persistence and installed-extraction controls.
+
+The final Flutter Windows GNU native library passed its symbol contract, actual Native Assets
+ABI3/runtime/theme consumers, Dart analysis and format checks. ffigen 23.0.0 regenerated the ABI
+in an independent task directory; it matches tracked declarations after line-ending normalization.
+The current exact Typst recipe passed real Typst 0.15.1 package consumption: 23 fixtures compiled
+and nine expected diagnostic failures matched. Its managed artifact used Binaryen 133 and local
+wasm-tools 1.252.0, distinct from CI's declared 1.261.0 tool identity.
+
+All six assembled Web/Typst artifacts passed the existing budgets without edits:
+
+| Artifact profile | Raw bytes | Stripped bytes | Gzip bytes | Brotli bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `web-analysis` | 4,065,263 | 4,065,028 | 1,553,493 | 1,182,511 |
+| `web-ascii` | 5,762,312 | 5,762,077 | 2,122,364 | 1,602,069 |
+| `web-editor` | 4,224,475 | 4,224,240 | 1,615,222 | 1,228,731 |
+| `web-full` | 14,630,147 | 14,629,912 | 5,380,140 | 3,953,778 |
+| `web-render` | 12,594,349 | 12,594,114 | 4,682,138 | 3,447,959 |
+| `typst-wasm` | 20,392,339 | 12,420,130 | 4,699,104 | 3,476,368 |
+
+The five actual Web npm tarballs also passed the package-group pack and independent artifact
+verification on Linux. Their original compiled-input/provenance hashes were checked and retained;
+checkout line-ending differences were identified separately rather than rewriting those hashes.
+
+## Outstanding applicable qualification
+
+Implementation, structural exclusions and the recorded correctness/measurement results do not
+replace platform-owned execution. M6/M8 and the overall goal remain open for these existing owners:
+
+| Owner | Remaining evidence / environment |
+| --- | --- |
+| Apple bindings and Flutter Apple slices | XCFramework, generated Swift/typechecks and actual Swift consumers require macOS/Xcode. Windows UniFFI/Python is separate evidence. |
+| Linux Node native packages | GNU build/install smoke must run in the declared glibc 2.31 builder; musl has its own package owner. Ubuntu 26.04 tests cannot prove either product. Docker endpoints were unavailable locally. |
+| Android instrumentation | Actual device/emulator JNI loading and instrumentation remain unexecuted. Read-only inventory found no connected device or available running emulator. AAR/JVM results retain their narrower scope. |
+
+These gates are pending, not not-applicable. Run their existing CI/preflight commands against the
+final candidate when the matching environment is available; no new validation framework is
+required. There has been no push, branch merge, tag, registry publication or hosted release.
+The [migration guide](../migrations/model-source-boundaries.md) covers package/import selection,
+presentation-data/source configuration and requested fixes. Published `0.9.3` and older changelog
+sections remain identical to remote main; the next breaking source release requires the release
+policy's appropriate pre-1.0 minor version.

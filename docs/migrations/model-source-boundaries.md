@@ -100,4 +100,10 @@ Enable `fixes` on the owning package or facade for that example. `FixGeneration:
 
 The full distributed CLI and editor/native SDK recipes retain fixes. CLI lint/check and LSP diagnostic publication omit replacement generation; the fix command and LSP code actions request it. Diagnostics-only CLI/Web/Typst profiles omit the capability. A host's broad dependency feature union does not grant fixes to an artifact that did not declare them; bindings retain the typed missing-capability response for unavailable operations. Existing capability identities remain stable, with `fixes` appended as bit 21.
 
-See the [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) for actual validation scope and measurements, and the [architecture plan](../plans/2026-10-30-model-and-source-boundaries.md) for the remaining closeout gates. Published `0.9.3` artifacts are unchanged.
+The fixed model-to-ASCII consumer's external dependency closure fell from 84 to 28 versions,
+with matching consumed outputs. Full source workflows retain their parser dependencies; removing
+source ingestion from a graph does not promise the same size or compilation benefit for every
+application. See the [measured results](../reviews/2026-10-30-model-source-boundaries-implementation.md#final-independent-consumer-measurements)
+for exact features, executable sizes and the separately scoped cold-compilation observations.
+
+See the [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) for actual validation scope, and the [architecture plan](../plans/2026-10-30-model-and-source-boundaries.md) for the remaining platform gates. Published `0.9.3` artifacts are unchanged.
