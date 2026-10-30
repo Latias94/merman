@@ -33,7 +33,7 @@ With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "0.9.2"
+merman = "0.9.3"
 ```
 
 Render a source string to SVG:
@@ -122,7 +122,7 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 
 ```toml
 [dependencies]
-merman = { version = "0.9.2", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
+merman = { version = "0.9.3", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
 For command-line use, follow the [CLI installation guide][CLI install], then render a Mermaid file:
@@ -199,9 +199,9 @@ check its guide for available versions and capabilities.
 
 ## Compatibility
 
-For the 0.8.0 to 0.9.0 API and output changes, use the [upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). CLI text measurement remains deterministic by default; explicit font files or directories opt into actual-font layout.
+For the 0.8.0 to 0.9.0 API and output changes, use the [upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). CLI SVG text measurement remains deterministic by default. Mermaid-to-PNG/JPEG/PDF exports share native fonts between layout and painting when built with `system-fonts`; use `--font-measurement deterministic` without font sources to retain previous layout estimates and CSS support. See the [CLI font guide](crates/merman-cli/README.md#explicit-fonts).
 
-Published Merman `0.9.2` carries selected fixes on the `0.9.x` line and retains Mermaid `12.1.0`,
+Published Merman `0.9.3` carries selected fixes on the `0.9.x` line and retains Mermaid `12.1.0`,
 the Presentation API, and Options JSON schema `2`.
 The development branch targets Mermaid `12.2.0` and includes the unreleased theme APIs described
 here. Use the [release index](docs/release/README.md) and documentation at the matching release tag

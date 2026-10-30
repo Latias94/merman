@@ -1,7 +1,7 @@
 # Prepared rendering and host integration migration
 
-This guide describes the current development branch, after published Merman `0.9.2`.
-It does not change the contracts of installed `0.9.2` artifacts. Build Rust crates and generated
+This guide describes the current development branch, after published Merman `0.9.3`.
+It does not change the contracts of installed `0.9.3` artifacts. Build Rust crates and generated
 wrappers from the same revision; Web source builds require transport API `8`.
 See the [release index](../release/README.md) for published-version migrations.
 

@@ -4,11 +4,9 @@
 
 Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The source-default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, icons, completions, and native runtime adapters. Official release archives additionally select math explicitly. Current development source defaults omit math; select the `math` feature to include it. The current source default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
-Installation examples target `0.9.2`. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) for changed APIs and output defaults.
+Installation examples target `0.9.3`. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) for changed APIs and output defaults.
 
-Compiled-theme options and the encoded-output font defaults in this checkout are unreleased.
-Use the `v0.9.2` tagged guide for the published CLI; the
-[release index](../../docs/release/README.md#merman-092) records the boundary.
+Compiled-theme options in this checkout are unreleased. The native font defaults for PNG/JPEG/PDF shipped in `0.9.3`; use the `v0.9.3` tagged guide for the published CLI and the [release index](../../docs/release/README.md#merman-093) for the maintenance/development boundary.
 
 The command line has four explicit workflows:
 
@@ -21,10 +19,10 @@ The command line has four explicit workflows:
 
 ## Install
 
-This guide targets `merman-cli 0.9.2`. Match the documentation and generated artifacts to the version installed in your project. Install with cargo-binstall:
+This guide targets `merman-cli 0.9.3`. Match the documentation and generated artifacts to the version installed in your project. Install with cargo-binstall:
 
 ```sh
-cargo binstall merman-cli@0.9.2
+cargo binstall merman-cli@0.9.3
 ```
 
 Merman's cargo-binstall metadata uses the repository's cargo-dist archive, disables third-party QuickInstall artifacts, and retains `cargo install` as a fallback when an official archive is unavailable. Check `merman-cli --version` before relying on the API or output schema in this guide.
@@ -563,9 +561,9 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.9.2` release defaults to the standard diagram CLI with `all-diagrams`.
+The `0.9.3` release defaults to the standard diagram CLI with `all-diagrams`.
 The Rustdoc authoring command remains available in the default and release builds, as in the
-published alpha.7 archives. The commands below target `0.9.2`.
+published alpha.7 archives. The commands below target `0.9.3`.
 For a slim current-source binary, disable defaults and select the required `diagram-*` families
 plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
 explicitly:
@@ -586,7 +584,7 @@ explicitly:
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.9.2 --locked \
+cargo install merman-cli --version 0.9.3 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 

@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-10-29
+Last updated: 2026-10-30
 
 This guide owns display-stack integration, callback result semantics, and measurement lifecycle
 guidance. The [text-measurement descriptor](../../contracts/abi/text-measurement-v1.json) owns
@@ -12,13 +12,12 @@ caller-memory rules.
 
 ## Native CLI And Library Policy
 
-The current-source CLI uses two output defaults for Mermaid input. SVG keeps
+Starting with 0.9.3, the CLI uses two output defaults for Mermaid input. SVG keeps
 deterministic, font-agnostic measurement without system discovery. PNG/JPEG/PDF
 automatically use a native font context when the CLI `system-fonts` capability is
 compiled: bounded system discovery runs before layout, and measurement and painting
-share the selected context. These encoded-output defaults are unreleased; installed
-versions retain their published contract. Layout, wrapping, and image/PDF snapshots
-can change with the selected host fonts.
+share the selected context. Layout, wrapping, and image/PDF snapshots can change
+with the selected host fonts.
 
 Supply explicit `--font-file` / `--font-dir` sources for native measurement with
 fixed font assets. They form a closed set unless `--font-system on` is also

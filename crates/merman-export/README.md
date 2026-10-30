@@ -12,7 +12,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
-This guide targets `merman-export 0.9.2`. Match the documentation and generated artifacts to the version installed in your project.
+This guide targets `merman-export 0.9.3`. Match the documentation and generated artifacts to the version installed in your project.
 
 ## Choose A Feature
 
@@ -73,7 +73,7 @@ It owns admitted data and performs no file acquisition or ambient discovery, eve
 crate's WebAssembly code paths; explicit file/directory requests return a source error there.
 
 ```toml
-merman-export = { version = "0.9.2", default-features = false, features = ["png", "bundled-fonts"] }
+merman-export = { version = "0.9.3", default-features = false, features = ["png", "bundled-fonts"] }
 ```
 
 ```rust
@@ -133,7 +133,7 @@ required basic SVG path without Cytoscape, ELK, or math engines:
 
 ```toml
 [dependencies]
-merman = { version = "0.9.2", default-features = false, features = ["diagram-flowchart", "png", "system-fonts"] }
+merman = { version = "0.9.3", default-features = false, features = ["diagram-flowchart", "png", "system-fonts"] }
 ```
 
 ```rust
@@ -176,9 +176,9 @@ operation control:
 
 ```toml
 [dependencies]
-merman-core = { version = "0.9.2", default-features = false }
-merman-render = { version = "0.9.2", default-features = false }
-merman-export = { version = "0.9.2", default-features = false, features = ["png", "system-fonts"] }
+merman-core = { version = "0.9.3", default-features = false }
+merman-render = { version = "0.9.3", default-features = false }
+merman-export = { version = "0.9.3", default-features = false, features = ["png", "system-fonts"] }
 ```
 
 ```rust

@@ -1,6 +1,6 @@
 {
   "name": "merman-web-workspace",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": true,
   "description": "Build workspace for the lockstep @mermanjs/browser package group.",
   "type": "module",

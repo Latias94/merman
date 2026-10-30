@@ -1,6 +1,6 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.9.2` is the latest published workspace release and retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
+Use this index to choose an upgrade path by the version you have installed. Merman `0.9.3` is the latest published workspace release and retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Its Rust crates, CLI/LSP, and native C/WASI SDKs are available; Web, Node, Python, Flutter, Android, and Apple retain their separately published `0.9.2` packages. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
 Development now targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
 for the selected graph and behavior changes. Published release histories retain their original baselines.
@@ -14,13 +14,19 @@ while source-default CLI and generic SVG/Web recipes omit it. Published artifact
 
 ## 0.9 maintenance line
 
-`release/0.9.x` carries compatible patch releases, including published `0.9.2`. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [maintenance changelog](https://github.com/Latias94/merman/blob/release/0.9.x/CHANGELOG.md) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership.
+`release/0.9.x` carries compatible patch releases, including published `0.9.3`. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [maintenance changelog](https://github.com/Latias94/merman/blob/release/0.9.x/CHANGELOG.md) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership.
+
+## Merman 0.9.3
+
+This maintenance patch adds prebuilt native C and WASI SDKs, improves text and formula rendering, restores diagram shadows, and fixes parsing and configuration handling. CLI PNG/JPEG/PDF exports share fonts between layout and painting by default when built with `system-fonts`; review snapshots and the [font/CSS migration notes](../../CHANGELOG.md#093---2026-10-30). See the [0.9.3 SDK guide](https://github.com/Latias94/merman/blob/v0.9.3/distribution/sdk/README.md) for standard, math, and full profiles, and the [publication snapshot](PUBLISH_ORDER.md#093-publication) for verified delivery.
+
+Main synchronizes the `0.9.3` package version baseline and published notes while retaining compiled themes, prepared-source APIs, and Mermaid `12.2.0` under `[Unreleased]`. Use immutable `v0.9.3` and matching wrappers/artifacts for the published maintenance source.
 
 ## Merman 0.9.2
 
 This maintenance patch was released from `release/0.9.x`. It fixes native font fallback, C4/Wardley/ZenUML host styling, selected Mermaid palettes, parser recovery, SVG CSS validation, Python wheel construction, and release tooling, and refreshes compatible dependency locks. See the [0.9.2 changelog](../../CHANGELOG.md#092---2026-10-22) for the complete delta and the [publication snapshot](PUBLISH_ORDER.md#092-publication-snapshot) for channel evidence.
 
-Published `0.9.2` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Main's compiled themes, prepared-source APIs, Web transport API `8`, and Mermaid `12.2.0` remain unreleased. Main synchronizes the `0.9.2` package version baseline and published notes; use immutable `v0.9.2` for the published source and matching wrappers/artifacts.
+Published `0.9.2` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Use immutable `v0.9.2` for that release's source and matching wrappers/artifacts.
 
 ## Merman 0.9.1
 
@@ -51,6 +57,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
+| `0.9.2` | `0.9.3` | [Patch changelog](../../CHANGELOG.md#093---2026-10-30): native C/WASI SDKs, text and formula fixes, and CLI native font/CSS migration; retains Mermaid 12.1 and the published binding contracts |
 | `0.9.1` | `0.9.2` | [Patch changelog](../../CHANGELOG.md#092---2026-10-22): font, host-theme, parser, CSS, and packaging fixes; retains Mermaid 12.1 and the published binding contracts |
 | `0.9.0` | `0.9.1` | [Patch changelog](../../CHANGELOG.md#091---2026-10-18): selected fixes; retains Mermaid 12.1 and the published binding contracts |
 | `0.8.0` | `0.9.0` | [Stable upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md): managed JSON, canonical model records, transparent SVG, fonts, geometry, and binding callbacks |
