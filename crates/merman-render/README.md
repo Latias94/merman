@@ -11,6 +11,8 @@
 
 Direct users own the typed presentation data, render session, text measurement, layout, and SVG postprocessing lifecycle. This package has no production dependency on Mermaid source parsing. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for independent data construction.
 
+The shared presentation API described here belongs to the development checkout after published `0.9.3`. Use matching Git revisions for current source consumers, or the tagged guide for a released package.
+
 ## What It Provides
 
 - Headless layout for parsed Mermaid diagrams.

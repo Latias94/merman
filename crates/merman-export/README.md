@@ -12,7 +12,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
-This guide targets `merman-export 0.9.3`. Match the documentation and generated artifacts to the version installed in your project.
+This guide targets the development checkout after published `0.9.3`. Independent presentation data and explicit font-discovery features belong to the next breaking development release; use the `v0.9.3` tagged guide for the maintenance APIs and codec defaults. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for current imports and output handoffs.
 
 ## Choose A Feature
 
