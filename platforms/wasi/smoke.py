@@ -7,8 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
-from common import (HERE, PROTOCOL, compare_pixels, require, sha, validate_png, validate_svg,
-                    write_json)
+from common import (DEPENDENCY_FONT_PROBES, HERE, PROTOCOL, compare_pixels, require, sha,
+                    validate_error, validate_png, validate_svg, write_json)
 
 
 def run(args):
@@ -66,6 +66,53 @@ def run(args):
             artifact = reports[runtime]["artifacts"][name + ".png"]
             require(artifact["rgba8_sha256"] == comparisons[name + ".png"]["rgba8_sha256"],
                     "runtime pixel evidence disagrees with decoded PNG")
+    probe_status = "not-applicable-without-math" if args.flavor == "standard" else "recorded"
+    for runtime, report in reports.items():
+        require(report["dependency_font_probe_status"] == probe_status,
+                "wrong dependency font probe status: " + runtime)
+        require(isinstance(report["denied_dependency_import_calls"]["path_readlink"], int) and
+                report["denied_dependency_import_calls"]["path_readlink"] >= 0,
+                "invalid denied dependency import counter: " + runtime)
+        if args.flavor == "standard":
+            require(report["dependency_font_probes"] == {}, "standard ran dependency font probes")
+    if args.flavor != "standard":
+        for name in DEPENDENCY_FONT_PROBES:
+            for operation in ("svg", "png"):
+                key = name + "." + operation
+                outcomes = []
+                for runtime, report in reports.items():
+                    require(key in report["dependency_font_probes"],
+                            "missing dependency font probe: " + runtime + "/" + key)
+                    probe = report["dependency_font_probes"][key]
+                    require(probe["status"] in ("rendered", "owned-error") and
+                            isinstance(probe["path_readlink_calls"], int) and probe["path_readlink_calls"] >= 0,
+                            "invalid dependency font probe: " + runtime + "/" + key)
+                    outcomes.append(probe["status"])
+                    directory = output / runtime
+                    if probe["status"] == "owned-error":
+                        error = validate_error(json.loads((directory / (key + ".error.json")).read_bytes()))
+                        require(error["code_name"] in ("MERMAN_RENDER_ERROR", "MERMAN_UNSUPPORTED_OPERATION") and
+                                error == report["errors"][key], "dependency font error evidence mismatch: " + key)
+                    else:
+                        viewport = None
+                        if operation == "svg" or report["dependency_font_probes"][name + ".svg"]["status"] == "rendered":
+                            viewport = validate_svg((directory / (name + ".svg")).read_bytes(),
+                                                    json.loads((directory / (name + ".svg.metadata.json")).read_bytes()),
+                                                    mathematical=None)
+                        if operation == "png":
+                            validate_png((directory / key).read_bytes(),
+                                         json.loads((directory / (key + ".metadata.json")).read_bytes()), viewport)
+                require(outcomes[0] == outcomes[1], "dependency font outcomes differ: " + key)
+                if outcomes[0] == "owned-error":
+                    require(first["errors"][key] == second["errors"][key], "dependency font errors differ: " + key)
+                elif operation == "svg":
+                    require((output / "wazero" / key).read_bytes() == (output / "wasmtime" / key).read_bytes(),
+                            "dependency font SVGs differ: " + key)
+                elif operation == "png":
+                    comparisons[key] = compare_pixels(output / "wazero" / key, output / "wasmtime" / key)
+                    for report in reports.values():
+                        require(report["artifacts"][key]["rgba8_sha256"] == comparisons[key]["rgba8_sha256"],
+                                "dependency font pixel evidence mismatch: " + key)
     catalog_out = Path(args.catalog_out)
     catalog_out.parent.mkdir(parents=True, exist_ok=True)
     catalog_out.write_bytes(catalogs[0])

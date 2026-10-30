@@ -13,6 +13,7 @@ ROOT = HERE.parent.parent
 PROTOCOL = json.loads((HERE / "protocol.json").read_text())
 FIXTURE_BYTES = (HERE / "fixtures.json").read_bytes()
 FIXTURES = json.loads(FIXTURE_BYTES)
+DEPENDENCY_FONT_PROBES = ("math_missing", "math_cjk")
 
 
 def require(condition, message):
@@ -149,7 +150,7 @@ def validate_svg(data, metadata, mathematical=False):
                 "math SVG has no native formula glyph paths")
         require(b' data-merman-math-native="unavailable"' not in data,
                 "math SVG reports unavailable rendering")
-    else:
+    elif mathematical is False:
         require(b"Memory fonts" in data and b"Retained bytes" in data, "missing fixture labels")
     return viewport
 
@@ -176,9 +177,10 @@ def validate_png(data, metadata, viewport, mathematical=False):
     require(plan["kind"] == "raster" and plan["limited"] is False, "PNG unexpectedly limited")
     require((plan["width_px"], plan["height_px"]) == (width, height), "PNG dimensions mismatch")
     require(plan["requested_scale"] == plan["effective_scale"] == 2, "PNG is not 2x")
-    # The exporter rounds the base geometry up before applying device scale.
-    require(width == math.ceil(viewport["width"]) * 2 and
-            height == math.ceil(viewport["height"]) * 2, "PNG/SVG scale mismatch")
+    if viewport is not None:
+        # The exporter rounds the base geometry up before applying device scale.
+        require(width == math.ceil(viewport["width"]) * 2 and
+                height == math.ceil(viewport["height"]) * 2, "PNG/SVG scale mismatch")
     result = {"width": width, "height": height, "rgba8_sha256": sha(pixels),
               "sha256": sha(data), "byte_length": len(data)}
     if mathematical:
@@ -207,9 +209,20 @@ def save_render(output, name, operation, data, metadata, viewport=None):
     (output / (name + "." + operation)).write_bytes(data)
     write_json(output / (name + "." + operation + ".metadata.json"), metadata)
     if operation == "svg":
-        viewport = validate_svg(data, metadata, name == "math")
-        return {"sha256": sha(data), "byte_length": len(data), "svg_viewport": viewport}
-    return validate_png(data, metadata, viewport, mathematical=name == "math")
+        probe = name in DEPENDENCY_FONT_PROBES
+        viewport = validate_svg(data, metadata, None if probe else name == "math")
+        evidence = {"sha256": sha(data), "byte_length": len(data), "svg_viewport": viewport}
+        if probe:
+            # Record the actual fallback output; these markers do not prove glyph coverage.
+            evidence["native_math_marker"] = b"merman-prepared-math-native" in data
+            evidence["unavailable_math_marker"] = b'data-merman-math-native="unavailable"' in data
+        return evidence
+    probe = name in DEPENDENCY_FONT_PROBES
+    require(probe or viewport is not None, "PNG requires its SVG viewport")
+    evidence = validate_png(data, metadata, viewport, mathematical=name == "math")
+    if probe:
+        evidence["svg_viewport_checked"] = viewport is not None
+    return evidence
 
 
 def compare_pixels(first, second):

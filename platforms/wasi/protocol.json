@@ -13,6 +13,9 @@
     "fd_write", "path_filestat_get", "path_open", "proc_exit", "sched_yield",
     "random_get", "clock_time_get"
   ],
+  "denied_dependency_imports": {
+    "path_readlink": [6, 1]
+  },
   "function_exports": {
     "_initialize": 0,
     "merman_wasi_abi_version": 0,
@@ -45,6 +48,7 @@
     "actual-import-export-audit", "reactor-initialized", "catalog-actual-capabilities",
     "metadata-dispatch", "input-fonts-released", "parse-error-reuse",
     "svg-and-2x-png-metadata", "independent-results", "elk-family-fallback",
-    "math-flavor-admission", "constrained-math-rejection", "result-lifetime"
+    "math-flavor-admission", "constrained-math-rejection", "result-lifetime",
+    "denied-dependency-import-policy", "math-dependency-font-probes"
   ]
 }

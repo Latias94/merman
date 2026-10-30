@@ -15,6 +15,8 @@
     "basic": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n",
     "parse_error": "flowchart ???",
     "math": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[\"$$\\color{red}{x^2}$$\"]\nstyle A fill:#ffffff,stroke:#000000,color:#000000\n",
+    "math_missing": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[\"$$x+\\text{\u0416}$$\"]\n",
+    "math_cjk": "---\nconfig:\n  fontFamily: Cousine\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[\"$$x+\\text{\u4e2d}$$\"]\n",
     "elk": "---\nconfig:\n  fontFamily: Cousine\n  layout: elk\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n",
     "dagre": "---\nconfig:\n  fontFamily: Cousine\n  layout: dagre\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Memory fonts] --> B[Retained bytes]\n"
   }

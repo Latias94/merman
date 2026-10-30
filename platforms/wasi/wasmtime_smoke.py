@@ -7,19 +7,34 @@ from pathlib import Path
 import sys
 import threading
 
-from common import (FIXTURES, FIXTURE_BYTES, PROTOCOL, decode_descriptor, font_inputs,
-                    json_bytes, require, save_render, sha, validate_catalog,
-                    validate_error, write_json)
+from common import (DEPENDENCY_FONT_PROBES, FIXTURES, FIXTURE_BYTES, PROTOCOL,
+                    decode_descriptor, font_inputs, json_bytes, require, save_render,
+                    sha, validate_catalog, validate_error, write_json)
 
 
-def audit_module(module):
+# WASI snapshot preview1 errno, including the pinned runtime's ENOTCAPABLE entry.
+WASI_ERRNO_NOTCAPABLE = 76
+
+
+def audit_module(module, flavor="standard"):
     import wasmtime as wt
 
-    imports = []
+    imports, denied_imports = [], []
     for item in module.imports:
         require(item.module == PROTOCOL["import_module"] and
-                item.name in PROTOCOL["allowed_imports"] and isinstance(item.type, wt.FuncType),
+                isinstance(item.type, wt.FuncType),
                 "forbidden actual import: " + item.module + "." + item.name)
+        if item.name in PROTOCOL["denied_dependency_imports"]:
+            require(flavor in ("math", "full"),
+                    "dependency import forbidden for flavor " + flavor + ": " + item.name)
+            params, results = PROTOCOL["denied_dependency_imports"][item.name]
+            require([str(t) for t in item.type.params] == ["i32"] * params and
+                    [str(t) for t in item.type.results] == ["i32"] * results,
+                    "wrong denied dependency import signature: " + item.name)
+            denied_imports.append(item.module + "." + item.name)
+        else:
+            require(item.name in PROTOCOL["allowed_imports"],
+                    "forbidden actual import: " + item.module + "." + item.name)
         imports.append(item.module + "." + item.name)
     exports = {item.name: item.type for item in module.exports}
     required = PROTOCOL["function_exports"]
@@ -52,13 +67,14 @@ def audit_module(module):
                     str(exports[name].content) == "i32" and not exports[name].mutable,
                     "unexpected ABI global type: " + name)
     return {"imports": sorted(imports), "exports": sorted(exports),
+            "denied_dependency_imports": sorted(denied_imports),
             "dependency_exports": sorted(dependency_exports),
             "preopened_directories": [], "memory_limit_bytes": PROTOCOL["memory_limit_bytes"],
             "timeout_seconds": PROTOCOL["timeout_seconds"], "fuel_per_call": PROTOCOL["fuel"]}
 
 
 class Host:
-    def __init__(self, module_bytes):
+    def __init__(self, module_bytes, flavor="standard"):
         import wasmtime as wt
 
         config = wt.Config()
@@ -68,13 +84,14 @@ class Host:
         config.parallel_compilation = False
         self.engine = wt.Engine(config)
         self.module = wt.Module(self.engine, module_bytes)
-        self.audit = audit_module(self.module)
+        self.audit = audit_module(self.module, flavor)
         self.store = wt.Store(self.engine)
         self.store.set_limits(memory_size=PROTOCOL["memory_limit_bytes"], instances=1,
                               memories=1, tables=10)
         self.store.set_fuel(PROTOCOL["fuel"])
         self.store.set_epoch_deadline(1)
         self.shims = {"random_get": 0, "clock_time_get": 0, "sched_yield": 0}
+        self.denied_dependency_calls = {"path_readlink": 0}
         self.timer = threading.Timer(PROTOCOL["timeout_seconds"], self.engine.increment_epoch)
         self.timer.daemon = True
         self.timer.start()
@@ -112,6 +129,10 @@ class Host:
                 linker.define_func(PROTOCOL["import_module"], name,
                                    wt.FuncType(params, [wt.ValType.i32()]), func,
                                    access_caller=caller)
+            # No Caller is passed: this denial cannot access guest memory or resolve a path.
+            linker.define_func(PROTOCOL["import_module"], "path_readlink",
+                               wt.FuncType([wt.ValType.i32()] * 6, [wt.ValType.i32()]),
+                               self.deny_path_readlink)
             self.instance = linker.instantiate(self.store, self.module)
             self.exports = self.instance.exports(self.store)
             self.memory = self.exports["memory"]
@@ -134,6 +155,10 @@ class Host:
             return 21  # WASI EFAULT, not a host memory exception.
         memory.write(caller, data, pointer)
         return 0
+
+    def deny_path_readlink(self, fd, path, path_len, buf, buf_len, bufused):
+        self.denied_dependency_calls["path_readlink"] += 1
+        return WASI_ERRNO_NOTCAPABLE
 
     def call(self, name, *args):
         self.store.set_fuel(PROTOCOL["fuel"])
@@ -232,12 +257,13 @@ def run(args):
     module_bytes = Path(args.module).read_bytes()
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    host = Host(module_bytes)
+    host = Host(module_bytes, args.flavor)
     report = {"schema_version": 1, "abi_version": 1, "descriptor_bytes": 40,
               "ok": True, "runtime": "wasmtime",
               "runtime_version": importlib.metadata.version("wasmtime"), "flavor": args.flavor,
               "module_sha256": sha(module_bytes), "fixtures_sha256": sha(FIXTURE_BYTES),
-              "fonts": font_inputs()[2], "audit": host.audit, "artifacts": {}, "errors": {}}
+              "fonts": font_inputs()[2], "audit": host.audit, "artifacts": {}, "errors": {},
+              "dependency_font_probes": {}}
     try:
         catalog_result = host.result(host.call("runtime_catalog"))
         success(catalog_result, media="application/json")
@@ -311,6 +337,32 @@ def run(args):
                     report["artifacts"].get("math.svg", {}).get("svg_viewport"))
                 host.release("result_free", result["handle"])
         if args.flavor != "standard":
+            for name in DEPENDENCY_FONT_PROBES:
+                source = FIXTURES["sources"][name]
+                (output / (name + ".source.mmd")).write_bytes(source.encode())
+                for operation in ("svg", "png"):
+                    opts = dict(FIXTURES["engine_options"])
+                    if operation == "png":
+                        opts.update(FIXTURES["png_options"])
+                    before = host.denied_dependency_calls["path_readlink"]
+                    result = host.execute(math_engine, operation, source, opts)
+                    key = name + "." + operation
+                    probe = {"path_readlink_calls": host.denied_dependency_calls["path_readlink"] - before}
+                    if result["status"] == 1:
+                        error = owned_error(host, result)
+                        require(error["code_name"] in ("MERMAN_RENDER_ERROR", "MERMAN_UNSUPPORTED_OPERATION"),
+                                "unrelated dependency font probe error: " + json.dumps(error))
+                        report["errors"][key] = error
+                        write_json(output / (key + ".error.json"), error)
+                        probe["status"] = "owned-error"
+                    else:
+                        success(result, math_engine, "image/svg+xml" if operation == "svg" else "image/png")
+                        report["artifacts"][key] = save_render(
+                            output, name, operation, result["data"], json.loads(result["json"]),
+                            report["artifacts"].get(name + ".svg", {}).get("svg_viewport"))
+                        host.release("result_free", result["handle"])
+                        probe["status"] = "rendered"
+                    report["dependency_font_probes"][key] = probe
             for operation in ("svg", "png"):
                 opts = dict(FIXTURES["constrained_options"])
                 if operation == "png":
@@ -344,6 +396,8 @@ def run(args):
         report["checks"] = PROTOCOL["checks"]
         report["constrained_math_status"] = "passed" if args.flavor != "standard" else "not-applicable-without-math"
         report["deterministic_import_calls"] = host.shims
+        report["denied_dependency_import_calls"] = host.denied_dependency_calls
+        report["dependency_font_probe_status"] = "recorded" if args.flavor != "standard" else "not-applicable-without-math"
         write_json(output / "smoke.json", report)
         return report
     finally:

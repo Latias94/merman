@@ -7,7 +7,7 @@ import struct
 import tempfile
 import unittest
 
-from common import (FIXTURES, FIXTURE_BYTES, PROTOCOL, ROOT, compare_pixels, decode_descriptor,
+from common import (DEPENDENCY_FONT_PROBES, FIXTURES, FIXTURE_BYTES, PROTOCOL, ROOT, compare_pixels, decode_descriptor,
                     font_inputs, png_pixels, save_render, sha, validate_catalog, validate_error, validate_native_error,
                     validate_png, validate_svg)
 from wasmtime_smoke import Host, audit_module
@@ -63,9 +63,9 @@ class RealRuntimeAuditTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.engine.close()
 
-    def audit(self, text):
+    def audit(self, text, flavor="standard"):
         with self.wt.Module(self.engine, text) as module:
-            return audit_module(module)
+            return audit_module(module, flavor)
 
     def test_actual_module_exports_and_memory_are_audited(self):
         result = self.audit(reactor_wat())
@@ -77,10 +77,52 @@ class RealRuntimeAuditTests(unittest.TestCase):
         for module, name in (("wasi_snapshot_preview1", "sock_accept"),
                              ("wasi", "thread-spawn"),
                              ("env", "random_get"),
-                             ("wasi_snapshot_preview1", "path_create_directory")):
+                              ("wasi_snapshot_preview1", "path_create_directory"),
+                              ("wasi_snapshot_preview1", "path_readlink_unreviewed"),
+                              ("env", "path_readlink")):
             text = reactor_wat('(import "' + module + '" "' + name + '" (func))')
             with self.subTest(name=name), self.assertRaises(ValueError):
                 self.audit(text)
+
+    def test_denied_dependency_import_is_flavor_scoped_and_exactly_typed(self):
+        self.assertEqual(PROTOCOL["denied_dependency_imports"], {"path_readlink": [6, 1]})
+        self.assertNotIn("path_readlink", PROTOCOL["allowed_imports"])
+        signature = '(param i32 i32 i32 i32 i32 i32) (result i32)'
+
+        def module(kind):
+            return reactor_wat('(import "wasi_snapshot_preview1" "path_readlink" (func ' + kind + '))')
+
+        for flavor in ("math", "full"):
+            result = self.audit(module(signature), flavor)
+            self.assertEqual(result["denied_dependency_imports"], ["wasi_snapshot_preview1.path_readlink"])
+        with self.assertRaisesRegex(ValueError, "forbidden for flavor standard"):
+            self.audit(module(signature), "standard")
+        for kind in ('(param i32 i32 i32 i32 i32) (result i32)',
+                     '(param i32 i32 i32 i32 i32 i32 i32) (result i32)',
+                     signature.replace('param i32', 'param i64', 1),
+                     signature.replace('param i32', 'param f32', 1),
+                     signature.replace('result i32', 'result i64'),
+                     signature.replace('(result i32)', '')):
+            with self.subTest(signature=kind), self.assertRaisesRegex(ValueError, "wrong denied dependency import signature"):
+                self.audit(module(kind), "math")
+
+    def test_denied_path_readlink_returns_76_without_touching_memory(self):
+        imports = '''(import "wasi_snapshot_preview1" "path_readlink"
+          (func $readlink (param i32 i32 i32 i32 i32 i32) (result i32)))'''
+        # Reuse an admitted scalar export only in this synthetic module to call the real shim.
+        probe = '''(func (export "merman_wasi_alloc") (param i32) (result i32)
+          i32.const 3 local.get 0 i32.const 8 i32.const 128 i32.const 16 i32.const 256 call $readlink)'''
+        data = self.wt.wat2wasm(reactor_wat(imports, omitted=("merman_wasi_alloc",), extra=probe))
+        host = Host(data, "math")
+        try:
+            sentinel = b"\xa5" * host.memory.data_len(host.store)
+            host.memory.write(host.store, sentinel, 0)
+            for pointer in (16, 0xFFFFFFFF):
+                self.assertEqual(host.call("alloc", pointer), 76)
+                self.assertEqual(host.read(0, len(sentinel)), sentinel)
+            self.assertEqual(host.denied_dependency_calls, {"path_readlink": 2})
+        finally:
+            host.close()
 
     def test_missing_initialize_wrong_signature_and_extra_export(self):
         for text in (reactor_wat(omitted=("_initialize",)),
@@ -271,13 +313,33 @@ class MathOutputTests(unittest.TestCase):
         result = validate_png(data, self.metadata(data, "png"), self.viewport, mathematical=True)
         self.assertGreaterEqual(result["math_ink_pixels"], 16)
 
+    def test_dependency_probe_retains_unavailable_output_without_claiming_glyph_coverage(self):
+        data = self.svg('<g ' + self.marker + ' data-merman-math-native="unavailable"/>')
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = save_render(directory, "math_cjk", "svg", data, self.metadata(data, "svg"))
+            self.assertTrue(evidence["native_math_marker"])
+            self.assertTrue(evidence["unavailable_math_marker"])
+            self.assertEqual((Path(directory) / "math_cjk.svg").read_bytes(), data)
+            self.assertEqual(evidence["sha256"], sha(data))
+        with self.assertRaisesRegex(ValueError, "formula"):
+            validate_svg(data, self.metadata(data, "svg"), mathematical=True)
+        png = self.png()
+        with tempfile.TemporaryDirectory() as directory:
+            # SVG and PNG requests retain independent outcomes; no viewport is invented
+            # when the SVG request was declined but PNG succeeded.
+            evidence = save_render(directory, "math_cjk", "png", png, self.metadata(png, "png"))
+            self.assertFalse(evidence["svg_viewport_checked"])
+            with self.assertRaisesRegex(ValueError, "requires its SVG viewport"):
+                save_render(directory, "basic", "png", png, self.metadata(png, "png"))
+
     def test_wasi_coordinator_rechecks_each_host_formula_content(self):
         from types import SimpleNamespace
         from unittest.mock import patch
         import smoke
 
-        for missing_runtime in (None, "wazero", "wasmtime"):
-            with self.subTest(missing_runtime=missing_runtime), tempfile.TemporaryDirectory() as tmp:
+        for missing_runtime, missing_probe in ((None, None), ("wazero", None),
+                                               ("wasmtime", None), (None, "wazero")):
+            with self.subTest(missing_runtime=missing_runtime, missing_probe=missing_probe), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 module = root / "reactor.wasm"
                 module.write_bytes(b"transport stub")
@@ -299,14 +361,30 @@ class MathOutputTests(unittest.TestCase):
                                 json.dumps(self.metadata(data, operation)))
                         artifacts[name + ".png"] = validate_png(png, self.metadata(png, "png"),
                                                                  self.viewport)
+                    errors, probes = {}, {}
+                    for name in DEPENDENCY_FONT_PROBES:
+                        for operation in ("svg", "png"):
+                            key = name + "." + operation
+                            error = {"version": 1, "ok": False, "code": 6, "code_name": "MERMAN_RENDER_ERROR",
+                                     "kind": "render-error", "message": "font coverage unavailable"}
+                            (directory / (key + ".error.json")).write_text(json.dumps(error))
+                            errors[key] = error
+                            probes[key] = {"status": "owned-error", "path_readlink_calls": 0}
+                    if directory.name == missing_probe:
+                        del probes["math_cjk.svg"]
                     report = {"ok": True, "module_sha256": sha(module.read_bytes()),
                               "checks": PROTOCOL["checks"], "fixtures_sha256": sha(FIXTURE_BYTES),
                               "fonts": [], "metadata_ids_called": [], "runtime_version": "stub",
-                              "artifacts": artifacts}
+                               "artifacts": artifacts, "errors": errors,
+                               "dependency_font_probes": probes, "dependency_font_probe_status": "recorded",
+                               "denied_dependency_import_calls": {"path_readlink": 0}}
                     return SimpleNamespace(returncode=0, stdout=json.dumps(report), stderr="")
 
                 with patch("smoke.subprocess.run", side_effect=host_result):
-                    if missing_runtime is None:
+                    if missing_probe:
+                        with self.assertRaisesRegex(ValueError, "missing dependency font probe"):
+                            smoke.run(args)
+                    elif missing_runtime is None:
                         self.assertTrue(smoke.run(args)["ok"])
                     else:
                         with self.assertRaisesRegex(ValueError, "formula ink"):
