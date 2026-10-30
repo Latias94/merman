@@ -19,15 +19,30 @@ pub mod event_modeling;
     feature = "diagram-agentflow"
 ))]
 pub mod flowchart;
+#[cfg(feature = "diagram-gantt")]
+pub mod gantt;
+#[cfg(feature = "diagram-git-graph")]
+pub mod git_graph;
 #[cfg(feature = "diagram-quadrant-chart")]
 pub mod quadrant_chart;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 #[cfg(feature = "diagram-sankey")]
 pub mod sankey;
+#[cfg(feature = "diagram-sequence")]
+pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
+#[cfg(feature = "diagram-tree-view")]
+pub mod tree_view;
 #[cfg(feature = "diagram-venn")]
 pub mod venn;
 #[cfg(feature = "diagram-wardley")]
 pub mod wardley;
+#[cfg(feature = "diagram-zenuml")]
+pub mod zenuml;
+
+#[cfg(feature = "diagram-mindmap")]
+pub mod mindmap;
+#[cfg(feature = "diagram-xychart")]
+pub mod xy_chart;

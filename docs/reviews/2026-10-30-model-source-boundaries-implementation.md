@@ -15,8 +15,8 @@ Status: M0 complete, M1 in progress, 2026-10-30. This records implementation of 
 | Slice | Status | Evidence |
 | --- | --- | --- |
 | M0 | Complete | All six independent consumers compiled and passed both runtime inputs, repeated-output checks and raw/stripped equivalence. |
-| M1 | In progress | Shared lifecycle/config/runtime extraction passed core/model tests and output-consumer compilation; full model-dependent policy/identity migration remains open. |
-| M2 | In progress | Fourteen canonical payloads moved, including Flowchart/Class/ER/State and their required full data/context; 2362 core/model tests passed. Remaining payloads and final consumer admission are open. |
+| M1 | In progress | Shared lifecycle/config/runtime, input-resource policy and optional text helpers moved; pure family statistics are moving with their models. Family identity remains open. |
+| M2 | In progress | Twenty-one canonical payloads moved, including Sequence/Gantt/GitGraph/TreeView/ZenUML/Mindmap/XY. The latest selected-family core/model recipe passed 1364 tests; the remaining thirteen payloads and complete consumer admission are open. |
 | M3–M8 | Open | No implementation or acceptance result yet. |
 
 Existing correctness results at the prerequisite retain their original scope in the [dependency review](../research/2026-10-30-dependency-review.md). New consumer baselines and implementation gates will be recorded here as they complete. Do not infer a runtime improvement from the package boundary or rewrite historical measurement hashes.
@@ -158,3 +158,36 @@ Raw evidence is retained at ignored `target/bench/experiments/model-source-bound
 `m2-graph-family-validation.json`. This result covers the fixed direct-model consumer only. ASCII,
 graphical/export and diagnostics closures, the remaining twenty payloads and M6–M8 final admission
 are still open; it does not substitute for those owners.
+
+## M1/M2 terminal-family and admission checkpoint
+
+Sequence, Gantt, GitGraph, TreeView, ZenUML, Mindmap and XY bring the canonical inventory to
+21 of 34 payloads. The shared owner retains Sequence message constants, lifecycle fallback,
+borrowed compatibility serialization and deep JSON accounting; Gantt's actual full tasks and
+borrowed terminal metadata; Mindmap's canonical and full data, explicit display rules and
+borrowed terminal traversal; and XY's canonical and full display policy. Source grammar, DBs,
+date resolution, sanitizers, seeded IDs, warning remapping and Mindmap projection construction
+remain core-owned. TreeView keeps its existing nested representation.
+
+Gantt's private `GanttOutputData` records Empty versus Model independently of `compat-json`.
+Full source construction always carries that declared fact; manually constructed and
+deserialized data defaults to Model. Its producer test explicitly covers presentation without
+the serializer feature. This is output shape evidence, not proof of source admission.
+
+`InputResourcePolicy` and its descriptors, override/restriction errors and generic source-byte
+and model checks now have one model-package owner. Core's checks over parsed/source enum
+values use source-owned complexity adapters with the shared scalar admission method instead
+of inherent methods on a foreign type. Pure Class, Flowchart, Sequence, ZenUML and Mindmap
+statistics move with their data. Terminal normalization and streaming character-reference
+decoding likewise have one shared text owner, selected by optional `terminal-text` and
+`html-entities` features. The default direct-model graph does not enable those text dependencies.
+
+Validation used serial Cargo builds with two jobs and the shared Windows target. The selected
+Sequence/Gantt/GitGraph/TreeView/ZenUML/Class/Flowchart recipe passed 1261 tests
+(`e42d1c94-46e2-40cd-a50c-4abac939aca9`). Adding Mindmap/XY and the moved shared text owners
+passed 1364 tests (`443a1906-3521-4ce6-8dce-e4ed5d541be7`). These counts overlap. Both recipes
+included presentation, compatibility JSON, editor facts and terminal text. The same selected
+families compiled through facade SVG, ASCII and analysis with defaults disabled; existing
+unused-code warnings in this subset are not a Clippy admission result. Model formatting passed.
+Remaining-family and whole-matrix tests, parser-free ASCII/render/export closures and final
+measurement/legal/package gates remain open. No new size or performance result is claimed.

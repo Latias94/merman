@@ -1,6 +1,7 @@
-use super::db::{MindmapDb, MindmapDiagramModel};
+use super::MindmapDiagramModel;
 #[cfg(feature = "presentation")]
-use super::render_model::MindmapDiagramRenderModel;
+use super::MindmapDiagramRenderModel;
+use super::db::MindmapDb;
 use super::utils::{
     NodeSpec, NodeSpecContinuation, NodeSpecError, parse_node_spec, starts_node_spec,
     strip_inline_comment,

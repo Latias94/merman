@@ -64,3 +64,10 @@ fn decode_stage2_quot_apos(text: &str) -> String {
     out.push_str(rest);
     out
 }
+
+#[cfg(feature = "html-entities")]
+mod html;
+#[cfg(feature = "html-entities")]
+pub use html::*;
+#[cfg(feature = "terminal-text")]
+pub mod terminal;

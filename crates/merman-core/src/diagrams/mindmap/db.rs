@@ -1,27 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 
-/// Canonical authored Mindmap tree. Shared display rules derive shapes and sections;
-/// render dimensions and DOM fields remain presentation data.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct MindmapDiagramModel {
-    pub nodes: Vec<MindmapNodeModel>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MindmapNodeModel {
-    pub id: i32,
-    pub node_id: String,
-    pub level: i32,
-    pub descr: String,
-    pub descr_is_markdown: bool,
-    #[serde(rename = "type")]
-    pub node_type: i32,
-    pub children: Vec<i32>,
-    pub class: Option<String>,
-    pub icon: Option<String>,
-    pub is_root: bool,
-}
+use merman_model::families::mindmap::{MindmapDiagramModel, MindmapNodeModel};
 
 #[derive(Debug, Default)]
 pub(super) struct MindmapDb {

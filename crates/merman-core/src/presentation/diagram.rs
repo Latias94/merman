@@ -851,9 +851,9 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-state")]
             Self::State(v) => crate::diagrams::state::sanitize_render_common_db_fields(v, config),
             #[cfg(feature = "diagram-sequence")]
-            Self::Sequence(v) => v.sanitize_common_db_fields(config),
+            Self::Sequence(v) => crate::diagrams::sequence::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-zenuml")]
-            Self::Zenuml(v) => v.sanitize_common_db_fields(config),
+            Self::Zenuml(_) => {}
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(v) => crate::diagrams::flowchart::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-architecture")]
@@ -873,7 +873,9 @@ impl RenderSemanticModel {
             #[cfg(feature = "diagram-kanban")]
             Self::Kanban(_) => {}
             #[cfg(feature = "diagram-gantt")]
-            Self::Gantt(v) => v.sanitize_common_db_fields(config),
+            Self::Gantt(v) => {
+                crate::diagrams::gantt::sanitize_common_db_fields(&mut v.model, config)
+            }
             #[cfg(feature = "diagram-pie")]
             Self::Pie(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-packet")]
@@ -903,11 +905,13 @@ impl RenderSemanticModel {
                 crate::diagrams::quadrant_chart::sanitize_common_db_fields(v, config)
             }
             #[cfg(feature = "diagram-xychart")]
-            Self::XyChart(v) => v.sanitize_common_db_fields(config),
+            Self::XyChart(v) => {
+                crate::diagrams::xychart::sanitize_common_db_fields(&mut v.semantic, config)
+            }
             #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(v) => v.sanitize_common_db_fields(config),
+            Self::GitGraph(v) => crate::diagrams::git_graph::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-tree-view")]
-            Self::TreeView(v) => v.sanitize_common_db_fields(config),
+            Self::TreeView(v) => crate::diagrams::tree_view::sanitize_common_db_fields(v, config),
             #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-event-modeling")]

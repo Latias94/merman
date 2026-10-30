@@ -275,7 +275,9 @@ fn managed_json_lifecycle_child() {
             );
             assert!(
                 merman_core::resources::InputResourcePolicy::default()
-                    .check_render_model(typed.model())
+                    .check_model_complexity(
+                        merman_core::resources::model_complexity_from_render_model(typed.model())
+                    )
                     .is_err()
             );
             drop(typed.clone());

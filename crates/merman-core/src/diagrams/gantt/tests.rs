@@ -163,13 +163,14 @@ fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
 
 #[test]
 fn gantt_json_projection_observes_cancellation_inside_large_task_sets() {
-    let model = GanttDiagramRenderModel {
-        model: GanttDiagramModel {
+    let model = GanttDiagramRenderModel::from_output_data(
+        GanttDiagramModel {
             tasks: vec![GanttRenderTask::default(); 512],
             ..GanttDiagramModel::default()
         },
-        ..GanttDiagramRenderModel::default()
-    };
+        String::new(),
+        GanttOutputData::Model,
+    );
     let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
@@ -281,39 +282,6 @@ fn gantt_typed_constraints_preserve_roles_dependencies_and_source_precision() {
         GanttTaskEndConstraint::Duration {
             value: "45m".to_string(),
         }
-    );
-}
-
-#[test]
-fn gantt_direct_task_constraints_have_explicit_json_and_reject_ambiguous_legacy_data() {
-    let task = GanttRenderTask {
-        semantic: GanttTask {
-            start_constraint: GanttTaskStartConstraint::After {
-                dependency_ids: vec!["design".to_string(), "review".to_string()],
-            },
-            end_constraint: GanttTaskEndConstraint::Until {
-                dependency_ids: vec!["release".to_string()],
-            },
-            ..GanttTask::default()
-        },
-        ..GanttRenderTask::default()
-    };
-    let mut value = serde_json::to_value(&task).unwrap();
-
-    assert_eq!(value["startConstraint"]["kind"], "after");
-    assert_eq!(
-        value["startConstraint"]["dependencyIds"],
-        json!(["design", "review"])
-    );
-    assert_eq!(value["endConstraint"]["kind"], "until");
-    assert_eq!(value["endConstraint"]["dependencyIds"], json!(["release"]));
-
-    let object = value.as_object_mut().unwrap();
-    object.remove("startConstraint");
-    object.remove("endConstraint");
-    assert!(
-        serde_json::from_value::<GanttRenderTask>(value).is_err(),
-        "legacy task JSON must not silently discard constraints stored only in raw fields"
     );
 }
 

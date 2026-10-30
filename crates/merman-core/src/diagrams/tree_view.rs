@@ -12,63 +12,20 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, Result, SourceSpan};
+use merman_model::families::tree_view::{TREE_VIEW_DIRECTORY_NODE_TYPE, TREE_VIEW_FILE_NODE_TYPE};
+pub use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 #[cfg(feature = "compat-json")]
 use std::collections::HashMap;
 
-const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
-const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TreeViewNode {
-    pub id: i64,
-    pub level: i64,
-    pub name: String,
-    #[serde(rename = "nodeType")]
-    pub node_type: String,
-    #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
-    pub css_class: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub children: Vec<TreeViewNode>,
-}
-
-impl Default for TreeViewNode {
-    fn default() -> Self {
-        Self {
-            id: 0,
-            level: -1,
-            name: "/".to_string(),
-            node_type: TREE_VIEW_DIRECTORY_NODE_TYPE.to_string(),
-            css_class: None,
-            icon: None,
-            description: None,
-            children: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct TreeViewDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    pub root: TreeViewNode,
-}
-
-impl TreeViewDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut TreeViewDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -289,7 +246,7 @@ pub(crate) fn parse_tree_view_semantic_model_controlled(
         control,
     )?
     .map_model(|mut model| {
-        model.sanitize_common_db_fields(&meta.semantic_config);
+        sanitize_common_db_fields(&mut model, &meta.semantic_config);
         model
     }))
 }

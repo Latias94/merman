@@ -742,9 +742,9 @@ impl RenderResourcePolicy {
         &self,
         model: &MindmapDiagramRenderModel,
     ) -> Result<MindmapComplexity, ResourceLimitExceeded> {
-        self.input
-            .check_mindmap_complexity(model)
-            .map_err(|error| ResourceLimitExceeded::from_input(self, error))
+        let complexity = MindmapComplexity::from_model(model);
+        self.check_model_complexity(complexity.as_model_complexity())?;
+        Ok(complexity)
     }
 
     #[cfg(feature = "diagram-zenuml")]

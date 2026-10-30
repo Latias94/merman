@@ -1,5 +1,5 @@
 use super::{GanttClickEvent, GanttDiagramModel, GanttTask};
-#[cfg(feature = "presentation")]
+#[cfg(feature = "presentation-data")]
 use super::{GanttDiagramRenderModel, GanttRenderTask};
 use std::collections::HashMap;
 
@@ -53,7 +53,7 @@ impl<'a> GanttTerminalMetadata<'a> {
 #[derive(Debug, Clone, Copy)]
 enum Tasks<'a> {
     Canonical(&'a [GanttTask]),
-    #[cfg(feature = "presentation")]
+    #[cfg(feature = "presentation-data")]
     Full(&'a [GanttRenderTask]),
 }
 
@@ -61,7 +61,7 @@ impl<'a> Tasks<'a> {
     fn len(self) -> usize {
         match self {
             Self::Canonical(tasks) => tasks.len(),
-            #[cfg(feature = "presentation")]
+            #[cfg(feature = "presentation-data")]
             Self::Full(tasks) => tasks.len(),
         }
     }
@@ -75,7 +75,7 @@ impl<'a> Tasks<'a> {
                     render_end_ms: task.render_end_ms,
                 }
             }
-            #[cfg(feature = "presentation")]
+            #[cfg(feature = "presentation-data")]
             Self::Full(tasks) => {
                 let task = tasks.get(index)?;
                 GanttTerminalTaskView {
@@ -97,7 +97,7 @@ pub struct GanttTerminalView<'a> {
 #[derive(Debug, Clone, Copy)]
 enum Model<'a> {
     Canonical(&'a GanttDiagramModel),
-    #[cfg(feature = "presentation")]
+    #[cfg(feature = "presentation-data")]
     Full(&'a GanttDiagramRenderModel),
 }
 
@@ -109,7 +109,7 @@ impl<'a> GanttTerminalView<'a> {
         }
     }
 
-    #[cfg(feature = "presentation")]
+    #[cfg(feature = "presentation-data")]
     pub fn from_render(model: &'a GanttDiagramRenderModel) -> Self {
         Self {
             model: Model::Full(model),
@@ -120,7 +120,7 @@ impl<'a> GanttTerminalView<'a> {
     pub fn metadata(self) -> GanttTerminalMetadata<'a> {
         match self.model {
             Model::Canonical(model) => GanttTerminalMetadata::new(model, self.display_mode),
-            #[cfg(feature = "presentation")]
+            #[cfg(feature = "presentation-data")]
             Model::Full(model) => GanttTerminalMetadata::new(&model.model, self.display_mode),
         }
     }
@@ -128,7 +128,7 @@ impl<'a> GanttTerminalView<'a> {
     fn task_slice(self) -> Tasks<'a> {
         match self.model {
             Model::Canonical(model) => Tasks::Canonical(&model.tasks),
-            #[cfg(feature = "presentation")]
+            #[cfg(feature = "presentation-data")]
             Model::Full(model) => Tasks::Full(&model.tasks),
         }
     }
@@ -155,7 +155,7 @@ impl<'a> GanttTerminalView<'a> {
                     .saturating_add(self.display_mode.len());
                 complexity
             }
-            #[cfg(feature = "presentation")]
+            #[cfg(feature = "presentation-data")]
             Model::Full(model) => ModelComplexity::from_serializable(model),
         }
     }
@@ -177,7 +177,7 @@ impl serde::Serialize for GanttTerminalView<'_> {
                 }
                 .serialize(serializer)
             }
-            #[cfg(feature = "presentation")]
+            #[cfg(feature = "presentation-data")]
             Model::Full(model) => model.serialize(serializer),
         }
     }
@@ -336,7 +336,7 @@ mod tests {
         assert!(view.task(1).is_none());
     }
 
-    #[cfg(feature = "presentation")]
+    #[cfg(feature = "presentation-data")]
     #[test]
     fn full_terminal_view_retains_detached_visible_end_override() {
         let mut full = GanttDiagramRenderModel::default();

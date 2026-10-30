@@ -954,7 +954,7 @@ pub(crate) fn parse_gantt_semantic_model_controlled(
     };
     Ok(SemanticConstruction {
         model: model.map(|mut model| {
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut model, &metadata.semantic_config);
             model
         }),
         #[cfg(feature = "editor-facts")]
@@ -977,7 +977,11 @@ pub(crate) fn parse_gantt_model_for_render(
     meta: &PresentationMetadata,
 ) -> Result<GanttDiagramRenderModel> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
-        return Ok(GanttDiagramRenderModel::empty_compatibility_output());
+        return Ok(GanttDiagramRenderModel::from_output_data(
+            GanttDiagramModel::default(),
+            String::new(),
+            GanttOutputData::Empty,
+        ));
     };
     gantt_db_to_render_model(db)
 }
@@ -1002,7 +1006,11 @@ pub(crate) fn parse_gantt_model_for_render_controlled(
     };
     match source.db {
         Some(db) => gantt_db_to_render_model_controlled(db, control),
-        None => Ok(Ok(GanttDiagramRenderModel::empty_compatibility_output())),
+        None => Ok(Ok(GanttDiagramRenderModel::from_output_data(
+            GanttDiagramModel::default(),
+            String::new(),
+            GanttOutputData::Empty,
+        ))),
     }
 }
 
@@ -1253,7 +1261,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
-    if model.compatibility_output == CompatibilityOutputState::Empty {
+    if model.output_data() == GanttOutputData::Empty {
         return Ok(Ok(json!({})));
     }
 
@@ -1384,12 +1392,7 @@ pub(super) fn gantt_db_to_render_model_controlled(
     let display_mode = std::mem::take(&mut db.display_mode);
     Ok(
         gantt_db_to_model_controlled(db, raw_task_to_render_task, control)?.map(|model| {
-            GanttDiagramRenderModel {
-                model,
-                display_mode,
-                #[cfg(feature = "compat-json")]
-                compatibility_output: CompatibilityOutputState::Model,
-            }
+            GanttDiagramRenderModel::from_output_data(model, display_mode, GanttOutputData::Model)
         }),
     )
 }

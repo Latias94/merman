@@ -3,7 +3,6 @@ use crate::PresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 #[cfg(feature = "compat-json")]
 use crate::diagram::legacy_warning_messages;
-use crate::diagram::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{
@@ -18,6 +17,8 @@ use crate::sanitize::sanitize_text;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
 use crate::{Error, MermaidConfig, Result, SemanticMetadata, SourceSpan};
+pub use merman_model::families::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
+use merman_model::warnings::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -51,56 +52,10 @@ struct Commit {
     custom_id: Option<bool>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GitGraphBranch {
-    pub name: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GitGraphCommit {
-    pub id: String,
-    pub message: String,
-    pub seq: i64,
-    #[serde(rename = "type")]
-    pub commit_type: i64,
-    pub tags: Vec<String>,
-    pub parents: Vec<String>,
-    pub branch: String,
-    #[serde(rename = "customType", skip_serializing_if = "Option::is_none")]
-    pub custom_type: Option<i64>,
-    #[serde(rename = "customId", skip_serializing_if = "Option::is_none")]
-    pub custom_id: Option<bool>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-/// Canonical commits and branches of a GitGraph diagram.
-pub struct GitGraphDiagramModel {
-    #[serde(rename = "type")]
-    pub diagram_type: String,
-    pub commits: Vec<GitGraphCommit>,
-    pub branches: Vec<GitGraphBranch>,
-    #[serde(rename = "currentBranch")]
-    pub current_branch: String,
-    pub direction: String,
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(
-        default,
-        rename = "warningFacts",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub warning_facts: Vec<DiagramWarningFact>,
-}
-
-impl GitGraphDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(model: &mut GitGraphDiagramModel, config: &MermaidConfig) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -1746,9 +1701,7 @@ pub(crate) fn parse_git_graph_semantic_model_controlled(
     control.checkpoint()?;
     Ok(match construction {
         Ok(mut source) => {
-            source
-                .model
-                .sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut source.model, &metadata.semantic_config);
             SemanticConstruction {
                 model: Ok(source.model),
                 #[cfg(feature = "editor-facts")]

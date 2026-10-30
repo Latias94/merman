@@ -214,7 +214,9 @@ fn integrated_facade_lifecycle_child() {
                     .unwrap()
                     .unwrap();
                 let expected = merman::resources::InputResourcePolicy::default()
-                    .check_render_model(direct.model())
+                    .check_model_complexity(
+                        merman_core::resources::model_complexity_from_render_model(direct.model()),
+                    )
                     .unwrap_err();
                 drop(direct);
                 marker(started, "model", "done");

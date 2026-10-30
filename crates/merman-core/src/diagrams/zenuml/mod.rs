@@ -148,11 +148,7 @@ pub(crate) fn parse_zenuml_semantic_model_controlled(
             diagnostic.message,
             diagnostic.span,
         )),
-        None => {
-            let mut model = source.model;
-            model.sanitize_common_db_fields(&metadata.semantic_config);
-            Ok(model)
-        }
+        None => Ok(source.model),
     };
     Ok(crate::family::SemanticConstruction {
         model,

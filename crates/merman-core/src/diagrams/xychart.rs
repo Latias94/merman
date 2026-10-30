@@ -10,7 +10,6 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, MermaidConfig, Result, SourceSpan, family::CombinedSemanticFailure};
-use serde::{Deserialize, Serialize, Serializer};
 #[cfg(feature = "compat-json")]
 use serde_json::{Map, Number, Value};
 #[cfg(test)]
@@ -31,209 +30,39 @@ fn xychart_syntax_construction_count() -> usize {
     XYCHART_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum XyChartAxisModel {
-    #[serde(rename = "band")]
-    Band {
-        #[serde(default)]
-        title: String,
-        #[serde(default)]
-        categories: Vec<String>,
-    },
-    #[serde(rename = "linear")]
-    Linear {
-        #[serde(default)]
-        title: String,
-        #[serde(default)]
-        min: Option<f64>,
-        #[serde(default)]
-        max: Option<f64>,
-    },
-}
+pub use merman_model::families::xy_chart::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum XyChartPlotType {
-    #[serde(rename = "line")]
-    Line,
-    #[serde(rename = "bar")]
-    Bar,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct XyChartPlotModel {
-    #[serde(rename = "type")]
-    pub plot_type: XyChartPlotType,
-    #[serde(default, serialize_with = "serialize_xychart_plot_title")]
-    pub title: Option<String>,
-    pub values: Vec<f64>,
-    pub data: Vec<(String, Option<f64>)>,
-    #[serde(rename = "pointLabels", default, skip_serializing_if = "Vec::is_empty")]
-    pub point_labels: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct XyChartAxisDisplayPolicy {
-    pub show_label: bool,
-    pub show_title: bool,
-    pub show_tick: bool,
-    pub show_axis_line: bool,
-}
-
-impl Default for XyChartAxisDisplayPolicy {
-    fn default() -> Self {
-        Self {
-            show_label: true,
-            show_title: true,
-            show_tick: true,
-            show_axis_line: true,
-        }
-    }
-}
-
-impl XyChartAxisDisplayPolicy {
-    fn from_config(config: &MermaidConfig, axis_key: &str) -> Self {
-        let default = Self::default();
-        Self {
-            show_label: config
-                .get_bool(&format!("xyChart.{axis_key}.showLabel"))
-                .unwrap_or(default.show_label),
-            show_title: config
-                .get_bool(&format!("xyChart.{axis_key}.showTitle"))
-                .unwrap_or(default.show_title),
-            show_tick: config
-                .get_bool(&format!("xyChart.{axis_key}.showTick"))
-                .unwrap_or(default.show_tick),
-            show_axis_line: config
-                .get_bool(&format!("xyChart.{axis_key}.showAxisLine"))
-                .unwrap_or(default.show_axis_line),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct XyChartDisplayPolicy {
-    pub show_title: bool,
-    pub show_data_label: bool,
-    pub show_data_label_outside_bar: bool,
-    pub x_axis: XyChartAxisDisplayPolicy,
-    pub y_axis: XyChartAxisDisplayPolicy,
-}
-
-impl Default for XyChartDisplayPolicy {
-    fn default() -> Self {
-        Self {
-            show_title: true,
-            show_data_label: false,
-            show_data_label_outside_bar: false,
-            x_axis: XyChartAxisDisplayPolicy::default(),
-            y_axis: XyChartAxisDisplayPolicy::default(),
-        }
-    }
-}
-
-impl XyChartDisplayPolicy {
-    /// Reads chart visibility from an already-admitted configuration.
-    pub fn from_config(config: &MermaidConfig) -> Self {
-        let default = Self::default();
-        Self {
-            show_title: config
-                .get_bool("xyChart.showTitle")
-                .unwrap_or(default.show_title),
-            show_data_label: config
-                .get_bool("xyChart.showDataLabel")
-                .unwrap_or(default.show_data_label),
-            show_data_label_outside_bar: config
-                .get_bool("xyChart.showDataLabelOutsideBar")
-                .unwrap_or(default.show_data_label_outside_bar),
-            x_axis: XyChartAxisDisplayPolicy::from_config(config, "xAxis"),
-            y_axis: XyChartAxisDisplayPolicy::from_config(config, "yAxis"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct XyChartDiagramModel {
-    #[serde(default)]
-    pub orientation: String,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(rename = "xAxis")]
-    pub x_axis: XyChartAxisModel,
-    #[serde(rename = "yAxis")]
-    pub y_axis: XyChartAxisModel,
-    #[serde(default)]
-    pub plots: Vec<XyChartPlotModel>,
-}
-
-impl XyChartDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
-}
-
-/// The canonical chart owner plus the requested display policy.
-#[cfg(feature = "presentation")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct XyChartDiagramRenderModel {
-    pub semantic: XyChartDiagramModel,
-    #[serde(skip, default)]
-    pub display: XyChartDisplayPolicy,
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::Deref for XyChartDiagramRenderModel {
-    type Target = XyChartDiagramModel;
-    fn deref(&self) -> &Self::Target {
-        &self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::DerefMut for XyChartDiagramRenderModel {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl XyChartDiagramModel {
-    fn into_render_model(self, config: &MermaidConfig) -> XyChartDiagramRenderModel {
-        XyChartDiagramRenderModel {
-            semantic: self,
-            display: XyChartDisplayPolicy::from_config(config),
-        }
-    }
+pub(crate) fn sanitize_common_db_fields(model: &mut XyChartDiagramModel, config: &MermaidConfig) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[cfg(feature = "compat-json")]
-impl XyChartDiagramRenderModel {
-    pub(crate) fn to_compat_json(&self, meta: &PresentationMetadata) -> Value {
-        let mut out = Map::with_capacity(10);
-        out.insert(
-            "orientation".to_string(),
-            Value::String(self.orientation.clone()),
-        );
-        out.insert("title".to_string(), option_string_value(&self.title));
-        out.insert("accTitle".to_string(), option_string_value(&self.acc_title));
-        out.insert("accDescr".to_string(), option_string_value(&self.acc_descr));
-        out.insert("xAxis".to_string(), axis_value(&self.x_axis));
-        out.insert("yAxis".to_string(), axis_value(&self.y_axis));
-        out.insert("plots".to_string(), plots_value(&self.plots));
-        out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-        out.insert(
-            "config".to_string(),
-            crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-        );
-        Value::Object(out)
-    }
+fn to_compat_json(model: &XyChartDiagramRenderModel, meta: &PresentationMetadata) -> Value {
+    let mut out = Map::with_capacity(10);
+    out.insert(
+        "orientation".to_string(),
+        Value::String(model.orientation.clone()),
+    );
+    out.insert("title".to_string(), option_string_value(&model.title));
+    out.insert(
+        "accTitle".to_string(),
+        option_string_value(&model.acc_title),
+    );
+    out.insert(
+        "accDescr".to_string(),
+        option_string_value(&model.acc_descr),
+    );
+    out.insert("xAxis".to_string(), axis_value(&model.x_axis));
+    out.insert("yAxis".to_string(), axis_value(&model.y_axis));
+    out.insert("plots".to_string(), plots_value(&model.plots));
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert(
+        "config".to_string(),
+        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Value::Object(out)
 }
 
 #[cfg(feature = "compat-json")]
@@ -242,16 +71,6 @@ fn option_string_value(value: &Option<String>) -> Value {
         .as_ref()
         .map(|value| Value::String(value.clone()))
         .unwrap_or(Value::Null)
-}
-
-fn serialize_xychart_plot_title<S>(
-    title: &Option<String>,
-    serializer: S,
-) -> std::result::Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(title.as_deref().unwrap_or_default())
 }
 
 #[cfg(feature = "compat-json")]
@@ -1036,7 +855,7 @@ pub(crate) fn parse_xychart_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model;
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut model, &metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]
@@ -1148,7 +967,7 @@ pub(crate) fn render_model_to_compat_json(
     model: &XyChartDiagramRenderModel,
     meta: &PresentationMetadata,
 ) -> Result<Value> {
-    Ok(model.to_compat_json(meta))
+    Ok(to_compat_json(model, meta))
 }
 
 fn plot_title_value(title: &str, config: &MermaidConfig) -> Option<String> {

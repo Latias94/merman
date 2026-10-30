@@ -2466,8 +2466,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "unicode-general-category",
- "unicode-segmentation",
- "unicode-width",
  "url",
 ]
 
@@ -2586,6 +2584,7 @@ name = "merman-model"
 version = "0.9.3"
 dependencies = [
  "getrandom 0.4.3",
+ "htmlize",
  "indexmap",
  "jiff",
  "rustc-hash",
@@ -2593,6 +2592,8 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.21",
+ "unicode-segmentation",
+ "unicode-width",
  "web-time",
 ]
 

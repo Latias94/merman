@@ -1242,7 +1242,9 @@ impl SemanticOperationEngine {
             .map_err(BindingError::cancelled)?;
 
         self.resources
-            .check_render_model(parsed.model())
+            .check_model_complexity(merman_core::resources::model_complexity_from_render_model(
+                parsed.model(),
+            ))
             .map_err(common::input_resource_limit_error)?;
 
         let model = parsed

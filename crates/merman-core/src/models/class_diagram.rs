@@ -20,22 +20,6 @@ pub(crate) fn sanitize_full_common_db_fields(
     crate::common_db::sanitize_optional_acc_descr(acc_descr, config);
 }
 
-/// Counts the requested graph projection and its retained authored and topology text.
-pub fn class_topology_complexity(
-    view: &ClassTopologyView<'_>,
-) -> crate::resources::ModelComplexity {
-    let mut complexity =
-        crate::resources::ClassComplexity::topology_from_view(view).as_model_complexity();
-    let authored = crate::resources::ModelComplexity::from_serializable(view.model());
-    let topology = crate::resources::ModelComplexity::from_serializable(view.topology());
-    complexity.text_bytes = authored.text_bytes.saturating_add(view.retained_bytes());
-    complexity.nesting_depth = complexity
-        .nesting_depth
-        .max(authored.nesting_depth)
-        .max(topology.nesting_depth.saturating_add(1));
-    complexity
-}
-
 #[cfg(test)]
 #[test]
 fn flat_class_topology_does_not_reserve_slots_for_implicit_namespaces() {

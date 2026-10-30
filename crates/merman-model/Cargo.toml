@@ -20,6 +20,8 @@ artifact-profile-required = true
 default = []
 test-support = []
 presentation-data = []
+html-entities = ["dep:htmlize"]
+terminal-text = ["dep:unicode-segmentation", "dep:unicode-width"]
 diagram-architecture = []
 diagram-c4 = []
 diagram-cynefin = []
@@ -35,6 +37,13 @@ diagram-requirement = []
 diagram-sankey = []
 diagram-venn = []
 diagram-wardley = []
+diagram-gantt = []
+diagram-git-graph = []
+diagram-sequence = []
+diagram-tree-view = []
+diagram-zenuml = []
+diagram-mindmap = []
+diagram-xychart = []
 operation-deadlines = ["dep:web-time"]
 system-clock = []
 system-timezone = [
@@ -52,6 +61,9 @@ system-random = ["dep:getrandom", "getrandom/std"]
 system-timing = ["dep:web-time"]
 
 [dependencies]
+htmlize = { workspace = true, optional = true }
+unicode-segmentation = { workspace = true, optional = true }
+unicode-width = { workspace = true, optional = true }
 indexmap = { workspace = true, features = ["serde"], optional = true }
 rustc-hash = { workspace = true, optional = true }
 serde.workspace = true

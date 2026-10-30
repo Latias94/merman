@@ -2,495 +2,48 @@
 
 #[cfg(feature = "presentation")]
 use crate::diagram::{ParsedDiagramRender, RenderSemanticModel};
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-use crate::diagrams::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-ishikawa")]
 use crate::diagrams::ishikawa::IshikawaDiagramModel;
 #[cfg(feature = "diagram-kanban")]
 use crate::diagrams::kanban::KanbanDiagramModel;
 #[cfg(all(feature = "diagram-kanban", feature = "presentation"))]
 use crate::diagrams::kanban::KanbanDiagramRenderModel;
-#[cfg(feature = "diagram-mindmap")]
-use crate::diagrams::mindmap::MindmapDiagramModel;
-#[cfg(all(feature = "diagram-mindmap", feature = "presentation"))]
-use crate::diagrams::mindmap::MindmapDiagramRenderModel;
 #[cfg(feature = "diagram-radar")]
 use crate::diagrams::radar::RadarDiagramModel;
 #[cfg(all(test, feature = "diagram-requirement"))]
 use crate::diagrams::requirement::RequirementDiagramModel;
-#[cfg(feature = "diagram-sequence")]
-use crate::diagrams::sequence::SequenceDiagramModel;
 #[cfg(feature = "diagram-treemap")]
 use crate::diagrams::treemap::TreemapDiagramModel;
-#[cfg(feature = "diagram-zenuml")]
-use crate::diagrams::zenuml::{ZenumlDiagramModel, ZenumlStatementKind};
-#[cfg(all(feature = "diagram-class", feature = "presentation"))]
-use crate::models::class_diagram::ClassDiagram;
-#[cfg(feature = "diagram-class")]
-use crate::models::class_diagram::ClassTopologyView;
 
-const KIB: usize = 1024;
-const MIB: usize = 1024 * KIB;
+#[cfg(feature = "diagram-mindmap")]
+pub use merman_model::resources::MindmapComplexity;
 
+// Temporary resource forwarding while source and output consumers migrate.
 pub use merman_model::resources::{
-    RESOURCE_PROFILE_COUNT, RESOURCE_PROFILE_DESCRIPTORS, ResourceProfile,
-    ResourceProfileDescriptor,
+    CLI_DEFAULT_RESOURCE_PROFILE, GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+    INPUT_RESOURCE_LIMIT_COUNT, INPUT_RESOURCE_LIMIT_DESCRIPTORS, InputResourceLimitDescriptor,
+    InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitOverride,
+    InputResourceLimitOverrideError, InputResourceLimitPhase, InputResourcePolicy,
+    InputResourcePolicyRestrictionError, RESOURCE_PROFILE_COUNT, RESOURCE_PROFILE_DESCRIPTORS,
+    ResourceProfile, ResourceProfileDescriptor,
 };
-pub const INPUT_RESOURCE_LIMIT_COUNT: usize = 4;
 
-pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: ResourceProfile = ResourceProfile::Interactive;
-pub const CLI_DEFAULT_RESOURCE_PROFILE: ResourceProfile = ResourceProfile::TrustedNative;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InputResourceLimitPhase {
-    Source,
-    Model,
-}
-
-impl InputResourceLimitPhase {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Source => "source",
-            Self::Model => "layout_model",
-        }
-    }
-}
-
-impl std::fmt::Display for InputResourceLimitPhase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InputResourceLimitId {
-    MaxSourceBytes,
-    MaxModelItems,
-    MaxModelTextBytes,
-    MaxModelNestingDepth,
-}
-
-impl InputResourceLimitId {
-    pub const ALL: [Self; INPUT_RESOURCE_LIMIT_COUNT] = [
-        Self::MaxSourceBytes,
-        Self::MaxModelItems,
-        Self::MaxModelTextBytes,
-        Self::MaxModelNestingDepth,
-    ];
-
-    pub const fn index(self) -> usize {
-        self as usize
-    }
-
-    pub fn from_stable_id(id: &str) -> Option<Self> {
-        INPUT_RESOURCE_LIMIT_DESCRIPTORS
-            .iter()
-            .find(|descriptor| descriptor.stable_id == id)
-            .map(|descriptor| descriptor.id)
-    }
-
-    pub const fn descriptor(self) -> &'static InputResourceLimitDescriptor {
-        &INPUT_RESOURCE_LIMIT_DESCRIPTORS[self.index()]
-    }
-
-    pub const fn as_str(self) -> &'static str {
-        self.descriptor().stable_id
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct InputResourceLimitDescriptor {
-    pub id: InputResourceLimitId,
-    pub stable_id: &'static str,
-    pub phase: InputResourceLimitPhase,
-    pub description: &'static str,
-    pub overridable: bool,
-    pub minimum_value: usize,
-}
-
-macro_rules! input_limit_descriptors {
-    ($($id:ident => ($stable:literal, $phase:ident, $description:literal)),+ $(,)?) => {
-        pub static INPUT_RESOURCE_LIMIT_DESCRIPTORS:
-            [InputResourceLimitDescriptor; INPUT_RESOURCE_LIMIT_COUNT] = [
-                $(InputResourceLimitDescriptor {
-                    id: InputResourceLimitId::$id,
-                    stable_id: $stable,
-                    phase: InputResourceLimitPhase::$phase,
-                    description: $description,
-                    overridable: true,
-                    minimum_value: 1,
-                }),+
-            ];
-    };
-}
-
-input_limit_descriptors! {
-    MaxSourceBytes => ("max_source_bytes", Source, "Maximum UTF-8 Mermaid source bytes"),
-    MaxModelItems => ("max_model_items", Model, "Maximum semantic model entities and relationships across all diagram families"),
-    MaxModelTextBytes => ("max_model_text_bytes", Model, "Maximum aggregate UTF-8 text retained by a semantic model"),
-    MaxModelNestingDepth => ("max_model_nesting_depth", Model, "Maximum semantic nesting depth accepted before layout"),
-}
-
-const PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT]; INPUT_RESOURCE_LIMIT_COUNT] = [
-    [Some(2 * MIB), Some(MIB), Some(16 * MIB), None],
-    // Policy defaults, not Mermaid syntax limits. They deliberately preserve the
-    // aggregate headroom of the previous per-family cardinality budgets.
-    [Some(32_000), Some(16_000), Some(200_000), None],
-    [Some(2 * MIB), Some(MIB), Some(16 * MIB), None],
-    [Some(256), Some(128), Some(1_024), None],
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InputResourcePolicy {
-    profile: ResourceProfile,
-    base_values: [Option<usize>; INPUT_RESOURCE_LIMIT_COUNT],
-    effective_values: [Option<usize>; INPUT_RESOURCE_LIMIT_COUNT],
-    explicit_overrides: [Option<usize>; INPUT_RESOURCE_LIMIT_COUNT],
-}
-
-impl Default for InputResourcePolicy {
-    fn default() -> Self {
-        Self::for_profile(GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE)
-    }
-}
-
-impl InputResourcePolicy {
-    pub const fn for_profile(profile: ResourceProfile) -> Self {
-        let mut values = [None; INPUT_RESOURCE_LIMIT_COUNT];
-        let mut index = 0;
-        while index < INPUT_RESOURCE_LIMIT_COUNT {
-            values[index] = PROFILE_VALUES[index][profile as usize];
-            index += 1;
-        }
-        Self {
-            profile,
-            base_values: values,
-            effective_values: values,
-            explicit_overrides: [None; INPUT_RESOURCE_LIMIT_COUNT],
-        }
-    }
-
-    pub const fn profile(self) -> ResourceProfile {
-        self.profile
-    }
-
-    pub const fn value(self, id: InputResourceLimitId) -> Option<usize> {
-        self.effective_values[id.index()]
-    }
-
-    pub const fn base_value(self, id: InputResourceLimitId) -> Option<usize> {
-        self.base_values[id.index()]
-    }
-
-    pub const fn explicit_override(self, id: InputResourceLimitId) -> Option<usize> {
-        self.explicit_overrides[id.index()]
-    }
-
-    pub fn explicit_overrides(&self) -> impl Iterator<Item = (InputResourceLimitId, usize)> + '_ {
-        InputResourceLimitId::ALL
-            .into_iter()
-            .filter_map(|id| self.explicit_override(id).map(|value| (id, value)))
-    }
-
-    pub fn apply_override(
-        &mut self,
-        stable_id: &str,
-        value: usize,
-    ) -> Result<(), InputResourceLimitOverrideError> {
-        let id = InputResourceLimitId::from_stable_id(stable_id)
-            .ok_or_else(|| InputResourceLimitOverrideError::UnknownLimit(stable_id.to_string()))?;
-        self.apply_limit(id, value)
-    }
-
-    pub fn apply_limit(
-        &mut self,
-        id: InputResourceLimitId,
-        value: usize,
-    ) -> Result<(), InputResourceLimitOverrideError> {
-        if value == 0 {
-            return Err(InputResourceLimitOverrideError::NonPositive(id.as_str()));
-        }
-        self.effective_values[id.index()] = Some(value);
-        self.explicit_overrides[id.index()] = Some(value);
-        Ok(())
-    }
-
-    pub fn with_limit(
-        mut self,
-        id: InputResourceLimitId,
-        value: usize,
-    ) -> Result<Self, InputResourceLimitOverrideError> {
-        self.apply_limit(id, value)?;
-        Ok(self)
-    }
-
-    /// Returns the pointwise minimum of two policies while preserving this policy's host profile.
-    pub fn meet(&self, restriction: &Self) -> Self {
-        let mut effective_values = [None; INPUT_RESOURCE_LIMIT_COUNT];
-        let mut index = 0;
-        while index < INPUT_RESOURCE_LIMIT_COUNT {
-            effective_values[index] = minimum_ceiling(
-                self.effective_values[index],
-                restriction.effective_values[index],
-            );
-            index += 1;
-        }
-        self.with_effective_values(effective_values)
-    }
-
-    /// Applies a request policy only when every requested ceiling is at least as strict.
-    pub fn restrict_with(
-        &self,
-        restriction: &Self,
-    ) -> Result<Self, InputResourcePolicyRestrictionError> {
-        for id in InputResourceLimitId::ALL {
-            let ceiling = self.value(id);
-            let requested = restriction.value(id);
-            if loosens_ceiling(ceiling, requested) {
-                return Err(InputResourcePolicyRestrictionError {
-                    id,
-                    requested,
-                    ceiling,
-                });
-            }
-        }
-        Ok(self.meet(restriction))
-    }
-
-    fn with_effective_values(
-        &self,
-        effective_values: [Option<usize>; INPUT_RESOURCE_LIMIT_COUNT],
-    ) -> Self {
-        let mut explicit_overrides = [None; INPUT_RESOURCE_LIMIT_COUNT];
-        let mut index = 0;
-        while index < INPUT_RESOURCE_LIMIT_COUNT {
-            if effective_values[index] != self.base_values[index] {
-                explicit_overrides[index] = effective_values[index];
-            }
-            index += 1;
-        }
-        Self {
-            profile: self.profile,
-            base_values: self.base_values,
-            effective_values,
-            explicit_overrides,
-        }
-    }
-
-    fn check_limit(
-        &self,
-        phase: InputResourceLimitPhase,
-        id: InputResourceLimitId,
-        actual: usize,
-    ) -> Result<(), InputResourceLimitExceeded> {
-        let Some(max) = self.value(id) else {
-            return Ok(());
-        };
-        if actual <= max {
-            return Ok(());
-        }
-        Err(InputResourceLimitExceeded {
-            phase,
-            limit: id.as_str(),
-            actual,
-            max,
-            profile: self.profile,
-            explicit_overrides: self
-                .explicit_overrides()
-                .map(|(id, value)| InputResourceLimitOverride { id, value })
-                .collect(),
-        })
-    }
-
-    pub fn check_source_bytes(&self, source: &str) -> Result<(), InputResourceLimitExceeded> {
-        self.check_source_byte_count(source.len())
-    }
-
-    /// Checks the original byte length of an immutable prepared source.
-    pub fn check_source_byte_count(
-        &self,
-        source_bytes: usize,
-    ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_limit(
-            InputResourceLimitPhase::Source,
-            InputResourceLimitId::MaxSourceBytes,
-            source_bytes,
-        )
-    }
-
-    /// Checks only the public semantic-model projection.
-    ///
-    /// Use [`Self::check_parsed_render`] for a parsed built-in render operation so parser-owned
-    /// render context is included in the text budget.
-    #[cfg(feature = "presentation")]
-    pub fn check_render_model(
-        &self,
-        model: &RenderSemanticModel,
-    ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_model_complexity(model_complexity_from_render_model(model))
-    }
-
-    #[cfg(feature = "presentation")]
-    pub fn check_parsed_render(
-        &self,
-        parsed: &ParsedDiagramRender,
-    ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_model_complexity(model_complexity_from_parsed_render(parsed))
-    }
-
-    pub fn check_semantic_model(
-        &self,
-        model: &crate::SemanticDiagramModel,
-    ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_model_complexity(model_complexity_from_semantic_model(model))
-    }
-
-    pub fn check_model_complexity(
-        &self,
-        complexity: ModelComplexity,
-    ) -> Result<(), InputResourceLimitExceeded> {
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxModelItems,
-            complexity.items,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxModelTextBytes,
-            complexity.text_bytes,
-        )?;
-        self.check_limit(
-            InputResourceLimitPhase::Model,
-            InputResourceLimitId::MaxModelNestingDepth,
-            complexity.nesting_depth,
-        )
-    }
-
-    #[cfg(any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    ))]
-    pub fn check_flowchart_complexity(
-        &self,
-        model: &FlowchartModel,
-    ) -> Result<FlowchartComplexity, InputResourceLimitExceeded> {
-        let complexity = FlowchartComplexity::from_model(model);
-        self.check_model_complexity(complexity.as_model_complexity())?;
-        Ok(complexity)
-    }
-
-    #[cfg(all(feature = "diagram-class", feature = "presentation"))]
-    pub fn check_class_complexity(
-        &self,
-        model: &ClassDiagram,
-    ) -> Result<ClassComplexity, InputResourceLimitExceeded> {
-        let complexity = ClassComplexity::from_model(model);
-        self.check_model_complexity(complexity.as_model_complexity())?;
-        Ok(complexity)
-    }
-
-    #[cfg(all(feature = "diagram-mindmap", feature = "presentation"))]
-    pub fn check_mindmap_complexity(
-        &self,
-        model: &MindmapDiagramRenderModel,
-    ) -> Result<MindmapComplexity, InputResourceLimitExceeded> {
-        let complexity = MindmapComplexity::from_model(model);
-        self.check_model_complexity(complexity.as_model_complexity())?;
-        Ok(complexity)
-    }
-
-    #[cfg(feature = "diagram-zenuml")]
-    pub fn check_zenuml_complexity(
-        &self,
-        model: &ZenumlDiagramModel,
-    ) -> Result<ZenumlComplexity, InputResourceLimitExceeded> {
-        let complexity = ZenumlComplexity::from_model(model);
-        self.check_model_complexity(complexity.as_model_complexity())?;
-        Ok(complexity)
-    }
-
-    #[cfg(feature = "diagram-sequence")]
-    pub fn check_sequence_complexity(
-        &self,
-        model: &SequenceDiagramModel,
-    ) -> Result<SequenceComplexity, InputResourceLimitExceeded> {
-        let complexity = SequenceComplexity::from_model(model);
-        self.check_model_complexity(complexity.as_model_complexity())?;
-        Ok(complexity)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum InputResourceLimitOverrideError {
-    #[error("resource limit id `{0}` is not part of input resource contract schema 1")]
-    UnknownLimit(String),
-    #[error("resource limit `{0}` must be a positive integer")]
-    NonPositive(&'static str),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error(
-    "resource policy would loosen `{}`: requested {:?}, ceiling {:?}",
-    .id.as_str(),
-    .requested,
-    .ceiling
-)]
-pub struct InputResourcePolicyRestrictionError {
-    pub id: InputResourceLimitId,
-    pub requested: Option<usize>,
-    pub ceiling: Option<usize>,
-}
-
-const fn minimum_ceiling(left: Option<usize>, right: Option<usize>) -> Option<usize> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(if left < right { left } else { right }),
-        (Some(value), None) | (None, Some(value)) => Some(value),
-        (None, None) => None,
-    }
-}
-
-const fn loosens_ceiling(ceiling: Option<usize>, requested: Option<usize>) -> bool {
-    match (ceiling, requested) {
-        (Some(_), None) => true,
-        (Some(ceiling), Some(requested)) => requested > ceiling,
-        (None, _) => false,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("resource limit exceeded during {phase}: {limit} actual={actual} max={max}")]
-#[non_exhaustive]
-pub struct InputResourceLimitExceeded {
-    pub phase: InputResourceLimitPhase,
-    pub limit: &'static str,
-    pub actual: usize,
-    pub max: usize,
-    pub profile: ResourceProfile,
-    pub explicit_overrides: Vec<InputResourceLimitOverride>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InputResourceLimitOverride {
-    pub id: InputResourceLimitId,
-    pub value: usize,
-}
-
-#[cfg(feature = "diagram-sequence")]
-use merman_model::resources::JsonValueComplexity;
 pub use merman_model::resources::ModelComplexity;
-#[cfg(any(
-    feature = "diagram-kanban",
-    feature = "diagram-sequence",
-    feature = "diagram-treemap"
-))]
+#[cfg(any(feature = "diagram-kanban", feature = "diagram-treemap"))]
 use merman_model::resources::json_value_complexity;
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub use merman_model::resources::FlowchartComplexity;
+#[cfg(feature = "diagram-sequence")]
+pub use merman_model::resources::SequenceComplexity;
+#[cfg(feature = "diagram-zenuml")]
+pub use merman_model::resources::ZenumlComplexity;
+#[cfg(feature = "diagram-class")]
+pub use merman_model::resources::{ClassComplexity, class_namespace_depth};
 
 /// Counts canonical semantics and their paired parser-owned rendering text.
 #[cfg(feature = "presentation")]
@@ -856,45 +409,6 @@ pub fn model_complexity_from_radar(model: &RadarDiagramModel) -> ModelComplexity
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub struct FlowchartComplexity {
-    pub nodes: usize,
-    pub edges: usize,
-    pub subgraphs: usize,
-    pub label_bytes: usize,
-    pub subgraph_depth: usize,
-}
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-impl FlowchartComplexity {
-    pub fn from_model(model: &FlowchartModel) -> Self {
-        Self {
-            nodes: model.nodes.len().saturating_add(model.subgraphs.len()),
-            edges: model.edges.len(),
-            subgraphs: model.subgraphs.len(),
-            label_bytes: flowchart_text_bytes(model),
-            subgraph_depth: flowchart_subgraph_depth(model),
-        }
-    }
-
-    pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(
-            self.nodes.saturating_add(self.edges),
-            self.label_bytes,
-            self.subgraph_depth,
-        )
-    }
-}
-
 /// Computes Treemap model complexity iteratively without serializing a user-controlled node tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg(feature = "diagram-treemap")]
@@ -1045,716 +559,6 @@ impl IshikawaComplexity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "diagram-class")]
-pub struct ClassComplexity {
-    pub nodes: usize,
-    pub edges: usize,
-    pub namespaces: usize,
-    pub label_bytes: usize,
-    pub namespace_depth: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "diagram-mindmap")]
-pub struct MindmapComplexity {
-    pub nodes: usize,
-    pub edges: usize,
-    pub label_bytes: usize,
-    pub nesting_depth: usize,
-}
-
-#[cfg(feature = "diagram-mindmap")]
-impl MindmapComplexity {
-    pub fn from_semantic_model(model: &MindmapDiagramModel) -> Self {
-        Self {
-            nodes: model.nodes.len(),
-            edges: model.nodes.iter().fold(0usize, |count, node| {
-                count.saturating_add(node.children.len())
-            }),
-            label_bytes: model.nodes.iter().fold(0usize, |count, node| {
-                [
-                    Some(node.node_id.as_str()),
-                    Some(node.descr.as_str()),
-                    node.class.as_deref(),
-                    node.icon.as_deref(),
-                ]
-                .into_iter()
-                .flatten()
-                .fold(count, |count, text| count.saturating_add(text.len()))
-            }),
-            nesting_depth: model
-                .nodes
-                .iter()
-                .filter_map(|node| usize::try_from(node.level).ok())
-                .max()
-                .unwrap_or(0),
-        }
-    }
-
-    #[cfg(feature = "presentation")]
-    pub fn from_model(model: &MindmapDiagramRenderModel) -> Self {
-        let node_label_bytes = model.nodes.iter().fold(0usize, |total, node| {
-            let strings = [
-                node.id.as_str(),
-                node.dom_id.as_str(),
-                node.label.as_str(),
-                node.label_type.as_str(),
-                node.shape.as_str(),
-                node.css_classes.as_str(),
-                node.look.as_str(),
-                node.node_id.as_str(),
-            ];
-            let total = strings.into_iter().fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            });
-            let total = node.css_styles.iter().fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            });
-            total.saturating_add(node.icon.as_deref().map_or(0, str::len))
-        });
-        let edge_label_bytes = model.edges.iter().fold(0usize, |total, edge| {
-            [
-                edge.id.as_str(),
-                edge.start.as_str(),
-                edge.end.as_str(),
-                edge.edge_type.as_str(),
-                edge.curve.as_str(),
-                edge.thickness.as_str(),
-                edge.look.as_str(),
-                edge.classes.as_str(),
-            ]
-            .into_iter()
-            .fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            })
-        });
-
-        Self {
-            nodes: model.nodes.len(),
-            edges: model.edges.len(),
-            label_bytes: node_label_bytes.saturating_add(edge_label_bytes),
-            nesting_depth: model
-                .nodes
-                .iter()
-                .filter_map(|node| usize::try_from(node.level).ok())
-                .max()
-                .unwrap_or(0),
-        }
-    }
-
-    pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(
-            self.nodes.saturating_add(self.edges),
-            self.label_bytes,
-            self.nesting_depth,
-        )
-    }
-}
-
-#[cfg(feature = "diagram-class")]
-impl ClassComplexity {
-    #[cfg(feature = "presentation")]
-    pub fn from_model(model: &ClassDiagram) -> Self {
-        Self::from_view(&model.topology_view())
-    }
-
-    /// Counts the same effective Class projection without requiring a visual carrier.
-    pub fn from_view(model: &ClassTopologyView<'_>) -> Self {
-        let class_label_bytes = model
-            .classes()
-            .map(|(_, node)| {
-                node.id
-                    .len()
-                    .saturating_add(node.label.len())
-                    .saturating_add(node.text.len())
-                    .saturating_add(node.type_param.len())
-                    .saturating_add(node.css_classes.len())
-                    .saturating_add(node.tooltip.as_deref().map(str::len).unwrap_or(0))
-                    .saturating_add(node.link.as_deref().map(str::len).unwrap_or(0))
-                    .saturating_add(
-                        node.members
-                            .iter()
-                            .chain(node.methods.iter())
-                            .map(|member| {
-                                member
-                                    .display_text
-                                    .len()
-                                    .saturating_add(member.id.len())
-                                    .saturating_add(member.parameters.len())
-                                    .saturating_add(member.return_type.len())
-                            })
-                            .sum::<usize>(),
-                    )
-                    .saturating_add(node.annotations.iter().map(String::len).sum::<usize>())
-                    .saturating_add(node.styles.iter().map(String::len).sum::<usize>())
-            })
-            .sum::<usize>();
-        let relation_label_bytes = model
-            .relations()
-            .map(|rel| {
-                rel.id
-                    .len()
-                    .saturating_add(rel.id1.len())
-                    .saturating_add(rel.id2.len())
-                    .saturating_add(rel.title.len())
-                    .saturating_add(rel.relation_title_1.as_deref().map_or(0, str::len))
-                    .saturating_add(rel.relation_title_2.as_deref().map_or(0, str::len))
-            })
-            .sum::<usize>();
-        let note_label_bytes = model
-            .notes()
-            .map(|note| {
-                note.id
-                    .len()
-                    .saturating_add(note.text.len())
-                    .saturating_add(note.class_id.as_deref().map(str::len).unwrap_or(0))
-            })
-            .sum::<usize>();
-        let interface_label_bytes = model
-            .interfaces()
-            .map(|iface| {
-                iface
-                    .id
-                    .len()
-                    .saturating_add(iface.label.len())
-                    .saturating_add(iface.class_id.len())
-            })
-            .sum::<usize>();
-        let namespace_label_bytes = model
-            .namespaces()
-            .map(|(_, namespace)| {
-                namespace
-                    .id
-                    .len()
-                    .saturating_add(namespace.label.len())
-                    .saturating_add(namespace.parent.as_deref().map(str::len).unwrap_or(0))
-            })
-            .sum::<usize>();
-
-        Self {
-            label_bytes: class_label_bytes
-                .saturating_add(relation_label_bytes)
-                .saturating_add(note_label_bytes)
-                .saturating_add(interface_label_bytes)
-                .saturating_add(namespace_label_bytes),
-            ..Self::topology_from_view(model)
-        }
-    }
-
-    #[cfg(feature = "presentation")]
-    fn topology_from_model(model: &ClassDiagram) -> Self {
-        Self::topology_from_view(&model.topology_view())
-    }
-
-    pub(crate) fn topology_from_view(model: &ClassTopologyView<'_>) -> Self {
-        Self {
-            nodes: model
-                .classes()
-                .len()
-                .saturating_add(model.notes().len())
-                .saturating_add(model.interfaces().len())
-                .saturating_add(model.namespaces().len()),
-            edges: model
-                .relations()
-                .len()
-                .saturating_add(model.notes().filter(|note| note.class_id.is_some()).count()),
-            namespaces: model.namespaces().len(),
-            label_bytes: 0,
-            namespace_depth: class_namespace_depth(model.effective_namespaces()),
-        }
-    }
-
-    pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(
-            self.nodes.saturating_add(self.edges),
-            self.label_bytes,
-            self.namespace_depth,
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "diagram-zenuml")]
-pub struct ZenumlComplexity {
-    pub participants: usize,
-    pub groups: usize,
-    pub statements: usize,
-    pub fragments: usize,
-    pub label_bytes: usize,
-    pub nesting_depth: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(feature = "diagram-sequence")]
-pub struct SequenceComplexity {
-    pub messages: usize,
-    pub block_depth: usize,
-    pub items: usize,
-    pub text_bytes: usize,
-    pub nesting_depth: usize,
-}
-
-#[cfg(feature = "diagram-sequence")]
-impl SequenceComplexity {
-    pub fn from_model(model: &SequenceDiagramModel) -> Self {
-        const ACTOR_PROPERTY_VALUE_DEPTH: usize = 4;
-        const NOTE_ACTOR_VALUE_DEPTH: usize = 3;
-
-        let mut depth = 0usize;
-        let mut block_depth = 0usize;
-        for message in &model.messages {
-            match message.message_type {
-                10 | 12 | 15 | 19 | 22 | 27 | 30 | 32 => {
-                    depth = depth.saturating_add(1);
-                    block_depth = block_depth.max(depth);
-                }
-                11 | 14 | 16 | 21 | 23 | 29 | 31 => {
-                    depth = depth.saturating_sub(1);
-                }
-                _ => {}
-            }
-        }
-        let common_text_bytes = [
-            model.acc_title.as_deref(),
-            model.acc_descr.as_deref(),
-            model.title.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .fold(0usize, |total, value| total.saturating_add(value.len()));
-        let actor_order_text_bytes = model
-            .actor_order
-            .iter()
-            .fold(0usize, |total, value| total.saturating_add(value.len()));
-        let mut arbitrary_json = JsonValueComplexity::default();
-        let actor_text_bytes = model.actors.iter().fold(0usize, |total, (key, actor)| {
-            let links = json_map_complexity(&actor.links, ACTOR_PROPERTY_VALUE_DEPTH);
-            let properties = json_map_complexity(&actor.properties, ACTOR_PROPERTY_VALUE_DEPTH);
-            arbitrary_json.merge(links);
-            arbitrary_json.merge(properties);
-            total
-                .saturating_add(key.len())
-                .saturating_add(actor.name.len())
-                .saturating_add(actor.description.len())
-                .saturating_add(actor.actor_type.len())
-                .saturating_add(links.text_bytes)
-                .saturating_add(properties.text_bytes)
-        });
-        let box_text_bytes = model.boxes.iter().fold(0usize, |total, sequence_box| {
-            sequence_box.actor_keys.iter().fold(
-                total
-                    .saturating_add(sequence_box.fill.len())
-                    .saturating_add(sequence_box.name.as_deref().map_or(0, str::len)),
-                |subtotal, actor| subtotal.saturating_add(actor.len()),
-            )
-        });
-        let message_text_bytes = model.messages.iter().fold(0usize, |total, message| {
-            total
-                .saturating_add(message.id.len())
-                .saturating_add(message.from.as_deref().map_or(0, str::len))
-                .saturating_add(message.to.as_deref().map_or(0, str::len))
-                .saturating_add(message.message_text().len())
-        });
-        let note_text_bytes = model.notes.iter().fold(0usize, |total, note| {
-            let actor = json_value_complexity(&note.actor, NOTE_ACTOR_VALUE_DEPTH);
-            arbitrary_json.merge(actor);
-            total
-                .saturating_add(actor.text_bytes)
-                .saturating_add(note.message.len())
-        });
-        let lifecycle_text_bytes = model
-            .created_actors
-            .keys()
-            .chain(model.destroyed_actors.keys())
-            .fold(0usize, |total, value| total.saturating_add(value.len()));
-        Self {
-            messages: model.messages.len(),
-            block_depth,
-            items: model
-                .actors
-                .len()
-                .saturating_add(model.boxes.len())
-                .saturating_add(model.messages.len())
-                .saturating_add(model.notes.len())
-                .saturating_add(arbitrary_json.items),
-            text_bytes: common_text_bytes
-                .saturating_add(actor_order_text_bytes)
-                .saturating_add(actor_text_bytes)
-                .saturating_add(box_text_bytes)
-                .saturating_add(message_text_bytes)
-                .saturating_add(note_text_bytes)
-                .saturating_add(lifecycle_text_bytes),
-            nesting_depth: block_depth.max(arbitrary_json.nesting_depth),
-        }
-    }
-
-    pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(self.items, self.text_bytes, self.nesting_depth)
-    }
-}
-
-#[cfg(feature = "diagram-zenuml")]
-impl ZenumlComplexity {
-    pub fn from_model(model: &ZenumlDiagramModel) -> Self {
-        let common_label_bytes = [model.title.as_deref(), model.starter.as_deref()]
-            .into_iter()
-            .flatten()
-            .fold(0usize, |total, value| total.saturating_add(value.len()));
-        let participant_label_bytes =
-            model
-                .participants
-                .iter()
-                .fold(0usize, |total, participant| {
-                    [
-                        Some(participant.name.as_str()),
-                        participant.label.as_deref(),
-                        participant.participant_type.as_deref(),
-                        participant.stereotype.as_deref(),
-                        participant.emoji.as_deref(),
-                        participant.width_source.as_deref(),
-                        participant.color.as_deref(),
-                        participant.group_id.as_deref(),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .fold(total, |subtotal, value| {
-                        subtotal.saturating_add(value.len())
-                    })
-                });
-        let group_label_bytes = model.groups.iter().fold(0usize, |total, group| {
-            group.participant_names.iter().fold(
-                total.saturating_add(group.id.as_deref().map_or(0, str::len)),
-                |subtotal, name| subtotal.saturating_add(name.len()),
-            )
-        });
-        let mut complexity = Self {
-            participants: model.participants.len(),
-            groups: model.groups.len(),
-            statements: 0,
-            fragments: 0,
-            label_bytes: common_label_bytes
-                .saturating_add(participant_label_bytes)
-                .saturating_add(group_label_bytes),
-            nesting_depth: 0,
-        };
-        let mut pending = vec![(model.statements.as_slice(), 0usize)];
-        while let Some((statements, nesting_depth)) = pending.pop() {
-            complexity.nesting_depth = complexity.nesting_depth.max(nesting_depth);
-            for statement in statements {
-                complexity.statements = complexity.statements.saturating_add(1);
-                complexity.label_bytes = complexity
-                    .label_bytes
-                    .saturating_add(statement.comment.as_deref().map_or(0, str::len));
-                match &statement.kind {
-                    ZenumlStatementKind::Message {
-                        explicit_from,
-                        resolved_from,
-                        resolved_to,
-                        label,
-                        assignment,
-                        body,
-                        ..
-                    } => {
-                        complexity.label_bytes = complexity
-                            .label_bytes
-                            .saturating_add(explicit_from.as_deref().map_or(0, str::len))
-                            .saturating_add(resolved_from.as_deref().map_or(0, str::len))
-                            .saturating_add(resolved_to.as_deref().map_or(0, str::len))
-                            .saturating_add(label.len())
-                            .saturating_add(assignment.as_deref().map_or(0, str::len));
-                        pending.push((body, nesting_depth.saturating_add(1)));
-                    }
-                    ZenumlStatementKind::Creation {
-                        resolved_from,
-                        resolved_to,
-                        constructor,
-                        parameters,
-                        assignment,
-                        label,
-                        body,
-                        ..
-                    } => {
-                        complexity.label_bytes = complexity
-                            .label_bytes
-                            .saturating_add(resolved_from.as_deref().map_or(0, str::len))
-                            .saturating_add(resolved_to.len())
-                            .saturating_add(constructor.len())
-                            .saturating_add(parameters.len())
-                            .saturating_add(assignment.as_deref().map_or(0, str::len))
-                            .saturating_add(label.len());
-                        pending.push((body, nesting_depth.saturating_add(1)));
-                    }
-                    ZenumlStatementKind::Return {
-                        explicit_from,
-                        resolved_from,
-                        explicit_to,
-                        resolved_to,
-                        label,
-                    } => {
-                        complexity.label_bytes = complexity
-                            .label_bytes
-                            .saturating_add(explicit_from.as_deref().map_or(0, str::len))
-                            .saturating_add(resolved_from.as_deref().map_or(0, str::len))
-                            .saturating_add(explicit_to.as_deref().map_or(0, str::len))
-                            .saturating_add(resolved_to.as_deref().map_or(0, str::len))
-                            .saturating_add(label.len());
-                    }
-                    ZenumlStatementKind::Fragment {
-                        label, sections, ..
-                    } => {
-                        complexity.fragments = complexity.fragments.saturating_add(1);
-                        complexity.label_bytes = complexity
-                            .label_bytes
-                            .saturating_add(label.as_deref().map_or(0, str::len));
-                        for section in sections {
-                            complexity.label_bytes = complexity
-                                .label_bytes
-                                .saturating_add(section.label.as_deref().map_or(0, str::len));
-                            pending.push((&section.statements, nesting_depth.saturating_add(1)));
-                        }
-                    }
-                    ZenumlStatementKind::Reference {
-                        participants,
-                        label,
-                    } => {
-                        complexity.label_bytes = participants.iter().fold(
-                            complexity.label_bytes.saturating_add(label.len()),
-                            |total, participant| total.saturating_add(participant.len()),
-                        );
-                    }
-                    ZenumlStatementKind::Divider { label } => {
-                        complexity.label_bytes = complexity.label_bytes.saturating_add(label.len());
-                    }
-                }
-            }
-        }
-        complexity
-    }
-
-    pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(
-            self.participants
-                .saturating_add(self.groups)
-                .saturating_add(self.statements),
-            self.label_bytes,
-            self.nesting_depth,
-        )
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
-    let mut total = [
-        Some(model.keyword.as_str()),
-        model.acc_title.as_deref(),
-        model.acc_descr.as_deref(),
-        model.direction.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .fold(0usize, |subtotal, value| {
-        subtotal.saturating_add(value.len())
-    });
-    for (id, styles) in &model.class_defs {
-        total = styles
-            .iter()
-            .fold(total.saturating_add(id.len()), |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            });
-    }
-    total = model.vertex_calls.iter().fold(total, |subtotal, value| {
-        subtotal.saturating_add(value.len())
-    });
-    if let Some(defaults) = &model.edge_defaults {
-        total = total.saturating_add(defaults.interpolate.as_deref().map_or(0, str::len));
-        total = defaults.style.iter().fold(total, |subtotal, value| {
-            subtotal.saturating_add(value.len())
-        });
-    }
-    for node in &model.nodes {
-        for value in [
-            Some(node.id.as_str()),
-            node.label.as_deref(),
-            node.label_type.as_deref(),
-            node.layout_shape.as_deref(),
-            node.shape.as_deref(),
-            node.icon.as_deref(),
-            node.form.as_deref(),
-            node.pos.as_deref(),
-            node.img.as_deref(),
-            node.constraint.as_deref(),
-            node.link.as_deref(),
-            node.link_target.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            total = total.saturating_add(value.len());
-        }
-        total = node
-            .classes
-            .iter()
-            .chain(&node.styles)
-            .fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            });
-    }
-    for edge in &model.edges {
-        for value in [
-            Some(edge.id.as_str()),
-            Some(edge.from.as_str()),
-            Some(edge.to.as_str()),
-            edge.label.as_deref(),
-            edge.label_type.as_deref(),
-            edge.edge_type.as_deref(),
-            Some(edge.arrow.as_str()),
-            edge.stroke.as_deref(),
-            edge.interpolate.as_deref(),
-            edge.animation.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            total = total.saturating_add(value.len());
-        }
-        total = edge
-            .classes
-            .iter()
-            .chain(&edge.style)
-            .fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            });
-    }
-    for subgraph in &model.subgraphs {
-        for value in [
-            Some(subgraph.id.as_str()),
-            Some(subgraph.title.as_str()),
-            subgraph.dir.as_deref(),
-            subgraph.label_type.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            total = total.saturating_add(value.len());
-        }
-        total = subgraph
-            .classes
-            .iter()
-            .chain(&subgraph.styles)
-            .chain(&subgraph.nodes)
-            .fold(total, |subtotal, value| {
-                subtotal.saturating_add(value.len())
-            });
-    }
-    total = model.tooltips.iter().fold(total, |subtotal, (id, value)| {
-        subtotal
-            .saturating_add(id.len())
-            .saturating_add(value.len())
-    });
-    total.saturating_add(model.subgraph_vertex_styles.retained_bytes())
-}
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
-    if model.subgraphs.is_empty() {
-        return 0;
-    }
-    let indices = model
-        .subgraphs
-        .iter()
-        .enumerate()
-        .map(|(index, subgraph)| (subgraph.id.as_str(), index))
-        .collect::<std::collections::HashMap<_, _>>();
-    let mut children = vec![Vec::new(); model.subgraphs.len()];
-    let mut incoming = vec![0usize; model.subgraphs.len()];
-    for (parent, subgraph) in model.subgraphs.iter().enumerate() {
-        for member in &subgraph.nodes {
-            let Some(&child) = indices.get(member.as_str()) else {
-                continue;
-            };
-            children[parent].push(child);
-            incoming[child] = incoming[child].saturating_add(1);
-        }
-    }
-    let mut queue = std::collections::VecDeque::new();
-    let mut depths = vec![1usize; model.subgraphs.len()];
-    for (index, incoming) in incoming.iter().enumerate() {
-        if *incoming == 0 {
-            queue.push_back(index);
-        }
-    }
-    while let Some(parent) = queue.pop_front() {
-        for &child in &children[parent] {
-            depths[child] = depths[child].max(depths[parent].saturating_add(1));
-            incoming[child] = incoming[child].saturating_sub(1);
-            if incoming[child] == 0 {
-                queue.push_back(child);
-            }
-        }
-    }
-    depths.into_iter().max().unwrap_or(0)
-}
-
-#[cfg(feature = "diagram-class")]
-fn class_namespace_depth(
-    namespaces: &indexmap::IndexMap<String, crate::models::class_diagram::Namespace>,
-) -> usize {
-    if namespaces.is_empty() {
-        return 0;
-    }
-    let indices = namespaces
-        .keys()
-        .enumerate()
-        .map(|(index, id)| (id.as_str(), index))
-        .collect::<std::collections::HashMap<_, _>>();
-    let parents = namespaces
-        .values()
-        .map(|namespace| {
-            namespace
-                .parent
-                .as_deref()
-                .and_then(|parent| indices.get(parent).copied())
-        })
-        .collect::<Vec<_>>();
-    let mut depths = vec![0usize; parents.len()];
-    let mut completed = vec![false; parents.len()];
-    for start in 0..parents.len() {
-        if completed[start] {
-            continue;
-        }
-        let mut path = Vec::new();
-        let mut positions = std::collections::HashMap::new();
-        let mut cursor = Some(start);
-        while let Some(index) = cursor {
-            if completed[index] || positions.contains_key(&index) {
-                break;
-            }
-            positions.insert(index, path.len());
-            path.push(index);
-            cursor = parents[index];
-        }
-        let mut depth = cursor
-            .filter(|index| completed[*index])
-            .map(|index| depths[index])
-            .unwrap_or(0);
-        for index in path.into_iter().rev() {
-            depth = depth.saturating_add(1);
-            depths[index] = depth;
-            completed[index] = true;
-        }
-    }
-    depths.into_iter().max().unwrap_or(0)
-}
-
 #[cfg(feature = "diagram-kanban")]
 fn kanban_nesting_depth<'a>(
     nodes: impl Iterator<Item = (&'a str, Option<&'a str>)> + Clone,
@@ -1797,48 +601,9 @@ fn kanban_nesting_depth<'a>(
     depths.into_iter().max().unwrap_or(0)
 }
 
-#[cfg(feature = "diagram-sequence")]
-fn json_map_complexity(
-    map: &serde_json::Map<String, serde_json::Value>,
-    value_depth: usize,
-) -> JsonValueComplexity {
-    let mut complexity = JsonValueComplexity {
-        items: map.len(),
-        text_bytes: map
-            .keys()
-            .fold(0usize, |total, key| total.saturating_add(key.len())),
-        nesting_depth: 0,
-        container_depth: 0,
-    };
-    for value in map.values() {
-        complexity.merge(json_value_complexity(value, value_depth));
-    }
-    complexity
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn resource_profile_restriction_order_covers_every_profile_pair() {
-        let expected = [
-            [true, true, false, false],
-            [false, true, false, false],
-            [true, true, true, false],
-            [true, true, true, true],
-        ];
-
-        for (ceiling_index, ceiling) in ResourceProfile::ALL.into_iter().enumerate() {
-            for (requested_index, requested) in ResourceProfile::ALL.into_iter().enumerate() {
-                assert_eq!(
-                    requested.is_no_looser_than(ceiling),
-                    expected[ceiling_index][requested_index],
-                    "requested {requested} under {ceiling}",
-                );
-            }
-        }
-    }
 
     #[test]
     fn iterative_json_complexity_matches_existing_serialized_shape() {
@@ -1885,77 +650,6 @@ mod tests {
         drop(model);
     }
 
-    #[test]
-    fn profile_values_are_single_source_for_input_limits() {
-        assert_eq!(
-            RESOURCE_PROFILE_DESCRIPTORS.len(),
-            ResourceProfile::ALL.len()
-        );
-        assert_eq!(
-            INPUT_RESOURCE_LIMIT_DESCRIPTORS.len(),
-            INPUT_RESOURCE_LIMIT_COUNT
-        );
-        for profile in ResourceProfile::ALL {
-            let policy = InputResourcePolicy::for_profile(profile);
-            for limit in InputResourceLimitId::ALL {
-                assert_eq!(policy.base_value(limit), policy.value(limit));
-            }
-        }
-
-        let interactive = InputResourcePolicy::for_profile(ResourceProfile::Interactive);
-        for (limit, expected) in [
-            (InputResourceLimitId::MaxModelItems, Some(32_000)),
-            (InputResourceLimitId::MaxModelTextBytes, Some(2 * MIB)),
-            (InputResourceLimitId::MaxModelNestingDepth, Some(256)),
-        ] {
-            assert_eq!(interactive.value(limit), expected, "{limit:?}");
-        }
-    }
-
-    #[test]
-    fn input_policy_meet_and_restriction_are_pointwise_monotonic() {
-        let host = InputResourcePolicy::for_profile(ResourceProfile::Interactive)
-            .with_limit(InputResourceLimitId::MaxSourceBytes, 100)
-            .unwrap();
-        let tighter = host
-            .with_limit(InputResourceLimitId::MaxSourceBytes, 80)
-            .unwrap()
-            .with_limit(InputResourceLimitId::MaxModelItems, 10)
-            .unwrap();
-
-        let resolved = host.restrict_with(&tighter).unwrap();
-        assert_eq!(
-            resolved.value(InputResourceLimitId::MaxSourceBytes),
-            Some(80)
-        );
-        assert_eq!(
-            resolved.value(InputResourceLimitId::MaxModelItems),
-            Some(10)
-        );
-        assert_eq!(resolved.profile(), ResourceProfile::Interactive);
-
-        let looser = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let error = host.restrict_with(&looser).unwrap_err();
-        assert_eq!(error.id, InputResourceLimitId::MaxSourceBytes);
-        assert_eq!(error.requested, None);
-        assert_eq!(error.ceiling, Some(100));
-
-        assert_eq!(
-            host.meet(&looser)
-                .value(InputResourceLimitId::MaxSourceBytes),
-            Some(100)
-        );
-    }
-
-    #[test]
-    fn constrained_policy_rejects_source_bytes() {
-        let source_error = InputResourcePolicy::for_profile(ResourceProfile::Constrained)
-            .apply_for_test(InputResourceLimitId::MaxSourceBytes, 4)
-            .check_source_bytes("12345")
-            .unwrap_err();
-        assert_eq!(source_error.limit, "max_source_bytes");
-    }
-
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn constrained_policy_rejects_flowchart_cardinality() {
@@ -1964,8 +658,11 @@ mod tests {
             .parse_diagram_sync(source)
             .unwrap();
         let policy = InputResourcePolicy::for_profile(ResourceProfile::Constrained)
-            .apply_for_test(InputResourceLimitId::MaxModelItems, 2);
-        let model_error = policy.check_semantic_model(&parsed.model).unwrap_err();
+            .with_limit(InputResourceLimitId::MaxModelItems, 2)
+            .unwrap();
+        let model_error = policy
+            .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
+            .unwrap_err();
         assert_eq!(model_error.limit, "max_model_items");
 
         #[cfg(feature = "presentation")]
@@ -1975,7 +672,9 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert_eq!(
-                policy.check_render_model(parsed.model()).unwrap_err(),
+                policy
+                    .check_model_complexity(model_complexity_from_render_model(parsed.model()))
+                    .unwrap_err(),
                 model_error
             );
         }
@@ -2010,14 +709,18 @@ mod tests {
                 complexity.text_bytes,
             )
             .unwrap();
-        exact.check_semantic_model(&parsed.model).unwrap();
+        exact
+            .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
+            .unwrap();
         let too_small = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(
                 InputResourceLimitId::MaxModelTextBytes,
                 complexity.text_bytes - 1,
             )
             .unwrap();
-        let error = too_small.check_semantic_model(&parsed.model).unwrap_err();
+        let error = too_small
+            .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
+            .unwrap_err();
         assert_eq!(error.limit, "max_model_text_bytes");
         assert_eq!(error.actual, complexity.text_bytes);
 
@@ -2060,9 +763,11 @@ mod tests {
             )
             .unwrap();
         policy
-            .check_render_model(parsed.model())
+            .check_model_complexity(model_complexity_from_render_model(parsed.model()))
             .expect("the public model alone fits its exact text budget");
-        let error = policy.check_parsed_render(&parsed).unwrap_err();
+        let error = policy
+            .check_model_complexity(model_complexity_from_parsed_render(&parsed))
+            .unwrap_err();
         assert_eq!(error.limit, "max_model_text_bytes");
         assert!(error.actual > model_complexity.text_bytes);
     }
@@ -2084,7 +789,9 @@ mod tests {
         let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelNestingDepth, 1)
             .unwrap();
-        let error = policy.check_semantic_model(&parsed.model).unwrap_err();
+        let error = policy
+            .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
+            .unwrap_err();
         assert_eq!(error.limit, "max_model_nesting_depth");
         assert_eq!(error.actual, 2);
         assert_eq!(error.max, 1);
@@ -2096,7 +803,9 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert_eq!(
-                policy.check_render_model(parsed.model()).unwrap_err(),
+                policy
+                    .check_model_complexity(model_complexity_from_render_model(parsed.model()))
+                    .unwrap_err(),
                 error
             );
         }
@@ -2133,7 +842,7 @@ mod tests {
             )
             .unwrap();
         exact
-            .check_semantic_model(&parsed.model)
+            .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
             .expect("the exact JSON depth boundary should pass");
 
         let below = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
@@ -2143,7 +852,7 @@ mod tests {
             )
             .unwrap();
         let error = below
-            .check_semantic_model(&parsed.model)
+            .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
             .expect_err("the N-1 JSON depth boundary should fail");
         assert_eq!(error.limit, "max_model_nesting_depth");
         assert_eq!(error.actual, complexity.nesting_depth);
@@ -2156,9 +865,14 @@ mod tests {
             };
             let render_model = RenderSemanticModel::Sequence(model);
             exact
-                .check_render_model(&render_model)
+                .check_model_complexity(model_complexity_from_render_model(&render_model))
                 .expect("the exact JSON depth boundary should pass");
-            assert_eq!(below.check_render_model(&render_model).unwrap_err(), error);
+            assert_eq!(
+                below
+                    .check_model_complexity(model_complexity_from_render_model(&render_model))
+                    .unwrap_err(),
+                error
+            );
         }
     }
 
@@ -2182,11 +896,15 @@ mod tests {
             let exact = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
                 .with_limit(InputResourceLimitId::MaxModelNestingDepth, depth)
                 .unwrap();
-            exact.check_semantic_model(&parsed.model).unwrap();
+            exact
+                .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
+                .unwrap();
             let below = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
                 .with_limit(InputResourceLimitId::MaxModelNestingDepth, depth - 1)
                 .unwrap();
-            let error = below.check_semantic_model(&parsed.model).unwrap_err();
+            let error = below
+                .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
+                .unwrap_err();
             assert_eq!(error.limit, "max_model_nesting_depth");
             assert_eq!(error.actual, depth);
             assert_eq!(error.max, depth - 1);
@@ -2198,7 +916,10 @@ mod tests {
                     .unwrap()
                     .unwrap();
                 assert_eq!(
-                    below.check_render_model(full.model()).unwrap_err().limit,
+                    below
+                        .check_model_complexity(model_complexity_from_render_model(full.model()))
+                        .unwrap_err()
+                        .limit,
                     "max_model_nesting_depth"
                 );
             }
@@ -2240,7 +961,7 @@ mod tests {
             let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
                 .with_limit(id, max)
                 .unwrap()
-                .check_render_model(parsed.model())
+                .check_model_complexity(model_complexity_from_render_model(parsed.model()))
                 .unwrap_err();
             assert_eq!(error.phase, InputResourceLimitPhase::Model);
             assert_eq!(error.limit, expected_limit);
@@ -2297,7 +1018,7 @@ mod tests {
             let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
                 .with_limit(InputResourceLimitId::MaxModelTextBytes, 1)
                 .unwrap()
-                .check_render_model(&model)
+                .check_model_complexity(model_complexity_from_render_model(&model))
                 .unwrap_err();
             assert_eq!(error.limit, "max_model_text_bytes");
         }
@@ -2338,7 +1059,7 @@ mod tests {
         InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelItems, 1)
             .unwrap()
-            .check_render_model(&empty)
+            .check_model_complexity(model_complexity_from_render_model(&empty))
             .unwrap();
 
         let task = GanttRenderTask {
@@ -2360,7 +1081,7 @@ mod tests {
         InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelItems, expected.items)
             .unwrap()
-            .check_render_model(&full)
+            .check_model_complexity(model_complexity_from_render_model(&full))
             .unwrap();
     }
 
@@ -2380,7 +1101,7 @@ mod tests {
         let error = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelNestingDepth, 19)
             .unwrap()
-            .check_semantic_model(&parsed.model)
+            .check_model_complexity(model_complexity_from_semantic_model(&parsed.model))
             .unwrap_err();
         assert_eq!(error.limit, "max_model_nesting_depth");
         assert_eq!(error.actual, 20);
@@ -2417,12 +1138,12 @@ mod tests {
         policy
             .with_limit(InputResourceLimitId::MaxModelTextBytes, exact_text)
             .unwrap()
-            .check_parsed_render(&parsed)
+            .check_model_complexity(model_complexity_from_parsed_render(&parsed))
             .unwrap();
         let error = policy
             .with_limit(InputResourceLimitId::MaxModelTextBytes, exact_text - 1)
             .unwrap()
-            .check_parsed_render(&parsed)
+            .check_model_complexity(model_complexity_from_parsed_render(&parsed))
             .unwrap_err();
         assert_eq!(error.limit, "max_model_text_bytes");
         assert_eq!(error.actual, exact_text);
@@ -2446,7 +1167,7 @@ mod tests {
         InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(InputResourceLimitId::MaxModelItems, expected.items)
             .unwrap()
-            .check_render_model(parsed.model())
+            .check_model_complexity(model_complexity_from_render_model(parsed.model()))
             .unwrap();
     }
 
@@ -2640,12 +1361,5 @@ mod tests {
         assert_eq!(complexity.nodes, 1_501);
         assert_eq!(complexity.nesting_depth, 1_500);
         assert!(complexity.label_bytes >= "leaf".len());
-    }
-
-    impl InputResourcePolicy {
-        fn apply_for_test(mut self, id: InputResourceLimitId, value: usize) -> Self {
-            self.apply_limit(id, value).unwrap();
-            self
-        }
     }
 }

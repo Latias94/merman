@@ -1,4 +1,30 @@
-//! Shared resource-profile identity and pure data complexity accounting.
+//! Shared resource profiles, admission policy, and pure model complexity accounting.
+
+mod input;
+pub use input::*;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-zenuml",
+    feature = "diagram-mindmap"
+))]
+mod family;
+#[cfg(feature = "diagram-sequence")]
+pub use crate::families::sequence::SequenceComplexity;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub use family::FlowchartComplexity;
+#[cfg(feature = "diagram-mindmap")]
+pub use family::MindmapComplexity;
+#[cfg(feature = "diagram-zenuml")]
+pub use family::ZenumlComplexity;
+#[cfg(feature = "diagram-class")]
+pub use family::{ClassComplexity, class_namespace_depth};
 
 #[cfg(feature = "diagram-requirement")]
 use crate::families::requirement::RequirementDiagramModel;

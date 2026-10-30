@@ -13,22 +13,21 @@ mod date;
 mod datetime;
 mod model;
 mod parse;
-mod terminal;
-
-pub use terminal::{
-    GanttTerminalMetadata, GanttTerminalTaskIter, GanttTerminalTaskView, GanttTerminalView,
-};
 
 use date::*;
 use datetime::*;
+pub(crate) use model::sanitize_common_db_fields;
 use model::*;
 
-pub use model::{
+pub use merman_model::families::gantt::{
     GanttClickEvent, GanttDiagramModel, GanttTask, GanttTaskEnd, GanttTaskEndConstraint,
-    GanttTaskRaw, GanttTaskStart, GanttTaskStartConstraint,
+    GanttTaskRaw, GanttTaskStart, GanttTaskStartConstraint, GanttTerminalMetadata,
+    GanttTerminalTaskIter, GanttTerminalTaskView, GanttTerminalView,
 };
 #[cfg(feature = "presentation")]
-pub use model::{GanttDiagramRenderModel, GanttRenderTask};
+pub use merman_model::families::gantt::{
+    GanttDiagramRenderModel, GanttOutputData, GanttRenderTask,
+};
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use parse::parse_gantt_model_for_render;
 #[cfg(feature = "presentation")]
@@ -379,6 +378,30 @@ mod semantic_tests {
             )
             .is_err()
         );
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn gantt_full_producer_retains_output_data_independently_of_json_projection() {
+        let metadata = PresentationMetadata {
+            diagram_type: "gantt".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            title: None,
+        };
+        for (source, expected) in [
+            ("", GanttOutputData::Empty),
+            ("gantt", GanttOutputData::Model),
+        ] {
+            let model = parse_gantt_model_for_render_controlled(
+                source,
+                &metadata,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(model.output_data(), expected);
+        }
     }
 
     #[cfg(feature = "presentation")]

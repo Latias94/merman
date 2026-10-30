@@ -210,7 +210,7 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
             editor_facts,
         }) => {
             let mut model = db.into_model();
-            model.sanitize_common_db_fields(&meta.semantic_config);
+            super::sanitize_common_db_fields(&mut model, &meta.semantic_config);
             SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]

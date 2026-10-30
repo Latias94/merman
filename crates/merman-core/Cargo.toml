@@ -20,7 +20,7 @@ artifact-profile-required = true
 presentation = ["dep:ryu-js", "merman-model/presentation-data"]
 editor-facts = ["granit-parser/comments"]
 compat-json = ["presentation"]
-terminal-text = ["dep:unicode-segmentation", "dep:unicode-width"]
+terminal-text = ["merman-model/terminal-text"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -68,13 +68,13 @@ diagram-event-modeling = ["merman-model/diagram-event-modeling"]
 diagram-agentflow = ["merman-model/diagram-agentflow", "dep:rustc-hash", "dep:indexmap"]
 diagram-usecase = ["dep:indexmap"]
 diagram-flowchart = ["merman-model/diagram-flowchart", "dep:lalrpop-util", "dep:rustc-hash", "dep:indexmap"]
-diagram-gantt = []
-diagram-git-graph = []
+diagram-gantt = ["merman-model/diagram-gantt"]
+diagram-git-graph = ["merman-model/diagram-git-graph"]
 diagram-info = []
 diagram-ishikawa = []
 diagram-journey = []
 diagram-kanban = []
-diagram-mindmap = []
+diagram-mindmap = ["merman-model/diagram-mindmap"]
 diagram-packet = []
 diagram-pie = []
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart"]
@@ -82,16 +82,16 @@ diagram-radar = []
 diagram-railroad = []
 diagram-requirement = ["merman-model/diagram-requirement"]
 diagram-sankey = ["merman-model/diagram-sankey"]
-diagram-sequence = ["dep:lalrpop-util", "dep:rustc-hash"]
+diagram-sequence = ["merman-model/diagram-sequence", "dep:lalrpop-util", "dep:rustc-hash"]
 diagram-state = ["merman-model/diagram-state", "dep:lalrpop-util", "dep:indexmap"]
 diagram-swimlane = ["merman-model/diagram-swimlane", "dep:lalrpop-util", "dep:rustc-hash", "dep:indexmap"]
 diagram-timeline = []
-diagram-tree-view = []
+diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = []
 diagram-venn = ["merman-model/diagram-venn"]
 diagram-wardley = ["merman-model/diagram-wardley", "dep:indexmap"]
-diagram-xychart = []
-diagram-zenuml = ["dep:unicode-general-category", "dep:indexmap"]
+diagram-xychart = ["merman-model/diagram-xychart"]
+diagram-zenuml = ["merman-model/diagram-zenuml", "dep:unicode-general-category", "dep:indexmap"]
 # Configuration, sanitization, detection, and family identity remain unconditional.
 # Parsers and typed models are selected independently from explicit system adapters.
 default = []
@@ -103,7 +103,7 @@ system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
 
 [dependencies]
-merman-model.workspace = true
+merman-model = { workspace = true, features = ["html-entities"] }
 cssparser.workspace = true
 htmlize.workspace = true
 indexmap = { workspace = true, features = ["serde"], optional = true }
@@ -114,8 +114,6 @@ granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true
 unicode-general-category = { workspace = true, optional = true }
-unicode-segmentation = { workspace = true, optional = true }
-unicode-width = { workspace = true, optional = true }
 html5ever.workspace = true
 url.workspace = true
 ryu-js = { workspace = true, optional = true }
