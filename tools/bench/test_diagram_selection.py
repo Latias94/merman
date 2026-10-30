@@ -47,16 +47,31 @@ class DiagramSelectionTests(unittest.TestCase):
         semantic_probe = self.root / measure.SEMANTIC_FIXTURE
         semantic_probe.parent.mkdir(parents=True)
         semantic_probe.write_bytes(self.fixture_bytes)
+        boundary = self.root / measure.BOUNDARY_FIXTURE
+        boundary.mkdir(parents=True)
+        (boundary / "main.rs").write_bytes(self.fixture_bytes)
+        boundary_manifest = (
+            '[package]\nname = "diagram-selection-probe"\nversion = "0.0.0"\nedition = "2024"\n'
+            '[workspace]\n[features]\ndefault = []\nmodel = ["dep:merman-core"]\n'
+            '[dependencies]\nmerman-core = { path = "../../../../crates/merman-core", optional = true }\n'
+        )
+        (boundary / "Cargo.toml").write_text(boundary_manifest, encoding="utf-8")
+        for name in ("alpha.json", "beta.json"):
+            (boundary / name).write_text(json.dumps({"identity": name}), encoding="utf-8")
         self.git("add", ".")
         self.git("commit", "--quiet", "-m", "add shared probe")
         self.candidate = self.git("rev-parse", "HEAD").decode().strip()
         # Neither dirty probe bytes nor the candidate's modified lock may enter the baseline.
         probe.write_bytes(b"fn main() { panic!(\"dirty worktree\"); }\n")
+        (boundary / "main.rs").write_bytes(b"fn main() { panic!(\"dirty boundary probe\"); }\n")
+        (boundary / "alpha.json").write_text('{"identity":"dirty input"}', encoding="utf-8")
         (self.root / "Cargo.lock").write_bytes(b"version = 4\n# unrelated worktree lock\n")
         self.calls: list[tuple[list[str], Path, dict[str, str]]] = []
         self.build_toolchain: str | None = None
         self.full = False
         self.semantic = False
+        self.boundary = False
+        self.changed_observation = False
         self.target = "x86_64-test-host"
         self.suffix = ".exe" if os.name == "nt" else ""
         for name in ("platform", "processor"):
@@ -111,7 +126,10 @@ class DiagramSelectionTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
         if Path(command[0]).name in {"diagram-selection-probe" + self.suffix, "diagram-selection-probe.raw" + self.suffix}:
             if command[1] == "--families":
-                output = b"flowchart\nsequence\nstate\n" if self.semantic else b"flowchart\ngantt\n" + (b"sequence\n" if self.full else b"")
+                output = b"class\nflowchart\nstate\n" if self.boundary else b"flowchart\nsequence\nstate\n" if self.semantic else b"flowchart\ngantt\n" + (b"sequence\n" if self.full else b"")
+            elif self.boundary:
+                runtime = json.loads(Path(command[1]).read_bytes())
+                output = json.dumps({"identity": runtime["identity"], "observations": {"node": "changed" if self.changed_observation else "consumed"}}).encode()
             elif Path(command[1]).name == "sequence.mmd" and not self.full:
                 return subprocess.CompletedProcess(
                     command, 2, stdout=b"", stderr=b"merman.parse.unsupported_diagram\n"
@@ -202,6 +220,52 @@ class DiagramSelectionTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.collect(output)
         self.assertEqual(receipt.read_bytes(), b"original evidence")
+        self.assertEqual(self.calls, [])
+
+    def test_boundary_stages_committed_inputs_and_explicit_shared_target(self) -> None:
+        self.boundary = True
+        output = self.parent / "boundary"
+        shared = self.parent / "shared-target"
+        receipt = self.collect(output, recipe="boundary-model", features=[], target_dir=shared)
+        manifest = (output / "consumer/Cargo.toml").read_text()
+        self.assertIn((output / "source/crates/merman-core").as_posix(), manifest)
+        self.assertNotIn("../../../../crates/", manifest)
+        self.assertEqual(receipt["features"], ["model"])
+        self.assertEqual((output / "consumer/main.rs").read_bytes(), self.fixture_bytes)
+        self.assertEqual(receipt["consumer_families"], ["class", "flowchart", "state"])
+        self.assertNotIn("diagram_families", receipt)
+        self.assertEqual(receipt["target_dir"], str(shared.resolve()))
+        self.assertEqual(receipt["target_dir_policy"], "explicit-reuse")
+        self.assertEqual(receipt["dependency_edges"], "normal,build")
+        for name in ("alpha.json", "beta.json"):
+            original = self.git("show", f"{self.candidate}:{(measure.BOUNDARY_FIXTURE / name).as_posix()}")
+            self.assertEqual((output / "consumer" / name).read_bytes(), original)
+            self.assertTrue((output / name.replace(".json", ".observations.json")).is_file())
+        for command, cwd, env in self.calls:
+            self.assertEqual(env["CARGO_TARGET_DIR"], str(shared.resolve()))
+            if command[0] == "rustup" and command[3] == "cargo" and command[4] != "-V":
+                self.assertIn("--no-default-features", command)
+                self.assertEqual(command[-2:], ["--features", "model"])
+        self.assertTrue((output / ("diagram-selection-probe.raw" + self.suffix)).is_file())
+        self.assertFalse((output / "sequence.mmd").exists())
+
+    def test_boundary_compares_exact_consumed_output_to_base_receipt(self) -> None:
+        self.boundary = True
+        base = self.parent / "boundary-base"
+        self.collect(base, recipe="boundary-model", features=[])
+        head = self.parent / "boundary-head"
+        receipt = self.collect(head, recipe="boundary-model", features=[], expect_receipt=base / "receipt.json")
+        self.assertTrue(receipt["compared_receipt"]["matches"])
+        self.changed_observation = True
+        with self.assertRaisesRegex(RuntimeError, "contract differs: corpus"):
+            self.collect(self.parent / "boundary-changed", recipe="boundary-model", features=[], expect_receipt=base / "receipt.json")
+        mismatch = json.loads((self.parent / "boundary-changed/receipt.json").read_text())
+        self.assertFalse(mismatch["compared_receipt"]["matches"])
+        self.assertEqual(mismatch["compared_receipt"]["differences"], ["corpus"])
+
+    def test_boundary_rejects_unregistered_feature_union_before_building(self) -> None:
+        with self.assertRaisesRegex(ValueError, "one fixed consumer feature"):
+            self.collect(self.parent / "boundary-invalid", recipe="boundary-model", features=["model", "presentation-svg"])
         self.assertEqual(self.calls, [])
 
 

@@ -1,0 +1,15 @@
+{
+  "identity": "boundary-alpha",
+  "diagram_id": "m0-alpha",
+  "id_a": "AlphaSource",
+  "id_b": "AlphaSink",
+  "label_a": "AlphaStart",
+  "label_b": "AlphaFinish",
+  "edge_id": "alpha-edge",
+  "edge_label": "dispatch",
+  "flowchart": "flowchart LR\nAlphaSource[\"AlphaStart\"] -->|dispatch| AlphaSink[\"AlphaFinish\"]\n",
+  "class": "classDiagram\ndirection LR\nclass AlphaSource[\"AlphaStart\"]\nclass AlphaSink[\"AlphaFinish\"]\nAlphaSource --> AlphaSink : dispatch\n",
+  "state": "stateDiagram-v2\ndirection LR\nstate \"AlphaStart\" as AlphaSource\nstate \"AlphaFinish\" as AlphaSink\nAlphaSource --> AlphaSink: dispatch\n",
+  "analysis_path": "boundary-alpha.md",
+  "analysis": "# Alpha document\n\n```mermaid\n%%{init: {\"theme\":\"dark\"}}%%\nflowchart LR\nAlphaSource[\"AlphaStart\"] -->|dispatch| AlphaSink[\"AlphaFinish\"]\n```\n"
+}

@@ -1,0 +1,15 @@
+{
+  "identity": "boundary-beta",
+  "diagram_id": "m0-beta",
+  "id_a": "BetaOrigin",
+  "id_b": "BetaTarget",
+  "label_a": "BetaEntry",
+  "label_b": "BetaDone",
+  "edge_id": "beta-edge",
+  "edge_label": "confirm",
+  "flowchart": "flowchart LR\nBetaOrigin[\"BetaEntry\"] -->|confirm| BetaTarget[\"BetaDone\"]\n",
+  "class": "classDiagram\ndirection LR\nclass BetaOrigin[\"BetaEntry\"]\nclass BetaTarget[\"BetaDone\"]\nBetaOrigin --> BetaTarget : confirm\n",
+  "state": "stateDiagram-v2\ndirection LR\nstate \"BetaEntry\" as BetaOrigin\nstate \"BetaDone\" as BetaTarget\nBetaOrigin --> BetaTarget: confirm\n",
+  "analysis_path": "boundary-beta.md",
+  "analysis": "# Beta document 😀\r\n\r\n```mermaid\r\n%%{init: {\"theme\":\"dark\"}}%%\r\nflowchart LR\r\nBetaOrigin[\"BetaEntry\"] -->|confirm| BetaTarget[\"BetaDone\"]\r\n```\r\n"
+}

@@ -2,7 +2,7 @@
 title: Model, Source, and Consumer Boundaries
 type: refactor
 date: 2026-10-30
-status: ready
+status: in-progress
 baseline: 8888358b1873c89049c0e430615c91d406dac224
 ---
 
@@ -10,7 +10,7 @@ baseline: 8888358b1873c89049c0e430615c91d406dac224
 
 ## Status and authorization
 
-Implementation has not started. The maintainer explicitly authorized a development-line architecture cleanup, including breaking Rust APIs, on 2026-10-30. Remove obsolete import paths, adapters and duplicate ownership after migrating their consumers; preserving unpublished Rust source compatibility is not an acceptance requirement. This authorization covers implementation and local Conventional Commits without another design-approval checkpoint. Publication, tags and changes to released artifacts remain separate release operations.
+Implementation began with M0 baseline preparation on 2026-10-30; the [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) tracks actual completed slices and evidence. The maintainer explicitly authorized a development-line architecture cleanup, including breaking Rust APIs. Remove obsolete import paths, adapters and duplicate ownership after migrating their consumers; preserving unpublished Rust source compatibility is not an acceptance requirement. This authorization covers implementation and local Conventional Commits without another design-approval checkpoint. Publication, tags and changes to released artifacts remain separate release operations.
 
 Start from `8888358b1873c89049c0e430615c91d406dac224`, the verified dependency-review candidate on top of main `4e9fa48139361bb30f81cb86d413597643978a4f`. Integrate that prerequisite, or explicitly establish its equivalent, before freezing the implementation baseline. Fetch and inspect any newer main commits before integrating them. Do not modify the primary worktree's unrelated files or historical experiment worktrees.
 
