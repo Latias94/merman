@@ -1,0 +1,15 @@
+diff --git a/maintainers/maintainer-list.nix b/maintainers/maintainer-list.nix
+--- a/maintainers/maintainer-list.nix
++++ b/maintainers/maintainer-list.nix
+@@ -16180,6 +16180,11 @@
+     githubId = 621759;
+     name = "Lassulus";
+   };
++  Latias94 = {
++    name = "Latias94";
++    github = "Latias94";
++    githubId = 13315417;
++  };
+   lavafroth = {
+     email = "lavafroth@protonmail.com";
+     github = "lavafroth";

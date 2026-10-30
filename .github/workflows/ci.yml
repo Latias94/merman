@@ -1,1461 +1,185 @@
-name: CI
+name: Nixpkgs CLI review build
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-  merge_group:
-    types:
-      - checks_requested
-  schedule:
-    - cron: "7 2 * * 0"
   workflow_dispatch:
-    inputs:
-      all_owners:
-        description: "Run every CI owner instead of the core/SVG safety net"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: nixpkgs-merman-093-review-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MERMAN_RELEASE_SOURCE: 3b915f69c02d55b873d252cf6c8a6048e7f3427d
+  NIXPKGS_REVIEW_SOURCE: 1ef8781d97d9e204bbb213472d2995641065ec72
 
 jobs:
-  ci-plan:
-    name: ci-plan
+  prepare:
     runs-on: ubuntu-24.04
-    outputs:
-      # Keep cross-job data bounded; the detailed plan contains every changed path.
-      owners: ${{ steps.plan.outputs.owners }}
-      arch: ${{ steps.plan.outputs.arch }}
-      cli: ${{ steps.plan.outputs.cli }}
-      core: ${{ steps.plan.outputs.core }}
-      fuzz: ${{ steps.plan.outputs.fuzz }}
-      grammar: ${{ steps.plan.outputs.grammar }}
-      hygiene: ${{ steps.plan.outputs.hygiene }}
-      node: ${{ steps.plan.outputs.node }}
-      npm: ${{ steps.plan.outputs.npm }}
-      performance: ${{ steps.plan.outputs.performance }}
-      platform: ${{ steps.plan.outputs.platform }}
-      python: ${{ steps.plan.outputs.python }}
-      security: ${{ steps.plan.outputs.security }}
-      svg_parity: ${{ steps.plan.outputs.svg_parity }}
-      typst: ${{ steps.plan.outputs.typst }}
-      vscode: ${{ steps.plan.outputs.vscode }}
-      web: ${{ steps.plan.outputs.web }}
-      workflow: ${{ steps.plan.outputs.workflow }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Resolve same-run CI owners
-        id: plan
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          ALL_OWNERS: ${{ inputs.all_owners || false }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-          MERGE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
-          PUSH_BASE_SHA: ${{ github.event.before }}
-          PUSH_HEAD_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          case "$EVENT_NAME" in
-            pull_request)
-              base="$PR_BASE_SHA"
-              head="$PR_HEAD_SHA"
-              extra=()
-              ;;
-            merge_group)
-              base="$MERGE_BASE_SHA"
-              head="$MERGE_HEAD_SHA"
-              extra=()
-              ;;
-            push)
-              base="$PUSH_BASE_SHA"
-              head="$PUSH_HEAD_SHA"
-              extra=(--select-all --reason "main push full lifecycle")
-              ;;
-            schedule|workflow_dispatch)
-              base="$PUSH_HEAD_SHA"
-              head="$PUSH_HEAD_SHA"
-              if [[ "$EVENT_NAME" == workflow_dispatch && "$ALL_OWNERS" == true ]]; then
-                extra=(--select-all --reason "manual full owner verification")
-              else
-                extra=(--select-owner core --select-svg-parity --reason "scheduled or manual full host safety net")
-              fi
-              ;;
-            *)
-              echo "unsupported CI event: $EVENT_NAME" >&2
-              exit 1
-              ;;
-          esac
-          python3 scripts/ci_plan.py plan \
-            --base "$base" \
-            --head "$head" \
-            --github-output "$GITHUB_OUTPUT" \
-            "${extra[@]}"
-
-  workflow-analysis:
-    name: workflow-analysis
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.workflow == 'true' }}
-    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-
-      - name: Install exact workflow analyzers
-        shell: bash
-        env:
-          ACTIONLINT_VERSION: 1.7.12
-          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-          ZIZMOR_VERSION: 1.30.1
-          ZIZMOR_SHA256: eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e
-        run: |
-          set -euo pipefail
-          tools_dir="$RUNNER_TEMP/workflow-tools"
-          mkdir -p "$tools_dir/actionlint" "$tools_dir/zizmor"
-
-          actionlint_archive="$RUNNER_TEMP/actionlint.tar.gz"
-          curl --proto '=https' --tlsv1.2 --fail --location --show-error \
-            --retry 3 \
-            --output "$actionlint_archive" \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          printf '%s  %s\n' "$ACTIONLINT_SHA256" "$actionlint_archive" | sha256sum --check
-          tar -xzf "$actionlint_archive" -C "$tools_dir/actionlint" actionlint
-
-          cat > "$RUNNER_TEMP/zizmor-requirements.txt" <<EOF
-          zizmor==${ZIZMOR_VERSION} --hash=sha256:${ZIZMOR_SHA256}
-          EOF
-          python3 -m pip install \
-            --disable-pip-version-check \
-            --no-deps \
-            --only-binary=:all: \
-            --require-hashes \
-            --target "$tools_dir/zizmor" \
-            --requirement "$RUNNER_TEMP/zizmor-requirements.txt"
-
-          test -x "$tools_dir/actionlint/actionlint"
-          test -x "$tools_dir/zizmor/bin/zizmor"
-          echo "$tools_dir/actionlint" >> "$GITHUB_PATH"
-          echo "$tools_dir/zizmor/bin" >> "$GITHUB_PATH"
-
-      - name: Verify analyzer identities
-        run: |
-          actionlint -version
-          zizmor --version
-
-      - name: Validate GitHub Actions syntax and expressions
-        run: actionlint
-
-      - name: Audit GitHub Actions security
-        run: zizmor --min-severity high .
-
-  hygiene:
-    name: hygiene
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.hygiene == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
       - uses: actions/checkout@v7.0.1
         with:
+          repository: NixOS/nixpkgs
+          ref: ${{ env.NIXPKGS_REVIEW_SOURCE }}
+          path: nixpkgs
           persist-credentials: false
-          fetch-depth: 0
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+      - uses: actions/setup-python@v7.0.0
         with:
-          components: rustfmt
-
-      - name: Check Rust formatting
-        run: cargo fmt --all --check
-
-      - name: Check Windows checkout path lengths
-        run: python3 scripts/check_path_lengths.py
-
-      - name: Verify release version projections
-        run: python3 scripts/release-version.py
-
-      - name: Verify CLI installation metadata
-        run: python3 scripts/cli_installation_contract.py
-
-      - name: Verify third-party source and license contract
-        run: python3 scripts/verify-third-party-licenses.py
-
-      - name: Verify legal material projections
-        run: python3 scripts/sync-release-legal-materials.py --check
-
-      - name: Verify Cargo package legal materials
-        run: python3 scripts/verify_crate_package_legal_materials.py
-
-      - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
-
-      - name: Check whitespace (pull request or merge queue)
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
-        run: git diff --check "$BASE_SHA" "$HEAD_SHA"
-
-      - name: Check whitespace (manual or scheduled source)
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        run: git show --check --format= --no-renames HEAD
-
-      - name: Check whitespace (push)
-        if: github.event_name == 'push'
+          python-version: '3.12'
+      - uses: DeterminateSystems/determinate-nix-action@v3.23.1
+        with:
+          extra-conf: |
+            max-jobs = 2
+            cores = 2
+      - name: Prefetch the immutable release with Nix
         run: |
-          base="${{ github.event.before }}"
-          if [[ "$base" =~ ^0+$ ]]; then
-            git show --check --format= --no-renames HEAD
-          else
-            git diff --check "$base...${{ github.sha }}"
-          fi
-
-  cli-contracts:
-    name: cli-contracts
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.cli == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          components: clippy
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
-        with:
-          tool: nextest@0.9.148
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          cache-targets: false
-
-      - name: Install CLI build dependencies and asset validators
-        timeout-minutes: 10
+          mkdir candidate
+          nix store prefetch-file --unpack --name source --json \
+            "https://github.com/Latias94/merman/archive/$MERMAN_RELEASE_SOURCE.tar.gz" \
+            > candidate/source.json
+      - name: Materialize the source-bound package
+        shell: python
         run: |
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish libfontconfig1-dev mandoc pkg-config zsh
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import tomllib
 
-      - name: Verify generated CLI distribution assets
-        run: python3 scripts/generate_cli_assets.py --check
+          candidate = Path("candidate")
+          receipt = json.loads((candidate / "source.json").read_text())
+          source = Path(receipt["storePath"])
+          workspace = tomllib.loads((source / "Cargo.toml").read_text())
+          assert workspace["workspace"]["package"]["version"] == "0.9.3"
+          package = Path("nix/nixpkgs-review-package.nix").read_text()
+          assert package.count("hash = lib.fakeHash;") == 1
+          assert f'rev = "{os.environ["MERMAN_RELEASE_SOURCE"]}";' in package
+          package = package.replace("hash = lib.fakeHash;", f'hash = "{receipt["hash"]}";')
+          (candidate / "package.nix").write_text(package)
+          shutil.copyfile(source / "Cargo.lock", candidate / "Cargo.lock")
+          shutil.copyfile("nix/nixpkgs-review-maintainer.patch", candidate / "maintainer.patch")
+          descriptor = json.loads((source / "capabilities/artifact-profiles-v2.json").read_text())
+          profile = next(p for p in descriptor["profiles"] if p["id"] == "cli-release")
+          (candidate / "expected-profile.json").write_text(json.dumps(profile))
+          print(f"Release source: {os.environ['MERMAN_RELEASE_SOURCE']}")
+          print(f"Nix source hash: {receipt['hash']}")
+      - name: Apply the candidate to current Nixpkgs
+        run: |
+          git -C nixpkgs apply --check ../candidate/maintainer.patch
+          git -C nixpkgs apply ../candidate/maintainer.patch
+          mkdir -p nixpkgs/pkgs/by-name/me/merman-cli
+          cp candidate/package.nix candidate/Cargo.lock nixpkgs/pkgs/by-name/me/merman-cli/
+      - name: Evaluate all advertised systems
+        run: |
+          for system in x86_64-linux aarch64-linux aarch64-darwin x86_64-darwin; do
+            nix-instantiate --eval --strict --json --expr "
+              let
+                pkgs = import ./nixpkgs { system = \"$system\"; };
+                package = pkgs.merman-cli;
+              in assert pkgs.lib.versionAtLeast pkgs.rustc.version \"1.95\"; {
+                inherit (package) version buildFeatures buildType buildNoDefaultFeatures;
+                inherit (package.meta) platforms;
+                rustVersion = pkgs.rustc.version;
+                drvPath = package.drvPath;
+              }
+            " > "candidate/eval-$system.json"
+          done
+      - name: Check the evaluated package against the release profile
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
 
-      - name: Validate CLI distribution assets
-        run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
-
-      - name: Test exact CLI feature process matrix
-        run: python3 scripts/verify_cli_process_matrix.py --locked
-
-      - name: Lint all CLI feature branches
-        run: cargo clippy --locked -p merman-cli --all-targets --all-features -- -D warnings
-
-  nix-cli-package:
-    name: nix-cli-package
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.cli == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7.0.1
+          candidate = Path("candidate")
+          profile = json.loads((candidate / "expected-profile.json").read_text())["cargo"]
+          systems = {"x86_64-linux", "aarch64-linux", "aarch64-darwin", "x86_64-darwin"}
+          for system in sorted(systems):
+              result = json.loads((candidate / f"eval-{system}.json").read_text())
+              assert result["version"] == "0.9.3", result
+              assert result["buildFeatures"] == profile["features"], result
+              assert result["buildType"] == profile["profile"], result
+              assert result["buildNoDefaultFeatures"] == (not profile["default_features"]), result
+              assert set(result["platforms"]) == systems, result
+              print(f"{system}: Rust {result['rustVersion']}, {result['drvPath']}")
+      - uses: actions/upload-artifact@v7.0.2
         with:
-          persist-credentials: false
+          name: nixpkgs-merman-0.9.3-candidate
+          path: candidate
+          if-no-files-found: error
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.23.2
-
-      - name: Build reusable Nix derivation
-        run: |
-          nix-build --no-out-link default.nix \
-            --arg pkgs 'import (builtins.getFlake (toString ./.)).inputs.nixpkgs { }'
-
-      - name: Check Nix flake
-        run: |
-          nix flake check --all-systems --no-build --no-write-lock-file
-          nix flake check --print-build-logs --no-write-lock-file
-
-      - name: Run Nix flake app
-        run: nix run --no-write-lock-file . -- --version
-
-      - name: Check immutable Nix lock
-        run: git diff --exit-code -- flake.lock
-
-  cli-distribution:
-    name: cli-distribution
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.cli == 'true' }}
-    uses: ./.github/workflows/cli-distribution.yml
-
-  arch-package:
-    name: arch-package
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.arch == 'true' }}
-    uses: ./.github/workflows/arch-package.yml
-
-  build-test:
-    name: build-test (${{ matrix.os }})
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.core == 'true' }}
+  build:
+    needs: prepare
+    name: build (${{ matrix.system }})
     runs-on: ${{ matrix.os }}
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
-            parity: true
+            system: x86_64-linux
+          - os: ubuntu-24.04-arm
+            system: aarch64-linux
           - os: macos-15
-            parity: false
-          - os: windows-2025-vs2026
-            parity: false
-
+            system: aarch64-darwin
+          - os: macos-15-intel
+            system: x86_64-darwin
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          repository: NixOS/nixpkgs
+          ref: ${{ env.NIXPKGS_REVIEW_SOURCE }}
+          path: nixpkgs
           persist-credentials: false
-
-      - name: Resolve pinned DOMPurify source
-        id: dompurify-source
-        if: matrix.parity
-        shell: bash
-        run: |
-          commit="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          bundle = json.loads(
-              Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text(encoding="utf-8")
-          )
-          print(bundle["sanitizer"]["source"]["commit"])
-          PY
-          )"
-          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid DOMPurify source commit in reference bundle: $commit" >&2
-            exit 1
-          fi
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v7.0.1
-        name: Checkout pinned DOMPurify source
-        if: matrix.parity
+      - uses: actions/download-artifact@v8.0.2
         with:
-          repository: cure53/DOMPurify
-          ref: ${{ steps.dompurify-source.outputs.commit }}
-          path: repo-ref/dompurify
-          persist-credentials: false
-          sparse-checkout: |
-            dist/purify.cjs.js
-          sparse-checkout-cone-mode: false
-
-      - name: Verify pinned DOMPurify source checkout
-        if: matrix.parity
-        shell: bash
-        env:
-          DOMPURIFY_SOURCE_COMMIT: ${{ steps.dompurify-source.outputs.commit }}
-        run: |
-          actual="$(git -C repo-ref/dompurify rev-parse HEAD)"
-          test "$actual" = "$DOMPURIFY_SOURCE_COMMIT"
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Install parity Rust targets
-        if: matrix.parity
-        run: rustup target add aarch64-linux-android wasm32-unknown-unknown
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+          name: nixpkgs-merman-0.9.3-candidate
+          path: candidate
+      - uses: actions/setup-python@v7.0.0
         with:
-          tool: nextest@0.9.148
-
-      - name: Free disk space (Ubuntu)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          df -h
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /usr/local/lib/android \
-            /opt/ghc \
-            /usr/local/.ghcup \
-            "$AGENT_TOOLSDIRECTORY/CodeQL"
-          sudo docker image prune --all --force || true
-          df -h
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+          python-version: '3.12'
+      - uses: DeterminateSystems/determinate-nix-action@v3.23.1
         with:
-          cache-targets: false
-
-      - name: Install Linux font build dependencies
-        if: runner.os == 'Linux'
-        timeout-minutes: 10
-        shell: bash
+          extra-conf: |
+            max-jobs = 2
+            cores = 2
+      - name: Apply the exact prepared package
         run: |
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config
-
-      - name: Verify pinned Mermaid reference before runtime install
-        if: matrix.parity
-        run: cargo run --locked -p xtask -- verify-mermaid-reference
-
-      - name: Setup Node for generated Mermaid artifacts
-        if: matrix.parity
-        uses: actions/setup-node@v7.1.0
-        with:
-          node-version: "24.21.0"
-          cache: npm
-          cache-dependency-path: |
-            platforms/node/package-lock.json
-            playground/tests/package-lock.json
-            tools/mermaid-cli/package-lock.json
-
-      - name: Install pinned npm
-        if: matrix.parity
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
-
-      - name: Install pinned Mermaid runtime
-        if: matrix.parity
-        working-directory: tools/mermaid-cli
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: "true"
-        run: npm ci
-
-      - name: Test selected reference runtime builder
-        if: matrix.parity
-        run: node --test tools/mermaid-cli/reference-runtime.test.mjs crates/merman-render/tests/katex_flowchart_probe.test.cjs
-
-      - name: Verify pull-request architecture contracts
-        if: matrix.parity
+          git -C nixpkgs apply --check ../candidate/maintainer.patch
+          git -C nixpkgs apply ../candidate/maintainer.patch
+          mkdir -p nixpkgs/pkgs/by-name/me/merman-cli
+          cp candidate/package.nix candidate/Cargo.lock nixpkgs/pkgs/by-name/me/merman-cli/
+      - name: Build the Nixpkgs expression and its install checks
         run: |
-          cargo run --locked -p xtask -- verify-generated
-          cargo run --locked -p xtask -- verify-feature-matrix
-
-      - name: Test isolated consumers without diagram families
-        if: matrix.parity
-        run: |
-          cargo nextest run --locked -p merman-core --no-default-features --test diagram_features --cargo-quiet
-          cargo nextest run --locked -p merman-analysis --no-default-features --test diagram_features --cargo-quiet
-          cargo nextest run --locked -p merman-editor-core --no-default-features --test diagram_features --cargo-quiet
-
-      - name: Install native export test fonts (Linux)
-        if: runner.os == 'Linux'
-        timeout-minutes: 10
-        shell: bash
-        run: |
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes fonts-dejavu-core fonts-noto-cjk
-
-      - name: Test full workspace (Linux and safety-net lifecycles)
-        if: runner.os == 'Linux' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: cargo nextest run --locked --features merman/compat-json,merman/editor-facts --no-fail-fast --cargo-quiet
-
-      - name: Compile workspace on ordinary host runners
-        if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-        run: cargo check --workspace --all-targets --locked
-
-      - name: Test theme authoring and font resource boundaries
-        shell: bash
-        run: |
-          cargo nextest run --locked -p merman-ffi --no-default-features \
-            --features svg,diagram-flowchart --test c_consumer_smoke
-          cargo nextest run --locked -p merman-render --no-default-features \
-            --features diagram-flowchart,diagram-swimlane \
-            --test theme_font_capability --test flowchart_node_effects --cargo-quiet
-          cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features svg,diagram-flowchart --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
-          cargo nextest run --locked -p merman --no-default-features --features svg,diagram-flowchart \
-            --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
-          cargo nextest run --locked -p merman-export --no-default-features \
-            --features png,jpeg,pdf --lib --cargo-quiet
-
-      - name: Test explicit native fonts on every host
-        shell: bash
-        run: |
-          cargo nextest run --locked -p merman-export --no-default-features --features native-fonts --cargo-quiet
-          cargo nextest run --locked -p merman --features native-fonts --test native_font_context --test native_font_families --test native_flowchart_typography --test native_swimlane_typography --test native_font_wrapping --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features svg,diagram-flowchart,native-fonts,markdown,parallel-markdown --test native_fonts_contract --cargo-quiet
-          cargo nextest run --locked -p merman --no-default-features --features diagram-flowchart,native-fonts,png,jpeg,pdf --test native_font_context --cargo-quiet
-
-      - name: Test bounded system font policy on every host
-        shell: bash
-        run: |
-          cargo nextest run --locked -p merman-export --no-default-features --features native-fonts,system-fonts --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,system-fonts --test native_fonts_contract --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,png --test native_fonts_contract --cargo-quiet
-
-      - name: Test experimental platform font query on every host
-        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet
-
-      - name: Test platform font host contracts on every host
-        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context --run-ignored only --cargo-quiet
-
-      - name: Test experimental platform font CLI contracts on every host
-        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,system-fonts,experimental-system-font-query --test native_fonts_contract --cargo-quiet
-
-      - name: Test host-sensitive contracts on ordinary runs
-        if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-        shell: bash
-        run: |
-          cargo nextest run --locked -p merman-layout-elk --lib --cargo-quiet \
-            -E 'test(separate_children_layout_is_small_stack_safe_and_deterministic) | test(source_graph_dump_is_small_stack_safe_for_deep_hierarchy)'
-          cargo nextest run --locked -p xtask --cargo-quiet \
-            -E 'test(two_contenders_are_serialized) | test(dead_owner_is_recovered)'
-          ffi_features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
-          cargo nextest run --locked -p merman-ffi --no-default-features \
-            --features "$ffi_features" \
-            --test header_smoke --test c_consumer_smoke --cargo-quiet
-          cargo nextest run --locked -p merman-cli --features layout-elk --test markdown_cli --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,rustdoc \
-            --test rustdoc_cli --cargo-quiet
-
-      - name: Check committed Rustdoc fragments before documentation
-        if: matrix.parity
-        run: cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
-
-      - name: Test architecture compile-fail contracts
-        if: matrix.parity
-        run: |
-          cargo test -p merman-render --doc --features all-diagrams
-          cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
-
-      - name: Test preset qualification and family terminal behavior
-        if: matrix.parity
-        run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked \
-            -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
-            --lib --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,all-diagrams \
-              --test preset_qualification \
-            --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
-            --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
-            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
-
-      - name: Test optimized theme evidence and qualification rejection
-        if: matrix.parity
-        run: |
-          cargo test --release --locked -p merman-render --no-default-features \
-            --lib family::evidence_support::tests
-          python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
-            --lib preset_qualification::
-
-      - name: Verify published theme acceptance boundary
-        if: matrix.parity
-        run: python3 scripts/verify_theme_acceptance_boundary.py
-
-      - name: Test theme authoring and Flowchart paint across SVG and PNG
-        if: matrix.parity
-        run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
-            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,system-fonts,compat-json --test theme_authoring \
-            --test theme_flowchart_markers --test theme_flowchart_geometry \
-            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
-            --test render_operation --test theme_composed_effects --cargo-quiet
-
-      - name: Test Rustdoc family subsets, math opt-in, and exact artifact recipe
-        if: matrix.parity
-        run: |
-          cargo nextest run --locked -p merman-rustdoc --no-default-features \
-            --features svg --cargo-quiet
-          cargo nextest run --locked -p merman-rustdoc --no-default-features \
-            --features svg,diagram-gantt --cargo-quiet
-          cargo nextest run --locked -p merman-rustdoc --no-default-features \
-            --features svg,diagram-flowchart --cargo-quiet
-          cargo nextest run --locked -p merman-rustdoc --test regressions \
-            -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
-          cargo nextest run --locked -p merman-rustdoc --features math --test regressions \
-            -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
-          cargo nextest run --locked -p merman-rustdoc --features math --test complete_svg_e2e --cargo-quiet
-          cargo nextest run --locked -p merman-cli --features math --test ratex_math --cargo-quiet
-          cargo nextest run --locked -p merman-cli --features math --bin merman-cli \
-            -E 'test(rustdoc::document::tests::explicit_math_capability_renders_in_rustdoc_mode)' --cargo-quiet
-          cargo nextest run --locked -p merman --features math --test layout_work_calibration_contract --cargo-quiet
-          cargo nextest run --locked -p merman-render \
-            --features all-diagrams,layout-cytoscape,layout-elk,math \
-            --test flowchart_svg_test --test sequence_svg_test --test usecase_svg_test \
-            -E 'test(flowchart_svg_renders_ratex_math_labels_end_to_end) | test(sequence_svg_renders_ratex_math_message_and_note_end_to_end) | test(usecase_math_labels_render_real_math_for_every_label_owner)' \
-            --cargo-quiet
-          features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
-          cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
-
-      - name: Test representative Cargo feature unification contract
-        if: matrix.parity
-        run: |
-          ambient_render_features="merman-bindings-core/all-diagrams,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
-          cargo nextest run --locked -p merman-bindings-core -p merman-ffi \
-            --no-default-features \
-            --features "$ambient_render_features,merman-ffi/all-diagrams,merman-ffi/svg" \
-            --lib --cargo-quiet \
-            -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
-          cargo nextest run --locked -p merman-bindings-core -p merman-cli \
-            --no-default-features \
-            --features "$ambient_render_features,merman-cli/all-diagrams,merman-cli/svg" \
-            --test svg_smoke --cargo-quiet \
-            -E 'test(math_labels_require_the_cli_owned_capability)'
-
-      - name: Verify committed upstream alignment manifests
-        if: matrix.parity
-        run: cargo run --locked -p xtask -- check-alignment
-
-      - name: Test system adapter feature contracts
-        if: matrix.parity
-        run: |
-          cargo nextest run -p merman --no-default-features \
-            --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
-            --test runtime_determinism --test render_timezone --cargo-quiet
-
-      - name: Test C FFI artifact-profile contract
-        if: matrix.parity
-        run: |
-          features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
-          cargo nextest run --locked -p merman-ffi --no-default-features \
-            --features "$features" --cargo-quiet
-
-      - name: Check public ASCII feature closure
-        if: matrix.parity
-        run: |
-          cargo check -p merman-uniffi --no-default-features
-          cargo check --locked --no-default-features --lib \
-            -p merman -p merman-bindings-core -p merman-uniffi -p merman-wasm \
-            --features merman/ascii,merman-bindings-core/ascii,merman-uniffi/ascii,merman-wasm/ascii
-          cargo check --locked -p merman-cli --no-default-features --features ascii
-          cargo check --locked -p merman-wasm --target wasm32-unknown-unknown \
-            --no-default-features --features ascii
-
-      - name: Test representative ASCII public contracts
-        if: matrix.parity
-        run: |
-          cargo nextest run --locked -p merman --no-default-features --features all-diagrams,ascii \
-            --test ascii_api -E 'test(renderer_renders_ascii_flowchart_from_mermaid_text)' \
-            --cargo-quiet
-          cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features all-diagrams,ascii --lib \
-            -E 'test(every_ascii_resource_limit_round_trips_exact_public_boundaries) | test(ascii_request_propagates_caller_control_into_the_canonical_renderer)' \
-            --cargo-quiet
-          cargo nextest run --locked -p merman-uniffi --no-default-features \
-            --features all-diagrams,ascii --lib \
-            -E 'test(uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
-            --cargo-quiet
-          cargo nextest run --locked -p merman-wasm --no-default-features \
-            --features all-diagrams,ascii --lib \
-            -E 'test(wasm_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
-            --cargo-quiet
-
-  svg-parity:
-    name: svg-parity
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.svg_parity == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      CARGO_INCREMENTAL: "0"
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: Swatinem/rust-cache@v2.9.2
-        with:
-          key: svg-parity
-          cache-targets: false
-      - name: Install Linux font build dependencies
-        run: |
-          sudo apt-get update --error-on=any
-          sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: "24.21.0"
-          cache: npm
-          cache-dependency-path: |
-            playground/tests/package-lock.json
-            tools/mermaid-cli/package-lock.json
-      - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
-      - name: Verify pinned Mermaid reference before runtime install
-        run: cargo run --locked --release -p xtask -- verify-mermaid-reference
-      - name: Install pinned Mermaid runtime for math fixtures
-        working-directory: tools/mermaid-cli
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: "true"
-        run: npm ci
-      - name: Resolve selected Mermaid parser source
-        id: parser-source
+          nix-build --no-out-link -A merman-cli ./nixpkgs > package-output.txt
+      - name: Run the package version test
+        run: nix-build --no-out-link -A merman-cli.tests.version ./nixpkgs
+      - name: Smoke-test the installed renderer
         shell: python
         run: |
-          import json, os, re
           from pathlib import Path
-          selected = json.loads(Path("tools/upstreams/REPOS.lock.json").read_text(encoding="utf-8"))["repos"]["mermaid"]
-          commit = selected["commit"]
-          if not re.fullmatch(r"[0-9a-f]{40}", commit):
-              raise SystemExit("Invalid selected Mermaid commit")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              print(f"commit={commit}", file=output)
-      - name: Checkout selected Mermaid parser source
-        uses: actions/checkout@v7.0.1
-        with:
-          repository: mermaid-js/mermaid
-          ref: ${{ steps.parser-source.outputs.commit }}
-          path: repo-ref/mermaid
-          persist-credentials: false
-          sparse-checkout: |
-            packages/mermaid/src/Diagram.ts
-            packages/mermaid/src/mermaidAPI.ts
-            packages/mermaid/src/preprocess.ts
-            packages/mermaid/src/diagram-api/comments.ts
-            packages/mermaid/src/diagrams/flowchart/parser/flow.jison
-            packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
-            packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison
-          sparse-checkout-cone-mode: false
-      - name: Install selected parser oracle browser and dependencies
-        env:
-          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
-        run: sudo env "PATH=$PATH" "PUPPETEER_CACHE_DIR=$PUPPETEER_CACHE_DIR" node tools/mermaid-cli/node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome-headless-shell --install-deps
-      - name: Test real parser oracle protocol
-        env:
-          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
-        run: node --test tools/mermaid-cli/parser-oracle.test.mjs
-      - name: Replay and run bounded parser differential
-        env:
-          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/merman-puppeteer
-        run: cargo run --locked --release -p xtask -- parser-differential --cases 256
-      - name: SVG DOM comparison suite
-        run: cargo run --locked --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
-      - name: Install root viewport oracle dependencies
-        run: npm ci --prefix playground/tests
-      - name: Install Chromium for root viewport oracle
-        run: npm run install:browser:chromium --prefix playground/tests
-      - name: Audit rendered SVG root viewports in Chromium
-        run: |
-          npm run oracle:root-viewport --prefix playground/tests -- \
-            --local ../../target/compare \
-            --upstream ../../fixtures/upstream-svgs \
-            --output ../../target/root-viewport-diagnostic.json
-      - name: Upload SVG parity diagnostic reports
-        if: always()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: svg-parity-diagnostics-${{ github.run_attempt }}
-          path: |
-            target/parser-differential/
-            target/root-viewport-diagnostic.json
-            target/compare/*_report*.md
-          if-no-files-found: ignore
-          retention-days: 7
-  node-contracts:
-    name: node-contracts (${{ matrix.candidate }})
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.node == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        candidate: [node-wasm, napi]
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@v7.1.0
-        with:
-          node-version: "24.21.0"
-          cache: npm
-          cache-dependency-path: platforms/node/package-lock.json
-
-      - name: Install npm toolchain
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
-
-      - name: Install Node candidate dependencies
-        run: npm ci --prefix platforms/node
-
-      - name: Verify Node candidate contracts and nested lock freshness
-        run: npm test --prefix platforms/node
-
-      - name: Install Rust toolchain for real Node candidates
-        if: matrix.candidate == 'node-wasm'
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Rust cache for real Node candidates
-        if: matrix.candidate == 'node-wasm'
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          cache-targets: false
-
-      - name: Install pinned wasm-pack for real Node candidates
-        if: matrix.candidate == 'node-wasm'
-        run: cargo install wasm-pack --version 0.15.0 --locked
-
-      - name: Build and probe the real Node-WASM candidate
-        if: matrix.candidate == 'node-wasm'
-        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
-
-      - name: Assemble and install-smoke the Node-WASM npm package
-        if: matrix.candidate == 'node-wasm'
-        run: |
-          set -euo pipefail
-          package_root="$RUNNER_TEMP/node-wasm-package"
-          artifact_dir="$RUNNER_TEMP/node-wasm-smoke-artifact"
-          smoke_root="$RUNNER_TEMP/node-wasm-install-smoke"
-          version="$(node -p "JSON.parse(require('fs').readFileSync('platforms/node/package-surfaces.json', 'utf8')).version")"
-          node platforms/node/scripts/assemble-packages.mjs --wasm --output-root "$package_root"
-          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
-          mkdir -p "$artifact_dir" "$smoke_root"
-          npm pack "$package_root/node-wasm" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-wasm-pack.json"
-          test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
-          cd "$smoke_root"
-          npm init -y >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
-          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
-            --project "$smoke_root" \
-            --version "$version" \
-            --target node-wasm
-
-      - name: Build and probe the real Node N-API candidate
-        if: matrix.candidate == 'napi'
-        run: |
-          set -euo pipefail
-          docker build \
-            --platform linux/amd64 \
-            --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
-            --build-arg RUST_IMAGE=rust:1.95-bullseye \
-            --tag merman-node-gnu:ci \
-            platforms/node
-          docker run --rm \
-            --platform linux/amd64 \
-            -e CARGO_INCREMENTAL=0 \
-            -v "$GITHUB_WORKSPACE:/work" \
-            -w /work \
-            merman-node-gnu:ci \
-            sh -c '
-              set -eu
-              git config --global --add safe.directory /work
-              npm ci --prefix platforms/node
-              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
-              package_root="$(mktemp -d)/packages"
-              artifact_dir="$(mktemp -d)"
-              smoke_root="$(mktemp -d)"
-              version="$(node -e "const fs=require(\"fs\"); console.log(JSON.parse(fs.readFileSync(\"platforms/node/package-surfaces.json\", \"utf8\")).version)")"
-              node platforms/node/scripts/assemble-packages.mjs --target linux-x64-gnu --output-root "$package_root"
-              node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
-              npm pack "$package_root/node" --json --pack-destination "$artifact_dir" >/dev/null
-              npm pack "$package_root/linux-x64-gnu" --json --pack-destination "$artifact_dir" >/dev/null
-              cd "$smoke_root"
-              npm init -y >/dev/null
-              npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
-              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$version" --target linux-x64-gnu
-            '
-
-  typst-package:
-    name: typst-package
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.typst == 'true' && github.event_name != 'push' }}
-    runs-on: ubuntu-24.04
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      TYPST_CLI_VERSION: "0.15.1"
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          cache-targets: false
-
-      - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
-        with:
-          tool: wasm-tools@1.261.0
-
-      - name: Install wasm-opt
-        uses: sigoden/install-binary@v1.3.0
-        with:
-          repo: WebAssembly/binaryen
-          name: wasm-opt
-          tag: version_133
-
-      - name: Download Typst
-        shell: bash
-        run: |
-          set -euo pipefail
-          typst_asset="typst-x86_64-unknown-linux-musl.tar.xz"
-          typst_root="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}"
-          download_dir="$(mktemp -d)"
-          curl -fsSL --retry 3 --retry-connrefused --retry-delay 2 \
-            -o "${download_dir}/${typst_asset}" \
-            "https://github.com/typst/typst/releases/download/v${TYPST_CLI_VERSION}/${typst_asset}"
-          tar -xJf "${download_dir}/${typst_asset}" -C "${download_dir}"
-          mkdir -p "${typst_root}"
-          install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
-          "${typst_root}/typst" --version
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
-        with:
-          tool: nextest
-
-      - name: Test Typst plugin crate
-        run: |
-          cargo nextest run --locked -p merman-typst-plugin --no-default-features
-          cargo nextest run --locked -p merman-typst-plugin --no-default-features \
-            --features all-diagrams,analysis,layout-cytoscape,layout-elk,svg
-
-      - name: Check exact Typst WASM size budget
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
-      - name: Check exact Typst dependency closure
-        run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
-
-      - name: Build and validate Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish
-
-      - name: Smoke Typst package
-        shell: bash
-        run: |
-          set -euo pipefail
-          typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
-          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --typst "${typst_bin}"
-
-      - name: Upload Typst package smoke artifacts
-        if: failure()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: typst-package-smoke
-          path: target/typst-package-smoke
-          if-no-files-found: ignore
-
-  typst-package-compat:
-    name: typst-package-compat
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.typst == 'true' && github.event_name == 'push' }}
-    runs-on: ubuntu-24.04
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      TYPST_COMPAT_CLI_VERSION: "0.15.0"
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          cache-targets: false
-
-      - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
-        with:
-          tool: wasm-tools@1.261.0
-
-      - name: Install wasm-opt
-        uses: sigoden/install-binary@v1.3.0
-        with:
-          repo: WebAssembly/binaryen
-          name: wasm-opt
-          tag: version_133
-
-      - name: Check WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
-      - name: Check exact Typst dependency closure
-        run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
-
-      - name: Build and validate Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish
-
-      - name: Download Typst compatibility version
-        shell: bash
-        run: |
-          set -euo pipefail
-          typst_asset="typst-x86_64-unknown-linux-musl.tar.xz"
-          typst_root="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}"
-          download_dir="$(mktemp -d)"
-          curl -fsSL --retry 3 --retry-connrefused --retry-delay 2 \
-            -o "${download_dir}/${typst_asset}" \
-            "https://github.com/typst/typst/releases/download/v${TYPST_COMPAT_CLI_VERSION}/${typst_asset}"
-          tar -xJf "${download_dir}/${typst_asset}" -C "${download_dir}"
-          mkdir -p "${typst_root}"
-          install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
-          "${typst_root}/typst" --version
-
-      - name: Smoke Typst compatibility version
-        shell: bash
-        run: |
-          set -euo pipefail
-          typst_bin="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}/typst"
-          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --tests-only --typst "${typst_bin}"
-
-      - name: Upload Typst package compatibility artifacts
-        if: failure()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: typst-package-compat-smoke
-          path: target/typst-package-smoke
-          if-no-files-found: ignore
-
-  platform-script-syntax:
-    name: platform-script-syntax
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check Python platform scripts
-        run: |
-          python3 -m py_compile \
-            scripts/verify-platform-bindings.py \
-            scripts/build-python-uniffi-wheel.py \
-            scripts/python_wheel_licenses.py \
-            platforms/android/build-android.py \
-            platforms/flutter/build-native.py
-
-      - name: Check shell scripts
-        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh
-
-  platform-bindings:
-    name: platform-bindings
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          components: llvm-tools-preview
-          targets: aarch64-linux-android
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          cache-targets: false
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2.23.0
-        with:
-          flutter-version: "3.47.7"
-          channel: stable
-          cache: true
-
-      - name: Verify platform bindings
-        run: python3 scripts/verify-platform-bindings.py
-
-  android-instrumentation:
-    name: android-instrumentation
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Read Android toolchain versions
-        id: android-toolchain
-        run: |
-          echo "java=$(python3 platforms/android/build-android.py --print-version java)" >> "$GITHUB_OUTPUT"
-          echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: aarch64-linux-android,x86_64-linux-android
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          cache-targets: false
-
-      - name: Setup JDK
-        uses: actions/setup-java@v6.1.0
-        with:
-          distribution: temurin
-          java-version: ${{ steps.android-toolchain.outputs.java }}
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6.4.0
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.4
-        with:
-          packages: platform-tools
-
-      - name: Install Android NDK
-        shell: bash
-        env:
-          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
-        run: |
-          set -euo pipefail
-          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35"
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
-
-      - name: Run Android JVM contract tests
-        run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
-
-      - name: Enable KVM access
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -e /dev/kvm ]]; then
-            echo "::error::/dev/kvm is unavailable; Android emulator instrumentation requires hardware acceleration on Linux."
-            exit 1
-          fi
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          ls -l /dev/kvm
-
-      - name: Run Android instrumentation smoke
-        uses: reactivecircus/android-emulator-runner@v2.38.0
-        with:
-          # The JNI smoke only needs minSdk coverage; the default image boots faster and flakes less.
-          api-level: 29
-          arch: x86_64
-          target: default
-          emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          disable-linux-hw-accel: false
-          script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke
-
-  python-uniffi-wheel:
-    name: python-uniffi-wheel
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.python == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-
-      - name: Build and smoke Python UniFFI wheel
-        run: python scripts/build-python-uniffi-wheel.py --run-smoke
-
-  c-ffi-example:
-    name: c-ffi-example
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-
-      - name: Build merman C ABI library
-        run: python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
-
-      - name: Build and run C example
-        run: |
-          profile_dir="$(python3 scripts/artifact_profile_recipe.py c-abi-native --field profile)"
-          library_dir="target/$profile_dir"
-          cc -I crates/merman-ffi/include \
-            crates/merman-ffi/examples/render_svg.c \
-            -L "$library_dir" -lmerman_ffi \
-            -Wl,-rpath,"$PWD/$library_dir" \
-            -o target/merman-ffi-render-svg
-          target/merman-ffi-render-svg | grep -q '<svg'
-
-  apple-swift-5-9-smoke:
-    name: apple-swift-5-9-smoke
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Select Xcode 15.2 and verify Swift 5.9
-        run: |
-          sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
-          swift --version
-          swift --version | grep -Eq 'Apple Swift version 5\.9(\.[0-9]+)?([[:space:]]|$)'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-
-      - name: Build iOS XCFramework with Swift 5.9
-        env:
-          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: bash scripts/build-apple-xcframework.sh --ios
-
-      - name: Type-check generated Swift with Swift 5.9
-        run: |
-          swiftc -typecheck -module-name Merman \
-            -target arm64-apple-ios14.0 \
-            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
-            -I platforms/apple/Merman.xcframework/ios-arm64/Headers \
-            platforms/apple/Sources/Merman/Generated/Merman.swift
-          swiftc -typecheck -module-name Merman \
-            -target arm64-apple-ios14.0-simulator \
-            -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
-            -I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers \
-            platforms/apple/Sources/Merman/Generated/Merman.swift
-          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
-
-  apple-uniffi-smoke:
-    name: apple-uniffi-smoke
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-
-      - name: Build Apple XCFramework
-        env:
-          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: bash scripts/build-apple-xcframework.sh
-
-      - name: Reject the complete published API 7 projection
-        run: |
-          git fetch --no-tags --depth=1 origin 580e39b69cc1b0ca35c4f8272683e622b2e9b8db
-          merman_native_host="$(rustc -vV | sed -n 's/^host: //p')"
-          python3 platforms/apple/tests/test_published_api7_loader.py \
-            --library "target/${merman_native_host}/native-sdk/libmerman_uniffi.dylib"
-
-      - name: Validate Swift package
-        run: |
-          swift package describe
-          swift build
-          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
-          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
-          swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
-          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
-
-  npm-owner:
-    name: npm-owner
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.npm == 'true' }}
-    uses: ./.github/workflows/npm-audit.yml
-
-  security-owner:
-    name: security-owner
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.security == 'true' }}
-    uses: ./.github/workflows/security-audit.yml
-    with:
-      representative_targets: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-
-  fuzz-owner:
-    name: fuzz-owner
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
-    uses: ./.github/workflows/fuzz.yml
-    with:
-      ci_only: true
-
-  grammar-owner:
-    name: grammar-owner
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.grammar == 'true' }}
-    uses: ./.github/workflows/tree-sitter-mermaid.yml
-
-  web-owner:
-    name: web-owner
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.web == 'true' }}
-    uses: ./.github/workflows/pages.yml
-    with:
-      ci_only: true
-
-  native-runtime-owner:
-    name: native-runtime-owner
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.cli == 'true' || needs.ci-plan.outputs.vscode == 'true' }}
-    uses: ./.github/workflows/vscode-extension.yml
-    with:
-      source_sha: ${{ github.sha }}
-      check_cli_profiles: ${{ needs.ci-plan.outputs.cli == 'true' }}
-      package_vscode: ${{ needs.ci-plan.outputs.vscode == 'true' }}
-
-  performance-contracts:
-    name: performance-contracts
-    needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.performance == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check performance owner contracts
-        run: |
-          python3 -m py_compile \
-            tools/bench/compare_mermaid_renderers.py \
-            tools/bench/compare_self.py \
-            tools/bench/corpus_utils.py \
-            tools/bench/freeze_perf_baseline.py \
-            tools/bench/native_memory.py \
-            tools/bench/perf_runner.py \
-            tools/bench/render_perf_comment.py \
-            tools/bench/run_layout_work_calibration.py \
-            tools/bench/run_native_memory.py \
-            tools/bench/stage_spotcheck.py \
-            tools/bench/verify_pipeline_bench_list.py
-          python3 tools/bench/test_perf_baseline_manifest.py
-          python3 -m unittest tools.bench.test_layout_work_calibration
-          python3 tools/bench/test_native_memory_contracts.py
-          python3 tools/bench/test_native_memory_driver_contracts.py
-          python3 tools/bench/test_perf_contracts.py
-
-  pr-gate:
-    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'pr-gate' || format('{0}-gate', github.event_name) }}
-    if: ${{ always() }}
-    needs:
-      - ci-plan
-      - workflow-analysis
-      - hygiene
-      - cli-contracts
-      - nix-cli-package
-      - cli-distribution
-      - arch-package
-      - build-test
-      - svg-parity
-      - node-contracts
-      - typst-package
-      - typst-package-compat
-      - platform-script-syntax
-      - platform-bindings
-      - android-instrumentation
-      - python-uniffi-wheel
-      - c-ffi-example
-      - apple-swift-5-9-smoke
-      - apple-uniffi-smoke
-      - npm-owner
-      - security-owner
-      - fuzz-owner
-      - grammar-owner
-      - web-owner
-      - native-runtime-owner
-      - performance-contracts
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Aggregate selected owner results
-        env:
-          # Do not pass the detailed plan through the runner environment.
-          CI_OWNER_SELECTIONS_JSON: ${{ needs.ci-plan.outputs.owners }}
-          CI_JOBS_JSON: |
-            {"workflow-analysis":{"owner":"workflow","required":true,"result":"${{ needs.workflow-analysis.result }}"},
-            "hygiene":{"owner":"hygiene","required":true,"result":"${{ needs.hygiene.result }}"},
-            "cli-contracts":{"owner":"cli","required":true,"result":"${{ needs.cli-contracts.result }}"},
-            "nix-cli-package":{"owner":"cli","required":true,"result":"${{ needs.nix-cli-package.result }}"},
-            "native-runtime-cli":{"owner":"cli","required":true,"result":"${{ needs.native-runtime-owner.result }}"},
-            "cli-distribution":{"owner":"cli","required":true,"result":"${{ needs.cli-distribution.result }}"},
-            "arch-package":{"owner":"arch","required":true,"result":"${{ needs.arch-package.result }}"},
-            "build-test":{"owner":"core","required":true,"result":"${{ needs.build-test.result }}"},
-            "svg-parity":{"owner":"core","required":${{ needs.ci-plan.outputs.svg_parity == 'true' }},"result":"${{ needs.svg-parity.result }}"},
-            "node-contracts":{"owner":"node","required":true,"result":"${{ needs.node-contracts.result }}"},
-            "typst-package":{"owner":"typst","required":${{ github.event_name != 'push' }},"result":"${{ needs.typst-package.result }}"},
-            "typst-package-compat":{"owner":"typst","required":${{ github.event_name == 'push' }},"result":"${{ needs.typst-package-compat.result }}"},
-            "platform-script-syntax":{"owner":"platform","required":true,"result":"${{ needs.platform-script-syntax.result }}"},
-            "platform-bindings":{"owner":"platform","required":true,"result":"${{ needs.platform-bindings.result }}"},
-            "android-instrumentation":{"owner":"platform","required":true,"result":"${{ needs.android-instrumentation.result }}"},
-            "python-uniffi-wheel":{"owner":"python","required":true,"result":"${{ needs.python-uniffi-wheel.result }}"},
-            "c-ffi-example":{"owner":"platform","required":true,"result":"${{ needs.c-ffi-example.result }}"},
-            "apple-swift-5-9-smoke":{"owner":"platform","required":true,"result":"${{ needs.apple-swift-5-9-smoke.result }}"},
-            "apple-uniffi-smoke":{"owner":"platform","required":true,"result":"${{ needs.apple-uniffi-smoke.result }}"},
-            "npm-owner":{"owner":"npm","required":true,"result":"${{ needs.npm-owner.result }}"},
-            "security-owner":{"owner":"security","required":true,"result":"${{ needs.security-owner.result }}"},
-            "fuzz-owner":{"owner":"fuzz","required":true,"result":"${{ needs.fuzz-owner.result }}"},
-            "grammar-owner":{"owner":"grammar","required":true,"result":"${{ needs.grammar-owner.result }}"},
-            "web-owner":{"owner":"web","required":true,"result":"${{ needs.web-owner.result }}"},
-            "native-runtime-vscode":{"owner":"vscode","required":true,"result":"${{ needs.native-runtime-owner.result }}"},
-            "performance-contracts":{"owner":"performance","required":true,"result":"${{ needs.performance-contracts.result }}"}}
-        run: python3 scripts/ci_plan.py gate --owners-json "$CI_OWNER_SELECTIONS_JSON" --jobs-json "$CI_JOBS_JSON"
+          import subprocess
+          from xml.etree import ElementTree
+
+          output = Path("package-output.txt").read_text().strip()
+          binary = str(Path(output) / "bin/merman-cli")
+          version = subprocess.run([binary, "--version"], check=True, capture_output=True, text=True)
+          assert version.stdout.strip() == "merman-cli 0.9.3", version.stdout
+          source = b"flowchart LR\n  A[Start] --> B[Done]\n"
+          formats = {"svg": None, "png": b"\x89PNG\r\n\x1a\n", "jpeg": b"\xff\xd8\xff", "pdf": b"%PDF-"}
+          for format, magic in formats.items():
+              result = subprocess.run(
+                  [binary, "render", "-", "--format", format],
+                  input=source, capture_output=True, timeout=120,
+              )
+              assert result.returncode == 0, (format, result.stderr)
+              if magic is None:
+                  assert ElementTree.fromstring(result.stdout).tag == "{http://www.w3.org/2000/svg}svg"
+              else:
+                  assert result.stdout.startswith(magic), (format, result.stdout[:32])
+              print(f"{format}: installed renderer produced {len(result.stdout)} bytes")
