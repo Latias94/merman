@@ -473,3 +473,37 @@ Setup receipts and environment declarations are retained in ignored
 `target/m8-linux-setup-20261030/` and the corresponding Linux scratch root. Environment preparation
 alone is not Linux filesystem, process-containment, browser or product execution evidence. Those
 owners must run against the frozen candidate source before their results are admitted below.
+
+## M8 implementation checkpoint and first executions
+
+The integrated implementation is committed locally as
+`d97d521bbee8e539b55d723d2246c76520c06053`. A verified Git bundle staged that exact commit and
+its complete reachable history in the task's ext4 source directory. The selected Mermaid
+reference retains its authentic Git identity. All 568 registry archives were rechecked against
+the candidate lock; its SHA-256 is
+`c19255d0822a0373fe1ccf76cb25c8e476c6ff5b483864c2c52482c94f576e68`.
+
+The complete all-feature facade, CLI, ASCII and Export nextest run passed all 2628 cases, with
+14 existing conditional/ignored cases skipped (`aba6883c-cc3b-4a72-b1a1-8200604d6ce1`). Five new
+independent-model construction/CSS regressions passed
+(`ce60e84e-a0dc-4c62-b2ea-85f3efe662f6`). These cover cheap item/text admission before depth
+indexes, cancellation during index construction, canonical CSS validation without explicit
+context, shared CSS accounting, and actual SVG preservation of model-owned styles.
+
+On the ext4 candidate, the real-browser parser oracle passed all nine Node tests and the
+reference-runtime packaging/path-containment owner passed all eight tests. These ran the selected
+Mermaid runtime in the private Chrome Headless Shell, including public parse/config observations
+and rejection of external imports, side output, compiler output escapes and a redirected artifact
+directory. They do not substitute for the Rust Unix process-tree/timeout and filesystem owners.
+
+The first strict feature run stopped at structural validation: the selector checker mistook
+ASCII's matching source-fixture dev dependency for a production selector edge. It now permits
+only the corresponding singleton selector on a metadata-declared dev dependency. Production
+forwarding remains required; cross-family and `all-diagrams` dev forwarding remain rejected.
+All 37 feature-matrix unit tests passed (`63dcfb23-a38f-4f97-aedd-64d94285636d`). The complete
+strict matrix is rerunning; no strict-matrix pass is claimed at this checkpoint.
+
+All 34 workspace packages passed individual `cargo fmt -- --check` runs. The aggregate command
+exceeds Windows' command-line limit; individual package invocation is the equivalent format owner.
+Whitespace checks passed, and published changelog sections remain identical after line-ending
+normalization to the main publication-sync baseline. There has been no push, tag or publication.

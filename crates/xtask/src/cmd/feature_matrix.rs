@@ -781,9 +781,17 @@ impl FeatureGraph {
                     expected_edges.insert(edge);
                 }
                 for member in &members {
+                    // Source-backed fixtures may select the matching parser through a dev-only
+                    // dependency. Production edges remain mandatory above; this permits no
+                    // cross-family or all-diagrams forwarding from a singleton selector.
+                    let dev_fixture_edge = package.dependencies.iter().any(|dependency| {
+                        dependency.kind.as_deref() == Some("dev")
+                            && member == &format!("{}/{}", dependency.name, selector.feature)
+                    });
                     if dependency_feature(member).is_some_and(|(_, feature)| {
                         feature == "all-diagrams" || expected.contains(feature)
                     }) && !expected_edges.contains(member)
+                        && !dev_fixture_edge
                     {
                         return Err(matrix_error(format!(
                             "{name}: {} has unexpected diagram selector edge `{member}`; expected {}",
@@ -2216,6 +2224,59 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("merman-render/diagram-flowchart")
+        );
+    }
+
+    #[test]
+    fn diagram_selectors_allow_only_matching_dev_fixture_forwarding() {
+        let mut graph = diagram_selector_contract_graph();
+        let ascii = graph.packages.get_mut("merman-ascii").unwrap();
+        ascii.dependencies.push(CargoDependency {
+            name: "merman-core".to_string(),
+            kind: Some("dev".to_string()),
+            uses_default_features: false,
+            optional: false,
+            features: vec!["presentation".to_string()],
+        });
+        ascii.features.insert(
+            "diagram-flowchart".to_string(),
+            vec!["merman-core/diagram-flowchart".to_string()],
+        );
+        graph.validate_diagram_selectors().unwrap();
+
+        for unexpected in ["merman-core/diagram-sequence", "merman-core/all-diagrams"] {
+            let members = graph
+                .packages
+                .get_mut("merman-ascii")
+                .unwrap()
+                .features
+                .get_mut("diagram-flowchart")
+                .unwrap();
+            members.push(unexpected.to_string());
+            assert!(
+                graph
+                    .validate_diagram_selectors()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("unexpected diagram selector edge")
+            );
+            graph
+                .packages
+                .get_mut("merman-ascii")
+                .unwrap()
+                .features
+                .get_mut("diagram-flowchart")
+                .unwrap()
+                .pop();
+        }
+
+        graph.packages.get_mut("merman-ascii").unwrap().dependencies[0].kind = None;
+        assert!(
+            graph
+                .validate_diagram_selectors()
+                .unwrap_err()
+                .to_string()
+                .contains("must forward")
         );
     }
 
