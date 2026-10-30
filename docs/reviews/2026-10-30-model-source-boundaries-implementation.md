@@ -18,7 +18,7 @@ Status: M0 complete; M1–M3 implemented with integration/retirement work still 
 | M1 | In progress | Shared lifecycle/config/runtime/resources/text and the pinned data-only identity catalog moved; source provider bindings remain core-owned. Final consumer retirement and M8 admission remain open. |
 | M2 | In progress | All 34 canonical payloads and nine real full-data groups moved. The six redundant wrappers are retired; core/model all-family tests passed 2336 cases. Graphical context/projection admission and old-path retirement remain open. |
 | M3 | In progress | ASCII production uses model directly; all 1397 runtime tests passed. Independent output receipt and remaining product/feature gates are open. |
-| M4 | In progress | Requested-fix implementation is active; no admission result yet. |
+| M4 | In progress | Default-off requested fixes implemented; diagnostics-only and fixes-capable semantic recipes passed 287 and 322 tests. Compatibility JSON, host migration and independent receipts remain open. |
 | M5 | In progress | Shared markup implementation extracted and its 55 tests passed; immutable presentation and parser-free Render/Export remain open. |
 | M6–M8 | Open | Final product, retirement and acceptance work remains. |
 
@@ -284,3 +284,32 @@ Evidence is retained at ignored `target/bench/experiments/model-source-boundarie
 reconciliation record above. The experiment registration indexes this checkpoint. This is the
 independent model-to-ASCII lane only. Source-to-ASCII, graphical/export, analysis/fixes, controlled
 cold compilation and final product/feature/legal/package gates remain part of the active goal.
+
+
+## M4 requested-fix checkpoint
+
+Analysis now separates compiled repair capability from replacement generation for a diagnostic
+projection. `merman-analysis/fixes` is default-off. `FixGeneration::Omit` is the default policy;
+`Generate` is available only with that feature. Both diagnostic policy and analysis options expose
+an explicit `with_fix_generation` choice. Diagnostic/fix DTO and option wire schemas are unchanged.
+
+Canonical diagnostic candidates retain bounded immutable repair evidence instead of eager fix
+vectors. Rule selection, suppression and severity projection precede replacement generation.
+Shared YAML migration edits are materialized once within each requesting projection. Markdown
+projections map the complete action transaction back to the same original document. Omit/Generate
+reuse source allocations, parser facts, environment identity, repair evidence and fence identities;
+no reparse or mutable canonical-fix cache is added. Retained evidence accounting uses the shared
+iterative JSON allocation-weight helper in production. Captured repair config is bounded authored
+data; source-site configuration is released after capture.
+
+The semantic all-family diagnostic recipe passed 287 tests
+(`7a124ee2-1377-4c16-a583-9d90bd5cf6bc`), and the fixes-capable recipe passed 322 tests
+(`48dcbe6a-d059-42ca-a541-9c3a031f25d2`). Counts overlap. Both production-library recipes passed
+Clippy with `-D warnings`. Their actual normal/build Cargo trees exclude `serde-saphyr` without
+fixes and include the existing writer when fixes is selected. The fixed independent fixes consumer
+now explicitly selects the feature and Generate, retaining its original inputs and applied-edit
+contract; original M0 source/fixture remains pinned separately.
+
+The compatibility-JSON analysis recipe waits for the active immutable-presentation integration.
+Host capability and product recipes, LSP diagnostic/code-action selection, complete independent
+receipts and final retention/installed-product gates remain required before closing M4.

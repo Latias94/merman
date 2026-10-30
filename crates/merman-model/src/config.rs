@@ -1,6 +1,5 @@
 //! Shared Mermaid configuration values with iterative ownership and pinned merge behavior.
 
-#[cfg(any(test, feature = "test-support"))]
 use crate::json::estimated_value_owned_heap_bytes;
 use crate::json::{
     clone_value_nonrecursive, clone_value_nonrecursive_controlled, drop_value_nonrecursive,
@@ -73,7 +72,7 @@ impl MermaidConfig {
         matches!(self.as_value(), Value::Object(map) if map.is_empty())
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    /// Estimates owned JSON allocation weight for retained-evidence budgeting.
     pub fn estimated_owned_heap_bytes(&self) -> usize {
         estimated_value_owned_heap_bytes(self.as_value())
     }

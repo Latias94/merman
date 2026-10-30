@@ -165,7 +165,7 @@ fn value_clone_weight(value: &Value) -> usize {
     })
 }
 
-#[cfg(any(test, feature = "test-support"))]
+/// Estimates the allocation weight of an owned JSON value without recursive traversal.
 pub fn estimated_value_owned_heap_bytes(value: &Value) -> usize {
     let mut retained_bytes = 0usize;
     let mut stack = vec![value];

@@ -1,21 +1,19 @@
+use crate::repair::{
+    ConfigMigrationEvidence, MAX_CONFIG_MIGRATION_FIX_EDITS, MAX_CONFIG_MIGRATION_FIX_WEIGHT_BYTES,
+    MAX_FRONTMATTER_MIGRATION_INPUT_BYTES, MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES,
+    MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH, MAX_FRONTMATTER_MIGRATION_OUTPUT_BYTES,
+};
 use crate::{
     AnalysisCancellationToken, AnalysisCancelled, DiagnosticFix, DiagnosticFixEdit, SourceMap,
 };
 #[cfg(test)]
+use merman_core::preprocess::SourceConfigEvidence;
+#[cfg(test)]
 use merman_core::preprocess::{parse_frontmatter_yaml_fields, split_frontmatter_block};
-use merman_core::{MermaidConfig, SourceSpan, preprocess::SourceConfigEvidence};
+use merman_core::{MermaidConfig, SourceSpan};
 use serde_json::{Map, Value};
 
 const REWRITE_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;
-// Quick fixes are advisory. Bound every owned migration input and the complete replacement output
-// independently from source limits because YAML alias materialization and frontmatter indentation
-// can amplify the captured source config while analysis itself may be configured without a limit.
-const MAX_CONFIG_MIGRATION_FIX_WEIGHT_BYTES: usize = 1024 * 1024;
-const MAX_FRONTMATTER_MIGRATION_INPUT_BYTES: usize = 1024 * 1024;
-const MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES: usize = 1024 * 1024;
-const MAX_FRONTMATTER_MIGRATION_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
-const MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH: usize = 64;
-const MAX_CONFIG_MIGRATION_FIX_EDITS: usize = 128;
 
 struct BoundedMigrationConfig(Value);
 
@@ -39,60 +37,43 @@ impl BoundedMigrationConfig {
     }
 }
 
-pub(crate) fn init_directives_to_frontmatter_fix_cancellable(
-    source: &str,
-    source_map: &SourceMap,
-    config: &MermaidConfig,
-    evidence: &SourceConfigEvidence,
+pub(crate) fn materialize_config_migration_cancellable(
+    evidence: &ConfigMigrationEvidence,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<DiagnosticFix>, AnalysisCancelled> {
     cancellation.checkpoint()?;
-    if !evidence.rewrite_safe() {
+    if evidence.removals.is_empty() {
         return Ok(None);
     }
-    let mut init_directives = Vec::with_capacity(MAX_CONFIG_MIGRATION_FIX_EDITS);
-    for (index, directive) in evidence.directives().iter().enumerate() {
-        if index.is_multiple_of(128) {
-            cancellation.checkpoint()?;
-        }
-        if !directive.complete() || !matches!(directive.keyword(), "init" | "initialize") {
-            continue;
-        }
-        if init_directives.len() == MAX_CONFIG_MIGRATION_FIX_EDITS {
-            return Ok(None);
-        }
-        init_directives.push(directive);
-    }
-    cancellation.checkpoint()?;
-    if init_directives.is_empty() {
-        return Ok(None);
-    }
-
-    let Some(config) = BoundedMigrationConfig::capture(config, cancellation)? else {
+    let Some(config) = BoundedMigrationConfig::capture(&evidence.authored_config, cancellation)?
+    else {
         return Ok(None);
     };
-    if matches!(&config.0, Value::Object(map) if map.is_empty()) {
-        return Ok(None);
-    }
-
-    let mut removals = Vec::with_capacity(init_directives.len());
-    for directive in init_directives {
-        removals.push(directive_removal_span_cancellable(
-            source,
-            directive.full_span(),
-            cancellation,
-        )?);
-    }
-
     frontmatter_config_fix_cancellable(
-        source,
-        source_map,
+        evidence.source_map.source(),
+        &evidence.source_map,
         config,
         evidence,
-        removals,
+        evidence.removals.clone(),
         "Move init directive config into frontmatter",
         cancellation,
     )
+}
+
+#[cfg(test)]
+fn init_directives_to_frontmatter_fix_cancellable(
+    _source: &str,
+    source_map: &SourceMap,
+    config: &MermaidConfig,
+    source_config: &SourceConfigEvidence,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Option<DiagnosticFix>, AnalysisCancelled> {
+    let Some(evidence) =
+        ConfigMigrationEvidence::capture(source_map, config, source_config, cancellation)?
+    else {
+        return Ok(None);
+    };
+    materialize_config_migration_cancellable(&evidence, cancellation)
 }
 
 #[cfg(test)]
@@ -117,7 +98,7 @@ fn frontmatter_config_fix_cancellable(
     source: &str,
     source_map: &SourceMap,
     config: BoundedMigrationConfig,
-    evidence: &SourceConfigEvidence,
+    evidence: &ConfigMigrationEvidence,
     removals: Vec<SourceSpan>,
     title: &'static str,
     cancellation: &AnalysisCancellationToken,
@@ -202,9 +183,12 @@ pub(crate) fn frontmatter_config_fix(
 ) -> Option<DiagnosticFix> {
     let cancellation = AnalysisCancellationToken::new();
     let config = MermaidConfig::from_value(config);
+    let source_config = crate::test_support::capture_source_config_evidence(source);
+    let evidence =
+        ConfigMigrationEvidence::capture(source_map, &config, &source_config, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")?;
     let config = BoundedMigrationConfig::capture(&config, &cancellation)
         .expect("a private analysis cancellation token cannot be cancelled")?;
-    let evidence = crate::test_support::capture_source_config_evidence(source);
     frontmatter_config_fix_cancellable(
         source,
         source_map,
@@ -225,14 +209,14 @@ struct FrontmatterEdit {
 fn frontmatter_config_edit_cancellable(
     source: &str,
     config: BoundedMigrationConfig,
-    evidence: &SourceConfigEvidence,
+    evidence: &ConfigMigrationEvidence,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<FrontmatterEdit>, AnalysisCancelled> {
     let config = config.into_value();
     let newline = newline_for_source_cancellable(source, cancellation)?;
     cancellation.checkpoint()?;
-    let Some(frontmatter_evidence) = evidence.frontmatter() else {
-        let insert_span = evidence.config_insert_span();
+    let Some(frontmatter_evidence) = evidence.frontmatter.as_ref() else {
+        let insert_span = evidence.config_insert_span;
         if insert_span.start != insert_span.end || insert_span.end > source.len() {
             return Ok(None);
         }
@@ -249,8 +233,8 @@ fn frontmatter_config_edit_cancellable(
             replacement,
         }));
     };
-    let full_span = frontmatter_evidence.full_span();
-    let body_span = frontmatter_evidence.body_span();
+    let full_span = frontmatter_evidence.full_span;
+    let body_span = frontmatter_evidence.body_span;
     let Some(frontmatter_source) = source.get(full_span.start..full_span.end) else {
         return Ok(None);
     };
@@ -262,15 +246,15 @@ fn frontmatter_config_edit_cancellable(
     cancellation.checkpoint()?;
 
     let newline = newline_for_source_cancellable(frontmatter_source, cancellation)?;
-    if !frontmatter_evidence.has_config() {
-        let insert_span = evidence.config_insert_span();
+    if !frontmatter_evidence.has_config {
+        let insert_span = evidence.config_insert_span;
         if insert_span.start != insert_span.end || insert_span.end > source.len() {
             return Ok(None);
         }
         let replacement = frontmatter_config_insertion_cancellable(
             source,
             body_span,
-            frontmatter_evidence.indent(),
+            frontmatter_evidence.indent.as_str(),
             config,
             newline,
             cancellation,
@@ -281,11 +265,11 @@ fn frontmatter_config_edit_cancellable(
             replacement,
         }));
     }
-    if !frontmatter_evidence.rewrite_safe() {
+    if !frontmatter_evidence.rewrite_safe {
         return Ok(None);
     }
 
-    let Some(fields) = frontmatter_evidence.fields() else {
+    let Some(fields) = frontmatter_evidence.fields.as_ref() else {
         return Ok(None);
     };
     let Some(fields) = fields
@@ -313,7 +297,7 @@ fn frontmatter_config_edit_cancellable(
     cancellation.checkpoint()?;
     let replacement = frontmatter_document_cancellable(
         frontmatter_fields_with_config(existing_fields, config),
-        frontmatter_evidence.indent(),
+        frontmatter_evidence.indent.as_str(),
         newline,
         cancellation,
     )?;
@@ -425,6 +409,8 @@ fn frontmatter_body_cancellable(
     // bounds keep serializer-internal scalar work finite during this atomic traversal.
     let fields = MermaidConfig::from_value(Value::Object(fields));
     let mut writer = BoundedYamlWriter::new(cancellation);
+    #[cfg(test)]
+    crate::test_support::record_fix_serialization();
     let serialization = serde_saphyr::to_fmt_writer(&mut writer, fields.as_value());
     let failure = writer.failure;
     let serialized = writer.text;
@@ -612,7 +598,7 @@ fn newline_for_source_cancellable(
     Ok("\n")
 }
 
-fn directive_removal_span_cancellable(
+pub(crate) fn directive_removal_span_cancellable(
     source: &str,
     directive: SourceSpan,
     cancellation: &AnalysisCancellationToken,

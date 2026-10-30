@@ -13,13 +13,18 @@ mod diagnostic_projection;
 pub mod document;
 mod document_limits;
 pub mod editor;
+#[cfg(all(test, feature = "diagram-flowchart"))]
+mod fix_generation_tests;
 pub mod markdown;
 pub mod options_json;
 mod payload;
 mod recovery;
+#[cfg(feature = "fixes")]
+mod repair;
 mod result;
 mod retained_weight;
 mod rules;
+#[cfg(feature = "fixes")]
 mod source_config_rewrite;
 mod source_limits;
 mod source_map;
@@ -30,7 +35,7 @@ mod test_support;
 pub use analyzer::{
     ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity,
     AnalysisOptions, AnalysisResourceLimitDescriptor, AnalysisResourceLimits,
-    AnalysisSnapshotPolicy, Analyzer, MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+    AnalysisSnapshotPolicy, Analyzer, FixGeneration, MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
     analysis_resource_profile_value,
 };
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};

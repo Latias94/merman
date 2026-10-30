@@ -134,12 +134,34 @@ impl AnalysisResourceLimits {
     }
 }
 
+/// Selects fix materialization for one diagnostic projection.
+///
+/// This policy does not affect snapshot identity or the options JSON contract.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FixGeneration {
+    /// Project diagnostics without constructing replacement edits.
+    #[default]
+    Omit,
+    /// Construct fixes for retained diagnostics using their captured repair evidence.
+    #[cfg(feature = "fixes")]
+    Generate,
+}
+
 /// Inputs that reproject diagnostics without rebuilding parser-owned facts.
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct AnalysisDiagnosticPolicy {
     /// Enabled rules, profiles, and severity overrides.
     pub rule_config: AnalysisRuleConfig,
+    /// Replacement generation is explicitly requested per projection.
+    pub fix_generation: FixGeneration,
+}
+
+impl AnalysisDiagnosticPolicy {
+    pub const fn with_fix_generation(mut self, fix_generation: FixGeneration) -> Self {
+        self.fix_generation = fix_generation;
+        self
+    }
 }
 
 impl Default for AnalysisSnapshotPolicy {
@@ -221,6 +243,11 @@ impl AnalysisOptions {
 
     pub fn with_rule_config(mut self, rule_config: AnalysisRuleConfig) -> Self {
         self.diagnostics.rule_config = rule_config;
+        self
+    }
+
+    pub const fn with_fix_generation(mut self, fix_generation: FixGeneration) -> Self {
+        self.diagnostics.fix_generation = fix_generation;
         self
     }
 
@@ -654,10 +681,19 @@ impl Analyzer {
         cancellation: &AnalysisCancellationToken,
     ) -> Result<CapturedDiagram, AnalysisCancelled> {
         cancellation.checkpoint()?;
+        let authored_config = match evidence {
+            DiagramAnalysisEvidence::Parsed { metadata, .. }
+            | DiagramAnalysisEvidence::ParseFailed { metadata, .. }
+            | DiagramAnalysisEvidence::Panic {
+                metadata: Some(metadata),
+                ..
+            } => Some(&metadata.config),
+            _ => None,
+        };
         let source_lints = crate::rules::source_lint_candidates_cancellable(
             source,
             source_map,
-            evidence.config_for_rewrite(),
+            authored_config,
             evidence.source_config(),
             cancellation,
         )?;
@@ -1114,33 +1150,6 @@ impl DiagramAnalysisEvidence {
             | Self::ParseFailed { source_config, .. } => source_config,
             #[cfg(feature = "compat-json")]
             Self::NoSnapshot { source_config } => source_config,
-        }
-    }
-
-    fn config_for_rewrite(&self) -> Option<&MermaidConfig> {
-        match self {
-            Self::Parsed {
-                metadata,
-                source_config,
-                ..
-            }
-            | Self::ParseFailed {
-                metadata,
-                source_config,
-                ..
-            } if source_config.rewrite_safe() => Some(&metadata.config),
-            Self::Panic {
-                metadata: Some(metadata),
-                source_config,
-                ..
-            } if source_config.rewrite_safe() => Some(&metadata.config),
-            Self::EmptySource { .. }
-            | Self::OperationError { .. }
-            | Self::Panic { .. }
-            | Self::Parsed { .. }
-            | Self::ParseFailed { .. } => None,
-            #[cfg(feature = "compat-json")]
-            Self::NoSnapshot { .. } => None,
         }
     }
 }

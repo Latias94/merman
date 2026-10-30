@@ -255,7 +255,7 @@ fn remap_diagnostic_spans_cancellable(
         DiagnosticLocationsMut {
             span: &mut diagnostic.span,
             related: &mut diagnostic.related,
-            fixes: &mut diagnostic.fixes,
+            fixes: Some(&mut diagnostic.fixes),
         },
         remapped_fix_edits,
         cancellation,
@@ -266,7 +266,7 @@ fn remap_diagnostic_spans_cancellable(
 struct DiagnosticLocationsMut<'a> {
     span: &'a mut Option<DiagnosticSpan>,
     related: &'a mut [DiagnosticRelated],
-    fixes: &'a mut Vec<DiagnosticFix>,
+    fixes: Option<&'a mut Vec<DiagnosticFix>>,
 }
 
 fn remap_diagnostic_locations_cancellable(
@@ -295,36 +295,42 @@ fn remap_diagnostic_locations_cancellable(
         };
     }
 
-    for (fix_index, fix) in locations.fixes.iter_mut().enumerate() {
-        if fix_index.is_multiple_of(128) {
-            cancellation.checkpoint()?;
-        }
-        let source_allocation = Arc::as_ptr(&fix.edits) as *const DiagnosticFixEdit as usize;
-        if let Some(edits) = remapped_fix_edits.get(&source_allocation) {
-            fix.edits = Arc::clone(edits);
-            continue;
-        }
-
-        let mut remapped = Vec::with_capacity(fix.edits.len());
-        for (edit_index, edit) in fix.edits.iter().enumerate() {
-            if edit_index.is_multiple_of(128) {
+    if let Some(fixes) = locations.fixes {
+        for (fix_index, fix) in fixes.iter_mut().enumerate() {
+            if fix_index.is_multiple_of(128) {
                 cancellation.checkpoint()?;
             }
-            let mut edit = edit.clone();
-            let Some(span) =
-                remap_span_to_document_cancellable(source_map, diagram, edit.span, cancellation)?
-            else {
-                remapped.clear();
-                break;
-            };
-            edit.span = span;
-            remapped.push(edit);
+            let source_allocation = Arc::as_ptr(&fix.edits) as *const DiagnosticFixEdit as usize;
+            if let Some(edits) = remapped_fix_edits.get(&source_allocation) {
+                fix.edits = Arc::clone(edits);
+                continue;
+            }
+
+            let mut remapped = Vec::with_capacity(fix.edits.len());
+            for (edit_index, edit) in fix.edits.iter().enumerate() {
+                if edit_index.is_multiple_of(128) {
+                    cancellation.checkpoint()?;
+                }
+                let mut edit = edit.clone();
+                let Some(span) = remap_span_to_document_cancellable(
+                    source_map,
+                    diagram,
+                    edit.span,
+                    cancellation,
+                )?
+                else {
+                    remapped.clear();
+                    break;
+                };
+                edit.span = span;
+                remapped.push(edit);
+            }
+            let remapped = Arc::<[DiagnosticFixEdit]>::from(remapped);
+            remapped_fix_edits.insert(source_allocation, Arc::clone(&remapped));
+            fix.edits = remapped;
         }
-        let remapped = Arc::<[DiagnosticFixEdit]>::from(remapped);
-        remapped_fix_edits.insert(source_allocation, Arc::clone(&remapped));
-        fix.edits = remapped;
+        fixes.retain(|fix| !fix.edits.is_empty());
     }
-    locations.fixes.retain(|fix| !fix.edits.is_empty());
 
     cancellation.checkpoint()?;
     Ok(())
@@ -697,7 +703,7 @@ pub(crate) fn normalize_document_diagnostic_candidates_cancellable(
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        let candidate = candidate.try_map_locations(|span, related, fixes| {
+        let candidate = candidate.try_map_locations(|span, related| {
             remap_diagnostic_locations_cancellable(
                 source_map,
                 diagram,
@@ -705,12 +711,15 @@ pub(crate) fn normalize_document_diagnostic_candidates_cancellable(
                 DiagnosticLocationsMut {
                     span,
                     related,
-                    fixes,
+                    fixes: None,
                 },
                 &mut remapped_fix_edits,
                 cancellation,
             )
         })?;
+        #[cfg(feature = "fixes")]
+        let candidate =
+            candidate.map_repair_to_document(source_map, diagram.body_start, cancellation)?;
         normalized.push(match &source_context {
             Some(context) => candidate.with_trailing_source_context(context.clone()),
             None => candidate,
@@ -1699,6 +1708,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "fixes")]
     fn diagnostic_reprojection_preserves_markdown_spans_and_fixes() {
         let text = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter";
         let source = source_descriptor_for_markdown_path(Some("example.md"));
@@ -1706,12 +1716,14 @@ mod tests {
             .into_ready()
             .expect("source is within the analysis limit");
         let analyzer = Analyzer::with_options(
-            AnalysisOptions::default().with_rule_config(
-                crate::AnalysisRuleConfig::default()
-                    .with_profile(crate::AnalysisRuleProfile::Recommended)
-                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
-                    .unwrap(),
-            ),
+            AnalysisOptions::default()
+                .with_fix_generation(crate::FixGeneration::Generate)
+                .with_rule_config(
+                    crate::AnalysisRuleConfig::default()
+                        .with_profile(crate::AnalysisRuleProfile::Recommended)
+                        .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                        .unwrap(),
+                ),
         );
 
         let reprojected = result.project(analyzer.options().diagnostic_policy());
@@ -1734,6 +1746,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "fixes")]
     fn markdown_remapping_preserves_shared_document_migration_edits() {
         let text = concat!(
             "before\n```mermaid\n",
@@ -1748,6 +1761,7 @@ mod tests {
         let policy = crate::AnalysisDiagnosticPolicy {
             rule_config: crate::AnalysisRuleConfig::default()
                 .with_profile(crate::AnalysisRuleProfile::Recommended),
+            fix_generation: crate::FixGeneration::Generate,
         };
 
         let payload = generation.project(&policy);

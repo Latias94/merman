@@ -1,6 +1,6 @@
 use crate::{
-    AnalysisDiagnostic, AnalysisDiagnosticTag, AnalysisStatus, DiagnosticCategory, DiagnosticFix,
-    DiagnosticFixEdit, DiagnosticSeverity, DiagnosticSpan, SourceMap,
+    AnalysisDiagnostic, AnalysisDiagnosticTag, AnalysisStatus, DiagnosticCategory,
+    DiagnosticSeverity, DiagnosticSpan, SourceMap,
     diagnostic_projection::{
         DiagnosticCandidate, append_diagnostic_candidates_cancellable,
         rule_candidate_without_default_span,
@@ -856,7 +856,7 @@ const PREFER_INIT_SUPPRESSORS: &[RuleDescriptor] = &[PREFER_FRONTMATTER_CONFIG_R
 pub(crate) fn source_lint_candidates_cancellable(
     source: &str,
     source_map: &SourceMap,
-    captured_config: Option<&MermaidConfig>,
+    authored_config: Option<&MermaidConfig>,
     source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
@@ -870,7 +870,7 @@ pub(crate) fn source_lint_candidates_cancellable(
         prefer_frontmatter_config_candidates_with_config_cancellable(
             source,
             source_map,
-            captured_config,
+            authored_config,
             source_config,
             cancellation,
         )?,
@@ -924,22 +924,20 @@ pub(crate) fn source_lint_diagnostics(
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
-    let captured_config =
+    let authored_config =
         crate::test_support::capture_source_metadata(source).map(|metadata| metadata.config);
     let source_config = crate::test_support::capture_source_config_evidence(source);
     let candidates = source_lint_candidates_cancellable(
         source,
         source_map,
-        captured_config.as_ref(),
+        authored_config.as_ref(),
         &source_config,
         &cancellation,
     )
     .expect("a private analysis cancellation token cannot be cancelled");
     crate::diagnostic_projection::project_diagnostic_candidates(
         &candidates,
-        &crate::AnalysisDiagnosticPolicy {
-            rule_config: rule_config.clone(),
-        },
+        &crate::test_support::diagnostic_policy(rule_config.clone()),
         &cancellation,
     )
     .expect("a private analysis cancellation token cannot be cancelled")
@@ -963,9 +961,7 @@ pub(crate) fn parsed_source_lint_diagnostics(
     .expect("a private analysis cancellation token cannot be cancelled");
     crate::diagnostic_projection::project_diagnostic_candidates(
         &candidates,
-        &crate::AnalysisDiagnosticPolicy {
-            rule_config: rule_config.clone(),
-        },
+        &crate::test_support::diagnostic_policy(rule_config.clone()),
         &cancellation,
     )
     .expect("a private analysis cancellation token cannot be cancelled")
@@ -1005,9 +1001,7 @@ pub(crate) fn semantic_warning_diagnostics_cancellable(
     )?;
     crate::diagnostic_projection::project_diagnostic_candidates(
         &candidates,
-        &crate::AnalysisDiagnosticPolicy {
-            rule_config: rule_config.clone(),
-        },
+        &crate::test_support::diagnostic_policy(rule_config.clone()),
         cancellation,
     )
 }
@@ -1082,7 +1076,8 @@ fn warning_for_fact_candidate_cancellable(
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<DiagnosticCandidate, crate::AnalysisCancelled> {
     let span = warning_fact_span_cancellable(fact, source_map, fallback_span, cancellation)?;
-    let fix = warning_fact_fix_cancellable(fact, descriptor, source_map, cancellation)?;
+    #[cfg(feature = "fixes")]
+    let repair = warning_fact_repair_cancellable(fact, descriptor, source_map, cancellation)?;
     let mut candidate =
         DiagnosticCandidate::new(descriptor, fact.message.clone()).with_diagram_type(diagram_type);
 
@@ -1090,8 +1085,9 @@ fn warning_for_fact_candidate_cancellable(
         candidate = candidate.with_span(span);
     }
 
-    if let Some(fix) = fix {
-        candidate = candidate.with_fix(fix);
+    #[cfg(feature = "fixes")]
+    if let Some(repair) = repair {
+        candidate = candidate.with_repair(repair);
     }
 
     Ok(candidate)
@@ -1112,12 +1108,13 @@ fn warning_fact_span_cancellable(
     Ok(span.or(fallback_span))
 }
 
-fn warning_fact_fix_cancellable(
+#[cfg(feature = "fixes")]
+fn warning_fact_repair_cancellable(
     fact: &DiagramWarningFact,
     descriptor: RuleDescriptor,
     source_map: &SourceMap,
     cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Option<DiagnosticFix>, crate::AnalysisCancelled> {
+) -> Result<Option<crate::repair::RepairEvidence>, crate::AnalysisCancelled> {
     let Some(fix_span) = fact.fix_span.or(fact.span) else {
         return Ok(None);
     };
@@ -1128,13 +1125,11 @@ fn warning_fact_fix_cancellable(
         return Ok(None);
     };
     Ok(match descriptor.id {
-        FLOWCHART_EXPLICIT_DIRECTION_RULE_ID => Some(
-            DiagnosticFix::new(
-                "Insert `TB` into the flowchart header",
-                vec![DiagnosticFixEdit::new(fix_span, " TB")],
-            )
-            .preferred(),
-        ),
+        FLOWCHART_EXPLICIT_DIRECTION_RULE_ID => Some(crate::repair::RepairEvidence::Replacement {
+            span: fix_span,
+            title: "Insert `TB` into the flowchart header",
+            replacement: " TB",
+        }),
         _ => None,
     })
 }
@@ -1193,47 +1188,32 @@ fn init_directive_alias_candidates_cancellable(
         else {
             continue;
         };
-        candidates.push(
-            DiagnosticCandidate::new(
-                PREFER_INIT_DIRECTIVE_RULE,
-                "prefer `init` directive keyword over the `initialize` alias",
-            )
-            .with_span(span)
-            .with_help("`initialize` is accepted as an alias; `init` is the canonical Mermaid directive keyword.")
-            .with_fix(
-                DiagnosticFix::new(
-                    "Replace `initialize` with `init`",
-                    vec![DiagnosticFixEdit::new(span, "init")],
-                )
-                .preferred(),
-            )
-            .with_suppressors(PREFER_INIT_SUPPRESSORS),
-        );
+        let candidate = DiagnosticCandidate::new(
+            PREFER_INIT_DIRECTIVE_RULE,
+            "prefer `init` directive keyword over the `initialize` alias",
+        )
+        .with_span(span)
+        .with_help("`initialize` is accepted as an alias; `init` is the canonical Mermaid directive keyword.")
+        .with_suppressors(PREFER_INIT_SUPPRESSORS);
+        #[cfg(feature = "fixes")]
+        let candidate = candidate.with_repair(crate::repair::RepairEvidence::Replacement {
+            span,
+            title: "Replace `initialize` with `init`",
+            replacement: "init",
+        });
+        candidates.push(candidate);
     }
     cancellation.checkpoint()?;
     Ok(candidates)
 }
 
 fn prefer_frontmatter_config_candidates_with_config_cancellable(
-    source: &str,
+    _source: &str,
     source_map: &SourceMap,
-    captured_config: Option<&MermaidConfig>,
+    _authored_config: Option<&MermaidConfig>,
     source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
-    let fix = match captured_config {
-        Some(config) => {
-            crate::source_config_rewrite::init_directives_to_frontmatter_fix_cancellable(
-                source,
-                source_map,
-                config,
-                source_config,
-                cancellation,
-            )?
-        }
-        None => None,
-    };
-
     let mut candidates = Vec::new();
     for (index, directive) in source_config.directives().iter().enumerate() {
         if index.is_multiple_of(128) {
@@ -1247,48 +1227,56 @@ fn prefer_frontmatter_config_candidates_with_config_cancellable(
         else {
             continue;
         };
-        let mut candidate = DiagnosticCandidate::new(
-                PREFER_FRONTMATTER_CONFIG_RULE,
-                "prefer frontmatter `config` over Mermaid init directives",
-            )
-            .with_span(span)
-            .with_help(
-                "Mermaid deprecated directives from v10.5.0; diagram authors should move configuration into the diagram frontmatter `config` block.",
-            );
-        // Every matching diagnostic retains quick-fix discoverability. `DiagnosticFix`
-        // clones share the immutable edit allocation, so an aggregate N-edit migration does
-        // not become N independent retained edit arrays.
-        if let Some(fix) = fix.clone() {
-            candidate = candidate.with_fix(fix);
+        candidates.push(DiagnosticCandidate::new(
+            PREFER_FRONTMATTER_CONFIG_RULE,
+            "prefer frontmatter `config` over Mermaid init directives",
+        ).with_span(span).with_help(
+            "Mermaid deprecated directives from v10.5.0; diagram authors should move configuration into the diagram frontmatter `config` block.",
+        ));
+    }
+    #[cfg(feature = "fixes")]
+    if !candidates.is_empty()
+        && let Some(config) = _authored_config
+        && let Some(evidence) = crate::repair::ConfigMigrationEvidence::capture(
+            source_map,
+            config,
+            source_config,
+            cancellation,
+        )?
+    {
+        for (index, candidate) in candidates.iter_mut().enumerate() {
+            if index.is_multiple_of(128) {
+                cancellation.checkpoint()?;
+            }
+            candidate.set_repair(crate::repair::RepairEvidence::config_migration(
+                std::sync::Arc::clone(&evidence),
+            ));
         }
-        candidates.push(candidate);
     }
     cancellation.checkpoint()?;
     Ok(candidates)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "fixes"))]
 fn prefer_frontmatter_config_diagnostics_with_config(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-    captured_config: Option<&MermaidConfig>,
+    authored_config: Option<&MermaidConfig>,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
     let source_config = crate::test_support::capture_source_config_evidence(source);
     let candidates = prefer_frontmatter_config_candidates_with_config_cancellable(
         source,
         source_map,
-        captured_config,
+        authored_config,
         &source_config,
         &cancellation,
     )
     .expect("a private analysis cancellation token cannot be cancelled");
     crate::diagnostic_projection::project_diagnostic_candidates(
         &candidates,
-        &crate::AnalysisDiagnosticPolicy {
-            rule_config: rule_config.clone(),
-        },
+        &crate::test_support::diagnostic_policy(rule_config.clone()),
         &cancellation,
     )
     .expect("a private analysis cancellation token cannot be cancelled")

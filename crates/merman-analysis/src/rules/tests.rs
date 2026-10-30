@@ -28,18 +28,23 @@ fn source_lint_prefers_init_directive_and_provides_fix() {
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
     let span = diagnostic.span.as_ref().expect("keyword span");
     assert_eq!(&source[span.byte_start..span.byte_end], "initialize");
-    assert_eq!(diagnostic.fixes.len(), 1);
-    assert_eq!(
-        diagnostic.fixes[0].title,
-        "Replace `initialize` with `init`"
-    );
-    assert!(diagnostic.fixes[0].is_preferred);
-    assert_eq!(diagnostic.fixes[0].edits.len(), 1);
-    assert_eq!(diagnostic.fixes[0].edits[0].replacement, "init");
-    assert_eq!(
-        diagnostic.fixes[0].edits[0].span.byte_start,
-        span.byte_start
-    );
+    #[cfg(not(feature = "fixes"))]
+    assert!(diagnostic.fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(
+            diagnostic.fixes[0].title,
+            "Replace `initialize` with `init`"
+        );
+        assert!(diagnostic.fixes[0].is_preferred);
+        assert_eq!(diagnostic.fixes[0].edits.len(), 1);
+        assert_eq!(diagnostic.fixes[0].edits[0].replacement, "init");
+        assert_eq!(
+            diagnostic.fixes[0].edits[0].span.byte_start,
+            span.byte_start
+        );
+    }
 }
 
 #[test]
@@ -55,23 +60,28 @@ fn source_lint_prefers_frontmatter_config_over_init_directive() {
     assert_eq!(diagnostic.id, PREFER_FRONTMATTER_CONFIG_RULE_ID);
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-    assert_eq!(diagnostic.fixes.len(), 1);
-    assert_eq!(
-        diagnostic.fixes[0].title,
-        "Move init directive config into frontmatter"
-    );
-    assert!(diagnostic.fixes[0].is_preferred);
-    assert_eq!(diagnostic.fixes[0].edits.len(), 1);
-    assert!(
-        diagnostic.fixes[0].edits[0]
-            .replacement
-            .starts_with("---\nconfig:\n")
-    );
-    assert!(
-        diagnostic.fixes[0].edits[0]
-            .replacement
-            .contains("theme: dark\n")
-    );
+    #[cfg(not(feature = "fixes"))]
+    assert!(diagnostic.fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(
+            diagnostic.fixes[0].title,
+            "Move init directive config into frontmatter"
+        );
+        assert!(diagnostic.fixes[0].is_preferred);
+        assert_eq!(diagnostic.fixes[0].edits.len(), 1);
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .starts_with("---\nconfig:\n")
+        );
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .contains("theme: dark\n")
+        );
+    }
     let span = diagnostic.span.as_ref().expect("directive keyword span");
     assert_eq!(&source[span.byte_start..span.byte_end], "init");
 }
@@ -92,28 +102,34 @@ fn source_lint_prefers_frontmatter_config_over_initialize_directive() {
     assert_eq!(diagnostic.id, PREFER_FRONTMATTER_CONFIG_RULE_ID);
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-    assert_eq!(diagnostic.fixes.len(), 1);
-    assert_eq!(
-        diagnostic.fixes[0].title,
-        "Move init directive config into frontmatter"
-    );
-    assert!(diagnostic.fixes[0].is_preferred);
-    assert_eq!(diagnostic.fixes[0].edits.len(), 1);
-    assert!(
-        diagnostic.fixes[0].edits[0]
-            .replacement
-            .starts_with("---\nconfig:\n")
-    );
-    assert!(
-        diagnostic.fixes[0].edits[0]
-            .replacement
-            .contains("theme: dark\n")
-    );
+    #[cfg(not(feature = "fixes"))]
+    assert!(diagnostic.fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(
+            diagnostic.fixes[0].title,
+            "Move init directive config into frontmatter"
+        );
+        assert!(diagnostic.fixes[0].is_preferred);
+        assert_eq!(diagnostic.fixes[0].edits.len(), 1);
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .starts_with("---\nconfig:\n")
+        );
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .contains("theme: dark\n")
+        );
+    }
     let span = diagnostic.span.as_ref().expect("directive keyword span");
     assert_eq!(&source[span.byte_start..span.byte_end], "initialize");
 }
 
 #[test]
+#[cfg(feature = "fixes")]
 fn frontmatter_migration_fix_edits_are_shared_for_many_directives() {
     fn diagnostics_for(directive_count: usize) -> Vec<AnalysisDiagnostic> {
         let mut source = String::new();
@@ -169,6 +185,7 @@ fn frontmatter_migration_fix_edits_are_shared_for_many_directives() {
 }
 
 #[test]
+#[cfg(feature = "fixes")]
 fn frontmatter_migration_fix_respects_the_128_edit_boundary() {
     fn diagnostics_for(source: &str) -> Vec<AnalysisDiagnostic> {
         let source_map = SourceMap::new(source);
@@ -230,6 +247,7 @@ fn source_lint_pipeline_observes_cancellation_for_large_migration_source() {
 }
 
 #[test]
+#[cfg(feature = "fixes")]
 fn oversized_migration_config_keeps_diagnostics_without_materializing_a_fix() {
     let source = "%%{ init: { theme: 'dark' } }%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
@@ -462,7 +480,10 @@ fn source_lint_skips_unaddressable_escaped_json5_keys_but_keeps_migration_fix() 
         .iter()
         .find(|diagnostic| diagnostic.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
         .expect("the parsed directive remains safely removable");
+    #[cfg(feature = "fixes")]
     assert_eq!(migration.fixes.len(), 1);
+    #[cfg(not(feature = "fixes"))]
+    assert!(migration.fixes.is_empty());
 }
 
 #[test]
@@ -873,15 +894,20 @@ fn semantic_warning_facts_map_flowchart_missing_direction_rule_id() {
     assert_eq!(diagnostics[0].diagram_type.as_deref(), Some("flowchart-v2"));
     assert_eq!(diagnostics[0].span.as_ref().unwrap().byte_start, 0);
     assert_eq!(diagnostics[0].span.as_ref().unwrap().byte_end, 9);
-    assert_eq!(diagnostics[0].fixes.len(), 1);
-    assert_eq!(
-        diagnostics[0].fixes[0].title,
-        "Insert `TB` into the flowchart header"
-    );
-    assert!(diagnostics[0].fixes[0].is_preferred);
-    assert_eq!(diagnostics[0].fixes[0].edits[0].replacement, " TB");
-    assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_start, 9);
-    assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_end, 9);
+    #[cfg(not(feature = "fixes"))]
+    assert!(diagnostics[0].fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(diagnostics[0].fixes.len(), 1);
+        assert_eq!(
+            diagnostics[0].fixes[0].title,
+            "Insert `TB` into the flowchart header"
+        );
+        assert!(diagnostics[0].fixes[0].is_preferred);
+        assert_eq!(diagnostics[0].fixes[0].edits[0].replacement, " TB");
+        assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_start, 9);
+        assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_end, 9);
+    }
 }
 
 #[test]

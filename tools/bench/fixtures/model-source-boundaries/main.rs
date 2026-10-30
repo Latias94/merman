@@ -232,6 +232,8 @@ fn analysis(input: &Value) -> Result<Value> {
         .with_source(merman_analysis::source_descriptor_for_markdown_path(Some(
             field(input, "analysis_path")?,
         )));
+    #[cfg(feature = "analysis-fixes")]
+    let options = options.with_fix_generation(merman_analysis::FixGeneration::Generate);
     let analyzer = Analyzer::with_options(options);
     let source = field(input, "analysis")?;
     let generation = analyzer

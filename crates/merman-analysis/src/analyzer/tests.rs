@@ -218,6 +218,7 @@ fn semantic_analyzer_derivations_preserve_identity_scope_and_replace_site_config
     let cloned = base.clone();
     let diagnostics = base.with_diagnostic_policy(AnalysisDiagnosticPolicy {
         rule_config: AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ..Default::default()
     });
     assert_eq!(base.environment_identity(), cloned.environment_identity());
     assert_eq!(
@@ -321,6 +322,7 @@ fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
     let cloned = base.clone();
     let diagnostics = base.with_diagnostic_policy(AnalysisDiagnosticPolicy {
         rule_config: AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ..Default::default()
     });
 
     assert_eq!(base.environment_identity(), cloned.environment_identity());
@@ -389,7 +391,7 @@ fn analysis_generation_releases_parse_only_site_config_storage() {
             .with_fixed_today(merman_core::time::CivilDate::new(2026, 7, 30)),
     );
     let generation = analyzer
-        .analyze_generation("flowchart TD\nA-->B\n")
+        .analyze_generation("%%{ init: {theme: 'dark'} }%%\nflowchart TD\nA-->B\n")
         .into_ready()
         .expect("probe source should produce a generation");
 
@@ -398,6 +400,21 @@ fn analysis_generation_releases_parse_only_site_config_storage() {
 
     assert_eq!(mutable_allocation.cast_const(), original_allocation);
     assert_eq!(generation.source(), &SourceDescriptor::diagram());
+    #[cfg(feature = "fixes")]
+    {
+        let policy = AnalysisDiagnosticPolicy {
+            rule_config: AnalysisRuleConfig::default()
+                .with_profile(crate::AnalysisRuleProfile::Recommended),
+            fix_generation: crate::FixGeneration::Generate,
+        };
+        assert!(
+            generation
+                .project(&policy)
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { !diagnostic.fixes.is_empty() })
+        );
+    }
 }
 
 #[test]
@@ -1381,14 +1398,17 @@ fn editor_recovery_without_a_parser_span_falls_back_to_the_whole_source() {
 }
 
 #[test]
+#[cfg(feature = "fixes")]
 fn analyze_init_directive_alias_emits_safe_fix() {
     let analyzer = Analyzer::with_options(
-        AnalysisOptions::default().with_rule_config(
-            AnalysisRuleConfig::default()
-                .with_profile(AnalysisRuleProfile::Recommended)
-                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
-                .unwrap(),
-        ),
+        AnalysisOptions::default()
+            .with_fix_generation(crate::FixGeneration::Generate)
+            .with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                    .unwrap(),
+            ),
     );
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
     let payload = analyzer.analyze(source);
@@ -1612,10 +1632,8 @@ fn captured_config_survives_custom_parser_panic_without_a_second_engine() {
         .analyze_generation(source)
         .into_ready()
         .expect("fixture is within the source limit");
-    let first = generation.project(&AnalysisDiagnosticPolicy {
-        rule_config: rule_config.clone(),
-    });
-    let second = generation.project(&AnalysisDiagnosticPolicy { rule_config });
+    let first = generation.project(&crate::test_support::diagnostic_policy(rule_config.clone()));
+    let second = generation.project(&crate::test_support::diagnostic_policy(rule_config));
 
     assert_eq!(first, second);
     assert_eq!(CAPTURED_CONFIG_PANIC_CALLS.load(Ordering::SeqCst), 1);
@@ -1628,11 +1646,16 @@ fn captured_config_survives_custom_parser_panic_without_a_second_engine() {
         .iter()
         .find(|diagnostic| diagnostic.id == crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
         .expect("captured metadata should retain the authoring diagnostic");
-    assert_eq!(migration.fixes.len(), 1);
-    assert!(migration.fixes[0].is_preferred);
-    assert!(migration.fixes[0].edits.iter().any(|edit| {
-        edit.replacement.contains("config:") && edit.replacement.contains("theme: dark")
-    }));
+    #[cfg(not(feature = "fixes"))]
+    assert!(migration.fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(migration.fixes.len(), 1);
+        assert!(migration.fixes[0].is_preferred);
+        assert!(migration.fixes[0].edits.iter().any(|edit| {
+            edit.replacement.contains("config:") && edit.replacement.contains("theme: dark")
+        }));
+    }
 }
 
 #[test]
@@ -1931,13 +1954,16 @@ fn policy_neutral_candidate_corpus_covers_available_backend_rules() {
     let policies = [
         AnalysisDiagnosticPolicy {
             rule_config: AnalysisRuleConfig::default(),
+            ..Default::default()
         },
         AnalysisDiagnosticPolicy {
             rule_config: AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended),
+            ..Default::default()
         },
         AnalysisDiagnosticPolicy {
             rule_config: strict_rules,
+            ..Default::default()
         },
     ];
     let mut observed_rule_ids = BTreeSet::new();
@@ -2043,6 +2069,7 @@ fn config_authoring_rule_dominance_reprojects_all_four_enablement_combinations()
         generation
             .project(&AnalysisDiagnosticPolicy {
                 rule_config: severity_only,
+                ..Default::default()
             })
             .diagnostics
             .is_empty(),
@@ -2091,7 +2118,7 @@ fn config_authoring_rule_dominance_reprojects_all_four_enablement_combinations()
             )
             .unwrap();
 
-        let payload = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        let payload = generation.project(&crate::test_support::diagnostic_policy(rules));
         assert_eq!(payload.diagnostics.len(), usize::from(expected.is_some()));
         if let Some(expected) = expected {
             let diagnostic = &payload.diagnostics[0];
@@ -2104,7 +2131,10 @@ fn config_authoring_rule_dominance_reprojects_all_four_enablement_combinations()
                     DiagnosticSeverity::Warning
                 }
             );
+            #[cfg(feature = "fixes")]
             assert_eq!(diagnostic.fixes.len(), 1);
+            #[cfg(not(feature = "fixes"))]
+            assert!(diagnostic.fixes.is_empty());
         }
     }
 }
@@ -2149,7 +2179,10 @@ fn parse_and_recovery_rules_reproject_all_four_enablement_combinations() {
                 .unwrap();
         }
 
-        let payload = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        let payload = generation.project(&AnalysisDiagnosticPolicy {
+            rule_config: rules,
+            ..Default::default()
+        });
         assert_eq!(
             payload.valid, expected_valid,
             "parse={parse} recovery={recovery}"
@@ -2297,7 +2330,10 @@ fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
                 .unwrap();
         }
 
-        let projected = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        let projected = generation.project(&AnalysisDiagnosticPolicy {
+            rule_config: rules,
+            ..Default::default()
+        });
         assert_eq!(
             projected.diagnostics.len(),
             usize::from(expected_id.is_some()) * 2,
@@ -2482,6 +2518,7 @@ fn analysis_rule_registry_gap_surfaces_as_internal_error() {
         &candidates,
         &crate::AnalysisDiagnosticPolicy {
             rule_config: AnalysisRuleConfig::default(),
+            ..Default::default()
         },
         &crate::AnalysisCancellationToken::new(),
     )

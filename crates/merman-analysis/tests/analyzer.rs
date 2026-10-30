@@ -758,9 +758,12 @@ fn flowchart_missing_direction_is_not_reported_by_core_profile() {
 #[test]
 fn flowchart_missing_direction_is_authoring_hint_in_recommended_profile() {
     let source = "flowchart\nA[Hello] --> B[World]\n";
-    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+    let options = AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-    ));
+    );
+    #[cfg(feature = "fixes")]
+    let options = options.with_fix_generation(merman_analysis::FixGeneration::Generate);
+    let analyzer = Analyzer::with_options(options);
     let payload = analyzer.analyze(source);
 
     assert!(payload.valid);
@@ -787,30 +790,40 @@ fn flowchart_missing_direction_is_authoring_hint_in_recommended_profile() {
     assert_eq!(span.lsp_range.end.line, 0);
     assert_eq!(span.lsp_range.end.character, 9);
 
-    assert_eq!(diagnostic.fixes.len(), 1);
-    let fix = &diagnostic.fixes[0];
-    assert_eq!(fix.title, "Insert `TB` into the flowchart header");
-    assert!(fix.is_preferred);
-    assert_eq!(fix.edits.len(), 1);
-    assert_eq!(fix.edits[0].replacement, " TB");
-    assert_eq!(fix.edits[0].span.byte_start, "flowchart".len());
-    assert_eq!(fix.edits[0].span.byte_end, "flowchart".len());
-    assert_eq!(fix.edits[0].span.lsp_range.start.line, 0);
-    assert_eq!(fix.edits[0].span.lsp_range.start.character, 9);
-    assert_eq!(fix.edits[0].span.lsp_range.end.line, 0);
-    assert_eq!(fix.edits[0].span.lsp_range.end.character, 9);
-    assert_eq!(
-        source[fix.edits[0].span.byte_start..].chars().next(),
-        Some('\n')
-    );
+    #[cfg(not(feature = "fixes"))]
+    assert!(diagnostic.fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(diagnostic.fixes.len(), 1);
+        let fix = &diagnostic.fixes[0];
+        assert_eq!(fix.title, "Insert `TB` into the flowchart header");
+        assert!(fix.is_preferred);
+        assert_eq!(fix.edits.len(), 1);
+        assert_eq!(fix.edits[0].replacement, " TB");
+        assert_eq!(fix.edits[0].span.byte_start, "flowchart".len());
+        assert_eq!(fix.edits[0].span.byte_end, "flowchart".len());
+        assert_eq!(fix.edits[0].span.lsp_range.start.line, 0);
+        assert_eq!(fix.edits[0].span.lsp_range.start.character, 9);
+        assert_eq!(fix.edits[0].span.lsp_range.end.line, 0);
+        assert_eq!(fix.edits[0].span.lsp_range.end.character, 9);
+        assert_eq!(
+            source[fix.edits[0].span.byte_start..].chars().next(),
+            Some('\n')
+        );
+    }
 }
 
 #[test]
+#[cfg(feature = "fixes")]
 fn flowchart_missing_direction_fix_span_survives_frontmatter_preprocess() {
     let source = "---\ntitle: Demo\n---\nflowchart\nA[Hello] --> B[World]\n";
-    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
-        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-    ));
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default()
+            .with_fix_generation(merman_analysis::FixGeneration::Generate)
+            .with_rule_config(
+                AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+            ),
+    );
     let payload = analyzer.analyze(source);
 
     assert!(payload.valid);
@@ -869,9 +882,12 @@ fn deprecated_flowchart_html_labels_config_is_core_warning() {
 #[test]
 fn prefer_frontmatter_config_for_init_directives_is_a_recommended_hint() {
     let source = "%%{ init: { \"theme\": \"dark\" } }%%\nflowchart TD\nA-->B\n";
-    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+    let options = AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-    ));
+    );
+    #[cfg(feature = "fixes")]
+    let options = options.with_fix_generation(merman_analysis::FixGeneration::Generate);
+    let analyzer = Analyzer::with_options(options);
     let payload = analyzer.analyze(source);
 
     assert!(payload.valid);
@@ -883,17 +899,23 @@ fn prefer_frontmatter_config_for_init_directives_is_a_recommended_hint() {
     );
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-    assert_eq!(diagnostic.fixes.len(), 1);
-    assert_eq!(
-        diagnostic.fixes[0].title,
-        "Move init directive config into frontmatter"
-    );
-    assert!(diagnostic.fixes[0].is_preferred);
+    #[cfg(not(feature = "fixes"))]
+    assert!(diagnostic.fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(
+            diagnostic.fixes[0].title,
+            "Move init directive config into frontmatter"
+        );
+        assert!(diagnostic.fixes[0].is_preferred);
+    }
     let span = diagnostic.span.as_ref().expect("directive span");
     assert_eq!(&source[span.byte_start..span.byte_end], "init");
 }
 
 #[test]
+#[cfg(feature = "fixes")]
 fn source_config_diagnostics_and_fixes_keep_original_crlf_unicode_coordinates() {
     struct Case<'a> {
         label: &'a str,
@@ -945,14 +967,16 @@ fn source_config_diagnostics_and_fixes_keep_original_crlf_unicode_coordinates() 
 
     for case in cases {
         let options = if case.recommended {
-            AnalysisOptions::default().with_rule_config(
-                AnalysisRuleConfig::default()
-                    .with_profile(AnalysisRuleProfile::Recommended)
-                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config")
-                    .expect("test rule id should be configurable"),
-            )
-        } else {
             AnalysisOptions::default()
+                .with_fix_generation(merman_analysis::FixGeneration::Generate)
+                .with_rule_config(
+                    AnalysisRuleConfig::default()
+                        .with_profile(AnalysisRuleProfile::Recommended)
+                        .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config")
+                        .expect("test rule id should be configurable"),
+                )
+        } else {
+            AnalysisOptions::default().with_fix_generation(merman_analysis::FixGeneration::Generate)
         };
         let payload = Analyzer::with_options(options).analyze(case.source);
         let diagnostic = payload

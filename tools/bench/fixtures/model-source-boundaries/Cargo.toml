@@ -18,7 +18,7 @@ model-ascii = ["model", "dep:merman-ascii", "merman-ascii/diagram-flowchart", "m
 source-ascii = ["model-ascii", "dep:merman-core", "merman-core/diagram-flowchart", "merman-core/diagram-class", "merman-core/diagram-state"]
 presentation-svg = ["dep:merman-core", "merman-core/diagram-flowchart", "merman-core/presentation", "dep:merman-render", "merman-render/diagram-flowchart"]
 analysis-diagnostics = ["dep:merman-analysis", "merman-analysis/diagram-flowchart"]
-analysis-fixes = ["analysis-diagnostics"]
+analysis-fixes = ["analysis-diagnostics", "merman-analysis/fixes"]
 
 [dependencies]
 merman-model = { path = "../../../../crates/merman-model", default-features = false, optional = true }
