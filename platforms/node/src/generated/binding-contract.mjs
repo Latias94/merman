@@ -23,6 +23,12 @@ export const CAPABILITY_SPECS = [
     "implication_ids": []
   },
   {
+    "id": "fixes",
+    "implication_ids": [
+      "analysis"
+    ]
+  },
+  {
     "id": "icons",
     "implication_ids": []
   },

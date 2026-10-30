@@ -571,7 +571,7 @@ fn verify_embedding(selected: &BTreeSet<String>) {
             };
             let details = error.terminal_diagnostic_details();
             assert_eq!(details.code, "merman.parse.unsupported_diagram");
-            let selector = merman_core::diagram_family_selectors()
+            let selector = merman_model::family::diagram_family_selectors()
                 .iter()
                 .find(|selector| selector.logical_family_kind == family)
                 .unwrap();

@@ -3,7 +3,11 @@
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
 use crate::SourcePresentationMetadata;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    all(feature = "diagram-agentflow", feature = "editor-facts")
+))]
 use crate::SourceSpan;
 #[cfg(all(
     feature = "editor-facts",

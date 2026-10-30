@@ -6,6 +6,52 @@ use {
     merman_model::presentation::RenderSemanticModel,
 };
 
+#[cfg(all(
+    feature = "presentation",
+    not(feature = "compat-json"),
+    not(feature = "diagram-sequence")
+))]
+#[test]
+fn presentation_without_json_uses_compiled_parser_availability() {
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
+
+    let engine = MermaidEngine::new();
+    let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
+    assert_eq!(
+        engine.parse_metadata_sync(source).unwrap().diagram_type,
+        "sequence"
+    );
+    for result in [
+        engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict()),
+        engine.parse_diagram_for_render_model_with_type_sync(
+            "sequence",
+            source,
+            ParseOptions::strict(),
+        ),
+    ] {
+        assert!(matches!(result,
+            Err(Error::UnsupportedDiagram { diagram_type }) if diagram_type == "sequence"
+        ));
+    }
+    let suppressed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::lenient())
+        .unwrap()
+        .unwrap();
+    assert!(matches!(suppressed.model(), RenderSemanticModel::Error(_)));
+    let control = merman_model::OperationControl::new();
+    control.cancel();
+    assert!(
+        engine
+            .parse_diagram_for_render_model_controlled_sync(
+                source,
+                ParseOptions::lenient(),
+                &control,
+            )
+            .is_err()
+    );
+}
+
 #[cfg(feature = "compat-json")]
 #[test]
 fn unknown_input_retains_detection_and_suppression_semantics() {

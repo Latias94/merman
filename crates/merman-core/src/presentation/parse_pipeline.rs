@@ -991,7 +991,7 @@ impl<'a> ParsePipeline<'a> {
         #[cfg(feature = "compat-json")]
         let builtin_without_render = matches!(semantic, Some(ResolvedSemanticParser::BuiltIn(_)));
         #[cfg(not(feature = "compat-json"))]
-        let builtin_without_render = family::is_builtin_diagram_type(&meta.diagram_type);
+        let builtin_without_render = family::canonical_parser(&meta.diagram_type).is_some();
         if builtin_without_render {
             return Ok(Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),

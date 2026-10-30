@@ -503,6 +503,24 @@ forwarding remains required; cross-family and `all-diagrams` dev forwarding rema
 All 37 feature-matrix unit tests passed (`63dcfb23-a38f-4f97-aedd-64d94285636d`). The complete
 strict matrix is rerunning; no strict-matrix pass is claimed at this checkpoint.
 
+The isolated presentation-only source recipe also exposed a disabled-parser error-classification
+bug: without core `compat-json`, known identity was incorrectly treated as a compiled parser.
+The missing-render consistency diagnostic now depends on actual canonical parser availability.
+Disabled source families retain `UnsupportedDiagram`, lenient Error projection and outer
+cancellation. Its dedicated no-family/presentation-only nextest regression passed
+(`51bf75bc-28a0-4cc7-a988-b95058d34724`). The Agentflow/editor singleton additionally required the
+shared Flowchart shape-span helper's `SourceSpan` import when neither Flowchart nor Swimlane
+parsing is selected. The isolated consumer now imports selectors from the defining model owner.
+
+The binding-contract generator refreshed the six Web/Node/Python/Kotlin/Dart capability tables
+with the existing declared fixes key. Binding contracts, native ABI, generated LALRPOP parsers,
+theme snapshots, Mermaid-reference projections, and the 46 artifact/capability descriptors passed
+their verification owners. Web manifest/descriptor tests and real Cargo closures passed 32 cases
+after excluding the temporary metadata consumer from selected repository inputs. A regression
+checks an in-repository temporary directory and preserves the complete real input list. Full Web
+tests require the actual `dist/pkg` build first; an early invocation without those artifacts is
+not admitted as product validation.
+
 All 34 workspace packages passed individual `cargo fmt -- --check` runs. The aggregate command
 exceeds Windows' command-line limit; individual package invocation is the equivalent format owner.
 Whitespace checks passed, and published changelog sections remain identical after line-ending

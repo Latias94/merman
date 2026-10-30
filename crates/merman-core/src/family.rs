@@ -739,7 +739,8 @@ pub(crate) fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFa
 
 #[cfg(all(
     feature = "presentation",
-    any(feature = "editor-facts", not(feature = "compat-json"))
+    feature = "compat-json",
+    feature = "editor-facts"
 ))]
 pub(crate) fn is_builtin_diagram_type(diagram_type: &str) -> bool {
     find_variant(diagram_type).is_some()
