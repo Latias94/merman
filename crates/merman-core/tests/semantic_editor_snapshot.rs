@@ -82,6 +82,40 @@ fn failed_class_capture_preserves_recovery_facts_and_original_source_spans() {
     }
 }
 
+#[cfg(feature = "diagram-class")]
+#[test]
+fn comment_heavy_frontmatter_has_the_same_semantics_in_strict_and_snapshot_parsing() {
+    let source = format!(
+        "---\ntitle: # first comment\n{}config:\n  theme: forest\n---\nclassDiagram\nclass User\n",
+        "# buffered comment\n".repeat(128)
+    );
+    let parser = SemanticParser::new();
+    let strict = parser.parse_diagram_sync(&source).expect("valid source");
+    for capture in [
+        parser.capture_diagram_snapshot_sync(&source),
+        parser
+            .capture_diagram_recovery_snapshot_controlled_sync(
+                &source,
+                &merman_core::OperationControl::new(),
+            )
+            .expect("active control"),
+    ] {
+        let SemanticSnapshotCapture::Snapshot(snapshot) = capture else {
+            panic!("comment evidence must not change source acceptance");
+        };
+        let SemanticDiagramModel::Class(model) = snapshot.outcome().parsed_model().expect("parsed")
+        else {
+            panic!("snapshot must retain the Class model");
+        };
+        assert!(model.classes.contains_key("User"));
+        assert_eq!(
+            snapshot.metadata().semantic_config,
+            strict.metadata.semantic_config
+        );
+        assert!(snapshot.source_config().keys().is_empty());
+    }
+}
+
 #[cfg(feature = "diagram-treemap")]
 #[test]
 fn treemap_snapshot_keeps_requested_facts_before_semantic_source_conversion() {

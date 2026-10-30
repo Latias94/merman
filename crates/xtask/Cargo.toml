@@ -10,14 +10,12 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-data-encoding.workspace = true
 base64.workspace = true
 brotli.workspace = true
 cssparser.workspace = true
 flate2.workspace = true
 fs2.workspace = true
 futures = { workspace = true, features = ["executor"] }
-dugong = { path = "../dugong" }
 lalrpop.workspace = true
 merman = { path = "../merman", default-features = false, features = ["all-diagrams", "svg", "compat-json"] }
 merman-analysis = { workspace = true, features = ["all-diagrams"] }
@@ -35,9 +33,7 @@ merman-bindings-core = { workspace = true, features = [
     "svg",
 ] }
 merman-core = { path = "../merman-core", features = ["all-diagrams", "system-clock", "system-timezone", "presentation", "compat-json", "editor-facts"] }
-merman-editor-core = { workspace = true, features = ["all-diagrams"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
-merman-layout-elk.workspace = true
 merman-render = { path = "../merman-render", features = [
     "all-diagrams",
     "layout-cytoscape",

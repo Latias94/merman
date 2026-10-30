@@ -879,7 +879,9 @@ mod tests {
     #[test]
     fn serde_saphyr_rewrite_preserves_yaml_values_order_and_document_shape() {
         assert_eq!(
-            serde_saphyr::from_str::<serde_json::Value>("value: \u{a0}42").unwrap(),
+            Value::Object(
+                parse_frontmatter_yaml_fields("value: \u{a0}42").expect("parse YAML scalar"),
+            ),
             serde_json::json!({ "value": "\u{a0}42" })
         );
         let source = "flowchart TD\nA-->B\n";

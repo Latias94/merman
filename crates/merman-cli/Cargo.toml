@@ -421,6 +421,7 @@ merman-render.workspace = true
 png.workspace = true
 roxmltree.workspace = true
 tempfile = "3.27.0"
+toml = { workspace = true, features = ["display"] }
 usvg = { workspace = true, features = ["text"] }
 
 [target.'cfg(unix)'.dev-dependencies]

@@ -18,7 +18,7 @@ artifact-profile-required = true
 
 [features]
 presentation = ["dep:ryu-js"]
-editor-facts = []
+editor-facts = ["granit-parser/comments"]
 compat-json = ["presentation"]
 terminal-text = ["dep:unicode-segmentation", "dep:unicode-width"]
 # Diagram selection is independent of output formats and optional layout engines.

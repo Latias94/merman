@@ -787,9 +787,9 @@ dependencies = [
 
 [[package]]
 name = "json5"
-version = "1.3.4"
+version = "1.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1628f14e201e5d6683248a22736547a083c2c176652d65b1068be73dab213a28"
+checksum = "e46128c9fb848c29097da3149e627cce5496d0b2820a9be06d12ee266c09c749"
 dependencies = [
  "serde",
  "ucd-trie",

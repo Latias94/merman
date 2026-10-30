@@ -1,8 +1,8 @@
 # Choosing Merman capabilities
 
-This page documents current-source capabilities; installation examples select the published `0.9.1`
-patch. Compiled-theme authoring, Mermaid `12.2.0` alignment, and the CLI encoded-output font
-defaults remain unreleased. Use the
+This page documents current-source capabilities; Rust and CLI installation examples select the published `0.9.3`
+patch, while other channels retain the versions in their package guides. Compiled-theme authoring and Mermaid `12.2.0` alignment remain unreleased. The CLI
+encoded-output font defaults shipped in `0.9.3`. Use the
 [release index](release/README.md) for installed-version contracts and the
 [0.9.0 upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for the preceding model and output
 changes. Workspace path snippets are for source development. See the
@@ -69,9 +69,15 @@ behavior: add `math` explicitly, for example `features = ["complete-svg-elk", "m
 upgrading a mathematical-label consumer. Direct output/layout leaves remain available. The facade defaults to
 `all-diagrams + svg + layout-cytoscape + layout-elk`; generic SVG recipes and Web full/render
 packages omit math. Official CLI archives select math explicitly, while CLI source defaults and
-the `rustdoc` leaf omit it. Installed `0.9.1` artifacts retain their published recipes.
+the `rustdoc` leaf omit it. Installed `0.9.3` artifacts retain their published recipes.
 The ELK notices and source provenance still accompany artifacts that include it. To omit ELK,
 disable defaults and select required families plus `svg` and the required layout leaves.
+
+For measured consumer dependency graphs, optional-stack costs, and the remaining core floor, see
+the [2026-10-30 dependency review](research/2026-10-30-dependency-review.md). Its package counts
+include build inputs and are not executable-size or compilation-time measurements. Core syntax,
+configuration, HTML and URL normalization remain part of the precise parser contract even when
+output backends are disabled.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -435,7 +441,7 @@ EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install merman-cli --version 0.9.1 --locked
+cargo install merman-cli --version 0.9.3 --locked
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd
@@ -548,7 +554,7 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter `0.9.1` uses `flutter pub add 'merman:0.9.1'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
+Flutter `0.9.2` uses `flutter pub add 'merman:0.9.2'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 2 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
