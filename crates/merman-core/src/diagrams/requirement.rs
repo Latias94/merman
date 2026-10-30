@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -12,12 +12,12 @@ use crate::{
     Error, OperationControl, OperationControlResult, Result, SourceSpan,
     family::CombinedSemanticFailure,
 };
-pub use merman_model::families::requirement::{
+pub(crate) use merman_model::families::requirement::{
     RequirementClass, RequirementDiagramModel, RequirementElement, RequirementNode,
     RequirementRelationship,
 };
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
@@ -296,7 +296,7 @@ fn push_styles(out: &mut Vec<String>, styles: &[String]) {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_requirement(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_requirement(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let model = parse_requirement_semantic_source(code, meta)?.model;
     render_model_to_compat_json(&model, meta)
 }
@@ -304,7 +304,7 @@ pub(crate) fn parse_requirement(code: &str, meta: &PresentationMetadata) -> Resu
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_requirement_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<RequirementDiagramModel> {
     Ok(parse_requirement_semantic_source(code, meta)?.model)
 }
@@ -312,7 +312,7 @@ pub(crate) fn parse_requirement_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_requirement_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RequirementDiagramModel>> {
     let construction = construct_requirement_semantic_source_controlled(
@@ -332,7 +332,7 @@ pub(crate) fn parse_requirement_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_requirement_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_requirement_semantic_source_controlled(
@@ -523,28 +523,16 @@ fn emit_parsed_requirement_styles(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &RequirementDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut out = Map::with_capacity(9);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("direction".to_string(), json!(&model.direction));
-    out.insert("requirements".to_string(), json!(&model.requirements));
-    out.insert("elements".to_string(), json!(&model.elements));
-    out.insert("relationships".to_string(), json!(&model.relationships));
-    out.insert("classes".to_string(), json!(&model.classes));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    merman_model::families::requirement::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_requirement_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<RequirementSemanticSource> {
     construct_requirement_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
@@ -552,7 +540,7 @@ fn parse_requirement_semantic_source(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_requirement_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
     construct_requirement_semantic_source_controlled(
         code,
@@ -2289,11 +2277,11 @@ mod tests {
             .to_string()
     }
 
-    fn test_meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn test_meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "requirement".to_string(),
             config: MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
     }
@@ -2583,7 +2571,7 @@ mod tests {
             "login - verifies -> api\n",
         );
         let mut meta = test_meta();
-        meta.effective_config = crate::presentation::PresentationConfig::from_value(json!({
+        meta.effective_config = crate::presentation::SourcePresentationConfig::from_value(json!({
             "theme": "forest",
             "securityLevel": "strict"
         }));
@@ -3172,10 +3160,10 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::PresentationMetadata {
+            let full_metadata = crate::SourcePresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
-                effective_config: crate::presentation::PresentationConfig::from_config(
+                effective_config: crate::presentation::SourcePresentationConfig::from_config(
                     metadata.semantic_config.clone(),
                 ),
                 title: metadata.title.clone(),

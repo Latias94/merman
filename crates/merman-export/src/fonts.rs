@@ -1,7 +1,7 @@
 //! Closed, bounded font acquisition and shared native text measurement.
 
 use super::font_selection::FontSelectionPolicy;
-use merman_core::{
+use merman_model::{
     OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
     OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
 };

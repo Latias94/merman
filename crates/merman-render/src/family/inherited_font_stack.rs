@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use super::{FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason};
 use crate::diagram_theme::{
@@ -215,15 +215,9 @@ impl InheritedFontStackPlan {
             };
         };
 
-        let config_owns_font_stack =
-            ["themeVariables.fontFamily", "fontFamily"]
-                .into_iter()
-                .any(|path| {
-                    merman_core::__private::config_path_overrides_typed_default(
-                        effective_config,
-                        path,
-                    )
-                });
+        let config_owns_font_stack = ["themeVariables.fontFamily", "fontFamily"]
+            .into_iter()
+            .any(|path| effective_config.config_path_overrides_typed_default(path));
         let mut typed_font_stack = false;
         let mut font_stack_unsupported = false;
         let mut unsupported_typography_properties = BTreeSet::new();

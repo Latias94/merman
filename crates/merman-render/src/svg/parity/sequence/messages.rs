@@ -210,7 +210,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    pub(super) sanitize_config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
     pub(super) diagram_id: SvgDiagramId<'a>,
@@ -770,7 +770,7 @@ struct SequenceMessageTextLayout<'a> {
     margin: f64,
     style: &'a TextStyle,
     measurer: &'a dyn TextMeasurer,
-    config: &'a merman_core::presentation::PresentationConfig,
+    config: &'a merman_model::presentation::PresentationConfig,
 }
 
 fn render_sequence_message_text_lines<'a>(
@@ -821,7 +821,7 @@ fn render_sequence_message_text_lines<'a>(
 
 #[cfg(test)]
 fn default_sequence_typography(
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> (
     crate::sequence::SequenceTypographyPlan,
     crate::sequence::SequenceTypographyThemeReceipt,
@@ -1019,7 +1019,7 @@ mod tests {
             .iter()
             .map(|edge| (edge.id.as_str(), edge))
             .collect::<FxHashMap<_, _>>();
-        let sanitize_config = merman_core::presentation::PresentationConfig::default();
+        let sanitize_config = merman_model::presentation::PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let message_text_style = TextStyle::default();
         let math_sidecar = crate::sequence::SequenceMathSidecar::default();
@@ -1137,7 +1137,7 @@ mod tests {
                 .map(|edge| (edge.id.as_str(), edge))
                 .collect::<FxHashMap<_, _>>();
             let nodes_by_id = FxHashMap::default();
-            let sanitize_config = merman_core::presentation::PresentationConfig::default();
+            let sanitize_config = merman_model::presentation::PresentationConfig::default();
             let measurer = crate::text::DeterministicTextMeasurer::default();
             let message_text_style = TextStyle::default();
             let math_sidecar = crate::sequence::SequenceMathSidecar::default();
@@ -1213,7 +1213,7 @@ mod cancellation_tests {
     use super::{default_sequence_typography, render_sequence_message_text_lines};
     use crate::Error;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
 
     struct CancellingLines {
         control: OperationControl,
@@ -1253,7 +1253,7 @@ mod cancellation_tests {
         let typography_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let typography = crate::sequence::SequenceTypographyPlan::resolve(
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             None,
             &typography_meter,
         )
@@ -1270,7 +1270,7 @@ mod cancellation_tests {
                 margin: 10.0,
                 style: &crate::text::TextStyle::default(),
                 measurer: &crate::text::DeterministicTextMeasurer::default(),
-                config: &merman_core::presentation::PresentationConfig::default(),
+                config: &merman_model::presentation::PresentationConfig::default(),
             },
             typography.message(),
             &receipt,
@@ -1318,7 +1318,7 @@ mod cancellation_tests {
     fn message_rows_accumulate_raw_heights_after_decoding_and_preserve_explicit_dy() {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let style = crate::text::TextStyle::default();
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
         let (typography, typography_receipt) = default_sequence_typography(&config);
@@ -1379,7 +1379,7 @@ mod cancellation_tests {
             cancel: Some(control),
             ..Default::default()
         };
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
         let (typography, typography_receipt) = default_sequence_typography(&config);

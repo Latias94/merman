@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::common_db::{LangiumCommonDbFields, sanitize_acc_descr, sanitize_acc_title};
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
@@ -15,7 +15,7 @@ use crate::{
 };
 use crate::{Error, Result, SourceSpan};
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 #[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
@@ -30,7 +30,7 @@ pub(crate) fn eventmodeling_syntax_construction_count() -> usize {
     crate::diagrams::langium_common::family_syntax_construction_count("eventmodeling")
 }
 
-pub use merman_model::families::event_modeling::{
+pub(crate) use merman_model::families::event_modeling::{
     EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
 };
 
@@ -44,7 +44,7 @@ pub(crate) fn sanitize_common_db_fields(
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_eventmodeling(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_eventmodeling(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_compat_json(meta)
@@ -54,7 +54,7 @@ pub(crate) fn parse_eventmodeling(code: &str, meta: &PresentationMetadata) -> Re
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -83,22 +83,16 @@ pub(crate) fn parse_eventmodeling_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &EventModelingDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": &model.title,
-        "accTitle": &model.acc_title,
-        "accDescr": &model.acc_descr,
-        "frames": &model.frames,
-        "dataEntities": &model.data_entities,
-    }))
+    merman_model::families::event_modeling::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_eventmodeling_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<EventModelingDiagramModel> {
     Ok(construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
@@ -108,7 +102,7 @@ pub(crate) fn parse_eventmodeling_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_eventmodeling_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<EventModelingDiagramModel>> {
     let construction = construct_eventmodeling_semantic_source_controlled(
@@ -350,7 +344,7 @@ impl EventModelingSyntaxFacts {
 
 impl EventModelingSemanticSource {
     #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-    fn into_render_model(self, meta: &PresentationMetadata) -> EventModelingDiagramModel {
+    fn into_render_model(self, meta: &SourcePresentationMetadata) -> EventModelingDiagramModel {
         self.into_render_model_controlled(meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
@@ -416,14 +410,14 @@ impl EventModelingSemanticSource {
     #[cfg(feature = "presentation")]
     fn into_render_model_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<EventModelingDiagramModel> {
         self.into_model_controlled(meta.effective_config.as_config(), control)
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let model = self.into_render_model(meta);
         render_model_to_compat_json(&model, meta)
     }
@@ -431,7 +425,7 @@ impl EventModelingSemanticSource {
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn into_compat_json_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<Result<Value>> {
         let model = self.into_render_model_controlled(meta, control)?;
@@ -458,7 +452,7 @@ impl EventModelingParseFailure {
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_eventmodeling_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> std::result::Result<EventModelingSemanticSource, EventModelingParseFailure> {
     construct_eventmodeling_semantic_source_controlled(
         code,
@@ -1964,13 +1958,13 @@ mod tests {
     use crate::MermaidEngine;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
-    use crate::{MermaidConfig, ParseDiagnosticSpanKind, PresentationMetadata};
+    use crate::{MermaidConfig, ParseDiagnosticSpanKind, SourcePresentationMetadata};
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "eventmodeling".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -2751,10 +2745,10 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::PresentationMetadata {
+            let full_metadata = crate::SourcePresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
-                effective_config: crate::presentation::PresentationConfig::from_config(
+                effective_config: crate::presentation::SourcePresentationConfig::from_config(
                     metadata.semantic_config.clone(),
                 ),
                 title: metadata.title.clone(),

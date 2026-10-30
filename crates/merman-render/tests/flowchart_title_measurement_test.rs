@@ -1,6 +1,5 @@
 #![cfg(feature = "diagram-flowchart")]
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -40,20 +39,23 @@ impl HostTextMeasurer for TitleMeasurementHost {
 }
 
 fn render(environment: RenderEnvironment, backend: &str) -> (String, TextMeasurementReport) {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "layout": backend,
-        "look": "classic",
-        "fontFamily": "Arial",
-        "htmlLabels": false,
-        "flowchart": { "diagramPadding": 0 }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "layout": backend,
+            "look": "classic",
+            "fontFamily": "Arial",
+            "htmlLabels": false,
+            "flowchart": { "diagramPadding": 0 }
+        })),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(
             "---\ntitle: Host measured title\n---\nflowchart TD\nA[one] --> B[two]\n",
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -151,3 +153,6 @@ fn flowchart_title_host_extents_expand_the_viewport_without_moving_the_title() {
         }));
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -2,15 +2,15 @@
 
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, SvgPipeline, ThemePreset};
 use merman::{
-    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
-    presentation::PresentationConfig,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer,
+    SourcePresentationConfig, SvgRequest,
 };
 use serde_json::{Value, json};
 
 const SOURCE: &str = "sequenceDiagram\nAlice->>Bob: Hello";
 
-fn config(value: Value) -> PresentationConfig {
-    PresentationConfig::from_value(value)
+fn config(value: Value) -> SourcePresentationConfig {
+    SourcePresentationConfig::from_value(value)
 }
 
 fn one_dark() -> DiagramTheme {
@@ -24,7 +24,7 @@ fn effective_config(
     source: &str,
     request: SvgRequest,
     theme: Option<DiagramTheme>,
-) -> merman_core::ManagedSemanticJson {
+) -> merman::model::ManagedJson {
     let request = RenderRequest::layout_json(source, OperationControl::new(), request);
     let request = match theme {
         Some(theme) => request.with_theme(theme),
@@ -36,7 +36,7 @@ fn effective_config(
     let RenderOutput::LayoutJson(Some(output)) = output else {
         panic!("expected layout JSON for a detected diagram");
     };
-    merman_core::ManagedSemanticJson::from(&output.layout()["meta"]["effective_config"])
+    merman::model::ManagedJson::from(&output.layout()["meta"]["effective_config"])
 }
 
 fn capability_plan(

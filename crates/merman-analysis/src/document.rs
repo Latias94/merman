@@ -1399,7 +1399,7 @@ mod tests {
     #[test]
     fn markdown_analysis_supports_the_full_i64_runtime_instant_domain() {
         let analyzer = Analyzer::with_options(AnalysisOptions::default().with_runtime_policy(
-            merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(i64::MAX),
+            merman_model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(i64::MAX),
         ));
         let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
         let text =

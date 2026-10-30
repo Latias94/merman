@@ -75,7 +75,7 @@ fn accepted(engine: &MermaidEngine, source: &str, diagram_type: &str) {
     {
         struct CancelAfterOutput<'a> {
             output: &'a mut Vec<u8>,
-            control: &'a merman_core::OperationControl,
+            control: &'a merman_model::operation::OperationControl,
         }
         impl std::io::Write for CancelAfterOutput<'_> {
             fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
@@ -89,7 +89,7 @@ fn accepted(engine: &MermaidEngine, source: &str, diagram_type: &str) {
                 Ok(())
             }
         }
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::operation::OperationControl::new();
         let mut partial_output = Vec::new();
         let cancelled = json
             .write_json_controlled(
@@ -261,7 +261,7 @@ fn zenuml_expressions(engine: &MermaidEngine) {
 
 #[cfg(feature = "test-support")]
 fn zenuml_projection_cancellation(engine: &MermaidEngine) {
-    use merman_core::diagrams::zenuml::ZenumlStatementKind;
+    use merman_model::families::zenuml::ZenumlStatementKind;
 
     let source = format!(
         "zenuml\n{}A.call()\n{}After.call()\n",
@@ -276,7 +276,7 @@ fn zenuml_projection_cancellation(engine: &MermaidEngine) {
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let merman_core::RenderSemanticModel::Zenuml(model) = parsed.model() else {
+    let merman_model::presentation::RenderSemanticModel::Zenuml(model) = parsed.model() else {
         panic!("expected the maximum accepted ZenUML model");
     };
     assert_eq!(model.statements.len(), 2);
@@ -306,15 +306,21 @@ fn zenuml_projection_cancellation(engine: &MermaidEngine) {
         + 1
         + 10 * fragment_depth
         + 4;
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::operation::OperationControl::new();
     control.cancel_after_checkpoints(successful_checkpoints);
     marker("projection", "begin");
     let cancelled = parsed
         .model()
         .compatibility_json_controlled(parsed.metadata(), &control)
         .expect_err("projection cancels after the maximum accepted deep branch completes");
-    assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
-    assert_eq!(cancelled.phase, merman_core::OperationPhase::Semantic);
+    assert_eq!(
+        cancelled.reason,
+        merman_model::operation::CancelReason::Requested
+    );
+    assert_eq!(
+        cancelled.phase,
+        merman_model::operation::OperationPhase::Semantic
+    );
     assert_eq!(control.checkpoint().unwrap_err(), cancelled);
     println!("fragment_depth={fragment_depth} scheduled_checkpoints={successful_checkpoints}");
     marker("projection", "cancelled-after-completed-deep-branch");

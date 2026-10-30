@@ -21,14 +21,16 @@ use crate::cli::ParseCliArgs;
 use crate::cli::{AnalysisCliArgs, LintOutputFormat, LintRuleSeverityOverride, LintRulesArgs};
 #[cfg(feature = "analysis")]
 use crate::config::{runtime_policy_for, site_config_for};
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 use crate::diagnostics::DiagnosticSink;
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 use crate::fix::{FixCatalog, FixPlanError, FixSelection};
 #[cfg(feature = "analysis")]
 use crate::input::{InputReadError, ObservedSize};
 #[cfg(feature = "analysis")]
-use crate::io::{read_fix_source, read_primary_input, write_file, write_file_verified};
+use crate::io::read_primary_input;
+#[cfg(feature = "fixes")]
+use crate::io::{read_fix_source, write_file, write_file_verified};
 #[cfg(feature = "analysis")]
 use merman_analysis::document::analyze_document;
 #[cfg(feature = "analysis")]
@@ -41,10 +43,12 @@ use std::path::Path;
 use crate::cli::CompletionArgs;
 #[cfg(feature = "svg")]
 use crate::config::renderer_for_resolved;
+#[cfg(feature = "fixes")]
+use crate::invocation::ResolvedFix;
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedLayout;
 #[cfg(feature = "analysis")]
-use crate::invocation::{ResolvedFix, ResolvedLint};
+use crate::invocation::ResolvedLint;
 #[cfg(feature = "markdown")]
 use crate::render::prepare_render_for_batch;
 #[cfg(feature = "svg")]
@@ -60,7 +64,7 @@ pub(crate) fn run(
     let (invocation, publications) = preflight.into_parts();
     #[cfg(feature = "rustdoc")]
     let mut publications = publications;
-    #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
+    #[cfg(not(any(feature = "fixes", feature = "svg", feature = "ascii")))]
     let _ = &publications;
     let exit_code = match invocation {
         ResolvedInvocation::Capabilities(args) => {
@@ -82,7 +86,7 @@ pub(crate) fn run(
         }
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Lint(args) => run_lint(args, context)?,
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "fixes")]
         ResolvedInvocation::Fix(args) => run_fix(args, &publications, context)?,
         #[cfg(feature = "analysis")]
         ResolvedInvocation::LintRules(args) => {
@@ -205,11 +209,11 @@ fn run_parse(args: ResolvedParse, context: &mut ExecutionContext) -> Result<(), 
         );
         metadata.insert(
             "config".to_owned(),
-            merman::ManagedSemanticJson::from(parsed.meta.config.as_value()).into_unmanaged_value(),
+            merman::model::ManagedJson::from(parsed.meta.config.as_value()).into_unmanaged_value(),
         );
         metadata.insert(
             "effective_config".to_owned(),
-            merman::ManagedSemanticJson::from(parsed.meta.effective_config.as_value())
+            merman::model::ManagedJson::from(parsed.meta.effective_config.as_value())
                 .into_unmanaged_value(),
         );
         metadata.insert(
@@ -219,7 +223,7 @@ fn run_parse(args: ResolvedParse, context: &mut ExecutionContext) -> Result<(), 
         let mut output = serde_json::Map::new();
         output.insert("meta".to_owned(), Value::Object(metadata));
         output.insert("model".to_owned(), parsed.model.into_unmanaged_value());
-        merman::ManagedSemanticJson::from(Value::Object(output))
+        merman::model::ManagedJson::from(Value::Object(output))
     } else {
         parsed.model
     };
@@ -306,7 +310,7 @@ fn run_lint(args: ResolvedLint, context: &mut ExecutionContext) -> Result<i32, C
     Ok(i32::from(!payload.valid))
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn run_fix(
     args: ResolvedFix,
     publications: &crate::output::PublicationGuards,
@@ -326,6 +330,13 @@ fn run_fix(
         max_source_bytes,
         &args.resources,
     )?;
+    let analyzer = analyzer.with_diagnostic_policy(
+        analyzer
+            .options()
+            .diagnostic_policy()
+            .clone()
+            .with_fix_generation(merman_analysis::FixGeneration::Generate),
+    );
     let payload = analyze_document(text, &analyzer, source);
     let catalog = FixCatalog::build(text, &payload.diagnostics).map_err(map_fix_plan_error)?;
     let source_label = fix_source_label(&args);
@@ -381,7 +392,7 @@ fn run_fix(
     Ok(0)
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn map_fix_plan_error(error: FixPlanError) -> CliError {
     if error.is_selection_error() {
         CliError::InvalidInput(error.to_string())
@@ -390,7 +401,7 @@ fn map_fix_plan_error(error: FixPlanError) -> CliError {
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn fix_source_label(args: &ResolvedFix) -> String {
     args.input
         .file()
@@ -404,7 +415,7 @@ fn fix_source_label(args: &ResolvedFix) -> String {
         .unwrap_or_else(|| "stdin".to_string())
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn unified_fix_diff(source: &str, fixed: &str, label: &str) -> String {
     let old = format!("a/{label}");
     let new = format!("b/{label}");
@@ -547,7 +558,7 @@ fn analysis_source_for(
 fn source_limit(resources: &ResolvedResourcePolicy) -> Option<usize> {
     resources
         .input_policy()
-        .value(merman::resources::InputResourceLimitId::MaxSourceBytes)
+        .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes)
 }
 
 fn resolved_input_path(input: &ResolvedInput) -> &Path {
@@ -589,7 +600,7 @@ fn read_resolved_input_controlled(
 
 fn source_input_limit(max_source_bytes: Option<usize>) -> InputLimit {
     InputLimit::new(
-        merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+        merman::model::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
         max_source_bytes,
     )
 }

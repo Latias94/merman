@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
@@ -27,9 +27,6 @@ use merman_model::families::packet::{
     PacketBlock, PacketDiagramModel, validate_packet_bits_per_row,
 };
 
-#[cfg(feature = "compat-json")]
-mod compat;
-
 pub(crate) fn sanitize_common_db_fields(
     model: &mut PacketDiagramModel,
     config: &crate::MermaidConfig,
@@ -43,9 +40,9 @@ pub(crate) fn sanitize_common_db_fields(
 pub(crate) fn render_model_to_compat_json(
     model: &PacketDiagramModel,
     output_data: PacketOutputData,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(compat::project(
+    Ok(merman_model::families::packet::compat::project(
         model,
         output_data,
         &meta.diagram_type,
@@ -93,7 +90,7 @@ struct PacketSemanticSource {
 type PacketWord = Vec<PacketBlock>;
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_packet(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_packet(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     packet_output_into_json(parse_packet_semantic_source(code, meta)?.output, meta)
 }
 
@@ -101,7 +98,7 @@ pub(crate) fn parse_packet(code: &str, meta: &PresentationMetadata) -> Result<Va
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_packet_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -128,7 +125,7 @@ pub(crate) fn parse_packet_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 fn packet_output_into_json(
     output: PacketParseOutput,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
     let (model, output_data) = output.into_render_parts();
     render_model_to_compat_json(&model, output_data, meta)
@@ -137,7 +134,7 @@ fn packet_output_into_json(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_packet_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<(PacketDiagramModel, PacketOutputData)> {
     Ok(parse_packet_semantic_source(code, meta)?
         .output
@@ -147,7 +144,7 @@ pub(crate) fn parse_packet_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_packet_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<(PacketDiagramModel, PacketOutputData)>> {
     let construction = construct_packet_semantic_source_controlled(
@@ -169,7 +166,7 @@ pub(crate) fn parse_packet_model_for_render_controlled(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_packet_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<PacketSemanticSource> {
     construct_packet_semantic_source_controlled(
         code,
@@ -931,7 +928,7 @@ mod semantic_tests {
         #[cfg(feature = "presentation")]
         {
             let full = crate::MermaidEngine::new()
-                .with_site_config(crate::presentation::PresentationConfig::from_config(
+                .with_site_config(crate::presentation::SourcePresentationConfig::from_config(
                     metadata.semantic_config.clone(),
                 ))
                 .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
@@ -1001,10 +998,10 @@ mod tests {
         }
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(4);
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
 
@@ -1024,11 +1021,11 @@ mod tests {
     #[test]
     fn packet_typed_projection_matches_complete_compatibility_json() {
         let text = "packet\ntitle Header\n0-7: \"byte\"\n";
-        let effective_config = crate::presentation::PresentationConfig::from_value(json!({
+        let effective_config = crate::presentation::SourcePresentationConfig::from_value(json!({
             "packet": { "bitsPerRow": 16 },
             "theme": "forest"
         }));
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
             effective_config,
@@ -1050,12 +1047,14 @@ mod tests {
         let source = "packet\n+12: \"wide\"\n+1: \"flag\"\n";
         let mut packets = Vec::new();
         for bit_order in ["ascending", "descending"] {
-            let meta = PresentationMetadata {
+            let meta = SourcePresentationMetadata {
                 diagram_type: "packet".to_string(),
                 config: MermaidConfig::empty_object(),
-                effective_config: crate::presentation::PresentationConfig::from_value(json!({
-                    "packet": { "bitsPerRow": 8, "bitOrder": bit_order }
-                })),
+                effective_config: crate::presentation::SourcePresentationConfig::from_value(
+                    json!({
+                        "packet": { "bitsPerRow": 8, "bitOrder": bit_order }
+                    }),
+                ),
                 title: None,
             };
             let (typed, _output_data) = parse_packet_model_for_render(source, &meta).unwrap();
@@ -1073,10 +1072,10 @@ mod tests {
 
     #[test]
     fn packet_typed_projection_preserves_empty_and_header_only_output_states() {
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "packet".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         for source in ["", "packet"] {
@@ -1568,10 +1567,10 @@ mod output_data_tests {
 
     #[test]
     fn full_producer_preserves_empty_output_independently_of_json_projection() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "packet".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let parse = |source| {

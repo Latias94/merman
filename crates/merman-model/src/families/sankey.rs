@@ -1,5 +1,8 @@
 //! Canonical Sankey graph data.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use serde_json::Value;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

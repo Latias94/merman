@@ -100,7 +100,10 @@ macro_rules! native_sdk_artifact_contract {
             #[cfg(feature = "analysis")]
             $crate::OperationKey::ValidationJson,
         ];
+        #[allow(unexpected_cfgs)]
         const SUPPLEMENTAL_CAPABILITIES: &[$crate::CapabilityKey] = &[
+            #[cfg(feature = "fixes")]
+            $crate::CapabilityKey::Fixes,
             #[cfg(feature = "layout-cytoscape")]
             $crate::CapabilityKey::LayoutCytoscape,
             #[cfg(feature = "layout-elk")]

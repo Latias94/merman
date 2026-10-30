@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use crate::config::config_string;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -210,9 +210,7 @@ impl WardleyTypographyThemePlan {
                 "themeVariables.primaryTextColor",
             ]
             .iter()
-            .any(|path| {
-                merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
-            })
+            .any(|path| effective_config.config_paint_overrides_typed_default(path))
         {
             plan.paint_binding.arrow_text = "#333".to_owned();
         }
@@ -220,14 +218,10 @@ impl WardleyTypographyThemePlan {
         // Upstream anchors hard-code black. Only an active host label-paint request
         // introduces this adapter channel, whose foreground an authored palette owns.
         if node_fill.is_some()
-            && !merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "themeVariables.wardley.anchorLabelColor",
-            )
-            && merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "themeVariables.primaryTextColor",
-            )
+            && !effective_config
+                .config_paint_overrides_typed_default("themeVariables.wardley.anchorLabelColor")
+            && effective_config
+                .config_paint_overrides_typed_default("themeVariables.primaryTextColor")
             && let Some(color) = config_string(
                 effective_config.as_value(),
                 &["themeVariables", "primaryTextColor"],
@@ -412,7 +406,7 @@ fn bind_text_fill(
 ) {
     if source_paths
         .iter()
-        .any(|path| merman_core::__private::config_paint_overrides_typed_default(config, path))
+        .any(|path| config.config_paint_overrides_typed_default(path))
     {
         return;
     }
@@ -517,7 +511,7 @@ mod tests {
         assert_eq!(paint.link_stroke, "#000");
         assert_eq!(paint.evolution_stroke, "#dc3545");
 
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {
                 "background": "var(--background)",
                 "primaryTextColor": "currentColor",

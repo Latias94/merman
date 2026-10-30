@@ -449,6 +449,29 @@ fn canonical_validator_rejects_owned_or_uncompiled_supplemental_capabilities() {
             0,
         );
     }));
+    assert!(panics(|| {
+        validate_supplemental_capability_bits(
+            CapabilityKey::Fixes.compact_bit(),
+            TargetKey::Web,
+            0,
+        );
+    }));
+}
+
+#[cfg(feature = "fixes")]
+#[test]
+fn compiled_fixes_do_not_expand_a_narrow_host_declaration() {
+    assert!(compiled_capability_keys().contains(CapabilityKey::Fixes));
+    let narrow = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+        .with_operations(&[OperationKey::AnalysisJson])
+        .materialize();
+    assert!(!narrow.exposes_capability(CapabilityKey::Fixes));
+    let full = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+        .with_operations(&[OperationKey::AnalysisJson])
+        .with_supplemental_capabilities(&[CapabilityKey::Fixes])
+        .materialize();
+    assert!(full.exposes_capability(CapabilityKey::Fixes));
+    assert!(full.exposes_capability(CapabilityKey::Analysis));
 }
 
 #[test]

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::mindmap::{MindmapDiagramRenderEdge, MindmapDiagramRenderModel};
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -62,7 +62,7 @@ impl MindmapEdgeStrokeSource {
             Self::ColorScale { section } => MINDMAP_COLOR_SCALE_PATHS[section],
             Self::NodeBorder => "themeVariables.nodeBorder",
         };
-        merman_core::__private::config_paint_overrides_typed_default(config, path)
+        config.config_paint_overrides_typed_default(path)
     }
 }
 
@@ -125,15 +125,9 @@ impl MindmapNodeFillOwnership {
     pub(crate) fn from_config(config: &PresentationConfig) -> Self {
         Self {
             color_scale: std::array::from_fn(|section| {
-                merman_core::__private::config_paint_overrides_typed_default(
-                    config,
-                    MINDMAP_COLOR_SCALE_PATHS[section],
-                )
+                config.config_paint_overrides_typed_default(MINDMAP_COLOR_SCALE_PATHS[section])
             }),
-            main_background: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.mainBkg",
-            ),
+            main_background: config.config_paint_overrides_typed_default("themeVariables.mainBkg"),
         }
     }
 
@@ -285,7 +279,7 @@ impl MindmapNodePalettePlan {
 
         let mut visited = [false; MINDMAP_SECTION_COUNT];
         for node in &model.nodes {
-            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
             let Some(section) = node.section.and_then(normalized_section) else {
                 continue;
             };
@@ -340,14 +334,10 @@ impl MindmapNodePalettePlan {
             None,
             work_meter,
         )?;
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.mainBkg",
-        );
-        let config_owns_stroke = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.nodeBorder",
-        );
+        let config_owns_fill =
+            config.config_paint_overrides_typed_default("themeVariables.mainBkg");
+        let config_owns_stroke =
+            config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
         let typed_fill = (!config_owns_fill)
             .then(|| {
                 resolve_direct_static_fill(
@@ -710,7 +700,7 @@ impl MindmapNodePalettePlan {
         model: &MindmapDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
         Ok(Self {
             fills_by_section: std::array::from_fn(|_| None),
             node_fill: None,
@@ -746,9 +736,9 @@ impl MindmapNodePalettePlan {
         config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
-        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
         let binding = super::css_binding::MindmapCssBinding::new(config, self);
-        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
         self.css_binding
             .set(binding)
             .expect("Mindmap CSS prepared once before layout");
@@ -1072,7 +1062,9 @@ mod tests {
 
     fn effective_config(site_config: Value) -> PresentationConfig {
         merman_core::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(site_config))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+            )
             .parse_metadata_sync("mindmap\n  root\n    child\n")
             .expect("parse Mindmap config fixture")
             .effective_config
@@ -1124,7 +1116,7 @@ mod tests {
         ] {
             let plan = MindmapNodePalettePlan::resolve(
                 None,
-                &PresentationConfig::from_value(config),
+                &crate::test_support::presentation_config(config),
                 &model,
                 &work_meter(),
             )
@@ -1368,7 +1360,7 @@ mod tests {
 
     #[test]
     fn baseline_palette_observes_cancelled_operations_without_a_theme() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let meter = OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input(),

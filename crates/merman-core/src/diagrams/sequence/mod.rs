@@ -43,11 +43,19 @@ mod presentation;
 use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
+#[cfg(feature = "compat-json")]
+pub(crate) use compat::parse_sequence;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use compat::parse_sequence_json_and_editor_facts;
-#[cfg(feature = "compat-json")]
-pub(crate) use compat::{parse_sequence, render_model_to_compat_json};
-pub use merman_model::families::sequence::SequenceCompatibilityProjection;
+#[cfg(test)]
+use merman_model::families::sequence::{
+    SequenceCentralDecoration, SequenceControlSemantics, SequenceDiagramModel, SequenceMessage,
+    SequenceMessageKind, SequenceMessagePayload, SequenceNotePlacement,
+};
+#[cfg(all(test, feature = "presentation"))]
+use merman_model::families::sequence::{
+    SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke,
+};
 pub(crate) use model::sanitize_common_db_fields;
 pub(crate) use parse::parse_sequence_semantic_model_controlled;
 #[cfg(all(test, feature = "editor-facts"))]
@@ -56,19 +64,9 @@ pub(crate) use parse::{
 };
 #[cfg(feature = "presentation")]
 pub(crate) use presentation::parse_sequence_model_for_render_controlled;
-// Keep terminal consumers on the typed projection instead of duplicating LINETYPE decoding.
-pub use model::{
-    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
-    SequenceCentralDecoration, SequenceControlKind, SequenceControlRole, SequenceControlSemantics,
-    SequenceDiagramModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
-    SequenceMessageMarker, SequenceMessagePayload, SequenceMessageStroke, SequenceNote,
-    SequenceNotePlacement, SequenceSignalSemantics,
-};
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "compat-json")]
-    use super::render_model_to_compat_json;
     use super::{
         LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
         LINETYPE_BREAK_START, LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_DUAL,
@@ -77,13 +75,14 @@ mod tests {
         LINETYPE_OPT_END, LINETYPE_OPT_START, LINETYPE_PAR_AND, LINETYPE_PAR_END,
         LINETYPE_PAR_OVER_START, LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START,
         PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF, SequenceCentralDecoration,
-        SequenceControlKind, SequenceControlRole, SequenceControlSemantics, SequenceMessage,
-        SequenceMessageKind, SequenceMessagePayload, SequenceNotePlacement,
+        SequenceControlSemantics, SequenceMessage, SequenceMessageKind, SequenceMessagePayload,
+        SequenceNotePlacement,
     };
     #[cfg(feature = "presentation")]
     use super::{SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke};
     #[cfg(feature = "presentation")]
     use crate::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_model::families::sequence::{SequenceControlKind, SequenceControlRole};
 
     #[cfg(feature = "presentation")]
     #[test]
@@ -140,7 +139,11 @@ Worker-->>Bob: Done"#;
         };
 
         assert_eq!(
-            render_model_to_compat_json(model, typed.metadata()).unwrap(),
+            merman_model::families::sequence::compat::project(
+                model,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(typed.metadata())
+            )
+            .unwrap(),
             compat.model
         );
     }
@@ -188,8 +191,11 @@ Worker-->>Bob: Done"#;
 
         #[cfg(feature = "compat-json")]
         {
-            let compat = render_model_to_compat_json(model, parsed.metadata())
-                .expect("compatibility projection should succeed");
+            let compat = merman_model::families::sequence::compat::project(
+                model,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(parsed.metadata()),
+            )
+            .expect("compatibility projection should succeed");
             assert!(compat.get("actorLifecycles").is_none());
         }
     }

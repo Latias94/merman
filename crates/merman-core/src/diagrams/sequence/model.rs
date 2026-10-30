@@ -1,9 +1,6 @@
-pub use merman_model::families::sequence::{
-    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
-    SequenceCentralDecoration, SequenceControlKind, SequenceControlRole, SequenceControlSemantics,
-    SequenceDiagramModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
-    SequenceMessageMarker, SequenceMessagePayload, SequenceMessageStroke, SequenceNote,
-    SequenceNotePlacement, SequenceSignalSemantics,
+pub(crate) use merman_model::families::sequence::{
+    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox, SequenceDiagramModel,
+    SequenceMessage, SequenceMessagePayload, SequenceNote,
 };
 
 pub(crate) fn sanitize_common_db_fields(

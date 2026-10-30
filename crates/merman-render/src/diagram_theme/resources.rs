@@ -1,4 +1,4 @@
-use merman_core::resources::ResourceProfile;
+use merman_model::resources::ResourceProfile;
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;

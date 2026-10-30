@@ -5,7 +5,7 @@ use crate::svg::parity::flowchart::document_ids::FlowchartDocumentId;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
-use merman_core::svg_security::{
+use crate::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
 };
 

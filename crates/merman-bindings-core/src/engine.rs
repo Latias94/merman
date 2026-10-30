@@ -22,7 +22,7 @@ thread_local! {
 pub struct BindingEngine {
     artifact_contract: Arc<ValidatedArtifactContract>,
     runtime_policy_id: &'static str,
-    runtime_policy: merman::runtime::RuntimePolicy,
+    runtime_policy: merman::model::runtime::RuntimePolicy,
     base_options: common::BaseBindingOptions,
     unchanged_request_validation: OnceLock<Result<(), BindingError>>,
     // Keep option validation eager; full engines are needed only by their output consumers.
@@ -78,7 +78,7 @@ impl BindingEngine {
         Self::with_parsed_options_and_services(
             artifact_contract,
             &options,
-            merman::runtime::RuntimePolicy::deterministic(),
+            merman::model::runtime::RuntimePolicy::deterministic(),
             BindingRuntimePolicy::Deterministic.id(),
             base_options,
             BindingEngineServices::new(),
@@ -132,8 +132,8 @@ impl BindingEngine {
             common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Native)?;
         artifact_contract.validate_native_runtime_policy()?;
-        let runtime_policy =
-            merman::runtime::RuntimePolicy::try_native().map_err(common::runtime_policy_error)?;
+        let runtime_policy = merman::model::runtime::RuntimePolicy::try_native()
+            .map_err(common::runtime_policy_error)?;
         Self::with_parsed_options_and_services(
             artifact_contract,
             &options,
@@ -146,7 +146,7 @@ impl BindingEngine {
 
     pub fn with_operation_context(
         options_json: &[u8],
-        context: merman::runtime::OperationContext,
+        context: merman::model::runtime::OperationContext,
     ) -> Result<Self, BindingError> {
         let artifact_contract = default_artifact_contract();
         let (options, base_options) =
@@ -155,7 +155,7 @@ impl BindingEngine {
         Self::with_parsed_options_and_services(
             artifact_contract,
             &options,
-            merman::runtime::RuntimePolicy::from_operation_context(context),
+            merman::model::runtime::RuntimePolicy::from_operation_context(context),
             "operation-context",
             base_options,
             BindingEngineServices::new(),
@@ -164,7 +164,7 @@ impl BindingEngine {
 
     pub fn with_runtime_policy(
         options_json: &[u8],
-        runtime_policy: merman::runtime::RuntimePolicy,
+        runtime_policy: merman::model::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
         let artifact_contract = default_artifact_contract();
         let (options, base_options) =
@@ -183,7 +183,7 @@ impl BindingEngine {
     fn with_parsed_options_and_services(
         artifact_contract: Arc<ValidatedArtifactContract>,
         options: &common::BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
+        runtime_policy: merman::model::runtime::RuntimePolicy,
         runtime_policy_id: &'static str,
         base_options: common::BaseBindingOptions,
         services: BindingEngineServices,
@@ -346,7 +346,11 @@ impl BindingEngine {
             | crate::OperationKey::DocumentAnalysisFactsJson => {
                 #[cfg(feature = "analysis")]
                 {
-                    let analyzer = Analyzer::with_options(configs.analysis);
+                    let analyzer = Analyzer::with_options(analysis_projection_options(
+                        configs.analysis,
+                        operation.key() != crate::OperationKey::ValidationJson,
+                        &self.artifact_contract,
+                    ));
                     let data = match operation.key() {
                         crate::OperationKey::AnalysisJson => {
                             analyze_json_with(&analyzer, source, &control)
@@ -821,6 +825,17 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("analysis-json", source))
     }
 
+    #[cfg(feature = "analysis")]
+    fn full_analysis_analyzer(&self) -> Analyzer {
+        let options = analysis_projection_options(
+            self.analyzer.options().clone(),
+            true,
+            &self.artifact_contract,
+        );
+        self.analyzer
+            .with_diagnostic_policy(options.diagnostic_policy().clone())
+    }
+
     pub(crate) fn analyze_json_data(
         &self,
         source: &[u8],
@@ -828,7 +843,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_json_with(&self.analyzer, source, control)
+            analyze_json_with(&self.full_analysis_analyzer(), source, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -851,7 +866,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_facts_json_with(&self.analyzer, source, control)
+            analyze_facts_json_with(&self.full_analysis_analyzer(), source, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -878,7 +893,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_document_json_with(&self.analyzer, source, uri, control)
+            analyze_document_json_with(&self.full_analysis_analyzer(), source, uri, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -909,7 +924,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_document_facts_json_with(&self.analyzer, source, uri, control)
+            analyze_document_facts_json_with(&self.full_analysis_analyzer(), source, uri, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -943,6 +958,22 @@ impl BindingEngine {
             Err(common::feature_required_error("validation", "analysis"))
         }
     }
+}
+
+/// Legacy analysis/facts DTOs include fixes only for a host that explicitly exposes them.
+/// Validation remains diagnostic-only even in a fully compiled product.
+#[cfg(feature = "analysis")]
+fn analysis_projection_options(
+    options: merman_analysis::AnalysisOptions,
+    full_dto: bool,
+    artifact: &ValidatedArtifactContract,
+) -> merman_analysis::AnalysisOptions {
+    #[cfg(feature = "fixes")]
+    if full_dto && artifact.exposes_capability(crate::CapabilityKey::Fixes) {
+        return options.with_fix_generation(merman_analysis::FixGeneration::Generate);
+    }
+    let _ = (full_dto, artifact);
+    options.with_fix_generation(merman_analysis::FixGeneration::Omit)
 }
 
 #[cfg(feature = "analysis")]
@@ -1091,7 +1122,7 @@ pub(crate) struct BindingOperationConfigs {
 impl BindingOperationConfigs {
     fn compile(
         options: &common::BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
+        runtime_policy: merman::model::runtime::RuntimePolicy,
         artifact_contract: &ValidatedArtifactContract,
         #[cfg(feature = "svg")] theme: Option<merman::svg::DiagramTheme>,
         #[cfg(feature = "svg")] theme_resources: merman::svg::ThemeResourcePolicy,
@@ -1159,16 +1190,16 @@ pub(crate) fn execute_theme_authoring_with_compiler(
 
 #[derive(Clone)]
 struct SemanticOperationConfig {
-    runtime_policy: merman::runtime::RuntimePolicy,
+    runtime_policy: merman::model::runtime::RuntimePolicy,
     site_config: Option<merman::MermaidConfig>,
     parse_options: merman::ParseOptions,
-    resources: merman::resources::InputResourcePolicy,
+    resources: merman::model::resources::InputResourcePolicy,
 }
 
 impl SemanticOperationConfig {
     fn compile(
         options: &common::BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
+        runtime_policy: merman::model::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
         let site_config = common::binding_site_config(options)?;
         let parse_options = if options
@@ -1195,9 +1226,8 @@ impl SemanticOperationConfig {
         SEMANTIC_ENGINE_MATERIALIZATIONS.with(|count| count.set(count.get() + 1));
         let mut engine = merman::MermaidEngine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
-            engine = engine.with_site_config(
-                merman::presentation::PresentationConfig::from_config(site_config),
-            );
+            engine =
+                engine.with_site_config(merman::SourcePresentationConfig::from_config(site_config));
         }
         SemanticOperationEngine {
             engine,
@@ -1211,7 +1241,7 @@ impl SemanticOperationConfig {
 struct SemanticOperationEngine {
     engine: merman::MermaidEngine,
     parse_options: merman::ParseOptions,
-    resources: merman::resources::InputResourcePolicy,
+    resources: merman::model::resources::InputResourcePolicy,
 }
 
 impl SemanticOperationEngine {
@@ -1242,9 +1272,9 @@ impl SemanticOperationEngine {
             .map_err(BindingError::cancelled)?;
 
         self.resources
-            .check_model_complexity(merman_core::resources::model_complexity_from_render_model(
-                parsed.model(),
-            ))
+            .check_model_complexity(
+                merman::model::resources::model_complexity_from_render_model(parsed.model()),
+            )
             .map_err(common::input_resource_limit_error)?;
 
         let model = parsed
@@ -1270,6 +1300,54 @@ mod tests {
     #[cfg(feature = "svg")]
     use serde_json::json;
     use std::sync::Arc;
+
+    #[cfg(all(feature = "fixes", feature = "diagram-flowchart"))]
+    #[test]
+    fn legacy_full_dtos_generate_fixes_only_for_the_declared_host() {
+        use crate::{
+            ArtifactContractSpec, BindingTransportKey, CapabilityKey, OperationKey, TargetKey,
+        };
+        const SOURCE: &[u8] = b"flowchart\nA-->B\n";
+        let contract = |with_fixes| {
+            let spec = ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::Rust)
+                .with_operations(&[OperationKey::AnalysisJson, OperationKey::ValidationJson]);
+            Arc::new(if with_fixes {
+                spec.with_supplemental_capabilities(&[CapabilityKey::Fixes])
+                    .materialize()
+            } else {
+                spec.materialize()
+            })
+        };
+        for declared in [false, true] {
+            let engine = BindingEngine::from_options_and_services_for_contract(
+                contract(declared),
+                br#"{"analysis":{"lint":{"profile":"recommended"}}}"#,
+                BindingEngineServices::new(),
+            )
+            .unwrap();
+            let payload: Value =
+                serde_json::from_slice(&engine.analyze_json(SOURCE).unwrap()).unwrap();
+            let has_fixes = payload["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| {
+                    diagnostic["fixes"]
+                        .as_array()
+                        .is_some_and(|fixes| !fixes.is_empty())
+                });
+            assert_eq!(has_fixes, declared);
+            let options = analysis_projection_options(
+                engine.analyzer.options().clone(),
+                false,
+                &engine.artifact_contract,
+            );
+            assert_eq!(
+                options.diagnostic_policy().fix_generation,
+                merman_analysis::FixGeneration::Omit
+            );
+        }
+    }
     #[cfg(feature = "svg")]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1492,7 +1570,7 @@ mod tests {
 
     #[test]
     fn semantic_parse_errors_are_terminal_safe_and_structured() {
-        let span = merman::SourceSpan::new(5, 5);
+        let span = merman::model::SourceSpan::new(5, 5);
         let diagnostic = merman::ParseDiagnostic::new("missing\u{7}value")
             .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
             .with_code("merman.semantic\u{1b}");
@@ -2109,7 +2187,8 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
             .expect("typed model parse")
             .expect("flowchart diagram");
-        let complexity = merman::resources::model_complexity_from_render_model(parsed.model());
+        let complexity =
+            merman::model::resources::model_complexity_from_render_model(parsed.model());
 
         for (limit, exact) in [
             ("max_model_items", complexity.items),

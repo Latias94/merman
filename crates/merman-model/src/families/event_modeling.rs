@@ -1,3 +1,6 @@
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EventModelingFrame {
     pub name: String,

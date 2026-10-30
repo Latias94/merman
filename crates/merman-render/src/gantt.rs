@@ -5,7 +5,7 @@ use crate::model::{
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, mermaid_html_breaks_to_newlines};
-use merman_core::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
+use merman_model::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
 use std::collections::{HashMap, hash_map::Entry};
 use std::fmt::Write as _;
 
@@ -956,7 +956,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     task_theme: &GanttTaskTheme,
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
-    local_time_zone: &merman_core::time::LocalTimeZone,
+    local_time_zone: &merman_model::time::LocalTimeZone,
 ) -> Result<GanttDiagramLayout> {
     if task_theme.task_count() != model.tasks.len() {
         return Err(crate::Error::InvalidModel {
@@ -1471,8 +1471,8 @@ mod tests {
         format_dayjs_like, layout_gantt_diagram_typed,
     };
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
     use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+    use merman_model::time::{CivilDate, OffsetDateTime, UtcOffset};
 
     #[test]
     fn zero_section_styles_preserves_javascript_nan_class_suffix() {
@@ -1510,7 +1510,7 @@ mod tests {
             ..GanttRenderTask::default()
         });
 
-        let utc = merman_core::time::LocalTimeZone::utc();
+        let utc = merman_model::time::LocalTimeZone::utc();
         let task_theme = super::GanttTaskTheme::baseline(&model.tasks);
         let layout = layout_gantt_diagram_typed(
             &model,
@@ -1567,7 +1567,7 @@ mod tests {
 
     #[test]
     fn dayjs_unix_seconds_floor_negative_milliseconds() {
-        let utc = merman_core::time::LocalTimeZone::utc();
+        let utc = merman_model::time::LocalTimeZone::utc();
         for (milliseconds, expected) in [
             (-1_001, "-2"),
             (-1_000, "-1"),
@@ -1586,7 +1586,7 @@ mod tests {
 
     #[test]
     fn millisecond_tick_ceil_uses_euclidean_alignment_before_epoch() {
-        let utc = merman_core::time::LocalTimeZone::utc();
+        let utc = merman_model::time::LocalTimeZone::utc();
 
         assert_eq!(ceil_tick_start(-1, 250, "millisecond", None, &utc), Some(0));
         assert_eq!(

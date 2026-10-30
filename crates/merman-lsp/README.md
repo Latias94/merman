@@ -34,7 +34,7 @@ For repository development, select families explicitly. Defaults remain empty. R
 `diagram-*` selectors for a narrower source build:
 
 ```sh
-cargo run -p merman-lsp --features all-diagrams,stdio
+cargo run -p merman-lsp --features all-diagrams,fixes,stdio
 ```
 
 ## Supported Documents
@@ -55,6 +55,8 @@ the protocol.
 Unconfigured sessions admit at most 4 MiB of source text and 256 Mermaid fences per Markdown or MDX document. Source-byte rejection discards the oversized text and requires a later full replacement. Fence-count rejection retains authoritative text, so ranged edits or a configuration increase can restore analysis without reopening the document. Both limits are exposed through the analysis settings and `merman/configSchema`.
 
 ## Language Features
+
+Current source builds select `fixes` explicitly when code actions are required. Official full LSP recipes include it; custom diagnostics-only builds can omit it. Diagnostic publication uses `FixGeneration::Omit`, while code actions request Generate from the same immutable analysis generation. An unavailable fixes capability returns a typed missing-capability error.
 
 - Diagnostics, including pull diagnostics and fix-backed quick fixes. When several requested diagnostics own the same shared document fix, the server materializes one equivalent workspace edit rather than repeating the action.
 - Completion and completion-item resolution.

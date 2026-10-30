@@ -6,7 +6,8 @@ use merman_ascii::{
     AsciiError, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitCause, AsciiResourceLimitId,
     AsciiResourceLimitPhase, AsciiResourcePolicy,
 };
-use merman_core::{OperationControl, SemanticParser, resources::ResourceProfile};
+use merman_core::SemanticParser;
+use merman_model::{OperationControl, resources::ResourceProfile};
 
 const IMPORTED_FAMILY_FIXTURE_COUNTS: &[(&str, &str, usize)] = &[
     ("sequence", "sequence", 323),
@@ -94,7 +95,7 @@ fn imported_common_family_fixtures_parse_and_render() {
                     .parse_diagram_sync(&source)
                     .map_err(|error| format!("strict canonical parse failed: {error}"))?;
                 let parsed_family =
-                    merman_core::diagram_type_family_kind(&parsed.metadata.diagram_type);
+                    merman_model::family::diagram_type_family_kind(&parsed.metadata.diagram_type);
                 if parsed_family != Some(*expected_kind) {
                     return Err(format!(
                         "expected typed family `{expected_kind}`, got `{}` (`{}`)",

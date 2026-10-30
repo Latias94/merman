@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn xml_text_output_charges_serialized_bytes_and_keeps_first_terminal_failure() {
-        use merman_core::OperationControl;
+        use merman_model::OperationControl;
 
         const EXPECTED: &str = "<svg><style>A&amp;B&lt;]]&gt;</style></svg>";
         for max in [EXPECTED.len(), EXPECTED.len() - 1] {
@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn xml_text_output_observes_cancellation_before_retaining_encoded_text() {
-        use merman_core::OperationControl;
+        use merman_model::OperationControl;
 
         let control = OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn xml_text_output_long_plain_fragment_observes_cancellation_during_emission() {
-        use merman_core::OperationControl;
+        use merman_model::OperationControl;
 
         let control = OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
@@ -680,7 +680,7 @@ mod tests {
 
     #[test]
     fn xml_text_output_stops_mid_unicode_fragment_and_preserves_the_first_failure() {
-        use merman_core::OperationControl;
+        use merman_model::OperationControl;
 
         let control = OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
@@ -730,7 +730,7 @@ mod tests {
 
     #[test]
     fn xml_text_output_observes_cancellation_while_removing_forbidden_scalars() {
-        use merman_core::OperationControl;
+        use merman_model::OperationControl;
 
         let control = OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
@@ -799,7 +799,7 @@ mod tests {
 
     #[test]
     fn xml_text_output_observes_cancellation_during_dense_entity_expansion() {
-        use merman_core::OperationControl;
+        use merman_model::OperationControl;
 
         let control = OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
@@ -867,7 +867,7 @@ mod tests {
 
     #[test]
     fn bounded_svg_output_observes_cancellation_before_returning_completed_document() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control.clone(),
@@ -928,7 +928,7 @@ mod tests {
 
     #[test]
     fn bounded_svg_output_empty_start_and_replacements_preserve_byte_credit() {
-        use merman_core::OperationControl;
+        use merman_model::OperationControl;
 
         for maximum in [1, 10] {
             let policy = RenderResourcePolicy::unbounded_for_trusted_input()

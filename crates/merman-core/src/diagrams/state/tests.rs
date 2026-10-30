@@ -3,7 +3,7 @@ use super::*;
 use crate::family::EditorFactsDemand;
 use crate::{MermaidConfig, OperationControl};
 #[cfg(feature = "presentation")]
-use crate::{MermaidEngine, ParseOptions, PresentationMetadata, RenderSemanticModel};
+use crate::{MermaidEngine, ParseOptions, RenderSemanticModel, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
 use serde_json::{Value, json};
 
@@ -32,11 +32,11 @@ fn chain(depth: usize) -> String {
 }
 
 #[cfg(feature = "presentation")]
-fn meta() -> PresentationMetadata {
-    PresentationMetadata {
+fn meta() -> SourcePresentationMetadata {
+    SourcePresentationMetadata {
         diagram_type: "stateDiagram-v2".to_string(),
         config: MermaidConfig::empty_object(),
-        effective_config: crate::presentation::PresentationConfig::empty_object(),
+        effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
         title: None,
     }
 }

@@ -1,7 +1,6 @@
 mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy};
-use merman_core::{MermaidEngine, OperationControl, OperationPhase, RenderSemanticModel};
 use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask, GanttTask};
 use merman_model::families::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 use merman_model::families::journey::JourneyDiagramModel;
@@ -10,10 +9,11 @@ use merman_model::families::mindmap::{MindmapDiagramRenderModel, MindmapDiagramR
 use merman_model::families::packet::{PacketBlock, PacketDiagramModel};
 use merman_model::families::timeline::TimelineDiagramModel;
 use merman_model::families::tree_view::TreeViewDiagramModel;
+use merman_model::{OperationControl, OperationPhase, presentation::RenderSemanticModel};
 use support::{parse_model, render_controlled_model, render_model};
 
 fn operation_context() -> merman_model::runtime::OperationContext {
-    MermaidEngine::new()
+    merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic operation context should be available")
 }

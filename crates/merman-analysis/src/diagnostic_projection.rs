@@ -572,7 +572,7 @@ mod tests {
         },
     };
     #[cfg(feature = "compat-json")]
-    use merman_core::theme_color::ColorError;
+    use merman_markup::theme_color::ColorError;
 
     #[cfg(feature = "compat-json")]
     #[test]
@@ -599,11 +599,13 @@ mod tests {
     #[test]
     fn theme_evaluation_limits_are_resource_diagnostics_without_source_ownership() {
         let projection = core_error_candidate(
-            &CoreError::ThemeEvaluationLimit(merman_core::ThemeEvaluationLimitExceeded {
-                limit: "THEME_COLOR_LIMIT",
-                requested: "65".to_string(),
-                max: 64,
-            }),
+            &CoreError::ThemeEvaluationLimit(
+                merman_model::presentation::ThemeEvaluationLimitExceeded {
+                    limit: "THEME_COLOR_LIMIT",
+                    requested: "65".to_string(),
+                    max: 64,
+                },
+            ),
             &SourceMap::new("flowchart TD\nA-->B\n"),
         );
 

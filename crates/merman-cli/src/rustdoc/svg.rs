@@ -10,7 +10,7 @@ mod tests {
     use crate::resources::ResolvedResourcePolicy;
 
     fn resources() -> ResolvedResourcePolicy {
-        ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
+        ResolvedResourcePolicy::for_profile(merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE)
     }
 
     #[test]

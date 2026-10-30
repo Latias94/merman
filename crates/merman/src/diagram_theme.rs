@@ -1,7 +1,7 @@
 //! General typed visual-theme authoring, retained bindings, and concrete compilation.
 //! Copy a preset or construct a ThemeDesignV1, then compile its ThemeRecipeV1 through the caller-owned compiler.
 
-pub use merman_core::DiagramFamilyId;
+pub use merman_model::family::DiagramFamilyId;
 pub use merman_render::diagram_theme::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeCompileError,
     ThemeDesignCompileError, ThemeDesignInspection, ThemeDesignReferenceUse,

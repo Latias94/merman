@@ -1,4 +1,5 @@
-use merman::{SemanticDiagramModel, SemanticParser};
+use merman::SemanticParser;
+use merman::model::SemanticDiagramModel;
 
 const SOURCE: &str = "flowchart TD\n  A[API] --> B[Semantic model]\n";
 

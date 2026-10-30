@@ -2,7 +2,7 @@ use super::*;
 use std::collections::BTreeMap;
 
 fn er_binding(config: &serde_json::Value) -> crate::er::ErCssBinding {
-    let config = merman_core::presentation::PresentationConfig::from_value(config.clone());
+    let config = crate::test_support::presentation_config(config.clone());
     crate::er::ErCssBinding::resolve(
         config.as_value(),
         &crate::family::InheritedFontStackPlan::resolve_property_local(None, &config),
@@ -420,7 +420,7 @@ fn gantt_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let config = merman_core::presentation::PresentationConfig::from_value(cfg);
+    let config = crate::test_support::presentation_config(cfg);
     let meter = crate::resources::OperationWorkMeter::new(
         crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
     );
@@ -481,7 +481,7 @@ fn treemap_css_honors_mermaid_11_15_style_options() {
 #[cfg(feature = "diagram-xychart")]
 #[test]
 fn xychart_common_css_keeps_source_colors_with_its_resolved_font_stack() {
-    let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+    let config = crate::test_support::presentation_config(serde_json::json!({
         "fontFamily": "Inter, sans-serif",
         "themeVariables": { "textColor": "#123456", "lineColor": "#abcdef" }
     }));

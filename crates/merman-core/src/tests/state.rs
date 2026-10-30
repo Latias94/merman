@@ -977,7 +977,7 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
     let (combined_json, mut combined_editor) = crate::family::test_support::into_result(
         crate::diagrams::state::parse_state_json_and_editor_facts(
             input,
-            &standalone.meta,
+            &crate::diagrams::source_metadata_for_test(&standalone.meta),
             &crate::OperationControl::new(),
         ),
     )
@@ -1035,7 +1035,11 @@ fn state_typed_render_model_projects_exact_compatibility_json() {
     };
 
     assert_eq!(
-        crate::diagrams::state::render_model_to_compat_json(model, typed.metadata()).unwrap(),
+        merman_model::families::state::compat::project(
+            model,
+            &merman_model::presentation::compat::CompatJsonMetadata::from(typed.metadata())
+        )
+        .unwrap(),
         compat
     );
 }

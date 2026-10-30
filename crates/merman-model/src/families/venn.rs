@@ -1,5 +1,8 @@
 //! Canonical Venn subsets, text nodes and styles.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]

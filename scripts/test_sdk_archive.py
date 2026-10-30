@@ -269,6 +269,8 @@ class SdkArchiveTests(unittest.TestCase):
                         self.assertNotIn(b"-lmerman_ffi.dll", members["lib/pkgconfig/merman-static.pc"])
                     if flavor == "full":
                         self.assertIn(self.commit.encode(), members["SOURCE_AVAILABILITY.md"])
+                        self.assertIn(b"crates/merman-model", members["SOURCE_AVAILABILITY.md"])
+                        self.assertIn(b"crates/merman-markup", members["SOURCE_AVAILABILITY.md"])
                         self.assertIn(b"crates/merman-layout-elk", members["SOURCE_AVAILABILITY.md"])
 
     def test_archives_follow_shared_safe_extraction_conventions(self):

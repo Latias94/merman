@@ -5,7 +5,7 @@ use allocator::CountingSystemAllocator;
 use merman::svg::{RenderResourcePolicy, SvgRenderOptions};
 use merman::{
     MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer,
-    SvgEnvironment, SvgRequest, runtime::RuntimePolicy,
+    SvgEnvironment, SvgRequest, model::runtime::RuntimePolicy,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

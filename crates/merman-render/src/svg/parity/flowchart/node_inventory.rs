@@ -248,7 +248,7 @@ impl FlowchartPreparedNodes {
         layout: FlowchartNodeLayoutView<'_>,
         svg_labels: &crate::flowchart::FlowchartSvgLabelSidecar,
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         prepared_theme: &crate::flowchart::FlowchartPreparedTheme,
         render_config: &super::render_config::FlowchartRenderConfig,
         work: &std::sync::Arc<crate::resources::OperationWorkMeter>,
@@ -299,7 +299,7 @@ impl FlowchartPreparedNodes {
             .iter()
             .chain(schedule.nested.iter().flat_map(|(_, order)| order.iter()))
         {
-            work.checkpoint(merman_core::OperationPhase::Layout)?;
+            work.checkpoint(merman_model::OperationPhase::Layout)?;
             work.charge(1)?;
             if !input.layout_nodes_by_id.contains_key(id.as_str()) {
                 continue;
@@ -637,7 +637,7 @@ impl FlowchartNodeRootSchedule {
                 (top.into_iter().map(str::to_owned).collect(), Vec::new())
             } else {
                 ctx.work_meter
-                    .checkpoint(merman_core::OperationPhase::Layout)?;
+                    .checkpoint(merman_model::OperationPhase::Layout)?;
                 ctx.work_meter.charge(1)?;
                 let top = flowchart_dom_order_for_root(ctx, None, candidates.take(None))?;
                 let mut pending = Vec::new();
@@ -659,7 +659,7 @@ impl FlowchartNodeRootSchedule {
                 let mut visited = FxHashSet::default();
                 while let Some(root) = pending.pop() {
                     ctx.work_meter
-                        .checkpoint(merman_core::OperationPhase::Layout)?;
+                        .checkpoint(merman_model::OperationPhase::Layout)?;
                     ctx.work_meter.charge(1)?;
                     let root_id = ctx
                         .recursive_clusters
@@ -717,10 +717,14 @@ mod source_typography_tests {
                 merman_core::ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
-        let render_context = parsed.flowchart_render_context().unwrap().clone();
-        let (metadata, semantic) = parsed.into_parts();
-        let merman_core::RenderSemanticModel::Flowchart(model) = semantic else {
+            .unwrap().into_presentation();
+        let render_context = parsed
+            .render_context()
+            .flowchart_render_context()
+            .unwrap()
+            .clone();
+        let (metadata, semantic, _) = parsed.into_parts();
+        let merman_model::presentation::RenderSemanticModel::Flowchart(model) = semantic else {
             panic!("Flowchart model");
         };
         assert_eq!(model.subgraphs.len(), 1);
@@ -818,10 +822,15 @@ mod source_typography_tests {
                 merman_core::ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
-        let render_context = parsed.flowchart_render_context().unwrap().clone();
-        let (metadata, semantic) = parsed.into_parts();
-        let merman_core::RenderSemanticModel::Flowchart(model) = semantic else {
+            .unwrap()
+            .into_presentation();
+        let render_context = parsed
+            .render_context()
+            .flowchart_render_context()
+            .unwrap()
+            .clone();
+        let (metadata, semantic, _) = parsed.into_parts();
+        let merman_model::presentation::RenderSemanticModel::Flowchart(model) = semantic else {
             panic!("Flowchart model");
         };
         let measurer = crate::text::DeterministicTextMeasurer::default();

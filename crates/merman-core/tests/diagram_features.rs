@@ -1,7 +1,10 @@
 //! Consumer-level contracts for selected parser implementations.
 use merman_core::{Error, SemanticParser};
 #[cfg(feature = "compat-json")]
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+use {
+    merman_core::{MermaidEngine, ParseOptions},
+    merman_model::presentation::RenderSemanticModel,
+};
 
 #[cfg(feature = "compat-json")]
 #[test]
@@ -90,12 +93,12 @@ fn disabled_builtin_accepts_custom_overlays_without_claiming_builtin_provenance(
         panic!("expected custom semantic overlay");
     };
     assert_eq!(custom.value()["owner"], "semantic");
-    assert!(!parsed.model().supports_diagram_type("sequence"));
+    assert!(!parsed.model().matches_diagram_type("sequence"));
     engine
         .render_diagram_registry_mut()
         .insert("sequence", |_, _, control| {
             control.checkpoint()?;
-            Ok(Ok(merman_core::CustomJsonRenderModel::new(
+            Ok(Ok(merman_model::presentation::CustomJsonRenderModel::new(
                 "sequence",
                 serde_json::json!({"owner": "render"}),
             )))
@@ -108,14 +111,14 @@ fn disabled_builtin_accepts_custom_overlays_without_claiming_builtin_provenance(
         panic!("expected custom render overlay");
     };
     assert_eq!(custom.value()["owner"], "render");
-    assert!(!parsed.model().supports_diagram_type("sequence"));
+    assert!(!parsed.model().matches_diagram_type("sequence"));
 }
 
 #[cfg(feature = "compat-json")]
 #[test]
 fn cancellation_is_not_suppressed_for_unavailable_or_unknown_input() {
     let engine = MermaidEngine::new();
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::operation::OperationControl::new();
     control.cancel();
     for source in [
         "sequenceDiagram\nAlice->>Bob: Hello\n",
@@ -128,7 +131,10 @@ fn cancellation_is_not_suppressed_for_unavailable_or_unknown_input() {
                 &control,
             )
             .unwrap_err();
-        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
+        assert_eq!(
+            cancelled.reason,
+            merman_model::operation::CancelReason::Requested
+        );
     }
 }
 
@@ -157,7 +163,7 @@ fn custom_semantic_and_render_overlays_have_independent_ownership_even_for_enabl
         fallback.model(),
         RenderSemanticModel::CustomJson(_)
     ));
-    assert!(!fallback.model().supports_diagram_type("sequence"));
+    assert!(!fallback.model().matches_diagram_type("sequence"));
     assert_eq!(
         semantic.model,
         fallback
@@ -170,7 +176,7 @@ fn custom_semantic_and_render_overlays_have_independent_ownership_even_for_enabl
         .render_diagram_registry_mut()
         .insert("sequence", |_, _, control| {
             control.checkpoint()?;
-            Ok(Ok(merman_core::CustomJsonRenderModel::new(
+            Ok(Ok(merman_model::presentation::CustomJsonRenderModel::new(
                 "host-render",
                 serde_json::json!({"owner": "render"}),
             )))
@@ -209,20 +215,22 @@ fn custom_parser_cancellation_keeps_the_outer_channel_instead_of_a_lenient_error
         let result = engine.parse_diagram_for_render_model_controlled_sync(
             source,
             options,
-            &merman_core::OperationControl::new(),
+            &merman_model::operation::OperationControl::new(),
         );
         assert_eq!(
             result.unwrap_err().reason,
-            merman_core::CancelReason::Requested
+            merman_model::operation::CancelReason::Requested
         );
     }
     #[cfg(feature = "editor-facts")]
     {
-        let result = engine
-            .parse_diagram_snapshot_controlled_sync(source, &merman_core::OperationControl::new());
+        let result = engine.parse_diagram_snapshot_controlled_sync(
+            source,
+            &merman_model::operation::OperationControl::new(),
+        );
         assert_eq!(
             result.unwrap_err().reason,
-            merman_core::CancelReason::Requested
+            merman_model::operation::CancelReason::Requested
         );
     }
 }
@@ -382,7 +390,7 @@ fn canonical_parsing_and_catalog_follow_selected_families_without_presentation()
         if enabled {
             let parsed = result.unwrap();
             assert_eq!(
-                merman_core::diagram_type_family_kind(&parsed.metadata.diagram_type),
+                merman_model::family::diagram_type_family_kind(&parsed.metadata.diagram_type),
                 Some(family)
             );
         } else {
@@ -401,7 +409,7 @@ fn canonical_unavailable_and_unknown_input_preserve_outer_cancellation() {
         parser.parse_diagram_sync("not-a-mermaid-diagram"),
         Err(Error::DetectType(_))
     ));
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::operation::OperationControl::new();
     control.cancel();
     for source in [
         "sequenceDiagram\nAlice->>Bob: Hello",
@@ -410,6 +418,9 @@ fn canonical_unavailable_and_unknown_input_preserve_outer_cancellation() {
         let cancelled = parser
             .parse_diagram_controlled_sync(source, &control)
             .unwrap_err();
-        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
+        assert_eq!(
+            cancelled.reason,
+            merman_model::operation::CancelReason::Requested
+        );
     }
 }

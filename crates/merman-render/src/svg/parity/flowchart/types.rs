@@ -42,7 +42,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) tx: f64,
     pub(in crate::svg::parity::flowchart) ty: f64,
     pub(in crate::svg::parity::flowchart) measurer: &'a dyn TextMeasurer,
-    pub(in crate::svg::parity::flowchart) config: &'a merman_core::presentation::PresentationConfig,
+    pub(in crate::svg::parity::flowchart) config:
+        &'a merman_model::presentation::PresentationConfig,
     pub(in crate::svg::parity::flowchart) compatibility:
         &'a crate::flowchart::FlowchartCompatibilityBinding,
     pub(in crate::svg::parity::flowchart) effect_eligibility:

@@ -1,6 +1,6 @@
 # Model/source boundaries implementation record
 
-Status: M0 complete; M1–M3 implemented with integration/retirement work still open; M4–M8 in progress, 2026-10-30. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
+Status: M0 complete; M1–M7 implementation integrated, with final validation in progress under M8, 2026-10-30. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
 
 ## Frozen source and observations
 
@@ -15,12 +15,14 @@ Status: M0 complete; M1–M3 implemented with integration/retirement work still 
 | Slice | Status | Evidence |
 | --- | --- | --- |
 | M0 | Complete | All six independent consumers compiled and passed both runtime inputs, repeated-output checks and raw/stripped equivalence. |
-| M1 | In progress | Shared lifecycle/config/runtime/resources/text and the pinned data-only identity catalog moved; source provider bindings remain core-owned. Final consumer retirement and M8 admission remain open. |
-| M2 | In progress | All 34 canonical payloads and nine real full-data groups moved. The six redundant wrappers are retired; core/model all-family tests passed 2336 cases. Graphical context/projection admission and old-path retirement remain open. |
-| M3 | In progress | ASCII production uses model directly; all 1397 runtime tests passed. Independent output receipt and remaining product/feature gates are open. |
-| M4 | In progress | Default-off requested fixes implemented; diagnostics-only and fixes-capable semantic recipes passed 287 and 322 tests. Compatibility JSON, host migration and independent receipts remain open. |
-| M5 | In progress | Shared markup implementation extracted and its 55 tests passed; immutable presentation and parser-free Render/Export remain open. |
-| M6–M8 | Open | Final product, retirement and acceptance work remains. |
+| M1 | Implemented; final gates pending | Shared lifecycle/config/runtime/resources/text and the pinned data-only identity catalog moved. Source provider bindings remain core-owned; forwarding retirement is integrated. |
+| M2 | Implemented; final gates pending | All 34 canonical payloads and nine real full-data groups moved. Six redundant wrappers are retired. Post-retirement core/model all-feature tests passed 2399 cases; the strict isolated producer case remains part of M8. |
+| M3 | Implemented; final gates pending | ASCII production uses model directly. The fixed model-to-ASCII checkpoint retains exact primary/fallback/report outputs; final consumer measurements and product recipes remain. |
+| M4 | Implemented; final gates pending | Default-off requested fixes and immutable evidence are integrated into CLI/LSP/bindings. Semantic-only recipes passed 287/322 cases and the combined all-feature product libraries passed 937 cases; final exact recipes remain. |
+| M5 | Implemented; final gates pending | Single markup owner, checked immutable presentation and parser-free Render/Export closures are integrated. Render's full library passed 3303 cases; final focused boundary regressions, integration tests and DOM owners remain. |
+| M6 | Implemented; final gates pending | All 46 artifact profiles and closure checks pass. Product recipes, docs and legal projections are migrated; actual package/installed consumers and final recipe execution remain. |
+| M7 | Implemented; final gates pending | Public core model namespaces, old wrappers and source-to-render private bridges are retired. The family inventory records the retained output contracts; acceptance-cfg callers are migrated and await execution. |
+| M8 | In progress | Final feature, DOM, Linux, source-package, installed-product and measurement owners remain required. No publication has run. |
 
 Existing correctness results at the prerequisite retain their original scope in the [dependency review](../research/2026-10-30-dependency-review.md). New consumer baselines and implementation gates will be recorded here as they complete. Do not infer a runtime improvement from the package boundary or rewrite historical measurement hashes.
 
@@ -341,3 +343,133 @@ Evidence is under ignored `target/bench/experiments/model-source-boundaries/`:
 indexes these actual results. There is still no controlled cold-compilation or runtime-speed result.
 These fixed observations do not close graphical/export, full host/product integration, retirement,
 SVG DOM, strict feature, package/legal or final M8 requirements.
+
+
+## M5 shared presentation construction and source integration
+
+The model package now owns immutable `PresentationConfig`, `PresentationMetadata`, the full typed
+`RenderSemanticModel`, one `PresentationContext` enum, and checked `PresentationDiagram` input.
+Ordinary authored configuration owns its declared inputs without inferring source-derived theme
+residuals. Explicit frozen declarations validate their recipe, ownership, family paint, model,
+context, and catalog relationships. Neither constructor authenticates a source producer.
+
+Core retains `SourcePresentationConfig`, `SourcePresentationMetadata`, mutation journals,
+detector replay, theme evaluation, initialization caches, source sanitation/remapping, and its
+privately constructed `ParsedDiagramRender`. The latter now contains the checked shared value;
+output consumers borrow it through `presentation()`, or consume it through `into_presentation()`.
+Finalization remains controlled and fallible after sanitation and source-coordinate remapping.
+Validation failures do not re-enter the suppressed family-parse-error path.
+
+Construction-local validation policy is independent of existing output model admission. Source
+default/config freezing uses an unbounded construction policy with cooperative cancellation;
+the request still admits the same authored model complexity at the existing operation boundary.
+This preserves small valid model budgets without charging all pinned configuration defaults as
+authored model data. Independent data producers can explicitly bound their construction work.
+
+All family compatibility projectors now have a model-owned implementation and a local
+`CompatProjectionError`. Source wrappers adapt that error to the existing parse diagnostic.
+State retains managed iterative document expansion per occurrence. Treemap retains its 8 MiB
+complete-output preflight before the combined source path's editor-fact handoff. Architecture
+retains authored root-layout presence separately from resolved configuration, including null.
+Mindmap freezes an explicit runtime-derived diagram identity independently of `compat-json`.
+Its public tree projector rejects cycles and repeated incoming edges by internal node identity;
+repeated authored names and labels remain valid. It no longer substitutes null for an incomplete
+child projection. This uses the pinned Mindmap DB's single-parent construction rule.
+
+The source library passed 2101 tests (`1fd4ca19-86c6-4c31-9fe8-6e705ca8416f`). The combined
+core/model recipe then passed all 2387 tests across 24 binaries, including integration contracts
+(`df7b9899-4391-4b95-acd5-db9ad3f50cb9`). After the bounded Mindmap tree check and two added
+regressions, all model-library and source-Mindmap cases passed: 229 tests, 2033 unrelated cases
+skipped (`ea071ddc-3fac-44fc-a81b-eb26d9dd65e9`). Core and model production libraries passed
+all-feature Clippy with `-D warnings`. These counts overlap.
+
+Render/Export consumer migration, the independent graphical/source-output-facts fixtures,
+remaining host/product compilation, public forwarding retirement, and final M8 gates remain
+active. No parser-free graphical closure, final size, runtime speed, or cold-compilation result is
+claimed by this source-integration checkpoint.
+
+
+## M5/M6 production consumer and catalog checkpoint
+
+Render accepts shared `PresentationDiagram` values and has no production core dependency. Export
+uses shared execution/resource contracts while retaining its actual Render SVG-seal and font
+interfaces. SVG navigation serialization moved to Render; shared HTML/URL safety remains in
+markup. The pure theme catalog, pinned baseline projection, bounded color-count coercion, and
+ECMAScript whitespace predicate have one model owner. Source theme execution and initialization
+remain core-owned. Render exposes a shared compatibility recipe; the facade installs it through
+the public source-owned theme plan, retaining a bounded one-plan initialization cache.
+
+The isolated `renderer-data` consumer successfully generated real SVG from caller-constructed
+Flowchart data without core. The normal all-family Render/library check, all-feature Export
+library check, all-feature facade library check, and combined all-feature bindings-core, LSP, and
+CLI check passed on Windows. Render's all-feature production library passed strict Clippy.
+Partial optional-feature recipes retain their existing unused-code warnings; a successful
+all-feature Clippy run does not assert that every singleton recipe is warning-free.
+
+The actual existing closure verifier passed every representative-target artifact profile,
+including runtime and declared normal/build exclusions. Model/ASCII exclude source ingestion and
+shared HTML5/URL admission; Render/Export exclude core and the Mermaid grammar/YAML/JSON5 stack.
+Diagnostic-only recipes exclude `serde-saphyr` and the fixes feature. These are Cargo graph checks
+for the descriptor's target triples, not executions of Linux, Apple, Android, or WASM products.
+Catalog verification admitted all 46 exact profiles. Capability-surface and moved Mermaid-baseline
+projections passed their owners. Seven WASM input/provenance tests also passed.
+
+The fixes capability keeps all previous bit identities and appends bit 21. Exactly the plan's 20
+full CLI/LSP/editor/native SDK recipes select it. Diagnostic publication omits materialization;
+code actions use the same retained generation for a requested Generate projection. Narrow host
+declarations still govern both cached and override bindings paths. Product runtime and installed
+consumer tests remain required in addition to these compile and static-review observations.
+
+The new packages appear in the derived coupled publish graph before their dependents. Generated
+Rust license reports (13), third-party source notices, all 446 release legal projections, and legal
+contents of all 28 governed Cargo packages passed the current owner checks. No publication ran.
+Final package/fresh-consumer admission, complete graphical tests/parity, strict feature recipes,
+Linux/browser owners, and final independent measurements remain active.
+
+After public forwarding retirement and the shared theme catalog/numeric helper extraction, the
+full core/model all-feature recipe passed 2399 tests across 24 binaries
+(`0913affd-0cd1-48ea-a44f-f46eac441862`). The complete Render all-feature library recipe passed
+3303 tests with one existing skipped case (`12babe04-86a4-419c-8205-bbfd4d32e84b`). The first
+Render run exposed fixtures that had relied on unowned `from_value` configuration. Those local
+fixtures now declare checked frozen defaults explicitly; ordinary authored input still owns its
+supplied leaves. The tests' typed paint/typography assertions remain unchanged.
+
+Review also corrected two migration-local behavior changes before this passing Render run.
+Flowchart's standalone formula measurement retains its strict default locally instead of applying
+it to Class/Usecase. Agentflow's Flowchart routing projection preserves declared ownership without
+creating authored assignments; deep values use iterative cloning. Regressions cover frozen facts
+and a depth-2048 value on a 128 KiB stack. The independent raw Mindmap projector also retains
+managed JSON ownership on its missing-identity error path; its small-stack regression passed.
+
+The combined all-feature analysis, editor-core, LSP and bindings-core library run passed all
+937 tests (`bc478328-ed98-4746-bdff-e25160cebd55`). This exercises the requested-fix projection,
+generation reuse, host capability and product library contracts together; it does not replace
+the diagnostics-only recipe, protocol/server smoke, installed consumer or final feature matrix.
+
+The full workspace `cargo check --locked --workspace --all-features --all-targets --keep-going`
+completed successfully on Windows after migrating test, example, bench, Rustdoc, Web and
+Tree-sitter callers. The private theme-acceptance harness requires its separate cfg runner and
+is not exercised by that ordinary workspace check. The UniFFI measurement test callback now
+handles the already-declared `HtmlLineHeight` operation; this changes no transport enum or version.
+Fifty unused Render integration-test imports were removed rather than restoring old aliases.
+
+Current performance probe source fingerprints were refreshed after the import, manifest and
+lockfile changes. All 240 Python performance contract tests passed. This refresh preserves lane
+recipes, metric thresholds, candidate-admission settings and expected output identities; it is not
+a new performance measurement or a claim that an existing memory threshold has been requalified.
+
+## M8 environment preparation
+
+The task-owned Linux environment is an ext4 directory under
+`/home/frankorz/merman-model-boundaries-20261030` in Ubuntu 26.04. It reuses the installed Linux
+Rust 1.95.0 toolchain without changing the user's default. Task-local nextest 0.9.148, Node
+24.21.0/npm 12.2.1, esbuild 0.28.1 and Chrome Headless Shell 156.0.8078.47 passed version checks.
+The offline Cargo home contains the lockfile's 568 registry archives and 533 sparse-index records;
+archive contents/checksums were checked during staging. Browser libraries and fontconfig are
+private extracts of 23 Ubuntu packages verified against signed repository indexes. There was no
+system package installation, network reconfiguration or Docker startup.
+
+Setup receipts and environment declarations are retained in ignored
+`target/m8-linux-setup-20261030/` and the corresponding Linux scratch root. Environment preparation
+alone is not Linux filesystem, process-containment, browser or product execution evidence. Those
+owners must run against the frozen candidate source before their results are admitted below.

@@ -8,8 +8,8 @@ use super::metrics::{
 use crate::Result;
 use crate::model::LayoutNode;
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::sequence::SequenceMessage;
+use merman_model::presentation::PresentationConfig;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -360,8 +360,8 @@ mod tests {
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::presentation::PresentationConfig;
     use merman_model::families::sequence::{SequenceMessage, SequenceMessagePayload};
+    use merman_model::presentation::PresentationConfig;
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::sync::Arc;

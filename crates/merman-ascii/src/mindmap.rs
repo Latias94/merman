@@ -778,9 +778,9 @@ mod tests {
 
     #[test]
     fn canonical_mindmap_matches_full_shapes_and_section_traversal() {
-        use merman_core::{
-            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
-        };
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::SemanticDiagramModel;
+        use merman_model::presentation::RenderSemanticModel;
 
         let branches = (0..13)
             .map(|index| format!("    branch{index}\n      leaf{index}\n"))
@@ -828,7 +828,8 @@ mod tests {
 
     #[test]
     fn canonical_mindmap_retains_graph_validation_and_disconnected_cycles() {
-        use merman_core::{SemanticDiagramModel, SemanticParser};
+        use merman_core::SemanticParser;
+        use merman_model::SemanticDiagramModel;
 
         let parsed = SemanticParser::new()
             .parse_diagram_sync("mindmap\n root\n  left\n  right\n")
@@ -885,7 +886,8 @@ mod tests {
 
     #[test]
     fn canonical_mindmap_observes_exact_work_limits_and_cancellation() {
-        use merman_core::{SemanticDiagramModel, SemanticParser};
+        use merman_core::SemanticParser;
+        use merman_model::SemanticDiagramModel;
 
         let parsed = SemanticParser::new()
             .parse_diagram_sync("mindmap\n root\n  left\n   leaf\n  right\n")

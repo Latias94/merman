@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
@@ -67,9 +67,6 @@ struct SpannedRadarValue {
 #[cfg(feature = "presentation")]
 use merman_model::families::radar::RadarOutputData;
 use merman_model::families::radar::{RadarAxis, RadarCurve, RadarDiagramModel, RadarOptions};
-
-#[cfg(feature = "compat-json")]
-mod compat;
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut RadarDiagramModel,
@@ -525,14 +522,14 @@ impl RadarSemanticSource {
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let (model, output_data) = self.into_render_parts();
         render_model_to_compat_json(&model, output_data, meta)
     }
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_radar(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_radar(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let (model, output_data) = parse_radar_semantic_source(code, meta)?.into_render_parts();
     render_model_to_compat_json(&model, output_data, meta)
 }
@@ -541,7 +538,7 @@ pub(crate) fn parse_radar(code: &str, meta: &PresentationMetadata) -> Result<Val
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_radar_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -565,7 +562,7 @@ pub(crate) fn parse_radar_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_radar_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<(RadarDiagramModel, RadarOutputData)> {
     parse_radar_semantic_source(code, meta).map(RadarSemanticSource::into_render_parts)
 }
@@ -573,7 +570,7 @@ pub(crate) fn parse_radar_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_radar_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<(RadarDiagramModel, RadarOutputData)>> {
     let construction = construct_radar_semantic_source_controlled(
@@ -593,9 +590,9 @@ pub(crate) fn parse_radar_model_for_render_controlled(
 pub(crate) fn render_model_to_compat_json(
     model: &RadarDiagramModel,
     output_data: RadarOutputData,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(compat::project(
+    Ok(merman_model::families::radar::compat::project(
         model,
         output_data,
         &meta.diagram_type,
@@ -606,7 +603,7 @@ pub(crate) fn render_model_to_compat_json(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_radar_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<RadarSemanticSource> {
     construct_radar_semantic_source_controlled(
         code,
@@ -1642,10 +1639,10 @@ mod tests {
         let text = format!("radar-beta\naxis {axes}\n");
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(20);
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
 
@@ -2135,8 +2132,17 @@ curve mycurve{1,2,3}
             .parse_diagram_sync(text, ParseOptions::strict())
             .unwrap()
             .unwrap();
-        let (typed, _output_data) = parse_radar_model_for_render(text, &parsed.meta).unwrap();
-        let projection = render_model_to_compat_json(&typed, _output_data, &parsed.meta).unwrap();
+        let (typed, _output_data) = parse_radar_model_for_render(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .unwrap();
+        let projection = merman_model::families::radar::compat::project(
+            &typed,
+            _output_data,
+            &parsed.meta.diagram_type,
+            parsed.meta.effective_config.as_config(),
+        );
 
         assert_eq!(projection, parsed.model);
         assert_eq!(projection["type"], json!("radar"));
@@ -2144,10 +2150,10 @@ curve mycurve{1,2,3}
         assert_eq!(projection["accTitle"], Value::Null);
         assert_eq!(projection["accDescr"], Value::Null);
 
-        let empty_meta = PresentationMetadata {
+        let empty_meta = SourcePresentationMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let (empty, _output_data) = parse_radar_model_for_render("", &empty_meta).unwrap();
@@ -2335,10 +2341,10 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let source = "radar-beta\naxis A,B\ncurve Sample{1,2}\n";
@@ -2362,10 +2368,10 @@ mod output_data_tests {
 
     #[test]
     fn full_producer_preserves_empty_output_independently_of_json_projection() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "radar".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let parse = |source| {

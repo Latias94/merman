@@ -53,7 +53,7 @@ fn default_analysis_captures_semantics_without_evaluating_visual_themes() {
         "flowchart TD\nA-->B\n",
     );
     let configured = Analyzer::with_options(AnalysisOptions::default().with_site_config(
-        merman_core::MermaidConfig::from_value(serde_json::json!({
+        merman_model::MermaidConfig::from_value(serde_json::json!({
             "themeVariables": { "primaryColor": "not-a-color" }
         })),
     ));
@@ -86,7 +86,7 @@ fn explicit_mermaid_adapter_preserves_visual_theme_validation() {
         "flowchart TD\nA-->B\n",
     );
     let configured_options = AnalysisOptions::default().with_site_config(
-        merman_core::MermaidConfig::from_value(serde_json::json!({
+        merman_model::MermaidConfig::from_value(serde_json::json!({
             "themeVariables": { "primaryColor": "not-a-color" }
         })),
     );
@@ -1087,7 +1087,7 @@ fn deprecated_external_diagram_loading_config_is_core_warning() {
 #[test]
 fn unsupported_diagram_returns_compatibility_error() {
     let mut engine = merman_core::presentation::MermaidEngine::new();
-    *engine.diagram_registry_mut() = merman_core::diagram::DiagramRegistry::new();
+    *engine.diagram_registry_mut() = merman_core::presentation::diagram::DiagramRegistry::new();
 
     let payload = Analyzer::with_mermaid_engine(engine, AnalysisOptions::default())
         .analyze("flowchart TD\nA-->B\n");

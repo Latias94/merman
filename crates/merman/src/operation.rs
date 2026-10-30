@@ -1,14 +1,18 @@
 //! Internal operation ownership for the public rendering facade.
 
 #[cfg(feature = "presentation")]
+use merman_model::presentation::{PresentationDiagram, PresentationMetadata};
+
+#[cfg(feature = "presentation")]
 use crate::render::prepared::PreparedSource;
 use crate::render::{RenderError, ResourceLimitCause, ResourceLimitExceeded};
 #[cfg(feature = "presentation")]
-use merman_core::{MermaidEngine, ParsedDiagramRender, PresentationMetadata};
-use merman_core::{
+use merman_core::MermaidEngine;
+use merman_core::{ParseOptions, SemanticParser};
+use merman_model::{
     OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
     OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
-    ParseOptions, ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser,
+    ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata,
     resources::{InputResourceLimitExceeded, InputResourcePolicy, ModelComplexity},
     runtime::{OperationContext, RuntimePolicy},
 };
@@ -88,7 +92,7 @@ impl Operation {
             return Ok(None);
         };
         self.admit_model(
-            merman_core::resources::model_complexity_from_semantic_model(&parsed.model),
+            merman_model::resources::model_complexity_from_semantic_model(&parsed.model),
         )?;
         Ok(Some(SemanticArtifact {
             parsed: Box::new(parsed),
@@ -138,7 +142,8 @@ impl Operation {
         let Some(parsed) = parsed else {
             return Ok(None);
         };
-        let complexity = merman_core::resources::model_complexity_from_parsed_render(&parsed);
+        let complexity =
+            merman_model::resources::model_complexity_from_presentation(parsed.presentation());
         self.admit_model(complexity)?;
         let prepared = PreparedSource::new(
             parsed,
@@ -287,10 +292,11 @@ impl SemanticArtifact {
         &self.metadata().diagram_type
     }
     pub fn semantic_kind(&self) -> &'static str {
-        merman_core::diagram_type_render_model_kind(self.diagram_type()).unwrap_or("unknown")
+        merman_model::family::diagram_type_render_model_kind(self.diagram_type())
+            .unwrap_or("unknown")
     }
-    pub fn family_id(&self) -> Option<merman_core::DiagramFamilyId> {
-        merman_core::diagram_type_family_id(self.diagram_type())
+    pub fn family_id(&self) -> Option<merman_model::family::DiagramFamilyId> {
+        merman_model::family::diagram_type_family_id(self.diagram_type())
     }
     pub(crate) fn control(&self) -> &OperationControl {
         &self.operation.control
@@ -337,11 +343,11 @@ impl PresentationArtifact {
 
     /// Returns the catalog-owned family selected after detection defaults and configuration
     /// effects were applied for this canonical operation.
-    pub fn family_id(&self) -> Option<merman_core::DiagramFamilyId> {
+    pub fn family_id(&self) -> Option<merman_model::family::DiagramFamilyId> {
         self.state.prepared.family_id()
     }
 
-    pub(crate) fn parsed(&self) -> &ParsedDiagramRender {
+    pub(crate) fn parsed(&self) -> &PresentationDiagram {
         self.state.prepared.parsed()
     }
 
@@ -380,7 +386,7 @@ mod tests {
     fn test_provenance(domain: OperationResourceDomain) -> OperationResourceProvenance {
         OperationResourceProvenance::new(
             domain,
-            Some(merman_core::resources::ResourceProfile::Interactive),
+            Some(merman_model::resources::ResourceProfile::Interactive),
             [OperationResourceOverride {
                 id: "max_svg_bytes",
                 value: 17,

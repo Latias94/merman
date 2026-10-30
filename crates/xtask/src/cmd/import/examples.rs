@@ -238,7 +238,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     let example_re = Regex::new(r#"(?s)\{\s*title:\s*(?:'([^']*)'|"([^"]*)").*?code:\s*`([^`]*)`"#)
         .map_err(|err| XtaskError::SnapshotUpdateFailed(format!("bad regex: {err}")))?;
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
+    let reg = merman::DetectorRegistry::pinned_mermaid_baseline();
 
     let mut existing_by_diagram: std::collections::HashMap<
         String,
@@ -292,7 +292,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 }
             }
 
-            let mut cfg = merman::presentation::PresentationConfig::default();
+            let mut cfg = merman::SourcePresentationConfig::default();
             let detected = match reg.detect_type(body.as_str(), &mut cfg) {
                 Ok(t) => t,
                 Err(_) => {

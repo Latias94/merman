@@ -1,9 +1,9 @@
 mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions};
-use merman_core::diagram::RenderSemanticModel;
 use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
 use merman_model::families::timeline::{TimelineDiagramModel, TimelineTask};
+use merman_model::presentation::RenderSemanticModel;
 use support::{render_model, render_source};
 
 fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> TimelineTask {

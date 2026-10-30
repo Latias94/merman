@@ -146,13 +146,17 @@ impl MermanLanguageServer {
             diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
                 Self::diagnostic_options(),
             )),
-            code_action_provider: profile.code_actions.as_ref().map(|_| {
-                CodeActionProviderCapability::Options(CodeActionOptions {
-                    code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
-                    work_done_progress_options: Default::default(),
-                    resolve_provider: Some(false),
-                })
-            }),
+            code_action_provider: profile
+                .code_actions
+                .as_ref()
+                .filter(|_| cfg!(feature = "fixes"))
+                .map(|_| {
+                    CodeActionProviderCapability::Options(CodeActionOptions {
+                        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+                        work_done_progress_options: Default::default(),
+                        resolve_provider: Some(false),
+                    })
+                }),
             folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
             semantic_tokens_provider: semantic_tokens_options_with_profile(profile)
                 .map(SemanticTokensServerCapabilities::SemanticTokensOptions),

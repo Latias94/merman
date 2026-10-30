@@ -1,11 +1,7 @@
-pub use merman_model::families::state::{
-    StateTerminalEdge, StateTerminalEdges, StateTerminalNode, StateTerminalNodes, StateTerminalView,
-};
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::resources::ModelComplexity;
+    use merman_model::families::state::StateTerminalView;
+    use merman_model::resources::ModelComplexity;
 
     #[test]
     fn canonical_terminal_view_borrows_nodes_and_edges() {

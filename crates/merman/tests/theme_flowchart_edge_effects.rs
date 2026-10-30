@@ -2,7 +2,7 @@
 
 #![cfg(all(feature = "svg", feature = "png"))]
 
-use merman::presentation::PresentationConfig;
+use merman::SourcePresentationConfig;
 use merman::svg::{
     CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
     EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue, ThemeRule,
@@ -331,7 +331,7 @@ fn underestimated_host_label_geometry_is_rejected_by_native_export() {
 #[test]
 fn typed_edge_background_preserves_alpha_in_native_pixels() {
     let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
-        PresentationConfig::from_value(serde_json::json!({
+        SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "redux-color",
             "themeVariables": {
                 "clusterBkg": "transparent",

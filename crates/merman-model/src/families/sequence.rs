@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-mod compat;
+pub mod compat;
 mod complexity;
 #[cfg(test)]
 mod tests;

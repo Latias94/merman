@@ -1,11 +1,14 @@
 #![cfg(feature = "diagram-block")]
 #![cfg(feature = "presentation")]
 
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use {
+    merman_core::{MermaidEngine, ParseOptions},
+    merman_model::presentation::RenderSemanticModel,
+};
 
 const CASE_ENV: &str = "MERMAN_BLOCK_LIFECYCLE_CASE";
 const STACK_BYTES: usize = 2 * 1024 * 1024;

@@ -7,26 +7,28 @@
 use crate::detect::{BuiltinDetectorFn, DetectorConfigEffect};
 #[cfg(feature = "compat-json")]
 use crate::diagram::BuiltInDiagramSemanticParser;
-#[cfg(feature = "presentation")]
-use crate::diagram::{BuiltInRenderSemanticParser, RenderSemanticModel, RenderSemanticParseOutput};
 #[cfg(feature = "compat-json")]
 use crate::{DiagramWarningFact, ManagedSemanticJson};
 #[cfg(feature = "editor-facts")]
 use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
 use crate::{Error, OperationControl, OperationControlResult, Result};
 #[cfg(feature = "presentation")]
-use crate::{MermaidConfig, PresentationMetadata};
+use crate::{MermaidConfig, SourcePresentationMetadata};
+#[cfg(test)]
+use merman_model::family::diagram_type_metadata_id;
 use merman_model::family::{
     DiagramFamilyDefinition, DiagramTypeId, FAMILY_CATALOG, FamilyVariantIdentity,
 };
-pub use merman_model::family::{
-    DiagramFamilyId, DiagramFamilySelector, DiagramHeaderFact, diagram_type_family_id,
-    diagram_type_family_kind, diagram_type_metadata_id, diagram_type_render_model_kind,
-};
+use merman_model::family::{DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id};
 use serde::Serialize;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 use std::sync::OnceLock;
+#[cfg(feature = "presentation")]
+use {
+    crate::diagram::{BuiltInRenderSemanticParser, RenderSemanticParseOutput},
+    merman_model::presentation::RenderSemanticModel,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg(feature = "editor-facts")]
@@ -81,13 +83,13 @@ impl<M> SemanticConstruction<M> {
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) type CombinedSemanticParser = fn(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<CombinedSemanticParse>;
 
 #[cfg(feature = "compat-json")]
 pub(crate) type WarningSemanticParser =
-    fn(code: &str, meta: &PresentationMetadata) -> Result<WarningSemanticParse>;
+    fn(code: &str, meta: &SourcePresentationMetadata) -> Result<WarningSemanticParse>;
 
 /// Built-in compatibility JSON paired with the typed warnings that produced its warning field.
 #[cfg(feature = "compat-json")]
@@ -356,7 +358,8 @@ impl CombinedSemanticParse {
 pub(crate) mod test_support {
     use super::{CombinedSemanticParse, CombinedSemanticParser};
     use crate::{
-        EditorSemanticFacts, Error, OperationControl, OperationControlResult, PresentationMetadata,
+        EditorSemanticFacts, Error, OperationControl, OperationControlResult,
+        SourcePresentationMetadata,
     };
     use serde_json::Value;
 
@@ -372,12 +375,31 @@ pub(crate) mod test_support {
     pub(crate) fn editor_facts(
         parser: CombinedSemanticParser,
         code: &str,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
     ) -> EditorSemanticFacts {
         parser(code, meta, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
             .into_parts()
             .1
+    }
+
+    pub(crate) fn editor_facts_from_frozen(
+        parser: CombinedSemanticParser,
+        code: &str,
+        metadata: &merman_model::presentation::PresentationMetadata,
+    ) -> EditorSemanticFacts {
+        let source_metadata = SourcePresentationMetadata {
+            diagram_type: metadata.diagram_type.clone(),
+            config: metadata.config.clone(),
+            effective_config:
+                crate::presentation::SourcePresentationConfig::from_frozen_controlled(
+                    metadata.effective_config.clone(),
+                    &OperationControl::new(),
+                )
+                .unwrap(),
+            title: metadata.title.clone(),
+        };
+        editor_facts(parser, code, &source_metadata)
     }
 }
 
@@ -709,29 +731,18 @@ pub(crate) fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability
         .as_slice()
 }
 
-pub(crate) fn diagram_family_selectors() -> &'static [DiagramFamilySelector] {
-    merman_model::family::diagram_family_selectors()
-}
-
 pub(crate) fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFamily] {
     family_catalog_projection()
         .built_in_typed_render_families
         .as_slice()
 }
 
-#[cfg(feature = "presentation")]
+#[cfg(all(
+    feature = "presentation",
+    any(feature = "editor-facts", not(feature = "compat-json"))
+))]
 pub(crate) fn is_builtin_diagram_type(diagram_type: &str) -> bool {
     find_variant(diagram_type).is_some()
-}
-
-#[cfg(feature = "presentation")]
-pub(crate) fn render_model_kind_supports_diagram_type(
-    model_kind: &'static str,
-    diagram_type: &str,
-) -> bool {
-    render_parser_facts()
-        .iter()
-        .any(|fact| fact.id == diagram_type && fact.model_kind == model_kind)
 }
 
 /// Returns the presentation owner after configuration, without changing language identity.
@@ -1612,7 +1623,7 @@ mod catalog_tests {
         #[cfg(feature = "presentation")]
         {
             let user_config = MermaidConfig::empty_object();
-            let mut defaulted_swimlane = crate::presentation::PresentationConfig::from_value(
+            let mut defaulted_swimlane = crate::presentation::SourcePresentationConfig::from_value(
                 serde_json::json!({"layout": "dagre"}),
             );
             crate::config::resolve_appearance(
@@ -1631,7 +1642,7 @@ mod catalog_tests {
 
             let user_config = MermaidConfig::from_value(serde_json::json!({"layout": "elk"}));
             let mut configured_flowchart =
-                crate::presentation::PresentationConfig::from_config(user_config.clone());
+                crate::presentation::SourcePresentationConfig::from_config(user_config.clone());
             crate::config::resolve_appearance(
                 "swimlane",
                 &user_config,
@@ -1681,7 +1692,7 @@ mod catalog_tests {
 
     #[test]
     fn selectors_cover_logical_families_once_without_infrastructure_or_aliases() {
-        let selectors = diagram_family_selectors();
+        let selectors = merman_model::family::diagram_family_selectors();
         assert_eq!(selectors.len(), 34);
         let mut features = BTreeSet::new();
         let mut families = BTreeSet::new();

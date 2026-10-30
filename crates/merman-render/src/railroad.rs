@@ -1219,8 +1219,10 @@ mod tests {
         let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
-            .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
+            .expect("railroad render model parses")
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Railroad(model) = parsed.model()
+        else {
             panic!("expected railroad render model");
         };
 
@@ -1297,13 +1299,13 @@ mod tests {
         let node = RailroadAstNode::Repetition {
             element: Box::new(RailroadAstNode::Terminal {
                 value: "item".to_string(),
-                span: merman_core::SourceSpan::new(0, 0),
-                selection: merman_core::SourceSpan::new(0, 0),
+                span: merman_model::SourceSpan::new(0, 0),
+                selection: merman_model::SourceSpan::new(0, 0),
             }),
             min,
             max: RailroadRepeatBound::INFINITY,
             separator: None,
-            span: merman_core::SourceSpan::new(0, 0),
+            span: merman_model::SourceSpan::new(0, 0),
         };
         let (render_node, _) = railroad_render_node(
             &node,
@@ -1341,8 +1343,9 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
+            .expect("railroad render model parses").into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Railroad(model) = parsed.model()
+        else {
             panic!("expected railroad render model");
         };
 
@@ -1429,8 +1432,10 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
+            .expect("railroad render model parses")
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Railroad(model) = parsed.model()
+        else {
             panic!("expected railroad render model");
         };
 

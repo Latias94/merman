@@ -125,9 +125,9 @@ mod tests {
 
     #[test]
     fn canonical_timeline_matches_full_direction_sections_and_events() {
-        use merman_core::{
-            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
-        };
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::SemanticDiagramModel;
+        use merman_model::presentation::RenderSemanticModel;
 
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();

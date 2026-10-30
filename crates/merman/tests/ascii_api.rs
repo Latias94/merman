@@ -4,10 +4,9 @@ use merman::ascii::{
     AsciiError, AsciiOutputOutcome, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitId,
     AsciiResourcePolicy, AsciiViewportPolicy, OverflowPolicy,
 };
-use merman::resources::ResourceProfile;
-use merman::{
-    AsciiRequest, OperationControl, ParsedSemanticDiagram, RenderOutput, RenderRequest, Renderer,
-};
+use merman::model::ParsedSemanticDiagram;
+use merman::model::resources::ResourceProfile;
+use merman::{AsciiRequest, OperationControl, RenderOutput, RenderRequest, Renderer};
 
 fn render_model_for(source: &str) -> ParsedSemanticDiagram {
     merman::SemanticParser::new()
@@ -20,7 +19,7 @@ fn render_typed_model(
     options: AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> Result<String, AsciiError> {
-    let context = merman::runtime::RuntimePolicy::deterministic()
+    let context = merman::model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic operation context");
     AsciiRenderer::new(options)?.render_parsed(model, &OperationControl::new(), &context, resources)
@@ -292,7 +291,7 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
             resources
                 .apply_limit(AsciiResourceLimitId::MaxGridCells, 10_000_000)
                 .expect("valid ASCII grid override");
-            let context = merman::runtime::RuntimePolicy::deterministic()
+            let context = merman::model::runtime::RuntimePolicy::deterministic()
                 .begin_operation()
                 .expect("deterministic operation context");
             let rendered = AsciiRenderer::new(options)

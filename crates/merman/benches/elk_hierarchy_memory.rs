@@ -6,7 +6,7 @@ use merman::{
     MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderTarget,
     Renderer, SvgRequest,
 };
-use merman::{runtime::RuntimePolicy, svg::SvgRenderOptions};
+use merman::{model::runtime::RuntimePolicy, svg::SvgRenderOptions};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -499,7 +499,7 @@ fn render_hierarchy(
     let metadata_layout_elk = semantic.metadata().effective_config.get_str("layout") == Some("elk");
     let semantic_kind_flowchart = semantic.semantic_kind() == "flowchart";
     let prepared_family_flowchart =
-        semantic.family_id() == Some(merman::DiagramFamilyId::FLOWCHART);
+        semantic.family_id() == Some(merman::model::family::DiagramFamilyId::FLOWCHART);
     let output = semantic
         .render(RenderTarget::Svg(SvgRequest {
             options: SvgRenderOptions {

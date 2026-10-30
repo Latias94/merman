@@ -56,20 +56,20 @@ fn deterministic_svg_child() {
 #[test]
 fn deterministic_svg_is_identical_across_fresh_processes_with_system_adapters_compiled() {
     assert!(
-        merman::runtime::compiled_system_adapter_ids()
-            .contains(&merman::runtime::RuntimeCapability::SystemClock.id())
+        merman::model::runtime::compiled_system_adapter_ids()
+            .contains(&merman::model::runtime::RuntimeCapability::SystemClock.id())
     );
     assert!(
-        merman::runtime::compiled_system_adapter_ids()
-            .contains(&merman::runtime::RuntimeCapability::SystemTimeZone.id())
+        merman::model::runtime::compiled_system_adapter_ids()
+            .contains(&merman::model::runtime::RuntimeCapability::SystemTimeZone.id())
     );
     assert!(
-        merman::runtime::compiled_system_adapter_ids()
-            .contains(&merman::runtime::RuntimeCapability::SystemRandom.id())
+        merman::model::runtime::compiled_system_adapter_ids()
+            .contains(&merman::model::runtime::RuntimeCapability::SystemRandom.id())
     );
     assert!(
-        merman::runtime::compiled_system_adapter_ids()
-            .contains(&merman::runtime::RuntimeCapability::SystemTiming.id())
+        merman::model::runtime::compiled_system_adapter_ids()
+            .contains(&merman::model::runtime::RuntimeCapability::SystemTiming.id())
     );
 
     let west = child_output_path("west");

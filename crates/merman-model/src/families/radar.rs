@@ -64,3 +64,6 @@ pub enum RadarOutputData {
     #[default]
     Model,
 }
+
+#[cfg(feature = "compat-json")]
+pub mod compat;

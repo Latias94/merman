@@ -13,9 +13,9 @@ use std::fmt;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use merman_core::OperationPhase;
-use merman_core::presentation::PresentationConfig;
 use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use merman_model::OperationPhase;
+use merman_model::presentation::PresentationConfig;
 
 use super::MathRenderer;
 use crate::html::{HtmlOutputError, HtmlSanitizeSink};
@@ -1333,8 +1333,9 @@ mod tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
         let meter = OperationWorkMeter::new(policy);
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let style = TextStyle::default();
         let request = PrepareMathLabelRequest::flowchart(
             "$$x$$",
@@ -1356,14 +1357,15 @@ mod tests {
 
     #[test]
     fn browser_payload_preserves_cancellation_during_html_recovery() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(12);
         let meter = OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         );
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let style = TextStyle::default();
         let request = PrepareMathLabelRequest::flowchart(
             "$$x$$",
@@ -1424,8 +1426,9 @@ mod tests {
     #[test]
     fn compiled_artifact_carries_browser_and_native_projections_with_terminal_style() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let style = TextStyle {
             font_size: 24.0,
             ..TextStyle::default()
@@ -1486,7 +1489,7 @@ mod tests {
     #[test]
     fn compiled_css_foregrounds_color_pure_and_mixed_glyphs_without_string_roundtrips() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "securityLevel": "strict",
             "htmlLabels": true,
         }));
@@ -1579,8 +1582,9 @@ mod tests {
     #[test]
     fn compiled_mixed_flowchart_artifact_prepares_prose_formulas_and_metrics() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let text_measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_size: 20.0,
@@ -1620,8 +1624,9 @@ mod tests {
     #[test]
     fn compiled_mixed_sequence_artifact_prepares_prose_formulas_and_metrics() {
         let backend = ConfiguredMathBackend::compiled_ratex();
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let text_measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_size: 18.0,

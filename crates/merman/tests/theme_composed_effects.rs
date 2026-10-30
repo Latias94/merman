@@ -105,7 +105,7 @@ fn render_classic_effect_with_composition(
         .unwrap();
     let RenderOutput::Document(Some(document)) = Renderer::new()
         .with_presentation_engine(merman::MermaidEngine::new().with_site_config(
-            merman::presentation::PresentationConfig::from_value(serde_json::json!({
+            merman::SourcePresentationConfig::from_value(serde_json::json!({
                 "flowchart": {"look": "classic", "theme": "default"},
                 "state": {"look": "classic", "theme": "default"},
                 "sequence": {"look": "classic", "theme": "default"}

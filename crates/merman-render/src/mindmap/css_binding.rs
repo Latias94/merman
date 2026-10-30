@@ -1,6 +1,6 @@
 //! Fixed Mindmap visual inputs prepared before layout and consumed by SVG emission.
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use super::theme::{
     MindmapNodeFillOwnership, MindmapNodeFillSource, MindmapNodePalettePlan,
@@ -93,7 +93,7 @@ impl MindmapCssBinding {
                 ),
             })
             .collect();
-        let theme_id = merman_core::MermaidThemeId::parse(theme).unwrap_or_default();
+        let theme_id = merman_model::config::MermaidThemeId::parse(theme).unwrap_or_default();
         Self {
             common: crate::svg::PreparedCommonCss::new(raw, Some(plan.font_family_css())),
             sections,
@@ -136,9 +136,9 @@ impl MindmapCssBinding {
             neo_fill_source: if use_gradient
                 || matches!(
                     theme_id,
-                    merman_core::MermaidThemeId::Redux
-                        | merman_core::MermaidThemeId::ReduxDark
-                        | merman_core::MermaidThemeId::Neutral
+                    merman_model::config::MermaidThemeId::Redux
+                        | merman_model::config::MermaidThemeId::ReduxDark
+                        | merman_model::config::MermaidThemeId::Neutral
                 ) {
                 MindmapNodeFillSource::MainBackground
             } else {

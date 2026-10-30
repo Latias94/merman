@@ -2,7 +2,6 @@ use futures::executor::block_on;
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -23,7 +22,8 @@ fn render_svg_with_engine(
 ) -> String {
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout_options = LayoutOptions::headless_svg_defaults();
     let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
@@ -226,13 +226,14 @@ requirementDiagram
 
 #[test]
 fn sequence_look_matrix_covers_css_theme_consumption() {
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "look": "neo",
             "themeVariables": {
                 "dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
             }
-        })));
+        })),
+    );
     let svg = render_svg_with_engine(
         "look-sequence",
         &engine,

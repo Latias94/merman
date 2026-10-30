@@ -1,5 +1,8 @@
 //! Canonical entity-relationship graph and vocabulary.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

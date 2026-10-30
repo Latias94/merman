@@ -437,7 +437,6 @@ mod tests {
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn public_configuration_ignores_null_layer_bounds_before_elk_projection() {
-        use merman_core::presentation::PresentationConfig;
         use merman_core::{MermaidEngine, ParseOptions};
 
         // Mermaid 12 assignWithDepth.ts ignores null-valued object properties.
@@ -477,16 +476,26 @@ mod tests {
         ] {
             let source = format!("{prefix}flowchart TD\nA-->B\nA-->C\n");
             for exact in [false, true] {
-                let site = PresentationConfig::from_value(site.clone());
+                let site =
+                    merman_core::presentation::SourcePresentationConfig::from_value(site.clone());
                 let engine = if exact {
-                    MermaidEngine::new().with_exact_site_config(Some(site))
+                    MermaidEngine::new().with_exact_site_config(Some(
+                        merman_core::presentation::SourcePresentationConfig::from_config(
+                            site.as_config().clone(),
+                        ),
+                    ))
                 } else {
-                    MermaidEngine::new().with_site_config(site)
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_config(
+                            site.as_config().clone(),
+                        ),
+                    )
                 };
                 let parsed = engine
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let effective = parsed.metadata().effective_config.as_value();
                 assert_eq!(
                     effective.pointer("/elk/layeringLayerBound"),

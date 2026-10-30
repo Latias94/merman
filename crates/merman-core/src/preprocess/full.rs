@@ -5,14 +5,18 @@ use super::{DirectiveRecoveryMode, PreprocessResult, preprocess_source_capture_c
 use super::{PreprocessCaptureOutcome, SourceConfigCaptureMode};
 #[cfg(test)]
 use crate::MermaidConfig;
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::{DetectorRegistry, OperationControl, OperationControlResult, Result};
 
 fn registry_detector(
     registry: &DetectorRegistry,
 ) -> impl Fn(&str, &OperationControl) -> OperationControlResult<Result<&'static str>> + '_ {
     move |input, control| {
-        registry.detect_type_controlled(input, &mut PresentationConfig::empty_object(), control)
+        registry.detect_type_controlled(
+            input,
+            &mut SourcePresentationConfig::empty_object(),
+            control,
+        )
     }
 }
 
@@ -96,7 +100,7 @@ mod tests {
 
     fn counting_flowchart_detector(
         _text: &str,
-        _config: &mut crate::presentation::PresentationConfig,
+        _config: &mut crate::presentation::SourcePresentationConfig,
     ) -> bool {
         INIT_DETECTOR_CALLS.fetch_add(1, Ordering::Relaxed);
         true

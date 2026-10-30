@@ -1288,7 +1288,7 @@ mod tests {
             fit_treemap_label_height(1e20, 100.0, 8.0, 28.0, 6.0, 2.0, &meter),
             Err(crate::Error::ResourceLimitExceeded(_))
         ));
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let meter = OperationWorkMeter::new_with_control(policy, control);
         let Err(crate::Error::Cancelled(error)) =
@@ -1296,7 +1296,7 @@ mod tests {
         else {
             panic!("height fitting must observe cancellation before searching");
         };
-        assert_eq!(error.phase, merman_core::OperationPhase::Emit);
+        assert_eq!(error.phase, merman_model::OperationPhase::Emit);
         assert_eq!(meter.used(), 0);
     }
 
@@ -1343,8 +1343,7 @@ mod tests {
             sections: Vec::new(),
             leaves: vec![leaf("over-wide", 1.0, 0.0, 100.0, 100.0)],
         };
-        let config =
-            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
+        let config = crate::test_support::presentation_config(serde_json::json!({}));
         let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve(
             None,
             &config,
@@ -1604,8 +1603,7 @@ mod tests {
         let execution =
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::TREEMAP)
                 .expect("SVG execution");
-        let config =
-            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({}));
+        let config = crate::test_support::presentation_config(serde_json::json!({}));
         let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
             None,
             &config,

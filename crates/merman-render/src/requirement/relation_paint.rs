@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::requirement::RequirementDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -52,10 +52,8 @@ impl RequirementRelationPaintPlan {
         }) {
             return Ok(None);
         }
-        let source_owned = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            REQUIREMENT_RELATION_PAINT_PATH,
-        );
+        let source_owned =
+            config.config_paint_overrides_typed_default(REQUIREMENT_RELATION_PAINT_PATH);
         let style = theme.style_with_work_meter(
             ThemeTarget::Relation,
             ThemeVariant::Default,

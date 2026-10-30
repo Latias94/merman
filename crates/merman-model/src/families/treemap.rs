@@ -1,5 +1,8 @@
 //! Flat Treemap data, managed values, and full presentation facts.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 mod complexity;
 #[cfg(all(test, feature = "presentation-data"))]
 mod tests;

@@ -461,7 +461,10 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
         add(repo_root, "crates/merman-wasi/README.md", "docs/WASI_ABI.md")
         for name in WASI_EXAMPLE_FILES:
             add(repo_root, "distribution/sdk/examples/" + name, "examples/" + name)
-    source_paths = ["Cargo.lock", recipe.manifest, "crates/merman", "crates/merman-render", "crates/merman-export"]
+    source_paths = [
+        "Cargo.lock", recipe.manifest, "crates/merman", "crates/merman-model",
+        "crates/merman-markup", "crates/merman-render", "crates/merman-export",
+    ]
     if flavor == "full":
         source_paths.append("crates/merman-layout-elk")
     availability = (f"# Corresponding source\n\nSource commit: `{source_commit}`.\n\n"

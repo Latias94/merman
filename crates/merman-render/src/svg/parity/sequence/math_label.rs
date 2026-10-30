@@ -67,7 +67,7 @@ mod tests {
         fn render_html_label(
             &self,
             _text: &str,
-            _config: &merman_core::presentation::PresentationConfig,
+            _config: &merman_model::presentation::PresentationConfig,
         ) -> Option<String> {
             None
         }
@@ -75,7 +75,7 @@ mod tests {
         fn render_sequence_html_label(
             &self,
             _text: &str,
-            _config: &merman_core::presentation::PresentationConfig,
+            _config: &merman_model::presentation::PresentationConfig,
         ) -> Option<String> {
             Some("<span class=\"prepared\">x²</span>".to_owned())
         }
@@ -83,7 +83,7 @@ mod tests {
         fn measure_sequence_html_label_with_style(
             &self,
             _text: &str,
-            _config: &merman_core::presentation::PresentationConfig,
+            _config: &merman_model::presentation::PresentationConfig,
             style: &TextStyle,
         ) -> Option<TextMetrics> {
             Some(TextMetrics {
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn sequence_writer_reads_browser_projection_without_reentering_a_backend() {
         let backend = ConfiguredMathBackend::external(Arc::new(FixedSequenceMathRenderer));
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let style = TextStyle {
             font_size: 29.0,
             ..TextStyle::default()

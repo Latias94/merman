@@ -104,12 +104,11 @@ fn render_weighted_timeline(
         "timeline {direction}\n{section}{LABEL} : {LABEL} : Overflow\nTiny\n{next_section}"
     );
     let parsed = legacy_init_theme_compat_engine()
-        .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-            config,
-        ))
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
         .expect("parse Timeline")
-        .expect("detect Timeline");
+        .expect("detect Timeline")
+        .into_presentation();
     let measurer = SectionWeightMeasurer::default();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.timeline-section-weight").unwrap(),

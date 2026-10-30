@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::quadrant_chart::{
     QuadrantChartDiagramModel, QuadrantChartPointModel, QuadrantChartStyles,
 };
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -142,14 +142,10 @@ impl QuadrantChartPointThemePlan {
             });
         };
 
-        let config_owns_radius = merman_core::__private::config_path_overrides_typed_default(
-            effective_config,
-            "quadrantChart.pointRadius",
-        );
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.quadrantPointFill",
-        );
+        let config_owns_radius =
+            effective_config.config_path_overrides_typed_default("quadrantChart.pointRadius");
+        let config_owns_fill = effective_config
+            .config_paint_overrides_typed_default("themeVariables.quadrantPointFill");
         let mermaid_point_radius_px =
             super::QuadrantChartConfigView::new(effective_config.as_value())
                 .layout_settings()

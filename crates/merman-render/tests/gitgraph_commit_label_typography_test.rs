@@ -2,7 +2,6 @@
 
 use std::sync::{Arc, Mutex};
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -132,10 +131,11 @@ fn render_source(
     source: &str,
 ) -> (String, Arc<WeightSensitiveMeasurer>) {
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(config))
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let measurer = Arc::new(WeightSensitiveMeasurer::default());
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("gitgraph-commit-label-weight").unwrap(),
@@ -357,7 +357,7 @@ fn gitgraph_commit_label_dynamic_or_unknown_weight_is_not_replaced_by_normal() {
 
 #[test]
 fn gitgraph_commit_label_unmeasurable_weight_cannot_certify_typed_typography() {
-    use merman_core::DiagramFamilyId;
+    use merman_model::family::DiagramFamilyId;
     use merman_render::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
         ThemeTextStyle, TypographySpec,
@@ -378,16 +378,18 @@ fn gitgraph_commit_label_unmeasurable_weight_cannot_certify_typed_typography() {
                 ThemePortabilityRequirement::RequirePortable,
                 ThemePortabilityRequirement::BestEffort,
             ] {
-                let engine =
-                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+                let engine = MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
                         "theme": "redux",
                         "gitGraph": { "showCommitLabel": show_commit_label },
                         "themeVariables": { "noteFontWeight": weight }
-                    })));
-                let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                    })),
+                );
+                let parsed = common::install_parse_compatibility(&theme, engine)
                     .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let session = RenderEnvironment::deterministic()
                     .with_theme_portability_requirement(requirement)
                     .begin_session_with_theme(&theme)
@@ -492,3 +494,6 @@ fn gitgraph_branch_weight_requires_its_numbered_css_rule() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

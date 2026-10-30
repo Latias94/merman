@@ -20,6 +20,8 @@ on:
       - "crates/merman-ascii/**"
       - "crates/merman-bindings-core/**"
       - "crates/merman-core/**"
+      - "crates/merman-model/**"
+      - "crates/merman-markup/**"
       - "crates/merman-render/**"
       - "crates/roughr/**"
       - "crates/manatee/**"

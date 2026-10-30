@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
@@ -117,13 +117,9 @@ impl CynefinTypographyThemePlan {
             })
             .unwrap_or_default();
         let config_owns_text_fill = theme.is_some()
-            && (merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "themeVariables.textColor",
-            ) || merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "themeVariables.cynefin.textColor",
-            ));
+            && (effective_config.config_paint_overrides_typed_default("themeVariables.textColor")
+                || effective_config
+                    .config_paint_overrides_typed_default("themeVariables.cynefin.textColor"));
         let mut evidence = FamilyThemeOutcomes::default();
         let mut unsupported_routes = cynefin_unsupported_routes(theme, &mut evidence).into_vec();
         if let Some(theme) = theme
@@ -340,7 +336,7 @@ mod tests {
 
     #[test]
     fn binding_preserves_scoped_roles_and_shared_measurement_values() {
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {
                 "fontFamily": "Config Sans", "textColor": "root-text",
                 "lineColor": "root-line", "primaryTextColor": "root-label",

@@ -18,10 +18,12 @@ use crate::{
     parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 use indexmap::IndexMap;
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(all(test, feature = "compat-json"))]
+use serde_json::json;
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
@@ -47,7 +49,7 @@ include_checked_in_lalrpop_parser!(
     "er_grammar.rs"
 );
 
-pub use merman_model::families::er::{
+pub(crate) use merman_model::families::er::{
     ErAttribute, ErClassDef, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship, ErSubgraph,
 };
 
@@ -507,7 +509,7 @@ impl ErDb {
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_model(self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_model(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let model = self.into_semantic_model();
         render_model_to_compat_json(&model, meta)
     }
@@ -516,33 +518,10 @@ impl ErDb {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ErDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut value = serde_json::to_value(model)
-        .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
-    let Value::Object(obj) = &mut value else {
-        return Ok(value);
-    };
-
-    obj.insert("type".to_string(), json!(meta.diagram_type));
-    obj.insert(
-        "constants".to_string(),
-        json!({
-            "cardinality": {
-                "zeroOrOne": "ZERO_OR_ONE",
-                "zeroOrMore": "ZERO_OR_MORE",
-                "oneOrMore": "ONE_OR_MORE",
-                "onlyOne": "ONLY_ONE",
-                "mdParent": "MD_PARENT",
-            },
-            "identification": {
-                "nonIdentifying": "NON_IDENTIFYING",
-                "identifying": "IDENTIFYING",
-            }
-        }),
-    );
-
-    Ok(value)
+    merman_model::families::er::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 fn split_styles(raw: &str) -> Vec<String> {
@@ -669,7 +648,7 @@ impl ErSemanticFailure {
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
@@ -779,7 +758,10 @@ pub(crate) fn parse_er_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_er_semantic_source(code: &str, meta: &PresentationMetadata) -> Result<ErSemanticSource> {
+fn parse_er_semantic_source(
+    code: &str,
+    meta: &SourcePresentationMetadata,
+) -> Result<ErSemanticSource> {
     construct_er_semantic_source(
         code,
         #[cfg(feature = "editor-facts")]
@@ -793,7 +775,7 @@ fn parse_er_semantic_source(code: &str, meta: &PresentationMetadata) -> Result<E
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_er_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<ErDiagramModel> {
     Ok(parse_er_semantic_source(code, meta)?
         .db
@@ -803,7 +785,7 @@ pub(crate) fn parse_er_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_er_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ErDiagramModel>> {
     let construction = construct_er_semantic_source(
@@ -825,7 +807,7 @@ pub(crate) fn parse_er_model_for_render_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_er(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_er(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_er_semantic_source(code, meta)?.db.into_model(meta)
 }
 
@@ -833,7 +815,7 @@ pub(crate) fn parse_er(code: &str, meta: &PresentationMetadata) -> Result<Value>
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_er_semantic_source(code, EditorFactsDemand::Capture, control)?;
@@ -2328,11 +2310,11 @@ mod tests {
     use crate::EditorSemanticRole;
     use crate::MermaidConfig;
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "er".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -2807,10 +2789,10 @@ mod semantic_tests {
                 diagnostic: full, ..
             } = parse_er(
                 source,
-                &PresentationMetadata {
+                &SourcePresentationMetadata {
                     diagram_type: "er".to_string(),
                     config: crate::MermaidConfig::empty_object(),
-                    effective_config: crate::presentation::PresentationConfig::empty_object(),
+                    effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
                     title: None,
                 },
             )
@@ -2840,10 +2822,10 @@ mod semantic_tests {
     #[cfg(feature = "presentation")]
     #[test]
     fn er_typed_projection_omits_editor_observers() {
-        let metadata = PresentationMetadata {
+        let metadata = SourcePresentationMetadata {
             diagram_type: "er".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         #[cfg(feature = "editor-facts")]

@@ -894,8 +894,8 @@ fn collected_new_family_fixture(
                     call.ordinal
                 ))
             })?;
-    let mut config = merman::presentation::PresentationConfig::default();
-    let detected = merman::detect::DetectorRegistry::pinned_mermaid_baseline()
+    let mut config = merman::SourcePresentationConfig::default();
+    let detected = merman::DetectorRegistry::pinned_mermaid_baseline()
         .detect_type(detector_input(&fixture), &mut config)
         .map_err(|error| {
             XtaskError::AlignmentCheckFailed(format!(
@@ -903,7 +903,7 @@ fn collected_new_family_fixture(
                 call.ordinal
             ))
         })?;
-    let family = merman_core::diagram_type_metadata_id(detected)
+    let family = merman::model::family::diagram_type_metadata_id(detected)
         .ok_or_else(|| {
             XtaskError::AlignmentCheckFailed(format!(
                 "collected Cypress call {} detected unsupported family {detected:?}",

@@ -18,3 +18,6 @@ pub enum InfoOutputData {
     #[default]
     Model,
 }
+
+#[cfg(feature = "compat-json")]
+pub mod compat;

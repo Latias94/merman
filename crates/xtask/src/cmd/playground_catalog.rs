@@ -1,5 +1,5 @@
 use crate::XtaskError;
-use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
+use merman::model::baseline::PINNED_MERMAID_BASELINE_TAG;
 use merman_core::{MermaidEngine, ParseOptions};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -723,7 +723,7 @@ mod tests {
         normalize_example_source, parse_paths, read_utf8, render_typescript, validate_manifest,
         verify_output,
     };
-    use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
+    use merman::model::baseline::PINNED_MERMAID_BASELINE_TAG;
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::{Path, PathBuf};

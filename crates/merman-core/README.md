@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-core.svg)](https://crates.io/crates/merman-core) [![Documentation](https://docs.rs/merman-core/badge.svg)](https://docs.rs/merman-core) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-`merman-core` is the parser and semantic-model crate behind [`merman`](https://crates.io/crates/merman). Use it for canonical Mermaid meaning and metadata, with optional editor facts, full presentation, or compatibility JSON. It does not require layout, SVG, or binary-export dependencies.
+`merman-core` ingests Mermaid source for [`merman`](https://crates.io/crates/merman). Use it to construct canonical Mermaid meaning and metadata, with optional editor facts, full presentation, or compatibility JSON. Shared data and runtime contracts belong to `merman-model`; source ingestion does not require layout, SVG, or binary-export dependencies.
 
 Most applications that want rendered output should use the `merman` facade instead.
 
@@ -61,12 +61,14 @@ Select the required families without output or presentation features:
 
 ```toml
 merman-core = { path = "../merman/crates/merman-core", default-features = false, features = ["diagram-flowchart", "diagram-sequence"] }
+merman-model = { path = "../merman/crates/merman-model", default-features = false }
 ```
 
 Parse canonical meaning without evaluating visual theme programs:
 
 ```rust
-use merman_core::{SemanticDiagramModel, SemanticParser};
+use merman_core::SemanticParser;
+use merman_model::SemanticDiagramModel;
 
 fn main() -> Result<(), merman_core::Error> {
     let parsed = SemanticParser::new()
@@ -93,7 +95,7 @@ fn main() -> Result<(), merman_core::Error> {
 - Paired typed render models via `MermaidEngine::parse_diagram_for_render_model_sync` with `presentation`.
 - Parser-backed editor facts and family capability metadata.
 - Full metadata-only parsing for integrations that need type, title, and evaluated config.
-- Project-owned civil and offset time types that preserve Mermaid's wide year domain.
+- Deterministic runtime policy using shared civil and offset time contracts that preserve Mermaid's wide year domain.
 - Runtime-agnostic async APIs plus synchronous helpers.
 
 `merman-core` has no default Cargo features. Select `all-diagrams` or the required `diagram-*`
@@ -116,7 +118,7 @@ cancellation remains available in every artifact.
 
 ## Deterministic Time
 
-Use `time::CivilDate` for date-only runtime controls such as `runtime::RuntimePolicy::with_fixed_today`, then install the policy through `SemanticParser::with_runtime_policy` or `MermaidEngine::with_runtime_policy`. Its canonical text syntax uses four unsigned digits for years `0000` through `9999`, a leading `+` for later years, and `-` plus at least four digits for negative years. The signed 32-bit year domain includes Mermaid's `+10000` and `-10000` boundaries. `time::CivilDateTime`, `time::UtcOffset`, and `time::OffsetDateTime` provide checked calendar and instant conversions without exposing a third-party time type in the public API.
+Use `merman_model::time::CivilDate` for date-only runtime controls such as `merman_model::runtime::RuntimePolicy::with_fixed_today`, then install the policy through `SemanticParser::with_runtime_policy` or `MermaidEngine::with_runtime_policy`. Its canonical text syntax uses four unsigned digits for years `0000` through `9999`, a leading `+` for later years, and `-` plus at least four digits for negative years. The signed 32-bit year domain includes Mermaid's `+10000` and `-10000` boundaries. The same shared `time` module provides `CivilDateTime`, `UtcOffset`, and `OffsetDateTime` for checked calendar and instant conversions without exposing a third-party time type in the public API.
 
 System clock and named time-zone access remain opt-in through the corresponding `system-*` features. Named-zone rules are implemented with Jiff internally, while deterministic and fixed-offset profiles do not pull Jiff into their dependency closure.
 
@@ -183,7 +185,7 @@ The old `Engine` and `ParseMetadata` aliases are removed. Use `MermaidEngine` an
 operations. Full custom detectors and compatibility adapters remain full-only. See the
 [source migration](../../docs/migrations/render-reuse-host-integration.md).
 
-Semantic JSON uses `ManagedSemanticJson`; keep its managed owner for deep clone, equality, destruction, and output. Direct State, Block, Treemap, and Ishikawa model users must migrate to canonical document/child indices. See the [0.8.0 to 0.9.0 migration](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#rust-models-and-json).
+Semantic JSON uses `merman_model::ManagedJson`; keep its managed owner for deep clone, equality, destruction, and output. Direct State, Block, Treemap, and Ishikawa model users must migrate to canonical document/child indices. See the [0.8.0 to 0.9.0 migration](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#rust-models-and-json) for the original lifecycle change and the [model/source migration](../../docs/migrations/model-source-boundaries.md) for current development imports and output handoffs.
 
 Published Merman 0.9.3 retains the Mermaid `12.1.0` baseline selected by stable 0.8.0. Development
 targets Mermaid `12.2.0`; use the matching release tag for published parser behavior. The selected

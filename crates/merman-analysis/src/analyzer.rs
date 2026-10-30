@@ -12,13 +12,15 @@ use crate::{
 #[cfg(feature = "compat-json")]
 use merman_core::{
     DiagramParseOutcome, DiagramSnapshotCapture,
-    presentation::{MermaidEngine, PresentationConfig, PresentationMetadata},
+    presentation::{MermaidEngine, SourcePresentationConfig},
 };
 use merman_core::{
-    DiagramWarningFact, EditorSemanticFacts, Error as CoreError, MermaidConfig, ParsedEditorFacts,
-    SemanticMetadata, SemanticParseOutcome, SemanticParser, SemanticSnapshotCapture,
-    preprocess::SourceConfigEvidence,
+    EditorSemanticFacts, Error as CoreError, ParsedEditorFacts, SemanticParseOutcome,
+    SemanticParser, SemanticSnapshotCapture, preprocess::SourceConfigEvidence,
 };
+#[cfg(feature = "compat-json")]
+use merman_model::presentation::PresentationMetadata;
+use merman_model::{MermaidConfig, SemanticMetadata, warnings::DiagramWarningFact};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::panic::{self, AssertUnwindSafe};
@@ -47,17 +49,17 @@ pub const ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS: [AnalysisResourceLimitDescriptor;
 
 /// Returns the profile value for an analysis-owned resource limit.
 pub fn analysis_resource_profile_value(
-    profile: merman_core::resources::ResourceProfile,
+    profile: merman_model::resources::ResourceProfile,
     stable_id: &str,
 ) -> Option<usize> {
     if stable_id != MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID {
         return None;
     }
     match profile {
-        merman_core::resources::ResourceProfile::Interactive => Some(256),
-        merman_core::resources::ResourceProfile::Constrained => Some(128),
-        merman_core::resources::ResourceProfile::TrustedNative => Some(1_024),
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput => None,
+        merman_model::resources::ResourceProfile::Interactive => Some(256),
+        merman_model::resources::ResourceProfile::Constrained => Some(128),
+        merman_model::resources::ResourceProfile::TrustedNative => Some(1_024),
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput => None,
     }
 }
 
@@ -79,7 +81,7 @@ pub struct AnalysisSnapshotPolicy {
     /// Mermaid site configuration applied from pinned defaults.
     pub site_config: Option<MermaidConfig>,
     /// Deterministic or host-backed runtime values used during parsing.
-    pub runtime_policy: merman_core::runtime::RuntimePolicy,
+    pub runtime_policy: merman_model::runtime::RuntimePolicy,
     /// Deterministic admission budgets enforced before parser-owned work begins.
     pub resources: AnalysisResourceLimits,
 }
@@ -169,7 +171,7 @@ impl Default for AnalysisSnapshotPolicy {
         Self {
             source: SourceDescriptor::diagram(),
             site_config: None,
-            runtime_policy: merman_core::runtime::RuntimePolicy::deterministic(),
+            runtime_policy: merman_model::runtime::RuntimePolicy::deterministic(),
             resources: AnalysisResourceLimits::default(),
         }
     }
@@ -186,15 +188,15 @@ impl AnalysisOptions {
         self
     }
 
-    pub fn with_fixed_today(mut self, today: Option<merman_core::time::CivilDate>) -> Self {
+    pub fn with_fixed_today(mut self, today: Option<merman_model::time::CivilDate>) -> Self {
         self.snapshot.runtime_policy = self.snapshot.runtime_policy.with_fixed_today(today);
         self
     }
 
     pub fn try_with_fixed_today_at_local_midnight(
         mut self,
-        today: merman_core::time::CivilDate,
-    ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
+        today: merman_model::time::CivilDate,
+    ) -> Result<Self, merman_model::runtime::RuntimePolicyError> {
         self.snapshot.runtime_policy = self
             .snapshot
             .runtime_policy
@@ -205,7 +207,7 @@ impl AnalysisOptions {
     pub fn try_with_fixed_local_offset_minutes(
         mut self,
         offset_minutes: i32,
-    ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
+    ) -> Result<Self, merman_model::runtime::RuntimePolicyError> {
         self.snapshot.runtime_policy = self
             .snapshot
             .runtime_policy
@@ -215,20 +217,23 @@ impl AnalysisOptions {
 
     pub fn with_runtime_policy(
         mut self,
-        runtime_policy: merman_core::runtime::RuntimePolicy,
+        runtime_policy: merman_model::runtime::RuntimePolicy,
     ) -> Self {
         self.snapshot.runtime_policy = runtime_policy;
         self
     }
 
-    pub fn with_operation_context(self, context: merman_core::runtime::OperationContext) -> Self {
-        self.with_runtime_policy(merman_core::runtime::RuntimePolicy::from_operation_context(
-            context,
-        ))
+    pub fn with_operation_context(self, context: merman_model::runtime::OperationContext) -> Self {
+        self.with_runtime_policy(
+            merman_model::runtime::RuntimePolicy::from_operation_context(context),
+        )
     }
 
-    pub fn try_native() -> Result<Self, merman_core::runtime::RuntimePolicyError> {
-        Ok(Self::default().with_runtime_policy(merman_core::runtime::RuntimePolicy::try_native()?))
+    pub fn try_native() -> Result<Self, merman_model::runtime::RuntimePolicyError> {
+        Ok(
+            Self::default()
+                .with_runtime_policy(merman_model::runtime::RuntimePolicy::try_native()?),
+        )
     }
 
     pub fn with_max_source_bytes(mut self, max_source_bytes: Option<usize>) -> Self {
@@ -267,7 +272,7 @@ impl AnalysisOptions {
         self.snapshot.site_config.as_ref()
     }
 
-    pub fn runtime_policy(&self) -> &merman_core::runtime::RuntimePolicy {
+    pub fn runtime_policy(&self) -> &merman_model::runtime::RuntimePolicy {
         &self.snapshot.runtime_policy
     }
 
@@ -337,8 +342,8 @@ impl AnalysisBackend {
         &self,
         source: &str,
         mode: CaptureMode,
-        control: &merman_core::OperationControl,
-    ) -> merman_core::OperationControlResult<DiagramAnalysisEvidence> {
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<DiagramAnalysisEvidence> {
         match self {
             Self::Semantic(parser) => match mode {
                 CaptureMode::DiagnosticsOnly => {
@@ -369,7 +374,7 @@ impl AnalysisBackend {
 
     fn begin_operation(
         &self,
-    ) -> Result<merman_core::runtime::OperationContext, merman_core::runtime::RuntimePolicyError>
+    ) -> Result<merman_model::runtime::OperationContext, merman_model::runtime::RuntimePolicyError>
     {
         match self {
             Self::Semantic(parser) => parser.begin_operation(),
@@ -378,7 +383,7 @@ impl AnalysisBackend {
         }
     }
 
-    fn with_operation_context(self, context: merman_core::runtime::OperationContext) -> Self {
+    fn with_operation_context(self, context: merman_model::runtime::OperationContext) -> Self {
         match self {
             Self::Semantic(parser) => Self::Semantic(parser.with_operation_context(context)),
             #[cfg(feature = "compat-json")]
@@ -495,7 +500,7 @@ impl Analyzer {
 
     pub(crate) fn try_for_operation(
         &self,
-    ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
+    ) -> Result<Self, merman_model::runtime::RuntimePolicyError> {
         let context = self.backend.begin_operation()?;
         Ok(Self {
             backend: self.backend.clone().with_operation_context(context.clone()),
@@ -506,7 +511,7 @@ impl Analyzer {
 
     pub(crate) fn runtime_policy_candidates(
         &self,
-        error: merman_core::runtime::RuntimePolicyError,
+        error: merman_model::runtime::RuntimePolicyError,
         source_map: &SourceMap,
     ) -> Vec<DiagnosticCandidate> {
         vec![core_error_candidate(&CoreError::from(error), source_map).candidate]
@@ -635,9 +640,9 @@ impl Analyzer {
         let cancellation = AnalysisCancellationToken::new();
         self.capture_evidence_cancellable(source, mode, &cancellation)
             .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
-                error: CoreError::from(merman_core::OperationCancelled {
-                    phase: merman_core::OperationPhase::Analysis,
-                    reason: merman_core::CancelReason::Requested,
+                error: CoreError::from(merman_model::OperationCancelled {
+                    phase: merman_model::OperationPhase::Analysis,
+                    reason: merman_model::CancelReason::Requested,
                 }),
                 source_config: SourceConfigEvidence::default(),
             })
@@ -1226,7 +1231,7 @@ fn apply_options_to_engine(engine: MermaidEngine, options: &AnalysisOptions) -> 
             options
                 .site_config()
                 .cloned()
-                .map(PresentationConfig::from_config),
+                .map(SourcePresentationConfig::from_config),
         )
         .with_runtime_policy(options.runtime_policy().clone())
 }

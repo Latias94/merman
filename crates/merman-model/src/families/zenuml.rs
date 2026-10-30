@@ -1,3 +1,6 @@
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use crate::json::ManagedJson;
 use crate::{OperationControl, OperationControlResult, SourceSpan};
 use serde::{Deserialize, Serialize};

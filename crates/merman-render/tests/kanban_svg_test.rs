@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -131,10 +130,11 @@ fn try_render_kanban_with_layout_and_environment(
     portability: ThemePortabilityRequirement,
     environment: RenderEnvironment,
 ) -> merman_render::Result<(KanbanDiagramLayout, family::RenderedFamilySvg)> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Kanban")
-        .expect("detect themed Kanban");
+        .expect("detect themed Kanban")
+        .into_presentation();
     let session = environment
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -352,10 +352,11 @@ fn try_render_kanban_svg_with_theme(
     source: &str,
     theme: &DiagramTheme,
 ) -> merman_render::Result<(KanbanDiagramLayout, String)> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, MermaidEngine::new())
+    let parsed = common::install_parse_compatibility(theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Kanban")
-        .expect("detect themed Kanban");
+        .expect("detect themed Kanban")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
@@ -375,7 +376,8 @@ fn parse_layout_and_render(source: &str) -> (KanbanDiagramLayout, String) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Kanban")
-        .expect("detect Kanban");
+        .expect("detect Kanban")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("start deterministic render session");
@@ -391,7 +393,8 @@ fn try_render_kanban_svg_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse resource-bound Kanban")
-        .expect("detect resource-bound Kanban");
+        .expect("detect resource-bound Kanban")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -585,9 +588,11 @@ fn kanban_static_task_fill_respects_the_mermaid_background_owner() {
     let rendered = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n    task[Task]\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "background": "#fedcba" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "background": "#fedcba" }
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
     );
     let document =
@@ -649,9 +654,11 @@ fn kanban_static_task_stroke_respects_the_mermaid_node_border_owner() {
     let rendered = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n    task[Task]\n",
         &kanban_task_stroke_theme(CanvasPaint::solid("#654321").expect("valid Kanban task stroke")),
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "nodeBorder": "#fedcba" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "nodeBorder": "#fedcba" }
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
     );
     let document =
@@ -738,9 +745,11 @@ fn kanban_task_palette_derives_dark_mode_from_the_final_typed_winner() {
     let rendered = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n    task[Task]\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "darkMode": true
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "darkMode": true
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid dark Kanban SVG");
@@ -787,9 +796,11 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
     let site = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n    task[Task]\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "background": "#fedcba" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "background": "#fedcba" }
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
     );
     let site_document = roxmltree::Document::parse(site.svg()).expect("valid site-owned Kanban");
@@ -808,9 +819,11 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
             "kanban\n  todo[Todo]\n    task[Task]\n",
         ),
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "secure": []
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "secure": []
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
     );
     let source_document =
@@ -827,20 +840,24 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
     for (name, engine, source) in [
         (
             "site",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "textColor": "#fedcba" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "textColor": "#fedcba" }
+                    }),
+                ),
+            ),
             "kanban\n  todo[Todo]\n    task[Task]\n",
         ),
         (
             "source",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "secure": []
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                ),
+            ),
             concat!(
                 "%%{init: {\"themeVariables\": {\"textColor\": \"#fedcba\"}}}%%\n",
                 "kanban\n  todo[Todo]\n    task[Task]\n",
@@ -917,7 +934,9 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
         let rendered = render_kanban_with_theme_and_engine(
             "kanban\n  todo[Todo]\n    task[Task]\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+            ),
             ThemePortabilityRequirement::RequirePortable,
         );
         let document = roxmltree::Document::parse(rendered.svg())
@@ -941,20 +960,24 @@ fn kanban_task_label_foreground_respects_only_the_terminal_text_color_owner() {
     for (name, engine, source) in [
         (
             "site background",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "background": "#fedcba" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "background": "#fedcba" }
+                    }),
+                ),
+            ),
             plain_source,
         ),
         (
             "source background",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "secure": []
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                ),
+            ),
             concat!(
                 "%%{init: {\"themeVariables\": {\"background\": \"#fedcba\"}}}%%\n",
                 "kanban\n  todo[Todo]\n    task[Task]\n",
@@ -962,20 +985,24 @@ fn kanban_task_label_foreground_respects_only_the_terminal_text_color_owner() {
         ),
         (
             "site primaryTextColor",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "primaryTextColor": "#fedcba" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "primaryTextColor": "#fedcba" }
+                    }),
+                ),
+            ),
             plain_source,
         ),
         (
             "source primaryTextColor",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "secure": []
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                ),
+            ),
             concat!(
                 "%%{init: {\"themeVariables\": {\"primaryTextColor\": \"#fedcba\"}}}%%\n",
                 "kanban\n  todo[Todo]\n    task[Task]\n",
@@ -1005,20 +1032,24 @@ fn kanban_task_label_foreground_respects_only_the_terminal_text_color_owner() {
     for (name, engine, source) in [
         (
             "site textColor",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "textColor": "#fedcba" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "textColor": "#fedcba" }
+                    }),
+                ),
+            ),
             plain_source,
         ),
         (
             "source textColor",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "secure": []
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                ),
+            ),
             concat!(
                 "%%{init: {\"themeVariables\": {\"textColor\": \"#fedcba\"}}}%%\n",
                 "kanban\n  todo[Todo]\n    task[Task]\n",
@@ -1382,8 +1413,11 @@ fn kanban_text_fill_replaces_the_legacy_default_without_changing_other_surfaces(
                 let rendered = render_kanban_with_theme_and_engine(
                     source,
                     &kanban_task_rules_theme([rule]),
-                    MermaidEngine::new()
-                        .with_site_config(PresentationConfig::from_value(config.clone())),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            config.clone(),
+                        ),
+                    ),
                     ThemePortabilityRequirement::RequirePortable,
                 );
                 let mut legacy_config = config;
@@ -1394,8 +1428,11 @@ fn kanban_text_fill_replaces_the_legacy_default_without_changing_other_surfaces(
                 let legacy = render_kanban_with_theme_and_engine(
                     source,
                     &kanban_task_rules_theme([]),
-                    MermaidEngine::new()
-                        .with_site_config(PresentationConfig::from_value(legacy_config)),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            legacy_config,
+                        ),
+                    ),
                     ThemePortabilityRequirement::RequirePortable,
                 );
                 assert_eq!(
@@ -1460,7 +1497,9 @@ fn kanban_text_fill_preserves_config_and_more_specific_label_owners() {
         let rendered = render_kanban_with_theme_and_engine(
             source,
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
             ThemePortabilityRequirement::RequirePortable,
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -1695,15 +1734,20 @@ fn kanban_legacy_title_color_has_no_consumer_while_text_color_styles_labels() {
     );
     let render = |title_color: &str, text_color: &str| {
         let parsed = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {
-                    "titleColor": title_color,
-                    "textColor": text_color
-                }
-            })))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": {
+                            "titleColor": title_color,
+                            "textColor": text_color
+                        }
+                    }),
+                ),
+            )
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse ordinary configured Kanban")
-            .expect("detect Kanban");
+            .expect("detect Kanban")
+            .into_presentation();
         assert_eq!(
             parsed
                 .metadata()
@@ -1796,12 +1840,14 @@ fn kanban_configured_diagram_and_root_fonts_preserve_typography_binding_semantic
         let (_, rendered) = try_render_kanban_with_layout_and_environment(
             "kanban\n  todo[Todo]\n    task[Task]",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "fontFamily": root_font,
-                    "themeVariables": { "fontFamily": "Diagram, monospace" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "fontFamily": root_font,
+                        "themeVariables": { "fontFamily": "Diagram, monospace" }
+                    }),
+                ),
+            ),
             ThemePortabilityRequirement::BestEffort,
             RenderEnvironment::deterministic(),
         )
@@ -1882,9 +1928,11 @@ fn kanban_typed_font_size_reaches_measurement_layout_css_and_evidence() {
     let (layout, rendered) = try_render_kanban_with_layout_and_environment(
         source,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "fontSize": 30
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "fontSize": 30
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
         environment,
     )
@@ -1951,9 +1999,11 @@ fn kanban_typed_font_size_yields_to_explicit_theme_variable_ownership() {
     let (layout, rendered) = try_render_kanban_with_layout_and_environment(
         source,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "fontSize": "30px" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": "30px" }
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
         environment,
     )
@@ -2006,11 +2056,13 @@ fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
         let rendered = render_kanban_with_theme_and_engine(
             source,
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "fontSize": value }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontSize": value }
+                    }),
+                ),
+            ),
             ThemePortabilityRequirement::BestEffort,
         );
         assert!(
@@ -2030,11 +2082,13 @@ fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
         let error = match try_render_kanban_with_theme_and_engine(
             source,
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "fontSize": value }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontSize": value }
+                    }),
+                ),
+            ),
             ThemePortabilityRequirement::RequirePortable,
         ) {
             Ok(_) => panic!("invalid source size must fail closed in portable mode"),
@@ -2160,7 +2214,9 @@ fn kanban_source_owned_facet_preserves_other_property_application() {
         let rendered = render_kanban_with_theme_and_engine(
             "kanban\n  todo[Todo]\n    task[Task]",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
             ThemePortabilityRequirement::RequirePortable,
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -2197,9 +2253,11 @@ fn repair_u7_kanban_source_owned_fill_keeps_unsupported_radius_residual() {
             .with_fill(CanvasPaint::solid("#123456").unwrap()),
     )
     .with_ordinal(OrdinalSelector::Exact(1))]);
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-        serde_json::json!({"themeVariables":{"background":"#abcdef"}}),
-    ));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({"themeVariables":{"background":"#abcdef"}}),
+        ),
+    );
     let rendered = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n    task[Task]",
         &theme,
@@ -2225,10 +2283,13 @@ fn repair_u7_kanban_source_owned_fill_keeps_unsupported_radius_residual() {
 fn repair_u7_kanban_configured_font_precedence_matches_prepared_layout_and_css() {
     let theme = kanban_task_rules_theme([]);
     let (layout, rendered) = try_render_kanban_with_layout_and_environment("kanban\n  todo[Todo]\n    task[Task]", &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontFamily":"RootFallback, serif","themeVariables":{"fontFamily":"Configured, sans-serif","fontSize":"22px"}}))),
         ThemePortabilityRequirement::RequirePortable, RenderEnvironment::deterministic()).unwrap();
     assert!(!layout.items.is_empty());
     assert!(rendered.svg().contains("font-family:Configured,sans-serif"));
     assert!(rendered.svg().contains("font-size:22px"));
 }
+
+#[allow(dead_code)]
+mod common;

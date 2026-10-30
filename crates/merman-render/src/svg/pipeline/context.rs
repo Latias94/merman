@@ -8,7 +8,7 @@ use crate::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitExceeded, ResourceLimitOverride,
     ResourceLimitPhase,
 };
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SvgPostprocessMetadata {

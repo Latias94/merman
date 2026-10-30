@@ -1,10 +1,9 @@
 mod support;
 
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions};
-use merman_core::{
-    MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
-};
+use merman_core::{ParseOptions, SemanticParser, presentation::MermaidEngine};
 use merman_model::families::flowchart::FlowNodeProvenance;
+use merman_model::{SemanticDiagramModel, presentation::RenderSemanticModel};
 use support::render_full_parsed;
 
 const SUBGRAPH_ENDPOINT_FIXTURE: &str = include_str!(

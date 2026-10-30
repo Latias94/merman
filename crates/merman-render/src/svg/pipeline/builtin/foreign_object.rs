@@ -466,7 +466,7 @@ mod tests {
     };
     use crate::svg::pipeline::SvgPipeline;
     use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},

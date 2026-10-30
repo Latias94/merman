@@ -14,26 +14,20 @@ use crate::{
 };
 use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 use merman_model::families::agentflow::ALLOWED_SHAPES;
-pub use merman_model::families::agentflow::{
+pub(crate) use merman_model::families::agentflow::{
     AgentflowAuthoredStyles, AgentflowConnector, AgentflowDiagnostic, AgentflowDiagnosticPosition,
-    AgentflowDiagramModel, AgentflowEdge, AgentflowEdgeAttributes, AgentflowEdgeSemantic,
-    AgentflowNode, AgentflowNodeAttributes, AgentflowSubGraph, AgentflowVertexKind,
+    AgentflowDiagramModel, AgentflowEdge, AgentflowEdgeSemantic, AgentflowNode, AgentflowSubGraph,
+    AgentflowVertexKind,
 };
 use merman_model::warnings::DiagramWarningFact;
-#[cfg(feature = "compat-json")]
-use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 mod presentation;
 #[cfg(feature = "presentation")]
-mod render_model;
-#[cfg(feature = "presentation")]
-pub use render_model::{
-    AgentflowDiagramRenderModel, AgentflowRenderLabelSources, AgentflowVisuals,
-};
+pub(crate) use merman_model::families::agentflow::{AgentflowDiagramRenderModel, AgentflowVisuals};
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut AgentflowDiagramModel,
@@ -77,14 +71,14 @@ struct Context {
 
 /// Parse the compatibility JSON path used by the public Mermaid facade.
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_agentflow(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_agentflow(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_agentflow_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_agentflow_with_warning_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<family::WarningSemanticParse> {
     let control = OperationControl::new();
     let construction = construct_source(
@@ -100,7 +94,11 @@ pub(crate) fn parse_agentflow_with_warning_facts(
     .expect("a private operation control cannot be cancelled")
     .map_err(family::CombinedSemanticFailure::into_error)?;
     Ok(family::WarningSemanticParse::new(
-        semantic_model_to_compat_json(&construction.model, &meta.diagram_type)?,
+        merman_model::families::agentflow::compat::project_semantic(
+            &construction.model,
+            &meta.compat_json_metadata(),
+        )
+        .map_err(crate::Error::from)?,
         construction.model.warning_facts,
     ))
 }
@@ -152,7 +150,7 @@ pub(crate) fn parse_agentflow_semantic_model_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_agentflow_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<AgentflowDiagramRenderModel>> {
     Ok(construct_source(
@@ -179,7 +177,7 @@ pub(crate) fn parse_agentflow_model_for_render_controlled(
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_agentflow_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_source(
@@ -196,7 +194,11 @@ pub(crate) fn parse_agentflow_json_and_editor_facts(
             construction,
             |construction| {
                 (
-                    semantic_model_to_compat_json(&construction.model, &meta.diagram_type),
+                    merman_model::families::agentflow::compat::project_semantic(
+                        &construction.model,
+                        &meta.compat_json_metadata(),
+                    )
+                    .map_err(crate::Error::from),
                     construction
                         .editor_facts
                         .expect("Agentflow combined parse requests editor facts"),
@@ -208,90 +210,13 @@ pub(crate) fn parse_agentflow_json_and_editor_facts(
     )
 }
 
-#[cfg(feature = "compat-json")]
-pub(crate) fn render_model_to_compat_json(
+#[cfg(all(test, feature = "compat-json"))]
+fn render_model_to_compat_json(
     model: &AgentflowDiagramRenderModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    semantic_model_to_compat_json(&model.model, &meta.diagram_type)
-}
-
-#[cfg(feature = "compat-json")]
-fn semantic_model_to_compat_json(
-    model: &AgentflowDiagramModel,
-    diagram_type: &str,
-) -> Result<Value> {
-    // Keep the established preserve_order removals without serializing discarded facts.
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Compatibility<'a> {
-        presentation: (),
-        direction: &'a str,
-        diagnostics: &'a [AgentflowDiagnostic],
-        warning_facts: (),
-        vertices: &'a [AgentflowNode],
-        edges: &'a [AgentflowEdge],
-        sub_graphs: &'a [AgentflowSubGraph],
-        connectors: &'a [AgentflowConnector],
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<&'a str>,
-        #[serde(rename = "accTitle", skip_serializing_if = "Option::is_none")]
-        acc_title: Option<&'a str>,
-        #[serde(rename = "accDescr", skip_serializing_if = "Option::is_none")]
-        acc_descr: Option<&'a str>,
-    }
-    let mut value = serde_json::to_value(Compatibility {
-        presentation: (),
-        direction: &model.direction,
-        diagnostics: &model.diagnostics,
-        warning_facts: (),
-        vertices: &model.vertices,
-        edges: &model.edges,
-        sub_graphs: &model.sub_graphs,
-        connectors: &model.connectors,
-        title: model.title.as_deref(),
-        acc_title: model.acc_title.as_deref(),
-        acc_descr: model.acc_descr.as_deref(),
-    })
-    .map_err(|error| Error::diagram_parse_fallback(diagram_type.to_string(), error.to_string()))?;
-    if let Some(root) = value.as_object_mut() {
-        root.remove("presentation");
-        root.remove("warningFacts");
-        root.insert("type".into(), Value::String(diagram_type.to_string()));
-        for collection in ["vertices", "subGraphs", "connectors"] {
-            if let Some(items) = root.get_mut(collection).and_then(Value::as_array_mut) {
-                for item in items {
-                    if let Some(item) = item.as_object_mut() {
-                        item.remove("parentId");
-                        if let Some(metadata) =
-                            item.get_mut("metadata").and_then(Value::as_object_mut)
-                        {
-                            metadata.retain(|key, _| {
-                                !matches!(
-                                    key.as_str(),
-                                    "shape"
-                                        | "view"
-                                        | "icon"
-                                        | "img"
-                                        | "form"
-                                        | "pos"
-                                        | "w"
-                                        | "h"
-                                        | "class"
-                                        | "style"
-                                        | "labelType"
-                                )
-                            });
-                            if metadata.is_empty() {
-                                item.remove("metadata");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(value)
+    merman_model::families::agentflow::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 fn construct_source(
@@ -348,7 +273,7 @@ fn construct_source(
 #[cfg(all(test, feature = "compat-json"))]
 fn construct(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     construct_source(
@@ -2476,10 +2401,10 @@ mod semantic_tests {
     #[test]
     #[cfg(feature = "editor-facts")]
     fn agentflow_observes_editor_facts_only_for_combined_request() {
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "agentflow".into(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         #[cfg(feature = "editor-facts")]
@@ -2514,11 +2439,11 @@ mod tests {
     use crate::{MermaidConfig, OperationControl};
     use serde_json::json;
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "agentflow".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -3216,7 +3141,7 @@ Group@{labelType: text}
     fn endpoint_expansion_obeys_the_secure_edge_limit() {
         let mut meta = meta();
         meta.effective_config =
-            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 3}));
+            crate::presentation::SourcePresentationConfig::from_value(json!({"maxEdges": 3}));
         let result = parse_agentflow_model_for_render_controlled(
             "agentflow-beta\na & b --> c & d",
             &meta,
@@ -3689,7 +3614,7 @@ a --> b
     fn click_callbacks_respect_security_and_directives_reject_unconsumed_content() {
         for (security, callback) in [("strict", false), ("loose", true)] {
             let mut metadata = meta();
-            metadata.effective_config = crate::presentation::PresentationConfig::from_value(
+            metadata.effective_config = crate::presentation::SourcePresentationConfig::from_value(
                 json!({"securityLevel":security}),
             );
             let model = parse_agentflow_model_for_render_controlled(

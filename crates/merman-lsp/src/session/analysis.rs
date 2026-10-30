@@ -38,6 +38,20 @@ impl LanguageSession {
         result
     }
 
+    #[cfg(test)]
+    pub(super) async fn query_diagnostic_projection<T>(
+        &self,
+        uri: &Uri,
+        compute: impl FnOnce(&SnapshotContext) -> Result<Option<T>>,
+    ) -> Result<Option<T>> {
+        let Some(context) = self.acquire_push_diagnostic_context(uri).await? else {
+            return Ok(None);
+        };
+        let result = compute(&context);
+        self.ensure_code_action_context_current(&context).await?;
+        result
+    }
+
     pub(crate) async fn query_push_diagnostics<T>(
         &self,
         context: &DiagnosticContext,

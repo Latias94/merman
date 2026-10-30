@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::leading_whitespace_len;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -11,7 +11,7 @@ use crate::{
 };
 use crate::{Error, MermaidConfig, Result, SourceSpan, family::CombinedSemanticFailure};
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Number, Value};
+use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 
@@ -30,144 +30,12 @@ fn xychart_syntax_construction_count() -> usize {
     XYCHART_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-pub use merman_model::families::xy_chart::*;
+pub(crate) use merman_model::families::xy_chart::*;
 
 pub(crate) fn sanitize_common_db_fields(model: &mut XyChartDiagramModel, config: &MermaidConfig) {
     crate::common_db::sanitize_optional_title(&mut model.title, config);
     crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
     crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
-}
-
-#[cfg(feature = "compat-json")]
-fn to_compat_json(model: &XyChartDiagramRenderModel, meta: &PresentationMetadata) -> Value {
-    let mut out = Map::with_capacity(10);
-    out.insert(
-        "orientation".to_string(),
-        Value::String(model.orientation.clone()),
-    );
-    out.insert("title".to_string(), option_string_value(&model.title));
-    out.insert(
-        "accTitle".to_string(),
-        option_string_value(&model.acc_title),
-    );
-    out.insert(
-        "accDescr".to_string(),
-        option_string_value(&model.acc_descr),
-    );
-    out.insert("xAxis".to_string(), axis_value(&model.x_axis));
-    out.insert("yAxis".to_string(), axis_value(&model.y_axis));
-    out.insert("plots".to_string(), plots_value(&model.plots));
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Value::Object(out)
-}
-
-#[cfg(feature = "compat-json")]
-fn option_string_value(value: &Option<String>) -> Value {
-    value
-        .as_ref()
-        .map(|value| Value::String(value.clone()))
-        .unwrap_or(Value::Null)
-}
-
-#[cfg(feature = "compat-json")]
-fn optional_f64_value(value: Option<f64>) -> Value {
-    value
-        .and_then(Number::from_f64)
-        .map(Value::Number)
-        .unwrap_or(Value::Null)
-}
-
-#[cfg(feature = "compat-json")]
-fn f64_value(value: f64) -> Value {
-    Number::from_f64(value)
-        .map(Value::Number)
-        .unwrap_or(Value::Null)
-}
-
-#[cfg(feature = "compat-json")]
-fn string_array_value(values: &[String]) -> Value {
-    Value::Array(values.iter().cloned().map(Value::String).collect())
-}
-
-#[cfg(feature = "compat-json")]
-fn axis_value(axis: &XyChartAxisModel) -> Value {
-    let mut out = Map::new();
-    match axis {
-        XyChartAxisModel::Band { title, categories } => {
-            out.insert("type".to_string(), Value::String("band".to_string()));
-            out.insert("title".to_string(), Value::String(title.clone()));
-            out.insert("categories".to_string(), string_array_value(categories));
-        }
-        XyChartAxisModel::Linear { title, min, max } => {
-            out.insert("type".to_string(), Value::String("linear".to_string()));
-            out.insert("title".to_string(), Value::String(title.clone()));
-            out.insert("min".to_string(), optional_f64_value(*min));
-            out.insert("max".to_string(), optional_f64_value(*max));
-        }
-    }
-    Value::Object(out)
-}
-
-#[cfg(feature = "compat-json")]
-fn plots_value(plots: &[XyChartPlotModel]) -> Value {
-    Value::Array(plots.iter().map(plot_value).collect())
-}
-
-#[cfg(feature = "compat-json")]
-fn plot_value(plot: &XyChartPlotModel) -> Value {
-    let mut out = Map::new();
-    out.insert(
-        "type".to_string(),
-        Value::String(plot_type_name(plot.plot_type)),
-    );
-    out.insert(
-        "title".to_string(),
-        Value::String(plot.title.clone().unwrap_or_default()),
-    );
-    out.insert(
-        "values".to_string(),
-        Value::Array(plot.values.iter().copied().map(f64_value).collect()),
-    );
-    out.insert("data".to_string(), plot_data_value(&plot.data));
-    if !plot.point_labels.is_empty() {
-        out.insert(
-            "pointLabels".to_string(),
-            Value::Array(
-                plot.point_labels
-                    .iter()
-                    .cloned()
-                    .map(Value::String)
-                    .collect(),
-            ),
-        );
-    }
-    Value::Object(out)
-}
-
-#[cfg(feature = "compat-json")]
-fn plot_type_name(plot_type: XyChartPlotType) -> String {
-    match plot_type {
-        XyChartPlotType::Line => "line".to_string(),
-        XyChartPlotType::Bar => "bar".to_string(),
-    }
-}
-
-#[cfg(feature = "compat-json")]
-fn plot_data_value(data: &[(String, Option<f64>)]) -> Value {
-    Value::Array(
-        data.iter()
-            .map(|(category, value)| {
-                Value::Array(vec![
-                    Value::String(category.clone()),
-                    optional_f64_value(*value),
-                ])
-            })
-            .collect(),
-    )
 }
 
 #[derive(Debug, Clone)]
@@ -890,7 +758,7 @@ pub(crate) fn parse_xychart_semantic_model_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_xychart(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_xychart(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let model =
         parse_xychart_model_for_render_controlled(code, meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")?;
@@ -901,7 +769,7 @@ pub(crate) fn parse_xychart(code: &str, meta: &PresentationMetadata) -> Result<V
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_xychart_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let parsed = crate::family::CombinedSemanticParse::from_construction(
@@ -931,7 +799,7 @@ pub(crate) fn parse_xychart_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_xychart_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<XyChartDiagramRenderModel> {
     parse_xychart_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -940,7 +808,7 @@ pub(crate) fn parse_xychart_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_xychart_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<XyChartDiagramRenderModel>> {
     let outcome = construct_xychart_semantic_source_controlled(
@@ -965,9 +833,10 @@ pub(crate) fn parse_xychart_model_for_render_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &XyChartDiagramRenderModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(to_compat_json(model, meta))
+    merman_model::families::xy_chart::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 fn plot_title_value(title: &str, config: &MermaidConfig) -> Option<String> {
@@ -2078,20 +1947,35 @@ mod tests {
             .unwrap()
             .unwrap();
         for source in ["", " \t\r\n", "%% no statements\n", ";\n"] {
-            let typed = parse_xychart_model_for_render(source, &parsed.meta).unwrap();
+            let typed = parse_xychart_model_for_render(
+                source,
+                &crate::diagrams::source_metadata_for_test(&parsed.meta),
+            )
+            .unwrap();
             assert_eq!(typed.orientation, "horizontal");
             assert!(!typed.display.show_title);
             assert!(!typed.display.x_axis.show_label);
             assert!(typed.plots.is_empty());
-            let projection = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
+            let projection = merman_model::families::xy_chart::compat::project(
+                &typed,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(&parsed.meta),
+            )
+            .unwrap();
             assert_eq!(projection, parsed.model);
-            assert_eq!(parse_xychart(source, &parsed.meta).unwrap(), projection);
+            assert_eq!(
+                parse_xychart(
+                    source,
+                    &crate::diagrams::source_metadata_for_test(&parsed.meta)
+                )
+                .unwrap(),
+                projection
+            );
             #[cfg(feature = "editor-facts")]
             {
                 let (combined, facts) =
                     crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
                         source,
-                        &parsed.meta,
+                        &crate::diagrams::source_metadata_for_test(&parsed.meta),
                         &crate::OperationControl::new(),
                     ))
                     .unwrap();
@@ -2354,13 +2238,19 @@ bar [1, 2]
             .expect("standalone XYChart JSON parse succeeds")
             .expect("standalone XYChart JSON parse returns a diagram");
         reset_xychart_syntax_construction_count();
-        let standalone_json =
-            parse_xychart(text, &parsed.meta).expect("XYChart JSON projection succeeds");
+        let standalone_json = parse_xychart(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("XYChart JSON projection succeeds");
         assert_eq!(xychart_syntax_construction_count(), 1);
 
         reset_xychart_syntax_construction_count();
-        let typed = parse_xychart_model_for_render(text, &parsed.meta)
-            .expect("XYChart typed projection succeeds");
+        let typed = parse_xychart_model_for_render(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("XYChart typed projection succeeds");
         assert_eq!(xychart_syntax_construction_count(), 1);
 
         reset_xychart_syntax_construction_count();
@@ -2368,12 +2258,16 @@ bar [1, 2]
         let (combined_json, combined_editor) =
             crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
                 text,
-                &parsed.meta,
+                &crate::diagrams::source_metadata_for_test(&parsed.meta),
                 &crate::OperationControl::new(),
             ))
             .expect("XYChart combined projection succeeds");
         #[cfg(not(feature = "editor-facts"))]
-        let combined_json = parse_xychart(text, &parsed.meta).unwrap();
+        let combined_json = parse_xychart(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .unwrap();
         assert_eq!(xychart_syntax_construction_count(), 1);
         for field in [
             "orientation",
@@ -2427,11 +2321,17 @@ bar [1, 2]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("XYChart compatibility parse succeeds")
             .expect("XYChart compatibility parse returns a diagram");
-        let typed = parse_xychart_model_for_render(text, &parsed.meta)
-            .expect("XYChart typed parse succeeds");
+        let typed = parse_xychart_model_for_render(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("XYChart typed parse succeeds");
 
-        let projection = render_model_to_compat_json(&typed, &parsed.meta)
-            .expect("XYChart compatibility projection succeeds");
+        let projection = merman_model::families::xy_chart::compat::project(
+            &typed,
+            &merman_model::presentation::compat::CompatJsonMetadata::from(&parsed.meta),
+        )
+        .expect("XYChart compatibility projection succeeds");
 
         assert_eq!(projection, parsed.model);
         assert_eq!(projection["type"], json!("xychart"));
@@ -2450,8 +2350,11 @@ bar [1, 2]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("XYChart compatibility parse succeeds")
             .expect("XYChart compatibility parse returns a diagram");
-        let typed = parse_xychart_model_for_render(text, &parsed.meta)
-            .expect("XYChart typed parse succeeds");
+        let typed = parse_xychart_model_for_render(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("XYChart typed parse succeeds");
 
         assert_eq!(typed.plots[0].title.as_deref(), Some("avg"));
         assert_eq!(typed.plots[1].title.as_deref(), Some("p95"));
@@ -2479,7 +2382,7 @@ bar [1, 2]
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("XYChart parse succeeds")
             .expect("XYChart model");
-        let facts = crate::family::test_support::editor_facts(
+        let facts = crate::family::test_support::editor_facts_from_frozen(
             parse_xychart_json_and_editor_facts,
             text,
             &parsed.meta,
@@ -2849,10 +2752,10 @@ EditorFactsDemand::Omit, &crate::OperationControl::new(),
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full = PresentationMetadata {
+            let full = SourcePresentationMetadata {
                 diagram_type: "xychart".to_string(),
                 config: MermaidConfig::empty_object(),
-                effective_config: crate::presentation::PresentationConfig::empty_object(),
+                effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
                 title: None,
             };
             let full_error = parse_xychart_model_for_render_controlled(
@@ -2886,10 +2789,10 @@ EditorFactsDemand::Omit, &crate::OperationControl::new(),
     #[cfg(feature = "compat-json")]
     #[test]
     fn typed_and_json_paths_skip_editor_projection() {
-        let full = PresentationMetadata {
+        let full = SourcePresentationMetadata {
             diagram_type: "xychart".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         #[cfg(feature = "editor-facts")]

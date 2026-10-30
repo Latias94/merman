@@ -2,6 +2,7 @@
 
 This source change updates Rust ownership and public model types. Mermaid-compatible JSON keeps
 its existing field names, nesting, and ordering. Upgrade coupled Merman crates together.
+For the development branch after 0.9.3, also apply the [model/source migration](model-source-boundaries.md).
 
 Block's nested compatibility views now observe later style, class, type, and label updates through
 the same canonical record, matching pinned Mermaid. The former Rust subtree copies incorrectly
@@ -12,7 +13,7 @@ budget counters retain their established accounting rules without exporting the 
 ## Keep semantic JSON managed
 
 `ParsedDiagram.model`, `DiagramParseOutcome.model`, semantic artifact projections, and layout JSON
-now use `merman_core::ManagedSemanticJson` instead of an owned `serde_json::Value`. Ordinary clone,
+now use `merman_model::ManagedJson` instead of an owned `serde_json::Value`. Ordinary clone,
 equality, debug formatting, and drop traverse containers iteratively. The owner accepts an existing
 value without changing its JSON shape.
 
@@ -35,7 +36,7 @@ Use `as_value()` or immutable dereferencing for inspection. Calling `clone`, gen
 or another recursive operation on that raw borrow uses `serde_json::Value` behavior.
 `into_unmanaged_value()` explicitly transfers responsibility for clone, serialization, and
 destruction to the caller. To copy a raw value into managed ownership, use
-`ManagedSemanticJson::from(&value)`; this copy is iterative.
+`ManagedJson::from(&value)`; this copy is iterative.
 
 Custom registry models use `CustomJsonRenderModel::new(model_name, value)` with either a raw or
 managed value.

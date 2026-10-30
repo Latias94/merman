@@ -58,7 +58,8 @@ fn flowchart_elk_routes_with_captured_browser_dimensions() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let mut graph =
             build_flowchart_elk_graph(&parsed, &DeterministicTextMeasurer::default(), None)
                 .unwrap();

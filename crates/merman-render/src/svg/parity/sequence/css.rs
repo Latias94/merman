@@ -348,17 +348,33 @@ mod tests {
         let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "sequenceDiagram\nautonumber\nA->>+B: Hello\nnote over B: Note\nloop control\nB-->>A: Reply\nend\nB-->>-A: Done",
             merman_core::ParseOptions::strict(),
-        ).unwrap().unwrap();
-        let merman_core::RenderSemanticModel::Sequence(model) = parsed.model() else {
+        ).unwrap().unwrap().into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Sequence(model) = parsed.model()
+        else {
             panic!("expected Sequence model");
         };
         let meter = std::sync::Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
+        // These materialized CSS defaults deliberately declare no authored configuration owners.
+        let config =
+            merman_model::presentation::PresentationConfig::try_from_frozen_parts_controlled(
+                merman_model::presentation::FrozenPresentationConfigParts::new(
+                    merman_model::MermaidConfig::from_value(
+                        merman_model::json::clone_value_nonrecursive(config),
+                    ),
+                ),
+                &merman_model::resources::InputResourcePolicy::for_profile(
+                    merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
+                ),
+                &merman_model::OperationControl::new(),
+            )
+            .expect("frozen CSS config construction should not cancel")
+            .expect("unowned CSS defaults should be valid");
         crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
-            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+            &config,
             resolved.as_ref(),
             &crate::text::DeterministicTextMeasurer::default(),
             None,

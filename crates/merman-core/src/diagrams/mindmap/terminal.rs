@@ -27,11 +27,11 @@ mod tests {
             expected["shape"] = "rounded".into();
             assert_eq!(wire["nodes"][index], expected);
         }
-        let base =
-            crate::resources::MindmapComplexity::from_semantic_model(&model).as_model_complexity();
+        let base = merman_model::resources::MindmapComplexity::from_semantic_model(&model)
+            .as_model_complexity();
         assert_eq!(
             view.complexity(),
-            crate::resources::ModelComplexity::new(
+            merman_model::resources::ModelComplexity::new(
                 base.items,
                 base.text_bytes + "rounded".len() * (model.nodes.len() + 1),
                 base.nesting_depth
@@ -71,7 +71,7 @@ mod tests {
         );
         assert_eq!(
             view.complexity(),
-            crate::resources::MindmapComplexity::from_model(&model).as_model_complexity()
+            merman_model::resources::MindmapComplexity::from_model(&model).as_model_complexity()
         );
     }
 

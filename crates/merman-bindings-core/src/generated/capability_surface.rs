@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:9bc6f8c58dd8e104bd1e61e059a3472f33a5fac947382efcce7f4a6c7c12b2ec";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -14,6 +14,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "analysis",
     "ascii",
     "editor",
+    "fixes",
     "icons",
     "jpeg",
     "layout-cytoscape",
@@ -105,6 +106,7 @@ pub enum CapabilityKey {
     Analysis,
     Ascii,
     Editor,
+    Fixes,
     Icons,
     Jpeg,
     LayoutCytoscape,
@@ -130,6 +132,7 @@ impl CapabilityKey {
         Self::Analysis,
         Self::Ascii,
         Self::Editor,
+        Self::Fixes,
         Self::Icons,
         Self::Jpeg,
         Self::LayoutCytoscape,
@@ -155,6 +158,7 @@ impl CapabilityKey {
             "analysis" => Some(Self::Analysis),
             "ascii" => Some(Self::Ascii),
             "editor" => Some(Self::Editor),
+            "fixes" => Some(Self::Fixes),
             "icons" => Some(Self::Icons),
             "jpeg" => Some(Self::Jpeg),
             "layout-cytoscape" => Some(Self::LayoutCytoscape),
@@ -186,24 +190,54 @@ impl CapabilityKey {
             Self::Analysis => &CAPABILITIES[0],
             Self::Ascii => &CAPABILITIES[1],
             Self::Editor => &CAPABILITIES[2],
-            Self::Icons => &CAPABILITIES[3],
-            Self::Jpeg => &CAPABILITIES[4],
-            Self::LayoutCytoscape => &CAPABILITIES[5],
-            Self::LayoutElk => &CAPABILITIES[6],
-            Self::Markdown => &CAPABILITIES[7],
-            Self::Math => &CAPABILITIES[8],
-            Self::NativeFonts => &CAPABILITIES[9],
-            Self::NetworkIcons => &CAPABILITIES[10],
-            Self::ParallelMarkdown => &CAPABILITIES[11],
-            Self::Pdf => &CAPABILITIES[12],
-            Self::Png => &CAPABILITIES[13],
-            Self::Rustdoc => &CAPABILITIES[14],
-            Self::ShellCompletions => &CAPABILITIES[15],
-            Self::Svg => &CAPABILITIES[16],
-            Self::SystemClock => &CAPABILITIES[17],
-            Self::SystemRandom => &CAPABILITIES[18],
-            Self::SystemTimezone => &CAPABILITIES[19],
-            Self::SystemTiming => &CAPABILITIES[20],
+            Self::Fixes => &CAPABILITIES[3],
+            Self::Icons => &CAPABILITIES[4],
+            Self::Jpeg => &CAPABILITIES[5],
+            Self::LayoutCytoscape => &CAPABILITIES[6],
+            Self::LayoutElk => &CAPABILITIES[7],
+            Self::Markdown => &CAPABILITIES[8],
+            Self::Math => &CAPABILITIES[9],
+            Self::NativeFonts => &CAPABILITIES[10],
+            Self::NetworkIcons => &CAPABILITIES[11],
+            Self::ParallelMarkdown => &CAPABILITIES[12],
+            Self::Pdf => &CAPABILITIES[13],
+            Self::Png => &CAPABILITIES[14],
+            Self::Rustdoc => &CAPABILITIES[15],
+            Self::ShellCompletions => &CAPABILITIES[16],
+            Self::Svg => &CAPABILITIES[17],
+            Self::SystemClock => &CAPABILITIES[18],
+            Self::SystemRandom => &CAPABILITIES[19],
+            Self::SystemTimezone => &CAPABILITIES[20],
+            Self::SystemTiming => &CAPABILITIES[21],
+        }
+    }
+}
+
+impl CapabilityKey {
+    pub const fn compact_bit(self) -> u64 {
+        match self {
+            Self::Analysis => 1_u64 << 0,
+            Self::Ascii => 1_u64 << 1,
+            Self::Editor => 1_u64 << 2,
+            Self::Icons => 1_u64 << 3,
+            Self::Jpeg => 1_u64 << 4,
+            Self::LayoutCytoscape => 1_u64 << 5,
+            Self::LayoutElk => 1_u64 << 6,
+            Self::Markdown => 1_u64 << 7,
+            Self::Math => 1_u64 << 8,
+            Self::NativeFonts => 1_u64 << 9,
+            Self::NetworkIcons => 1_u64 << 10,
+            Self::ParallelMarkdown => 1_u64 << 11,
+            Self::Pdf => 1_u64 << 12,
+            Self::Png => 1_u64 << 13,
+            Self::Rustdoc => 1_u64 << 14,
+            Self::ShellCompletions => 1_u64 << 15,
+            Self::Svg => 1_u64 << 16,
+            Self::SystemClock => 1_u64 << 17,
+            Self::SystemRandom => 1_u64 << 18,
+            Self::SystemTimezone => 1_u64 << 19,
+            Self::SystemTiming => 1_u64 << 20,
+            Self::Fixes => 1_u64 << 21,
         }
     }
 }
@@ -635,6 +669,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         description: "Expose parser-backed editor intelligence APIs.",
         targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::Fixes,
+        id: "fixes",
+        kind: "api",
+        description: "Generate diagnostic replacement edits when explicitly requested.",
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+        implications: &[CapabilityKey::Analysis, ],
     },
     CapabilityDescriptor {
         key: CapabilityKey::Icons,

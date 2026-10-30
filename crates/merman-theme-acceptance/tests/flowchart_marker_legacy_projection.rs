@@ -7,14 +7,14 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
-use merman::presentation::PresentationConfig;
+use merman::SourcePresentationConfig;
+use merman::model::family::DiagramFamilyId;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
-    DiagramFamilyId, MermaidEngine, OperationControl, RenderOutput, RenderRequest,
-    RenderedDocument, Renderer,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, RenderedDocument, Renderer,
 };
 use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
@@ -42,7 +42,7 @@ fn source(family: DiagramFamilyId, animated: bool) -> String {
 }
 
 fn engine(look: &str) -> MermaidEngine {
-    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(serde_json::json!({
         "htmlLabels": false,
         "flowchart": { "htmlLabels": false },
         "look": look,
@@ -231,10 +231,10 @@ fn retired_marker_bridge_is_absent() {
                 for stroke in [false, true] {
                     for transparent in [false, true] {
                         let theme = marker_theme(family, variant, stroke, transparent);
-                        let parser = merman_render::__private::install_parse_compatibility(
-                            &theme,
-                            engine(look),
+                        let plan = merman::ThemeCompatibilityPlan::from_recipe(
+                            theme.compatibility_recipe().clone(),
                         );
+                        let parser = engine(look).with_theme_plan(&plan);
                         let metadata = parser.parse_metadata_sync(&source).unwrap();
                         let context = format!(
                             "{family:?}/{look}/animated={animated}/{variant:?}/stroke={stroke}/transparent={transparent}"

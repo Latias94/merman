@@ -302,7 +302,7 @@ pub(super) fn advance_rough_geometry(
                 common.hand_drawn_seed,
             );
             ctx.work_meter
-                .checkpoint(merman_core::OperationPhase::Layout)
+                .checkpoint(merman_model::OperationPhase::Layout)
                 .map_err(crate::Error::from)?;
             let _ = roughjs_prepare_paths_for_circle_with_roughness(
                 RoughGeometryTarget::Query,
@@ -315,7 +315,7 @@ pub(super) fn advance_rough_geometry(
                 common.hand_drawn_seed,
             );
             ctx.work_meter
-                .checkpoint(merman_core::OperationPhase::Layout)
+                .checkpoint(merman_model::OperationPhase::Layout)
                 .map_err(crate::Error::from)?;
         }
         _ => {}

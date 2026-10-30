@@ -6,7 +6,7 @@ use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SwimlaneDirection, SwimlaneLayout};
 use crate::resources::OperationWorkMeter;
 use indexmap::IndexMap;
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 use std::sync::Arc;
 
 pub(crate) fn layout_flat(

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::radar::RadarDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::{config_css_number_or_string, config_string, value_at};
 use crate::diagram_theme::{
@@ -62,10 +62,7 @@ impl RadarTypographyThemePlan {
             })
         });
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_css = match theme {
             Some(theme) if typed_font_size_active => {
@@ -230,10 +227,8 @@ impl RadarTitleThemePlan {
         };
 
         let title_count = usize::from(title_present);
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.titleColor",
-        );
+        let config_owns_fill =
+            effective_config.config_paint_overrides_typed_default("themeVariables.titleColor");
         let style = title_present
             .then(|| {
                 theme.style_with_work_meter(
@@ -668,10 +663,7 @@ impl RadarSeriesPaintPlan {
                     )?;
                     if style.fill_resolution().winner().is_some()
                         || style.stroke_resolution().winner().is_some()
-                        || merman_core::__private::config_paint_overrides_typed_default(
-                            effective_config,
-                            color_scale_path,
-                        )
+                        || effective_config.config_paint_overrides_typed_default(color_scale_path)
                     {
                         continue;
                     }

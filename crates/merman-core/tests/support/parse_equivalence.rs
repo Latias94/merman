@@ -1,11 +1,21 @@
 //! Shared assertions for stable parser contracts and the in-process parse fuzzer.
 
 #[cfg(feature = "editor-facts")]
-use super::parse_api::{DiagramParseOutcome, DiagramParseSnapshot, ParsedEditorFacts, SourceSpan};
-use super::parse_api::{
-    Error, ManagedSemanticJson, MermaidConfig, MermaidEngine, OperationControl, ParseOptions,
-    ParsedDiagram, ParsedDiagramRender, PresentationMetadata, Result, diagram_family_capabilities,
-    runtime::RuntimePolicy, time::CivilDate,
+use {
+    super::parse_api::{DiagramParseOutcome, DiagramParseSnapshot, ParsedEditorFacts},
+    merman_model::source::SourceSpan,
+};
+use {
+    super::parse_api::{
+        Error, MermaidEngine, ParseOptions, ParsedDiagram, ParsedDiagramRender, Result,
+        diagram_family_capabilities,
+    },
+    merman_model::config::MermaidConfig,
+    merman_model::json::ManagedJson as ManagedSemanticJson,
+    merman_model::operation::OperationControl,
+    merman_model::presentation::PresentationMetadata,
+    merman_model::runtime::RuntimePolicy,
+    merman_model::time::CivilDate,
 };
 
 pub fn deterministic_engine() -> MermaidEngine {

@@ -236,7 +236,7 @@ fn validate_catalog(catalog: &BrowserTextLayoutResidualCatalog) -> Result<(), St
             catalog.schema_version
         ));
     }
-    if catalog.mermaid_version != merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+    if catalog.mermaid_version != merman::model::baseline::PINNED_MERMAID_BASELINE_VERSION
         || catalog.mermaid_source_commit != crate::cmd::MERMAID_SOURCE_COMMIT
         || catalog.measurement_provider != MEASUREMENT_PROVIDER
         || catalog.comparison_revision != COMPARISON_REVISION

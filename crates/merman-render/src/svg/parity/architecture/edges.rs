@@ -831,7 +831,7 @@ mod tests {
             let diagram_id = options.diagram_id_or("architecture");
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::empty_object(),
+                &merman_model::presentation::PresentationConfig::empty_object(),
             );
             let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             settings.icon_size_px = 20.0;
@@ -924,7 +924,7 @@ mod tests {
             let diagram_id = options.diagram_id_or("architecture");
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::empty_object(),
+                &merman_model::presentation::PresentationConfig::empty_object(),
             );
             let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             let mut node_xy = rustc_hash::FxHashMap::default();

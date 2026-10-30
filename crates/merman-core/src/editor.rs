@@ -5,7 +5,7 @@ use crate::error::Error;
 pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
 use crate::{OperationControl, OperationControlResult};
 
-pub use crate::source_span::SourceSpan;
+use merman_model::source::SourceSpan;
 
 /// Parser-backed facts retained by one requested editor capture.
 #[derive(Debug)]
@@ -26,7 +26,7 @@ pub fn flowchart_shape_names() -> impl Iterator<Item = &'static str> {
         feature = "diagram-agentflow"
     ))]
     {
-        crate::diagrams::flowchart::flowchart_public_shape_names()
+        merman_model::families::flowchart::shapes::public_pinned_shape_names()
     }
     #[cfg(not(any(
         feature = "diagram-flowchart",

@@ -1,7 +1,7 @@
 #![cfg(feature = "presentation")]
 
 use merman_core::MermaidEngine;
-use merman_core::presentation::PresentationConfig;
+use merman_core::presentation::SourcePresentationConfig;
 use serde_json::{Value, json};
 
 fn sources(config: &Value) -> [String; 2] {
@@ -46,11 +46,12 @@ fn source_presentation_values_are_allowed_by_default_in_both_syntaxes() {
 
 #[test]
 fn unsafe_source_values_preserve_trusted_site_values_in_both_syntaxes() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "fontFamily": "Host Font",
-        "themeVariables": { "actorBkg": "#112233", "radar": { "axisColor": "#445566" } },
-        "sequence": { "actorFontWeight": "500" }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "fontFamily": "Host Font",
+            "themeVariables": { "actorBkg": "#112233", "radar": { "axisColor": "#445566" } },
+            "sequence": { "actorFontWeight": "500" }
+        })));
     for attack in [
         "red;stroke:blue",
         "x;a{b} :not(&){background:green !important} c{d}",
@@ -107,11 +108,12 @@ fn source_cannot_unlock_host_policy_or_supply_stylesheets() {
         assert_ne!(effective.as_value()["maxEdges"], 999999);
         assert!(effective.get_str("themeCSS").is_none());
 
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "secure": ["secure", "securityLevel", "themeVariables", "fontFamily", "themeCSS"],
-            "fontFamily": "Host Font", "themeVariables": { "lineColor": "#123456" },
-            "themeCSS": ".node { opacity: 0.8; }"
-        })));
+        let engine =
+            MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+                "secure": ["secure", "securityLevel", "themeVariables", "fontFamily", "themeCSS"],
+                "fontFamily": "Host Font", "themeVariables": { "lineColor": "#123456" },
+                "themeCSS": ".node { opacity: 0.8; }"
+            })));
         let locked = engine
             .parse_metadata_sync(&source)
             .unwrap()

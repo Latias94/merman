@@ -2,6 +2,8 @@
 
 mod data;
 mod input;
+#[cfg(feature = "presentation-data")]
+mod presentation;
 #[cfg(feature = "diagram-block")]
 pub use crate::families::block::model_complexity_from_block;
 #[cfg(all(feature = "diagram-kanban", feature = "presentation-data"))]
@@ -16,6 +18,10 @@ pub use data::IshikawaComplexity;
 pub use data::model_complexity_from_radar;
 pub use data::model_complexity_from_semantic_model;
 pub use input::*;
+#[cfg(feature = "presentation-data")]
+pub(crate) use presentation::check_presentation_construction;
+#[cfg(feature = "presentation-data")]
+pub use presentation::{model_complexity_from_presentation, model_complexity_from_render_model};
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",

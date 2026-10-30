@@ -13,7 +13,7 @@ fn state_leaf_label_width(
         width
     }
 }
-use merman_core::svg_security::{
+use crate::svg_security::{
     MermaidNavigationSecurity, normalize_mermaid_tooltip_attribute, prepare_mermaid_navigation_href,
 };
 

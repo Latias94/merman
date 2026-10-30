@@ -44,7 +44,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edge_use_html_labels: bool,
     pub text_measurer: &'a dyn TextMeasurer,
     pub terminal_text_style: &'a TextStyle,
-    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
@@ -1000,7 +1000,7 @@ fn render_class_edge_terminal_group<O: SvgOutput>(
 fn render_class_terminal_label(
     out: &mut impl SvgOutput,
     text: &str,
-    mermaid_config: Option<&merman_core::presentation::PresentationConfig>,
+    mermaid_config: Option<&merman_model::presentation::PresentationConfig>,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) {
     if let Some(math_html) = class_math_html_label(text, mermaid_config, math_renderer) {

@@ -150,7 +150,13 @@ macro_rules! impl_compact_key {
     };
 }
 
-impl_compact_key!(CapabilityKey);
+impl CompactKey for CapabilityKey {
+    const ALL: &'static [Self] = Self::ALL;
+
+    fn bit(self) -> u64 {
+        self.compact_bit()
+    }
+}
 impl_compact_key!(OperationKey);
 impl_compact_key!(OutputKey);
 impl_compact_key!(MetadataKey);
@@ -180,7 +186,12 @@ mod tests {
     {
         assert!(K::ALL.len() <= u64::BITS as usize);
         for (index, key) in K::ALL.iter().copied().enumerate() {
-            assert_eq!(key.bit(), 1_u64 << index, "{}", id(key));
+            assert_eq!(key.bit().count_ones(), 1, "{}", id(key));
+            assert!(
+                K::ALL[..index]
+                    .iter()
+                    .all(|previous| previous.bit() != key.bit())
+            );
             if index > 0 {
                 let previous_id = id(K::ALL[index - 1]);
                 let current_id = id(key);
@@ -222,6 +233,44 @@ mod tests {
         assert_compact_key_contract(BindingOptionGroupKey::id);
         assert_compact_key_contract(TextMeasurementProviderKey::id);
         assert_compact_key_contract(ConstructorServiceKey::id);
+    }
+
+    #[test]
+    fn capability_bit_identities_are_append_only_and_independent_of_catalog_order() {
+        for (index, id) in [
+            "analysis",
+            "ascii",
+            "editor",
+            "icons",
+            "jpeg",
+            "layout-cytoscape",
+            "layout-elk",
+            "markdown",
+            "math",
+            "native-fonts",
+            "network-icons",
+            "parallel-markdown",
+            "pdf",
+            "png",
+            "rustdoc",
+            "shell-completions",
+            "svg",
+            "system-clock",
+            "system-random",
+            "system-timezone",
+            "system-timing",
+            "fixes",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(
+                CapabilityKey::from_id(id).unwrap().compact_bit(),
+                1_u64 << index,
+                "{id}"
+            );
+        }
+        assert_eq!(CapabilityKey::Fixes.compact_bit(), 1_u64 << 21);
     }
 
     #[test]

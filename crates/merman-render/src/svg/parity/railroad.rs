@@ -62,7 +62,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
         &mut || {
             options
                 .work_meter()
-                .checkpoint(merman_core::OperationPhase::Emit)
+                .checkpoint(merman_model::OperationPhase::Emit)
                 .map_err(crate::Error::from)
         },
     )?;

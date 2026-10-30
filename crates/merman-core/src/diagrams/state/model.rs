@@ -1,4 +1,4 @@
-pub use merman_model::families::state::{
+pub(crate) use merman_model::families::state::{
     StateDiagramModel, StateEdge, StateLink, StateLinks, StateNode, StateNote, StateRecord,
     StateRelation, StateStyleClass,
 };

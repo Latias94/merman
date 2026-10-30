@@ -42,3 +42,10 @@ pub const NODE_TYPE_CIRCLE: i32 = 3;
 pub const NODE_TYPE_CLOUD: i32 = 4;
 pub const NODE_TYPE_BANG: i32 = 5;
 pub const NODE_TYPE_HEXAGON: i32 = 6;
+
+#[cfg(feature = "presentation-data")]
+mod identity;
+#[cfg(feature = "presentation-data")]
+pub use identity::diagram_id_from_context;
+#[cfg(feature = "compat-json")]
+pub mod compat;

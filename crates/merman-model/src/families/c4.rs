@@ -1,5 +1,8 @@
 //! Canonical C4 data and layout vocabulary.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

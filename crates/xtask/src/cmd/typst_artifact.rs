@@ -257,7 +257,7 @@ impl TypstArtifactSpec {
             cargo_package_version,
             typst_package_version,
             plugin_abi_version: catalog.plugin_abi_version(),
-            mermaid_version: merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION.to_string(),
+            mermaid_version: merman::model::baseline::PINNED_MERMAID_BASELINE_VERSION.to_string(),
             mermaid_source_commit: MERMAID_SOURCE_COMMIT.to_string(),
         }
         .normalized_and_validated()

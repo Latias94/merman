@@ -1,5 +1,8 @@
 //! Canonical QuadrantChart points, axes, quadrants and styles.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

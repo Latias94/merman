@@ -1,5 +1,8 @@
 //! Canonical Railroad expressions and JavaScript-compatible repetition bounds.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use crate::SourceSpan;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

@@ -1,5 +1,8 @@
 //! Canonical Cynefin domains, items, and transitions.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct CynefinItemModel {
     pub label: String,

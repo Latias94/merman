@@ -7,8 +7,8 @@ use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_w
 use crate::Result;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessageKind};
+use merman_model::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 

@@ -1,11 +1,11 @@
 use crate::MermaidConfig;
 #[cfg(feature = "compat-json")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::common::parse_generic_types;
-use crate::models::class_diagram as class_typed;
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use indexmap::IndexMap;
+use merman_model::families::class as class_typed;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -1099,7 +1099,7 @@ impl<'a> ClassDb<'a> {
     }
 
     #[cfg(feature = "compat-json")]
-    pub(super) fn into_model(self, meta: &PresentationMetadata) -> Value {
+    pub(super) fn into_model(self, meta: &SourcePresentationMetadata) -> Value {
         let model = class_typed::ClassDiagram::new(
             self.into_semantic_model(&meta.diagram_type),
             meta.effective_config.as_config(),

@@ -973,7 +973,7 @@ mod tests {
             Err(crate::Error::ResourceLimitExceeded(_))
         ));
         assert_eq!(provider, before);
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let mut cancelled =
             OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new_with_control(

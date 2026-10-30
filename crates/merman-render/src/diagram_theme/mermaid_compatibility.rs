@@ -1,4 +1,4 @@
-use merman_core::MermaidConfig;
+use merman_model::MermaidConfig;
 
 use super::DiagramThemeSpec;
 

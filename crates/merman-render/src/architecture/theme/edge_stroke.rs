@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
@@ -248,9 +248,9 @@ fn typed_static_stroke(
 }
 
 fn mermaid_owns_edge_stroke(config: &PresentationConfig) -> bool {
-    if merman_core::__private::config_paint_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH) {
+    if config.config_paint_overrides_typed_default(ARCH_EDGE_COLOR_PATH) {
         return true;
     }
-    merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
+    config.config_paint_overrides_typed_default(LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
 }

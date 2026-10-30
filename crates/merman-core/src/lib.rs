@@ -9,21 +9,7 @@ use merman_core::presentation::MermaidEngine;
 ```
 
 ```compile_fail,E0432
-use merman_core::{PresentationMetadata, RenderSemanticModel};
-```
-
-```compile_fail,E0432
-use merman_core::theme_color::ColorError;
-```
-"#
-)]
-#![cfg_attr(
-    not(feature = "terminal-text"),
-    doc = r#"
-Terminal normalization requires the `terminal-text` capability:
-
-```compile_fail,E0432
-use merman_core::terminal_text::normalize_terminal_text;
+use merman_core::SourcePresentationMetadata;
 ```
 "#
 )]
@@ -43,7 +29,7 @@ use merman_core::preprocess::SourceConfigEvidence;
 ```
 "#
 )]
-//! Mermaid parser + semantic model (headless).
+//! Mermaid source parsing and preprocessing (headless).
 //!
 //! Design goals:
 //! - 1:1 parity with the repository's pinned upstream Mermaid baseline
@@ -51,19 +37,27 @@ use merman_core::preprocess::SourceConfigEvidence;
 //! - runtime-agnostic async APIs (no specific executor required)
 //!
 //! Default features are empty. Select `diagram-*` features for the required logical families or
-//! `all-diagrams` for the complete parser surface. Family-exclusive public model types and enum
-//! variants are conditional; recognition and custom registries remain available without a family.
+//! `all-diagrams` for the complete parser surface. Portable data and read-only presentation
+//! definitions are owned by `merman-model`; shared markup policy is owned by `merman-markup`.
+//! Recognition and custom source registries remain available without a diagram family.
 
-pub mod baseline;
-pub mod common;
-pub mod common_db;
-pub mod config;
+use merman_markup::sanitize;
+#[cfg(feature = "diagram-class")]
+use merman_markup::style;
+#[cfg(feature = "presentation")]
+use merman_markup::theme_color;
+#[cfg(feature = "diagram-class")]
+use merman_model::text as common;
+#[cfg(any(test, feature = "presentation", feature = "diagram-gantt"))]
+use merman_model::time;
+use merman_model::{baseline, json as json_value, operation, text as entities};
+mod common_db;
+mod config;
 pub mod detect;
 pub mod diagram;
-pub mod diagrams;
+mod diagrams;
 #[cfg(feature = "editor-facts")]
 pub mod editor;
-pub mod entities;
 pub mod error;
 mod family;
 pub mod generated;
@@ -76,42 +70,26 @@ pub mod generated;
     feature = "diagram-sequence"
 ))]
 mod inline_config;
-mod json_value;
-pub mod models;
-pub mod operation;
+#[cfg(test)]
+mod operation_tests;
 mod parse_diagnostic;
 mod parse_options;
 pub mod preprocess;
 #[cfg(feature = "presentation")]
 pub mod presentation;
-pub mod resources;
-pub mod runtime;
-pub mod sanitize;
+#[cfg(test)]
+mod resource_tests;
+mod runtime;
 pub mod semantic;
 mod source_span;
-pub mod style;
-pub mod svg_security;
-#[doc(hidden)]
-#[cfg(feature = "terminal-text")]
-pub mod terminal_text;
 #[cfg(feature = "presentation")]
 mod theme;
-#[cfg(feature = "presentation")]
-pub mod theme_color;
-mod theme_id;
-pub use merman_model::time;
-pub mod utils;
+mod utils;
 mod yaml_config;
 
-pub use config::MermaidConfig;
 #[cfg(feature = "presentation")]
 pub use detect::{Detector, DetectorRegistry};
-pub use diagram::{
-    AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
-    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID, CapturedPanic,
-    DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
-};
+pub use diagram::CapturedPanic;
 #[cfg(feature = "editor-facts")]
 pub use editor::ParsedEditorFacts;
 #[cfg(feature = "editor-facts")]
@@ -120,57 +98,54 @@ pub use editor::{
     EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticDiagnosticKind,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
 };
-#[cfg(feature = "presentation")]
-pub use error::ThemeEvaluationLimitExceeded;
 pub use error::{Error, InternalFailure, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
-pub use family::{
-    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramFamilySelector,
-    DiagramHeaderFact, diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
-    diagram_type_render_model_kind,
-};
+pub use family::{BuiltInTypedRenderFamily, DiagramFamilyCapability};
 #[cfg(feature = "compat-json")]
-pub use json_value::ManagedJson as ManagedSemanticJson;
-pub use json_value::ManagedJson;
-pub use operation::{
-    CancelReason, OperationCancelled, OperationControl, OperationControlResult,
-    OperationLedgerError, OperationPhase, OperationResourceDomain, OperationResourceLimitExceeded,
-    OperationResourceOverride, OperationResourceProvenance,
-};
+use json_value::ManagedJson as ManagedSemanticJson;
+use merman_model::config::{MermaidConfig, MermaidThemeId};
+use merman_model::family::DiagramHeaderFact;
+#[cfg(all(test, feature = "presentation"))]
+use merman_model::presentation::CustomJsonProvenance;
+#[cfg(all(test, feature = "presentation"))]
+use merman_model::presentation::CustomJsonRenderModel;
+#[cfg(feature = "presentation")]
+use merman_model::presentation::PresentationMetadata;
+#[cfg(all(test, feature = "presentation"))]
+use merman_model::presentation::RenderSemanticModel;
+use merman_model::semantic::{SemanticDiagramModel, SemanticMetadata};
+use merman_model::source::SourceSpan;
+use merman_model::warnings::DiagramWarningFact;
+#[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use merman_model::warnings::FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID;
+#[cfg(test)]
+use operation::CancelReason;
+use operation::{OperationCancelled, OperationControl, OperationControlResult, OperationPhase};
 pub use parse_options::ParseOptions;
 pub use preprocess::{PreprocessResult, PreprocessedSource};
 #[cfg(feature = "presentation")]
 pub use preprocess::{preprocess_diagram, preprocess_diagram_with_known_type};
-#[cfg(all(test, feature = "presentation"))]
-use presentation::PresentationConfig;
-#[cfg(feature = "compat-json")]
-pub use presentation::diagram::{
-    BuiltinRenderSemantic, DiagramRegistry, DiagramSemanticParser, ParsedDiagram,
-};
 #[cfg(feature = "presentation")]
 pub use presentation::diagram::{
-    CustomJsonProvenance, CustomJsonRenderModel, CustomJsonRenderParser, ParsedDiagramRender,
-    RenderDiagramRegistry, RenderSemanticModel,
+    CustomJsonRenderParser, ParsedDiagramRender, RenderDiagramRegistry,
 };
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub use presentation::diagram::{
     DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture,
 };
-pub use semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata, SemanticParser};
+#[cfg(feature = "compat-json")]
+pub use presentation::diagram::{DiagramRegistry, DiagramSemanticParser, ParsedDiagram};
+pub use semantic::SemanticParser;
 #[cfg(feature = "editor-facts")]
 pub use semantic::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture};
-pub use source_span::SourceSpan;
-pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
 
-#[doc(hidden)]
-#[cfg(feature = "presentation")]
-pub use presentation::engine::__private;
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use presentation::engine::parse_pipeline;
 #[cfg(feature = "presentation")]
-pub use presentation::{MermaidEngine, PresentationMetadata};
+pub use presentation::{
+    MermaidEngine, SourcePresentationMetadata, ThemeCompatibilityPlan, ThemeCompatibilityPlanError,
+};
 
-/// Maximum nested diagram/include depth accepted by recursive parsers.
-pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
+use merman_model::MAX_DIAGRAM_NESTING_DEPTH;
 
 /// Returns Mermaid theme names supported by the pinned baseline.
 pub fn supported_themes() -> &'static [&'static str] {
@@ -197,14 +172,6 @@ pub fn supported_diagrams() -> &'static [&'static str] {
 /// editor, and typed render-model callbacks compiled into this build.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family::diagram_family_capabilities()
-}
-
-/// Returns the complete catalog-owned mapping from logical families to Cargo selectors.
-///
-/// These declarations are independent of enabled features and exclude infrastructure models.
-/// Selecting a family does not enable an output format or optional layout engine.
-pub fn diagram_family_selectors() -> &'static [DiagramFamilySelector] {
-    family::diagram_family_selectors()
 }
 
 /// Returns each compiled concrete built-in typed render-model family exactly once.

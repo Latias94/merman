@@ -81,30 +81,24 @@ pub(super) struct ClassNodeThemePlan {
 
 impl ClassNodeThemePlan {
     pub(super) fn from_config(
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
         let mermaid_owns_fill = ["themeVariables.mainBkg", "themeVariables.primaryColor"]
             .into_iter()
-            .any(|path| {
-                merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
-            });
+            .any(|path| effective_config.config_paint_overrides_typed_default(path));
         let mermaid_owns_stroke = [
             "themeVariables.nodeBorder",
             "themeVariables.primaryBorderColor",
         ]
         .into_iter()
-        .any(|path| {
-            merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
-        });
+        .any(|path| effective_config.config_paint_overrides_typed_default(path));
         let mermaid_owns_label_fill = [
             "themeVariables.classText",
             "themeVariables.primaryTextColor",
             "themeVariables.textColor",
         ]
         .into_iter()
-        .any(|path| {
-            merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
-        });
+        .any(|path| effective_config.config_paint_overrides_typed_default(path));
         Self {
             mermaid_owns_fill,
             mermaid_owns_stroke,
@@ -361,7 +355,7 @@ mod tests {
         let meter = work_meter();
         let plan = ClassRelationThemePlan::resolve(
             Some(&theme),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             0,
             2,
             &meter,
@@ -406,7 +400,7 @@ mod tests {
         let meter = work_meter();
         let plan = ClassRelationThemePlan::resolve(
             Some(&theme),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             0,
             2,
             &meter,
@@ -445,7 +439,7 @@ mod tests {
             .unwrap()
             .resolve(DiagramFamilyId::CLASS);
         let meter = work_meter();
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let plan = ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &meter).unwrap();
         let work_after_plan = meter.used();
         let expectations = [plan.node_paint(1), plan.node_paint(2)];

@@ -96,9 +96,9 @@ mod tests {
 
     #[test]
     fn canonical_packet_matches_full_row_and_metadata_output() {
-        use merman_core::{
-            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
-        };
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::SemanticDiagramModel;
+        use merman_model::presentation::RenderSemanticModel;
 
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();

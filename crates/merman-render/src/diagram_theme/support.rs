@@ -154,10 +154,12 @@ fn qualify_common_support(
             reason_id: "theme-support.target-not-applicable-to-family",
         });
     }
-    let handler_available = merman_core::diagram_family_capabilities()
+    let handler_available = merman_model::family::model_family_capabilities()
         .iter()
         .any(|entry| {
-            entry.family_id == family && crate::family::supports_diagram_type(entry.diagram_type)
+            entry.has_model
+                && entry.logical_family_kind == family.as_str()
+                && crate::family::supports_diagram_type(entry.diagram_type)
         });
     if !handler_available {
         return Err(SupportRejection {
@@ -275,10 +277,11 @@ mod tests {
     #[test]
     fn support_never_claims_an_uncompiled_family_consumer() {
         for family in DiagramFamilyId::all() {
-            let available = merman_core::diagram_family_capabilities()
+            let available = merman_model::family::model_family_capabilities()
                 .iter()
                 .any(|entry| {
-                    entry.family_id == *family
+                    entry.has_model
+                        && entry.logical_family_kind == family.as_str()
                         && crate::family::supports_diagram_type(entry.diagram_type)
                 });
             if available {

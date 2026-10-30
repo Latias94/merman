@@ -20,7 +20,7 @@ artifact-profile-required = true
 default = []
 bundled-fonts = ["native-fonts"]
 native-fonts = [
-    "dep:merman-core",
+    "dep:merman-model",
     "dep:merman-render",
     "dep:rustybuzz",
     "dep:sha2",
@@ -34,7 +34,7 @@ experimental-system-font-query = ["native-fonts", "system-fonts", "dep:fontique"
 png = [
     "dep:cssparser",
     "dep:data-url",
-    "dep:merman-core",
+    "dep:merman-model",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -49,7 +49,7 @@ jpeg = [
     "dep:cssparser",
     "dep:data-url",
     "dep:image",
-    "dep:merman-core",
+    "dep:merman-model",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -64,7 +64,7 @@ pdf = [
     "dep:data-url",
     "dep:krilla",
     "dep:krilla-svg",
-    "dep:merman-core",
+    "dep:merman-model",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:svgtypes",
@@ -81,7 +81,7 @@ fontique = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
-merman-core = { workspace = true, optional = true }
+merman-model = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true, features = ["raster-images"] }

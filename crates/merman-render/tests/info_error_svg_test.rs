@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
@@ -219,7 +218,7 @@ fn try_render_family_with_requirement(
     diagram_id: &str,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let engine = merman_render::__private::install_parse_compatibility(theme, engine);
+    let engine = common::install_parse_compatibility(theme, engine);
     try_render_family_with_preinstalled_parse_compatibility(
         family,
         source,
@@ -261,7 +260,8 @@ fn try_render_family_with_environment(
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, family.parse_options())
         .expect("parse inherited text-family source")
-        .expect("detect inherited text-family source");
+        .expect("detect inherited text-family source")
+        .into_presentation();
     let session = environment
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
@@ -528,11 +528,13 @@ fn info_text_palette_respects_static_fill_and_config_ownership() {
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile Info palette theme");
         let engine = if case == "config" {
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "textColor": "#123456" }
-                }),
-            ))
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "textColor": "#123456" }
+                    }),
+                ),
+            )
         } else {
             MermaidEngine::new()
         };
@@ -620,10 +622,11 @@ fn info_explicit_default_text_fill_is_typed_and_verified() {
 fn info_config_text_color_outranks_typed_text_fill_per_property() {
     let family = InheritedTextFamily::Info;
     let theme = inherited_paint_theme(family, &[ThemeTarget::Text]);
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "textColor": "#abcdef" }
-        })));
+        })),
+    );
     let rendered = try_render_family(
         family,
         family.base_source(),
@@ -688,8 +691,7 @@ fn info_and_error_direct_font_stack_drives_terminal_geometry_and_canvas_bounds()
             FontStack::single("WideInheritedFont").expect("valid wide inherited font"),
         );
         let diagram_id = format!("{}-wide-inherited-font", family.aria_roledescription());
-        let engine =
-            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new());
+        let engine = common::install_parse_compatibility(&theme, MermaidEngine::new());
         let rendered = try_render_family_with_environment(
             family,
             family.base_source(),
@@ -713,7 +715,7 @@ fn info_and_error_direct_font_stack_drives_terminal_geometry_and_canvas_bounds()
                         rendered.svg(),
                         &format!(
                             "v{}",
-                            merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+                            merman_model::baseline::PINNED_MERMAID_BASELINE_VERSION
                         )
                     ) >= 300.0,
                     "Info terminal anchor must follow the prepared canvas geometry"
@@ -760,41 +762,49 @@ fn info_and_error_explicit_site_and_source_font_paths_outrank_typed_font_stack()
         let cases = [
             (
                 "site-theme-variable",
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": { "fontFamily": "SiteVariableFont,serif" }
-                    }),
-                )),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "themeVariables": { "fontFamily": "SiteVariableFont,serif" }
+                        }),
+                    ),
+                ),
                 family.base_source().to_string(),
                 "SiteVariableFont,serif",
             ),
             (
                 "site-root",
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                    serde_json::json!({
-                        "fontFamily": "SiteRootFont,monospace"
-                    }),
-                )),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "fontFamily": "SiteRootFont,monospace"
+                        }),
+                    ),
+                ),
                 family.base_source().to_string(),
                 "SiteRootFont,monospace",
             ),
             (
                 "source-theme-variable",
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                    serde_json::json!({
-                        "secure": []
-                    }),
-                )),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "secure": []
+                        }),
+                    ),
+                ),
                 source_theme_variable,
                 "SourceVariableFont,serif",
             ),
             (
                 "source-root",
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                    serde_json::json!({
-                        "secure": []
-                    }),
-                )),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "secure": []
+                        }),
+                    ),
+                ),
                 source_root,
                 "SourceRootFont,monospace",
             ),
@@ -1077,9 +1087,11 @@ fn info_unsupported_fill_only_tracks_its_final_winning_facet() {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
         let engine = if owner == "config" {
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
-            ))
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
+                ),
+            )
         } else {
             MermaidEngine::new()
         };
@@ -1114,3 +1126,6 @@ fn info_unsupported_fill_only_tracks_its_final_winning_facet() {
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
+
+#[allow(dead_code)]
+mod common;

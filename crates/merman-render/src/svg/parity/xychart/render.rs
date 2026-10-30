@@ -978,7 +978,7 @@ mod tests {
             let theme = theme.resolve(crate::DiagramFamilyId::XY_CHART);
             let typography = crate::xychart::XyChartTypographyThemePlan::resolve(
                 Some(&theme),
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
                 &crate::resources::OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::interactive(),
                 ),
@@ -1009,7 +1009,7 @@ mod tests {
                     });
                 crate::xychart::XyChartPaintPlan::resolve(
                     Some(&theme),
-                    &merman_core::presentation::PresentationConfig::default(),
+                    &merman_model::presentation::PresentationConfig::default(),
                     &mut layout,
                     &typography,
                     &crate::text::DeterministicTextMeasurer::default(),
@@ -1160,7 +1160,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::XY_CHART);
         let typography = crate::xychart::XyChartTypographyThemePlan::resolve(
             Some(&theme),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             &crate::resources::OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::interactive(),
             ),
@@ -1224,7 +1224,7 @@ mod tests {
             ];
             crate::xychart::XyChartPaintPlan::resolve(
                 Some(&theme),
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
                 &mut layout,
                 &typography,
                 &crate::text::DeterministicTextMeasurer::default(),
@@ -1404,7 +1404,7 @@ mod tests {
                 ))
                 .unwrap()
                 .resolve(crate::DiagramFamilyId::XY_CHART);
-            let config = merman_core::presentation::PresentationConfig::default();
+            let config = merman_model::presentation::PresentationConfig::default();
             let meter = crate::resources::OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::interactive(),
             );
@@ -1490,7 +1490,7 @@ mod tests {
         for mutation in ["none", "detached", "missing-fill", "repeated", "unwritten"] {
             let plan = crate::xychart::XyChartSeriesPaintPlan::resolve(
                 Some(&theme),
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
                 &model,
                 &meter,
             )
@@ -1571,7 +1571,7 @@ mod tests {
         ] {
             let plan = crate::xychart::XyChartSeriesPaintPlan::resolve(
                 Some(&theme),
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
                 &model,
                 &meter,
             )

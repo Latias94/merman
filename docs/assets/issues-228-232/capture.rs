@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, env, error::Error, fs, path::PathBuf};
 
-use merman_core::OperationControl;
+use merman::OperationControl;
 use merman_export::NativeFontOptions;
 use serde_json::json;
 

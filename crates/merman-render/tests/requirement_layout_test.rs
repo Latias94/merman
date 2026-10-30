@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -21,11 +20,13 @@ fn render_with_config(
     config: Value,
     svg_options: &SvgRenderOptions,
 ) -> (Value, String) {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
+    let engine = MermaidEngine::new()
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Requirement")
-        .expect("detect Requirement");
+        .expect("detect Requirement")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("render session");
@@ -467,3 +468,6 @@ fn requirement_markdown_oracle_observes_the_nearest_final_declaration() {
         Some("normal")
     );
 }
+
+#[allow(dead_code)]
+mod common;

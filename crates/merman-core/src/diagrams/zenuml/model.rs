@@ -1,68 +1,35 @@
 #[cfg(feature = "compat-json")]
-use crate::{Error, OperationControl, OperationControlResult, PresentationMetadata, Result};
-#[cfg(feature = "compat-json")]
-use merman_model::families::zenuml::model_to_typed_json_controlled;
-pub use merman_model::families::zenuml::{
+use crate::{Result, SourcePresentationMetadata};
+pub(crate) use merman_model::families::zenuml::{
     ZenumlDiagramModel, ZenumlFragmentKind, ZenumlFragmentSection, ZenumlGroup, ZenumlMessageStyle,
     ZenumlParticipant, ZenumlStatement, ZenumlStatementKind,
 };
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(all(test, feature = "compat-json"))]
+use serde_json::json;
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ZenumlDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
-        .expect("a private projection control cannot be cancelled")
+    merman_model::families::zenuml::compat::project(model, &meta.compat_json_metadata())
+        .map_err(Into::into)
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &ZenumlDiagramModel,
-    meta: &PresentationMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<Value>> {
-    let mut projected = match model_to_typed_json_controlled(model, control)? {
-        Ok(projected) => projected,
-        Err(error) => {
-            return Ok(Err(Error::diagram_parse_fallback(
-                meta.diagram_type.clone(),
-                error.to_string(),
-            )));
-        }
-    };
-    for (index, participant) in projected.as_value_mut()["participants"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .enumerate()
-    {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let object = participant.as_object_mut().unwrap();
-        let width = object
-            .remove("widthSource")
-            .and_then(|width| width.as_str().and_then(project_js_integer))
-            .and_then(serde_json::Number::from_f64)
-            .map_or(Value::Null, Value::Number);
-        object.insert("width".into(), width);
-    }
-    projected
-        .as_value_mut()
-        .as_object_mut()
-        .unwrap()
-        .insert("type".into(), json!(meta.diagram_type));
-    control.checkpoint()?;
-    Ok(Ok(projected.into_unmanaged_value()))
-}
-
-#[cfg(feature = "compat-json")]
-fn project_js_integer(source: &str) -> Option<f64> {
-    let parsed = source.parse::<f64>().ok()?;
-    (parsed != 0.0).then_some(parsed)
+    meta: &SourcePresentationMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value>> {
+    Ok(merman_model::families::zenuml::compat::project_controlled(
+        model,
+        &meta.compat_json_metadata(),
+        control,
+    )?
+    .map_err(Into::into))
 }
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -92,10 +59,10 @@ mod tests {
         let parsed = super::super::parser::parse(source, &tokens);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         let built = super::super::semantic::build(parsed);
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "zenuml".into(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let legacy = LegacyModelWire {
@@ -117,11 +84,15 @@ mod tests {
         assert!(expected["statements"][0].get("explicit_from").is_some());
         for participant in expected["participants"].as_array_mut().unwrap() {
             let object = participant.as_object_mut().unwrap();
-            let width = object
+            let width = match object
                 .remove("widthSource")
-                .and_then(|source| source.as_str().and_then(project_js_integer))
-                .and_then(serde_json::Number::from_f64)
-                .map_or(Value::Null, Value::Number);
+                .as_ref()
+                .and_then(Value::as_str)
+            {
+                Some("120") => json!(120.0),
+                None => Value::Null,
+                other => panic!("unexpected fixture width {other:?}"),
+            };
             object.insert("width".into(), width);
         }
         expected

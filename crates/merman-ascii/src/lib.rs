@@ -871,7 +871,6 @@ fn render_tree_view_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::RenderSemanticModel;
     #[cfg(feature = "diagram-flowchart")]
     use merman_model::families::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
@@ -881,6 +880,7 @@ mod tests {
     use merman_model::families::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     #[cfg(feature = "diagram-tree-view")]
     use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
+    use merman_model::presentation::RenderSemanticModel;
 
     #[cfg(any(
         feature = "diagram-flowchart",

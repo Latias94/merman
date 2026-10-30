@@ -1,13 +1,13 @@
 #![cfg(feature = "layout-cytoscape")]
 
 type FamilyFixture = (
-    merman_core::ParsedDiagramRender,
+    merman_model::presentation::PresentationDiagram,
     merman_render::LayoutOptions,
     merman_render::environment::RenderSession,
 );
 
-use merman_core::presentation::PresentationConfig;
-use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationDiagram;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
@@ -30,7 +30,8 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout_options = LayoutOptions::headless_svg_defaults();
     let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
@@ -56,12 +57,15 @@ fn mindmap_root_viewport_consumes_effective_padding_and_use_max_width() {
                 "---\nconfig:\n  layout: tidy-tree\n  look: classic\n  htmlLabels: false\n  mindmap:\n    padding: {padding}\n    useMaxWidth: {use_max_width}\n---\nmindmap\n  root[Root]\n"
             );
             let parsed = MermaidEngine::new()
-                .with_site_config(PresentationConfig::from_value(json!({
-                    "mindmap": {"padding": 3, "useMaxWidth": !use_max_width}
-                })))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "mindmap": {"padding": 3, "useMaxWidth": !use_max_width}
+                    })),
+                )
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let config = parsed.metadata().effective_config.as_value();
             assert_eq!(
                 config.pointer("/mindmap/padding").and_then(|v| v.as_f64()),
@@ -256,7 +260,7 @@ fn mindmap_configured_root_font_sizes_html_measurement_and_terminal_geometry() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap().into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout = artifact.layout_json().unwrap();
     let rendered = artifact
@@ -503,10 +507,11 @@ fn prepare_mindmap_with_theme_and_engine(
     theme: &DiagramTheme,
     engine: MermaidEngine,
 ) -> FamilyFixture {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Mindmap")
-        .expect("detect themed Mindmap");
+        .expect("detect themed Mindmap")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
@@ -521,10 +526,11 @@ fn try_render_mindmap_with_theme_and_engine(
     diagram_id: &str,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Mindmap")
-        .expect("detect themed Mindmap");
+        .expect("detect themed Mindmap")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -562,7 +568,11 @@ fn render_mindmap_with_retained_recipe_baseline(
         diagram_id,
         ThemePortabilityRequirement::BestEffort,
     );
-    let evidence = merman_core::__private::theme_parse_evidence(rendered.metadata());
+    let evidence = rendered
+        .metadata()
+        .effective_config
+        .theme_compatibility()
+        .clone();
     assert_eq!(evidence.mermaid_residual_count(), 1);
     assert!(evidence.mermaid_theme_field_survives());
     rendered
@@ -738,7 +748,8 @@ fn try_render_mindmap_svg_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Mindmap resource-bound fixture")
-        .expect("detect Mindmap resource-bound fixture");
+        .expect("detect Mindmap resource-bound fixture")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
@@ -791,7 +802,7 @@ fn mindmap_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
 }
 
 fn layout_mindmap_typed(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     session: RenderSession,
 ) -> MindmapDiagramLayout {
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
@@ -1001,10 +1012,11 @@ fn render_mindmap_with_observed_font(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact =
         family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     assert!(
@@ -1055,9 +1067,11 @@ fn mindmap_site_font_family_outranks_typed_font_stack() {
     let rendered = render_mindmap_with_observed_font(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "themeVariables": { "fontFamily": "Site Mindmap Font" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "themeVariables": { "fontFamily": "Site Mindmap Font" }
+            })),
+        ),
         "mindmap-site-font",
         "Site Mindmap Font",
     );
@@ -1089,14 +1103,11 @@ fn mindmap_font_size_remains_unsupported_and_fails_closed() {
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
 
-    let parsed =
-        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-            .parse_diagram_for_render_model_sync(
-                "mindmap\n  Root\n    Child\n",
-                ParseOptions::strict(),
-            )
-            .expect("parse strict Mindmap with unsupported FontSize")
-            .expect("detect strict Mindmap with unsupported FontSize");
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync("mindmap\n  Root\n    Child\n", ParseOptions::strict())
+        .expect("parse strict Mindmap with unsupported FontSize")
+        .expect("detect strict Mindmap with unsupported FontSize")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1132,8 +1143,9 @@ fn mindmap_direct_edge_stroke_reaches_classic_hand_drawn_neo_and_redux_paths() {
             ("redux", "redux", json!({ "look": "neo" })),
         ] {
             let theme = mindmap_edge_stroke_theme(stroke.clone(), baseline);
-            let engine =
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            );
             let diagram_id = format!("mindmap-edge-{case}-{look_case}");
             let rendered = if baseline == "default" {
                 render_mindmap_with_theme_and_engine(
@@ -1195,9 +1207,11 @@ fn mindmap_direct_node_paint_owns_only_real_neo_redux_token_consumers() {
             let rendered = render_mindmap_with_retained_recipe_baseline(
                 source,
                 &mindmap_node_paint_theme(fill, stroke, variant, "redux"),
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                    "look": "neo"
-                }))),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "look": "neo"
+                    })),
+                ),
                 &diagram_id,
             );
             let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1270,9 +1284,11 @@ fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
             let fill = render_mindmap_with_retained_recipe_baseline(
                 source,
                 &mindmap_node_fill_theme(paint.clone(), variant, "redux"),
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                    "look": "neo"
-                }))),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "look": "neo"
+                    })),
+                ),
                 &fill_id,
             );
             assert_eq!(
@@ -1290,9 +1306,11 @@ fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
             let stroke = render_mindmap_with_retained_recipe_baseline(
                 source,
                 &mindmap_node_stroke_theme(paint, variant, "redux"),
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                    "look": "neo"
-                }))),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "look": "neo"
+                    })),
+                ),
                 &stroke_id,
             );
             assert_eq!(
@@ -1318,9 +1336,11 @@ fn mindmap_direct_node_stroke_keeps_redux_classic_root_label_fanout() {
             None,
             "redux",
         ),
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "classic"
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "classic"
+            })),
+        ),
         "mindmap-node-stroke-classic",
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1344,10 +1364,12 @@ fn mindmap_direct_node_stroke_reaches_the_neo_root_overlay() {
             None,
             "neutral",
         ),
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": { "useGradient": false }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": { "useGradient": false }
+            })),
+        ),
         diagram_id,
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1373,10 +1395,12 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
         None,
         "default",
     );
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "look": "neo",
-        "themeVariables": { "useGradient": false }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "look": "neo",
+            "themeVariables": { "useGradient": false }
+        })),
+    );
     let rendered = render_mindmap_with_theme_and_engine(
         source,
         &theme,
@@ -1401,10 +1425,11 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
 
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+    let parsed = common::install_parse_compatibility(&theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse strict root-only Mindmap")
-        .expect("detect strict root-only Mindmap");
+        .expect("detect strict root-only Mindmap")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1432,10 +1457,12 @@ fn mindmap_gradient_root_fill_is_accounted_as_a_real_main_background_terminal() 
             None,
             "neutral",
         ),
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": { "useGradient": true }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": { "useGradient": true }
+            })),
+        ),
         diagram_id,
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1454,7 +1481,7 @@ fn mindmap_gradient_root_fill_is_accounted_as_a_real_main_background_terminal() 
 #[test]
 fn mindmap_ordinal_node_fill_fails_closed_when_it_wins_an_occurrence() {
     let source = "mindmap\n  Root\n    Child\n";
-    let site_config = PresentationConfig::from_value(json!({
+    let site_config = common::presentation_config(json!({
         "look": "neo",
         "themeVariables": { "useGradient": false }
     }));
@@ -1476,7 +1503,11 @@ fn mindmap_ordinal_node_fill_fails_closed_when_it_wins_an_occurrence() {
         let rendered = render_mindmap_with_theme_and_engine(
             source,
             &theme,
-            MermaidEngine::new().with_site_config(site_config.clone()),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_config(
+                    site_config.clone().as_config().clone(),
+                ),
+            ),
             &format!("mindmap-ordinal-node-fill-{case}"),
             ThemePortabilityRequirement::BestEffort,
         );
@@ -1490,7 +1521,11 @@ fn mindmap_ordinal_node_fill_fails_closed_when_it_wins_an_occurrence() {
         let error = match try_render_mindmap_with_theme_and_engine(
             source,
             &theme,
-            MermaidEngine::new().with_site_config(site_config.clone()),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_config(
+                    site_config.clone().as_config().clone(),
+                ),
+            ),
             &format!("mindmap-ordinal-node-fill-strict-{case}"),
             ThemePortabilityRequirement::RequirePortable,
         ) {
@@ -1552,10 +1587,12 @@ fn mindmap_static_node_fill_remains_applied_when_an_ordinal_rule_wins_an_occurre
     let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": { "useGradient": false }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": { "useGradient": false }
+            })),
+        ),
         "mindmap-static-and-ordinal-node-fill",
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -1592,10 +1629,12 @@ fn mindmap_later_static_node_fill_makes_an_ordinal_rule_not_applicable() {
     let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": { "useGradient": false }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": { "useGradient": false }
+            })),
+        ),
         "mindmap-shadowed-ordinal-node-fill",
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -1615,13 +1654,15 @@ fn mindmap_source_owned_node_tokens_outrank_direct_node_paint() {
             None,
             "redux",
         ),
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": {
-                "mainBkg": "#fedcba",
-                "nodeBorder": "#abcdef"
-            }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": {
+                    "mainBkg": "#fedcba",
+                    "nodeBorder": "#abcdef"
+                }
+            })),
+        ),
         "mindmap-source-node-paint",
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1650,9 +1691,11 @@ fn mindmap_direct_node_paint_is_not_applicable_when_classic_has_no_token_consume
             None,
             "redux",
         ),
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "classic"
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "classic"
+            })),
+        ),
         "mindmap-classic-node-paint",
     );
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -1678,9 +1721,11 @@ fn mindmap_color_scale_ownership_suppresses_only_edges_using_that_slot() {
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    First\n      First child\n    Second\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "themeVariables": { "cScale1": "#fedcba" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "themeVariables": { "cScale1": "#fedcba" }
+            })),
+        ),
         "mindmap-edge-color-scale-owner",
         ThemePortabilityRequirement::RequirePortable,
     );
@@ -1716,10 +1761,12 @@ fn mindmap_neo_redux_node_border_ownership_suppresses_the_typed_edge_stroke() {
     let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    First\n    Second\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": { "nodeBorder": "#fedcba" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": { "nodeBorder": "#fedcba" }
+            })),
+        ),
         "mindmap-edge-node-border-owner",
     );
 
@@ -1753,9 +1800,11 @@ fn mindmap_line_color_does_not_claim_the_edge_terminal() {
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "themeVariables": { "lineColor": "#fedcba" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "themeVariables": { "lineColor": "#fedcba" }
+            })),
+        ),
         "mindmap-edge-line-color",
         ThemePortabilityRequirement::RequirePortable,
     );
@@ -1810,11 +1859,11 @@ fn mindmap_edge_fill_is_explicitly_unsupported_without_a_dead_line_color_bridge(
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
 
-    let parsed =
-        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse strict Mindmap with unsupported Edge.fill")
-            .expect("detect strict Mindmap with unsupported Edge.fill");
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse strict Mindmap with unsupported Edge.fill")
+        .expect("detect strict Mindmap with unsupported Edge.fill")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1863,9 +1912,11 @@ fn mindmap_edge_stroke_is_not_applicable_without_edge_paths() {
 #[test]
 fn mindmap_site_color_scale_slot_outranks_only_its_typed_palette_entry() {
     let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"], "default");
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "themeVariables": { "cScale1": "#fedcba" }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "themeVariables": { "cScale1": "#fedcba" }
+        })),
+    );
     let rendered = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    First\n    Second\n",
         &theme,
@@ -1978,7 +2029,9 @@ fn mindmap_source_palette_wins_while_site_palette_is_a_fallback() {
         let rendered = render_mindmap_with_theme_and_engine(
             &source,
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
             &diagram_id,
             ThemePortabilityRequirement::RequirePortable,
         );
@@ -2034,9 +2087,11 @@ fn mindmap_source_palette_wins_while_site_palette_is_a_fallback() {
 #[test]
 fn mindmap_derived_color_scale_slot_retains_source_ownership() {
     let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"], "base");
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "themeVariables": { "secondaryColor": "#00ff00" }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "themeVariables": { "secondaryColor": "#00ff00" }
+        })),
+    );
     let rendered = render_mindmap_with_retained_recipe_baseline(
         "mindmap\n  Root\n    First\n    Second\n",
         &theme,
@@ -2084,10 +2139,12 @@ fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
     let classic = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "classic",
-            "themeVariables": { "useGradient": true }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "classic",
+                "themeVariables": { "useGradient": true }
+            })),
+        ),
         "mindmap-classic-gradient",
         ThemePortabilityRequirement::RequirePortable,
     );
@@ -2109,10 +2166,12 @@ fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
     let neo = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": { "useGradient": false }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": { "useGradient": false }
+            })),
+        ),
         "mindmap-neo-palette",
         ThemePortabilityRequirement::RequirePortable,
     );
@@ -2143,10 +2202,12 @@ fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
     let gradient = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": { "useGradient": true }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": { "useGradient": true }
+            })),
+        ),
         "mindmap-neo-gradient",
         ThemePortabilityRequirement::RequirePortable,
     );
@@ -2206,7 +2267,9 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
         let rendered = render_mindmap_with_retained_recipe_baseline(
             "mindmap\n  Root\n    Child\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
             &diagram_id,
         );
 
@@ -2235,9 +2298,11 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
 #[test]
 fn mindmap_palette_fails_closed_when_the_section_css_is_outside_the_color_limit() {
     let theme = mindmap_node_palette_theme(&["#123456"], "default");
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "themeVariables": { "THEME_COLOR_LIMIT": 1 }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "themeVariables": { "THEME_COLOR_LIMIT": 1 }
+        })),
+    );
     let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
         prepare_mindmap_with_theme_and_engine("mindmap\n  Root\n    Child\n", &theme, engine);
 
@@ -2297,16 +2362,19 @@ fn mindmap_legacy_cluster_fill_does_not_shadow_the_direct_node_palette() {
 #[test]
 fn mindmap_classic_raw_theme_css_remains_the_terminal_node_fill_owner() {
     let theme = mindmap_node_palette_theme(&["#123456"], "default");
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "themeCSS": ".custom rect { fill: #22c55e; }"
-    })));
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "themeCSS": ".custom rect { fill: #22c55e; }"
+        })),
+    );
+    let parsed = common::install_parse_compatibility(&theme, engine)
         .parse_diagram_for_render_model_sync(
             "mindmap\n  Root\n    Child[Child]\n    :::custom\n",
             ParseOptions::strict(),
         )
         .expect("parse Mindmap with raw theme CSS")
-        .expect("detect Mindmap with raw theme CSS");
+        .expect("detect Mindmap with raw theme CSS")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
             TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
@@ -2422,7 +2490,8 @@ fn mindmap_typed_layout_handles_deep_chain() {
     let parsed = engine
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     // Exercise the public JSON projection as well as its ordinary destruction. The semantic
     // projection contains the same deeply nested rootNode tree even though the typed model and
@@ -2519,7 +2588,8 @@ mindmap
             ParseOptions::strict(),
         )
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout = layout_mindmap_typed(&parsed, session);
     let node = |id: &str| {
@@ -2719,3 +2789,6 @@ fn mindmap_native_finalization_preserves_the_typed_font_stack_and_hex_css() {
             .any(|node| node.has_tag_name("foreignObject"))
     );
 }
+
+#[allow(dead_code)]
+mod common;

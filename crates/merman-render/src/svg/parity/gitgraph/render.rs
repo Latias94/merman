@@ -1622,14 +1622,13 @@ mod tests {
     use crate::resources::{
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
-    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
     use std::cell::RefCell;
 
     fn typography_plan(config: &serde_json::Value) -> crate::gitgraph::GitGraphTypographyThemePlan {
         crate::gitgraph::GitGraphTypographyThemePlan::resolve(
             None,
-            &PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
         )
     }
 
@@ -1650,7 +1649,7 @@ mod tests {
             .resolve(DiagramFamilyId::GIT_GRAPH);
         crate::gitgraph::GitGraphTypographyThemePlan::resolve(
             Some(&theme),
-            &PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
         )
     }
 

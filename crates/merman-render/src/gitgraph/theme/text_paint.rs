@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -146,8 +146,7 @@ impl GitGraphTextPaintPlan {
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen);
         let owned: [bool; 3] = std::array::from_fn(|i| {
-            merman_core::__private::config_paint_overrides_typed_default(config, SOURCES[i])
-                || (i == 2 && color_gen)
+            config.config_paint_overrides_typed_default(SOURCES[i]) || (i == 2 && color_gen)
         });
         plan.fills = std::array::from_fn(|i| {
             (!owned[i])

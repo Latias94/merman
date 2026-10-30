@@ -1,12 +1,10 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{
     Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult, Result,
 };
 use indexmap::IndexMap;
-#[cfg(feature = "compat-json")]
-use serde_json::Map;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -415,7 +413,7 @@ impl StateDb {
     }
 
     #[cfg(feature = "compat-json")]
-    pub(super) fn into_model(self, meta: &PresentationMetadata) -> Result<Value> {
+    pub(super) fn into_model(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let model = self
             .into_model_controlled(meta, &OperationControl::new())
             .expect("a private operation control cannot be cancelled")?;
@@ -425,7 +423,7 @@ impl StateDb {
     #[cfg(feature = "presentation")]
     pub(super) fn into_model_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
         match self.into_canonical_model_controlled(
@@ -682,19 +680,6 @@ fn state_dom_id(item_id: &str, counter: usize, ty: Option<&str>) -> String {
         .map(|t| format!("{DOMID_TYPE_SPACER}{t}"))
         .unwrap_or_default();
     format!("{DOMID_STATE}-{item_id}{type_str}-{counter}")
-}
-
-#[cfg(feature = "compat-json")]
-fn string_array_value(values: &[String]) -> Value {
-    Value::Array(values.iter().cloned().map(Value::String).collect())
-}
-
-#[cfg(feature = "compat-json")]
-fn option_string_value(value: &Option<String>) -> Value {
-    value
-        .as_ref()
-        .map(|v| Value::String(v.clone()))
-        .unwrap_or(Value::Null)
 }
 
 #[derive(Debug, Clone)]
@@ -1404,75 +1389,6 @@ fn build_state_graph(
     })
 }
 
-#[cfg(feature = "compat-json")]
-fn state_stmt_ref_to_json(state: &StateStatementState) -> Value {
-    let mut obj = Map::new();
-    obj.insert("id".to_string(), Value::String(state.id.clone()));
-    obj.insert("type".to_string(), Value::String(state.ty.clone()));
-    obj.insert("classes".to_string(), string_array_value(&state.classes));
-    Value::Object(obj)
-}
-
-#[cfg(feature = "compat-json")]
-pub(super) fn stmt_to_json_shallow(
-    stmt: &StateStatement,
-    doc: Option<crate::ManagedSemanticJson>,
-) -> crate::ManagedSemanticJson {
-    let value = match stmt {
-        StateStatement::Noop => Value::Null,
-        StateStatement::State(s) => {
-            let mut obj = Map::new();
-            obj.insert("stmt".to_string(), Value::String("state".to_string()));
-            obj.insert("id".to_string(), Value::String(s.id.clone()));
-            obj.insert("type".to_string(), Value::String(s.ty.clone()));
-            obj.insert(
-                "description".to_string(),
-                option_string_value(&s.description),
-            );
-            obj.insert(
-                "doc".to_string(),
-                doc.map(crate::ManagedSemanticJson::into_unmanaged_value)
-                    .unwrap_or(Value::Null),
-            );
-            obj.insert("classes".to_string(), string_array_value(&s.classes));
-            Value::Object(obj)
-        }
-        StateStatement::Relation(relation) => {
-            let mut obj = Map::new();
-            obj.insert("stmt".to_string(), Value::String("relation".to_string()));
-            obj.insert(
-                "state1".to_string(),
-                state_stmt_ref_to_json(&relation.state1),
-            );
-            obj.insert(
-                "state2".to_string(),
-                state_stmt_ref_to_json(&relation.state2),
-            );
-            obj.insert(
-                "description".to_string(),
-                option_string_value(&relation.description),
-            );
-            Value::Object(obj)
-        }
-        StateStatement::ClassDef { id, classes } => {
-            json!({ "stmt": "classDef", "id": id, "classes": classes })
-        }
-        StateStatement::ApplyClass { ids, class_name } => {
-            json!({ "stmt": "applyClass", "id": ids, "styleClass": class_name })
-        }
-        StateStatement::Style { ids, styles } => {
-            json!({ "stmt": "style", "id": ids, "styleClass": styles })
-        }
-        StateStatement::Direction(v) => json!({ "stmt": "dir", "value": v }),
-        StateStatement::AccTitle(t) => json!(t),
-        StateStatement::AccDescr(d) => json!(d),
-        StateStatement::Click(c) => {
-            json!({ "stmt": "click", "id": c.id, "url": c.url, "tooltip": c.tooltip })
-        }
-    };
-    value.into()
-}
-
 fn normalize_multiline_ws(input: &str) -> String {
     let trimmed = input.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
     let mut out = String::with_capacity(trimmed.len());
@@ -1495,16 +1411,16 @@ fn normalize_multiline_ws(input: &str) -> String {
 mod tests {
     use crate::diagrams::state::parse_state_model_for_render_controlled;
     use crate::{
-        MermaidConfig, MermaidEngine, OperationControl, ParseOptions, PresentationMetadata,
+        MermaidConfig, MermaidEngine, OperationControl, ParseOptions, SourcePresentationMetadata,
     };
     use serde_json::json;
 
-    fn meta(config: serde_json::Value) -> PresentationMetadata {
+    fn meta(config: serde_json::Value) -> SourcePresentationMetadata {
         let config = MermaidConfig::from_value(config);
-        PresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "stateDiagram".to_string(),
             config: config.clone(),
-            effective_config: crate::presentation::PresentationConfig::from_config(config),
+            effective_config: crate::presentation::SourcePresentationConfig::from_config(config),
             title: None,
         }
     }

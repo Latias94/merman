@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use merman_core::{MermaidConfig, MermaidThemeId};
+use merman_model::MermaidConfig;
+use merman_model::config::MermaidThemeId;
 use serde_json::{Map, Value};
 
 use super::admission::ThemeRequirements;
@@ -404,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn mermaid_theme_compatibility_uses_the_core_theme_catalog() {
+    fn mermaid_theme_compatibility_uses_the_shared_theme_catalog() {
         for &theme in MermaidThemeId::ALL {
             let compatibility = MermaidThemeCompatibility::default()
                 .with_theme(theme.as_str())

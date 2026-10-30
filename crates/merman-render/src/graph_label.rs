@@ -13,7 +13,7 @@ use crate::text::{
     TextMeasurer, TextStyle, WrapMode, is_ecmascript_whitespace,
     is_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 use std::fmt::Write as _;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -628,18 +628,6 @@ pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
 pub(crate) fn flowchart_label_metrics_for_layout(
     request: FlowchartLabelMetricsRequest<'_>,
 ) -> crate::text::TextMetrics {
-    let resolved_config;
-    let request = if request.config.get_str("securityLevel").is_none() {
-        // Internal standalone measurement also accepts an empty config. Match the renderer's
-        // effective default instead of escaping its generated paragraph as literal text.
-        resolved_config = flowchart_label_sanitize_config(request.config);
-        FlowchartLabelMetricsRequest {
-            config: resolved_config.as_ref(),
-            ..request
-        }
-    } else {
-        request
-    };
     if request.raw_label.is_empty() {
         return crate::text::TextMetrics {
             width: 0.0,
@@ -647,23 +635,14 @@ pub(crate) fn flowchart_label_metrics_for_layout(
             line_count: 0,
         };
     }
-    if let Some(metrics) =
-        crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
-            measurer: request.measurer,
-            raw_label: request.raw_label,
-            style: request.style,
-            max_width_px: request.max_width_px,
-            wrap_mode: request.wrap_mode,
-            config: request.config,
-            math_renderer: request.math_renderer,
-        })
-    {
+    if let Some(metrics) = flowchart_math_label_metrics_for_layout(&request) {
         return metrics;
     }
     if request.wrap_mode == WrapMode::HtmlLike {
         let source =
             flowchart_label_html_source(request.raw_label, request.label_type, request.config);
-        let xhtml = merman_markup::sanitize::sanitize_xhtml(&source, request.config.as_config());
+        let sanitize_config = flowchart_label_sanitize_config(request.config);
+        let xhtml = merman_markup::sanitize::sanitize_xhtml(&source, &sanitize_config);
         return flowchart_html_label_metrics_for_layout(request, &xhtml);
     }
     if request.label_type == "markdown" {
@@ -684,13 +663,61 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     }
 }
 
+fn flowchart_math_label_metrics_for_layout(
+    request: &FlowchartLabelMetricsRequest<'_>,
+) -> Option<crate::text::TextMetrics> {
+    if request.wrap_mode != WrapMode::HtmlLike || !request.raw_label.contains("$$") {
+        return None;
+    }
+    let math_renderer = request.math_renderer?;
+    let resolved_config;
+    let config = if request.config.get_str("securityLevel").is_none() {
+        let mut values = request.config.as_config().clone();
+        values.set_value("securityLevel", serde_json::json!("strict"));
+        let evidence = request.config.theme_compatibility();
+        let parts = merman_model::presentation::FrozenPresentationConfigParts::new(values)
+            .with_explicit_config_paths(std::sync::Arc::clone(
+                request.config.shared_explicit_config_paths(),
+            ))
+            .with_theme_compatibility(
+                evidence.recipe().cloned(),
+                std::sync::Arc::clone(evidence.shared_fields()),
+            )
+            .with_palette_paint_authority(request.config.palette_paint_authority())
+            .with_family_paint_inputs(request.config.family_paint_inputs());
+        // Flowchart's standalone measurement defaults to strict without declaring an assignment.
+        // Construction validates the derived values without charging the request's model limits.
+        resolved_config = PresentationConfig::try_from_frozen_parts_controlled(
+            parts,
+            &merman_model::resources::InputResourcePolicy::for_profile(
+                merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
+            ),
+            &merman_model::OperationControl::new(),
+        )
+        .ok()?
+        .ok()?;
+        &resolved_config
+    } else {
+        request.config
+    };
+    crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+        measurer: request.measurer,
+        raw_label: request.raw_label,
+        style: request.style,
+        max_width_px: request.max_width_px,
+        wrap_mode: request.wrap_mode,
+        config,
+        math_renderer: Some(math_renderer),
+    })
+}
+
 pub(crate) fn flowchart_label_sanitize_config(
     config: &PresentationConfig,
-) -> std::borrow::Cow<'_, PresentationConfig> {
+) -> std::borrow::Cow<'_, merman_model::MermaidConfig> {
     if config.get_str("securityLevel").is_some() {
-        return std::borrow::Cow::Borrowed(config);
+        return std::borrow::Cow::Borrowed(config.as_config());
     }
-    let mut config = config.clone();
+    let mut config = config.as_config().clone();
     config.set_value("securityLevel", serde_json::Value::String("strict".into()));
     std::borrow::Cow::Owned(config)
 }
@@ -1515,7 +1542,7 @@ pub(crate) fn is_single_img_label(label: &str) -> bool {
 pub(crate) fn flowchart_label_html_source(
     label: &str,
     label_type: &str,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> String {
     if flowchart_label_text_is_empty_for_mode(label, true) {
         return String::new();
@@ -1623,7 +1650,7 @@ mod tests {
     ))]
     #[test]
     fn node_minimum_excludes_circles_fixed_symbols_assets_and_empty_labels() {
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "flowchart": { "minNodeWidth": 120.0 }
         }));
         assert_eq!(
@@ -1800,8 +1827,9 @@ mod tests {
 
     #[test]
     fn incomplete_image_tag_uses_final_plain_text_measurement() {
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "strict" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "strict" }),
+        );
         let html = flowchart_label_html_source("head<img", "html", &config);
         let xhtml = merman_markup::sanitize::sanitize_xhtml(&html, config.as_config());
         let document = roxmltree::Document::parse(&xhtml)
@@ -1877,6 +1905,129 @@ mod tests {
 
         assert!((metrics.width - 12.01).abs() < 1e-12, "{metrics:?}");
         assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
+    }
+
+    #[test]
+    fn strict_math_default_is_flowchart_local_and_preserves_frozen_declarations() {
+        use merman_model::presentation::{
+            FamilyPaintInputs, GitGraphPaintInputs, PalettePaintAuthority, ThemeCompatibilityField,
+            ThemeCompatibilityFieldKind, ThemeCompatibilityRecipe,
+        };
+        use merman_model::resources::{InputResourcePolicy, ResourceProfile};
+        use merman_model::{MermaidConfig, OperationControl};
+        use std::sync::Arc;
+
+        #[derive(Debug)]
+        struct ConfigCheckingMathRenderer<'a> {
+            original: &'a PresentationConfig,
+            security: Option<&'static str>,
+        }
+
+        impl MathRenderer for ConfigCheckingMathRenderer<'_> {
+            fn render_html_label(&self, _: &str, _: &PresentationConfig) -> Option<String> {
+                unreachable!("the measurement callback handles this fixture")
+            }
+
+            fn measure_html_label(
+                &self,
+                _: &str,
+                config: &PresentationConfig,
+                _: &TextStyle,
+                _: Option<f64>,
+                _: WrapMode,
+            ) -> Option<TextMetrics> {
+                assert_eq!(config.get_str("securityLevel"), self.security);
+                assert!(Arc::ptr_eq(
+                    config.shared_explicit_config_paths(),
+                    self.original.shared_explicit_config_paths(),
+                ));
+                assert!(!config.explicit_config_owns_path("securityLevel"));
+                assert_eq!(
+                    config.theme_compatibility(),
+                    self.original.theme_compatibility()
+                );
+                assert_eq!(
+                    config.palette_paint_authority(),
+                    self.original.palette_paint_authority()
+                );
+                assert_eq!(
+                    config.family_paint_inputs(),
+                    self.original.family_paint_inputs()
+                );
+                Some(TextMetrics {
+                    width: 123.5,
+                    height: 20.0,
+                    line_count: 1,
+                })
+            }
+        }
+
+        let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let control = OperationControl::new();
+        let recipe = ThemeCompatibilityRecipe::try_new(
+            [0x5a; 32],
+            MermaidConfig::from_value(serde_json::json!({"darkMode": true})),
+        )
+        .unwrap();
+        let field = ThemeCompatibilityField::try_new_controlled(
+            Arc::from("mermaid.darkMode"),
+            ThemeCompatibilityFieldKind::DarkMode,
+            Arc::from([Arc::from("darkMode"), Arc::from("themeVariables.darkMode")]),
+            &policy,
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+        for mask in [
+            None,
+            Some(FamilyPaintInputs::GitGraph(GitGraphPaintInputs::default())),
+        ] {
+            let config = crate::test_support::presentation_config(serde_json::json!({
+                "darkMode": true, "themeVariables": {"darkMode": true}, "custom": 7,
+            }));
+            let config = PresentationConfig::try_from_frozen_parts_controlled(
+                config
+                    .frozen_parts()
+                    .with_theme_compatibility(Some(recipe.clone()), Arc::from([field.clone()]))
+                    .with_palette_paint_authority(PalettePaintAuthority::SelectedPalette)
+                    .with_family_paint_inputs(mask),
+                &policy,
+                &control,
+            )
+            .unwrap()
+            .unwrap();
+            let style = TextStyle::default();
+            let generic =
+                crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+                    measurer: &PreciseTextMeasurer,
+                    raw_label: "$$x$$",
+                    style: &style,
+                    max_width_px: None,
+                    wrap_mode: WrapMode::HtmlLike,
+                    config: &config,
+                    math_renderer: Some(&ConfigCheckingMathRenderer {
+                        original: &config,
+                        security: None,
+                    }),
+                })
+                .expect("generic math keeps the caller's configuration");
+            let flowchart = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+                measurer: &PreciseTextMeasurer,
+                raw_label: "$$x$$",
+                label_type: "text",
+                style: &style,
+                max_width_px: None,
+                wrap_mode: WrapMode::HtmlLike,
+                config: &config,
+                math_renderer: Some(&ConfigCheckingMathRenderer {
+                    original: &config,
+                    security: Some("strict"),
+                }),
+            });
+            assert_eq!(generic.width, 123.5);
+            assert_eq!(flowchart.width, 123.5);
+            assert_eq!(config.get_str("securityLevel"), None);
+        }
     }
 
     #[test]
@@ -1986,7 +2137,7 @@ mod tests {
             font_size: 14.0,
             ..TextStyle::default()
         };
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "markdownAutoWrap": true,
             "securityLevel": "strict"
         }));
@@ -2025,7 +2176,7 @@ mod tests {
                 text.chars().count() as f64 * advance
             });
         let style = TextStyle::default();
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "securityLevel": "strict"
         }));
         let word = "abcdefghijklmnopqrstuvwx";
@@ -2056,7 +2207,7 @@ mod tests {
     fn markdown_html_entity_only_root_text_keeps_plain_measurement_precision() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = TextStyle::default();
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "securityLevel": "strict",
             "dompurifyConfig": { "FORBID_TAGS": ["p"] }
         }));

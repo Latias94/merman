@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -593,12 +593,13 @@ fn typed_radius(
 
 fn journey_fill_source_owned(config: &PresentationConfig, task_num: i64) -> bool {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
-    merman_core::__private::config_paint_overrides_typed_default(config, &path)
+    config.config_paint_overrides_typed_default(&path)
 }
 
 fn journey_palette_source_owned(config: &PresentationConfig, task_num: i64) -> Option<Box<str>> {
     let path = format!("themeVariables.fillType{}", task_num.max(0));
-    merman_core::__private::config_paint_overrides_typed_default(config, &path)
+    config
+        .config_paint_overrides_typed_default(&path)
         .then(|| {
             config
                 .get_str(&path)
@@ -819,7 +820,7 @@ mod tests {
     };
     use crate::model::{JourneyMouthKind, JourneyTaskLayout};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::presentation::PresentationConfig;
+    use merman_model::presentation::PresentationConfig;
 
     fn one_task() -> JourneyTaskLayout {
         JourneyTaskLayout {

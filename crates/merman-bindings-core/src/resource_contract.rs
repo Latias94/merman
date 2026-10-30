@@ -49,7 +49,7 @@ pub struct BindingResourceContract {
 /// Composes resource descriptors without redefining limits owned by lower-level crates.
 pub fn binding_resource_contract() -> BindingResourceContract {
     let limits = binding_resource_limit_descriptors();
-    let profiles = merman::resources::RESOURCE_PROFILE_DESCRIPTORS
+    let profiles = merman::model::resources::RESOURCE_PROFILE_DESCRIPTORS
         .iter()
         .map(|profile| BindingResourceProfileDescriptor {
             id: profile.id,
@@ -71,8 +71,8 @@ pub fn binding_resource_contract() -> BindingResourceContract {
 
     BindingResourceContract {
         general_binding_default_profile:
-            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
-        cli_default_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE.id(),
+            merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
+        cli_default_profile: merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE.id(),
         limits,
         profiles,
     }
@@ -80,7 +80,7 @@ pub fn binding_resource_contract() -> BindingResourceContract {
 
 fn binding_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
     #[allow(unused_mut)]
-    let mut limits = merman::resources::INPUT_RESOURCE_LIMIT_DESCRIPTORS
+    let mut limits = merman::model::resources::INPUT_RESOURCE_LIMIT_DESCRIPTORS
         .iter()
         .map(|descriptor| BindingResourceLimitDescriptor {
             stable_id: descriptor.stable_id,
@@ -160,15 +160,15 @@ pub(crate) fn resource_limit_descriptor(stable_id: &str) -> Option<BindingResour
 }
 
 pub(crate) fn resource_profile_value(
-    profile: merman::resources::ResourceProfile,
+    profile: merman::model::resources::ResourceProfile,
     stable_id: &str,
 ) -> Option<Option<usize>> {
     if stable_id == BINDING_OPTIONS_JSON_LIMIT_ID {
         return Some(Some(BINDING_OPTIONS_JSON_MAX_BYTES));
     }
 
-    if let Some(id) = merman::resources::InputResourceLimitId::from_stable_id(stable_id) {
-        return Some(merman::resources::InputResourcePolicy::for_profile(profile).value(id));
+    if let Some(id) = merman::model::resources::InputResourceLimitId::from_stable_id(stable_id) {
+        return Some(merman::model::resources::InputResourcePolicy::for_profile(profile).value(id));
     }
 
     #[cfg(feature = "svg")]
@@ -201,7 +201,7 @@ pub(crate) fn resource_profile_value(
 }
 
 pub(crate) fn resource_profile_value_for_target(
-    profile: merman::resources::ResourceProfile,
+    profile: merman::model::resources::ResourceProfile,
     stable_id: &str,
     target: crate::TargetKey,
 ) -> Option<Option<usize>> {
@@ -232,7 +232,7 @@ pub(crate) fn resource_limit_owner(stable_id: &str) -> BindingResourceOwner {
         return BindingResourceOwner::Artifact;
     }
 
-    if merman::resources::InputResourceLimitId::from_stable_id(stable_id).is_some() {
+    if merman::model::resources::InputResourceLimitId::from_stable_id(stable_id).is_some() {
         return BindingResourceOwner::Artifact;
     }
 
@@ -279,7 +279,7 @@ pub(crate) enum BindingResourceScope {
 
 impl BindingResourceScope {
     pub(crate) fn accepts(self, stable_id: &str) -> bool {
-        let input = merman::resources::InputResourceLimitId::from_stable_id(stable_id);
+        let input = merman::model::resources::InputResourceLimitId::from_stable_id(stable_id);
         let analysis_document = is_analysis_document_limit(stable_id);
         let ascii = is_ascii_limit(stable_id);
         let render = is_render_limit(stable_id) && stable_id != "max_geometry_json_bytes";
@@ -287,11 +287,11 @@ impl BindingResourceScope {
 
         match self {
             Self::AnalysisDiagram => {
-                input == Some(merman::resources::InputResourceLimitId::MaxSourceBytes)
+                input == Some(merman::model::resources::InputResourceLimitId::MaxSourceBytes)
             }
             Self::DocumentAnalysis => {
                 analysis_document
-                    || input == Some(merman::resources::InputResourceLimitId::MaxSourceBytes)
+                    || input == Some(merman::model::resources::InputResourceLimitId::MaxSourceBytes)
             }
             Self::Model => input.is_some(),
             Self::ThemeAuthoring => is_theme_resource_limit(stable_id),

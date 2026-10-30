@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::requirement::RequirementDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use super::source_typography::RequirementNodeTypography;
 use crate::diagram_theme::{
@@ -143,10 +143,7 @@ impl RequirementPaintThemePlan {
                 && route.disposition() == FamilyThemeDisposition::TypedAdapter
         });
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let (font_size_px, font_size_css) = if typed_font_size_active {
             let font_size_px = f64::from(theme.typography().font_size_px()).max(1.0);
@@ -567,7 +564,7 @@ fn requirement_paint_owners(
     model: &RequirementDiagramModel,
     node_indices: &BTreeMap<String, usize>,
 ) -> Vec<(bool, bool)> {
-    let owns = |key| merman_core::__private::config_paint_overrides_typed_default(config, key);
+    let owns = |key| config.config_paint_overrides_typed_default(key);
     let fill = owns("themeVariables.mainBkg");
     let stroke = owns("themeVariables.nodeBorder");
     let background_palette = owns("themeVariables.bkgColorArray");
@@ -868,7 +865,7 @@ mod tests {
     fn unthemed_plan_keeps_config_without_per_node_evidence() {
         use merman_model::families::requirement::RequirementElement;
 
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
             "themeVariables": {"fontSize": "24px"}
         }));

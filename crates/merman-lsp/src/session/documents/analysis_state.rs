@@ -261,7 +261,11 @@ impl SessionState {
         cache_authority: Option<AnalysisCacheAuthority>,
     ) -> DiagnosticReprojectionRequest {
         let request = DiagnosticReprojectionRequest::new(
-            self.analyzer.options().diagnostic_policy().clone(),
+            self.analyzer
+                .options()
+                .diagnostic_policy()
+                .clone()
+                .with_fix_generation(merman_analysis::FixGeneration::Omit),
             self.diagnostic_reprojection_cancellation.clone(),
             self.diagnostic_generation,
             snapshot,
@@ -274,6 +278,24 @@ impl SessionState {
             None => request,
         };
         request
+    }
+
+    #[cfg(feature = "fixes")]
+    pub(in crate::session) fn code_action_reprojection_request(
+        &self,
+        snapshot: &AcquiredSnapshot,
+    ) -> Option<DiagnosticReprojectionRequest> {
+        if !self.is_acquired_snapshot_current(snapshot) {
+            return None;
+        }
+        Some(
+            self.diagnostic_reprojection_request_for_snapshot(
+                Arc::clone(&snapshot.snapshot),
+                snapshot.stamp,
+                None,
+            )
+            .with_requested_fixes(),
+        )
     }
 
     pub(in crate::session) fn analysis_executor(&self) -> AnalysisExecutor {

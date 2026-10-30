@@ -4,7 +4,7 @@ use merman_model::families::usecase::UsecaseNode;
 pub(super) fn write_dagre_helper(
     out: &mut String,
     node: &LayoutNode,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) {
     let _ = write!(
         out,
@@ -24,7 +24,7 @@ pub(super) fn write_dagre_helper(
 pub(super) fn write_empty_edge_label(
     out: &mut String,
     id: &str,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) {
     let html = config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true);
     let _ = write!(
@@ -71,7 +71,7 @@ pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) note: bool,
     pub(super) style: &'a str,
     pub(super) css_binding: &'a crate::usecase::UsecaseCssBinding,
-    pub(super) config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) config: &'a merman_model::presentation::PresentationConfig,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) options: &'a SvgExecution<'a>,

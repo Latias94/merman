@@ -1,5 +1,11 @@
 //! Canonical State data, model-owned flat documents, and optional full presentation data.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
+/// Pinned Mermaid class for a transition joining a note.
+pub const CSS_EDGE_NOTE_EDGE: &str = "transition note-edge";
+
 mod ast;
 mod complexity;
 mod model;

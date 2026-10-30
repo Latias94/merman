@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
@@ -59,10 +58,11 @@ fn render_sankey_with_theme_requirement(
     engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Sankey")
-        .expect("detect themed Sankey");
+        .expect("detect themed Sankey")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -119,7 +119,8 @@ fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("layout ok")
@@ -137,7 +138,8 @@ fn try_render_sankey_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Sankey resource-bound fixture")
-        .expect("detect Sankey resource-bound fixture");
+        .expect("detect Sankey resource-bound fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -520,9 +522,9 @@ fn sankey_explicit_font_family_owners_outrank_the_typed_stack() {
         ),
     ] {
         let engine = match site_config {
-            Some(config) => {
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config))
-            }
+            Some(config) => MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
             None => MermaidEngine::new(),
         };
         let rendered = render_sankey_with_theme_requirement(
@@ -651,11 +653,13 @@ fn sankey_explicit_node_colors_outrank_typed_palette_per_node() {
         (
             "site",
             "sankey-beta\nA,B,10\n",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "sankey": { "nodeColors": { "A": "#fedcba" } }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "sankey": { "nodeColors": { "A": "#fedcba" } }
+                    }),
+                ),
+            ),
         ),
         (
             "source",
@@ -696,14 +700,16 @@ fn sankey_node_palette_is_not_applicable_when_every_visible_node_is_owned() {
     let rendered = render_sankey_with_theme_and_engine(
         "sankey-beta\nA,B,10\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "sankey": {
-                "nodeColors": {
-                    "A": "#fedcba",
-                    "B": "#654321"
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "sankey": {
+                    "nodeColors": {
+                        "A": "#fedcba",
+                        "B": "#654321"
+                    }
                 }
-            }
-        }))),
+            })),
+        ),
     );
 
     assert_eq!(
@@ -780,8 +786,9 @@ fn sankey_text_evidence_accounts_for_each_winning_facet() {
                     if config_owner {
                         config["themeVariables"] = serde_json::json!({"textColor":"#445566"});
                     }
-                    let engine = MermaidEngine::new()
-                        .with_site_config(PresentationConfig::from_value(config));
+                    let engine = MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    );
                     let rendered = render_sankey_with_theme_requirement(
                         "sankey-beta\nA,B,10\n",
                         &theme,
@@ -884,3 +891,6 @@ fn sankey_explicit_node_color_does_not_consume_the_default_palette_domain() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -74,3 +74,6 @@ pub mod terminal;
 
 mod generic;
 pub use generic::{GenericTypesPlan, count_occurrence, parse_generic_types};
+
+mod whitespace;
+pub use whitespace::is_ecmascript_whitespace;

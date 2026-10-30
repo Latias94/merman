@@ -1,4 +1,4 @@
-use merman_core::runtime::{OperationTimer, OperationTiming};
+use merman_model::runtime::{OperationTimer, OperationTiming};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]

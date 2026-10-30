@@ -31,7 +31,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) frame_paint: &'a super::control_paint::SequenceControlPaint<'a>,
     pub(super) keyword_paint: &'a super::control_paint::SequenceControlPaint<'a>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    pub(super) sanitize_config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 

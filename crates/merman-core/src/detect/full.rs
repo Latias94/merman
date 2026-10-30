@@ -1,11 +1,11 @@
 use super::{clean_detection_input_controlled, detect_precleaned_controlled};
 use crate::family::DetectorFact;
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::{OperationControl, OperationControlResult, Result};
 use std::sync::Arc;
 
 /// Predicate used by [`DetectorRegistry`] to recognize one Mermaid diagram family.
-pub type DetectorFn = fn(text: &str, config: &mut PresentationConfig) -> bool;
+pub type DetectorFn = fn(text: &str, config: &mut SourcePresentationConfig) -> bool;
 
 /// One diagram detector entry.
 #[derive(Debug, Clone)]
@@ -30,7 +30,7 @@ impl DetectorEntry {
         }
     }
 
-    fn matches(&self, text: &str, config: &mut PresentationConfig) -> bool {
+    fn matches(&self, text: &str, config: &mut SourcePresentationConfig) -> bool {
         match self {
             Self::Builtin(fact) => {
                 if !(fact.detector)(text) {
@@ -76,7 +76,11 @@ impl DetectorRegistry {
     }
 
     /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.
-    pub fn detect_type(&self, text: &str, config: &mut PresentationConfig) -> Result<&'static str> {
+    pub fn detect_type(
+        &self,
+        text: &str,
+        config: &mut SourcePresentationConfig,
+    ) -> Result<&'static str> {
         let control = OperationControl::new();
         self.detect_type_controlled(text, config, &control)
             .expect("a private parse control cannot be cancelled")
@@ -85,7 +89,7 @@ impl DetectorRegistry {
     pub(crate) fn detect_type_controlled(
         &self,
         text: &str,
-        config: &mut PresentationConfig,
+        config: &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         let cleaned = clean_detection_input_controlled(text, control)?;
@@ -97,7 +101,7 @@ impl DetectorRegistry {
     pub fn detect_type_precleaned(
         &self,
         text: &str,
-        config: &mut PresentationConfig,
+        config: &mut SourcePresentationConfig,
     ) -> Result<&'static str> {
         let control = OperationControl::new();
         self.detect_type_precleaned_controlled(text, config, &control)
@@ -107,7 +111,7 @@ impl DetectorRegistry {
     pub(crate) fn detect_type_precleaned_controlled(
         &self,
         text: &str,
-        config: &mut PresentationConfig,
+        config: &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
@@ -117,7 +121,7 @@ impl DetectorRegistry {
     fn detect_type_cleaned_controlled(
         &self,
         text: &str,
-        config: &mut PresentationConfig,
+        config: &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         Ok(detect_precleaned_controlled(
@@ -187,7 +191,7 @@ mod tests {
                 .expect("built-in detection");
             let mut semantic_config = MermaidConfig::empty_object();
             fact.config_effect.apply(&mut semantic_config);
-            let mut full_config = PresentationConfig::empty_object();
+            let mut full_config = SourcePresentationConfig::empty_object();
             let full = registry
                 .detect_type(source, &mut full_config)
                 .expect("full detection");
@@ -200,7 +204,7 @@ mod tests {
     #[test]
     fn builtin_elk_effect_preserves_same_value_assignment_provenance() {
         let registry = DetectorRegistry::pinned_mermaid_baseline();
-        let before = PresentationConfig::from_value(json!({"layout": "elk"}));
+        let before = SourcePresentationConfig::from_value(json!({"layout": "elk"}));
         let mut after = before.clone();
         assert_eq!(
             registry
@@ -219,7 +223,7 @@ mod tests {
 
         let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
             "flowchart TD",
-            &mut PresentationConfig::empty_object(),
+            &mut SourcePresentationConfig::empty_object(),
             &control,
         );
 
@@ -229,7 +233,7 @@ mod tests {
     #[test]
     fn detection_uses_the_greedy_frontmatter_match_without_parsing_yaml() {
         let registry = DetectorRegistry::pinned_mermaid_baseline();
-        let mut config = PresentationConfig::empty_object();
+        let mut config = SourcePresentationConfig::empty_object();
         let source = "---\n\n---\n\nMORE\n---\nerror";
         assert_eq!(registry.detect_type(source, &mut config).unwrap(), "error");
     }
@@ -241,13 +245,13 @@ mod tests {
         control.cancel_after_checkpoints(3);
         let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
             &source,
-            &mut PresentationConfig::empty_object(),
+            &mut SourcePresentationConfig::empty_object(),
             &control,
         );
         assert!(result.is_err());
     }
 
-    fn always_detects(_text: &str, _config: &mut PresentationConfig) -> bool {
+    fn always_detects(_text: &str, _config: &mut SourcePresentationConfig) -> bool {
         true
     }
 

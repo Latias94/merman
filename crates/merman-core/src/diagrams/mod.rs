@@ -1,26 +1,21 @@
-//! Public data models for Mermaid diagram families.
-//!
-//! Each family module requires its corresponding `diagram-*` feature. The `flowchart` module
-//! is shared by `diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow`;
-//! `error_diagram` is always available.
-//!
-//! Built-in family constructors are intentionally crate-private. External callers parse through
-//! [`crate::SemanticParser`] for canonical meaning or `MermaidEngine` with `presentation` for full
-//! processing. These facades own preprocessing, detection, configuration, and the requested
-//! projections. Callers cannot invoke built-in constructors with hand-built metadata.
-//!
-//! ```compile_fail,E0603
-//! use merman_core::diagrams::flowchart::parse_flowchart;
-//! ```
-//!
-//! Built-in parser pointers are not exposed through the public registry either:
-//!
-//! ```compile_fail,E0624
-//! use merman_core::DiagramRegistry;
-//!
-//! let registry = DiagramRegistry::pinned_mermaid_baseline();
-//! let _parser = registry.get("flowchart-v2");
-//! ```
+//! Private family grammars, source construction and source projection callbacks.
+
+#[cfg(all(test, feature = "presentation"))]
+pub(crate) fn source_metadata_for_test(
+    metadata: &crate::PresentationMetadata,
+) -> crate::SourcePresentationMetadata {
+    let effective_config = crate::presentation::SourcePresentationConfig::from_frozen_controlled(
+        metadata.effective_config.clone(),
+        &crate::OperationControl::new(),
+    )
+    .expect("a private fixture control cannot be cancelled");
+    crate::SourcePresentationMetadata {
+        diagram_type: metadata.diagram_type.clone(),
+        config: metadata.config.clone(),
+        effective_config,
+        title: metadata.title.clone(),
+    }
+}
 
 #[cfg(any(
     feature = "diagram-class",
@@ -49,36 +44,36 @@ macro_rules! include_checked_in_lalrpop_parser {
 }
 
 #[cfg(feature = "diagram-agentflow")]
-pub mod agentflow;
+pub(crate) mod agentflow;
 #[cfg(feature = "diagram-architecture")]
-pub mod architecture;
+pub(crate) mod architecture;
 #[cfg(feature = "diagram-block")]
-pub mod block;
+pub(crate) mod block;
 #[cfg(feature = "diagram-c4")]
-pub mod c4;
+pub(crate) mod c4;
 #[cfg(feature = "diagram-class")]
-pub mod class;
+pub(crate) mod class;
 #[cfg(feature = "diagram-cynefin")]
-pub mod cynefin;
+pub(crate) mod cynefin;
 #[cfg(feature = "diagram-er")]
-pub mod er;
-pub mod error_diagram;
+pub(crate) mod er;
+pub(crate) mod error_diagram;
 #[cfg(feature = "diagram-event-modeling")]
-pub mod eventmodeling;
+pub(crate) mod eventmodeling;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub mod flowchart;
+pub(crate) mod flowchart;
 #[cfg(feature = "diagram-gantt")]
-pub mod gantt;
+pub(crate) mod gantt;
 #[cfg(feature = "diagram-git-graph")]
-pub mod git_graph;
+pub(crate) mod git_graph;
 #[cfg(feature = "diagram-info")]
-pub mod info;
+pub(crate) mod info;
 #[cfg(feature = "diagram-ishikawa")]
-pub mod ishikawa;
+pub(crate) mod ishikawa;
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-flowchart",
@@ -87,9 +82,9 @@ pub mod ishikawa;
 ))]
 mod jison_unicode;
 #[cfg(feature = "diagram-journey")]
-pub mod journey;
+pub(crate) mod journey;
 #[cfg(feature = "diagram-kanban")]
-pub mod kanban;
+pub(crate) mod kanban;
 #[cfg(any(
     test,
     feature = "diagram-architecture",
@@ -112,21 +107,21 @@ pub mod kanban;
 )]
 pub(crate) mod langium_common;
 #[cfg(feature = "diagram-mindmap")]
-pub mod mindmap;
+pub(crate) mod mindmap;
 #[cfg(feature = "diagram-packet")]
-pub mod packet;
+pub(crate) mod packet;
 #[cfg(feature = "diagram-pie")]
-pub mod pie;
+pub(crate) mod pie;
 #[cfg(feature = "diagram-quadrant-chart")]
-pub mod quadrant_chart;
+pub(crate) mod quadrant_chart;
 #[cfg(feature = "diagram-radar")]
-pub mod radar;
+pub(crate) mod radar;
 #[cfg(feature = "diagram-railroad")]
-pub mod railroad;
+pub(crate) mod railroad;
 #[cfg(feature = "diagram-requirement")]
-pub mod requirement;
+pub(crate) mod requirement;
 #[cfg(feature = "diagram-sankey")]
-pub mod sankey;
+pub(crate) mod sankey;
 // Common metadata normalization also uses ECMAScript scanning without diagram features.
 #[allow(
     dead_code,
@@ -134,28 +129,28 @@ pub mod sankey;
 )]
 pub(crate) mod scan;
 #[cfg(feature = "diagram-sequence")]
-pub mod sequence;
+pub(crate) mod sequence;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane"
 ))]
-pub(crate) mod shapes;
+use merman_model::families::flowchart::shapes;
 #[cfg(feature = "diagram-state")]
-pub mod state;
+pub(crate) mod state;
 #[cfg(feature = "diagram-timeline")]
-pub mod timeline;
+pub(crate) mod timeline;
 #[cfg(feature = "diagram-tree-view")]
-pub mod tree_view;
+pub(crate) mod tree_view;
 #[cfg(feature = "diagram-treemap")]
-pub mod treemap;
+pub(crate) mod treemap;
 #[cfg(feature = "diagram-usecase")]
-pub mod usecase;
+pub(crate) mod usecase;
 #[cfg(feature = "diagram-venn")]
-pub mod venn;
+pub(crate) mod venn;
 #[cfg(feature = "diagram-wardley")]
-pub mod wardley;
+pub(crate) mod wardley;
 #[cfg(feature = "diagram-xychart")]
-pub mod xychart;
+pub(crate) mod xychart;
 #[cfg(feature = "diagram-zenuml")]
-pub mod zenuml;
+pub(crate) mod zenuml;

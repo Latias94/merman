@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_css_number_or_string;
 use crate::diagram_theme::{
@@ -94,10 +94,8 @@ impl EventModelingTextThemePlan {
             ));
         };
 
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.textColor",
-        );
+        let config_owns_fill =
+            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let style = (occurrences.total() != 0)
             .then(|| {
                 theme.text_style_with_work_meter(
@@ -267,10 +265,7 @@ impl EventModelingTextThemePlan {
         }
 
         let config_owns_font_size = typed_font_size
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size && !config_owns_font_size;
         let font_size_css = if typed_font_size_active {
             Some(format!("{}px", theme.typography().font_size_px()).into_boxed_str())

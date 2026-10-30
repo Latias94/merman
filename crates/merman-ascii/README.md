@@ -25,7 +25,7 @@ required families, or `all-diagrams` for the complete data and terminal-adapter 
 Each selector enables model data and this crate's local handler when one exists. It does not enable
 a source parser or system adapters. Model availability alone does not promise a terminal projection.
 
-> **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Direct users pass a `merman_model::ParsedSemanticDiagram` to `AsciiRenderer::render_parsed` or `render_parsed_report`, or supply a borrowed `AsciiDiagram` with `AsciiSourceContext`. A full `merman_core::RenderSemanticModel` requires explicit projection into the borrowed inputs.
+> **Implementation crate:** applications that ingest source can select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Direct model consumers pass a `merman_model::ParsedSemanticDiagram` to `AsciiRenderer::render_parsed` or `render_parsed_report`, or supply a borrowed `AsciiDiagram` with `AsciiSourceContext`. A full `merman_model::presentation::RenderSemanticModel` requires explicit projection into the borrowed inputs.
 
 This model renderer does not own a runtime-policy constructor, so it does not forward `system-*`
 features. Direct users construct `AsciiRenderer`, capture an `OperationContext` from their facade or
@@ -51,7 +51,7 @@ For a current-source checkout beside the application, select the required famili
 merman = { path = "../merman/crates/merman", default-features = false, features = ["ascii", "diagram-flowchart", "diagram-gantt"] }
 ```
 
-Depend on `merman-ascii` directly when the application owns a `merman_model::ParsedSemanticDiagram` for `AsciiRenderer::render_parsed` or `render_parsed_report`, or supplies a borrowed `AsciiDiagram` with `AsciiSourceContext`. Explicitly project a full `merman_core::RenderSemanticModel` into those borrowed inputs before rendering.
+Depend on `merman-ascii` directly when the application owns a `merman_model::ParsedSemanticDiagram` for `AsciiRenderer::render_parsed` or `render_parsed_report`, or supplies a borrowed `AsciiDiagram` with `AsciiSourceContext`. Explicitly project a full `merman_model::presentation::RenderSemanticModel` into those borrowed inputs before rendering.
 
 ## Supported Families
 

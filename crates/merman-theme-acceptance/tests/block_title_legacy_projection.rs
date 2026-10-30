@@ -5,14 +5,14 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
-use merman::presentation::PresentationConfig;
+use merman::SourcePresentationConfig;
+use merman::model::family::DiagramFamilyId;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
-    DiagramFamilyId, MermaidEngine, OperationControl, RenderOutput, RenderRequest,
-    RenderedDocument, Renderer,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, RenderedDocument, Renderer,
 };
 use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
@@ -69,7 +69,7 @@ fn assert_no_native_consumer(target: ThemeTarget) {
     for scheme in ["default", "base", "dark", "forest", "neutral"] {
         for look in ["classic", "neo", "handDrawn"] {
             let renderer = Renderer::new().with_presentation_engine(
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+                MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
                     serde_json::json!({"theme": scheme, "htmlLabels": false, "look": look}),
                 )),
             );
@@ -154,17 +154,18 @@ fn retired_block_text_bridges_are_absent() {
         ),
     ] {
         for look in ["classic", "neo", "handDrawn"] {
-            let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"htmlLabels": false, "look": look}),
-            ));
+            let engine =
+                MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": false, "look": look}),
+                ));
             let baseline = engine.parse_metadata_sync(SOURCE).unwrap();
             for variant in [None, Some(ThemeVariant::Default)] {
                 for transparent in [false, true] {
                     let theme = theme(target, variant, transparent);
-                    let parser = merman_render::__private::install_parse_compatibility(
-                        &theme,
-                        engine.clone(),
+                    let plan = merman::ThemeCompatibilityPlan::from_recipe(
+                        theme.compatibility_recipe().clone(),
                     );
+                    let parser = engine.clone().with_theme_plan(&plan);
                     let metadata = parser.parse_metadata_sync(SOURCE).unwrap();
                     for path in paths {
                         assert_eq!(

@@ -249,12 +249,12 @@ pub(crate) fn prepare_render_for_mmdc(
     let source = read_mmdc_input(
         &resolved,
         InputLimit::new(
-            merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+            merman::model::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
             resolved
                 .common
                 .resources
                 .input_policy()
-                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+                .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes),
         ),
         stdin,
         stderr,
@@ -796,7 +796,7 @@ fn prepare_rustdoc_renderer(
         config_file: None,
         theme: Some(theme.to_string()),
         runtime: crate::invocation::ResolvedRuntimeOptions {
-            runtime_policy: merman::runtime::RuntimePolicy::deterministic(),
+            runtime_policy: merman::model::runtime::RuntimePolicy::deterministic(),
         },
     };
     let render = crate::invocation::ResolvedRenderOptions {
@@ -899,10 +899,10 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
     }
     let _ = raw_svg;
     InputLimit::new(
-        merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+        merman::model::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
         resources
             .input_policy()
-            .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+            .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes),
     )
     .with_profile(resources.profile())
 }
@@ -956,8 +956,9 @@ mod tests {
 
     #[test]
     fn rustdoc_theme_variants_override_source_theme_directives() {
-        let resources =
-            ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE);
+        let resources = ResolvedResourcePolicy::for_profile(
+            merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        );
         let renderers = prepare_rustdoc_renderers(&resources, &merman::OperationControl::new())
             .expect("Rustdoc renderers");
         let stderr = SharedWriter::new(Vec::<u8>::new());
@@ -1008,7 +1009,7 @@ fn conversion_limits(
 ) -> merman::svg::export::SvgConversionLimits {
     if matches!(
         resources.profile(),
-        merman::resources::ResourceProfile::UnboundedForTrustedInput
+        merman::model::resources::ResourceProfile::UnboundedForTrustedInput
     ) {
         merman::svg::export::SvgConversionLimits::unbounded()
     } else {

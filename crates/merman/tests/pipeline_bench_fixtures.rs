@@ -8,12 +8,12 @@ mod json_identity;
 
 #[test]
 fn pipeline_json_identity_ignores_only_object_member_order() {
-    use merman_core::ManagedSemanticJson;
+    use merman::model::ManagedJson;
 
-    let first = ManagedSemanticJson::from_value(
+    let first = ManagedJson::from_value(
         serde_json::from_str(r#"{"z":[{"b":2,"a":1},3],"a":"value"}"#).unwrap(),
     );
-    let reordered = ManagedSemanticJson::from_value(
+    let reordered = ManagedJson::from_value(
         serde_json::from_str(r#"{"a":"value","z":[{"a":1,"b":2},3]}"#).unwrap(),
     );
     assert_eq!(first, reordered);
@@ -30,7 +30,7 @@ fn pipeline_json_identity_ignores_only_object_member_order() {
         r#"{"z":[{"b":2,"a":1},3],"a":"other"}"#,
         r#"{"z":[{"b":2,"a":1},3]}"#,
     ] {
-        let changed = ManagedSemanticJson::from_value(serde_json::from_str(changed).unwrap());
+        let changed = ManagedJson::from_value(serde_json::from_str(changed).unwrap());
         assert_ne!(identity, json_identity::json_identity_bytes(&changed));
     }
     let mut unchanged_bytes = Vec::new();
@@ -73,7 +73,7 @@ fn pipeline_json_identity_preserves_deep_managed_export() {
     for _ in 0..depth {
         value = serde_json::Value::Array(vec![value]);
     }
-    let value = merman_core::ManagedSemanticJson::from_value(value);
+    let value = merman::model::ManagedJson::from_value(value);
     let mut expected = vec![b'['; depth];
     expected.extend_from_slice(br#"{"a":2,"z":1}"#);
     expected.extend(std::iter::repeat_n(b']', depth));
@@ -159,8 +159,8 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
         };
         let renderer = merman::Renderer::new()
             .with_presentation_engine(engine.clone())
-            .with_resource_policy(merman_core::resources::InputResourcePolicy::for_profile(
-                merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            .with_resource_policy(merman::model::resources::InputResourcePolicy::for_profile(
+                merman::model::resources::ResourceProfile::UnboundedForTrustedInput,
             ));
         let layout_json = match renderer
             .render(merman::RenderRequest::layout_json(

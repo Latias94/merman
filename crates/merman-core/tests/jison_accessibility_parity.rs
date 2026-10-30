@@ -4,8 +4,11 @@
 use merman_core::{
     DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, ParsedEditorFacts,
 };
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use serde_json::{Value, json};
+use {
+    merman_core::{MermaidEngine, ParseOptions},
+    merman_model::presentation::RenderSemanticModel,
+};
 
 struct JisonCase {
     family: &'static str,

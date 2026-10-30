@@ -20,6 +20,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 artifact-profile-required = true
 
 [features]
+fixes = ["analysis", "merman-bindings-core/fixes"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",

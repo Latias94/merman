@@ -1,4 +1,4 @@
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::*;
 use futures::executor::block_on;
 use serde_json::json;
@@ -309,7 +309,7 @@ fn class_style_facts_stay_outside_the_serialized_model() {
         panic!("expected ClassDiagram render model");
     };
     let encoded = serde_json::to_value(model).expect("class model serializes");
-    let decoded: crate::models::class_diagram::ClassDiagram =
+    let decoded: merman_model::families::class::ClassDiagram =
         serde_json::from_value(encoded).expect("class model deserializes");
     assert_eq!(model, &decoded);
     assert!(
@@ -755,7 +755,7 @@ click Class1 href "javascript:alert(1)" "A tooltip" _self"#,
 #[test]
 fn parse_diagram_class_security_level_sandbox_forces_link_target_top() {
     let engine = MermaidEngine::new().with_site_config({
-        let mut cfg = PresentationConfig::empty_object();
+        let mut cfg = SourcePresentationConfig::empty_object();
         cfg.set_value("securityLevel", json!("sandbox"));
         cfg
     });
@@ -776,7 +776,7 @@ click Class1 href "google.com" "A tooltip" _self
 #[test]
 fn parse_diagram_class_security_level_loose_marks_callback_effective() {
     let engine = MermaidEngine::new().with_site_config({
-        let mut cfg = PresentationConfig::empty_object();
+        let mut cfg = SourcePresentationConfig::empty_object();
         cfg.set_value("securityLevel", json!("loose"));
         cfg
     });

@@ -1,17 +1,16 @@
 use crate::MermaidConfig;
 #[cfg(feature = "presentation")]
-use crate::config::presentation::PresentationConfig;
+use crate::config::presentation::SourcePresentationConfig;
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 #[cfg(feature = "editor-facts")]
 pub(crate) mod editor_rename_policy;
-pub mod mermaid_reference;
 
 static UPSTREAM_DEFAULT_CONFIG: OnceLock<MermaidConfig> = OnceLock::new();
 static DEFAULT_SITE_CONFIG: OnceLock<MermaidConfig> = OnceLock::new();
 #[cfg(feature = "presentation")]
-static DEFAULT_PRESENTATION_CONFIG: OnceLock<PresentationConfig> = OnceLock::new();
+static DEFAULT_PRESENTATION_CONFIG: OnceLock<SourcePresentationConfig> = OnceLock::new();
 static DEFAULT_CONFIG_SHAPE: OnceLock<DefaultConfigShape> = OnceLock::new();
 
 #[derive(serde::Deserialize)]
@@ -58,10 +57,10 @@ pub fn default_site_config() -> MermaidConfig {
 
 /// Returns hardened full configuration with its initialization mutation history.
 #[cfg(feature = "presentation")]
-pub fn default_presentation_config() -> PresentationConfig {
+pub fn default_presentation_config() -> SourcePresentationConfig {
     DEFAULT_PRESENTATION_CONFIG
         .get_or_init(|| {
-            let mut config = PresentationConfig::from_config(upstream_default_config());
+            let mut config = SourcePresentationConfig::from_config(upstream_default_config());
             crate::config::presentation::apply_hardened_site_policy(&mut config);
             config
         })

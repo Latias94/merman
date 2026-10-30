@@ -12,7 +12,8 @@ fn render_class_with_id(text: &str, diagram_id: &str) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Class")
-        .expect("Class diagram");
+        .expect("Class diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout Class")

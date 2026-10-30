@@ -3,7 +3,7 @@ pub(super) use crate::class::node_binding::{class_node_label_style, class_node_p
 
 pub(super) fn class_math_html_label(
     text: &str,
-    mermaid_config: Option<&merman_core::presentation::PresentationConfig>,
+    mermaid_config: Option<&merman_model::presentation::PresentationConfig>,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> Option<String> {
     if !crate::math::contains_delimited_math(text) {
@@ -23,7 +23,7 @@ pub(super) struct ClassHtmlLabelSpec<'a> {
     pub extra_span_class: Option<&'a str>,
     pub span_style: Option<&'a str>,
     pub prepared_xhtml: Option<&'a str>,
-    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 

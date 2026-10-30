@@ -57,7 +57,7 @@ aliases are removed in favor of `MermaidEngine` and `PresentationMetadata`.
 
 Configure canonical parsing with `Renderer::with_semantic_parser`. Full configuration and custom
 detectors/adapters belong to `with_presentation_engine`; its `MermaidEngine::with_site_config`
-accepts `merman::presentation::PresentationConfig`. Installing a full engine does not change
+accepts `merman::SourcePresentationConfig`. Installing a full engine does not change
 semantic or ordinary ASCII requests.
 
 Opening separate layout and SVG requests intentionally creates separate operations. This keeps

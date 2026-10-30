@@ -13,7 +13,8 @@ fn render(body: &str, width: usize, auto_wrap: bool) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
@@ -133,7 +134,8 @@ fn usecase_markdown_config_prepared_html_obeys_the_retained_text_budget() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let policy = RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
         .unwrap();

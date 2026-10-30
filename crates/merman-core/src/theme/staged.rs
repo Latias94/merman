@@ -9,10 +9,10 @@
 use super::{ThemeResolutionError, is_js_truthy, value_is_missing};
 #[cfg(test)]
 use crate::MermaidConfig;
-use crate::ThemeEvaluationLimitExceeded;
 use crate::json_value::number_value;
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
+use merman_model::presentation::ThemeEvaluationLimitExceeded;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 #[cfg(test)]
@@ -20,8 +20,6 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 mod base;
-
-pub(super) const MAX_THEME_COLOR_ITERATIONS: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StagedProgram {
@@ -127,7 +125,7 @@ impl Owners {
 
 #[derive(Debug, Clone, Copy)]
 enum OwnerSource<'a> {
-    Config(&'a PresentationConfig),
+    Config(&'a SourcePresentationConfig),
     #[cfg(test)]
     AllExplicit,
 }
@@ -642,7 +640,7 @@ impl Resolution {
         program: StagedProgram,
         prepared_constructor: &Map<String, Value>,
         explicit: &Map<String, Value>,
-        config: &PresentationConfig,
+        config: &SourcePresentationConfig,
     ) -> Result<Self, ThemeResolutionError> {
         Self::execute_impl(
             program,
@@ -728,7 +726,7 @@ impl Resolution {
         })
     }
 
-    pub(super) fn materialize_into(self, config: &mut PresentationConfig) {
+    pub(super) fn materialize_into(self, config: &mut SourcePresentationConfig) {
         config.set_value_preserving_theme_compatibility(
             "themeVariables",
             Value::Object(self.variables),
@@ -800,86 +798,7 @@ fn for_theme_color_indices(
 }
 
 fn theme_color_iteration_count(stage: &ThemeState) -> Result<usize, ThemeEvaluationLimitExceeded> {
-    theme_color_iteration_count_for_value(stage.variables.get("THEME_COLOR_LIMIT"))
-}
-
-pub(super) fn theme_color_iteration_count_for_value(
-    raw: Option<&Value>,
-) -> Result<usize, ThemeEvaluationLimitExceeded> {
-    // Mermaid declares this field as a number. Preserve the scalar coercions reached through raw
-    // YAML/JSON compatibility input, but keep the seam deliberately narrower than JavaScript's
-    // general ToNumber algorithm.
-    let limit = raw.map_or(f64::NAN, |value| match value {
-        Value::Null | Value::Bool(false) => 0.0,
-        Value::Bool(true) => 1.0,
-        Value::Number(value) => value.as_f64().unwrap_or(f64::NAN),
-        Value::String(value) => parse_theme_color_limit_string(value),
-        Value::Array(value) => parse_theme_color_limit_array(value),
-        Value::Object(_) => f64::NAN,
-    });
-    if limit.is_nan() || limit <= 0.0 {
-        return Ok(0);
-    }
-
-    let requested_iterations = limit.ceil();
-    if !requested_iterations.is_finite() || requested_iterations > MAX_THEME_COLOR_ITERATIONS as f64
-    {
-        return Err(ThemeEvaluationLimitExceeded {
-            limit: "THEME_COLOR_LIMIT",
-            requested: raw.map_or_else(|| "missing".to_string(), Value::to_string),
-            max: MAX_THEME_COLOR_ITERATIONS,
-        });
-    }
-    Ok(requested_iterations as usize)
-}
-
-fn parse_theme_color_limit_string(value: &str) -> f64 {
-    let value = value.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
-    if value.is_empty() {
-        return 0.0;
-    }
-    match value {
-        "Infinity" | "+Infinity" => return f64::INFINITY,
-        "-Infinity" => return f64::NEG_INFINITY,
-        _ => {}
-    }
-    let unsigned = value
-        .strip_prefix('+')
-        .or_else(|| value.strip_prefix('-'))
-        .unwrap_or(value);
-    if unsigned.eq_ignore_ascii_case("inf") || unsigned.eq_ignore_ascii_case("infinity") {
-        return f64::NAN;
-    }
-    for (prefixes, radix) in [(["0x", "0X"], 16), (["0b", "0B"], 2), (["0o", "0O"], 8)] {
-        if let Some(digits) = prefixes
-            .iter()
-            .find_map(|prefix| value.strip_prefix(prefix))
-        {
-            if digits.is_empty() || !digits.chars().all(|digit| digit.is_digit(radix)) {
-                return f64::NAN;
-            }
-            return match usize::from_str_radix(digits, radix) {
-                Ok(parsed) if parsed <= MAX_THEME_COLOR_ITERATIONS => parsed as f64,
-                Ok(_) | Err(_) => (MAX_THEME_COLOR_ITERATIONS + 1) as f64,
-            };
-        }
-    }
-    value.parse::<f64>().unwrap_or(f64::NAN)
-}
-
-fn parse_theme_color_limit_array(mut value: &[Value]) -> f64 {
-    loop {
-        let [only] = value else {
-            return if value.is_empty() { 0.0 } else { f64::NAN };
-        };
-        match only {
-            Value::Null => return 0.0,
-            Value::Bool(_) | Value::Object(_) => return f64::NAN,
-            Value::Number(value) => return value.as_f64().unwrap_or(f64::NAN),
-            Value::String(value) => return parse_theme_color_limit_string(value),
-            Value::Array(nested) => value = nested,
-        }
-    }
+    merman_model::presentation::theme_color_iterations(stage.variables.get("THEME_COLOR_LIMIT"))
 }
 
 fn adjusted(
@@ -2059,35 +1978,6 @@ mod tests {
         assert!(scalar_state.depends_on("chart", "chart"));
     }
 
-    fn iteration_count(value: Value) -> Result<usize, ThemeEvaluationLimitExceeded> {
-        let mut variables = Map::new();
-        variables.insert("THEME_COLOR_LIMIT".to_string(), value);
-        theme_color_iteration_count(&ThemeState::constructor(variables, &Map::new(), None))
-    }
-
-    #[test]
-    fn theme_color_limit_uses_the_json_reachable_javascript_number_subset() {
-        for value in [
-            json!("0x410z"),
-            json!("inf"),
-            json!("infinity"),
-            json!([true]),
-            json!([1, 2]),
-            json!({ "value": 2 }),
-        ] {
-            assert_eq!(iteration_count(value).unwrap(), 0);
-        }
-        for value in [json!("\u{feff}2\u{feff}"), json!([2]), json!([["2"]])] {
-            assert_eq!(iteration_count(value).unwrap(), 2);
-        }
-        for value in [json!([]), json!([null]), json!([[[]]])] {
-            assert_eq!(iteration_count(value).unwrap(), 0);
-        }
-        for value in [json!(65), json!("0x41"), json!("Infinity"), json!([65])] {
-            assert_eq!(iteration_count(value).unwrap_err().max, 64);
-        }
-    }
-
     #[test]
     fn javascript_or_chain_does_not_evaluate_an_unselected_last_operand() {
         let mut variables = Map::new();
@@ -2444,12 +2334,12 @@ mod tests {
     #[test]
     fn empty_staged_materialization_preserves_config_bytes_and_compatibility() {
         use super::super::{ThemeProgram, apply_theme_defaults};
-        use crate::config::presentation::ThemeParseBinding;
+        use merman_model::presentation::ThemeCompatibilityRecipe;
 
         for (program, theme) in staged_programs() {
             let theme_program = ThemeProgram::resolve(theme);
             let mut inputs = Vec::new();
-            inputs.push(PresentationConfig::from_value(
+            inputs.push(SourcePresentationConfig::from_value(
                 json!({"theme": theme.as_str()}),
             ));
             for raw in [
@@ -2458,30 +2348,33 @@ mod tests {
                 Value::Null,
                 json!(false),
             ] {
-                inputs.push(PresentationConfig::from_value(json!({
+                inputs.push(SourcePresentationConfig::from_value(json!({
                     "theme": theme.as_str(), "themeVariables": raw,
                 })));
             }
-            let binding = ThemeParseBinding::try_new(
+            let binding = ThemeCompatibilityRecipe::try_new(
                 [0x79; 32],
                 MermaidConfig::from_value(json!({"theme": theme.as_str()})),
             )
             .unwrap();
-            inputs.push(PresentationConfig::from_theme_parse_binding(binding));
-            let binding = ThemeParseBinding::try_new(
+            inputs.push(SourcePresentationConfig::from_theme_compatibility_recipe(
+                binding,
+            ));
+            let binding = ThemeCompatibilityRecipe::try_new(
                 [0x7a; 32],
                 MermaidConfig::from_value(json!({
                     "theme": theme.as_str(), "themeVariables": {"nodeBkg": "#123456"},
                 })),
             )
             .unwrap();
-            let mut normalized_owner = PresentationConfig::from_theme_parse_binding(binding);
+            let mut normalized_owner =
+                SourcePresentationConfig::from_theme_compatibility_recipe(binding);
             normalized_owner
                 .set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
             assert!(normalized_owner.has_theme_variable_calculation_owners());
             inputs.push(normalized_owner);
             let mut explicit_owner =
-                PresentationConfig::from_value(json!({"theme": theme.as_str()}));
+                SourcePresentationConfig::from_value(json!({"theme": theme.as_str()}));
             explicit_owner.set_value_explicit("themeVariables", json!({}));
             assert!(explicit_owner.has_theme_variable_calculation_owners());
             inputs.push(explicit_owner);
@@ -2527,7 +2420,7 @@ mod tests {
     fn custom_detector_observes_staged_executor_key_order() {
         use super::super::{MermaidThemeId, ThemeProgram};
 
-        fn detector(_text: &str, config: &mut PresentationConfig) -> bool {
+        fn detector(_text: &str, config: &mut SourcePresentationConfig) -> bool {
             let theme = MermaidThemeId::parse(config.get_str("theme").unwrap()).unwrap();
             let theme_program = ThemeProgram::resolve(theme);
             let expected = Resolution::execute_impl(
@@ -2547,7 +2440,7 @@ mod tests {
 
         for (program, theme) in staged_programs() {
             let mut engine = crate::MermaidEngine::new().with_site_config(
-                PresentationConfig::from_value(json!({
+                SourcePresentationConfig::from_value(json!({
                     "theme": theme.as_str(),
                 })),
             );
@@ -2574,7 +2467,7 @@ mod tests {
                 let explicit = (0..count)
                     .map(|index| (format!("z{index:08}"), json!(1)))
                     .collect::<Map<_, _>>();
-                let mut config = PresentationConfig::from_value(json!({}));
+                let mut config = SourcePresentationConfig::from_value(json!({}));
                 config.deep_merge_explicit(&json!({"themeVariables": explicit}));
                 assert!(
                     AuthorityState::new(&explicit, OwnerSource::Config(&config))
@@ -2633,7 +2526,8 @@ mod tests {
             ("primaryColor", true, false),
             ("secondaryColor", false, true),
         ] {
-            let mut config = PresentationConfig::from_value(json!({"themeVariables": explicit}));
+            let mut config =
+                SourcePresentationConfig::from_value(json!({"themeVariables": explicit}));
             config.deep_merge_explicit(&json!({"themeVariables": {(owned): "#123456"}}));
             let resolved = Resolution::execute_with_owners(
                 StagedProgram::Base,

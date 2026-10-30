@@ -1,8 +1,11 @@
 #[cfg(feature = "all-diagrams")]
 use crate::diagrams::xychart::{XyChartAxisModel, XyChartPlotType};
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::*;
 use futures::executor::block_on;
+use merman_model::warnings::{
+    BLOCK_WIDTH_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+};
 use serde_json::{Map, Value, json};
 use std::fmt::Write;
 
@@ -206,7 +209,7 @@ fn default_scoped_theme_calculates_with_source_variables() {
 #[test]
 fn host_scoped_theme_calculates_with_source_variables() {
     let metadata = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "theme": "default",
             "flowchart": {"theme": "base"}
         })))
@@ -234,7 +237,7 @@ fn source_color_validation_follows_actual_theme_rematerialization() {
         ("default scoped theme", MermaidEngine::new()),
         (
             "host scoped theme",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "default",
                 "flowchart": {"theme": "base"}
             }))),
@@ -250,7 +253,9 @@ fn source_color_validation_follows_actual_theme_rematerialization() {
     }
 
     let metadata = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({"theme": "base"})))
+        .with_site_config(SourcePresentationConfig::from_value(
+            json!({"theme": "base"}),
+        ))
         .parse_metadata_sync(source)
         .expect("an ordinary source update retains initialized derivations");
     assert_eq!(
@@ -294,7 +299,7 @@ graph TD;A-->B;"##;
 
 #[test]
 fn upstream_site_secure_policy_preserves_source_theme_variables() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
@@ -600,7 +605,7 @@ graph TD;A-->B;
 
 #[test]
 fn upstream_site_secure_policy_preserves_source_fonts() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
@@ -718,7 +723,7 @@ fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
 #[test]
 fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
-    let site_config = PresentationConfig::from_value(deep_config_value(
+    let site_config = SourcePresentationConfig::from_value(deep_config_value(
         "sequence",
         DEPTH,
         Value::String("#112233".to_string()),
@@ -747,7 +752,7 @@ fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
 
 #[test]
 fn site_config_secure_keys_protect_effective_config_from_diagram_config() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
         "fontFamily": "site-font",
         "fontSize": 16,
         "securityLevel": "strict",
@@ -873,7 +878,7 @@ flowchart TD
 #[cfg(feature = "all-diagrams")]
 fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
-    let site_config = PresentationConfig::from_value(deep_config_value(
+    let site_config = SourcePresentationConfig::from_value(deep_config_value(
         "retainedConfig",
         DEPTH,
         Value::String("#556677".to_string()),
@@ -939,7 +944,7 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
 #[cfg(feature = "all-diagrams")]
 fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
-    let site_config = PresentationConfig::from_value(deep_config_value(
+    let site_config = SourcePresentationConfig::from_value(deep_config_value(
         "retainedConfig",
         DEPTH,
         Value::String("#778899".to_string()),
@@ -1353,8 +1358,8 @@ fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
             .unwrap(),
         json!({ "type": "error" })
     );
-    assert!(parsed.model().supports_diagram_type("error"));
-    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
+    assert!(parsed.model().matches_diagram_type("error"));
+    assert!(!parsed.model().matches_diagram_type("flowchart-v2"));
 }
 
 #[cfg(feature = "all-diagrams")]
@@ -1404,37 +1409,37 @@ fn render_semantic_model_kind_reports_canonical_names() {
 #[cfg(feature = "all-diagrams")]
 fn render_semantic_model_supports_diagram_type_aliases() {
     let sequence = render_model_for("sequenceDiagram\nAlice->>Bob: Hi");
-    assert!(sequence.supports_diagram_type("sequence"));
-    assert!(!sequence.supports_diagram_type("zenuml"));
-    assert!(!sequence.supports_diagram_type("flowchart-v2"));
+    assert!(sequence.matches_diagram_type("sequence"));
+    assert!(!sequence.matches_diagram_type("zenuml"));
+    assert!(!sequence.matches_diagram_type("flowchart-v2"));
 
     let zenuml = render_model_for("zenuml\n@Starter(A)\nB.call()\n");
-    assert!(zenuml.supports_diagram_type("zenuml"));
-    assert!(!zenuml.supports_diagram_type("sequence"));
+    assert!(zenuml.matches_diagram_type("zenuml"));
+    assert!(!zenuml.matches_diagram_type("sequence"));
 
     let flowchart = render_model_for("flowchart TD\nA-->B");
-    assert!(flowchart.supports_diagram_type("flowchart-v2"));
-    assert!(flowchart.supports_diagram_type("flowchart"));
-    assert!(flowchart.supports_diagram_type("flowchart-elk"));
-    assert!(!flowchart.supports_diagram_type("sequence"));
+    assert!(flowchart.matches_diagram_type("flowchart-v2"));
+    assert!(flowchart.matches_diagram_type("flowchart"));
+    assert!(flowchart.matches_diagram_type("flowchart-elk"));
+    assert!(!flowchart.matches_diagram_type("sequence"));
 
     let er = render_model_for("erDiagram\nCUSTOMER ||--o{ ORDER : places");
-    assert!(er.supports_diagram_type("er"));
-    assert!(er.supports_diagram_type("erDiagram"));
-    assert!(!er.supports_diagram_type("classDiagram"));
+    assert!(er.matches_diagram_type("er"));
+    assert!(er.matches_diagram_type("erDiagram"));
+    assert!(!er.matches_diagram_type("classDiagram"));
 
     let custom_model = RenderSemanticModel::CustomJson(CustomJsonRenderModel::new(
         "unknown-plugin",
         json!({ "type": "custom" }),
     ));
-    assert!(custom_model.supports_diagram_type("unknown-plugin"));
-    assert!(!custom_model.supports_diagram_type("flowchart-v2"));
+    assert!(custom_model.matches_diagram_type("unknown-plugin"));
+    assert!(!custom_model.matches_diagram_type("flowchart-v2"));
 
     let builtin_named_custom = RenderSemanticModel::CustomJson(CustomJsonRenderModel::new(
         "flowchart-v2",
         json!({ "type": "custom" }),
     ));
-    assert!(!builtin_named_custom.supports_diagram_type("flowchart-v2"));
+    assert!(!builtin_named_custom.matches_diagram_type("flowchart-v2"));
 }
 
 #[test]
@@ -1650,7 +1655,7 @@ fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
         );
         assert_eq!(model.value()["owner"], json!("custom-semantic"));
         assert_eq!(model.value()["diagramType"], json!(diagram_type));
-        assert!(!parsed.model().supports_diagram_type(diagram_type));
+        assert!(!parsed.model().matches_diagram_type(diagram_type));
 
         assert!(
             engine
@@ -1885,7 +1890,7 @@ fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
 
 fn custom_json_parser(
     code: &str,
-    _meta: &PresentationMetadata,
+    _meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
@@ -1906,7 +1911,7 @@ fn custom_json_parser(
 
 fn malformed_custom_warning_json_parser(
     _code: &str,
-    _meta: &PresentationMetadata,
+    _meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
@@ -1924,7 +1929,7 @@ fn malformed_custom_warning_json_parser(
 
 fn custom_overlay_json_parser(
     _code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
@@ -1936,7 +1941,7 @@ fn custom_overlay_json_parser(
 
 fn panicking_custom_parser(
     _code: &str,
-    _meta: &PresentationMetadata,
+    _meta: &SourcePresentationMetadata,
     _control: &OperationControl,
 ) -> OperationControlResult<Result<serde_json::Value>> {
     panic!("custom parser fixture panic")
@@ -1944,7 +1949,7 @@ fn panicking_custom_parser(
 
 fn custom_overlay_render_parser(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
     control.checkpoint()?;
@@ -1971,7 +1976,7 @@ fn expected_custom_title_after_sanitization() -> &'static str {
     "<b>custom</b>"
 }
 
-fn detect_generic_custom(text: &str, _config: &mut PresentationConfig) -> bool {
+fn detect_generic_custom(text: &str, _config: &mut SourcePresentationConfig) -> bool {
     text.trim_start().starts_with("generic-custom")
 }
 
@@ -2194,8 +2199,11 @@ Dana-->>Bob: Done
             assert_eq!(model.boxes[0].actor_keys, ["Carol"]);
             assert_eq!(model.created_actors["Dana"], 3);
             assert_eq!(model.destroyed_actors["Dana"], 4);
-            crate::diagrams::sequence::render_model_to_compat_json(model, parsed.metadata())
-                .unwrap()
+            merman_model::families::sequence::compat::project(
+                model,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(parsed.metadata()),
+            )
+            .unwrap()
         }
         other => panic!("sequence render parse should return typed model, got {other:?}"),
     };
@@ -2381,7 +2389,11 @@ line "Series 2" [2 "early", 3 "late"]
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
             assert_eq!(model.plots[1].title.as_deref(), Some("Series 2"));
             assert_eq!(model.plots[1].point_labels, vec!["early", "late"]);
-            crate::diagrams::xychart::render_model_to_compat_json(model, parsed.metadata()).unwrap()
+            merman_model::families::xy_chart::compat::project(
+                model,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(parsed.metadata()),
+            )
+            .unwrap()
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
     };
@@ -2441,7 +2453,11 @@ bar "Series 1" [1, 2]
             assert!(!model.display.y_axis.show_title);
             assert!(!model.display.y_axis.show_tick);
             assert!(!model.display.y_axis.show_axis_line);
-            crate::diagrams::xychart::render_model_to_compat_json(model, parsed.metadata()).unwrap()
+            merman_model::families::xy_chart::compat::project(
+                model,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(parsed.metadata()),
+            )
+            .unwrap()
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
     };

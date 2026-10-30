@@ -1,6 +1,5 @@
 #![cfg(feature = "diagram-packet")]
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
@@ -211,10 +210,11 @@ fn try_render_packet_source_with_theme_and_engine(
     engine: MermaidEngine,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Packet")
-        .expect("detect themed Packet");
+        .expect("detect themed Packet")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
@@ -272,14 +272,15 @@ fn packet_explicit_role_colors_outrank_only_their_typed_fill_roles() {
         CanvasPaint::solid("#e5e7eb").expect("valid Packet byte-label fill"),
         CanvasPaint::solid("#fef3c7").expect("valid Packet title fill"),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "packet": {
                 "startByteColor": "#111111",
                 "labelColor": "#222222",
                 "titleColor": "#333333"
             }
-        })));
+        })),
+    );
     let rendered =
         render_packet_with_theme_and_engine(&theme, engine, "packet-explicit-role-colors");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid configured Packet SVG");
@@ -317,11 +318,10 @@ fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(preset)
             .expect("compile dark Packet preset");
-        let metadata =
-            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-                .parse_metadata_sync(packet_source())
-                .expect("parse dark Packet preset metadata");
-        let parse_evidence = merman_core::__private::theme_parse_evidence(&metadata);
+        let metadata = common::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_metadata_sync(packet_source())
+            .expect("parse dark Packet preset metadata");
+        let parse_evidence = metadata.effective_config.theme_compatibility().clone();
         // Retained dark presets expose Mermaid's compatibility theme name. Their typed palette
         // owns the derived colors, so they intentionally do not claim Mermaid darkMode paths.
         assert_eq!(parse_evidence.mermaid_residual_count(), 1);
@@ -399,13 +399,13 @@ fn packet_consumes_one_canonical_dark_mode_concept_when_only_one_path_survives()
     ];
 
     for (case, site_config, root_survives, variable_survives) in cases {
-        let engine =
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
-        let metadata =
-            merman_render::__private::install_parse_compatibility(&theme, engine.clone())
-                .parse_metadata_sync(packet_source())
-                .expect("parse one-sided Packet dark-mode ownership");
-        let parse_evidence = merman_core::__private::theme_parse_evidence(&metadata);
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+        );
+        let metadata = common::install_parse_compatibility(&theme, engine.clone())
+            .parse_metadata_sync(packet_source())
+            .expect("parse one-sided Packet dark-mode ownership");
+        let parse_evidence = metadata.effective_config.theme_compatibility().clone();
 
         assert_eq!(parse_evidence.mermaid_residual_count(), 2, "{case}");
         assert!(parse_evidence.mermaid_theme_field_survives(), "{case}");
@@ -456,10 +456,11 @@ fn packet_direct_compatibility_deferral_fails_closed_without_terminal_font_cover
         .with_dark_mode(true)
         .expect("valid Packet compatibility dark mode");
     let theme = packet_direct_text_theme_with_mermaid(compatibility);
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Courier, monospace"
-        })));
+        })),
+    );
     let error = try_render_packet_with_theme_and_engine(
         &theme,
         engine,
@@ -512,10 +513,11 @@ fn packet_keeps_dark_mode_residual_when_one_sided_values_are_not_canonical() {
         .with_dark_mode(true)
         .expect("valid Packet compatibility dark mode");
     let theme = packet_direct_text_theme_with_mermaid(compatibility);
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "darkMode": false
-        })));
+        })),
+    );
     let error =
         try_render_packet_with_theme_and_engine(&theme, engine, "packet-noncanonical-dark-mode")
             .err()
@@ -612,12 +614,13 @@ fn packet_site_label_color_outranks_generic_text_fill_in_styles_and_report() {
     let theme = packet_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Packet generic text fill"),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "packet": {
                 "labelColor": "#abcdef"
             }
-        })));
+        })),
+    );
     let rendered = try_render_packet_source_with_theme_and_engine(
         "packet\n0-7: \"Header\"\n",
         &theme,
@@ -777,11 +780,13 @@ packet
             } else {
                 (
                     "packet\n0-7: \"Header\"\n",
-                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                        serde_json::json!({
-                            "packet": { "labelColor": "#abcdef" }
-                        }),
-                    )),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({
+                                "packet": { "labelColor": "#abcdef" }
+                            }),
+                        ),
+                    ),
                 )
             };
             let rendered = try_render_packet_source_with_theme_and_engine(
@@ -843,10 +848,11 @@ fn packet_owned_field_label_fill_does_not_hide_an_unrelated_winning_facet() {
             ),
         )
         .expect("compile mixed-facet Packet field-label theme");
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "packet": { "labelColor": "#abcdef" }
-        })));
+        })),
+    );
     let error = try_render_packet_source_with_theme_and_engine(
         "packet\n0-7: \"Header\"\n",
         &theme,
@@ -1007,8 +1013,9 @@ fn packet_explicit_mermaid_font_paths_outrank_typed_font_stack() {
     ];
 
     for (diagram_id, site_config, expected_font) in cases {
-        let engine =
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+        );
         let rendered = render_packet_with_theme_and_engine(&theme, engine, diagram_id);
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid configured Packet SVG");
@@ -1042,12 +1049,13 @@ fn packet_explicit_mermaid_font_paths_outrank_typed_font_stack() {
 #[test]
 fn packet_role_style_values_cannot_override_the_typed_font_stack() {
     let theme = packet_font_theme("monospace");
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "packet": {
                 "labelColor": "red;font-family:serif"
             }
-        })));
+        })),
+    );
     let rendered = render_packet_with_theme_and_engine(&theme, engine, "packet-safe-role-style");
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid safely configured Packet SVG");
@@ -1100,7 +1108,8 @@ fn render_packet(source: &str) -> (PacketDiagramLayout, String) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse packet")
-        .expect("packet diagram");
+        .expect("packet diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact =
         family::prepare(&parsed, &LayoutOptions::default(), session).expect("packet layout");
@@ -1229,3 +1238,6 @@ fn packet_default_order_is_ascending_and_one_bit_rows_keep_absolute_numbers() {
             .any(|node| node.attribute("class") == Some("packetByte end"))
     );
 }
+
+#[allow(dead_code)]
+mod common;

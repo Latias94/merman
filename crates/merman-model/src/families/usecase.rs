@@ -1,5 +1,8 @@
 //! Canonical Usecase records and lossless JavaScript JSON data codecs.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;

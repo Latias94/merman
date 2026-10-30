@@ -616,7 +616,7 @@ fn upstream_svg_mermaid_config_value(
     pinned_config: &JsonValue,
     fixture_context: Option<&FixtureRenderContext>,
 ) -> JsonValue {
-    let mut merged = merman_core::MermaidConfig::from_value(pinned_config.clone());
+    let mut merged = merman::model::MermaidConfig::from_value(pinned_config.clone());
     if let Some(context) = fixture_context {
         merged.deep_merge(&serde_json::json!({
             "securityLevel": upstream_svg_headless_security_level(context.security_level()),
@@ -2976,7 +2976,7 @@ fn render_family_fixture_svg(
     mmd_path: &Path,
     text: &str,
     parse_options: merman_core::ParseOptions,
-    expected_family: merman_core::DiagramFamilyId,
+    expected_family: merman::model::family::DiagramFamilyId,
     svg_options: &merman_render::svg::SvgRenderOptions,
     debug_options: &merman_render::svg::SvgDebugOptions,
 ) -> Result<String, String> {
@@ -2988,9 +2988,12 @@ fn render_family_fixture_svg(
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .map_err(|err| format!("render session failed: {err}"))?;
-    let artifact =
-        merman_render::family::prepare(&parsed, &merman_render::LayoutOptions::default(), session)
-            .map_err(|err| format!("layout failed for {}: {err}", mmd_path.display()))?;
+    let artifact = merman_render::family::prepare(
+        parsed.presentation(),
+        &merman_render::LayoutOptions::default(),
+        session,
+    )
+    .map_err(|err| format!("layout failed for {}: {err}", mmd_path.display()))?;
 
     if artifact.family_id() != expected_family {
         return Err(format!(
@@ -3013,7 +3016,7 @@ fn render_family_fixture_svg(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DebugSvgFamily {
     fixture_dir: &'static str,
-    family: merman_core::DiagramFamilyId,
+    family: merman::model::family::DiagramFamilyId,
     suppress_errors: bool,
     seeded_site_config: bool,
     deterministic_diagram_id: bool,
@@ -3030,41 +3033,45 @@ fn debug_svg_family(diagram: &str) -> Option<DebugSvgFamily> {
     match diagram {
         "flowchart" | "flowchart-v2" | "flowchartV2" => Some(standard(
             "flowchart",
-            merman_core::DiagramFamilyId::FLOWCHART,
+            merman::model::family::DiagramFamilyId::FLOWCHART,
         )),
-        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-            Some(standard("state", merman_core::DiagramFamilyId::STATE))
-        }
-        "class" | "classDiagram" => Some(standard("class", merman_core::DiagramFamilyId::CLASS)),
+        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => Some(standard(
+            "state",
+            merman::model::family::DiagramFamilyId::STATE,
+        )),
+        "class" | "classDiagram" => Some(standard(
+            "class",
+            merman::model::family::DiagramFamilyId::CLASS,
+        )),
         "er" | "erDiagram" => Some(DebugSvgFamily {
             fixture_dir: "er",
-            family: merman_core::DiagramFamilyId::ER,
+            family: merman::model::family::DiagramFamilyId::ER,
             suppress_errors: true,
             seeded_site_config: true,
             deterministic_diagram_id: true,
         }),
         "c4" => Some(DebugSvgFamily {
             fixture_dir: "c4",
-            family: merman_core::DiagramFamilyId::C4,
+            family: merman::model::family::DiagramFamilyId::C4,
             suppress_errors: true,
             seeded_site_config: false,
             deterministic_diagram_id: true,
         }),
         "sequence" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard("sequence", merman_core::DiagramFamilyId::SEQUENCE)
+            ..standard("sequence", merman::model::family::DiagramFamilyId::SEQUENCE)
         }),
         "info" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard("info", merman_core::DiagramFamilyId::INFO)
+            ..standard("info", merman::model::family::DiagramFamilyId::INFO)
         }),
         "pie" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard("pie", merman_core::DiagramFamilyId::PIE)
+            ..standard("pie", merman::model::family::DiagramFamilyId::PIE)
         }),
         "packet" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard("packet", merman_core::DiagramFamilyId::PACKET)
+            ..standard("packet", merman::model::family::DiagramFamilyId::PACKET)
         }),
         _ => None,
     }
@@ -3108,7 +3115,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let out_dir = out_root.join(profile.fixture_dir);
         let engine = if profile.seeded_site_config {
             merman::MermaidEngine::new().with_site_config(
-                merman::presentation::PresentationConfig::from_value(
+                merman::SourcePresentationConfig::from_value(
                     serde_json::json!({ "handDrawnSeed": 1 }),
                 ),
             )
@@ -3447,7 +3454,7 @@ mod tests {
             Path::new("info.mmd"),
             "info\n",
             merman_core::ParseOptions::default(),
-            merman_core::DiagramFamilyId::INFO,
+            merman::model::family::DiagramFamilyId::INFO,
             &merman_render::svg::SvgRenderOptions::default(),
             &merman_render::svg::SvgDebugOptions::default(),
         )
@@ -3464,7 +3471,7 @@ mod tests {
             Path::new("info.mmd"),
             "info\n",
             merman_core::ParseOptions::default(),
-            merman_core::DiagramFamilyId::FLOWCHART,
+            merman::model::family::DiagramFamilyId::FLOWCHART,
             &merman_render::svg::SvgRenderOptions::default(),
             &merman_render::svg::SvgDebugOptions::default(),
         )

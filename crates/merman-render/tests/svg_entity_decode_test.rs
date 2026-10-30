@@ -26,7 +26,8 @@ fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
     let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::default()))
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout_opts = LayoutOptions::default();
     let artifact = family::prepare(&parsed, &layout_opts, session).expect("layout ok");

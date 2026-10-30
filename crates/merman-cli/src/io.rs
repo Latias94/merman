@@ -5,18 +5,18 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 pub(crate) struct AcquiredFixSource {
     text: String,
     snapshot: Option<FixSourceSnapshot>,
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 struct FixSourceSnapshot {
     identity: same_file::Handle,
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 impl AcquiredFixSource {
     pub(crate) fn text(&self) -> &str {
         &self.text
@@ -123,7 +123,7 @@ impl AcquiredFixSource {
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn concurrent_change(path: &Path, reason: impl Into<String>) -> CliError {
     CliError::ConcurrentModification {
         path: path.to_path_buf(),
@@ -131,7 +131,7 @@ fn concurrent_change(path: &Path, reason: impl Into<String>) -> CliError {
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn snapshot_io_error(path: &Path, source: std::io::Error) -> CliError {
     if source.kind() == std::io::ErrorKind::NotFound {
         concurrent_change(path, "target disappeared after acquisition")
@@ -222,7 +222,7 @@ fn read_primary_input_impl(
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 pub(crate) fn read_fix_source(
     input: &crate::invocation::ResolvedInput,
     limit: InputLimit,
@@ -442,7 +442,7 @@ fn stdout_error(error: std::io::Error) -> CliError {
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 pub(crate) fn write_file(
     path: &Path,
     bytes: &[u8],
@@ -452,7 +452,7 @@ pub(crate) fn write_file(
     publication.publish_file_verified(path, bytes, publications, &mut |_| Ok(()))
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 pub(crate) fn write_file_verified(
     path: &Path,
     bytes: &[u8],
@@ -463,7 +463,7 @@ pub(crate) fn write_file_verified(
     publication.publish_file_verified(path, bytes, publications, verify)
 }
 
-#[cfg(all(test, feature = "analysis"))]
+#[cfg(all(test, feature = "fixes"))]
 mod tests {
     use super::*;
     use crate::invocation::ResolvedInput;

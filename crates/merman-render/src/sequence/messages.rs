@@ -10,11 +10,11 @@ use super::wrap_sequence_label_like_mermaid_lines;
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessage, SequenceMessageDirection, SequenceMessageMarker,
     SequenceMessageStroke, SequenceSignalSemantics,
 };
+use merman_model::presentation::PresentationConfig;
 
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
 const CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET: f64 = 6.0;

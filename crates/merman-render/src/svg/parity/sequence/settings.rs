@@ -75,8 +75,7 @@ impl SequenceRenderSettings {
 
     #[cfg(test)]
     pub(super) fn from_effective_config(effective_config: &serde_json::Value) -> Self {
-        let config =
-            merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
+        let config = crate::test_support::presentation_config(effective_config.clone());
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::interactive(),
         );
@@ -127,7 +126,7 @@ mod tests {
             )
             .unwrap();
         let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::interactive(),
         );

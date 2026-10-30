@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use super::{FlowchartConfigView, FlowchartLayoutSettings};
 use crate::diagram_theme::{
@@ -560,7 +560,9 @@ mod tests {
 
     #[test]
     fn typed_base_typography_overrides_layout_and_html_measurement_styles() {
-        let plan = typed_plan(PresentationConfig::from_value(serde_json::json!({})));
+        let plan = typed_plan(crate::test_support::presentation_config(serde_json::json!(
+            {}
+        )));
         let settings = plan.layout_settings(&serde_json::json!({}));
 
         assert_eq!(
@@ -579,7 +581,7 @@ mod tests {
     fn inactive_base_typography_does_not_request_terminal_evidence() {
         let plan = FlowchartBaseTypographyPlan::resolve(
             None,
-            &PresentationConfig::from_value(serde_json::json!({})),
+            &crate::test_support::presentation_config(serde_json::json!({})),
         );
 
         assert!(!plan.requires_terminal_evidence());
@@ -612,7 +614,7 @@ mod tests {
         let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         let plan = FlowchartBaseTypographyPlan::resolve(
             Some(&resolved),
-            &PresentationConfig::from_value(serde_json::json!({})),
+            &crate::test_support::presentation_config(serde_json::json!({})),
         );
 
         plan.begin_terminal_emission();
@@ -649,7 +651,7 @@ mod tests {
         let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         let plan = FlowchartBaseTypographyPlan::resolve(
             Some(&resolved),
-            &PresentationConfig::from_value(serde_json::json!({})),
+            &crate::test_support::presentation_config(serde_json::json!({})),
         );
 
         plan.begin_terminal_emission();

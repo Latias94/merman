@@ -537,7 +537,7 @@ impl AnalysisConfigHostDefaults {
 
     fn value_for(self, limit_id: &str) -> Option<usize> {
         match limit_id {
-            id if id == merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str() => {
+            id if id == merman_model::resources::InputResourceLimitId::MaxSourceBytes.as_str() => {
                 self.max_source_bytes
             }
             MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID => self.max_document_diagrams,
@@ -770,7 +770,7 @@ struct ResourceLimitSchemaDescriptor {
 }
 
 fn resource_limit_descriptors() -> impl Iterator<Item = ResourceLimitSchemaDescriptor> {
-    let source = merman_core::resources::InputResourceLimitId::MaxSourceBytes.descriptor();
+    let source = merman_model::resources::InputResourceLimitId::MaxSourceBytes.descriptor();
     std::iter::once(ResourceLimitSchemaDescriptor {
         stable_id: source.stable_id,
         minimum_value: source.minimum_value,

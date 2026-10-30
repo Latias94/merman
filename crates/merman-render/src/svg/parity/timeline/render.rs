@@ -985,7 +985,7 @@ mod tests {
         let mut out = RejectAfterFirstWrite::default();
         let typography = crate::timeline::TimelineTypographyThemePlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
         );
         let event_theme = crate::timeline::TimelineEventTheme::baseline();
         let mut event_emission = TimelineEventEmissionState::new(&event_theme);
@@ -1052,11 +1052,11 @@ mod tests {
             &crate::timeline::TimelineEventTheme::baseline(),
             &crate::timeline::TimelineTypographyThemePlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
             ),
             &crate::timeline::TimelineTextPaintPlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
                 execution.work_meter(),
             )
             .expect("text paint"),
@@ -1103,8 +1103,7 @@ mod tests {
             let effective_config = serde_json::json!({
                 "theme": "redux", "look": "neo", "themeVariables": variables,
             });
-            let config =
-                merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
+            let config = crate::test_support::presentation_config(effective_config.clone());
             let options = SvgRenderOptions::default();
             let debug = SvgDebugOptions::default();
             let session = crate::environment::RenderEnvironment::deterministic()

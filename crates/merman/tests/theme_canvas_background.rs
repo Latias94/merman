@@ -86,11 +86,11 @@ fn check_background_ownership(
             "transparent",
         ),
     ] {
-        let renderer = merman::Renderer::new().with_presentation_engine(
-            merman::MermaidEngine::new().with_site_config(
-                merman::presentation::PresentationConfig::from_value(config.clone()),
-            ),
-        );
+        let renderer =
+            merman::Renderer::new()
+                .with_presentation_engine(merman::MermaidEngine::new().with_site_config(
+                    merman::SourcePresentationConfig::from_value(config.clone()),
+                ));
         let render = |theme: Option<&merman::svg::DiagramTheme>| {
             let request = merman::RenderRequest::svg(
                 source,

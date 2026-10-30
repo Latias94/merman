@@ -7,7 +7,7 @@ use std::time::Duration;
 use merman::{
     OperationControl, OperationPhase, ParseOptions, PresentationArtifact, RenderError,
     RenderOutput, RenderRequest, Renderer, ThemeEvidenceStatus,
-    resources::{InputResourceLimitId, InputResourcePolicy},
+    model::resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
 #[cfg(feature = "ascii")]
@@ -167,7 +167,7 @@ fn architecture_group_paint_theme() -> merman::svg::DiagramTheme {
             merman::svg::DiagramThemeSpec::new().with_styles(
                 merman::svg::ThemeRuleSet::default().with_rule(
                     merman::svg::ThemeRule::new(merman::svg::ThemeTarget::Cluster, style)
-                        .for_family(merman::DiagramFamilyId::ARCHITECTURE),
+                        .for_family(merman::model::family::DiagramFamilyId::ARCHITECTURE),
                 ),
             ),
         )
@@ -183,7 +183,7 @@ fn flowchart_paint_theme() -> merman::svg::DiagramTheme {
                 merman::svg::CanvasPaint::solid("#1d4ed8").expect("fixture paint is valid"),
             ),
         )
-        .for_family(merman::DiagramFamilyId::FLOWCHART),
+        .for_family(merman::model::family::DiagramFamilyId::FLOWCHART),
     );
     merman::svg::DiagramThemeCompiler::new()
         .compile(merman::svg::DiagramThemeSpec::new().with_styles(styles))
@@ -822,7 +822,7 @@ fn completed_svg_evidence_freezes_family_and_theme_identity() {
     assert!(output.svg().starts_with("<svg"));
     assert_eq!(
         output.evidence().family_id(),
-        merman::DiagramFamilyId::SEQUENCE
+        merman::model::family::DiagramFamilyId::SEQUENCE
     );
     assert_eq!(
         output.evidence().theme_recipe_fingerprint(),
@@ -940,7 +940,7 @@ fn pie_ordinal_palette_drives_terminal_slice_fills_and_verified_evidence() {
 fn pie_site_palette_slot_outranks_the_typed_default() {
     let renderer =
         Renderer::new().with_presentation_engine(merman::MermaidEngine::new().with_site_config(
-            merman::presentation::PresentationConfig::from_value(serde_json::json!({
+            merman::SourcePresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {"pie1": "#111827"}
             })),
         ));
@@ -1025,7 +1025,7 @@ fn architecture_group_paint_reaches_the_terminal_rect_and_verified_evidence() {
 fn architecture_site_group_border_outranks_typed_stroke_without_shadowing_typed_fill() {
     let renderer =
         Renderer::new().with_presentation_engine(merman::MermaidEngine::new().with_site_config(
-            merman::presentation::PresentationConfig::from_value(serde_json::json!({
+            merman::SourcePresentationConfig::from_value(serde_json::json!({
                 "themeVariables": {"primaryBorderColor": "#f97316"}
             })),
         ));
@@ -1078,7 +1078,7 @@ fn architecture_group_ordinal_paint_remains_fail_closed() {
                                 .expect("valid Architecture ordinal fill"),
                         ),
                     )
-                    .for_family(merman::DiagramFamilyId::ARCHITECTURE)
+                    .for_family(merman::model::family::DiagramFamilyId::ARCHITECTURE)
                     .with_ordinal(
                         merman::svg::OrdinalSelector::exact(1)
                             .expect("valid Architecture group ordinal"),
@@ -1118,7 +1118,7 @@ fn standalone_class_svg_separates_verified_relation_width_from_font_portability(
                 .with_stroke_width(5.0)
                 .expect("valid Class relation width"),
         )
-        .for_family(merman::DiagramFamilyId::CLASS),
+        .for_family(merman::model::family::DiagramFamilyId::CLASS),
     );
     let theme = merman::svg::DiagramThemeCompiler::new()
         .compile(merman::svg::DiagramThemeSpec::new().with_styles(styles))
@@ -1143,7 +1143,7 @@ fn standalone_class_svg_separates_verified_relation_width_from_font_portability(
 
     assert_eq!(
         output.evidence().family_id(),
-        merman::DiagramFamilyId::CLASS
+        merman::model::family::DiagramFamilyId::CLASS
     );
     assert_eq!(
         output.evidence().theme_evidence().status(),
@@ -1968,7 +1968,10 @@ fn png_output_retains_the_same_coarse_render_evidence() {
         output.admission().artifact_kind(),
         merman::RenderArtifactKind::Png
     );
-    assert_eq!(output.evidence().family_id(), merman::DiagramFamilyId::INFO);
+    assert_eq!(
+        output.evidence().family_id(),
+        merman::model::family::DiagramFamilyId::INFO
+    );
     assert_eq!(
         output.evidence().theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())
@@ -2199,13 +2202,13 @@ fn export_backend_errors_use_canonical_render_error_classification() {
 
     let provenance = merman::OperationResourceProvenance::new(
         merman::OperationResourceDomain::Render,
-        Some(merman::resources::ResourceProfile::Constrained),
+        Some(merman::model::resources::ResourceProfile::Constrained),
         [merman::OperationResourceOverride {
             id: "max_svg_bytes",
             value: 17,
         }],
     );
-    let terminal = merman::OperationLedgerError::ArithmeticOverflow {
+    let terminal = merman::model::OperationLedgerError::ArithmeticOverflow {
         id: "max_svg_bytes",
         phase: OperationPhase::Postprocess,
         resource_phase: "svg_postprocess",
@@ -2291,7 +2294,7 @@ fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {
                 && limit.provenance.as_ref().is_some_and(|provenance| {
                     provenance.domain == OperationResourceDomain::Ascii
                         && provenance.profile
-                            == Some(merman::resources::ResourceProfile::Interactive)
+                            == Some(merman::model::resources::ResourceProfile::Interactive)
                         && provenance.explicit_overrides.as_ref()
                             == [OperationResourceOverride {
                                 id: "max_ascii_grid_cells",
@@ -2374,7 +2377,7 @@ fn ascii_target_resource_terminal_precedes_option_validation_without_rewriting_p
         .expect("flowchart should produce a semantic artifact");
     let provenance = OperationResourceProvenance::new(
         OperationResourceDomain::Render,
-        Some(merman::resources::ResourceProfile::Constrained),
+        Some(merman::model::resources::ResourceProfile::Constrained),
         [OperationResourceOverride {
             id: "max_svg_bytes",
             value: 17,

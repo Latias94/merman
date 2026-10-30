@@ -21,7 +21,7 @@ owners rather than being duplicated across Markdown files.
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |
 | Compare releases or substantiate release claims | [Comparative release reports](release/RELEASE_REPORTS.md) |
 | Upgrade between releases or native/query contracts | [Versioned upgrade index](release/README.md), including [alpha.7 → 0.8.0](release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) |
-| Migrate current-source semantic JSON or deep diagram models | [Deep diagram lifecycle migration](migrations/deep-diagram-lifecycle.md) |
+| Migrate current-source Rust models, output inputs, or semantic JSON | [Model/source migration](migrations/model-source-boundaries.md) and [deep diagram lifecycle migration](migrations/deep-diagram-lifecycle.md) |
 | Reuse parsed source, migrate geometry budgets, or mount responsive Web diagrams | [Current development migration](migrations/render-reuse-host-integration.md) |
 | Align to another Mermaid release | [Mermaid upgrade playbook](release/MERMAID_UPGRADE_PLAYBOOK.md) |
 

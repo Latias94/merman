@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
@@ -12,12 +12,13 @@ use crate::{
     Error, MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult, Result,
     SemanticMetadata, SourceSpan,
 };
-pub use merman_model::families::railroad::{
-    RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRepeatBoundError,
-    RailroadRuleModel,
+#[cfg(test)]
+pub(crate) use merman_model::families::railroad::RailroadRepeatBoundError;
+pub(crate) use merman_model::families::railroad::{
+    RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRuleModel,
 };
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 
@@ -167,29 +168,29 @@ struct Token {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Ir)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad_ebnf(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_ebnf(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Ebnf)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad_abnf(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_abnf(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Abnf)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad_peg(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_peg(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Peg)
 }
 
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ir, control)
@@ -198,7 +199,7 @@ pub(crate) fn parse_railroad_model_for_render_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_ebnf_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ebnf, control)
@@ -207,7 +208,7 @@ pub(crate) fn parse_railroad_ebnf_model_for_render_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_abnf_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Abnf, control)
@@ -216,7 +217,7 @@ pub(crate) fn parse_railroad_abnf_model_for_render_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_peg_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Peg, control)
@@ -226,7 +227,7 @@ pub(crate) fn parse_railroad_peg_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ir, control)
@@ -236,7 +237,7 @@ pub(crate) fn parse_railroad_json_and_editor_facts(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf, control)
@@ -246,7 +247,7 @@ pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf, control)
@@ -256,7 +257,7 @@ pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_peg_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Peg, control)
@@ -366,13 +367,13 @@ struct RailroadSemanticSource {
 
 impl RailroadSemanticSource {
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(mut self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_compat_json(mut self, meta: &SourcePresentationMetadata) -> Result<Value> {
         sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
         render_model_to_compat_json(&self.model, meta)
     }
 
     #[cfg(feature = "presentation")]
-    fn into_render_model(mut self, meta: &PresentationMetadata) -> RailroadDiagramModel {
+    fn into_render_model(mut self, meta: &SourcePresentationMetadata) -> RailroadDiagramModel {
         sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
         self.model
     }
@@ -415,7 +416,7 @@ struct RailroadPegPredicateTrace {
 #[cfg(feature = "compat-json")]
 fn parse_railroad_for_dialect(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
 ) -> Result<Value> {
     parse_railroad_semantic_source(code, meta, dialect)?.into_compat_json(meta)
@@ -424,7 +425,7 @@ fn parse_railroad_for_dialect(
 #[cfg(feature = "presentation")]
 fn parse_railroad_model_for_render_dialect_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
@@ -446,7 +447,7 @@ fn parse_railroad_model_for_render_dialect_controlled(
 #[cfg(feature = "editor-facts")]
 fn parse_railroad_json_and_editor_facts_for_dialect(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
@@ -477,21 +478,16 @@ fn parse_railroad_json_and_editor_facts_for_dialect(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &RailroadDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": &model.title,
-        "accTitle": &model.acc_title,
-        "accDescr": &model.acc_descr,
-        "rules": &model.rules,
-    }))
+    merman_model::families::railroad::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(feature = "compat-json")]
 fn parse_railroad_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
 ) -> Result<RailroadSemanticSource> {
     construct_railroad_semantic_source(
@@ -3490,13 +3486,13 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
-    use crate::{MermaidConfig, PresentationMetadata};
+    use crate::{MermaidConfig, SourcePresentationMetadata};
 
-    fn meta(dialect: RailroadDialect) -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta(dialect: RailroadDialect) -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: dialect.diagram_type().to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -4052,7 +4048,11 @@ mod tests {
 
             assert_eq!(typed.metadata().diagram_type, diagram_type);
             assert_eq!(
-                render_model_to_compat_json(model, typed.metadata()).unwrap(),
+                merman_model::families::railroad::compat::project(
+                    model,
+                    &merman_model::presentation::compat::CompatJsonMetadata::from(typed.metadata())
+                )
+                .unwrap(),
                 compat.model
             );
         }

@@ -4,7 +4,8 @@ use crate::{
     AnalysisCancellationToken, AnalysisCancelled, DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan,
     SourceMap,
 };
-use merman_core::{MermaidConfig, SourceSpan, preprocess::SourceConfigEvidence};
+use merman_core::preprocess::SourceConfigEvidence;
+use merman_model::{MermaidConfig, SourceSpan};
 use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::sync::Arc;

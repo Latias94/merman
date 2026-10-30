@@ -139,7 +139,7 @@ fn frontmatter_migration_fix_edits_are_shared_for_many_directives() {
         source.push_str("flowchart TD\nA-->B\n");
         let source_map = SourceMap::new(source.as_str());
         let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
-        let captured_config = merman_core::MermaidConfig::from_value(json!({ "theme": "dark" }));
+        let captured_config = merman_model::MermaidConfig::from_value(json!({ "theme": "dark" }));
 
         prefer_frontmatter_config_diagnostics_with_config(
             &source,
@@ -190,7 +190,7 @@ fn frontmatter_migration_fix_respects_the_128_edit_boundary() {
     fn diagnostics_for(source: &str) -> Vec<AnalysisDiagnostic> {
         let source_map = SourceMap::new(source);
         let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
-        let captured_config = merman_core::MermaidConfig::from_value(json!({ "theme": "dark" }));
+        let captured_config = merman_model::MermaidConfig::from_value(json!({ "theme": "dark" }));
 
         prefer_frontmatter_config_diagnostics_with_config(
             source,
@@ -229,7 +229,7 @@ fn source_lint_pipeline_observes_cancellation_for_large_migration_source() {
     let mut source = "%%{ init: { theme: 'dark' } }%%\n".repeat(512);
     source.push_str("flowchart TD\nA-->B\n");
     let source_map = SourceMap::new(source.as_str());
-    let captured_config = merman_core::MermaidConfig::from_value(json!({ "theme": "dark" }));
+    let captured_config = merman_model::MermaidConfig::from_value(json!({ "theme": "dark" }));
     let source_config = crate::test_support::capture_source_config_evidence(&source);
     let cancellation = crate::AnalysisCancellationToken::new();
     cancellation.cancel_after_checkpoints(12);
@@ -252,7 +252,7 @@ fn oversized_migration_config_keeps_diagnostics_without_materializing_a_fix() {
     let source = "%%{ init: { theme: 'dark' } }%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
     let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
-    let captured_config = merman_core::MermaidConfig::from_value(json!({
+    let captured_config = merman_model::MermaidConfig::from_value(json!({
         "customOverlayPayload": "x".repeat(2 * 1024 * 1024),
     }));
 
@@ -881,8 +881,8 @@ fn semantic_warning_facts_map_flowchart_missing_direction_rule_id() {
             FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
             "flowchart headers should declare an explicit direction",
         )
-        .with_span(merman_core::SourceSpan::new(0, 9))
-        .with_fix_span(merman_core::SourceSpan::new(9, 9))],
+        .with_span(merman_model::SourceSpan::new(0, 9))
+        .with_fix_span(merman_model::SourceSpan::new(9, 9))],
         &source_map,
         &config,
     );
@@ -921,7 +921,7 @@ fn semantic_warning_facts_map_flowchart_unknown_style_target_rule_id() {
             FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
             "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
         )
-        .with_span(merman_core::SourceSpan::new(19, 20))],
+        .with_span(merman_model::SourceSpan::new(19, 20))],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -945,8 +945,8 @@ fn semantic_authoring_warning_facts_are_not_enabled_by_core_profile() {
             FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
             "flowchart headers should declare an explicit direction",
         )
-        .with_span(merman_core::SourceSpan::new(0, 9))
-        .with_fix_span(merman_core::SourceSpan::new(9, 9))],
+        .with_span(merman_model::SourceSpan::new(0, 9))
+        .with_fix_span(merman_model::SourceSpan::new(9, 9))],
         &source_map,
         &AnalysisRuleConfig::default(),
     );

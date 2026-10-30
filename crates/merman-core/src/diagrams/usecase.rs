@@ -9,16 +9,14 @@ use crate::EditorSemanticFacts;
 use crate::family::EditorFactsDemand;
 use crate::{Error, OperationControl, OperationControlResult, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
-pub use merman_model::families::usecase::{
+use crate::{Result, SourcePresentationMetadata};
+pub(crate) use merman_model::families::usecase::{
     UsecaseActorType, UsecaseAnimation, UsecaseArrowType, UsecaseBoundary, UsecaseClassDef,
     UsecaseDiagramModel, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseJsonStringEncoding,
     UsecaseLabelType, UsecaseNode, UsecaseNodeKind, UsecaseNote, UsecaseRelationship,
     UsecaseRelationshipType,
 };
 use serde_json::Value;
-#[cfg(feature = "compat-json")]
-use serde_json::json;
 
 mod json_string;
 mod lexer;
@@ -130,7 +128,7 @@ pub(crate) fn parse_usecase_semantic_model_controlled(
 #[cfg(all(test, feature = "compat-json"))]
 fn construct(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Construction, family::CombinedSemanticFailure>> {
     construct_usecase_semantic_source_controlled(
@@ -150,7 +148,7 @@ struct Construction {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_usecase(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_usecase(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let control = OperationControl::new();
     let construction = construct_usecase_semantic_source_controlled(
         code,
@@ -168,7 +166,7 @@ pub(crate) fn parse_usecase(code: &str, meta: &PresentationMetadata) -> Result<V
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_usecase_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<UsecaseDiagramModel>> {
     Ok(construct_usecase_semantic_source_controlled(
@@ -187,7 +185,7 @@ pub(crate) fn parse_usecase_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_usecase_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_usecase_semantic_source_controlled(
@@ -213,28 +211,10 @@ pub(crate) fn parse_usecase_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &UsecaseDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let json_nodes: Vec<_> = model
-        .json_nodes
-        .iter()
-        .map(|node| {
-            let mut value = json!({
-                "id": node.id, "value": node.value, "propertyOrder": node.property_order,
-                "classes": node.classes, "styles": node.styles,
-            });
-            if let Some(encoding) = node.string_encoding {
-                value["stringEncoding"] = json!(encoding);
-            }
-            value
-        })
-        .collect();
-    Ok(
-        json!({ "type": meta.diagram_type, "direction": model.direction,
-        "nodes": model.nodes, "boundaries": model.boundaries, "relationships": model.relationships,
-        "notes": model.notes, "jsonNodes": json_nodes, "classDefs": model.class_defs,
-        "title": model.title, "accTitle": model.acc_title, "accDescr": model.acc_description }),
-    )
+    merman_model::families::usecase::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 fn construct_usecase_semantic_source_controlled(
@@ -374,10 +354,10 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::PresentationMetadata {
+            let full_metadata = crate::SourcePresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
-                effective_config: crate::presentation::PresentationConfig::from_config(
+                effective_config: crate::presentation::SourcePresentationConfig::from_config(
                     metadata.semantic_config.clone(),
                 ),
                 title: metadata.title.clone(),

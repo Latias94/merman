@@ -403,7 +403,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         score: i64,
     }
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
+    let reg = merman::DetectorRegistry::pinned_mermaid_baseline();
     let mut html_files: Vec<PathBuf> = Vec::new();
     collect_html_files_recursively(&html_root, &mut html_files)?;
     html_files.sort();
@@ -447,7 +447,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                 }
             }
 
-            let mut cfg = merman::presentation::PresentationConfig::default();
+            let mut cfg = merman::SourcePresentationConfig::default();
             let detected = match reg.detect_type(body.as_str(), &mut cfg) {
                 Ok(t) => t,
                 Err(_) => {

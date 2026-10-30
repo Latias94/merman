@@ -1,8 +1,8 @@
-use crate::diagram::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 use indexmap::IndexMap;
+use merman_model::warnings::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
 use std::collections::{HashMap, HashSet};
 
 use super::{

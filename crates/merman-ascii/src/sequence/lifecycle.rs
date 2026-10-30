@@ -396,7 +396,8 @@ mod tests {
     use super::*;
     use crate::operation::AsciiExecution;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
     use merman_model::resources::ResourceProfile;
 
     fn shared_anchor_model() -> SequenceDiagramModel {

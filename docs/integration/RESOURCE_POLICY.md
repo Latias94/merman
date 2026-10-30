@@ -76,7 +76,7 @@ and return a lean `SemanticArtifact`. They admit source/model resources without 
 themes or performing layout. The artifact cannot be promoted to a graphical target or reusable
 full source. Configure this route through `with_semantic_parser`; full configuration and custom
 adapters installed through `with_presentation_engine(MermaidEngine::new()...)` are independent.
-`MermaidEngine::with_site_config` takes `merman::presentation::PresentationConfig`.
+`MermaidEngine::with_site_config` takes `merman::SourcePresentationConfig`.
 
 Ordinary ASCII requests also use the semantic route and do not evaluate visual theme programs.
 Source-config admission and semantic sanitization still apply, but an admitted invalid visual

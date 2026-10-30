@@ -2874,7 +2874,8 @@ mod tests {
         use crate::resources::{
             OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
         };
-        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions};
+        use merman_model::presentation::RenderSemanticModel;
 
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
@@ -2882,7 +2883,8 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Architecture(model) = parsed.model() else {
             panic!("expected Architecture model");
         };

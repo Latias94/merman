@@ -79,9 +79,10 @@ impl DiagramThemeCompiler {
         ));
         let fingerprint =
             super::canonical::recipe_fingerprint(&spec, &catalog, &effective_requirements);
-        let parse_compatibility =
-            merman_core::__private::ThemeCompatibilityPlan::try_new(fingerprint, mermaid_config)
-                .expect("compiled Mermaid compatibility must satisfy the core plan contract");
+        let compatibility_recipe = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
+            fingerprint,
+            mermaid_config,
+        )?;
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),
@@ -98,7 +99,7 @@ impl DiagramThemeCompiler {
             catalog,
             resource_restriction: self.resources.clone(),
             requirements: effective_requirements,
-            parse_compatibility,
+            compatibility_recipe,
             family_programs,
             root_plan,
             recipe_fingerprint: ThemeRecipeFingerprint::from_bytes(fingerprint),
@@ -275,6 +276,8 @@ fn infer_required_capabilities(
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ThemeCompileError {
+    #[error(transparent)]
+    CompatibilityRecipe(#[from] merman_model::presentation::ThemeCompatibilityRecipeError),
     #[error(transparent)]
     Validation(#[from] ThemeCompileValidationError),
     #[error(transparent)]

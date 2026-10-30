@@ -252,7 +252,7 @@ fn default_swimlane_uses_the_typed_swimlane_artifact() {
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
         semantic.family_id(),
-        Some(merman::DiagramFamilyId::SWIMLANE)
+        Some(merman::model::family::DiagramFamilyId::SWIMLANE)
     );
     assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
@@ -461,7 +461,7 @@ fn explicit_dagre_override_uses_the_flowchart_artifact() {
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
         semantic.family_id(),
-        Some(merman::DiagramFamilyId::FLOWCHART)
+        Some(merman::model::family::DiagramFamilyId::FLOWCHART)
     );
     assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
@@ -512,7 +512,7 @@ flowchart LR
     assert_eq!(semantic.metadata().diagram_type, "flowchart-v2");
     assert_eq!(
         semantic.family_id(),
-        Some(merman::DiagramFamilyId::SWIMLANE)
+        Some(merman::model::family::DiagramFamilyId::SWIMLANE)
     );
     assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
@@ -640,7 +640,7 @@ fn explicit_elk_override_uses_the_flowchart_artifact() {
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
         semantic.family_id(),
-        Some(merman::DiagramFamilyId::FLOWCHART)
+        Some(merman::model::family::DiagramFamilyId::FLOWCHART)
     );
     assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
@@ -742,7 +742,7 @@ fn swimlane_typed_entrypoint_preserves_repeated_nested_group_completion() {
         .expect("typed Swimlane parse")
         .expect("Swimlane detected");
     assert_eq!(parsed.metadata().diagram_type, "swimlane");
-    let merman::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+    let merman::model::presentation::RenderSemanticModel::Flowchart(model) = parsed.model() else {
         panic!("expected the shared Flowchart typed model");
     };
     assert_eq!(model.subgraphs.len(), 1);

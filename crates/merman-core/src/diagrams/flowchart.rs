@@ -2,14 +2,9 @@
     feature = "presentation",
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::SourceSpan;
-#[cfg(all(
-    feature = "compat-json",
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
-use crate::diagram::legacy_warning_messages;
 #[cfg(all(
     feature = "editor-facts",
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
@@ -32,10 +27,7 @@ use crate::{
 use indexmap::IndexMap;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use serde_json::Value;
-#[cfg(all(
-    any(test, feature = "compat-json"),
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use serde_json::json;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use std::cell::Cell;
@@ -89,8 +81,6 @@ mod lexer;
 mod lexer_iter;
 mod link;
 mod model;
-#[cfg(feature = "presentation")]
-mod presentation;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod semantic;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -106,8 +96,8 @@ use text::{strip_wrapping_backticks, title_kind_str, trim_flowdb_label_text, unq
 
 #[cfg(feature = "presentation")]
 #[doc(hidden)]
-pub use model::FlowchartRenderContext;
-pub use model::{
+pub(crate) use model::FlowchartRenderContext;
+pub(crate) use model::{
     FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
     FlowNodeProvenance, FlowSubgraph, FlowchartModel, FlowchartSubgraphStyles,
 };
@@ -121,19 +111,18 @@ pub(crate) use ast::{
 use ast::{
     FlowchartAst, StatementArena, StatementEvent, StatementId, StatementList, Stmt, SubgraphBlock,
 };
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub(crate) use model::sanitize_common_db_fields;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
 #[cfg(all(
     feature = "presentation",
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
-use presentation::FlowchartRenderLabelSources;
+use merman_model::families::flowchart::FlowchartRenderLabelSources;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) use model::sanitize_common_db_fields;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
 
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
-use super::shapes::{pinned_shape_names, public_pinned_shape_names};
 #[cfg(all(
     any(test, feature = "compat-json"),
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
@@ -219,7 +208,7 @@ pub(crate) trait FlowchartMetadata {
     feature = "presentation",
     any(feature = "diagram-flowchart", feature = "diagram-swimlane")
 ))]
-impl FlowchartMetadata for PresentationMetadata {
+impl FlowchartMetadata for SourcePresentationMetadata {
     fn diagram_type(&self) -> &str {
         &self.diagram_type
     }
@@ -242,7 +231,7 @@ impl FlowchartMetadata for crate::SemanticMetadata {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_flowchart(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_flowchart(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_flowchart_with_warning_facts(code, meta)
         .map(crate::family::WarningSemanticParse::into_model)
 }
@@ -251,7 +240,7 @@ pub(crate) fn parse_flowchart(code: &str, meta: &PresentationMetadata) -> Result
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_flowchart_with_warning_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<crate::family::WarningSemanticParse> {
     let model = parse_flowchart_semantic_source(code, meta)?.into_model(meta)?;
     let compatibility = render_model_to_compat_json(&model, meta)?;
@@ -266,7 +255,7 @@ pub(crate) fn parse_flowchart_with_warning_facts(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_flowchart_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_flowchart_captured_semantic_model_controlled(
@@ -371,7 +360,7 @@ pub(crate) fn parse_flowchart_model_for_render<M: FlowchartMetadata>(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_flowchart_model_with_render_context(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<(FlowchartModel, FlowchartRenderContext)> {
     parse_flowchart_semantic_source_with_context(code, meta)?.into_model_with_render_context(meta)
 }
@@ -380,7 +369,7 @@ pub(crate) fn parse_flowchart_model_with_render_context(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_flowchart_model_with_render_context_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
     let source = parse_flowchart_semantic_source_with_context_controlled(code, meta, control)?;
@@ -433,57 +422,10 @@ pub(crate) fn parse_semantic_model_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &FlowchartModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut value =
-        serde_json::to_value(model).expect("Flowchart typed model must remain JSON-serializable");
-    let root = value.as_object_mut().ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            "flowchart typed model did not serialize to an object".to_string(),
-        )
-    })?;
-    if let Some(edges) = root.get_mut("edges").and_then(Value::as_array_mut) {
-        for edge in edges {
-            if let Some(edge) = edge.as_object_mut() {
-                edge.remove("startMarker");
-                edge.remove("endMarker");
-                edge.remove("strokeKind");
-                edge.remove("visibility");
-            }
-        }
-    }
-    if let Some(nodes) = root.get_mut("nodes").and_then(Value::as_array_mut) {
-        for node in nodes {
-            if let Some(node) = node.as_object_mut() {
-                node.remove("provenance");
-            }
-        }
-    }
-    root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    if model
-        .warning_facts
-        .iter()
-        .any(|fact| fact.rule_id == FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID)
-    {
-        root.insert("direction".to_string(), Value::Null);
-    }
-    if !model.warning_facts.is_empty() {
-        root.insert(
-            "warnings".to_string(),
-            json!(legacy_warning_messages(&model.warning_facts)),
-        );
-    }
-    Ok(value)
-}
-
-pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
-    public_pinned_shape_names()
-}
-
-#[doc(hidden)]
-pub fn flowchart_pinned_shape_names() -> impl Iterator<Item = &'static str> {
-    pinned_shape_names()
+    merman_model::families::flowchart::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(all(
@@ -2381,11 +2323,11 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "presentation")]
-    fn flowchart_test_meta(diagram_type: &str) -> PresentationMetadata {
-        PresentationMetadata {
+    fn flowchart_test_meta(diagram_type: &str) -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: diagram_type.to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -3102,10 +3044,10 @@ E -- "{nbsp}" --> F
 F -- "&nbsp;" --> G
 "#
         );
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let (model, render_label_sources) =
@@ -3364,10 +3306,10 @@ A -->|second &lt; owner| B
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
     fn combined_flowchart_parse_propagates_preexisting_cancellation() {
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "flowchart-v2".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let control = OperationControl::new();
@@ -3496,7 +3438,7 @@ A -->|second &lt; owner| B
     fn combined_flowchart_parser_enforces_max_edges_in_the_traced_path() {
         let mut meta = flowchart_test_meta("flowchart-v2");
         meta.effective_config =
-            crate::presentation::PresentationConfig::from_value(json!({"maxEdges": 3}));
+            crate::presentation::SourcePresentationConfig::from_value(json!({"maxEdges": 3}));
         let control = OperationControl::new();
 
         let parsed = parse_flowchart_json_and_editor_facts(

@@ -1,5 +1,8 @@
 //! Shared Mermaid configuration values with iterative ownership and pinned merge behavior.
 
+mod theme_id;
+pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
+
 use crate::json::estimated_value_owned_heap_bytes;
 use crate::json::{
     clone_value_nonrecursive, clone_value_nonrecursive_controlled, drop_value_nonrecursive,

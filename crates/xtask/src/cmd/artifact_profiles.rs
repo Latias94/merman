@@ -14,6 +14,42 @@ const CARGO_DIST_PROFILE_IDS: [&str; 2] = ["cli-release", "lsp-stdio-release"];
 const NATIVE_RUNTIME_FEATURE: &str = "native-runtime";
 const NATIVE_RUNTIME_CAPABILITIES: [&str; 3] = ["system-clock", "system-random", "system-timezone"];
 
+/// Classifies maintained artifact roots, not transitive Cargo feature resolution.
+///
+/// Data and output selectors do not provide source parsers. Independent consumers and the
+/// Cargo closure verifier check those roots; source hosts retain their local selector contract.
+fn source_diagram_families(
+    package: &str,
+    enabled: &BTreeSet<&str>,
+) -> Result<BTreeSet<&'static str>, String> {
+    match package {
+        "merman-model" | "merman-markup" | "merman-ascii" | "merman-render" | "merman-export" => {
+            Ok(BTreeSet::new())
+        }
+        "merman-core"
+        | "merman"
+        | "merman-analysis"
+        | "merman-cli"
+        | "merman-editor-core"
+        | "merman-lsp"
+        | "merman-bindings-core"
+        | "merman-ffi"
+        | "merman-uniffi"
+        | "merman-android-jni"
+        | "merman-wasm"
+        | "merman-wasi"
+        | "merman-typst-plugin"
+        | "merman-rustdoc" => Ok(merman::model::family::diagram_family_selectors()
+            .iter()
+            .filter(|selector| enabled.contains(selector.feature))
+            .map(|selector| selector.logical_family_kind)
+            .collect()),
+        _ => Err(format!(
+            "artifact root `{package}` has no declared source-parser ownership"
+        )),
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ArtifactProfileDescriptor {
@@ -763,14 +799,11 @@ fn validate_profile(
         &profile.expected.diagram_families,
         &format!("{path}.expected.diagram_families"),
     )?;
-    let selected_families = merman_core::diagram_family_selectors()
-        .iter()
-        .filter(|selector| enabled.contains(selector.feature))
-        .map(|selector| selector.logical_family_kind)
-        .collect::<BTreeSet<_>>();
+    let selected_families = source_diagram_families(&package.name, &enabled)?;
     if diagram_families != selected_families {
         return Err(format!(
-            "{path}.expected.diagram_families: must equal the canonical family selector closure; expected {selected_families:?}, found {diagram_families:?}"
+            "{path}.expected.diagram_families: must equal the source-parser family closure for `{}`; expected {selected_families:?}, found {diagram_families:?}",
+            package.name
         ));
     }
 
@@ -1152,6 +1185,75 @@ mod tests {
                 }
             }
             assert!(validate_fixture(value).is_err());
+        }
+    }
+
+    #[test]
+    fn output_and_data_roots_do_not_claim_source_parsers() {
+        let enabled = merman::model::family::diagram_family_selectors()
+            .iter()
+            .map(|selector| selector.feature)
+            .collect();
+        for package in [
+            "merman-model",
+            "merman-markup",
+            "merman-ascii",
+            "merman-render",
+            "merman-export",
+        ] {
+            assert!(
+                source_diagram_families(package, &enabled)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert!(source_diagram_families("unclassified-host", &enabled).is_err());
+    }
+
+    #[test]
+    fn source_roots_keep_their_local_family_selection() {
+        let enabled = BTreeSet::from(["diagram-flowchart", "diagram-gantt", "svg"]);
+        for package in ["merman-core", "merman", "merman-wasm", "merman-analysis"] {
+            assert_eq!(
+                source_diagram_families(package, &enabled).unwrap(),
+                BTreeSet::from(["flowchart", "gantt"])
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_parser_claims_from_selected_data_and_output_recipes() {
+        for id in [
+            "rust-model-all",
+            "rust-markup-full",
+            "rust-ascii",
+            "rust-render-native-svg",
+        ] {
+            let mut value = committed_value();
+            let index = profile_index(&value, id);
+            value["profiles"][index]["expected"]["diagram_families"] = json!(["flowchart"]);
+            let error = validate_fixture(value).unwrap_err();
+            assert!(
+                error.contains("source-parser family closure"),
+                "{id}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn new_library_owners_require_at_least_one_exact_recipe() {
+        for package in ["merman-model", "merman-markup"] {
+            let mut value = committed_value();
+            value["profiles"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|profile| profile["cargo"]["package"] != package);
+            let error = validate_fixture(value).unwrap_err();
+            assert!(
+                error.contains("artifact-profile-required lack exact recipes"),
+                "{error}"
+            );
+            assert!(error.contains(package), "{error}");
         }
     }
 

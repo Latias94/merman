@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::strip_line_ending;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -10,11 +10,11 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, Result, SourceSpan};
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 use merman_model::families::ishikawa::project_root_controlled;
-pub use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
+pub(crate) use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 
@@ -79,7 +79,7 @@ impl IshikawaSemanticSource {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_ishikawa(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_ishikawa(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let model = construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_semantic_model_controlled(
@@ -94,7 +94,7 @@ pub(crate) fn parse_ishikawa(code: &str, meta: &PresentationMetadata) -> Result<
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_ishikawa_semantic_source_controlled(
@@ -125,57 +125,32 @@ pub(crate) fn parse_ishikawa_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &IshikawaDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    render_model_to_compat_json_controlled(model, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")
+    merman_model::families::ishikawa::compat::project(model, &meta.compat_json_metadata())
+        .map_err(Into::into)
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &IshikawaDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<Value>> {
-    let root = match project_root_controlled(model, control)? {
-        Ok(root) => root,
-        Err(error) => {
-            return Ok(Err(Error::diagram_parse_fallback(
-                &meta.diagram_type,
-                error.to_string(),
-            )));
-        }
-    };
-    let mut nodes = Vec::with_capacity(model.nodes.len());
-    let mut stack = model
-        .root
-        .map(|root| vec![(root, 0usize)])
-        .unwrap_or_default();
-    while let Some((id, depth)) = stack.pop() {
-        control.checkpoint()?;
-        let node = &model.nodes[id];
-        nodes.push(json!({"text": node.text, "depth": depth}));
-        for &child in node.children.iter().rev() {
-            control.checkpoint()?;
-            stack.push((child, depth.saturating_add(1)));
-        }
-    }
-    let mut out = Map::new();
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("title".to_string(), json!(&model.title));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("root".to_string(), root.into_unmanaged_value());
-    out.insert("nodes".to_string(), Value::Array(nodes));
-    let out = crate::ManagedSemanticJson::from_value(Value::Object(out));
-    control.checkpoint()?;
-    Ok(Ok(out.into_unmanaged_value()))
+    Ok(
+        merman_model::families::ishikawa::compat::project_controlled(
+            model,
+            &meta.compat_json_metadata(),
+            control,
+        )?
+        .map_err(Into::into),
+    )
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_ishikawa_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<IshikawaDiagramModel> {
     Ok(construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
@@ -189,7 +164,7 @@ pub(crate) fn parse_ishikawa_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_ishikawa_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<IshikawaDiagramModel>> {
     let construction = construct_ishikawa_semantic_source_controlled(
@@ -281,7 +256,7 @@ struct IshikawaHeader {
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_ishikawa_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> std::result::Result<IshikawaSemanticSource, IshikawaParseFailure> {
     construct_ishikawa_semantic_source_controlled(
         code,
@@ -555,16 +530,16 @@ mod tests {
     };
     use crate::{
         ManagedSemanticJson, MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind,
-        PresentationMetadata, SourceSpan,
+        SourcePresentationMetadata, SourceSpan,
     };
 
     const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "ishikawa".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }

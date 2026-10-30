@@ -1,5 +1,5 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationConfig;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
@@ -38,7 +38,7 @@ fn config(swimlane: bool, look: &str) -> PresentationConfig {
     if swimlane {
         config["layout"] = json!("swimlane");
     }
-    PresentationConfig::from_value(config)
+    common::presentation_config(config)
 }
 
 fn render(
@@ -47,13 +47,18 @@ fn render(
     config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(
+    let parsed = common::install_parse_compatibility(
         theme,
-        MermaidEngine::new().with_site_config(config),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_config(
+                config.as_config().clone(),
+            ),
+        ),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()
-    .unwrap();
+    .unwrap()
+    .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
@@ -458,7 +463,7 @@ fn edge_fill_uses_stroke_source_and_config_ownership() {
             let rendered = render(
                 ONE,
                 &theme,
-                PresentationConfig::from_value(value),
+                common::presentation_config(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -621,3 +626,6 @@ fn edge_paint_static_and_ordinal_winners_keep_the_original_order_for_each_semant
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

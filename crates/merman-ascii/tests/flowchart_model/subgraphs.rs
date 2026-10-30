@@ -416,7 +416,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
         warning_facts: Vec::new(),
     };
     let rendered = render_model(
-        &merman_core::RenderSemanticModel::Flowchart(model),
+        &merman_model::presentation::RenderSemanticModel::Flowchart(model),
         &AsciiRenderOptions::ascii(),
     )
     .expect("subgraph direction override should render a local LR layout inside a TD graph");

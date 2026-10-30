@@ -1,22 +1,25 @@
-use crate::config::presentation::ThemeParseBinding;
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::*;
 use futures::executor::block_on;
+use merman_model::presentation::ThemeCompatibilityRecipe;
 use serde_json::{Value, json};
 use std::fmt::Write;
 
-fn test_detector_always_matches(_text: &str, _config: &mut PresentationConfig) -> bool {
+fn test_detector_always_matches(_text: &str, _config: &mut SourcePresentationConfig) -> bool {
     true
 }
 
-fn test_detector_deep_merges_empty_patch(_text: &str, config: &mut PresentationConfig) -> bool {
+fn test_detector_deep_merges_empty_patch(
+    _text: &str,
+    config: &mut SourcePresentationConfig,
+) -> bool {
     config.deep_merge(&json!({}));
     true
 }
 
 fn test_detector_deep_merges_unrelated_nested_patch(
     _text: &str,
-    config: &mut PresentationConfig,
+    config: &mut SourcePresentationConfig,
 ) -> bool {
     config.deep_merge(&json!({
         "detectorState": {
@@ -30,7 +33,7 @@ fn test_detector_deep_merges_unrelated_nested_patch(
 
 fn test_detector_deep_merges_ignored_type_conflict(
     _text: &str,
-    config: &mut PresentationConfig,
+    config: &mut SourcePresentationConfig,
 ) -> bool {
     config.deep_merge(&json!({ "flowchart": "ignored" }));
     true
@@ -38,7 +41,7 @@ fn test_detector_deep_merges_ignored_type_conflict(
 
 fn test_detector_deep_merges_depth_boundary_value(
     _text: &str,
-    config: &mut PresentationConfig,
+    config: &mut SourcePresentationConfig,
 ) -> bool {
     config.deep_merge(&json!({
         "flowchart": {
@@ -65,7 +68,7 @@ fn usecase_header_requires_whitespace_or_end() {
         "  usecase-beta\nactor A",
         "usecase-beta\tLR",
     ] {
-        let detected = registry.detect_type(source, &mut PresentationConfig::empty_object());
+        let detected = registry.detect_type(source, &mut SourcePresentationConfig::empty_object());
         assert_eq!(detected.expect("Usecase header"), "usecase");
     }
     for source in [
@@ -76,7 +79,7 @@ fn usecase_header_requires_whitespace_or_end() {
     ] {
         assert!(
             registry
-                .detect_type(source, &mut PresentationConfig::empty_object())
+                .detect_type(source, &mut SourcePresentationConfig::empty_object())
                 .is_err()
         );
     }
@@ -98,14 +101,14 @@ fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
 
 #[test]
 fn detector_replacement_preserves_values_without_claiming_unchanged_or_missing_paths() {
-    fn replace_config(_text: &str, config: &mut PresentationConfig) -> bool {
+    fn replace_config(_text: &str, config: &mut SourcePresentationConfig) -> bool {
         let mut replacement = crate::json_value::clone_value_nonrecursive(config.as_value());
         replacement["flowchart"]["rankSpacing"] = json!(73);
         replacement
             .as_object_mut()
             .unwrap()
             .remove("themeVariables");
-        *config = PresentationConfig::from_value(replacement);
+        *config = SourcePresentationConfig::from_value(replacement);
         true
     }
 
@@ -132,10 +135,10 @@ fn detector_replacement_preserves_values_without_claiming_unchanged_or_missing_p
 
 #[test]
 fn detector_same_value_setter_on_replacement_retains_explicit_ownership() {
-    fn replace_then_assign(_text: &str, config: &mut PresentationConfig) -> bool {
-        *config = PresentationConfig::from_value(crate::json_value::clone_value_nonrecursive(
-            config.as_value(),
-        ));
+    fn replace_then_assign(_text: &str, config: &mut SourcePresentationConfig) -> bool {
+        *config = SourcePresentationConfig::from_value(
+            crate::json_value::clone_value_nonrecursive(config.as_value()),
+        );
         let same = config.as_value()["flowchart"]["nodeSpacing"].clone();
         config.set_value("flowchart.nodeSpacing", same);
         true
@@ -157,18 +160,25 @@ fn detector_same_value_setter_on_replacement_retains_explicit_ownership() {
 
 #[test]
 fn nested_parse_replacement_does_not_promote_framework_writes_to_detector_assignments() {
-    fn replace_with_parsed_config(_text: &str, config: &mut PresentationConfig) -> bool {
-        *config = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({"theme": "base"})))
-            .parse_metadata_with_type_sync("flowchart-v2", "graph TD\nA-->B")
-            .unwrap()
-            .effective_config;
+    fn replace_with_parsed_config(_text: &str, config: &mut SourcePresentationConfig) -> bool {
+        *config = SourcePresentationConfig::from_frozen_controlled(
+            MermaidEngine::new()
+                .with_site_config(SourcePresentationConfig::from_value(
+                    json!({"theme": "base"}),
+                ))
+                .parse_metadata_with_type_sync("flowchart-v2", "graph TD\nA-->B")
+                .unwrap()
+                .effective_config,
+            &OperationControl::new(),
+        )
+        .expect("a private detector fixture control cannot be cancelled");
         assert!(!config.explicit_config_owns_path("themeVariables.previouslyMissing"));
         true
     }
     for source in ["probe", "---\nconfig:\n  theme: dark\n---\nprobe"] {
-        let mut engine = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({"theme": "base"})));
+        let mut engine = MermaidEngine::new().with_site_config(
+            SourcePresentationConfig::from_value(json!({"theme": "base"})),
+        );
         *engine.registry_mut() = DetectorRegistry::new();
         engine
             .registry_mut()
@@ -181,21 +191,25 @@ fn nested_parse_replacement_does_not_promote_framework_writes_to_detector_assign
 
 #[test]
 fn nested_detector_same_value_ownership_survives_outer_replacement() {
-    fn assign_same_value(_text: &str, config: &mut PresentationConfig) -> bool {
+    fn assign_same_value(_text: &str, config: &mut SourcePresentationConfig) -> bool {
         let value = config.as_value()["flowchart"]["nodeSpacing"].clone();
         config.set_value("flowchart.nodeSpacing", value);
         true
     }
-    fn replace_with_nested_result(_text: &str, config: &mut PresentationConfig) -> bool {
+    fn replace_with_nested_result(_text: &str, config: &mut SourcePresentationConfig) -> bool {
         let mut inner = MermaidEngine::new();
         *inner.registry_mut() = DetectorRegistry::new();
         inner
             .registry_mut()
             .add_fn("flowchart-v2", assign_same_value);
-        *config = inner
-            .parse_metadata_sync("inner-probe")
-            .unwrap()
-            .effective_config;
+        *config = SourcePresentationConfig::from_frozen_controlled(
+            inner
+                .parse_metadata_sync("inner-probe")
+                .unwrap()
+                .effective_config,
+            &OperationControl::new(),
+        )
+        .expect("a private detector fixture control cannot be cancelled");
         assert!(config.explicit_config_owns_path("flowchart.nodeSpacing"));
         assert!(!config.explicit_config_owns_path("flowchart.rankSpacing"));
         true
@@ -225,32 +239,41 @@ fn nested_detector_same_value_ownership_survives_outer_replacement() {
 
 #[test]
 fn nested_detector_same_value_theme_owner_survives_outer_rematerialization() {
-    fn assign_initialized_background(_text: &str, config: &mut PresentationConfig) -> bool {
+    fn assign_initialized_background(_text: &str, config: &mut SourcePresentationConfig) -> bool {
         let background = config.as_value()["themeVariables"]["mainBkg"].clone();
         config.set_value("themeVariables.mainBkg", background);
         true
     }
-    fn replace_with_nested_result(_text: &str, config: &mut PresentationConfig) -> bool {
-        let mut inner = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({"theme": "dark"})));
+    fn replace_with_nested_result(_text: &str, config: &mut SourcePresentationConfig) -> bool {
+        let mut inner = MermaidEngine::new().with_site_config(
+            SourcePresentationConfig::from_value(json!({"theme": "dark"})),
+        );
         *inner.registry_mut() = DetectorRegistry::new();
         inner
             .registry_mut()
             .add_fn("flowchart-v2", assign_initialized_background);
-        *config = inner
-            .parse_metadata_sync("inner-probe")
-            .unwrap()
-            .effective_config;
+        *config = SourcePresentationConfig::from_frozen_controlled(
+            inner
+                .parse_metadata_sync("inner-probe")
+                .unwrap()
+                .effective_config,
+            &OperationControl::new(),
+        )
+        .expect("a private detector fixture control cannot be cancelled");
         true
     }
 
     let initialized = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({"theme": "dark"})))
+        .with_site_config(SourcePresentationConfig::from_value(
+            json!({"theme": "dark"}),
+        ))
         .parse_metadata_with_type_sync("flowchart-v2", "graph TD\nA-->B")
         .unwrap();
     let source = "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nouter-probe";
     let rebuilt = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({"theme": "dark"})))
+        .with_site_config(SourcePresentationConfig::from_value(
+            json!({"theme": "dark"}),
+        ))
         .parse_metadata_with_type_sync("flowchart-v2", source)
         .unwrap();
     assert_ne!(
@@ -259,8 +282,9 @@ fn nested_detector_same_value_theme_owner_survives_outer_rematerialization() {
             .effective_config
             .get_str("themeVariables.mainBkg")
     );
-    let mut engine = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({"theme": "dark"})));
+    let mut engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+        json!({"theme": "dark"}),
+    ));
     *engine.registry_mut() = DetectorRegistry::new();
     engine
         .registry_mut()
@@ -278,12 +302,12 @@ fn nested_detector_same_value_theme_owner_survives_outer_rematerialization() {
 
 #[test]
 fn replacement_transfers_explicit_metadata_without_resurrecting_site_owners() {
-    fn replace(text: &str, config: &mut PresentationConfig) -> bool {
+    fn replace(text: &str, config: &mut SourcePresentationConfig) -> bool {
         let mut value = crate::json_value::clone_value_nonrecursive(config.as_value());
         if text.trim() == "changed-probe" {
             value["flowchart"]["rankSpacing"] = json!(73);
         }
-        *config = PresentationConfig::from_value(value);
+        *config = SourcePresentationConfig::from_value(value);
         true
     }
     for source in [
@@ -293,7 +317,7 @@ fn replacement_transfers_explicit_metadata_without_resurrecting_site_owners() {
         "---\nconfig:\n  theme: base\n---\nchanged-probe",
     ] {
         let mut engine =
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+            MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
                 "flowchart": {"rankSpacing": 50},
             })));
         *engine.registry_mut() = DetectorRegistry::new();
@@ -309,7 +333,7 @@ fn replacement_transfers_explicit_metadata_without_resurrecting_site_owners() {
 }
 
 fn engine_with_only_flowchart_detector(
-    detector: fn(&str, &mut PresentationConfig) -> bool,
+    detector: fn(&str, &mut SourcePresentationConfig) -> bool,
 ) -> MermaidEngine {
     let mut engine = MermaidEngine::new();
     *engine.registry_mut() = DetectorRegistry::new();
@@ -411,7 +435,7 @@ fn depth_boundary_detector_deep_merge_only_owns_the_touched_path() {
 #[test]
 fn explicit_site_and_source_config_own_surviving_paths() {
     let site_engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
             "flowchart": {"nodeSpacing": 72}
         })));
     let site = site_engine
@@ -454,61 +478,66 @@ fn theme_compatibility_config() -> MermaidConfig {
     }))
 }
 
-fn theme_binding_for(config: MermaidConfig) -> ThemeParseBinding {
-    ThemeParseBinding::try_new([0x5a; 32], config).expect("valid theme parse binding")
+fn theme_binding_for(config: MermaidConfig) -> ThemeCompatibilityRecipe {
+    ThemeCompatibilityRecipe::try_new([0x5a; 32], config).expect("valid theme parse binding")
 }
 
-fn theme_binding() -> ThemeParseBinding {
+fn theme_binding() -> ThemeCompatibilityRecipe {
     theme_binding_for(theme_compatibility_config())
 }
 
-fn node_default_plan(config: Value) -> crate::__private::ThemeCompatibilityPlan {
-    crate::__private::ThemeCompatibilityPlan::try_new([0x5a; 32], MermaidConfig::from_value(config))
-        .unwrap()
+fn node_default_plan(config: Value) -> crate::presentation::ThemeCompatibilityPlan {
+    crate::presentation::ThemeCompatibilityPlan::try_new(
+        [0x5a; 32],
+        MermaidConfig::from_value(config),
+    )
+    .unwrap()
 }
 
-const NODE_PAINT_INPUTS: &[(crate::__private::GitGraphPaintInput, &str)] = &[
+const NODE_PAINT_INPUTS: &[(merman_model::presentation::GitGraphPaintInput, &str)] = &[
     (
-        crate::__private::GitGraphPaintInput::PrimaryColor,
+        merman_model::presentation::GitGraphPaintInput::PrimaryColor,
         "themeVariables.primaryColor",
     ),
     (
-        crate::__private::GitGraphPaintInput::MainBackground,
+        merman_model::presentation::GitGraphPaintInput::MainBackground,
         "themeVariables.mainBkg",
     ),
     (
-        crate::__private::GitGraphPaintInput::TagBackground,
+        merman_model::presentation::GitGraphPaintInput::TagBackground,
         "themeVariables.tagLabelBackground",
     ),
     (
-        crate::__private::GitGraphPaintInput::PrimaryBorder,
+        merman_model::presentation::GitGraphPaintInput::PrimaryBorder,
         "themeVariables.primaryBorderColor",
     ),
     (
-        crate::__private::GitGraphPaintInput::NodeBorder,
+        merman_model::presentation::GitGraphPaintInput::NodeBorder,
         "themeVariables.nodeBorder",
     ),
     (
-        crate::__private::GitGraphPaintInput::TagBorder,
+        merman_model::presentation::GitGraphPaintInput::TagBorder,
         "themeVariables.tagLabelBorder",
     ),
 ];
 
 fn blocked(
-    config: &PresentationConfig,
-    input: crate::__private::GitGraphPaintInput,
+    config: &merman_model::presentation::PresentationConfig,
+    input: merman_model::presentation::GitGraphPaintInput,
 ) -> Option<bool> {
-    crate::__private::gitgraph_paint_inputs(config).map(|inputs| inputs.is_owned(input))
+    config
+        .gitgraph_paint_inputs()
+        .map(|inputs| inputs.is_owned(input))
 }
 
 #[test]
 fn family_paint_inputs_capture_six_raw_paths() {
-    use crate::__private::install_theme_compatibility;
     for &(explicit_input, explicit_path) in NODE_PAINT_INPUTS {
         let mut compatibility = MermaidConfig::from_value(json!({"theme": "base"}));
         compatibility.set_value(explicit_path, json!("#123456"));
         let plan = node_default_plan(compatibility.as_value().clone());
-        let parsed = install_theme_compatibility(MermaidEngine::new(), &plan)
+        let parsed = MermaidEngine::new()
+            .with_theme_plan(&plan)
             .parse_metadata_sync("gitGraph\ncommit")
             .unwrap();
         for &(input, path) in NODE_PAINT_INPUTS {
@@ -519,22 +548,28 @@ fn family_paint_inputs_capture_six_raw_paths() {
             );
         }
         assert!(
-            crate::__private::theme_parse_evidence(&parsed).matches_recipe(Some(plan.recipe()))
+            parsed
+                .effective_config
+                .theme_compatibility()
+                .clone()
+                .matches_recipe(Some(plan.recipe()))
         );
     }
     let plan =
         node_default_plan(json!({"theme": "base", "themeVariables": {"primaryColor": "#fff4dd"}}));
-    let parsed = install_theme_compatibility(MermaidEngine::new(), &plan)
+    let parsed = MermaidEngine::new()
+        .with_theme_plan(&plan)
         .parse_metadata_sync("gitGraph\ncommit")
         .unwrap();
-    assert!(crate::__private::config_path_overrides_typed_default(
-        &parsed.effective_config,
-        "themeVariables.mainBkg"
-    ));
+    assert!(
+        parsed
+            .effective_config
+            .config_path_overrides_typed_default("themeVariables.mainBkg")
+    );
     assert_eq!(
         blocked(
             &parsed.effective_config,
-            crate::__private::GitGraphPaintInput::MainBackground
+            merman_model::presentation::GitGraphPaintInput::MainBackground
         ),
         Some(false)
     );
@@ -542,70 +577,86 @@ fn family_paint_inputs_capture_six_raw_paths() {
 
 #[test]
 fn family_paint_inputs_keep_authority_across_secure_source_theme_reselection() {
-    use crate::__private::install_theme_compatibility;
     let plan = node_default_plan(json!({"theme": "default"}));
     let source = "%%{init: {\"theme\": \"base\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ngitGraph\ncommit";
     for (site, expected) in [
         (json!({"secure": []}), true),
         (json!({"secure": ["theme", "themeVariables"]}), false),
     ] {
-        let parsed = install_theme_compatibility(
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site)),
-            &plan,
-        )
-        .parse_metadata_sync(source)
-        .unwrap();
+        let parsed = MermaidEngine::new()
+            .with_site_config(SourcePresentationConfig::from_value(site))
+            .with_theme_plan(&plan)
+            .parse_metadata_sync(source)
+            .unwrap();
         assert_eq!(
             blocked(
                 &parsed.effective_config,
-                crate::__private::GitGraphPaintInput::PrimaryColor
+                merman_model::presentation::GitGraphPaintInput::PrimaryColor
             ),
             Some(expected)
         );
         assert_eq!(
             blocked(
                 &parsed.effective_config,
-                crate::__private::GitGraphPaintInput::MainBackground
+                merman_model::presentation::GitGraphPaintInput::MainBackground
             ),
             Some(expected)
         );
         assert!(
-            crate::__private::theme_parse_evidence(&parsed).matches_recipe(Some(plan.recipe()))
+            parsed
+                .effective_config
+                .theme_compatibility()
+                .clone()
+                .matches_recipe(Some(plan.recipe()))
         );
     }
 }
 
 #[test]
 fn family_paint_inputs_distinguish_missing_decisions_and_frozen_mutation() {
-    use crate::__private::install_theme_compatibility;
-    let input = crate::__private::GitGraphPaintInput::PrimaryColor;
+    let input = merman_model::presentation::GitGraphPaintInput::PrimaryColor;
     let plan = node_default_plan(json!({}));
-    assert_eq!(blocked(&PresentationConfig::empty_object(), input), None);
-    let other_family = install_theme_compatibility(MermaidEngine::new(), &plan)
+    assert_eq!(
+        blocked(
+            &merman_model::presentation::PresentationConfig::empty_object(),
+            input
+        ),
+        None
+    );
+    let other_family = MermaidEngine::new()
+        .with_theme_plan(&plan)
         .parse_metadata_sync("flowchart TD\nA-->B")
         .unwrap();
     assert_eq!(blocked(&other_family.effective_config, input), None);
-    let parsed = install_theme_compatibility(MermaidEngine::new(), &plan)
+    let parsed = MermaidEngine::new()
+        .with_theme_plan(&plan)
         .parse_metadata_sync("gitGraph\ncommit")
         .unwrap();
     assert_eq!(blocked(&parsed.effective_config, input), Some(false));
-    assert!(crate::__private::er_paint_inputs(&parsed.effective_config).is_none());
-    let mut changed = parsed.effective_config.clone();
+    assert!(parsed.effective_config.er_paint_inputs().is_none());
+    let mut changed = crate::diagrams::source_metadata_for_test(&parsed).effective_config;
     changed.set_value("unrelated", json!(true));
+    let changed = changed
+        .into_presentation_config_controlled(
+            &crate::config::presentation::source_config_construction_policy(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
     assert_eq!(blocked(&changed, input), None);
     assert_eq!(blocked(&parsed.effective_config, input), Some(false));
 }
 
 #[test]
 fn family_paint_inputs_capture_same_value_detector_claims() {
-    use crate::__private::{GitGraphPaintInput, install_theme_compatibility};
-    fn claim_background(_text: &str, config: &mut PresentationConfig) -> bool {
+    use merman_model::presentation::GitGraphPaintInput;
+    fn claim_background(_text: &str, config: &mut SourcePresentationConfig) -> bool {
         let value = config.as_value()["themeVariables"]["mainBkg"].clone();
         config.set_value("themeVariables.mainBkg", value);
         true
     }
     let plan = node_default_plan(json!({"theme": "base"}));
-    let mut engine = install_theme_compatibility(MermaidEngine::new(), &plan);
+    let mut engine = MermaidEngine::new().with_theme_plan(&plan);
     *engine.registry_mut() = DetectorRegistry::new();
     engine.registry_mut().add_fn("gitGraph", claim_background);
     let parsed = engine.parse_metadata_sync("custom graph").unwrap();
@@ -621,7 +672,7 @@ fn family_paint_inputs_capture_same_value_detector_claims() {
 
 #[test]
 fn er_paint_inputs_preserve_raw_authority_and_frozen_invalidation() {
-    use crate::__private::{ErPaintInput, er_paint_inputs, install_theme_compatibility};
+    use merman_model::presentation::ErPaintInput;
     let slots = [
         (ErPaintInput::Text, "themeVariables.textColor"),
         (ErPaintInput::NodeText, "themeVariables.nodeTextColor"),
@@ -631,13 +682,14 @@ fn er_paint_inputs_preserve_raw_authority_and_frozen_invalidation() {
     ];
     let plan = node_default_plan(json!({"theme": "base"}));
     for (selected, path) in slots {
-        let mut site = PresentationConfig::empty_object();
+        let mut site = SourcePresentationConfig::empty_object();
         site.set_value(path, json!("#123456"));
-        let parsed =
-            install_theme_compatibility(MermaidEngine::new().with_site_config(site), &plan)
-                .parse_metadata_sync("erDiagram\nA ||--|| B : owns")
-                .unwrap();
-        let inputs = er_paint_inputs(&parsed.effective_config).unwrap();
+        let parsed = MermaidEngine::new()
+            .with_site_config(site)
+            .with_theme_plan(&plan)
+            .parse_metadata_sync("erDiagram\nA ||--|| B : owns")
+            .unwrap();
+        let inputs = parsed.effective_config.er_paint_inputs().unwrap();
         for (input, _) in slots {
             assert_eq!(
                 inputs.is_owned(input),
@@ -645,21 +697,29 @@ fn er_paint_inputs_preserve_raw_authority_and_frozen_invalidation() {
                 "{path}"
             );
         }
-        assert!(crate::__private::gitgraph_paint_inputs(&parsed.effective_config).is_none());
-        let mut changed = parsed.effective_config.clone();
+        assert!(parsed.effective_config.gitgraph_paint_inputs().is_none());
+        let mut changed = crate::diagrams::source_metadata_for_test(&parsed).effective_config;
         changed.set_value("unrelated", json!(true));
-        assert!(er_paint_inputs(&changed).is_none());
+        let changed = changed
+            .into_presentation_config_controlled(
+                &crate::config::presentation::source_config_construction_policy(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+        assert!(changed.er_paint_inputs().is_none());
     }
-    let normalized = install_theme_compatibility(
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+    let normalized = MermaidEngine::new()
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "themeVariables": {"lineColor": null, "primaryColor": "#123456"}
-        }))),
-        &plan,
-    )
-    .parse_metadata_sync("erDiagram\nA ||--|| B : owns")
-    .unwrap();
+        })))
+        .with_theme_plan(&plan)
+        .parse_metadata_sync("erDiagram\nA ||--|| B : owns")
+        .unwrap();
     assert!(
-        !er_paint_inputs(&normalized.effective_config)
+        !normalized
+            .effective_config
+            .er_paint_inputs()
             .unwrap()
             .is_owned(ErPaintInput::Line)
     );
@@ -676,7 +736,7 @@ fn effective_config_tracks_only_high_priority_explicit_owners() {
         .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
             "themeVariables": {"useGradient": true}
         }))))
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "flowchart": {"nodeSpacing": 50}
         })))
         .parse_metadata_sync(
@@ -709,19 +769,19 @@ fn effective_config_tracks_only_high_priority_explicit_owners() {
 #[test]
 fn theme_variable_derived_ownership_follows_initialization_but_not_source_only_updates() {
     let site = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": { "primaryColor": "#fff4dd" }
         })))
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse site-owned base primary color");
-    assert!(crate::__private::config_path_overrides_typed_default(
-        &site.effective_config,
-        "themeVariables.mainBkg"
-    ));
+    assert!(
+        site.effective_config
+            .config_path_overrides_typed_default("themeVariables.mainBkg")
+    );
 
     let source = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "secure": []
         })))
@@ -744,10 +804,11 @@ fn theme_variable_derived_ownership_follows_initialization_but_not_source_only_u
             .effective_config
             .explicit_config_owns_path("themeVariables.primaryColor")
     );
-    assert!(!crate::__private::config_path_overrides_typed_default(
-        &source.effective_config,
-        "themeVariables.mainBkg"
-    ));
+    assert!(
+        !source
+            .effective_config
+            .config_path_overrides_typed_default("themeVariables.mainBkg")
+    );
 
     let compatibility = MermaidEngine::new()
         .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
@@ -756,22 +817,30 @@ fn theme_variable_derived_ownership_follows_initialization_but_not_source_only_u
         }))))
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse compatibility-owned base primary color");
-    assert!(crate::__private::config_path_overrides_typed_default(
-        &compatibility.effective_config,
-        "themeVariables.mainBkg"
-    ));
-    assert_eq!(compatibility.mermaid_compatibility_residual_count(), 2);
-    assert!(!crate::__private::config_path_overrides_typed_default(
-        &compatibility.effective_config,
-        "themeVariables.radius"
-    ));
+    assert!(
+        compatibility
+            .effective_config
+            .config_path_overrides_typed_default("themeVariables.mainBkg")
+    );
+    assert_eq!(
+        compatibility
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        2
+    );
+    assert!(
+        !compatibility
+            .effective_config
+            .config_path_overrides_typed_default("themeVariables.radius")
+    );
 }
 
 #[test]
 fn extended_dark_primary_color_only_recomputes_requirement_background_during_initialization() {
     for theme in ["neo-dark", "redux-dark"] {
         let site = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
+            .with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "primaryColor": "#123456" }
             })))
@@ -783,17 +852,16 @@ fn extended_dark_primary_color_only_recomputes_requirement_background_during_ini
             "{theme} must derive Requirement background from the site primary color"
         );
         assert!(
-            crate::__private::config_path_overrides_typed_default(
-                &site.effective_config,
-                "themeVariables.requirementBackground"
-            ),
+            site.effective_config
+                .config_path_overrides_typed_default("themeVariables.requirementBackground"),
             "{theme} must preserve site ownership through the derived Requirement background"
         );
 
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "theme": theme,
-            "secure": []
-        })));
+        let engine =
+            MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+                "theme": theme,
+                "secure": []
+            })));
         let baseline = engine
             .parse_metadata_sync("flowchart TD\nA-->B")
             .expect("parse extended dark baseline");
@@ -808,10 +876,9 @@ fn extended_dark_primary_color_only_recomputes_requirement_background_during_ini
             "{theme} must retain the already materialized Requirement background"
         );
         assert!(
-            !crate::__private::config_path_overrides_typed_default(
-                &source.effective_config,
-                "themeVariables.requirementBackground"
-            ),
+            !source
+                .effective_config
+                .config_path_overrides_typed_default("themeVariables.requirementBackground"),
             "{theme} source-only primaryColor must not own the retained Requirement background"
         );
     }
@@ -819,8 +886,9 @@ fn extended_dark_primary_color_only_recomputes_requirement_background_during_ini
 
 #[test]
 fn root_source_theme_truthiness_controls_rematerialization_after_appearance_fallback() {
-    let engine = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({"theme": "base"})));
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+        json!({"theme": "base"}),
+    ));
     for (source_theme, selected_theme, expected_background) in [
         (json!("base"), "base", "#123456"),
         (json!("unknown"), "base", "#123456"),
@@ -858,13 +926,14 @@ fn root_source_theme_truthiness_controls_rematerialization_after_appearance_fall
 
 #[test]
 fn source_theme_lifecycle_matches_mermaid_update_current_config() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "theme": "dark",
-        "secure": [],
-        "themeVariables": {
-            "secondaryColor": "#345678"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "theme": "dark",
+            "secure": [],
+            "themeVariables": {
+                "secondaryColor": "#345678"
+            }
+        })));
     let baseline = engine
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse materialized dark site config");
@@ -896,7 +965,7 @@ fn source_theme_lifecycle_matches_mermaid_update_current_config() {
         )
         .expect("rematerialize the selected site theme");
     let equivalent_same_theme_initialization = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "theme": "dark",
             "secure": [],
             "themeVariables": {
@@ -937,7 +1006,7 @@ fn source_theme_lifecycle_matches_mermaid_update_current_config() {
         )
         .expect("switch source theme to forest");
     let equivalent_initialization = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "theme": "forest",
             "secure": [],
             "themeVariables": {
@@ -958,13 +1027,14 @@ fn source_theme_lifecycle_matches_mermaid_update_current_config() {
 
 #[test]
 fn secure_filtered_source_theme_does_not_trigger_rematerialization() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "theme": "dark",
-        "secure": ["theme"],
-        "themeVariables": {
-            "secondaryColor": "#345678"
-        }
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "theme": "dark",
+            "secure": ["theme"],
+            "themeVariables": {
+                "secondaryColor": "#345678"
+            }
+        })));
     let baseline = engine
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse materialized secure site theme");
@@ -1003,7 +1073,7 @@ fn scoped_source_theme_rebuilds_raw_variables_without_losing_recipe_binding() {
         "%%{init: {\"flowchart\": {\"theme\": \"dark\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
     ).unwrap();
     let equivalent = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "theme": "dark",
             "themeVariables": { "secondaryColor": "#345678", "primaryColor": "#123456" }
         })))
@@ -1015,7 +1085,10 @@ fn scoped_source_theme_rebuilds_raw_variables_without_losing_recipe_binding() {
         equivalent.effective_config.as_value()["themeVariables"]
     );
     assert!(source.effective_config.explicit_config_owns_path("theme"));
-    assert_eq!(source.theme_parse_binding(), baseline.theme_parse_binding());
+    assert_eq!(
+        source.effective_config.theme_compatibility().recipe(),
+        baseline.effective_config.theme_compatibility().recipe()
+    );
     assert_eq!(
         engine
             .parse_metadata_sync("flowchart TD\nA-->B")
@@ -1031,12 +1104,24 @@ fn scoped_same_value_appearance_is_authored_but_secure_source_is_not() {
         MermaidConfig::from_value(json!({"theme": "base"})),
     ));
     let baseline = engine.parse_metadata_sync("flowchart TD\nA-->B").unwrap();
-    assert_eq!(baseline.mermaid_compatibility_residual_count(), 1);
+    assert_eq!(
+        baseline
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        1
+    );
     let text = "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B";
     let authored = engine.parse_metadata_sync(text).unwrap();
     assert_eq!(authored.effective_config.get_str("theme"), Some("base"));
     assert!(authored.effective_config.explicit_config_owns_path("theme"));
-    assert_eq!(authored.mermaid_compatibility_residual_count(), 0);
+    assert_eq!(
+        authored
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        0
+    );
     assert_eq!(
         authored
             .effective_config
@@ -1047,28 +1132,37 @@ fn scoped_same_value_appearance_is_authored_but_secure_source_is_not() {
         authored.effective_config.get_str("themeVariables.mainBkg"),
         Some("#fff4dd")
     );
-    assert!(!crate::__private::config_path_overrides_typed_default(
-        &authored.effective_config,
-        "themeVariables.mainBkg"
-    ));
+    assert!(
+        !authored
+            .effective_config
+            .config_path_overrides_typed_default("themeVariables.mainBkg")
+    );
     let secure = engine
-        .with_site_config(PresentationConfig::from_value(json!({"secure": ["theme"]})))
+        .with_site_config(SourcePresentationConfig::from_value(
+            json!({"secure": ["theme"]}),
+        ))
         .parse_metadata_sync(text)
         .unwrap();
     assert_eq!(secure.effective_config.get_str("theme"), Some("base"));
     assert!(!secure.effective_config.explicit_config_owns_path("theme"));
-    assert_eq!(secure.mermaid_compatibility_residual_count(), 1);
+    assert_eq!(
+        secure
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        1
+    );
 }
 
 #[test]
 fn scoped_source_palette_derivations_own_final_family_paint() {
-    use crate::__private::{GitGraphPaintInput, install_theme_compatibility};
+    use merman_model::presentation::GitGraphPaintInput;
     let plan = node_default_plan(json!({"theme": "base"}));
-    let engine = install_theme_compatibility(
-        MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({"theme": "dark"}))),
-        &plan,
-    );
+    let engine = MermaidEngine::new()
+        .with_site_config(SourcePresentationConfig::from_value(
+            json!({"theme": "dark"}),
+        ))
+        .with_theme_plan(&plan);
     let source = "%%{init: {\"gitGraph\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ngitGraph\ncommit";
     let parsed = engine.parse_metadata_sync(source).unwrap();
     assert_eq!(
@@ -1093,19 +1187,20 @@ fn scoped_source_palette_derivations_own_final_family_paint() {
 
 #[test]
 fn scoped_theme_rebuild_preserves_same_value_detector_assignments() {
-    fn claim_initialized_background(_text: &str, config: &mut PresentationConfig) -> bool {
+    fn claim_initialized_background(_text: &str, config: &mut SourcePresentationConfig) -> bool {
         let background = config.as_value()["themeVariables"]["mainBkg"].clone();
         config.set_value("themeVariables.mainBkg", background);
         true
     }
-    fn claim_initialized_root(_text: &str, config: &mut PresentationConfig) -> bool {
+    fn claim_initialized_root(_text: &str, config: &mut SourcePresentationConfig) -> bool {
         let _ = config.as_value_mut();
         true
     }
 
     for detector in [claim_initialized_background, claim_initialized_root] {
-        let engine = engine_with_only_flowchart_detector(detector)
-            .with_site_config(PresentationConfig::from_value(json!({"theme": "dark"})));
+        let engine = engine_with_only_flowchart_detector(detector).with_site_config(
+            SourcePresentationConfig::from_value(json!({"theme": "dark"})),
+        );
         let initialized = engine.parse_metadata_sync("custom diagram").unwrap();
         let source = engine.parse_metadata_sync(
             "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ncustom diagram",
@@ -1158,15 +1253,19 @@ fn scoped_null_keeps_initialized_variables_and_raw_source_ownership() {
             .effective_config
             .explicit_config_owns_path("themeVariables.primaryColor")
     );
-    assert_eq!(source.theme_parse_binding(), baseline.theme_parse_binding());
+    assert_eq!(
+        source.effective_config.theme_compatibility().recipe(),
+        baseline.effective_config.theme_compatibility().recipe()
+    );
 }
 
 #[test]
 fn fully_filtered_source_config_does_not_change_effective_config() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "theme": "base",
-        "secure": ["secure", "securityLevel", "themeVariables"]
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "theme": "base",
+            "secure": ["secure", "securityLevel", "themeVariables"]
+        })));
     let without_source = engine
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse without source config");
@@ -1186,7 +1285,7 @@ fn fully_filtered_source_config_does_not_change_effective_config() {
 #[test]
 fn registered_source_theme_uses_raw_truthy_initial_theme_variables() {
     let metadata = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "secure": [],
             "themeVariables": true
         })))
@@ -1208,7 +1307,9 @@ fn registered_source_theme_uses_raw_truthy_initial_theme_variables() {
 #[test]
 fn empty_explicit_site_secure_policy_owns_the_replacement_path() {
     let metadata = MermaidEngine::new()
-        .with_exact_site_config(Some(PresentationConfig::from_value(json!({"secure": []}))))
+        .with_exact_site_config(Some(SourcePresentationConfig::from_value(
+            json!({"secure": []}),
+        )))
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse with an explicit empty secure policy");
 
@@ -1228,24 +1329,32 @@ fn theme_compatibility_freezes_binding_and_conceptual_field_count() {
         .expect("parse theme compatibility config");
 
     let binding = theme_binding();
-    assert_eq!(parsed.theme_parse_binding(), Some(&binding));
-    assert_eq!(parsed.mermaid_compatibility_residual_count(), 3);
-    assert!(crate::__private::config_path_overrides_typed_default(
-        &parsed.effective_config,
-        "themeVariables.useGradient"
-    ));
-    assert!(crate::__private::config_path_overrides_typed_default(
-        &parsed.effective_config,
-        "darkMode"
-    ));
+    assert_eq!(
+        parsed.effective_config.theme_compatibility().recipe(),
+        Some(&binding)
+    );
+    assert_eq!(
+        parsed
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        3
+    );
+    assert!(
+        parsed
+            .effective_config
+            .config_path_overrides_typed_default("themeVariables.useGradient")
+    );
+    assert!(
+        parsed
+            .effective_config
+            .config_path_overrides_typed_default("darkMode")
+    );
 }
 
 #[test]
-fn theme_parse_borrowed_queries_match_owned_evidence_for_all_binding_states() {
-    use crate::__private::{
-        ThemeCompatibilityPlan, theme_parse_evidence, theme_parse_matches_recipe,
-        theme_parse_mermaid_residual_count,
-    };
+fn completed_theme_queries_match_owned_evidence_after_source_freeze() {
+    use crate::presentation::ThemeCompatibilityPlan;
 
     let input = json!({
         "theme": "base", "darkMode": true, "themeVariables": {"useGradient": true},
@@ -1263,12 +1372,16 @@ fn theme_parse_borrowed_queries_match_owned_evidence_for_all_binding_states() {
     assert_ne!(plan.recipe(), different_identity.recipe());
     assert_ne!(plan.recipe(), different_config.recipe());
 
-    let tracking = PresentationConfig::from_theme_parse_binding(theme_binding_for(
+    let tracking = SourcePresentationConfig::from_theme_compatibility_recipe(theme_binding_for(
         MermaidConfig::from_value(input.clone()),
     ));
-    let tracking_empty = PresentationConfig::from_theme_parse_binding(theme_binding_for(
-        MermaidConfig::empty_object(),
-    ));
+    let tracking_empty = SourcePresentationConfig::from_theme_compatibility_recipe(
+        theme_binding_for(MermaidConfig::empty_object()),
+    );
+    for config in [&tracking, &tracking_empty] {
+        assert_eq!(config.theme_parse_binding(), None);
+        assert_eq!(config.mermaid_compatibility_residual_count(), 0);
+    }
     let mut frozen = tracking.clone();
     frozen.freeze_theme_compatibility();
     let mut frozen_empty = tracking_empty.clone();
@@ -1278,30 +1391,46 @@ fn theme_parse_borrowed_queries_match_owned_evidence_for_all_binding_states() {
     shadowed.freeze_theme_compatibility();
 
     for (state, config, expected_recipe, expected_count) in [
-        ("none-empty", PresentationConfig::empty_object(), None, 0),
         (
-            "none-authored",
-            PresentationConfig::from_value(input),
+            "none-empty",
+            SourcePresentationConfig::empty_object(),
             None,
             0,
         ),
-        ("tracking-empty", tracking_empty, None, 0),
-        ("tracking-fields", tracking, None, 0),
+        (
+            "none-authored",
+            SourcePresentationConfig::from_value(input),
+            None,
+            0,
+        ),
+        (
+            "tracking-empty",
+            tracking_empty,
+            Some(empty_plan.recipe()),
+            0,
+        ),
+        ("tracking-fields", tracking, Some(plan.recipe()), 3),
         ("frozen-empty", frozen_empty, Some(empty_plan.recipe()), 0),
         ("frozen-fields", frozen, Some(plan.recipe()), 3),
         ("frozen-shadowed", shadowed, Some(plan.recipe()), 2),
     ] {
-        let metadata = PresentationMetadata {
+        let metadata = SourcePresentationMetadata {
             diagram_type: "flowchart-v2".into(),
             config: MermaidConfig::empty_object(),
             effective_config: config,
             title: None,
-        };
-        let owned = theme_parse_evidence(&metadata);
+        }
+        .freeze_controlled(&OperationControl::new())
+        .expect("a private fixture control cannot be cancelled")
+        .expect("fixture source config freezes");
+        let owned = metadata.effective_config.theme_compatibility().clone();
         assert!(owned.matches_recipe(expected_recipe), "{state}");
         assert_eq!(owned.mermaid_residual_count(), expected_count, "{state}");
         assert_eq!(
-            theme_parse_mermaid_residual_count(&metadata),
+            metadata
+                .effective_config
+                .theme_compatibility()
+                .mermaid_residual_count(),
             owned.mermaid_residual_count(),
             "{state}",
         );
@@ -1314,7 +1443,10 @@ fn theme_parse_borrowed_queries_match_owned_evidence_for_all_binding_states() {
             Some(empty_plan.recipe()),
         ] {
             assert_eq!(
-                theme_parse_matches_recipe(&metadata, recipe),
+                metadata
+                    .effective_config
+                    .theme_compatibility()
+                    .matches_recipe(recipe),
                 owned.matches_recipe(recipe),
                 "{state}: {recipe:?}",
             );
@@ -1329,7 +1461,10 @@ fn theme_parse_binding_rejects_paths_outside_the_restricted_compatibility_shape(
         json!({"flowchart": {"nodeSpacing": 12}}),
         json!({"themeVariables": {"nested": {"value": true}}}),
     ] {
-        assert!(ThemeParseBinding::try_new([0x5a; 32], MermaidConfig::from_value(config)).is_err());
+        assert!(
+            ThemeCompatibilityRecipe::try_new([0x5a; 32], MermaidConfig::from_value(config))
+                .is_err()
+        );
     }
 }
 
@@ -1345,7 +1480,7 @@ fn theme_parse_binding_canonicalizes_the_two_dark_mode_paths() {
 
 #[test]
 fn theme_parse_evidence_reconciles_complete_conceptual_fields_and_deduplicates_paths() {
-    use crate::__private::{
+    use merman_model::presentation::{
         ThemeCompatibilityConsumptionDisposition as Disposition, ThemeCompatibilityFieldKind,
     };
 
@@ -1356,7 +1491,7 @@ fn theme_parse_evidence_reconciles_complete_conceptual_fields_and_deduplicates_p
         }))))
         .parse_metadata_sync("packet\n0-7: Header")
         .expect("parse conceptual compatibility evidence");
-    let evidence = crate::__private::theme_parse_evidence(&parsed);
+    let evidence = parsed.effective_config.theme_compatibility().clone();
     assert_eq!(evidence.mermaid_residual_count(), 2);
 
     let theme = evidence
@@ -1418,7 +1553,7 @@ fn theme_parse_evidence_reconciles_complete_conceptual_fields_and_deduplicates_p
 
 #[test]
 fn theme_parse_evidence_keeps_unconsumed_variables_after_theme_and_dark_mode_reconcile() {
-    use crate::__private::{
+    use merman_model::presentation::{
         ThemeCompatibilityConsumptionDisposition as Disposition, ThemeCompatibilityFieldKind,
     };
 
@@ -1430,7 +1565,7 @@ fn theme_parse_evidence_keeps_unconsumed_variables_after_theme_and_dark_mode_rec
         }))))
         .parse_metadata_sync("packet\n0-7: Header")
         .expect("parse compatibility evidence with an unrelated variable");
-    let evidence = crate::__private::theme_parse_evidence(&parsed);
+    let evidence = parsed.effective_config.theme_compatibility().clone();
     assert_eq!(evidence.mermaid_residual_count(), 3);
 
     let consumptions = evidence
@@ -1469,15 +1604,24 @@ fn frozen_binding_keeps_the_validated_input_when_theme_replays_a_dissimilar_fiel
         parsed.effective_config.as_value()["themeVariables"]["cynefin"],
         json!("ignored-by-assignWithDepth")
     );
-    assert_eq!(parsed.theme_parse_binding(), Some(&binding));
-    assert_eq!(parsed.mermaid_compatibility_residual_count(), 2);
+    assert_eq!(
+        parsed.effective_config.theme_compatibility().recipe(),
+        Some(&binding)
+    );
+    assert_eq!(
+        parsed
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        2
+    );
 }
 
 #[test]
 fn base_engine_host_config_outranks_later_theme_installation() {
     for host_value in [true, false] {
         let parsed = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
+            .with_site_config(SourcePresentationConfig::from_value(json!({
                 "themeVariables": {"useGradient": host_value}
             })))
             .with_theme_compatibility(theme_binding())
@@ -1488,7 +1632,13 @@ fn base_engine_host_config_outranks_later_theme_installation() {
             parsed.effective_config.as_value()["themeVariables"]["useGradient"],
             json!(host_value)
         );
-        assert_eq!(parsed.mermaid_compatibility_residual_count(), 2);
+        assert_eq!(
+            parsed
+                .effective_config
+                .theme_compatibility()
+                .mermaid_residual_count(),
+            2
+        );
     }
 }
 
@@ -1496,12 +1646,17 @@ fn base_engine_host_config_outranks_later_theme_installation() {
 fn later_site_and_source_assignments_shadow_theme_ownership_even_when_values_match() {
     let site = MermaidEngine::new()
         .with_theme_compatibility(theme_binding())
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "themeVariables": {"useGradient": true}
         })))
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse same-value site override");
-    assert_eq!(site.mermaid_compatibility_residual_count(), 2);
+    assert_eq!(
+        site.effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        2
+    );
     assert!(
         site.effective_config
             .explicit_config_owns_path("themeVariables.useGradient")
@@ -1509,12 +1664,18 @@ fn later_site_and_source_assignments_shadow_theme_ownership_even_when_values_mat
 
     let source = MermaidEngine::new()
         .with_theme_compatibility(theme_binding())
-        .with_site_config(PresentationConfig::from_value(json!({"secure": []})))
+        .with_site_config(SourcePresentationConfig::from_value(json!({"secure": []})))
         .parse_metadata_sync(
             "%%{init: {\"themeVariables\": {\"useGradient\": true}}}%%\nflowchart TD\nA-->B",
         )
         .expect("parse same-value source override");
-    assert_eq!(source.mermaid_compatibility_residual_count(), 2);
+    assert_eq!(
+        source
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        2
+    );
     assert!(
         source
             .effective_config
@@ -1526,29 +1687,48 @@ fn later_site_and_source_assignments_shadow_theme_ownership_even_when_values_mat
 fn dark_mode_counts_once_until_both_physical_paths_are_shadowed() {
     let only_root = MermaidEngine::new()
         .with_theme_compatibility(theme_binding())
-        .with_site_config(PresentationConfig::from_value(json!({"darkMode": true})))
+        .with_site_config(SourcePresentationConfig::from_value(
+            json!({"darkMode": true}),
+        ))
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse root dark-mode override");
-    assert_eq!(only_root.mermaid_compatibility_residual_count(), 3);
+    assert_eq!(
+        only_root
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        3
+    );
 
     let only_variable = MermaidEngine::new()
         .with_theme_compatibility(theme_binding())
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "themeVariables": {"darkMode": true}
         })))
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse theme-variable dark-mode override");
-    assert_eq!(only_variable.mermaid_compatibility_residual_count(), 3);
+    assert_eq!(
+        only_variable
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        3
+    );
 
     let both = MermaidEngine::new()
         .with_theme_compatibility(theme_binding())
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(SourcePresentationConfig::from_value(json!({
             "darkMode": true,
             "themeVariables": {"darkMode": true}
         })))
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse both dark-mode overrides");
-    assert_eq!(both.mermaid_compatibility_residual_count(), 2);
+    assert_eq!(
+        both.effective_config
+            .theme_compatibility()
+            .mermaid_residual_count(),
+        2
+    );
 }
 
 #[test]
@@ -1619,7 +1799,7 @@ fn detects_11_16_new_family_headers_for_metadata() {
 #[test]
 fn detects_11_16_new_family_headers_with_upstream_boundaries() {
     let registry = DetectorRegistry::pinned_mermaid_baseline();
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
 
     let cynefin = registry
         .detect_type_precleaned("cynefin-beta:\nClear", &mut config)
@@ -1646,7 +1826,7 @@ fn supplied_detector_registry_preserves_upstream_first_match_order() {
     let mut registry = DetectorRegistry::new();
     registry.add_fn("host-first", test_detector_always_matches);
     registry.add_fn("host-second", test_detector_always_matches);
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
 
     // Mermaid detectType iterates the supplied detector records and returns the first match.
     let detected = registry
@@ -1659,7 +1839,7 @@ fn supplied_detector_registry_preserves_upstream_first_match_order() {
 #[test]
 fn empty_detector_registry_rejects_builtin_leading_keywords() {
     let registry = DetectorRegistry::new();
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
 
     let error = registry
         .detect_type_precleaned("sequenceDiagram\nA ->> B: hello", &mut config)
@@ -1722,7 +1902,7 @@ fn c4_detector_preserves_upstream_ungrouped_regex_shape() {
 #[test]
 fn detector_registry_strips_mermaid_comment_lines_without_regex() {
     let registry = DetectorRegistry::pinned_mermaid_baseline();
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
 
     for source in [
         "\n\n%% This is a comment\nflowchart TD\nA-->B\n",
@@ -1742,7 +1922,7 @@ fn detector_registry_strips_mermaid_comment_lines_without_regex() {
 fn leading_utf8_bom_is_handled_consistently_across_public_entrypoints() {
     let source = "\u{feff}flowchart TD\nA-->B\n";
     let registry = DetectorRegistry::pinned_mermaid_baseline();
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
 
     let detected = registry
         .detect_type(source, &mut config)
@@ -1792,7 +1972,7 @@ fn malformed_directive_json_is_removed_without_rejecting_the_diagram() {
 fn strict_unterminated_directive_marker_truncates_like_mermaid() {
     let source = "%%{\nflowchart TD\nA-->B\n";
     let registry = DetectorRegistry::pinned_mermaid_baseline();
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
 
     assert!(registry.detect_type(source, &mut config).is_err());
 
@@ -1919,7 +2099,7 @@ fn detector_registry_strips_deep_frontmatter_with_small_stack() {
         .name("detector-deep-frontmatter-strip".to_string())
         .stack_size(64 * 1024)
         .spawn(move || {
-            let mut config = PresentationConfig::empty_object();
+            let mut config = SourcePresentationConfig::empty_object();
             let detected = registry
                 .detect_type(&text, &mut config)
                 .expect("detect type");
@@ -1935,7 +2115,7 @@ fn detector_registry_strips_deep_frontmatter_with_small_stack() {
 fn detector_registry_requires_matching_frontmatter_indentation() {
     let registry = DetectorRegistry::pinned_mermaid_baseline();
 
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
     let detected = registry
         .detect_type(
             "   ---\n   title: Flow\n   ---\n   sequenceDiagram\n   Alice->Bob: Hi\n",
@@ -1944,7 +2124,7 @@ fn detector_registry_requires_matching_frontmatter_indentation() {
         .expect("matching indented frontmatter should be stripped before detection");
     assert_eq!(detected, "sequence");
 
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
     let detected = registry
         .detect_type(
             "   ---\ntitle: Flow\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
@@ -1953,7 +2133,7 @@ fn detector_registry_requires_matching_frontmatter_indentation() {
         .expect("mismatched frontmatter should remain visible to the pseudo detector");
     assert_eq!(detected, "---");
 
-    let mut config = PresentationConfig::empty_object();
+    let mut config = SourcePresentationConfig::empty_object();
     let detected = registry
         .detect_type(
             "---\ntitle: Flow\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
@@ -1974,8 +2154,8 @@ fn auto_detect_common_headers_with_deep_config_small_stack() {
     }
     let mut root = serde_json::Map::new();
     root.insert("retainedConfig".to_string(), value);
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(Value::Object(root)));
+    let engine = MermaidEngine::new()
+        .with_site_config(SourcePresentationConfig::from_value(Value::Object(root)));
 
     let handle = std::thread::Builder::new()
         .name("detect-common-headers-deep-config".to_string())
@@ -1999,10 +2179,8 @@ fn auto_detect_common_headers_with_deep_config_small_stack() {
 
 mod compiled_theme_install_contract {
     use super::*;
-    use crate::__private::{
-        GitGraphPaintInput, ThemeCompatibilityPlan, config_path_overrides_typed_default,
-        gitgraph_paint_inputs, install_theme_compatibility, theme_parse_evidence,
-    };
+    use crate::presentation::ThemeCompatibilityPlan;
+    use merman_model::presentation::GitGraphPaintInput;
 
     #[derive(Clone, Copy)]
     enum Installation {
@@ -2011,7 +2189,7 @@ mod compiled_theme_install_contract {
     }
 
     struct Compatibility {
-        binding: ThemeParseBinding,
+        binding: ThemeCompatibilityRecipe,
         plan: ThemeCompatibilityPlan,
     }
 
@@ -2027,7 +2205,7 @@ mod compiled_theme_install_contract {
         fn install(&self, engine: MermaidEngine, installation: Installation) -> MermaidEngine {
             match installation {
                 Installation::Legacy => engine.with_theme_compatibility(self.binding.clone()),
-                Installation::Compiled => install_theme_compatibility(engine, &self.plan),
+                Installation::Compiled => engine.with_theme_plan(&self.plan),
             }
         }
     }
@@ -2069,13 +2247,17 @@ mod compiled_theme_install_contract {
                 "explicit ownership at {path}"
             );
             assert_eq!(
-                config_path_overrides_typed_default(&actual.effective_config, path),
-                config_path_overrides_typed_default(&expected.effective_config, path),
+                actual
+                    .effective_config
+                    .config_path_overrides_typed_default(path),
+                expected
+                    .effective_config
+                    .config_path_overrides_typed_default(path),
                 "typed default authority at {path}"
             );
         }
-        let expected_evidence = theme_parse_evidence(expected);
-        let actual_evidence = theme_parse_evidence(actual);
+        let expected_evidence = expected.effective_config.theme_compatibility().clone();
+        let actual_evidence = actual.effective_config.theme_compatibility().clone();
         assert!(expected_evidence.matches_recipe(Some(plan.recipe())));
         assert!(actual_evidence.matches_recipe(Some(plan.recipe())));
         assert_eq!(
@@ -2091,8 +2273,13 @@ mod compiled_theme_install_contract {
             GitGraphPaintInput::TagBorder,
         ] {
             assert_eq!(
-                gitgraph_paint_inputs(&actual.effective_config).map(|paint| paint.is_owned(input)),
-                gitgraph_paint_inputs(&expected.effective_config)
+                actual
+                    .effective_config
+                    .gitgraph_paint_inputs()
+                    .map(|paint| paint.is_owned(input)),
+                expected
+                    .effective_config
+                    .gitgraph_paint_inputs()
                     .map(|paint| paint.is_owned(input))
             );
         }
@@ -2108,24 +2295,24 @@ mod compiled_theme_install_contract {
             .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
                 "theme": "dark", "themeVariables": {"useGradient": false}
             }))))
-            .with_site_config(PresentationConfig::from_value(
+            .with_site_config(SourcePresentationConfig::from_value(
                 json!({"fontFamily": "Prior Host"}),
             ))
             .with_exact_site_config(None);
         let cases = [
             ("pristine", MermaidEngine::new(), recipe.clone()),
-            ("ordinary empty host", MermaidEngine::new().with_site_config(PresentationConfig::empty_object()), recipe.clone()),
-            ("same-value authored host", MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+            ("ordinary empty host", MermaidEngine::new().with_site_config(SourcePresentationConfig::empty_object()), recipe.clone()),
+            ("same-value authored host", MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
                 "themeVariables": {"primaryColor": "#123456"}
             }))), recipe.clone()),
             ("exact reset replaces previous recipe", prior, recipe.clone()),
-            ("unknown host theme", MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+            ("unknown host theme", MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "unknown-host-theme", "secure": []
             }))), recipe.clone()),
             ("unknown compatibility theme", MermaidEngine::new(), json!({
                 "theme": "unknown-compatibility-theme", "themeVariables": {"useGradient": true}
             })),
-            ("host and compatibility fonts", MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+            ("host and compatibility fonts", MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
                 "secure": [], "fontFamily": "Host Root", "themeVariables": {"fontFamily": "Host Theme", "fontSize": "22px"}
             }))), json!({
                 "theme": "base", "themeVariables": {"fontFamily": "Plan Theme", "fontSize": "18px"}
@@ -2206,17 +2393,20 @@ mod compiled_theme_install_contract {
 
         thread_local! {
             static INNER: RefCell<Option<(Installation, Compatibility)>> = const { RefCell::new(None) };
-            static ESCAPED: RefCell<Option<PresentationConfig>> = const { RefCell::new(None) };
+            static ESCAPED: RefCell<Option<SourcePresentationConfig>> = const { RefCell::new(None) };
             static CALLS: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
         }
 
-        fn capture_unfinished(_text: &str, config: &mut PresentationConfig) -> bool {
+        fn capture_unfinished(_text: &str, config: &mut SourcePresentationConfig) -> bool {
             CALLS.with(|calls| calls.borrow_mut().push("inner capture"));
             ESCAPED.with(|escaped| *escaped.borrow_mut() = Some(config.clone()));
             true
         }
 
-        fn replace_with_unfinished_clone(_text: &str, config: &mut PresentationConfig) -> bool {
+        fn replace_with_unfinished_clone(
+            _text: &str,
+            config: &mut SourcePresentationConfig,
+        ) -> bool {
             CALLS.with(|calls| calls.borrow_mut().push("outer enter"));
             let mut inner = INNER.with(|inner| {
                 let inner = inner.borrow();

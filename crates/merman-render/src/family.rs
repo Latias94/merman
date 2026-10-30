@@ -68,15 +68,16 @@ use crate::svg::{
 #[cfg(feature = "diagram-wardley")]
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
-use merman_core::OperationPhase;
-use merman_core::diagram::RenderSemanticContext;
-use merman_core::{
-    BuiltinRenderSemantic, DiagramFamilyId, ManagedSemanticJson, ParsedDiagramRender,
-    PresentationMetadata, RenderSemanticModel,
-};
+use merman_model::ManagedJson;
+use merman_model::OperationPhase;
 use merman_model::families as diagrams;
 #[cfg(feature = "diagram-class")]
 use merman_model::families::class::ClassDiagram;
+use merman_model::family::DiagramFamilyId;
+use merman_model::presentation::PresentationContext;
+use merman_model::presentation::{
+    BuiltinRenderSemantic, PresentationDiagram, PresentationMetadata, RenderSemanticModel,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -1250,7 +1251,7 @@ impl ResolvedFamilyStylePlan {
     fn adapt_state(
         &mut self,
         model: &merman_model::families::state::StateDiagramRenderModel,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
         title: Option<&str>,
         effective_theme_resource_policy: Arc<crate::diagram_theme::ThemeResourcePolicy>,
         work_meter: &crate::resources::OperationWorkMeter,
@@ -1271,15 +1272,20 @@ impl ResolvedFamilyStylePlan {
         Ok(())
     }
 
-    fn observe_compatibility(&mut self, metadata: &merman_core::PresentationMetadata) {
-        self.mermaid_compatibility_residual_count =
-            merman_core::__private::theme_parse_mermaid_residual_count(metadata);
+    fn observe_compatibility(
+        &mut self,
+        metadata: &merman_model::presentation::PresentationMetadata,
+    ) {
+        self.mermaid_compatibility_residual_count = metadata
+            .effective_config
+            .theme_compatibility()
+            .mermaid_residual_count();
         #[cfg(feature = "diagram-packet")]
         if self.family_id == DiagramFamilyId::PACKET
             && self.mermaid_compatibility_residual_count != 0
             && self.resolved_theme.is_some()
         {
-            let evidence = merman_core::__private::theme_parse_evidence(metadata);
+            let evidence = metadata.effective_config.theme_compatibility().clone();
             let deferred = crate::packet::deferred_mermaid_compatibility_consumptions(
                 self.resolved_theme.as_deref(),
                 &metadata.effective_config,
@@ -1293,8 +1299,8 @@ impl ResolvedFamilyStylePlan {
 
     fn reconcile_packet_mermaid_compatibility(
         &mut self,
-        evidence: &merman_core::__private::ThemeParseEvidence,
-        consumptions: &[merman_core::__private::ThemeCompatibilityFieldConsumption],
+        evidence: &merman_model::presentation::ThemeCompatibilityEvidence,
+        consumptions: &[merman_model::presentation::ThemeCompatibilityFieldConsumption],
     ) {
         debug_assert_eq!(self.family_id, DiagramFamilyId::PACKET);
         self.mermaid_compatibility_residual_count = evidence
@@ -1602,7 +1608,7 @@ impl FamilyRenderContext {
     fn adapt_state(
         &mut self,
         model: &merman_model::families::state::StateDiagramRenderModel,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
         title: Option<&str>,
     ) -> Result<()> {
         let effective_theme_resource_policy = self.session.effective_theme_resource_policy();
@@ -1615,7 +1621,10 @@ impl FamilyRenderContext {
         )
     }
 
-    fn observe_compatibility(&mut self, metadata: &merman_core::PresentationMetadata) {
+    fn observe_compatibility(
+        &mut self,
+        metadata: &merman_model::presentation::PresentationMetadata,
+    ) {
         self.style_plan.observe_compatibility(metadata);
     }
 
@@ -1643,8 +1652,8 @@ impl FamilyRenderContext {
 
     fn reconcile_packet_mermaid_compatibility(
         &mut self,
-        evidence: &merman_core::__private::ThemeParseEvidence,
-        consumptions: &[merman_core::__private::ThemeCompatibilityFieldConsumption],
+        evidence: &merman_model::presentation::ThemeCompatibilityEvidence,
+        consumptions: &[merman_model::presentation::ThemeCompatibilityFieldConsumption],
     ) {
         self.style_plan
             .reconcile_packet_mermaid_compatibility(evidence, consumptions);
@@ -1693,9 +1702,9 @@ where
     fn compatibility_json(
         &self,
         metadata: &PresentationMetadata,
-        output_context: &RenderSemanticContext,
-        control: &merman_core::OperationControl,
-    ) -> Result<ManagedSemanticJson> {
+        output_context: &PresentationContext,
+        control: &merman_model::OperationControl,
+    ) -> Result<ManagedJson> {
         self.semantic
             .compatibility_json_with_context_controlled(metadata, output_context, control)?
             .map_err(Error::SemanticProjection)
@@ -3041,9 +3050,9 @@ impl BuiltinFamilyArtifact<'_> {
     fn compatibility_json(
         &self,
         metadata: &PresentationMetadata,
-        output_context: &RenderSemanticContext,
-        control: &merman_core::OperationControl,
-    ) -> Result<ManagedSemanticJson> {
+        output_context: &PresentationContext,
+        control: &merman_model::OperationControl,
+    ) -> Result<ManagedJson> {
         let control = control.for_phase(OperationPhase::Semantic);
         control.checkpoint()?;
         match self {
@@ -3332,7 +3341,7 @@ impl BuiltinFamilyArtifact<'_> {
 
 pub struct FamilyRenderArtifact<'parsed> {
     metadata: &'parsed PresentationMetadata,
-    output_context: &'parsed RenderSemanticContext,
+    output_context: &'parsed PresentationContext,
     family: BuiltinFamilyArtifact<'parsed>,
     required_capabilities: Vec<RenderCapability>,
     context: FamilyRenderContext,
@@ -3862,7 +3871,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
     }
 
     fn new(
-        parsed: &'parsed ParsedDiagramRender,
+        parsed: &'parsed PresentationDiagram,
         family: BuiltinFamilyArtifact<'parsed>,
         context: FamilyRenderContext,
     ) -> Result<Self> {
@@ -3914,12 +3923,12 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
     /// ```compile_fail,E0599
     /// fn inject(
     ///     artifact: &merman_render::family::FamilyRenderArtifact,
-    ///     semantic: merman_core::ManagedSemanticJson,
+    ///     semantic: merman_model::ManagedJson,
     /// ) {
     ///     let _ = artifact.layout_json_with_compatibility_json(semantic);
     /// }
     /// ```
-    pub fn layout_json(&self) -> Result<ManagedSemanticJson> {
+    pub fn layout_json(&self) -> Result<ManagedJson> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let semantic = self.family.compatibility_json(
             self.metadata,
@@ -3929,7 +3938,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         self.assemble_layout_json(semantic)
     }
 
-    fn assemble_layout_json(&self, semantic: ManagedSemanticJson) -> Result<ManagedSemanticJson> {
+    fn assemble_layout_json(&self, semantic: ManagedJson) -> Result<ManagedJson> {
         let layout = serde_json::to_value(self.family.layout_projection())?;
 
         let mut metadata = serde_json::Map::new();
@@ -3948,12 +3957,11 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         );
         metadata.insert(
             "config".to_string(),
-            ManagedSemanticJson::from(self.metadata.config.as_value()).into_unmanaged_value(),
+            ManagedJson::from(self.metadata.config.as_value()).into_unmanaged_value(),
         );
         metadata.insert(
             "effective_config".to_string(),
-            ManagedSemanticJson::from(self.metadata.effective_config.as_value())
-                .into_unmanaged_value(),
+            ManagedJson::from(self.metadata.effective_config.as_value()).into_unmanaged_value(),
         );
 
         if let Some(observation) = self.layout_adaptation() {
@@ -3966,7 +3974,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         projection.insert("meta".to_string(), serde_json::Value::Object(metadata));
         projection.insert("semantic".to_string(), semantic.into_unmanaged_value());
         projection.insert("layout".to_string(), layout);
-        let projection = ManagedSemanticJson::from(serde_json::Value::Object(projection));
+        let projection = ManagedJson::from(serde_json::Value::Object(projection));
         self.context.session().checkpoint(OperationPhase::Emit)?;
         Ok(projection)
     }
@@ -3988,8 +3996,10 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         let projected_metadata = if matches!(&self.family, BuiltinFamilyArtifact::Agentflow { .. })
         {
             let mut metadata = self.metadata.clone();
-            metadata.effective_config =
-                project_agentflow_flowchart_config(&metadata.effective_config);
+            metadata.effective_config = project_agentflow_flowchart_config(
+                &metadata.effective_config,
+                self.context.session().work_meter().control(),
+            )?;
             Some(metadata)
         } else {
             None
@@ -4077,8 +4087,13 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         }
         #[cfg(feature = "diagram-packet")]
         if let Some(outcome) = rendered.take_packet_theme_outcome() {
-            if merman_core::__private::theme_parse_mermaid_residual_count(metadata) != 0 {
-                let evidence = merman_core::__private::theme_parse_evidence(metadata);
+            if metadata
+                .effective_config
+                .theme_compatibility()
+                .mermaid_residual_count()
+                != 0
+            {
+                let evidence = metadata.effective_config.theme_compatibility().clone();
                 let consumptions = outcome.compatibility_consumptions(&evidence);
                 context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
             }
@@ -4159,7 +4174,10 @@ fn render_family_artifact_svg(
     let projected_metadata = if matches!(&artifact.family, BuiltinFamilyArtifact::Agentflow { .. })
     {
         let mut metadata = artifact.metadata.clone();
-        metadata.effective_config = project_agentflow_flowchart_config(&metadata.effective_config);
+        metadata.effective_config = project_agentflow_flowchart_config(
+            &metadata.effective_config,
+            artifact.context.session().work_meter().control(),
+        )?;
         Some(metadata)
     } else {
         None
@@ -4190,9 +4208,10 @@ fn render_family_artifact_svg(
 
 #[cfg(feature = "diagram-agentflow")]
 fn project_agentflow_flowchart_config(
-    config: &merman_core::presentation::PresentationConfig,
-) -> merman_core::presentation::PresentationConfig {
-    let mut projected = config.clone();
+    config: &merman_model::presentation::PresentationConfig,
+    control: &merman_model::OperationControl,
+) -> Result<merman_model::presentation::PresentationConfig> {
+    let mut projected = config.as_config().clone();
     let root = config.as_value();
     let agentflow = root.get("agentflow").unwrap_or(&serde_json::Value::Null);
     // Agentflow's renderer owns the root viewport. Defaults here mirror its `??`
@@ -4206,7 +4225,9 @@ fn project_agentflow_flowchart_config(
         let value = agentflow.get(key).filter(|value| !value.is_null());
         projected.set_value(
             &format!("flowchart.{key}"),
-            value.cloned().unwrap_or(fallback),
+            value
+                .map(merman_model::json::clone_value_nonrecursive)
+                .unwrap_or(fallback),
         );
     }
     // Dagre takes a truthy root override before the renderer's family spacing.
@@ -4229,7 +4250,9 @@ fn project_agentflow_flowchart_config(
             .flatten();
         projected.set_value(
             &format!("flowchart.{key}"),
-            value.cloned().unwrap_or_else(|| serde_json::json!(50)),
+            value
+                .map(merman_model::json::clone_value_nonrecursive)
+                .unwrap_or_else(|| serde_json::json!(50)),
         );
     }
     // AgentflowDB assigns these values to each node before the shared shape helpers
@@ -4240,10 +4263,32 @@ fn project_agentflow_flowchart_config(
             if key == "wrappingWidth" && !crate::config::json_value_is_truthy(value) {
                 continue;
             }
-            projected.set_value(&format!("flowchart.{key}"), value.clone());
+            projected.set_value(
+                &format!("flowchart.{key}"),
+                merman_model::json::clone_value_nonrecursive(value),
+            );
         }
     }
-    projected
+    let evidence = config.theme_compatibility();
+    let parts = merman_model::presentation::FrozenPresentationConfigParts::new(projected)
+        .with_explicit_config_paths(Arc::clone(config.shared_explicit_config_paths()))
+        .with_theme_compatibility(
+            evidence.recipe().cloned(),
+            Arc::clone(evidence.shared_fields()),
+        )
+        .with_palette_paint_authority(config.palette_paint_authority())
+        .with_family_paint_inputs(config.family_paint_inputs());
+    // Existing render admission excludes config. This construction policy validates derived data
+    // without recharging the request's model limits or declaring source authority.
+    let construction_policy = merman_model::resources::InputResourcePolicy::for_profile(
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
+    );
+    merman_model::presentation::PresentationConfig::try_from_frozen_parts_controlled(
+        parts,
+        &construction_policy,
+        control,
+    )?
+    .map_err(Error::from)
 }
 
 fn ensure_root_theme_portable(
@@ -4285,7 +4330,7 @@ fn ensure_root_theme_portable(
 /// use merman_render::family::FamilyPair;
 /// ```
 pub fn prepare<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
@@ -4296,7 +4341,7 @@ pub fn prepare<'parsed>(
 struct FlowchartSvgLabelPreparation(bool);
 
 fn prepare_with_svg_label_preparation<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     session: RenderSession,
     svg_label_preparation: FlowchartSvgLabelPreparation,

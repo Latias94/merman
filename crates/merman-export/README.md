@@ -77,7 +77,7 @@ merman-export = { version = "0.9.3", default-features = false, features = ["png"
 ```
 
 ```rust
-use merman_core::OperationControl;
+use merman_model::OperationControl;
 use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits, bundled_font_data};
 
 fn font_context(
@@ -176,13 +176,13 @@ operation control:
 
 ```toml
 [dependencies]
-merman-core = { version = "0.9.3", default-features = false }
+merman-model = { version = "0.9.3", default-features = false }
 merman-render = { version = "0.9.3", default-features = false }
 merman-export = { version = "0.9.3", default-features = false, features = ["png", "system-fonts"] }
 ```
 
 ```rust
-use merman_core::OperationControl;
+use merman_model::OperationControl;
 use merman_export::{RasterOptions, svg_to_png_controlled};
 use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 

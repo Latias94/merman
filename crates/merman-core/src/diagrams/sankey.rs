@@ -8,10 +8,8 @@ use crate::{
 };
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 use serde_json::Value;
-#[cfg(feature = "compat-json")]
-use serde_json::{Map, json};
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -33,7 +31,9 @@ pub(crate) fn sankey_syntax_construction_count() -> usize {
     SANKEY_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-pub use merman_model::families::sankey::{SankeyDiagramModel, SankeyGraph, SankeyLink, SankeyNode};
+pub(crate) use merman_model::families::sankey::{
+    SankeyDiagramModel, SankeyGraph, SankeyLink, SankeyNode,
+};
 
 #[derive(Debug, Default, Clone)]
 struct SankeyDb {
@@ -164,20 +164,14 @@ impl SankeySemanticSource {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &SankeyDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut out = Map::with_capacity(3);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("graph".to_string(), json!(&model.graph));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    merman_model::families::sankey::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_sankey(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_sankey(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let model = parse_sankey_model(code, meta)?;
     render_model_to_compat_json(&model, meta)
 }
@@ -186,7 +180,7 @@ pub(crate) fn parse_sankey(code: &str, meta: &PresentationMetadata) -> Result<Va
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_sankey_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_sankey_semantic_source_controlled(
@@ -213,7 +207,7 @@ pub(crate) fn parse_sankey_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_sankey_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<SankeyDiagramModel> {
     parse_sankey_model(code, meta)
 }
@@ -221,7 +215,7 @@ pub(crate) fn parse_sankey_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_sankey_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<SankeyDiagramModel>> {
     Ok(construct_sankey_semantic_source_controlled(
@@ -237,7 +231,7 @@ pub(crate) fn parse_sankey_model_for_render_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_sankey_model(code: &str, meta: &PresentationMetadata) -> Result<SankeyDiagramModel> {
+fn parse_sankey_model(code: &str, meta: &SourcePresentationMetadata) -> Result<SankeyDiagramModel> {
     construct_sankey_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -905,11 +899,11 @@ mod tests {
     #[test]
     fn sankey_typed_projection_matches_complete_compatibility_json() {
         let text = "sankey-beta\nA,B,1\nB,C,NaN\n";
-        let effective_config = crate::presentation::PresentationConfig::from_value(json!({
+        let effective_config = crate::presentation::SourcePresentationConfig::from_value(json!({
             "theme": "forest",
             "securityLevel": "strict"
         }));
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "sankey".to_string(),
             config: crate::MermaidConfig::empty_object(),
             effective_config,
@@ -1269,10 +1263,10 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "sankey".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let source = "sankey-beta\nA,B,1\n";

@@ -168,6 +168,20 @@ impl AnalysisBuildRequest {
 }
 
 impl DiagnosticReprojectionRequest {
+    #[cfg(feature = "fixes")]
+    pub(in crate::session) fn with_requested_fixes(mut self) -> Self {
+        self.policy = self
+            .policy
+            .with_fix_generation(merman_analysis::FixGeneration::Generate);
+        // Requested replacements belong to this operation, not the retained diagnostics cache.
+        self.cache_authority = None;
+        self
+    }
+
+    pub(in crate::session) fn generates_fixes(&self) -> bool {
+        self.policy.fix_generation != merman_analysis::FixGeneration::Omit
+    }
+
     pub(in crate::session) fn new(
         policy: AnalysisDiagnosticPolicy,
         cancellation: AnalysisCancellationToken,

@@ -161,7 +161,7 @@ impl TargetAdmissionReason {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentPortabilityReport {
-    family_id: merman_core::DiagramFamilyId,
+    family_id: merman_model::family::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
     resource_closure_complete: bool,
     prepared_math_evidence: merman_render::__private::PreparedMathEvidenceSummary,
@@ -172,7 +172,7 @@ pub struct DocumentPortabilityReport {
 
 #[cfg(feature = "svg")]
 impl DocumentPortabilityReport {
-    pub const fn family_id(&self) -> merman_core::DiagramFamilyId {
+    pub const fn family_id(&self) -> merman_model::family::DiagramFamilyId {
         self.family_id
     }
 
@@ -360,7 +360,7 @@ fn portability_report(
 
 #[cfg(feature = "svg")]
 fn portability_report_from_summary(
-    family_id: merman_core::DiagramFamilyId,
+    family_id: merman_model::family::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
     host_measurements: bool,
     native_svg: Option<&merman_render::svg::ResvgCompatibleSvg>,
@@ -437,7 +437,7 @@ pub(super) fn standalone_svg_admission(
 #[cfg(feature = "svg")]
 pub(super) fn standalone_svg_admission_from_summary(
     svg: &merman_render::svg::StandaloneSvgArtifact,
-    family_id: merman_core::DiagramFamilyId,
+    family_id: merman_model::family::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
     host_measurements: bool,
 ) -> TargetAdmissionReceipt {

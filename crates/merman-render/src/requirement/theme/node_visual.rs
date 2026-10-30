@@ -272,7 +272,8 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         for html in [false, true] {
-            let config = PresentationConfig::from_value(serde_json::json!({"htmlLabels": html}));
+            let config =
+                crate::test_support::presentation_config(serde_json::json!({"htmlLabels": html}));
             let plan =
                 RequirementPaintThemePlan::resolve_with_title(None, &config, &model, None, &work)
                     .unwrap();

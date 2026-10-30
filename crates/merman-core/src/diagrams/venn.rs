@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "editor-facts")]
@@ -9,10 +9,12 @@ use crate::{
 };
 use crate::{Error, Result, SourceSpan};
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(all(test, feature = "compat-json"))]
+use serde_json::json;
 use std::collections::{BTreeMap, HashSet};
 
-pub use merman_model::families::venn::{
+pub(crate) use merman_model::families::venn::{
     VennDiagramModel, VennStyleEntryModel, VennSubsetModel, VennTextNodeModel,
 };
 
@@ -467,7 +469,7 @@ impl<'a> VennCursor<'a> {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_venn(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_venn(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let source = parse_venn_semantic_source(code, meta)?;
     render_model_to_compat_json(&source.model, meta)
 }
@@ -476,7 +478,7 @@ pub(crate) fn parse_venn(code: &str, meta: &PresentationMetadata) -> Result<Valu
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_venn_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let VennParseOutcome {
@@ -512,7 +514,7 @@ pub(crate) fn parse_venn_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_venn_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<VennDiagramModel> {
     Ok(parse_venn_semantic_source(code, meta)?.model)
 }
@@ -520,7 +522,7 @@ pub(crate) fn parse_venn_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_venn_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<VennDiagramModel>> {
     let outcome = construct_venn_parse_outcome_controlled(
@@ -536,23 +538,16 @@ pub(crate) fn parse_venn_model_for_render_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &VennDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": &model.title,
-        "accTitle": &model.acc_title,
-        "accDescr": &model.acc_descr,
-        "subsets": &model.subsets,
-        "textNodes": &model.text_nodes,
-        "styleEntries": &model.style_entries,
-    }))
+    merman_model::families::venn::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_venn_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<VennSemanticSource> {
     construct_venn_parse_outcome_controlled(
         code,
@@ -1529,14 +1524,14 @@ mod tests {
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
     use crate::{
-        MermaidConfig, MermaidEngine, ParseOptions, PresentationMetadata, RenderSemanticModel,
+        MermaidConfig, MermaidEngine, ParseOptions, RenderSemanticModel, SourcePresentationMetadata,
     };
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "venn".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -2277,10 +2272,10 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "venn".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let source = "venn-beta\nset A\nset B\nunion A,B\n";

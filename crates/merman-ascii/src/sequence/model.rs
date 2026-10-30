@@ -809,10 +809,10 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
-    use merman_core::{
-        MermaidEngine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
-    };
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
     use merman_model::resources::ResourceProfile;
+    use merman_model::{OperationControl, OperationPhase};
 
     fn parse_sequence_model(
         source: &str,

@@ -1,12 +1,12 @@
 #![cfg(feature = "svg")]
 
 use merman::{
-    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
-    presentation::PresentationConfig,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer,
+    SourcePresentationConfig, SvgRequest,
 };
 
-fn legacy_init_theme_compat_config() -> PresentationConfig {
-    PresentationConfig::from_value(serde_json::json!({
+fn legacy_init_theme_compat_config() -> SourcePresentationConfig {
+    SourcePresentationConfig::from_value(serde_json::json!({
         "secure": [
             "secure",
             "securityLevel",
@@ -25,7 +25,7 @@ fn render_svg(name: &str, source: &str) -> String {
 fn render_svg_with_site_config(
     name: &str,
     source: &str,
-    site_config: PresentationConfig,
+    site_config: SourcePresentationConfig,
 ) -> String {
     let request = SvgRequest {
         options: merman::svg::SvgRenderOptions {
@@ -668,7 +668,7 @@ title Packet Visible Audit
 +8: "Byte"
 +16: "Word"
 "#,
-        PresentationConfig::from_value(serde_json::json!({
+        SourcePresentationConfig::from_value(serde_json::json!({
             "packet": {
                 "startByteColor": "#22c55e",
                 "endByteColor": "#f97316",
@@ -841,7 +841,7 @@ fn mindmap_neo_theme_smoke_counts_data_look_dom_and_neo_css_as_visible() {
   Root
     Child
 "##,
-        PresentationConfig::from_value(serde_json::json!({
+        SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "redux",
             "look": "neo",
             "themeVariables": {
@@ -916,7 +916,7 @@ fn er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible() {
     string name
   }
 "#,
-        PresentationConfig::from_value(serde_json::json!({
+        SourcePresentationConfig::from_value(serde_json::json!({
             "look": "neo",
             "themeVariables": {
                 "textColor": "#f8fafc",

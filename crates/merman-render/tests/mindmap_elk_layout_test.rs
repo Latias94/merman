@@ -1,5 +1,4 @@
 use base64::Engine as _;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -12,12 +11,16 @@ const SOURCE: &str =
     "mindmap\n  root((Root))\n    left[Left branch]\n      leaf[Leaf]\n    right[Right branch]\n";
 
 fn render(layout: &str) -> (MindmapDiagramLayout, String) {
-    let engine = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({ "layout": layout })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            json!({ "layout": layout }),
+        ),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
         .expect("parse Mindmap")
-        .expect("detect Mindmap");
+        .expect("detect Mindmap")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("session");
@@ -165,3 +168,6 @@ fn mindmap_missing_loader_uses_available_family_fallback() {
         );
     }
 }
+
+#[allow(dead_code)]
+mod common;

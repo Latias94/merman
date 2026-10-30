@@ -512,8 +512,8 @@ mod tests {
             DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
         };
         use crate::resources::RenderResourcePolicy;
-        use merman_core::presentation::PresentationConfig;
         use merman_model::families::pie::PieSection;
+        use merman_model::presentation::PresentationConfig;
 
         let mut model = PieDiagramModel::default();
         model.title = Some("Title".to_string());
@@ -612,7 +612,7 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap()
+            .unwrap().into_presentation()
             .metadata()
             .effective_config
             .clone();

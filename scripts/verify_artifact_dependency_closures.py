@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify runtime dependency closures for exact Cargo artifact profiles."""
+"""Verify runtime and selected normal/build closures for exact artifact profiles."""
 
 from __future__ import annotations
 
@@ -93,6 +93,7 @@ class VerificationCase:
     recipe: CargoArtifactRecipe
     claim: ClosureClaim
     target: str
+    normal_build_claim: ClosureClaim | None = None
 
     @property
     def closure_scope(self) -> str:
@@ -129,6 +130,7 @@ class ClosureObservation:
     closure_scope: str
     closure_target: str
     package_count: int
+    dependency_scope: str = "runtime"
 
 
 class ClosureVerificationError(RuntimeError):
@@ -326,6 +328,7 @@ SEMANTIC_CLAIMS = (
             "rayon",
             "reqwest",
             "resvg",
+            "serde-saphyr",
             "tiny-skia",
             "usvg",
         ),
@@ -334,6 +337,7 @@ SEMANTIC_CLAIMS = (
                 "merman-cli",
                 (
                     "ascii",
+                    "fixes",
                     "icons",
                     "jpeg",
                     "markdown",
@@ -398,6 +402,7 @@ SEMANTIC_CLAIMS = (
             "js-sys",
             "pest",
             "serde-wasm-bindgen",
+            "serde-saphyr",
             "serde_yaml",
             "unsafe-libyaml",
             "wasm-bindgen",
@@ -408,11 +413,59 @@ SEMANTIC_CLAIMS = (
 ) + tuple(_sdk_claim(kind, variant)
           for kind in ("native", "wasi") for variant in ("standard", "math", "full"))
 
+# These are production boundaries, including build dependencies and proc macros. Keep them
+# separate from runtime policy: a compiler-only tool is not a runtime dependency leak.
+# Render/Export recipes must satisfy these claims once the M5 source edge is removed.
+SOURCE_INGESTION_PACKAGES = (
+    "merman-core", "granit-parser", "json5", "lalrpop", "lalrpop-util", "serde-saphyr",
+) + TREE_SITTER_FORBIDDEN_PACKAGES
+MODEL_ASCII_FORBIDDEN_PACKAGES = SOURCE_INGESTION_PACKAGES + (
+    "merman-markup", "html5ever", "url",
+)
+DIAGNOSTICS_ONLY_PROFILES = (
+    ("rust-analysis", "merman-analysis"), ("cli-analysis", "merman-cli"),
+    ("web-analysis", "merman-wasm"), ("typst-wasm", "merman-typst-plugin"),
+)
+DIAGNOSTICS_ONLY_PROFILE_IDS = frozenset(profile_id for profile_id, _root in DIAGNOSTICS_ONLY_PROFILES)
+NORMAL_BUILD_CLAIMS = tuple(
+    ClosureClaim(
+        claim_id=f"{profile_id}-source-independent-production-boundary",
+        profile_id=profile_id,
+        required_packages=required,
+        forbidden_packages=forbidden,
+    )
+    for profile_id, required, forbidden in (
+        ("rust-model", ("merman-model",), MODEL_ASCII_FORBIDDEN_PACKAGES),
+        ("rust-model-all", ("merman-model",), MODEL_ASCII_FORBIDDEN_PACKAGES),
+        ("rust-markup", ("merman-markup", "merman-model"), SOURCE_INGESTION_PACKAGES),
+        ("rust-markup-full", ("merman-markup", "merman-model", "html5ever", "url"),
+         SOURCE_INGESTION_PACKAGES),
+        ("rust-ascii", ("merman-ascii", "merman-model"), MODEL_ASCII_FORBIDDEN_PACKAGES),
+        ("rust-render-native-svg", ("merman-render", "merman-model", "merman-markup"),
+         SOURCE_INGESTION_PACKAGES),
+        *((profile_id, ("merman-export", "merman-render", "merman-model"),
+           SOURCE_INGESTION_PACKAGES) for profile_id in (
+            "rust-export-jpeg", "rust-export-png", "rust-export-pdf",
+            "rust-export-native-fonts", "rust-export-native-sdk",
+        )),
+    )
+) + tuple(
+    ClosureClaim(
+        claim_id=f"{profile_id}-diagnostics-without-fix-writer",
+        profile_id=profile_id,
+        required_packages=("merman-analysis",) if root == "merman-analysis" else (root, "merman-analysis"),
+        forbidden_packages=("serde-saphyr",),
+        forbidden_features=(PackageFeatureExclusion("merman-analysis", ("fixes",)),),
+    )
+    for profile_id, root in DIAGNOSTICS_ONLY_PROFILES
+)
+
 
 def load_verification_cases(
     *,
     descriptor_path: Path = DEFAULT_DESCRIPTOR,
     semantic_claims: Sequence[ClosureClaim] = SEMANTIC_CLAIMS,
+    normal_build_claims: Sequence[ClosureClaim] = NORMAL_BUILD_CLAIMS,
 ) -> tuple[VerificationCase, ...]:
     """Join every descriptor recipe with semantic and universal closure checks."""
     try:
@@ -428,6 +481,15 @@ def load_verification_cases(
     if unknown_semantic:
         raise ClosureVerificationError(
             f"semantic claims reference unknown profiles: {unknown_semantic!r}"
+        )
+
+    normal_build_by_profile = {claim.profile_id: claim for claim in normal_build_claims}
+    if len(normal_build_by_profile) != len(normal_build_claims):
+        raise ClosureVerificationError("normal/build claims contain duplicate profiles")
+    unknown_normal_build = sorted(set(normal_build_by_profile) - set(profile_ids))
+    if unknown_normal_build:
+        raise ClosureVerificationError(
+            f"normal/build claims reference unknown profiles: {unknown_normal_build!r}"
         )
 
     cases: list[VerificationCase] = []
@@ -481,8 +543,15 @@ def load_verification_cases(
                 f"semantic claim {claim.claim_id!r} must require descriptor root "
                 f"package {recipe.package!r}"
             )
+        normal_build_claim = normal_build_by_profile.get(profile_id)
+        if normal_build_claim is not None and recipe.package not in normal_build_claim.required_packages:
+            raise ClosureVerificationError(
+                f"normal/build claim {normal_build_claim.claim_id!r} must require descriptor root "
+                f"package {recipe.package!r}"
+            )
         cases.extend(
-            VerificationCase(recipe, claim, target) for target in expected_targets
+            VerificationCase(recipe, claim, target, normal_build_claim)
+            for target in expected_targets
         )
     return tuple(cases)
 
@@ -613,6 +682,37 @@ def write_metadata_probe(
             f"structured package metadata for {recipe.package!r} is incomplete"
         )
 
+    sections: dict[str, list[str]] = {}
+    retained_dependencies: set[str] = set()
+    omitted_dependencies: set[str] = set()
+    for dependency in dependencies:
+        if not isinstance(dependency, Mapping):
+            raise ClosureVerificationError(
+                f"structured dependency metadata for {recipe.package!r} is invalid"
+            )
+        name = dependency.get("name")
+        rename = dependency.get("rename")
+        if not isinstance(name, str) or (rename is not None and not isinstance(rename, str)):
+            raise ClosureVerificationError(
+                f"structured dependency metadata for {recipe.package!r} is invalid"
+            )
+        alias = rename or name
+        kind = dependency.get("kind")
+        if kind is not None and not (kind == "build" and case.normal_build_claim is not None):
+            omitted_dependencies.add(alias)
+            continue
+        retained_dependencies.add(alias)
+        target = dependency.get("target")
+        if target is not None and not isinstance(target, str):
+            raise ClosureVerificationError(
+                f"dependency target for {recipe.package!r} is invalid"
+            )
+        dependency_section = "build-dependencies" if kind == "build" else "dependencies"
+        section = dependency_section if target is None else f"target.{json.dumps(target)}.{dependency_section}"
+        sections.setdefault(section, []).append(_render_probe_dependency(dependency))
+    # An alias may occur in both retained and omitted dependency kinds.
+    omitted_dependencies.difference_update(retained_dependencies)
+
     probe_dir.mkdir(parents=True, exist_ok=True)
     (probe_dir / "lib.rs").write_text("", encoding="utf-8")
     lines = [
@@ -637,24 +737,19 @@ def write_metadata_probe(
             raise ClosureVerificationError(
                 f"structured feature metadata for {recipe.package!r} is invalid"
             )
-        rendered_members = ", ".join(json.dumps(member) for member in members)
+        kept_members = []
+        for member in members:
+            if member.startswith("dep:"):
+                dependency_name = member.removeprefix("dep:")
+            elif "/" in member:
+                dependency_name = member.split("/", 1)[0].removesuffix("?")
+            else:
+                dependency_name = None
+            if dependency_name not in omitted_dependencies:
+                kept_members.append(member)
+        rendered_members = ", ".join(json.dumps(member) for member in kept_members)
         lines.append(f"{json.dumps(feature)} = [{rendered_members}]")
 
-    sections: dict[str, list[str]] = {}
-    for dependency in dependencies:
-        if not isinstance(dependency, Mapping):
-            raise ClosureVerificationError(
-                f"structured dependency metadata for {recipe.package!r} is invalid"
-            )
-        if dependency.get("kind") is not None:
-            continue
-        target = dependency.get("target")
-        if target is not None and not isinstance(target, str):
-            raise ClosureVerificationError(
-                f"dependency target for {recipe.package!r} is invalid"
-            )
-        section = "dependencies" if target is None else f"target.{json.dumps(target)}.dependencies"
-        sections.setdefault(section, []).append(_render_probe_dependency(dependency))
     for section, entries in sorted(sections.items()):
         lines.extend(("", f"[{section}]", *sorted(entries)))
     lines.append("")
@@ -806,8 +901,9 @@ def cargo_tree_command(
     case: VerificationCase,
     *,
     probe_manifest: Path,
+    normal_build: bool = False,
 ) -> list[str]:
-    """Ask Cargo for the selected runtime graph, excluding compiler-only dependencies."""
+    """Ask Cargo for runtime edges or the complete normal/build production graph."""
     _validate_case_recipe(case)
     command = [
         "cargo",
@@ -818,7 +914,7 @@ def cargo_tree_command(
         case.target,
         "--no-default-features",
         "--edges",
-        "normal,no-proc-macro",
+        "normal,build" if normal_build else "normal,no-proc-macro",
         "--prefix",
         "none",
         "--format",
@@ -838,7 +934,7 @@ def parse_cargo_metadata(
     root_package: str,
     tree_output: str,
 ) -> DependencyClosure:
-    """Enrich Cargo's selected runtime tree with unambiguous metadata identities.
+    """Enrich Cargo's selected dependency tree with unambiguous metadata identities.
 
     Metadata resolve edges can include inactive optional dependencies referenced by
     weak feature forwarding. Cargo tree owns dependency and feature selection;
@@ -937,19 +1033,23 @@ def _metadata_source(source: str | None, manifest_path: Path) -> str:
 def check_case(
     case: VerificationCase,
     closure: DependencyClosure,
+    *,
+    normal_build: bool = False,
 ) -> tuple[list[str], ClosureObservation]:
-    """Compare one observed runtime closure with its profile-owned contract."""
-    claim = case.claim
+    """Compare a Cargo-observed closure with its contract for that dependency scope."""
+    claim = case.normal_build_claim if normal_build else case.claim
+    if claim is None:
+        raise ClosureVerificationError("case has no normal/build claim")
     failures: list[str] = []
     required = set(claim.required_packages)
     forbidden = set(claim.forbidden_packages)
-    if case.recipe.profile_id in MATH_FREE_SVG_PROFILE_IDS:
+    if not normal_build and case.recipe.profile_id in MATH_FREE_SVG_PROFILE_IDS:
         forbidden.update(MATH_BACKEND_PACKAGES)
     tree_sitter_allowed = (
         case.recipe.profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS
         and case.recipe.package == "merman-lsp"
     )
-    if not tree_sitter_allowed:
+    if not normal_build and not tree_sitter_allowed:
         forbidden.update(TREE_SITTER_FORBIDDEN_PACKAGES)
 
     overlaps = sorted(required & forbidden)
@@ -989,6 +1089,7 @@ def check_case(
         closure_scope=case.closure_scope,
         closure_target=case.target,
         package_count=len(closure.features_by_package_identity),
+        dependency_scope="normal-build" if normal_build else "runtime",
     )
     return failures, observation
 
@@ -1009,12 +1110,12 @@ def verify_cases(
     runner: CommandRunner = _default_runner,
     probe_preparer: ProbePreparer = prepare_metadata_probe,
 ) -> tuple[ClosureObservation, ...]:
-    """Query each exact profile-target runtime tree and aggregate closure failures."""
+    """Query exact runtime and selected normal/build trees and aggregate failures."""
     failures: list[str] = []
     observations: list[ClosureObservation] = []
     command_outcomes: dict[
         tuple[str, ...],
-        DependencyClosure | RuntimeError,
+        tuple[DependencyClosure, DependencyClosure | None] | RuntimeError,
     ] = {}
 
     case_list = tuple(cases)
@@ -1033,6 +1134,7 @@ def verify_cases(
                     case.recipe.manifest,
                     case.recipe.features,
                     case.target,
+                    case.normal_build_claim is not None,
                 )
                 probe_manifest = probe_paths.get(probe_key)
                 if probe_manifest is None:
@@ -1067,20 +1169,45 @@ def verify_cases(
                             raise ClosureVerificationError(
                                 f"cargo tree exited with {tree.returncode}: {stderr}"
                             )
-                        outcome = parse_cargo_metadata(
+                        runtime_closure = parse_cargo_metadata(
                             completed.stdout,
                             root_package=case.recipe.package,
                             tree_output=tree.stdout,
                         )
+                        normal_build_closure = None
+                        if case.normal_build_claim is not None:
+                            production_tree = runner(cargo_tree_command(
+                                case, probe_manifest=probe_manifest, normal_build=True,
+                            ))
+                            if production_tree.returncode != 0:
+                                stderr = (production_tree.stderr or "").strip() or "<empty stderr>"
+                                raise ClosureVerificationError(
+                                    f"cargo tree normal/build exited with {production_tree.returncode}: {stderr}"
+                                )
+                            normal_build_closure = parse_cargo_metadata(
+                                completed.stdout, root_package=case.recipe.package,
+                                tree_output=production_tree.stdout,
+                            )
+                        outcome = runtime_closure, normal_build_closure
                     except RuntimeError as error:
                         outcome = error
                     command_outcomes[command_key] = outcome
                 if isinstance(outcome, RuntimeError):
                     raise outcome
-                closure = outcome
+                closure, normal_build_closure = outcome
                 case_failures, observation = check_case(case, closure)
                 observations.append(observation)
                 failures.extend(f"{context}: {failure}" for failure in case_failures)
+                if normal_build_closure is not None:
+                    case_failures, observation = check_case(
+                        case, normal_build_closure, normal_build=True,
+                    )
+                    observations.append(observation)
+                    failures.extend(
+                        f"{case.normal_build_claim.claim_id} ({case.recipe.profile_id}, "
+                        f"normal-build, closure-target={case.target}): {failure}"
+                        for failure in case_failures
+                    )
             except RuntimeError as error:
                 failures.append(f"{context}: {error}")
 
@@ -1170,9 +1297,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"profile={observation.profile_id} "
             f"build-target-kind={observation.build_target_kind} "
             f"closure-scope={observation.closure_scope} "
+            f"dependency-scope={observation.dependency_scope} "
             f"closure-target={observation.closure_target} "
             f"verifier-host={running_host_target} "
-            "closure=runtime "
+            f"closure={observation.dependency_scope} "
             f"packages={observation.package_count}"
         )
     return 0

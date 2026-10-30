@@ -201,7 +201,7 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
 ) -> Result<RadarDiagramLayout> {
     work_meter
         .policy()
-        .check_model_complexity(merman_core::resources::model_complexity_from_radar(model))?;
+        .check_model_complexity(merman_model::resources::model_complexity_from_radar(model))?;
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),

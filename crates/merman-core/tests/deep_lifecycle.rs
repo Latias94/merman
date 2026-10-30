@@ -1,9 +1,9 @@
 #![cfg(feature = "all-diagrams")]
 #![cfg(feature = "compat-json")]
 
-#[cfg(feature = "test-support")]
-use merman_core::BuiltinRenderSemantic;
 use merman_core::{MermaidEngine, ParseOptions};
+#[cfg(feature = "test-support")]
+use merman_model::presentation::BuiltinRenderSemantic;
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};
@@ -239,10 +239,10 @@ fn run_worker(case: Case, depth: usize) {
         marker(started, "parse", "done");
         marker(started, "projection", "begin");
         let (meta, model) = parsed.into_parts();
-        let control =
-            merman_core::OperationControl::new().for_phase(merman_core::OperationPhase::Export);
+        let control = merman_model::operation::OperationControl::new()
+            .for_phase(merman_model::operation::OperationPhase::Export);
         let (cancelled, scheduled_checkpoints) = match model {
-            merman_core::RenderSemanticModel::State(mut model) => {
+            merman_model::presentation::RenderSemanticModel::State(mut model) => {
                 // Retain one record to make HashMap iteration irrelevant. Its document still
                 // owns the complete canonical chain. Projection descends through `depth - 1`
                 // state statements and one leaf, then completes nested documents on ascent.
@@ -260,7 +260,7 @@ fn run_worker(case: Case, depth: usize) {
                 drop(model);
                 (cancelled, scheduled)
             }
-            merman_core::RenderSemanticModel::Block(model) => {
+            merman_model::presentation::RenderSemanticModel::Block(model) => {
                 assert_eq!(model.blocks_flat.len(), depth + 2);
                 // Root-to-leaf descent uses `depth + 1` steps, followed by leaf completion.
                 // One entry checkpoint plus each 128-step traversal checkpoint succeeds;
@@ -276,8 +276,14 @@ fn run_worker(case: Case, depth: usize) {
             }
             other => panic!("unexpected controlled projection family: {}", other.kind()),
         };
-        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
-        assert_eq!(cancelled.phase, merman_core::OperationPhase::Export);
+        assert_eq!(
+            cancelled.reason,
+            merman_model::operation::CancelReason::Requested
+        );
+        assert_eq!(
+            cancelled.phase,
+            merman_model::operation::OperationPhase::Export
+        );
         assert_eq!(control.checkpoint().unwrap_err(), cancelled);
         println!("scheduled_checkpoints={scheduled_checkpoints}");
         marker(started, "projection", "cancelled-after-nested-completion");
@@ -334,7 +340,7 @@ fn run_worker(case: Case, depth: usize) {
                     assert!(
                         case.malformed()
                             || (matches!(case, Case::RailroadEbnfPostfix)
-                                && depth > merman_core::MAX_DIAGRAM_NESTING_DEPTH),
+                                && depth > merman_model::MAX_DIAGRAM_NESTING_DEPTH),
                         "valid lifecycle source must parse: {error}"
                     );
                     marker(started, "parse", "reported-error");

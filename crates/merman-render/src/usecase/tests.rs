@@ -2,8 +2,8 @@ use crate::LayoutOptions;
 use crate::environment::RenderEnvironment;
 use crate::family;
 use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationConfig;
 use serde_json::json;
 
 #[test]
@@ -36,15 +36,18 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
         }
     }
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(
-            json!({"layout":"dagre", "htmlLabels":true}),
-        ))
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                json!({"layout":"dagre", "htmlLabels":true}),
+            ),
+        )
         .parse_diagram_for_render_model_sync(
             "usecase-beta\nU(\"$$x<br/>y$$\")\n",
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_math_renderer(Arc::new(FixedMath))
         .begin_session()
@@ -63,15 +66,18 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
     // Markdown <br/> splits math delimiters; unlike a plain label it must not
     // acquire a math requirement or invoke the backend on a literal fragment.
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(
-            json!({"layout":"dagre", "htmlLabels":true}),
-        ))
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                json!({"layout":"dagre", "htmlLabels":true}),
+            ),
+        )
         .parse_diagram_for_render_model_sync(
             "usecase-beta\nU(\"`$$x<br/>y$$`\")\n",
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_math_renderer(Arc::new(FixedMath))
         .begin_session()

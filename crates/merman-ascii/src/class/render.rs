@@ -3132,11 +3132,11 @@ mod tests {
     use super::*;
     use crate::color::AsciiColorMode;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::diagram::RenderSemanticModel;
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_model::families::class::{
         ClassDiagram, ClassInterface, ClassNote, NamespaceTopologyView,
     };
+    use merman_model::presentation::RenderSemanticModel;
     use merman_model::resources::ResourceProfile;
     use std::cell::Cell;
 

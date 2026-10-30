@@ -3,7 +3,7 @@ pub(crate) mod presentation;
 
 use crate::json_value::drop_value_nonrecursive;
 use crate::{OperationControl, OperationControlResult};
-pub use merman_model::config::MermaidConfig;
+use merman_model::config::MermaidConfig;
 pub(crate) use merman_model::config::replace_value_nonrecursive;
 #[cfg(feature = "presentation")]
 use merman_model::config::values_equal_controlled as config_values_equal;

@@ -15,7 +15,8 @@ fn layout_er(text: &str) -> ErDiagramLayout {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("ER layout");
     let projection = artifact.layout_json().expect("serialize ER layout");
@@ -212,7 +213,8 @@ fn er_elk_layout_materializes_compound_subgraphs_and_svg_groups() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("ER layout");
     let projection = artifact.layout_json().expect("serialize ER layout");

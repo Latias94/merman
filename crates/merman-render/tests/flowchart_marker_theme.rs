@@ -1,5 +1,5 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationConfig;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
@@ -43,7 +43,7 @@ fn config(swimlane: bool, look: &str) -> PresentationConfig {
     if swimlane {
         value["layout"] = json!("swimlane");
     }
-    PresentationConfig::from_value(value)
+    common::presentation_config(value)
 }
 
 fn render(
@@ -52,13 +52,18 @@ fn render(
     config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(
+    let parsed = common::install_parse_compatibility(
         theme,
-        MermaidEngine::new().with_site_config(config),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_config(
+                config.as_config().clone(),
+            ),
+        ),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()
-    .unwrap();
+    .unwrap()
+    .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
@@ -354,7 +359,7 @@ fn marker_config_ownership_uses_line_color_and_ignores_the_retired_arrowhead_sel
             let rendered = render(
                 POINT,
                 &theme,
-                PresentationConfig::from_value(value.clone()),
+                common::presentation_config(value.clone()),
                 ThemePortabilityRequirement::BestEffort,
             )
             .unwrap();
@@ -368,7 +373,7 @@ fn marker_config_ownership_uses_line_color_and_ignores_the_retired_arrowhead_sel
                 render(
                     POINT,
                     &theme,
-                    PresentationConfig::from_value(value),
+                    common::presentation_config(value),
                     ThemePortabilityRequirement::RequirePortable
                 )
                 .is_err(),
@@ -568,7 +573,7 @@ fn source_and_config_edge_owners_preserve_their_marker_behavior() {
             );
         }
     }
-    let cfg = PresentationConfig::from_value(
+    let cfg = common::presentation_config(
         json!({"htmlLabels":false,"themeVariables":{"lineColor":"#123456"}}),
     );
     let themed = render(
@@ -716,3 +721,6 @@ fn transparent_edge_paint_clears_all_visible_marker_channels() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

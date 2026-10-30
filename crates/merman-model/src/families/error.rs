@@ -1,3 +1,6 @@
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use serde::{Deserialize, Serialize};
 
 /// Typed semantic model for Merman's built-in suppressed-error diagram.

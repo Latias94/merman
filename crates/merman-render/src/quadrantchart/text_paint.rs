@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -137,8 +137,7 @@ impl QuadrantChartPaintPlan {
                 layout.title.iter_mut().collect(),
             ),
         ] {
-            let source_owned =
-                merman_core::__private::config_paint_overrides_typed_default(config, path);
+            let source_owned = config.config_paint_overrides_typed_default(path);
             let static_style = theme.text_style_with_work_meter(
                 target,
                 ThemeVariant::Default,
@@ -299,8 +298,7 @@ impl QuadrantChartPaintPlan {
             } else {
                 "themeVariables.quadrantInternalBorderStrokeFill"
             };
-            let source_owned =
-                merman_core::__private::config_paint_overrides_typed_default(config, path);
+            let source_owned = config.config_paint_overrides_typed_default(path);
             if !source_owned && let Some(paint) = &border_paint {
                 line.stroke_fill = paint.css().to_owned();
             }

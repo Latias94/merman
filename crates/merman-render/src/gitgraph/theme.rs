@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability,
@@ -287,27 +287,13 @@ impl GitGraphPaletteSourceOwnership {
     fn from_config(config: &PresentationConfig) -> Self {
         Self {
             git: std::array::from_fn(|slot| {
-                merman_core::__private::config_paint_overrides_typed_default(
-                    config,
-                    GIT_COLOR_PATHS[slot],
-                )
+                config.config_paint_overrides_typed_default(GIT_COLOR_PATHS[slot])
             }),
-            node_border: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                NODE_BORDER_PATH,
-            ),
-            main_background: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                MAIN_BACKGROUND_PATH,
-            ),
-            primary_color: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                PRIMARY_COLOR_PATH,
-            ),
-            border_color_array: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                BORDER_COLOR_ARRAY_PATH,
-            ),
+            node_border: config.config_paint_overrides_typed_default(NODE_BORDER_PATH),
+            main_background: config.config_paint_overrides_typed_default(MAIN_BACKGROUND_PATH),
+            primary_color: config.config_paint_overrides_typed_default(PRIMARY_COLOR_PATH),
+            border_color_array: config
+                .config_paint_overrides_typed_default(BORDER_COLOR_ARRAY_PATH),
         }
     }
 
@@ -1187,7 +1173,8 @@ mod tests {
 
     #[test]
     fn prepared_palette_shares_property_local_ownership_and_masks() {
-        let config = PresentationConfig::from_value(serde_json::json!({"theme": "default"}));
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"theme": "default"}));
         let typography = GitGraphTypographyThemePlan::resolve(None, &config);
         let mut plan = receipt_plan();
         plan.fill_winner_by_slot[0] = true;

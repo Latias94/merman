@@ -3,8 +3,9 @@ use merman_ascii::{
     AsciiOutputEncoding, AsciiOutputOutcome, AsciiOverflowPolicy, AsciiProjection,
     AsciiRenderOptions, AsciiRenderer, AsciiViewportPolicy, OverflowPolicy,
 };
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::{MermaidEngine, OperationControl, SemanticParser};
+use merman_core::{SemanticParser, presentation::MermaidEngine};
+use merman_model::OperationControl;
+use merman_model::presentation::RenderSemanticModel;
 use unicode_width::UnicodeWidthStr;
 
 mod support;

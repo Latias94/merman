@@ -1,11 +1,8 @@
 //! Ambient operation context for source orchestration.
 
-// Temporary forwarding during M1; removed when all consumers use merman-model at M7.
-pub use merman_model::runtime::{
-    OperationContext, OperationTimer, OperationTiming, OperationTimingUnavailable,
-    RuntimeCapability, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
-    compiled_system_adapter_ids,
-};
+use merman_model::runtime::{OperationContext, RuntimePolicy};
+#[cfg(test)]
+use merman_model::runtime::{RuntimeCapability, RuntimePolicyError, compiled_system_adapter_ids};
 #[cfg(any(test, feature = "diagram-gantt"))]
 use merman_model::time::CivilDate;
 #[cfg(feature = "diagram-gantt")]
@@ -76,7 +73,7 @@ pub(crate) fn generated_id_hex(domain: &str, counter: u64, len: usize) -> String
     feature = "diagram-git-graph",
     feature = "diagram-mindmap"
 ))]
-fn active_operation_context() -> OperationContext {
+pub(crate) fn active_operation_context() -> OperationContext {
     OPERATION_CONTEXT
         .with(|cell| cell.borrow().clone())
         .unwrap_or_else(|| {

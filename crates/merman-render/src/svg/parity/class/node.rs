@@ -1,7 +1,7 @@
 use crate::class::ClassPreparedSvgTitle;
 use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
+use crate::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
-use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
 use merman_model::families::class::ClassMember;
 use std::time::Duration;
 
@@ -128,7 +128,7 @@ pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub extra_span_class: Option<&'a str>,
     pub span_style: Option<&'a str>,
     pub prepared_xhtml: Option<&'a str>,
-    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
@@ -147,7 +147,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
     pub use_gradient: bool,
-    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
 }
@@ -1281,7 +1281,8 @@ mod typography_tests {
     use super::*;
     use crate::environment::TextMeasurementOperation;
     use crate::text::TextMetrics;
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
     use std::sync::Mutex;
 
     struct RecordingMeasurer {
@@ -1399,7 +1400,8 @@ mod typography_tests {
                 ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };

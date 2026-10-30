@@ -70,7 +70,7 @@ struct BindingThemeInputProbe<'a> {
 pub(crate) fn validate_theme_input_json(options_json: &[u8]) -> Result<(), BindingError> {
     let compiler =
         DiagramThemeCompiler::new().with_resource_policy(ThemeResourcePolicy::for_profile(
-            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+            merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
         ));
     validate_theme_input_json_with(&compiler, options_json)
 }
@@ -169,7 +169,7 @@ fn check_recipe_version(version: Option<u64>) -> Result<(), BindingError> {
 pub fn compile_theme_selection_json(bytes: &[u8]) -> Result<DiagramTheme, BindingError> {
     let compiler =
         DiagramThemeCompiler::new().with_resource_policy(ThemeResourcePolicy::for_profile(
-            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+            merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
         ));
     compile_theme_selection_json_with(&compiler, bytes)
 }
@@ -366,7 +366,7 @@ pub(crate) fn theme_resource_error(error: merman::svg::ThemeResourceLimitExceede
     let max = u64::try_from(error.max).unwrap_or(u64::MAX);
     let profile = error
         .profile
-        .map(merman::resources::ResourceProfile::id)
+        .map(merman::model::resources::ResourceProfile::id)
         .unwrap_or("custom-theme-policy");
     BindingError::resource_limit(
         error.phase.as_str(),

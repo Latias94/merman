@@ -1069,8 +1069,7 @@ pub(super) fn treemap_css<I>(diagram_id: I, effective_config: &serde_json::Value
 where
     I: SvgDiagramIdValue,
 {
-    let config =
-        merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
+    let config = crate::test_support::presentation_config(effective_config.clone());
     let work = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
         crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
     ));

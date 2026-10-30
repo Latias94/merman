@@ -1,5 +1,8 @@
 //! Flat Ishikawa cause records and controlled nested data projection.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use crate::json::ManagedJson;
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};

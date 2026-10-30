@@ -21,6 +21,77 @@ fn session() -> LanguageSession {
     LanguageSession::with_cancellation(merman_analysis::AnalysisCancellationToken::new())
 }
 
+#[cfg(all(feature = "fixes", feature = "diagram-flowchart"))]
+#[tokio::test]
+async fn code_actions_generate_from_the_diagnostic_generation_without_populating_its_cache() {
+    let session = session();
+    session
+        .update_configuration(
+            default_lsp_analysis_options()
+                .with_rule_config(
+                    AnalysisRuleConfig::default()
+                        .with_profile(merman_analysis::AnalysisRuleProfile::Recommended),
+                )
+                .with_fix_generation(merman_analysis::FixGeneration::Generate),
+        )
+        .await;
+    let uri = uri("requested-fixes-same-generation");
+    open(&session, &uri, 1, "flowchart\nA-->B\n").await;
+    let diagnostic_context = session
+        .inner
+        .state
+        .lock()
+        .await
+        .diagnostic_context(&uri)
+        .unwrap();
+    let initial = session
+        .query_push_diagnostics(&diagnostic_context, |_, context| {
+            let context = context.unwrap();
+            assert!(!context.diagnostic_round_trip().has_fixes_for_test());
+            context.snapshot.shared_analysis_generation()
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let generated = session
+        .query_code_actions(&uri, |context| {
+            assert!(context.diagnostic_round_trip().has_fixes_for_test());
+            Ok(Some(context.snapshot.shared_analysis_generation()))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(Arc::ptr_eq(&initial, &generated));
+    session
+        .query_push_diagnostics(&diagnostic_context, |_, context| {
+            let context = context.unwrap();
+            assert!(!context.diagnostic_round_trip().has_fixes_for_test());
+            assert!(Arc::ptr_eq(
+                &initial,
+                &context.snapshot.shared_analysis_generation()
+            ));
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(session.analysis_execution_count(), 1);
+    assert_eq!(session.diagnostic_reprojection_count(), 2);
+}
+
+#[cfg(not(feature = "fixes"))]
+#[tokio::test]
+async fn code_actions_without_fixes_return_a_typed_missing_capability() {
+    let session = session();
+    let error = session
+        .query_code_actions(&uri("fixes-absent"), |_| Ok(Some(())))
+        .await
+        .unwrap_err();
+    let data = error.data.unwrap();
+    assert_eq!(data["error_id"], "missing-capability");
+    assert_eq!(data["capability_id"], "fixes");
+    assert_eq!(session.analysis_execution_count(), 0);
+}
+
 fn uri(name: &str) -> Uri {
     Uri::from_str(&format!("file:///tmp/{name}.mmd")).unwrap()
 }
@@ -487,7 +558,7 @@ async fn diagnostic_policy_reprojects_without_rebuilding_the_snapshot() {
     assert!(!change.affects_snapshots());
     let projected = structure_identity(&session, &uri).await.unwrap();
     let severity = session
-        .query_code_actions(&uri, |context| {
+        .query_diagnostic_projection(&uri, |context| {
             Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
         })
         .await
@@ -631,10 +702,10 @@ async fn diagnostic_configuration_commits_without_waiting_for_projection_capacit
     let target = uri("diagnostic-config-short-transaction");
     open(&session, &target, 1, "").await;
     session
-        .query_code_actions(&target, |_| Ok(Some(())))
+        .query_diagnostic_projection(&target, |_| Ok(Some(())))
         .await
         .unwrap()
-        .expect("initial code-action query should build a complete context");
+        .expect("initial diagnostic query should build a complete context");
     let initial_reprojections = session.diagnostic_reprojection_count();
 
     let gate = Arc::new(TestAnalysisGate::default());
@@ -683,7 +754,7 @@ async fn diagnostic_configuration_commits_without_waiting_for_projection_capacit
         let target = target.clone();
         async move {
             session
-                .query_code_actions(&target, |context| {
+                .query_diagnostic_projection(&target, |context| {
                     Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
                 })
                 .await
@@ -749,7 +820,7 @@ async fn diagnostic_policy_change_during_build_reuses_the_canonical_generation()
     assert_eq!(session.analysis_execution_count(), 1);
 
     let severity = session
-        .query_code_actions(&uri, |context| {
+        .query_diagnostic_projection(&uri, |context| {
             Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
         })
         .await
@@ -777,7 +848,7 @@ async fn diagnostic_policy_change_reprojects_an_uncached_request_local_generatio
         let uri = uri.clone();
         async move {
             session
-                .query_code_actions(&uri, |context| {
+                .query_diagnostic_projection(&uri, |context| {
                     Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
                 })
                 .await
@@ -807,7 +878,7 @@ async fn diagnostic_policy_change_reprojects_an_uncached_request_local_generatio
         .await
         .set_analysis_test_gate(None);
     let severity = session
-        .query_code_actions(&uri, |context| {
+        .query_diagnostic_projection(&uri, |context| {
             Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
         })
         .await

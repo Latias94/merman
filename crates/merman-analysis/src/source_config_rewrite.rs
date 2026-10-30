@@ -10,7 +10,7 @@ use crate::{
 use merman_core::preprocess::SourceConfigEvidence;
 #[cfg(test)]
 use merman_core::preprocess::{parse_frontmatter_yaml_fields, split_frontmatter_block};
-use merman_core::{MermaidConfig, SourceSpan};
+use merman_model::{MermaidConfig, SourceSpan};
 use serde_json::{Map, Value};
 
 const REWRITE_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;

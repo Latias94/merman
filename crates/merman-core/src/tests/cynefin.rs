@@ -291,7 +291,7 @@ fn parse_cynefin_render_model_uses_typed_model() {
 
     assert_eq!(parsed.metadata().diagram_type, "cynefin");
     assert_eq!(parsed.model().kind(), "cynefin");
-    assert!(parsed.model().supports_diagram_type("cynefin"));
+    assert!(parsed.model().matches_diagram_type("cynefin"));
     let RenderSemanticModel::Cynefin(model) = parsed.model() else {
         panic!("expected typed cynefin render model");
     };

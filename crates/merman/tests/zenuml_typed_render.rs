@@ -1,6 +1,6 @@
 #![cfg(feature = "svg")]
 
-use merman::resources::InputResourcePolicy;
+use merman::model::resources::InputResourcePolicy;
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn render(source: &str) -> String {
@@ -49,7 +49,10 @@ fn advanced_zenuml_is_a_first_class_typed_render() {
         .expect("ZenUML preparation must succeed")
         .expect("ZenUML must be detected");
     assert_eq!(semantic.semantic_kind(), "zenuml");
-    assert_eq!(semantic.family_id(), Some(merman::DiagramFamilyId::ZENUML));
+    assert_eq!(
+        semantic.family_id(),
+        Some(merman::model::family::DiagramFamilyId::ZENUML)
+    );
     let output = semantic
         .render(merman::RenderTarget::Svg(SvgRequest::default()))
         .expect("ZenUML SVG must render");
@@ -102,10 +105,10 @@ fn zenuml_labels_are_xml_escaped_at_the_family_boundary() {
 fn zenuml_honors_the_shared_label_resource_budget_before_layout() {
     let renderer = Renderer::new();
     let resources = InputResourcePolicy::for_profile(
-        merman::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman::model::resources::ResourceProfile::UnboundedForTrustedInput,
     )
     .with_limit(
-        merman::resources::InputResourceLimitId::MaxModelTextBytes,
+        merman::model::resources::InputResourceLimitId::MaxModelTextBytes,
         4,
     )
     .unwrap();
@@ -129,9 +132,12 @@ fn zenuml_honors_the_shared_label_resource_budget_before_layout() {
 fn zenuml_honors_its_structural_resource_budget_before_layout() {
     let renderer = Renderer::new();
     let resources = InputResourcePolicy::for_profile(
-        merman::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman::model::resources::ResourceProfile::UnboundedForTrustedInput,
     )
-    .with_limit(merman::resources::InputResourceLimitId::MaxModelItems, 1)
+    .with_limit(
+        merman::model::resources::InputResourceLimitId::MaxModelItems,
+        1,
+    )
     .unwrap();
     let error = renderer
         .render(

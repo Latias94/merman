@@ -26,7 +26,7 @@ pub(crate) use prepared::{
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
 use crate::text::{TextMetrics, TextStyle, WrapMode};
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -973,8 +973,9 @@ mod tests {
     #[test]
     fn ratex_math_renderer_renders_pure_math_label_as_inline_svg() {
         let renderer = RatexMathRenderer;
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
 
         let html = renderer
             .render_html_label("$$x^2$$", &config)

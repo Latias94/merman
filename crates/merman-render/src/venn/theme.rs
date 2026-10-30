@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -79,10 +79,8 @@ impl VennTypographyThemePlan {
         // non-Default themes can derive `vennSetTextColor` and carry the ownership edge there.
         // Check the resolved role rather than its possible source variables.
         let config_owns_text_fill = theme.is_some()
-            && merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "themeVariables.vennSetTextColor",
-            );
+            && effective_config
+                .config_paint_overrides_typed_default("themeVariables.vennSetTextColor");
         let css_binding = VennCssBinding::resolve(
             effective_config.as_value(),
             model,
@@ -272,10 +270,8 @@ impl VennTitleThemePlan {
             });
         };
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.vennTitleTextColor",
-        );
+        let config_owns_fill = effective_config
+            .config_paint_overrides_typed_default("themeVariables.vennTitleTextColor");
         let fill = SingleTitleFillPlan::resolve(
             theme,
             title_present,
@@ -319,7 +315,6 @@ mod tests {
         ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     };
     use crate::resources::RenderResourcePolicy;
-    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
 
     #[test]
@@ -346,7 +341,7 @@ mod tests {
         let meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let config = PresentationConfig::from_value(json!({}));
+        let config = crate::test_support::presentation_config(json!({}));
         let plan = VennTitleThemePlan::resolve(Some(&resolved), &config, Some("Title"), &meter)
             .expect("resolve Venn title theme");
         plan.record_title();

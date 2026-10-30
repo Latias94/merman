@@ -1,4 +1,4 @@
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_theme_font_size_css_or_root_number_px_opt;
 use crate::diagram_theme::{
@@ -52,10 +52,7 @@ impl ArchitectureTypographyThemePlan {
         // Only the explicit theme-variable path owns this property. A top-level `fontSize` is a
         // Mermaid-compatible fallback and must not shadow an active typed base size.
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_px = match (theme, typed_font_size_active) {
             (Some(theme), true) => f64::from(theme.typography().font_size_px()).max(1.0),
@@ -161,7 +158,7 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
-    use merman_core::presentation::PresentationConfig;
+    use merman_model::presentation::PresentationConfig;
 
     #[test]
     fn typed_values_are_resolved_for_svg_labels_only() {
@@ -202,13 +199,22 @@ mod tests {
             )
             .expect("compile Architecture theme")
             .resolve(DiagramFamilyId::ARCHITECTURE);
-        let config = PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "fontSize": "22px" }
-        }));
+        let config = PresentationConfig::try_from_frozen_parts_controlled(
+            merman_model::presentation::FrozenPresentationConfigParts::new(
+                merman_model::MermaidConfig::from_value(serde_json::json!({
+                    "themeVariables": { "fontSize": "22px" }
+                })),
+            ),
+            &merman_model::resources::InputResourcePolicy::for_profile(
+                merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
+            ),
+            &merman_model::OperationControl::new(),
+        )
+        .expect("frozen config construction should not cancel")
+        .expect("unowned frozen values should be valid");
         let plan = ArchitectureTypographyThemePlan::resolve(Some(&theme), &config);
 
-        // `from_value` intentionally carries no explicit-path provenance. The real parse
-        // pipeline supplies that metadata when site/source config owns the value.
+        // These frozen values deliberately declare no explicit configuration owners.
         assert_eq!(plan.font_size_px(), 18.0);
         assert!(plan.typed_font_size_active);
     }

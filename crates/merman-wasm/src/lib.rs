@@ -79,6 +79,8 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     OperationKey::ValidationJson,
 ];
 const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "fixes")]
+    CapabilityKey::Fixes,
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]

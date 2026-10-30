@@ -739,7 +739,7 @@ impl Default for FlowchartMathTerminalStylePlan {
 
 impl FlowchartMathTerminalStylePlan {
     #[cfg(test)]
-    fn from_config(config: &merman_core::presentation::PresentationConfig) -> Self {
+    fn from_config(config: &merman_model::presentation::PresentationConfig) -> Self {
         Self::from_binding(&super::FlowchartCompatibilityBinding::resolve(
             config.as_value(),
         ))
@@ -835,7 +835,7 @@ impl FlowchartSvgLabelSidecarBuilder {
     pub(crate) fn with_math_backend(
         mut self,
         math_backend: Option<&ConfiguredMathBackend>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
         self.math_backend = math_backend.cloned();
         self.math_terminal_style = FlowchartMathTerminalStylePlan::from_config(config);
@@ -1254,10 +1254,6 @@ impl FlowchartSvgLabelSidecarBuilder {
         request: FlowchartLabelMetricsRequest<'_>,
     ) -> TextMetrics {
         let resolved_config = crate::graph_label::flowchart_label_sanitize_config(request.config);
-        let request = FlowchartLabelMetricsRequest {
-            config: resolved_config.as_ref(),
-            ..request
-        };
         {
             let pending = self.pending.borrow();
             if let Some(prepared) = pending
@@ -1306,7 +1302,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             max,
             work,
             &parse_work,
-            merman_core::OperationPhase::Layout,
+            merman_model::OperationPhase::Layout,
         );
         let html = crate::graph_label::flowchart_label_html_source(
             request.raw_label,
@@ -1315,7 +1311,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         );
         let xhtml = match merman_markup::sanitize::sanitize_xhtml_with_sink(
             &html,
-            request.config.as_config(),
+            resolved_config.as_ref(),
             &sink,
         ) {
             Ok(xhtml) => xhtml,
@@ -2228,7 +2224,7 @@ mod tests {
     use crate::math::MathRenderer;
 
     use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-    use merman_core::presentation::PresentationConfig;
+    use merman_model::presentation::PresentationConfig;
 
     use super::*;
 
@@ -2239,8 +2235,9 @@ mod tests {
         ));
         let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(None, Arc::clone(&work));
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let style = TextStyle::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
         let source = "<b><i>API</b> tail</i>";
@@ -2297,12 +2294,13 @@ mod tests {
 
     #[test]
     fn html_preparation_records_parser_work_rejection_and_cancellation() {
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let style = TextStyle::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         for cancel in [false, true] {
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::OperationControl::new();
             let policy = if cancel {
                 control.cancel_after_checkpoints(16);
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
@@ -2644,8 +2642,9 @@ mod tests {
         let backend = ConfiguredMathBackend::external(Arc::new(
             StyleDependentPreparedMathRenderer::default(),
         ));
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2693,7 +2692,7 @@ mod tests {
             render_calls: Arc::clone(&render_calls),
             measure_calls: Arc::clone(&measure_calls),
         }));
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": { "nodeTextColor": "#e5e7eb" }
         }));
         let builder =
@@ -2845,7 +2844,7 @@ mod tests {
             render_calls: Arc::new(AtomicUsize::new(0)),
             measure_calls: Arc::new(AtomicUsize::new(0)),
         }));
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": { "nodeTextColor": "#111827" }
         }));
         let builder =

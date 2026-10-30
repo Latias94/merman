@@ -36,7 +36,7 @@ pub(crate) fn write_json_stdout<T: Serialize>(
 }
 
 pub(crate) fn write_semantic_json_stdout(
-    value: &merman::ManagedSemanticJson,
+    value: &merman::model::ManagedJson,
     pretty: bool,
     stdout: &SharedWriter,
 ) -> Result<(), CliError> {
@@ -45,7 +45,7 @@ pub(crate) fn write_semantic_json_stdout(
 
 fn write_semantic_json_to(
     writer: &mut dyn Write,
-    value: &merman::ManagedSemanticJson,
+    value: &merman::model::ManagedJson,
     pretty: bool,
 ) -> Result<(), CliError> {
     if pretty {
@@ -61,7 +61,7 @@ fn write_semantic_json_to(
 
 #[cfg(feature = "svg")]
 pub(crate) fn write_semantic_json_stdout_controlled(
-    value: &merman::ManagedSemanticJson,
+    value: &merman::model::ManagedJson,
     pretty: bool,
     stdout: &SharedWriter,
     control: &merman::OperationControl,

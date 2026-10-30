@@ -1,6 +1,7 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
+use merman::model::ManagedJson;
 use merman::svg::{LayoutOptions, RenderResourcePolicy, SvgDebugOptions, SvgRenderOptions};
-use merman_core::{DetectorRegistry, ManagedSemanticJson, MermaidEngine, ParseOptions};
+use merman_core::{DetectorRegistry, MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -65,7 +66,7 @@ fn emit_preflight(group: &str, name: &str, identity: &OutputIdentity) {
     );
 }
 
-fn json_output_identity(output_kind: &str, value: &ManagedSemanticJson) -> OutputIdentity {
+fn json_output_identity(output_kind: &str, value: &ManagedJson) -> OutputIdentity {
     let output = json_identity::json_identity_bytes(value);
     output_identity(output_kind, &output, None)
 }
@@ -657,7 +658,7 @@ fn bench_layout(c: &mut Criterion) {
             .unwrap_or_else(|| panic!("layout/{name} preflight returned no render model"));
         let output_identity = || {
             let artifact = merman_render::family::prepare(
-                &parsed,
+                parsed.presentation(),
                 &layout,
                 environment.begin_session().expect("render session"),
             )
@@ -675,7 +676,8 @@ fn bench_layout(c: &mut Criterion) {
                 || (data, environment.begin_session().expect("render session")),
                 |(parsed, session)| {
                     let artifact =
-                        merman_render::family::prepare(parsed, &layout, session).expect("layout");
+                        merman_render::family::prepare(parsed.presentation(), &layout, session)
+                            .expect("layout");
                     black_box(artifact);
                 },
                 BatchSize::SmallInput,
@@ -710,7 +712,7 @@ fn bench_render(c: &mut Criterion) {
 
         let output_identity = || {
             let artifact = merman_render::family::prepare(
-                &parsed,
+                parsed.presentation(),
                 &layout,
                 environment.begin_session().expect("render session"),
             )
@@ -727,7 +729,7 @@ fn bench_render(c: &mut Criterion) {
             b.iter_batched(
                 || {
                     merman_render::family::prepare(
-                        data,
+                        data.presentation(),
                         &layout,
                         environment.begin_session().expect("render session"),
                     )

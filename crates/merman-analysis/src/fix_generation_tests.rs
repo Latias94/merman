@@ -246,7 +246,7 @@ fn markdown_migrations_keep_original_crlf_unicode_coordinates_and_shared_edits()
 fn shared_repair_weight_counts_bounded_authored_data_once() {
     let source_map = crate::SourceMap::new(SOURCE);
     let source_config = crate::test_support::capture_source_config_evidence(SOURCE);
-    let config = merman_core::MermaidConfig::from_value(
+    let config = merman_model::MermaidConfig::from_value(
         serde_json::json!({"custom": "x".repeat(256 * 1024)}),
     );
     let capture = || {
@@ -279,7 +279,7 @@ fn shared_repair_weight_counts_bounded_authored_data_once() {
 fn invalid_document_mapping_drops_the_entire_aggregate_action() {
     let source_map = crate::SourceMap::new(SOURCE);
     let source_config = crate::test_support::capture_source_config_evidence(SOURCE);
-    let config = merman_core::MermaidConfig::from_value(serde_json::json!({"theme": "dark"}));
+    let config = merman_model::MermaidConfig::from_value(serde_json::json!({"theme": "dark"}));
     let cancellation = crate::AnalysisCancellationToken::new();
     let evidence = crate::repair::ConfigMigrationEvidence::capture(
         &source_map,

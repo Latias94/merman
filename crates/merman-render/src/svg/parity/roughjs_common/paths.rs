@@ -5,7 +5,7 @@
 
 use crate::resources::OperationWorkMeter;
 use crate::svg::parity::roughjs_common::ops_to_svg_path_d;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 use roughr::core::RoughRandomness;
 
 #[derive(Clone, Copy)]
@@ -1115,7 +1115,7 @@ mod tests {
     use crate::resources::{
         OperationWorkError, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
     };
-    use merman_core::OperationControl;
+    use merman_model::OperationControl;
 
     fn hand_drawn_path_budget(
         path_data: &str,
@@ -1233,7 +1233,7 @@ mod tests {
             );
             assert!(matches!(
                 meter.control().terminal_checkpoint_at(OperationPhase::Emit),
-                Err(merman_core::OperationLedgerError::ResourceLimitExceeded(error))
+                Err(merman_model::OperationLedgerError::ResourceLimitExceeded(error))
                     if error.phase == OperationPhase::Layout
             ));
             assert_eq!(meter.projected_svg_bytes(), 0);
@@ -1466,7 +1466,7 @@ mod circle_work_tests {
 
     #[test]
     fn circle_hachure_observes_cancellation_before_each_ring() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let meter =
             OperationWorkMeter::new_with_control(RenderResourcePolicy::default(), control.clone());
         roughjs_circle_with_work(RoughGeometryTarget::Svg, &meter, 100.0, 0.2, || {
@@ -1481,7 +1481,7 @@ mod circle_work_tests {
         .expect_err("cancellation after the outer ring prevents the inner ring");
         assert!(matches!(
             error,
-            crate::Error::Cancelled(error) if error.phase == merman_core::OperationPhase::Emit
+            crate::Error::Cancelled(error) if error.phase == merman_model::OperationPhase::Emit
         ));
         assert!(!generated_inner.get());
         assert_eq!(meter.used(), used_after_outer);

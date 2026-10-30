@@ -79,3 +79,6 @@ mod wire_tests {
         assert_eq!(serde_json::to_value(roundtrip).unwrap(), expected);
     }
 }
+
+#[cfg(feature = "compat-json")]
+pub mod compat;

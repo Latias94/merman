@@ -38,7 +38,7 @@ pub fn ascii_capabilities() -> &'static [AsciiCapability] {
                     .iter()
                     .any(|family| {
                         family.has_semantic_parser
-                            && (merman_core::diagram_type_metadata_id(family.diagram_type)
+                            && (merman_model::family::diagram_type_metadata_id(family.diagram_type)
                                 == Some(capability.diagram_type)
                                 || family.logical_family_kind == capability.diagram_type)
                     })
@@ -153,8 +153,8 @@ impl From<merman_ascii::AsciiError> for AsciiDiagnostic {
     }
 }
 
-impl From<merman_core::runtime::RuntimePolicyError> for AsciiDiagnostic {
-    fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
+impl From<merman_model::runtime::RuntimePolicyError> for AsciiDiagnostic {
+    fn from(error: merman_model::runtime::RuntimePolicyError) -> Self {
         Self::RuntimePolicy(crate::TerminalRuntimePolicyError::from(error))
     }
 }
@@ -356,8 +356,8 @@ mod tests {
     #[test]
     fn core_runtime_policy_errors_keep_their_capability_classification() {
         let error = AsciiDiagnostic::from(merman_core::Error::RuntimePolicy(
-            merman_core::runtime::RuntimePolicyError::MissingCapability(
-                merman_core::runtime::RuntimeCapability::SystemRandom,
+            merman_model::runtime::RuntimePolicyError::MissingCapability(
+                merman_model::runtime::RuntimeCapability::SystemRandom,
             ),
         ));
 

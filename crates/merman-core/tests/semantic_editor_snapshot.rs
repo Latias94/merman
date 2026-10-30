@@ -1,8 +1,8 @@
 #![cfg(feature = "editor-facts")]
 
-#[cfg(feature = "diagram-class")]
-use merman_core::{ParsedEditorFacts, SemanticDiagramModel};
 use merman_core::{SemanticParser, SemanticSnapshotCapture};
+#[cfg(feature = "diagram-class")]
+use {merman_core::ParsedEditorFacts, merman_model::semantic::SemanticDiagramModel};
 
 #[cfg(feature = "diagram-class")]
 #[test]
@@ -10,7 +10,7 @@ fn class_snapshot_captures_canonical_model_and_editor_facts_in_lean_core() {
     let capture = SemanticParser::new()
         .capture_diagram_snapshot_controlled_sync(
             "classDiagram\nclass User\n",
-            &merman_core::OperationControl::new(),
+            &merman_model::operation::OperationControl::new(),
         )
         .expect("snapshot operation should not be cancelled");
     let SemanticSnapshotCapture::Snapshot(snapshot) = capture else {
@@ -77,7 +77,7 @@ fn failed_class_capture_preserves_recovery_facts_and_original_source_spans() {
         let start = source.find("User").unwrap();
         assert_eq!(
             symbol.selection,
-            merman_core::SourceSpan::new(start, start + "User".len())
+            merman_model::source::SourceSpan::new(start, start + "User".len())
         );
     }
 }
@@ -96,7 +96,7 @@ fn comment_heavy_frontmatter_has_the_same_semantics_in_strict_and_snapshot_parsi
         parser
             .capture_diagram_recovery_snapshot_controlled_sync(
                 &source,
-                &merman_core::OperationControl::new(),
+                &merman_model::operation::OperationControl::new(),
             )
             .expect("active control"),
     ] {
@@ -143,14 +143,18 @@ fn treemap_snapshot_keeps_requested_facts_before_semantic_source_conversion() {
         let root_start = source.find("Root").unwrap();
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.name == "Root"
-                && symbol.selection == merman_core::SourceSpan::new(root_start, root_start + 4)
+                && symbol.selection
+                    == merman_model::source::SourceSpan::new(root_start, root_start + 4)
         }));
         if recovered {
             let broken_start = source.find("\"Broken\":").unwrap();
             assert!(facts.diagnostics.iter().any(|diagnostic| {
                 diagnostic.message.contains("expected number")
                     && diagnostic.span
-                        == Some(merman_core::SourceSpan::new(broken_start, broken_start + 9))
+                        == Some(merman_model::source::SourceSpan::new(
+                            broken_start,
+                            broken_start + 9,
+                        ))
             }));
         } else {
             assert!(facts.symbols.iter().any(|symbol| symbol.name == "Leaf"));
@@ -158,7 +162,7 @@ fn treemap_snapshot_keeps_requested_facts_before_semantic_source_conversion() {
         let SemanticSnapshotCapture::Snapshot(recovery) = parser
             .capture_diagram_recovery_snapshot_controlled_sync(
                 &source,
-                &merman_core::OperationControl::new(),
+                &merman_model::operation::OperationControl::new(),
             )
             .unwrap()
         else {
@@ -180,8 +184,8 @@ fn treemap_snapshot_keeps_requested_facts_before_semantic_source_conversion() {
 fn capture_keeps_source_config_when_preprocessing_fails_without_any_family() {
     let nested = format!(
         "{}true{}",
-        "{".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
-        "}".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1)
+        "{".repeat(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "}".repeat(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1)
     );
     let source = format!(
         "---\nconfig:\n  fontFamily: Serif\n---\n%%{{init: {{fontSize: 18}}}}%%\n%%{{init: {nested}}}%%\nclassDiagram\n"
@@ -211,7 +215,7 @@ fn capture_keeps_source_config_when_preprocessing_fails_without_any_family() {
 #[test]
 fn pre_cancelled_capture_never_becomes_a_recovery_snapshot() {
     let parser = SemanticParser::new();
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::operation::OperationControl::new();
     control.cancel();
     assert!(
         parser

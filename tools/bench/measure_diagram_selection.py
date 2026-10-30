@@ -12,6 +12,7 @@ import platform
 import shutil
 import subprocess
 import tarfile
+import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -119,6 +120,15 @@ def measure(
         + ', default-features = false, features = ' + json.dumps(features) + ' }\n'
         '[profile.release]\n' + ''.join(f'{key} = {json.dumps(value)}\n' for key, value in profile.items())
     )
+    if semantic and (source / "crates/merman-model/Cargo.toml").is_file():
+        # Current typed consumers import the defining package. Historical source/fixture pairs
+        # precede that package and keep their original core-only manifest and observations.
+        manifest = manifest.replace(
+            '[profile.release]\n',
+            'merman-model = { path = '
+            + json.dumps((source / "crates/merman-model").as_posix())
+            + ', default-features = false }\n[profile.release]\n',
+        )
     if boundary:
         # This checked-in manifest is the six fixed recipes, not a dependency resolver.
         manifest = boundary_files["Cargo.toml"].decode("utf-8")
@@ -140,8 +150,10 @@ def measure(
     metadata = run([*rust, "cargo", "metadata", "--offline", "--format-version", "1", *selection], cwd=consumer, env=env)
     (output / "metadata.json").write_bytes(metadata)
     command = [*rust, "cargo", "build", "--locked", "--offline", "--release", "--target", target, "-j", "1", *selection]
+    build_started = time.perf_counter()
     with (output / "build.log").open("wb") as log:
         subprocess.run(command, cwd=consumer, env=env, check=True, stdout=log, stderr=subprocess.STDOUT)
+    build_wall_seconds = time.perf_counter() - build_started
     suffix = ".exe" if os.name == "nt" else ""
     executable = output / ("diagram-selection-probe" + suffix)
     shutil.copyfile(build_target / target / "release" / executable.name, executable)
@@ -200,6 +212,7 @@ def measure(
         "fixture_revision": fixture_revision, "fixture_sha256": digest(fixture), "root_lock_sha256": digest(source / "Cargo.lock"),
         "consumer_lock_sha256": digest(consumer / "Cargo.lock"), "features": features,
         "default_features": False, "profile": profile, "command": command,
+        "build_wall_seconds": build_wall_seconds,
         "host": platform.platform(), "cpu": platform.processor(),
         "rustc": rustc, "target": target,
         "cargo": cargo, "toolchain": toolchain,

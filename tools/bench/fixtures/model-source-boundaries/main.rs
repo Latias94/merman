@@ -197,13 +197,13 @@ fn svg(input: &Value) -> Result<String> {
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_render::environment::RenderEnvironment;
     use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-    // BASE exposes presentation through a closed core parsed result. The later M5 adapter
-    // can replace this preparation, while keeping the runtime source, id and SVG contract.
+    // The frozen M0 fixture uses the closed source result directly. This adapter borrows its
+    // shared immutable data, retaining the same source, ID, measurement, and SVG contract.
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(field(input, "flowchart")?, ParseOptions::strict())?
         .ok_or("expected a graphical Flowchart")?;
     let artifact = merman_render::family::prepare(
-        &parsed,
+        parsed.presentation(),
         &merman_render::LayoutOptions::default(),
         RenderEnvironment::deterministic().begin_session()?,
     )?;

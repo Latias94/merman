@@ -9,6 +9,31 @@ use std::path::{Path, PathBuf};
 
 const DESCRIPTOR_PATH: &str = "capabilities/feature-surface-v1.json";
 const DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
+// Internal compact identities are append-only; catalog presentation stays sorted by ID.
+const CAPABILITY_BIT_IDS: &[&str] = &[
+    "analysis",
+    "ascii",
+    "editor",
+    "icons",
+    "jpeg",
+    "layout-cytoscape",
+    "layout-elk",
+    "markdown",
+    "math",
+    "native-fonts",
+    "network-icons",
+    "parallel-markdown",
+    "pdf",
+    "png",
+    "rustdoc",
+    "shell-completions",
+    "svg",
+    "system-clock",
+    "system-random",
+    "system-timezone",
+    "system-timing",
+    "fixes",
+];
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
         "crates/merman-bindings-core/src/generated/capability_surface.rs",
@@ -291,7 +316,7 @@ fn is_negative_feature_name(id: &str) -> bool {
 
 fn is_diagram_specific_feature_name(id: &str) -> bool {
     id == "all-diagrams"
-        || merman_core::diagram_family_selectors()
+        || merman::model::family::diagram_family_selectors()
             .iter()
             .any(|selector| selector.feature == id)
         || merman_core::diagram_family_capabilities()
@@ -363,7 +388,6 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         .iter()
         .map(|capability| (capability.id.as_str(), capability))
         .collect::<BTreeMap<_, _>>();
-
     for (index, capability) in descriptor.capabilities.iter().enumerate() {
         let base = format!("capabilities[{index}]");
         validate_kebab_id(&capability.id, &format!("{base}.id"))?;
@@ -629,6 +653,11 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         }
     }
 
+    if capability_by_id.keys().copied().collect::<BTreeSet<_>>()
+        != CAPABILITY_BIT_IDS.iter().copied().collect()
+    {
+        return Err("capabilities: compact identities must retain existing IDs and append new IDs to CAPABILITY_BIT_IDS".to_string());
+    }
     Ok(())
 }
 
@@ -883,6 +912,18 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor, digest: &str) -> Result
         "CapabilityDescriptor",
         "CAPABILITIES",
     );
+    out.push_str(
+        "impl CapabilityKey {\n    pub const fn compact_bit(self) -> u64 {\n        match self {\n",
+    );
+    for (bit, id) in CAPABILITY_BIT_IDS.iter().enumerate() {
+        writeln!(
+            out,
+            "            Self::{} => 1_u64 << {bit},",
+            rust_operation_variant(id)
+        )
+        .unwrap();
+    }
+    out.push_str("        }\n    }\n}\n\n");
     write_rust_key_enum(
         &mut out,
         "OutputKey",
@@ -1905,6 +1946,27 @@ mod tests {
         assert!(header.contains("const char *const *compiled_prerequisite_ids;"));
         assert!(header.contains("size_t compiled_prerequisite_count;"));
         assert!(header.contains("MERMAN_BINDING_OPERATION_PNG_COMPILED_PREREQUISITES"));
+    }
+
+    #[test]
+    fn fixes_append_bit_identity_while_catalogs_remain_sorted() {
+        let descriptor = committed_descriptor();
+        let rust = render_rust(&descriptor, &semantic_digest(&descriptor).unwrap()).unwrap();
+        assert_eq!(CAPABILITY_BIT_IDS[21], "fixes");
+        assert!(rust.contains("Self::SystemTiming => 1_u64 << 20"));
+        assert!(rust.contains("Self::Fixes => 1_u64 << 21"));
+        let ids = sorted_capabilities(&descriptor)
+            .into_iter()
+            .map(|capability| capability.id.as_str())
+            .collect::<Vec<_>>();
+        assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
+        let fixes = descriptor
+            .capabilities
+            .iter()
+            .find(|capability| capability.id == "fixes")
+            .unwrap();
+        assert_eq!(fixes.implications, ["analysis"]);
+        assert!(!fixes.targets.iter().any(|target| target == "typst"));
     }
 
     #[test]

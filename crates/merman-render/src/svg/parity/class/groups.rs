@@ -34,7 +34,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edge_use_html_labels: bool,
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) terminal_text_style: &'a TextStyle,
-    pub(super) mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
+    pub(super) mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) look: &'a str,
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,

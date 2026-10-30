@@ -1,7 +1,7 @@
 #![cfg(feature = "experimental-system-font-query")]
 
-use merman_core::{OperationControl, OperationLedgerError, OperationPhase};
 use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions};
+use merman_model::{OperationControl, OperationLedgerError, OperationPhase};
 use merman_render::environment::{
     HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer, TextMeasurementOperation,
     TextMeasurementPhase, validate_host_text_measurement,

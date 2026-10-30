@@ -1,6 +1,6 @@
 //! Availability contracts for isolated ASCII consumers.
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy};
-use merman_core::{MermaidEngine, ParseOptions};
+use merman_core::{ParseOptions, presentation::MermaidEngine};
 
 mod support;
 

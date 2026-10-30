@@ -138,7 +138,7 @@ pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::bor
 
 pub(crate) fn requires_math(
     model: &UsecaseDiagramModel,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> bool {
     if config.as_value().get("htmlLabels").and_then(Value::as_bool) == Some(false) {
         return false;
@@ -237,13 +237,13 @@ pub(crate) fn requires_math(
 
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecasePreparedArtifact> {
-    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+    work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let config_value = effective_config.as_value();
     let css_binding = UsecaseCssBinding::new(config_value);
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);

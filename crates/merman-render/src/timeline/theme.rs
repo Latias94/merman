@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -178,27 +178,25 @@ impl TimelineEventTheme {
                     continue;
                 }
                 let color_scale_path = format!("themeVariables.cScale{slot}");
-                let paint = if merman_core::__private::config_paint_overrides_typed_default(
-                    effective_config,
-                    &color_scale_path,
-                ) {
-                    binding
-                        .source_scale(slot)
-                        .map(|color| TimelinePalettePaint::source_owned(color.to_owned()))
-                } else {
-                    theme
-                        .series_color(ThemeTarget::TimelineEvent, slot + 1)
-                        .map(|color| {
-                            TimelinePalettePaint::typed(
-                                color.as_css(),
-                                if color.is_transparent() {
-                                    ThemeCapability::TransparentPaint
-                                } else {
-                                    ThemeCapability::SolidPaint
-                                },
-                            )
-                        })
-                };
+                let paint =
+                    if effective_config.config_paint_overrides_typed_default(&color_scale_path) {
+                        binding
+                            .source_scale(slot)
+                            .map(|color| TimelinePalettePaint::source_owned(color.to_owned()))
+                    } else {
+                        theme
+                            .series_color(ThemeTarget::TimelineEvent, slot + 1)
+                            .map(|color| {
+                                TimelinePalettePaint::typed(
+                                    color.as_css(),
+                                    if color.is_transparent() {
+                                        ThemeCapability::TransparentPaint
+                                    } else {
+                                        ThemeCapability::SolidPaint
+                                    },
+                                )
+                            })
+                    };
                 if let Some(paint) = paint {
                     let line_stroke =
                         timeline_classic_line_stroke(effective_config, binding, slot, &paint.css);
@@ -228,10 +226,8 @@ impl TimelineEventTheme {
             None,
             work_meter,
         )?;
-        let source_owns_event_stroke = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.nodeBorder",
-        );
+        let source_owns_event_stroke =
+            effective_config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
         // nodeBorder is a shared Redux terminal: labels and the activity axis consume it even
         // when there are no events. Color and Neo shapes have independent paint owners.
         let stroke_domain_active =
@@ -629,24 +625,16 @@ fn timeline_event_fill_source_owned(
         return false;
     };
     if binding.use_neo_gradient {
-        return merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.mainBkg",
-        );
+        return config.config_paint_overrides_typed_default("themeVariables.mainBkg");
     }
     if !binding.is_redux_theme {
-        return merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            &format!("themeVariables.cScale{slot}"),
-        );
+        return config
+            .config_paint_overrides_typed_default(&format!("themeVariables.cScale{slot}"));
     }
 
     if binding.is_color_theme && !binding.is_dark_theme {
         if binding.has_source_border_slot(slot) {
-            return merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.borderColorArray",
-            );
+            return config.config_paint_overrides_typed_default("themeVariables.borderColorArray");
         }
         // A color theme owns an event fill only when the section has an actual
         // border-color slot. An empty or short array cannot provide a fill
@@ -655,7 +643,7 @@ fn timeline_event_fill_source_owned(
         return false;
     }
 
-    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
+    config.config_paint_overrides_typed_default("themeVariables.mainBkg")
 }
 
 fn timeline_classic_line_stroke(
@@ -668,7 +656,7 @@ fn timeline_classic_line_stroke(
         return None;
     }
     let inverse_path = format!("themeVariables.cScaleInv{slot}");
-    if merman_core::__private::config_paint_overrides_typed_default(config, &inverse_path) {
+    if config.config_paint_overrides_typed_default(&inverse_path) {
         return binding
             .source_inverse(slot)
             .map(str::to_owned)

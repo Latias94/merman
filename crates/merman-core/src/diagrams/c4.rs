@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -29,7 +29,7 @@ pub(crate) fn c4_syntax_construction_count() -> usize {
     C4_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-pub use merman_model::families::c4::{
+pub(crate) use merman_model::families::c4::{
     C4Boundary, C4DiagramModel, C4LayoutConfig, C4Relation, C4Shape, C4Text,
 };
 
@@ -312,7 +312,10 @@ impl C4ParseOutcome {
 
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
-    fn into_combined(self, meta: &PresentationMetadata) -> crate::family::CombinedSemanticParse {
+    fn into_combined(
+        self,
+        meta: &SourcePresentationMetadata,
+    ) -> crate::family::CombinedSemanticParse {
         let construction = self.into_semantic_construction(EditorFactsDemand::Capture);
         let editor_facts = construction.editor_facts.unwrap_or_default();
         let construction = match construction.model {
@@ -331,7 +334,7 @@ impl C4ParseOutcome {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_c4(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_c4(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let source = construct_c4_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .into_strict_source()?;
@@ -341,7 +344,7 @@ pub(crate) fn parse_c4(code: &str, meta: &PresentationMetadata) -> Result<Value>
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_c4_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<C4DiagramModel> {
     construct_c4_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -353,7 +356,7 @@ pub(crate) fn parse_c4_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_c4_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<C4DiagramModel>> {
     let outcome = construct_c4_semantic_source_controlled(code, meta, control)?;
@@ -366,7 +369,7 @@ pub(crate) fn parse_c4_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_c4_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     Ok(construct_c4_source_controlled(
@@ -382,36 +385,10 @@ pub(crate) fn parse_c4_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &C4DiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut out = Map::with_capacity(11);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("c4Type".to_string(), Value::String(model.c4_type.clone()));
-    out.insert("title".to_string(), json!(&model.title));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("wrap".to_string(), Value::Bool(model.wrap));
-    out.insert("layout".to_string(), json!(&model.layout));
-    out.insert("shapes".to_string(), json!(&model.shapes));
-    let mut boundaries = json!(&model.boundaries);
-    if let Some(boundaries) = boundaries.as_array_mut() {
-        for boundary in boundaries {
-            let Some(boundary) = boundary.as_object_mut() else {
-                continue;
-            };
-            if boundary.get("alias").and_then(Value::as_str) == Some("global") {
-                boundary.entry("tags".to_string()).or_insert(Value::Null);
-                boundary.entry("link".to_string()).or_insert(Value::Null);
-            }
-        }
-    }
-    out.insert("boundaries".to_string(), boundaries);
-    out.insert("rels".to_string(), json!(&model.rels));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    merman_model::families::c4::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 fn is_c4_header(line: &str) -> bool {
@@ -1533,7 +1510,7 @@ impl C4Db {
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         render_model_to_compat_json(&self.into_model()?, meta)
     }
 
@@ -1874,7 +1851,7 @@ fn value_as_i64(v: &Value) -> Option<i64> {
 }
 
 #[cfg(all(test, feature = "compat-json"))]
-fn construct_c4_semantic_source(code: &str, meta: &PresentationMetadata) -> C4ParseOutcome {
+fn construct_c4_semantic_source(code: &str, meta: &SourcePresentationMetadata) -> C4ParseOutcome {
     construct_c4_source_controlled(
         code,
         &meta.diagram_type,
@@ -1889,7 +1866,7 @@ fn construct_c4_semantic_source(code: &str, meta: &PresentationMetadata) -> C4Pa
 #[cfg(feature = "presentation")]
 fn construct_c4_semantic_source_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<C4ParseOutcome> {
     construct_c4_source_controlled(
@@ -2745,8 +2722,8 @@ mod tests {
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
     use crate::{
-        MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, PresentationMetadata,
-        RenderSemanticModel,
+        MermaidConfig, MermaidEngine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
+        SourcePresentationMetadata,
     };
     use futures::executor::block_on;
     use serde_json::json;
@@ -2778,11 +2755,11 @@ mod tests {
         (model, errors)
     }
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "c4".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }

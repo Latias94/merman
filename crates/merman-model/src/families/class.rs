@@ -1,5 +1,8 @@
 //! Canonical Class data, controlled topology projections, and optional full presentation data.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 pub const LINE_SOLID: i32 = 0;
 pub const LINE_DOTTED: i32 = 1;
 pub const REL_AGGREGATION: i32 = 0;
@@ -13,6 +16,8 @@ pub const MERMAID_DOM_ID_PREFIX: &str = "classId-";
 /// Class relation endpoint representing a lollipop interface.
 pub const REL_LOLLIPOP: i32 = 4;
 
+#[cfg(all(test, feature = "presentation-data"))]
+mod style_validation_tests;
 #[cfg(test)]
 mod test_data;
 #[cfg(feature = "presentation-data")]
@@ -1573,6 +1578,67 @@ pub struct ClassStylePrecedenceFacts {
 }
 
 impl ClassStylePrecedenceFacts {
+    /// Checks witness targets and encounter-order relationships against one completed model.
+    ///
+    /// These are declared output facts, not proof of parsing history. Style-event ordinals count
+    /// actions independently from graph entities; only each precedence pair has an ordering bound.
+    #[cfg(feature = "presentation-data")]
+    pub fn validate_for_model_controlled(
+        &self,
+        model: &ClassDiagram,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<(), &'static str>> {
+        control.checkpoint()?;
+        let model = model.model();
+        for witness in [
+            self.assignment_before_definition_copy.as_ref(),
+            self.definition_before_assignment_no_backfill.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            control.checkpoint()?;
+            if !model.classes.contains_key(&witness.target) {
+                return Ok(Err("class style precedence witness target is not a class"));
+            }
+            if !model.style_classes.contains_key(&witness.class_name) {
+                return Ok(Err(
+                    "class style precedence witness refers to an unknown classDef",
+                ));
+            }
+            if witness.earlier_style_event_ordinal >= witness.later_style_event_ordinal {
+                return Ok(Err(
+                    "class style precedence witness must have earlier < later",
+                ));
+            }
+            if witness.styles.is_empty() {
+                return Ok(Err("class style precedence witness has no declarations"));
+            }
+        }
+        control.checkpoint()?;
+        if let Some(witness) = &self.inline_paint {
+            if !model.classes.contains_key(&witness.target) {
+                return Ok(Err("class inline paint witness target is not a class"));
+            }
+            if witness.styles.is_empty() {
+                return Ok(Err("class inline paint witness has no declarations"));
+            }
+        }
+        control.checkpoint()?;
+        if let Some(witness) = &self.classdef_typography {
+            if !model.style_classes.contains_key(&witness.target) {
+                return Ok(Err(
+                    "class typography witness refers to an unknown classDef",
+                ));
+            }
+            if witness.styles.is_empty() {
+                return Ok(Err("class typography witness has no declarations"));
+            }
+        }
+        control.checkpoint()?;
+        Ok(Ok(()))
+    }
+
     /// Takes one completed set of encounter-order witnesses without rewriting identifiers,
     /// declarations, or ordinals. The source adapter owns observation and first-witness selection.
     pub fn from_witnesses(

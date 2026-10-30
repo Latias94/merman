@@ -38,7 +38,7 @@ struct BackgroundReceipt {
 impl EdgeLabelBackgroundPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let theme = theme.filter(|theme| {
@@ -64,10 +64,8 @@ impl EdgeLabelBackgroundPlan {
             theme: theme.cloned(),
             style,
             fill,
-            config_owned: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.edgeLabelBackground",
-            ),
+            config_owned: config
+                .config_paint_overrides_typed_default("themeVariables.edgeLabelBackground"),
             ordinal_rules: theme.is_some_and(|theme| {
                 theme
                     .family_rules()

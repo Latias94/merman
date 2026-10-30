@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::LineCursor;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -14,7 +14,9 @@ use crate::{
     family::CombinedSemanticFailure,
 };
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+#[cfg(all(test, feature = "compat-json"))]
+use serde_json::json;
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -34,7 +36,7 @@ fn quadrant_syntax_construction_count() -> usize {
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-pub use merman_model::families::quadrant_chart::{
+pub(crate) use merman_model::families::quadrant_chart::{
     QuadrantChartAxesModel, QuadrantChartDiagramModel, QuadrantChartPointModel,
     QuadrantChartQuadrantsModel, QuadrantChartStyles,
 };
@@ -780,7 +782,7 @@ fn push_quadrant_point_facts(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_quadrant_chart_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure> {
     construct_quadrant_chart_semantic_source_controlled(
         code,
@@ -1332,7 +1334,7 @@ fn parse_quadrant_chart_semantic_source(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_quadrant_chart(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_quadrant_chart(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let source = construct_quadrant_chart_semantic_source(code, meta)
         .map_err(CombinedSemanticFailure::into_error)?;
     render_model_to_compat_json(&source.model, meta)
@@ -1342,7 +1344,7 @@ pub(crate) fn parse_quadrant_chart(code: &str, meta: &PresentationMetadata) -> R
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_quadrant_chart_semantic_source_controlled(
@@ -1370,28 +1372,16 @@ pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &QuadrantChartDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut out = Map::with_capacity(9);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("title".to_string(), json!(&model.title));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("quadrants".to_string(), json!(&model.quadrants));
-    out.insert("axes".to_string(), json!(&model.axes));
-    out.insert("points".to_string(), json!(&model.points));
-    out.insert("classes".to_string(), json!(&model.classes));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    merman_model::families::quadrant_chart::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_quadrant_chart_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<QuadrantChartDiagramModel> {
     construct_quadrant_chart_semantic_source(code, meta)
         .map(|source| source.model)
@@ -1401,7 +1391,7 @@ pub(crate) fn parse_quadrant_chart_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_quadrant_chart_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<QuadrantChartDiagramModel>> {
     let construction = construct_quadrant_chart_semantic_source_controlled(
@@ -1510,7 +1500,7 @@ mod tests {
 
     #[test]
     fn errors_without_header() {
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "quadrantChart".to_string(),
             config: MermaidConfig::default(),
             effective_config: generated::default_presentation_config(),
@@ -1841,12 +1831,19 @@ Project A:::priority : [0.2, 0.8]
             .expect("standalone Quadrant JSON parse succeeds")
             .expect("standalone Quadrant JSON parse returns a diagram");
         reset_quadrant_syntax_construction_count();
-        parse_quadrant_chart(text, &parsed.meta).expect("Quadrant JSON projection succeeds");
+        parse_quadrant_chart(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("Quadrant JSON projection succeeds");
         assert_eq!(quadrant_syntax_construction_count(), 1);
 
         reset_quadrant_syntax_construction_count();
-        let typed = parse_quadrant_chart_model_for_render(text, &parsed.meta)
-            .expect("Quadrant typed projection succeeds");
+        let typed = parse_quadrant_chart_model_for_render(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("Quadrant typed projection succeeds");
         assert_eq!(quadrant_syntax_construction_count(), 1);
 
         reset_quadrant_syntax_construction_count();
@@ -1854,18 +1851,26 @@ Project A:::priority : [0.2, 0.8]
         let (combined_json, combined_editor) =
             crate::family::test_support::into_result(parse_quadrant_chart_json_and_editor_facts(
                 text,
-                &parsed.meta,
+                &crate::diagrams::source_metadata_for_test(&parsed.meta),
                 &OperationControl::new(),
             ))
             .expect("Quadrant combined projection succeeds");
         #[cfg(not(feature = "editor-facts"))]
-        let combined_json = parse_quadrant_chart(text, &parsed.meta).unwrap();
+        let combined_json = parse_quadrant_chart(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .unwrap();
         assert_eq!(quadrant_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
         #[cfg(feature = "editor-facts")]
         assert!(!combined_editor.symbols.is_empty());
         assert_eq!(
-            render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
+            merman_model::families::quadrant_chart::compat::project(
+                &typed,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(&parsed.meta)
+            )
+            .unwrap(),
             combined_json
         );
         assert_eq!(combined_json["type"], json!("quadrantChart"));
@@ -1899,7 +1904,7 @@ Project A:::priority : [0.2, 0.8]
             .expect("quoted semicolons parse")
             .expect("quadrant model");
         #[cfg(feature = "editor-facts")]
-        let facts = crate::family::test_support::editor_facts(
+        let facts = crate::family::test_support::editor_facts_from_frozen(
             parse_quadrant_chart_json_and_editor_facts,
             text,
             &parsed.meta,
@@ -1943,7 +1948,7 @@ Project A:::priority : [0.2, 0.8]
         assert_eq!(parsed.model["accDescr"], json!("First line\nSecond line"));
         #[cfg(feature = "editor-facts")]
         {
-            let facts = crate::family::test_support::editor_facts(
+            let facts = crate::family::test_support::editor_facts_from_frozen(
                 parse_quadrant_chart_json_and_editor_facts,
                 text,
                 &parsed.meta,
@@ -2139,10 +2144,10 @@ mod semantic_tests {
     #[cfg(feature = "compat-json")]
     #[test]
     fn full_typed_and_json_requests_omit_editor_observers() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "quadrantChart".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let source = "quadrantChart\nx-axis Low --> High\nA: [0.2, 0.8]\n";

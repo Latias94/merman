@@ -1,7 +1,7 @@
 #![cfg(feature = "native-fonts")]
 
-use merman_core::{OperationControl, OperationLedgerError, OperationPhase};
 use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions};
+use merman_model::{OperationControl, OperationLedgerError, OperationPhase};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementOperation,

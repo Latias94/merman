@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeTarget};
 use crate::family::FamilyThemeOutcomes;
@@ -67,10 +67,8 @@ impl ArchitectureSurfaceThemePlan {
             theme: theme.cloned(),
             title_keys,
             service_stroke_source_owned: super::mermaid_owns_group_stroke(effective_config),
-            text_fill_source_owned: merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                TEXT_COLOR_PATH,
-            ),
+            text_fill_source_owned: effective_config
+                .config_paint_overrides_typed_default(TEXT_COLOR_PATH),
             arrow_fill_source_owned: mermaid_owns_arrow_fill(effective_config),
         }
     }
@@ -121,18 +119,15 @@ impl ArchitectureSurfaceThemePlan {
 }
 
 fn mermaid_owns_arrow_fill(config: &PresentationConfig) -> bool {
-    if merman_core::__private::config_paint_overrides_typed_default(
-        config,
-        ARCH_EDGE_ARROW_COLOR_PATH,
-    ) {
+    if config.config_paint_overrides_typed_default(ARCH_EDGE_ARROW_COLOR_PATH) {
         return true;
     }
-    if merman_core::__private::config_paint_overrides_typed_default(config, ARCH_EDGE_COLOR_PATH)
+    if config.config_paint_overrides_typed_default(ARCH_EDGE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
     {
         return true;
     }
-    merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
+    config.config_paint_overrides_typed_default(LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
         && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
 }

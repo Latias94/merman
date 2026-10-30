@@ -25,19 +25,8 @@ impl InternalFailure {
     }
 }
 
-/// A bounded Mermaid theme program requested more generated color slots than Merman admits.
-///
-/// Mermaid exposes `themeVariables.THEME_COLOR_LIMIT` as mutable input and uses it as the bound
-/// for several constructor loops. Merman preserves that behavior within a fixed work ceiling so
-/// hostile or accidental values cannot turn configuration materialization into unbounded work.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("Mermaid theme evaluation limit `{limit}` exceeded: requested={requested}, max={max}")]
 #[cfg(feature = "presentation")]
-pub struct ThemeEvaluationLimitExceeded {
-    pub limit: &'static str,
-    pub requested: String,
-    pub max: usize,
-}
+use merman_model::presentation::ThemeEvaluationLimitExceeded;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseDiagnosticSpanKind {
@@ -204,7 +193,7 @@ pub enum Error {
     ThemeEvaluationLimit(#[from] ThemeEvaluationLimitExceeded),
 
     #[error(transparent)]
-    RuntimePolicy(#[from] crate::runtime::RuntimePolicyError),
+    RuntimePolicy(#[from] merman_model::runtime::RuntimePolicyError),
 
     #[error(transparent)]
     DetectType(#[from] DetectTypeError),
@@ -305,5 +294,13 @@ impl Error {
             diagram_type: diagram_type.into(),
             diagnostic,
         }
+    }
+}
+
+#[cfg(feature = "compat-json")]
+impl From<merman_model::presentation::compat::CompatProjectionError> for Error {
+    fn from(error: merman_model::presentation::compat::CompatProjectionError) -> Self {
+        let (diagram_type, message) = error.into_parts();
+        Self::diagram_parse_fallback(diagram_type, message)
     }
 }

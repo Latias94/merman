@@ -23,6 +23,8 @@ const expectedCrateDirectories = {
     "merman-analysis",
     "merman-bindings-core",
     "merman-core",
+    "merman-markup",
+    "merman-model",
     "merman-wasm",
   ],
   render: [
@@ -34,6 +36,8 @@ const expectedCrateDirectories = {
     "merman-core",
     "merman-elk-layered",
     "merman-layout-elk",
+    "merman-markup",
+    "merman-model",
     "merman-render",
     "merman-theme-contract",
     "merman-unicode-linebreak",
@@ -47,6 +51,8 @@ const expectedCrateDirectories = {
     "merman-ascii",
     "merman-bindings-core",
     "merman-core",
+    "merman-markup",
+    "merman-model",
     "merman-wasm",
   ],
   editor: [
@@ -55,6 +61,8 @@ const expectedCrateDirectories = {
     "merman-bindings-core",
     "merman-core",
     "merman-editor-core",
+    "merman-markup",
+    "merman-model",
     "merman-wasm",
   ],
   full: [
@@ -69,6 +77,8 @@ const expectedCrateDirectories = {
     "merman-editor-core",
     "merman-elk-layered",
     "merman-layout-elk",
+    "merman-markup",
+    "merman-model",
     "merman-render",
     "merman-theme-contract",
     "merman-unicode-linebreak",
@@ -88,6 +98,14 @@ describe("WASM artifact Cargo closure", () => {
         .filter(Boolean)
         .sort();
       assert.deepEqual(actual, expectedCrateDirectories[descriptor.id]);
+      const paths = new Set(entries.map((entry) => entry.path));
+      for (const relative of [
+        "crates/merman-model/src/families/gantt.rs",
+        "crates/merman-markup/src/generated/dompurify_defaults.rs",
+        "crates/merman-markup/src/url.rs",
+      ]) {
+        assert.equal(paths.has(relative), true, `${descriptor.id}: ${relative}`);
+      }
     });
   }
 

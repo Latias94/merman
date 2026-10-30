@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::value_at;
 use crate::diagram_theme::{
@@ -83,10 +83,7 @@ impl RadarAxisPaintPlan {
         let mut plan = Self::baseline_with_binding(binding, axis_count);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeOutcomes::default();
-        let owns_line = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.lineColor",
-        );
+        let owns_line = config.config_paint_overrides_typed_default("themeVariables.lineColor");
         let axis_path = if value_at(config.as_value(), &["radar", "axisColor"])
             .and_then(serde_json::Value::as_str)
             .is_some()
@@ -95,8 +92,7 @@ impl RadarAxisPaintPlan {
         } else {
             "themeVariables.radar.axisColor"
         };
-        let owns_axis =
-            merman_core::__private::config_paint_overrides_typed_default(config, axis_path);
+        let owns_axis = config.config_paint_overrides_typed_default(axis_path);
         // Base lineColor styles marker classes that Radar never instantiates. Retain the
         // historical CSS projection, but only axisColor has actual paint terminals here.
         let source_owns_paint = owns_axis;
@@ -432,7 +428,9 @@ mod tests {
 
     fn effective_config(site_config: serde_json::Value) -> PresentationConfig {
         merman_core::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(site_config))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+            )
             .parse_metadata_sync("radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n")
             .expect("parse Radar config ownership fixture")
             .effective_config

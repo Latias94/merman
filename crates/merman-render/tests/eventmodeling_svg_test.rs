@@ -1,7 +1,6 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
@@ -96,10 +95,11 @@ fn render_eventmodeling_with_theme_requirement_and_id(
     portability: ThemePortabilityRequirement,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Event Modeling")
-        .expect("detect themed Event Modeling");
+        .expect("detect themed Event Modeling")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -115,14 +115,16 @@ fn render_eventmodeling_with_theme_requirement_and_id(
 }
 
 fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::RenderedFamilySvg {
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeCSS": ".em-box span { color: #de3163; } .em-swimlane { fill: #2468ac; }"
-        })));
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        })),
+    );
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
         .expect("parse Event Modeling author CSS fixture")
-        .expect("detect Event Modeling author CSS fixture");
+        .expect("detect Event Modeling author CSS fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
             TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
@@ -142,10 +144,11 @@ fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::Rend
 }
 
 fn eventmodeling_layout_json_with_theme(theme: &DiagramTheme) -> serde_json::Value {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, MermaidEngine::new())
+    let parsed = common::install_parse_compatibility(theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
         .expect("parse themed Event Modeling layout")
-        .expect("detect themed Event Modeling layout");
+        .expect("detect themed Event Modeling layout")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(theme)
         .expect("begin themed Event Modeling layout session");
@@ -238,7 +241,8 @@ fn try_render_eventmodeling_svg_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Event Modeling resource-bound fixture")
-        .expect("detect Event Modeling diagram");
+        .expect("detect Event Modeling diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(policy)
         .begin_session()
@@ -330,10 +334,11 @@ fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
     let theme = eventmodeling_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Event Modeling text fill"),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "textColor": "#fedcba" }
-        })));
+        })),
+    );
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render site-owned Event Modeling text fill");
     let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
@@ -462,11 +467,12 @@ fn eventmodeling_theme_font_family_keeps_precedence_over_root_font_family() {
     let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
     ));
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontFamily": "EventRootFont",
             "themeVariables": { "fontFamily": "EventThemeFont" }
-        })));
+        })),
+    );
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render config-owned Event Modeling font stack");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
@@ -552,11 +558,12 @@ fn eventmodeling_css_font_size_uses_theme_variable_not_root_layout_size() {
     let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
     ));
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontSize": "31px",
             "themeVariables": { "fontSize": "22px" }
-        })));
+        })),
+    );
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render Event Modeling split font-size configuration");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
@@ -570,10 +577,11 @@ fn eventmodeling_materialized_theme_font_size_reaches_css_without_explicit_owner
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .expect("compile empty Event Modeling theme");
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "redux"
-        })));
+        })),
+    );
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render Redux Event Modeling font size");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
@@ -613,9 +621,11 @@ fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does
     let config_owned = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "fontSize": "22px" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": "22px" }
+            })),
+        ),
     )
     .expect("render config-owned Event Modeling font size");
     let config_stylesheet = eventmodeling_stylesheet(config_owned.svg());
@@ -634,9 +644,11 @@ fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does
     let root_owned = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "fontSize": "31px"
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "fontSize": "31px"
+            })),
+        ),
     )
     .expect("render Event Modeling typed size with root layout size");
     let root_stylesheet = eventmodeling_stylesheet(root_owned.svg());
@@ -837,7 +849,8 @@ data ItemAddedData {
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "eventmodeling");
 
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -878,7 +891,8 @@ tf 01 event Start
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse eventmodeling")
-        .expect("detect eventmodeling");
+        .expect("detect eventmodeling")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let svg = artifact
@@ -912,7 +926,8 @@ fn eventmodeling_docs_minimum_layout_uses_bounded_deterministic_label_metrics() 
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let projection = artifact
@@ -961,7 +976,8 @@ fn reset_frames_keep_explicit_sources_without_inventing_previous_frame_relations
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -1033,9 +1049,11 @@ fn repair_u7_eventmodeling_source_text_color_owns_palette_fallback() {
     let rendered = render_eventmodeling_with_theme(
         THEME_TEXT_SOURCE,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
-        )),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
+            ),
+        ),
     )
     .unwrap();
     assert!(eventmodeling_stylesheet(rendered.svg()).contains("#abcdef"));
@@ -1122,10 +1140,11 @@ fn render_prepared_eventmodeling_labels(
         TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer.clone())),
     );
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(config))
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),
@@ -1325,14 +1344,14 @@ fn eventmodeling_prepared_label_preserves_host_cancellation() {
     use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
     use std::sync::Arc;
 
-    struct CancellingMeasurer(merman_core::OperationControl);
+    struct CancellingMeasurer(merman_model::OperationControl);
     impl TextMeasurer for CancellingMeasurer {
         fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
             self.0.cancel();
             merman_render::text::DeterministicTextMeasurer::default().measure(text, style)
         }
     }
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("eventmodeling-label-cancellation").unwrap(),
         "1",
@@ -1350,7 +1369,8 @@ fn eventmodeling_prepared_label_preserves_host_cancellation() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let result = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),
@@ -1359,7 +1379,7 @@ fn eventmodeling_prepared_label_preserves_host_cancellation() {
     let Err(merman_render::Error::Cancelled(error)) = result else {
         panic!("Event Modeling label preparation must preserve cancellation");
     };
-    assert_eq!(error.phase, merman_core::OperationPhase::Layout);
+    assert_eq!(error.phase, merman_model::OperationPhase::Layout);
 }
 
 mod stage_contract {
@@ -1382,7 +1402,8 @@ mod stage_contract {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let render = |environment: RenderEnvironment| {
             let artifact = family::prepare(
                 &parsed,
@@ -1439,7 +1460,8 @@ mod stage_contract {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let artifact = family::prepare(
             &parsed,
             &LayoutOptions::headless_svg_defaults(),
@@ -1465,7 +1487,8 @@ mod stage_contract {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 8)
             .unwrap();

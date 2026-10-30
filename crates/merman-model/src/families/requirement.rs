@@ -1,5 +1,8 @@
 //! Canonical requirement declarations, elements, relationships, and classes.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

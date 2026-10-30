@@ -23,7 +23,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
     render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
@@ -1334,7 +1334,7 @@ fn prepare_ishikawa_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-class")]
 pub(super) fn prepare_class_render<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     mut context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
@@ -1353,7 +1353,7 @@ pub(super) fn prepare_class_render<'parsed>(
 #[inline(never)]
 #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
 pub(super) fn prepare_architecture_render<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     mut context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
@@ -1371,7 +1371,7 @@ pub(super) fn prepare_architecture_render<'parsed>(
 
 #[inline(never)]
 pub(super) fn prepare_non_class_render<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     mut context: FamilyRenderContext,
     svg_label_preparation: FlowchartSvgLabelPreparation,
@@ -1380,9 +1380,17 @@ pub(super) fn prepare_non_class_render<'parsed>(
     let model = parsed.model();
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     let flowchart_render_context = parsed
+        .render_context()
         .flowchart_render_context()
         .map(std::borrow::Cow::Borrowed)
-        .unwrap_or_else(|| std::borrow::Cow::Owned(Default::default()));
+        .unwrap_or_else(|| {
+            std::borrow::Cow::Owned(match model {
+                RenderSemanticModel::Flowchart(model) => {
+                    diagrams::flowchart::FlowchartRenderContext::from_model(model)
+                }
+                _ => Default::default(),
+            })
+        });
     let diagram_type = meta.diagram_type.as_str();
     let title = meta.title.as_deref();
     context.observe_compatibility(meta);
@@ -1524,7 +1532,10 @@ pub(super) fn prepare_non_class_render<'parsed>(
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
             let (flowchart, render_context) = model.to_flowchart_model();
-            let config = project_agentflow_flowchart_config(&meta.effective_config);
+            let config = project_agentflow_flowchart_config(
+                &meta.effective_config,
+                execution.work_meter_ref().control(),
+            )?;
             let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
                 &flowchart,
                 &config,
@@ -1561,7 +1572,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
         }
-        // Core features can be widened independently of this renderer's handlers.
+        // Shared model features can be widened independently of this renderer's handlers.
         #[allow(unreachable_patterns)]
         _ => {
             return Err(Error::UnsupportedDiagram {

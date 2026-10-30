@@ -12,16 +12,13 @@ use crate::{
 };
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 
 use merman_model::families::info::InfoDiagramModel;
 #[cfg(feature = "presentation")]
 use merman_model::families::info::InfoOutputData;
-
-#[cfg(feature = "compat-json")]
-mod compat;
 
 struct InfoSemanticSource {
     model: InfoDiagramModel,
@@ -38,14 +35,14 @@ impl InfoSemanticSource {
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
-    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let (model, output_data) = self.into_render_parts();
         render_model_to_compat_json(&model, output_data, meta)
     }
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_info(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_info(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let (model, output_data) =
         parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")?;
@@ -56,7 +53,7 @@ pub(crate) fn parse_info(code: &str, meta: &PresentationMetadata) -> Result<Valu
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_info_semantic_source_controlled(
@@ -81,15 +78,19 @@ pub(crate) fn parse_info_json_and_editor_facts(
 pub(crate) fn render_model_to_compat_json(
     model: &InfoDiagramModel,
     output_data: InfoOutputData,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(compat::project(model, output_data, &meta.diagram_type))
+    Ok(merman_model::families::info::compat::project(
+        model,
+        output_data,
+        &meta.diagram_type,
+    ))
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_info_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<(InfoDiagramModel, InfoOutputData)> {
     parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -98,7 +99,7 @@ pub(crate) fn parse_info_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_info_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<(InfoDiagramModel, InfoOutputData)>> {
     let construction = construct_info_semantic_source_controlled(
@@ -455,11 +456,11 @@ mod tests {
     use serde_json::json;
 
     #[cfg(feature = "presentation")]
-    fn test_meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn test_meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "info".to_string(),
             config: crate::MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
     }
@@ -803,10 +804,10 @@ mod output_data_tests {
 
     #[test]
     fn full_producer_preserves_empty_output_independently_of_json_projection() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "info".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let parse = |source| {

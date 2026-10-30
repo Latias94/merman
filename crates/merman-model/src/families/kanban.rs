@@ -1,5 +1,8 @@
 //! Canonical Kanban cards, managed metadata, and borrowed terminal views.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use crate::SourceSpan;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

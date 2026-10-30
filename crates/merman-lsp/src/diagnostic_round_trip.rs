@@ -69,6 +69,16 @@ struct SharedFixIdentity {
 }
 
 impl DiagnosticRoundTrip {
+    #[cfg(all(test, feature = "fixes"))]
+    pub(crate) fn has_fixes_for_test(&self) -> bool {
+        self.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .is_some_and(|data| !data.fixes.is_empty())
+        })
+    }
+
     pub(crate) fn build(
         snapshot: &DocumentSnapshot,
         document_epoch: DocumentEpoch,
@@ -441,6 +451,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "fixes")]
     #[test]
     fn round_trip_accepts_only_the_exact_returned_diagnostic() {
         let (round_trip, profile, uri) = direction_round_trip();
@@ -834,6 +845,7 @@ mod tests {
         assert_eq!(equal_actions.len(), 2);
     }
 
+    #[cfg(feature = "fixes")]
     fn direction_round_trip() -> (DiagnosticRoundTrip, ClientProtocolProfile, Uri) {
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let source = "flowchart\nA-->B\n";
@@ -852,9 +864,12 @@ mod tests {
     }
 
     fn recommended_analyzer() -> Analyzer {
-        Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+        let options = AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-        ))
+        );
+        #[cfg(feature = "fixes")]
+        let options = options.with_fix_generation(merman_analysis::FixGeneration::Generate);
+        Analyzer::with_options(options)
     }
 
     fn build_round_trip(

@@ -1,5 +1,8 @@
 //! Canonical Gantt data, full output facts, and borrowed terminal views.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use std::collections::HashMap;
 
 mod terminal;

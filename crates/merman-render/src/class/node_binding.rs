@@ -26,7 +26,7 @@ impl ClassNodeVisualPlan {
         let mut indices: FxHashMap<String, ClassNodeVisualIndices> = FxHashMap::default();
         let mut nodes = Vec::with_capacity(model.classes().len());
         for (id, node) in model.classes() {
-            work.checkpoint(merman_core::OperationPhase::Layout)?;
+            work.checkpoint(merman_model::OperationPhase::Layout)?;
             let binding = ClassNodeVisualBinding::lower(
                 node.node,
                 relation.node_paint(nodes.len() + 1),
@@ -44,7 +44,7 @@ impl ClassNodeVisualPlan {
         }
         let mut interfaces = Vec::new();
         for (ordinal, interface) in model.interfaces().enumerate() {
-            work.checkpoint(merman_core::OperationPhase::Layout)?;
+            work.checkpoint(merman_model::OperationPhase::Layout)?;
             let binding = ClassInterfaceVisualBinding::lower(
                 interface.interface,
                 relation.node_paint(model.classes().len() + ordinal + 1),
@@ -376,8 +376,9 @@ mod tests {
                 merman_core::ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
         let mut model = model.model().clone();
@@ -386,13 +387,13 @@ mod tests {
             label: "$$x$$".into(),
             class_id: "A".into(),
         });
-        ClassDiagram::new(model, &merman_core::MermaidConfig::default())
+        ClassDiagram::new(model, &merman_model::MermaidConfig::default())
     }
 
     #[test]
     fn inactive_consumers_do_not_require_a_synthetic_node_fact_map() {
         let model = fixture_model();
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let typography = super::super::ClassTextThemePlan::resolve(None, &config);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -424,10 +425,9 @@ mod tests {
         for padding in [0, 1024, 4096] {
             let fill = format!("rgb({}1,2,3)", " ".repeat(padding));
             let stroke = format!("rgb({}4,5,6)", " ".repeat(padding));
-            let config =
-                merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
-                    "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
-                }));
+            let config = crate::test_support::presentation_config(serde_json::json!({
+                "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
+            }));
             let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
             let defaults = typography.css_binding();
             let meter = crate::resources::OperationWorkMeter::new(
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn explicit_source_values_equal_to_defaults_remain_owned() {
         let mut model = fixture_model().into_model();
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
         let defaults = typography.css_binding();
         model.classes.get_mut("A").unwrap().styles = vec![
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn visual_preparation_requires_sealed_layout_facts_and_observes_cancellation() {
         let model = fixture_model();
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
@@ -523,7 +523,7 @@ mod tests {
                     .collect(),
             )
         );
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(1);
         let cancelled = crate::resources::OperationWorkMeter::new_with_control(policy, control);
         let error = ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &cancelled)
@@ -554,7 +554,7 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::CLASS);
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(Some(&theme), &config);
         assert!(
             typography.seal_node_style_facts(std::collections::BTreeMap::from([(
@@ -614,7 +614,7 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::CLASS);
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let typography = crate::class::ClassTextThemePlan::resolve(Some(&theme), &config);
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

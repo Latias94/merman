@@ -316,7 +316,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         "xychart",
     ];
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
+    let reg = merman::DetectorRegistry::pinned_mermaid_baseline();
     let mut created: Vec<CreatedFixture> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
@@ -523,7 +523,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 continue;
             }
 
-            let mut cfg = merman::presentation::PresentationConfig::default();
+            let mut cfg = merman::SourcePresentationConfig::default();
             let detected = match reg.detect_type(body.as_str(), &mut cfg) {
                 Ok(t) => t,
                 Err(_) => {

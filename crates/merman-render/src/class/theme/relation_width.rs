@@ -28,11 +28,11 @@ pub(crate) struct ClassRelationWidthBinding {
 }
 
 impl ClassRelationWidthBinding {
-    pub(super) fn compatibility(config: &merman_core::presentation::PresentationConfig) -> Self {
+    pub(super) fn compatibility(config: &merman_model::presentation::PresentationConfig) -> Self {
         const PATH: &str = "themeVariables.strokeWidth";
-        let config_origin =
-            merman_core::__private::config_path_overrides_typed_default(config, PATH)
-                .then_some(PATH);
+        let config_origin = config
+            .config_path_overrides_typed_default(PATH)
+            .then_some(PATH);
         let compatibility_css = crate::config::config_css_number_or_string(
             config.as_value(),
             &["themeVariables", "strokeWidth"],
@@ -136,11 +136,13 @@ mod tests {
             .unwrap();
         for (token, expected_width) in [("calculated", None), ("0.5em", None), ("2px", Some(2.0))] {
             let config = merman_core::MermaidEngine::new()
-                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": {"strokeWidth": token}
-                    }),
-                ))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "themeVariables": {"strokeWidth": token}
+                        }),
+                    ),
+                )
                 .parse_metadata_sync("classDiagram\nA --> B\n")
                 .unwrap()
                 .effective_config;
@@ -169,7 +171,7 @@ mod tests {
             .style_with_work_meter(ThemeTarget::Edge, ThemeVariant::Default, None, &meter)
             .unwrap();
         let mut binding = ClassRelationWidthBinding::compatibility(
-            &merman_core::presentation::PresentationConfig::empty_object(),
+            &merman_model::presentation::PresentationConfig::empty_object(),
         );
         binding.lower(&theme, &style);
         assert!(binding.is_clear_for(0));

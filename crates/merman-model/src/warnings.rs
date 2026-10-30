@@ -48,3 +48,7 @@ impl DiagramWarningFact {
         self
     }
 }
+/// Projects the legacy message-only warning array from canonical warning facts.
+pub fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<String> {
+    facts.iter().map(|fact| fact.message.clone()).collect()
+}

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -117,10 +117,7 @@ impl GitGraphStaticPaintPlan {
         let source_owns_fill = effective_config
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen)
-            || merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                COMMIT_LABEL_BACKGROUND_PATH,
-            );
+            || effective_config.config_paint_overrides_typed_default(COMMIT_LABEL_BACKGROUND_PATH);
         let has_visible_commit_label = layout
             .commits
             .iter()
@@ -487,7 +484,7 @@ mod tests {
             ("base", "var(--label)", "var(--primary)", "var(--tag)"),
             ("redux-color", "transparent", "var(--main)", "var(--main)"),
         ] {
-            let config = PresentationConfig::from_value(serde_json::json!({
+            let config = crate::test_support::presentation_config(serde_json::json!({
                 "theme": theme,
                 "themeVariables": {
                     "useGradient": " YES ",

@@ -8,7 +8,7 @@ use crate::OperationControlResult;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "compat-json")]
-use crate::{OperationControl, PresentationMetadata, Result};
+use crate::{OperationControl, Result, SourcePresentationMetadata};
 
 #[cfg(feature = "compat-json")]
 use super::model::SequenceDiagramModel;
@@ -16,21 +16,16 @@ use super::model::SequenceDiagramModel;
 use super::parse::{construct_sequence_semantic_source, sequence_wrap_enabled_from_config};
 
 #[cfg(feature = "compat-json")]
-fn to_compat_json(model: &SequenceDiagramModel, diagram_type: &str) -> Value {
-    serde_json::to_value(model.compatibility_projection(diagram_type))
-        .expect("the typed Sequence compatibility projection only contains JSON values")
-}
-
-#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &SequenceDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(to_compat_json(model, &meta.diagram_type))
+    merman_model::families::sequence::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_sequence(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_sequence(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let construction = construct_sequence_semantic_source(
         code,
         sequence_wrap_enabled_from_config(meta.effective_config.as_config()),
@@ -41,13 +36,13 @@ pub(crate) fn parse_sequence(code: &str, meta: &PresentationMetadata) -> Result<
     .expect("a private parse control cannot be cancelled");
     let source = construction
         .map_err(|failure| failure.into_parse_error_for_type(&meta.diagram_type, code.len()))?;
-    Ok(to_compat_json(&source.db.into_model(), &meta.diagram_type))
+    render_model_to_compat_json(&source.db.into_model(), meta)
 }
 
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_sequence_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_sequence_semantic_source(
@@ -60,7 +55,7 @@ pub(crate) fn parse_sequence_json_and_editor_facts(
         construction,
         |SequenceSemanticSource { db, editor_facts }| {
             (
-                Ok(to_compat_json(&db.into_model(), &meta.diagram_type)),
+                render_model_to_compat_json(&db.into_model(), meta),
                 editor_facts.expect("Sequence combined parse requests editor facts"),
             )
         },

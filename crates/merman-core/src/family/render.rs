@@ -4,7 +4,7 @@ macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
         pub(super) fn $fn_name(
             code: &str,
-            meta: &PresentationMetadata,
+            meta: &SourcePresentationMetadata,
             control: &OperationControl,
         ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
             control.checkpoint()?;
@@ -25,7 +25,7 @@ macro_rules! render_parser_controlled {
     ($fn_name:ident, $parser:path, $variant:path) => {
         pub(super) fn $fn_name(
             code: &str,
-            meta: &PresentationMetadata,
+            meta: &SourcePresentationMetadata,
             control: &OperationControl,
         ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
             control.checkpoint()?;
@@ -44,11 +44,14 @@ render_parser!(
     RenderSemanticModel::Error
 );
 #[cfg(feature = "diagram-mindmap")]
-render_parser_controlled!(
-    render_mindmap,
-    crate::diagrams::mindmap::parse_mindmap_model_for_render_controlled,
-    RenderSemanticModel::Mindmap
-);
+pub(super) fn render_mindmap(
+    code: &str,
+    meta: &SourcePresentationMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    crate::diagrams::mindmap::parse_mindmap_model_for_render_controlled(code, meta, control)
+        .map(|result| result.map(RenderSemanticParseOutput::mindmap))
+}
 #[cfg(feature = "diagram-state")]
 render_parser_controlled!(
     render_state,
@@ -70,7 +73,7 @@ render_parser_controlled!(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) fn render_flowchart(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     let result = crate::diagrams::flowchart::parse_flowchart_model_with_render_context_controlled(
@@ -82,7 +85,7 @@ pub(super) fn render_flowchart(
 #[cfg(feature = "diagram-class")]
 pub(super) fn render_class(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;
@@ -152,7 +155,7 @@ render_parser_controlled!(
 #[cfg(feature = "diagram-pie")]
 pub(super) fn render_pie(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;
@@ -164,7 +167,7 @@ pub(super) fn render_pie(
 #[cfg(feature = "diagram-packet")]
 pub(super) fn render_packet(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;
@@ -177,7 +180,7 @@ pub(super) fn render_packet(
 #[cfg(feature = "diagram-timeline")]
 pub(super) fn render_timeline(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;
@@ -190,7 +193,7 @@ pub(super) fn render_timeline(
 #[cfg(feature = "diagram-journey")]
 pub(super) fn render_journey(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;
@@ -215,7 +218,7 @@ render_parser_controlled!(
 #[cfg(feature = "diagram-radar")]
 pub(super) fn render_radar(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;
@@ -228,7 +231,7 @@ pub(super) fn render_radar(
 #[cfg(feature = "diagram-info")]
 pub(super) fn render_info(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
     control.checkpoint()?;

@@ -8,7 +8,7 @@ mod snapshot;
 #[cfg(feature = "editor-facts")]
 pub use snapshot::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture};
 
-pub use merman_model::semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata};
+use merman_model::semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata};
 
 fn remap_semantic_source_positions(
     model: &mut SemanticDiagramModel,
@@ -52,18 +52,20 @@ fn remap_semantic_source_positions(
 pub struct SemanticParser {
     site_config: MermaidConfig,
     site_config_overrides: MermaidConfig,
-    runtime_policy: crate::runtime::RuntimePolicy,
+    runtime_policy: merman_model::runtime::RuntimePolicy,
 }
 
 struct SemanticTiming {
-    total: Option<crate::runtime::OperationTimer>,
+    total: Option<merman_model::runtime::OperationTimer>,
     input_bytes: usize,
 }
 
 impl SemanticTiming {
-    fn new(context: &crate::runtime::OperationContext, input: &str) -> Self {
+    fn new(context: &merman_model::runtime::OperationContext, input: &str) -> Self {
         Self {
-            total: context.timing().map(crate::runtime::OperationTiming::start),
+            total: context
+                .timing()
+                .map(merman_model::runtime::OperationTiming::start),
             input_bytes: input.len(),
         }
     }
@@ -84,7 +86,7 @@ impl Default for SemanticParser {
         Self {
             site_config: crate::generated::default_site_config(),
             site_config_overrides: MermaidConfig::empty_object(),
-            runtime_policy: crate::runtime::RuntimePolicy::deterministic(),
+            runtime_policy: merman_model::runtime::RuntimePolicy::deterministic(),
         }
     }
 }
@@ -96,19 +98,19 @@ impl SemanticParser {
     }
 
     /// Replaces the runtime policy used to begin future parse operations.
-    pub fn with_runtime_policy(mut self, policy: crate::runtime::RuntimePolicy) -> Self {
+    pub fn with_runtime_policy(mut self, policy: merman_model::runtime::RuntimePolicy) -> Self {
         self.runtime_policy = policy;
         self
     }
 
     /// Replays a frozen runtime context without consulting system state.
-    pub fn with_operation_context(self, context: crate::runtime::OperationContext) -> Self {
-        self.with_runtime_policy(crate::runtime::RuntimePolicy::from_operation_context(
-            context,
-        ))
+    pub fn with_operation_context(self, context: merman_model::runtime::OperationContext) -> Self {
+        self.with_runtime_policy(
+            merman_model::runtime::RuntimePolicy::from_operation_context(context),
+        )
     }
 
-    pub fn runtime_policy(&self) -> &crate::runtime::RuntimePolicy {
+    pub fn runtime_policy(&self) -> &merman_model::runtime::RuntimePolicy {
         &self.runtime_policy
     }
 
@@ -119,8 +121,10 @@ impl SemanticParser {
 
     pub fn begin_operation(
         &self,
-    ) -> std::result::Result<crate::runtime::OperationContext, crate::runtime::RuntimePolicyError>
-    {
+    ) -> std::result::Result<
+        merman_model::runtime::OperationContext,
+        merman_model::runtime::RuntimePolicyError,
+    > {
         self.runtime_policy.begin_operation()
     }
 
@@ -391,7 +395,7 @@ impl SemanticParser {
         input: &str,
         options: crate::ParseOptions,
         control: &OperationControl,
-        context: &crate::runtime::OperationContext,
+        context: &merman_model::runtime::OperationContext,
     ) -> OperationControlResult<Result<Option<ParsedSemanticDiagram>>> {
         use crate::preprocess::{
             DirectiveRecoveryMode, preprocess_builtin_semantic_with_directive_recovery_controlled,
@@ -915,7 +919,7 @@ mod tests {
     fn semantic_parser_owns_its_runtime_inside_an_ambient_operation() {
         let parser = SemanticParser::new();
         let expected = semantic_gitgraph_ids(&parser, false);
-        let outer = crate::runtime::RuntimePolicy::deterministic()
+        let outer = merman_model::runtime::RuntimePolicy::deterministic()
             .with_fixed_seed(1)
             .with_fixed_unix_millis(1_771_113_600_000)
             .begin_operation()
@@ -930,10 +934,11 @@ mod tests {
     #[cfg(feature = "diagram-git-graph")]
     #[test]
     fn semantic_runtime_seed_and_captured_context_control_commit_ids() {
-        let policy = crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(1);
+        let policy = merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(1);
         let first = SemanticParser::new().with_runtime_policy(policy.clone());
-        let second = SemanticParser::new()
-            .with_runtime_policy(crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(2));
+        let second = SemanticParser::new().with_runtime_policy(
+            merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(2),
+        );
         let replay = SemanticParser::new().with_operation_context(first.begin_operation().unwrap());
         let expected = semantic_gitgraph_ids(&first, false);
         assert_eq!(first.runtime_policy(), &policy);
@@ -967,7 +972,7 @@ mod tests {
     fn semantic_runtime_clock_and_timezone_resolve_gantt_dates() {
         let source = "gantt\ndateFormat MM-DD\nMissing year: id1,03-01,1d\nMissing ref: id2,after missing,1d\n";
         for (offset, adjustment) in [(0, 0), (480, -28_800_000)] {
-            let policy = crate::runtime::RuntimePolicy::deterministic()
+            let policy = merman_model::runtime::RuntimePolicy::deterministic()
                 .with_fixed_unix_millis(1_771_113_600_000)
                 .try_with_fixed_local_offset_minutes(offset)
                 .unwrap();
@@ -993,10 +998,10 @@ mod tests {
     #[cfg(feature = "diagram-gantt")]
     #[test]
     fn semantic_runtime_restores_ambient_context_after_errors_and_cancellation() {
-        let policy = crate::runtime::RuntimePolicy::deterministic()
+        let policy = merman_model::runtime::RuntimePolicy::deterministic()
             .with_fixed_unix_millis(1_771_113_600_000);
         let parser = SemanticParser::new().with_runtime_policy(policy);
-        let outer = crate::runtime::RuntimePolicy::deterministic()
+        let outer = merman_model::runtime::RuntimePolicy::deterministic()
             .with_fixed_today(Some(crate::time::CivilDate::new(2030, 1, 2).unwrap()))
             .begin_operation()
             .unwrap();
@@ -1174,7 +1179,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Cynefin result");
-            let crate::diagram::RenderSemanticModel::Cynefin(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Cynefin(full_model) = full.model()
+            else {
                 panic!("expected full Cynefin model");
             };
             assert_eq!(
@@ -1257,7 +1263,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Info result");
-            let crate::diagram::RenderSemanticModel::Info(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Info(full_model) = full.model()
+            else {
                 panic!("expected full Info model");
             };
             assert_eq!(semantic_model.show_info, full_model.show_info);
@@ -1321,7 +1328,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Pie result");
-            let crate::diagram::RenderSemanticModel::Pie(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Pie(full_model) = full.model()
+            else {
                 panic!("expected full Pie model");
             };
             assert_eq!(
@@ -1388,7 +1396,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Journey result");
-            let crate::diagram::RenderSemanticModel::Journey(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Journey(full_model) = full.model()
+            else {
                 panic!("expected full Journey model");
             };
             assert_eq!(
@@ -1449,7 +1458,9 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("sequence result");
-            let crate::diagram::RenderSemanticModel::Sequence(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Sequence(full_model) =
+                full.model()
+            else {
                 panic!("expected full Sequence model");
             };
             assert_eq!(
@@ -1617,7 +1628,9 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("flowchart result");
-            let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Flowchart(full_model) =
+                full.model()
+            else {
                 panic!("expected full Flowchart model");
             };
             assert_eq!(
@@ -1708,9 +1721,9 @@ mod tests {
                 #[cfg(feature = "presentation")]
                 {
                     let full = crate::MermaidEngine::new()
-                        .with_site_config(crate::presentation::PresentationConfig::from_value(
-                            site.clone(),
-                        ))
+                        .with_site_config(
+                            crate::presentation::SourcePresentationConfig::from_value(site.clone()),
+                        )
                         .parse_diagram_for_render_model_with_type_sync(
                             "swimlane",
                             source,

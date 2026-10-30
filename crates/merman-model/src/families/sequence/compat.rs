@@ -71,3 +71,15 @@ const SEQUENCE_CONSTANTS: SequenceConstants = SequenceConstants {
         over: PLACEMENT_OVER,
     },
 };
+
+/// Projects the existing borrowed compatibility serializer into JSON values.
+#[cfg(feature = "compat-json")]
+pub fn project(
+    model: &SequenceDiagramModel,
+    meta: &crate::presentation::compat::CompatJsonMetadata<'_>,
+) -> Result<serde_json::Value, crate::presentation::compat::CompatProjectionError> {
+    Ok(
+        serde_json::to_value(model.compatibility_projection(meta.diagram_type))
+            .expect("the typed Sequence compatibility projection only contains JSON values"),
+    )
+}

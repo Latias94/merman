@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::gantt::GanttRenderTask;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
@@ -310,10 +310,8 @@ impl GanttTaskTheme {
             }
         }
 
-        let title_config_owned = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.titleColor",
-        );
+        let title_config_owned =
+            effective_config.config_paint_overrides_typed_default("themeVariables.titleColor");
         let title_style = theme.style_with_work_meter(
             ThemeTarget::Title,
             ThemeVariant::Default,
@@ -359,10 +357,8 @@ impl GanttTaskTheme {
             resolve_gantt_warning_stroke(theme, effective_config, work_meter)?;
         let warning_stroke = warning_stroke_resolution.expectation;
         let warning_stroke_source_owned = warning_stroke_resolution.source_owned;
-        let vertical_source_owned = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.vertLineColor",
-        );
+        let vertical_source_owned =
+            effective_config.config_paint_overrides_typed_default("themeVariables.vertLineColor");
         let mut ordinary_stroke_rules_replaced_on_vertical_tasks = BTreeSet::new();
         for expectation in &mut task_expectations {
             if expectation.vert && (warning_stroke.is_some() || vertical_source_owned) {
@@ -639,8 +635,7 @@ impl GanttTaskTheme {
         let source_owned_fills = tasks
             .iter()
             .map(|task| {
-                merman_core::__private::config_paint_overrides_typed_default(
-                    effective_config,
+                effective_config.config_paint_overrides_typed_default(
                     GanttTaskBarState::from_task(task).final_fill_path(),
                 )
             })
@@ -948,14 +943,10 @@ fn resolve_gantt_warning_stroke(
         return Ok(GanttWarningStrokeResolution::default());
     };
     let (typed_css, rule_index, capability) = typed.into_parts();
-    let today_source_owned = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.todayLineColor",
-    );
-    let vert_source_owned = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.vertLineColor",
-    );
+    let today_source_owned =
+        effective_config.config_paint_overrides_typed_default("themeVariables.todayLineColor");
+    let vert_source_owned =
+        effective_config.config_paint_overrides_typed_default("themeVariables.vertLineColor");
     let today_css = if today_source_owned {
         effective_config
             .get_str("themeVariables.todayLineColor")
@@ -1007,7 +998,7 @@ fn gantt_config_owns_font_stack(config: &PresentationConfig) -> bool {
         "fontFamily",
     ]
     .into_iter()
-    .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path))
+    .any(|path| config.config_path_overrides_typed_default(path))
 }
 
 #[derive(Debug)]
@@ -1101,10 +1092,7 @@ fn typed_fill_expectation(
     let (typed_css, rule_index, capability) = typed_fill.into_parts();
 
     let final_fill_path = state.final_fill_path();
-    let owner = if merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        final_fill_path,
-    ) {
+    let owner = if effective_config.config_paint_overrides_typed_default(final_fill_path) {
         GanttTaskFillOwner::Mermaid
     } else {
         GanttTaskFillOwner::Typed {
@@ -1155,10 +1143,7 @@ fn typed_stroke_expectation(
     let (typed_css, rule_index, capability) = typed_stroke.into_parts();
 
     let final_stroke_path = state.final_stroke_path();
-    let owner = if merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        final_stroke_path,
-    ) {
+    let owner = if effective_config.config_paint_overrides_typed_default(final_stroke_path) {
         GanttTaskStrokeOwner::Mermaid
     } else {
         GanttTaskStrokeOwner::Typed {
@@ -1207,14 +1192,10 @@ fn resolve_gantt_text_fill(
         return Ok(GanttTextFillResolution::default());
     };
     let (typed_css, rule_index, capability) = typed_fill.into_parts();
-    let grid_source_owned = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.textColor",
-    );
-    let task_source_owned = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.taskTextColor",
-    );
+    let grid_source_owned =
+        effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
+    let task_source_owned =
+        effective_config.config_paint_overrides_typed_default("themeVariables.taskTextColor");
 
     if grid_source_owned && task_source_owned {
         return Ok(GanttTextFillResolution {
@@ -1819,7 +1800,7 @@ mod tests {
 
     #[test]
     fn prepared_binding_keeps_raw_mermaid_colors_and_layout_metrics() {
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "gantt": {"fontFamily": "Example Sans", "fontSize": "13", "sectionFontSize": 15},
             "themeVariables": {
                 "textColor": "var(--axis-color)",
@@ -2344,7 +2325,7 @@ mod tests {
             &plan,
             &crate::text::DeterministicTextMeasurer::default(),
             800.0,
-            &merman_core::time::LocalTimeZone::utc(),
+            &merman_model::time::LocalTimeZone::utc(),
         )
         .expect("unthemed layout");
         let bars = layout

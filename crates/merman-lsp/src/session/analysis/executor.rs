@@ -205,6 +205,7 @@ struct ReprojectionWorkIdentity {
     snapshot_generation: SnapshotGeneration,
     target_diagnostic_generation: DiagnosticGeneration,
     analysis_result_identity: AnalysisResultIdentity,
+    generates_fixes: bool,
 }
 
 impl ReprojectionWorkIdentity {
@@ -216,6 +217,7 @@ impl ReprojectionWorkIdentity {
             snapshot_generation: request.snapshot_generation(),
             target_diagnostic_generation: request.target_diagnostic_generation(),
             analysis_result_identity: request.analysis_result_identity(),
+            generates_fixes: request.generates_fixes(),
         }
     }
 

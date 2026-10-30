@@ -1,6 +1,6 @@
-//! Source comment cleanup and temporary URL forwarding.
+//! Source comment cleanup.
 
-pub use merman_markup::url::{BLANK_URL, format_url, sanitize_url};
+pub(crate) use merman_markup::url::{format_url, sanitize_url};
 
 pub(crate) fn cleanup_mermaid_comments(input: &str) -> std::borrow::Cow<'_, str> {
     if !input.contains("%%") {

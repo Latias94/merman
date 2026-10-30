@@ -19,7 +19,8 @@ fn try_render_svg_with_resource_policy(
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(source, parse_options)
         .expect("parse bounded SVG fixture")
-        .expect("detect bounded SVG fixture");
+        .expect("detect bounded SVG fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(policy)
         .begin_session()

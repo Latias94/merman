@@ -6,7 +6,7 @@ use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLa
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -165,7 +165,7 @@ impl MindmapPreparedLabel {
             max,
             work_meter,
             &parse_work,
-            merman_core::OperationPhase::Layout,
+            merman_model::OperationPhase::Layout,
         );
         // createText restores entity references before HTML consumption, not after serialization.
         let source = merman_model::text::restore_mermaid_entity_spelling(text);
@@ -293,7 +293,7 @@ fn mindmap_label_bbox_px(
     style: &TextStyle,
     max_node_width_px: f64,
 ) -> (f64, f64) {
-    let config = PresentationConfig::from_value(serde_json::json!({
+    let config = crate::test_support::presentation_config(serde_json::json!({
         "securityLevel": "strict",
         "htmlLabels": true
     }));
@@ -802,7 +802,7 @@ mod tests {
         let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "securityLevel": "loose",
             "dompurifyConfig": {"FORBID_TAGS": ["strong"], "KEEP_CONTENT": false}
         }));
@@ -825,7 +825,7 @@ mod tests {
     #[test]
     fn mindmap_prepared_html_preserves_retained_and_work_rejections() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "securityLevel": "loose"
         }));
         for (limit, value, expected) in [
@@ -859,13 +859,13 @@ mod tests {
 
     #[test]
     fn mindmap_prepared_html_preserves_layout_cancellation() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new_with_control(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         ));
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "securityLevel": "loose"
         }));
         let error = super::MindmapPreparedLabel::prepare("root", "<b>label</b>", &config, &meter)
@@ -873,7 +873,7 @@ mod tests {
         let crate::Error::Cancelled(error) = error else {
             panic!("expected cancellation");
         };
-        assert_eq!(error.phase, merman_core::OperationPhase::Layout);
+        assert_eq!(error.phase, merman_model::OperationPhase::Layout);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 
@@ -882,8 +882,8 @@ mod tests {
         let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    child[\"**Bold** $$x$$\"]",
             merman_core::ParseOptions::strict(),
-        ).unwrap().unwrap();
-        let merman_core::RenderSemanticModel::Mindmap(model) = parsed.model() else {
+        ).unwrap().unwrap().into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Mindmap(model) = parsed.model() else {
             panic!("Mindmap render model");
         };
         let padding = model.nodes[1].padding;

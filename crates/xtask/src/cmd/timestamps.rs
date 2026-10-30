@@ -1,5 +1,5 @@
-use merman_core::runtime::{OperationContext, RuntimePolicy};
-use merman_core::time::{LocalTimeZone, OffsetDateTime, UtcOffset};
+use merman::model::runtime::{OperationContext, RuntimePolicy};
+use merman::model::time::{LocalTimeZone, OffsetDateTime, UtcOffset};
 
 pub(crate) fn current_utc_rfc3339_seconds() -> String {
     let operation = current_operation_context();
@@ -65,7 +65,7 @@ fn format_local_report_timestamp_milliseconds(timestamp: OffsetDateTime) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::time::CivilDateTime;
+    use merman::model::time::CivilDateTime;
 
     #[test]
     fn current_time_formats_match_the_previous_report_contracts() {

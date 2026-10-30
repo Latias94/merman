@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::pie::PieDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_string;
 use crate::diagram_theme::{
@@ -100,7 +100,7 @@ pub(crate) struct PieThemePlan {
 impl PieThemePlan {
     #[cfg(test)]
     pub(crate) fn baseline(model: &PieDiagramModel, effective_config: &serde_json::Value) -> Self {
-        let effective_config = PresentationConfig::from_value(effective_config.clone());
+        let effective_config = crate::test_support::presentation_config(effective_config.clone());
         Self::baseline_with_config(model, &effective_config, None, model.title.as_deref())
     }
 
@@ -200,8 +200,7 @@ impl PieThemePlan {
                 self.palette_key = Some(key.clone());
                 let mut missing_typed_color = false;
                 for (index, paint) in self.paints.iter_mut().enumerate() {
-                    if merman_core::__private::config_paint_overrides_typed_default(
-                        effective_config,
+                    if effective_config.config_paint_overrides_typed_default(
                         MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                     ) {
                         continue;
@@ -297,8 +296,7 @@ impl PieThemePlan {
                 ) else {
                     continue;
                 };
-                if merman_core::__private::config_paint_overrides_typed_default(
-                    effective_config,
+                if effective_config.config_paint_overrides_typed_default(
                     MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                 ) {
                     suppressed_fill_rules.insert(fill.rule_index());
@@ -818,11 +816,11 @@ fn record_terminal_paint(
 }
 
 fn mermaid_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
-    merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
+    effective_config.config_paint_overrides_typed_default(path)
 }
 
 fn explicit_config_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
-    merman_core::__private::explicit_config_owns_path(effective_config, path)
+    effective_config.explicit_config_owns_path(path)
 }
 
 fn typed_static_stroke(
@@ -1014,7 +1012,7 @@ mod tests {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let plan = PieThemePlan::resolve(
             &PieDiagramModel::default(),
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             Some(&theme),
             &meter,
         )
@@ -1051,7 +1049,7 @@ mod tests {
                 value: 1.0,
             })
             .collect();
-        let config = PresentationConfig::from_value(json!({}));
+        let config = crate::test_support::presentation_config(json!({}));
         let theme = resolved_slice_palette(colors);
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -1074,7 +1072,7 @@ mod tests {
                 value: 1.0,
             })
             .collect();
-        let config = PresentationConfig::from_value(json!({}));
+        let config = crate::test_support::presentation_config(json!({}));
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(

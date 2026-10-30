@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::presentation::PresentationConfig;
 use merman_model::families::pie::PieDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -116,9 +116,7 @@ impl PiePreparedText {
         let base_size_active = base_size_requested
             && !["themeVariables.fontSize", "fontSize"]
                 .into_iter()
-                .any(|path| {
-                    merman_core::__private::config_path_overrides_typed_default(config, path)
-                });
+                .any(|path| config.config_path_overrides_typed_default(path));
         let mut css = PieCssBinding::new(
             config.as_value(),
             Some(inherited_font_stack.font_family_css()),
@@ -230,14 +228,8 @@ impl PiePreparedText {
                 );
             }
 
-            let fill_owned = merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                role.fill_path(),
-            );
-            let size_owned = merman_core::__private::config_path_overrides_typed_default(
-                config,
-                role.size_path(),
-            );
+            let fill_owned = config.config_paint_overrides_typed_default(role.fill_path());
+            let size_owned = config.config_path_overrides_typed_default(role.size_path());
             let mut owners = BTreeMap::new();
             if !fill_owned
                 && let Some(fill) = resolve_direct_static_fill(

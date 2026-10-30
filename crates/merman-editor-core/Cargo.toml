@@ -18,6 +18,7 @@ artifact-profile-required = true
 fixed-capabilities = ["analysis", "editor"]
 
 [features]
+fixes = ["merman-analysis/fixes"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -55,46 +56,48 @@ all-diagrams = [
     "diagram-xychart",
     "diagram-zenuml",
 ]
-diagram-architecture = ["merman-analysis/diagram-architecture", "merman-core/diagram-architecture"]
-diagram-block = ["merman-analysis/diagram-block", "merman-core/diagram-block"]
-diagram-c4 = ["merman-analysis/diagram-c4", "merman-core/diagram-c4"]
-diagram-class = ["merman-analysis/diagram-class", "merman-core/diagram-class"]
-diagram-cynefin = ["merman-analysis/diagram-cynefin", "merman-core/diagram-cynefin"]
-diagram-er = ["merman-analysis/diagram-er", "merman-core/diagram-er"]
+diagram-architecture = ["merman-analysis/diagram-architecture", "merman-core/diagram-architecture", "merman-model/diagram-architecture"]
+diagram-block = ["merman-analysis/diagram-block", "merman-core/diagram-block", "merman-model/diagram-block"]
+diagram-c4 = ["merman-analysis/diagram-c4", "merman-core/diagram-c4", "merman-model/diagram-c4"]
+diagram-class = ["merman-analysis/diagram-class", "merman-core/diagram-class", "merman-model/diagram-class"]
+diagram-cynefin = ["merman-analysis/diagram-cynefin", "merman-core/diagram-cynefin", "merman-model/diagram-cynefin"]
+diagram-er = ["merman-analysis/diagram-er", "merman-core/diagram-er", "merman-model/diagram-er"]
 diagram-event-modeling = [
     "merman-analysis/diagram-event-modeling",
     "merman-core/diagram-event-modeling",
+    "merman-model/diagram-event-modeling",
 ]
-diagram-agentflow = ["merman-analysis/diagram-agentflow", "merman-core/diagram-agentflow"]
-diagram-usecase = ["merman-analysis/diagram-usecase", "merman-core/diagram-usecase"]
-diagram-flowchart = ["merman-analysis/diagram-flowchart", "merman-core/diagram-flowchart"]
-diagram-gantt = ["merman-analysis/diagram-gantt", "merman-core/diagram-gantt"]
-diagram-git-graph = ["merman-analysis/diagram-git-graph", "merman-core/diagram-git-graph"]
-diagram-info = ["merman-analysis/diagram-info", "merman-core/diagram-info"]
-diagram-ishikawa = ["merman-analysis/diagram-ishikawa", "merman-core/diagram-ishikawa"]
-diagram-journey = ["merman-analysis/diagram-journey", "merman-core/diagram-journey"]
-diagram-kanban = ["merman-analysis/diagram-kanban", "merman-core/diagram-kanban"]
-diagram-mindmap = ["merman-analysis/diagram-mindmap", "merman-core/diagram-mindmap"]
-diagram-packet = ["merman-analysis/diagram-packet", "merman-core/diagram-packet"]
-diagram-pie = ["merman-analysis/diagram-pie", "merman-core/diagram-pie"]
+diagram-agentflow = ["merman-analysis/diagram-agentflow", "merman-core/diagram-agentflow", "merman-model/diagram-agentflow"]
+diagram-usecase = ["merman-analysis/diagram-usecase", "merman-core/diagram-usecase", "merman-model/diagram-usecase"]
+diagram-flowchart = ["merman-analysis/diagram-flowchart", "merman-core/diagram-flowchart", "merman-model/diagram-flowchart"]
+diagram-gantt = ["merman-analysis/diagram-gantt", "merman-core/diagram-gantt", "merman-model/diagram-gantt"]
+diagram-git-graph = ["merman-analysis/diagram-git-graph", "merman-core/diagram-git-graph", "merman-model/diagram-git-graph"]
+diagram-info = ["merman-analysis/diagram-info", "merman-core/diagram-info", "merman-model/diagram-info"]
+diagram-ishikawa = ["merman-analysis/diagram-ishikawa", "merman-core/diagram-ishikawa", "merman-model/diagram-ishikawa"]
+diagram-journey = ["merman-analysis/diagram-journey", "merman-core/diagram-journey", "merman-model/diagram-journey"]
+diagram-kanban = ["merman-analysis/diagram-kanban", "merman-core/diagram-kanban", "merman-model/diagram-kanban"]
+diagram-mindmap = ["merman-analysis/diagram-mindmap", "merman-core/diagram-mindmap", "merman-model/diagram-mindmap"]
+diagram-packet = ["merman-analysis/diagram-packet", "merman-core/diagram-packet", "merman-model/diagram-packet"]
+diagram-pie = ["merman-analysis/diagram-pie", "merman-core/diagram-pie", "merman-model/diagram-pie"]
 diagram-quadrant-chart = [
     "merman-analysis/diagram-quadrant-chart",
     "merman-core/diagram-quadrant-chart",
+    "merman-model/diagram-quadrant-chart",
 ]
-diagram-radar = ["merman-analysis/diagram-radar", "merman-core/diagram-radar"]
-diagram-railroad = ["merman-analysis/diagram-railroad", "merman-core/diagram-railroad"]
-diagram-requirement = ["merman-analysis/diagram-requirement", "merman-core/diagram-requirement"]
-diagram-sankey = ["merman-analysis/diagram-sankey", "merman-core/diagram-sankey"]
-diagram-sequence = ["merman-analysis/diagram-sequence", "merman-core/diagram-sequence"]
-diagram-state = ["merman-analysis/diagram-state", "merman-core/diagram-state"]
-diagram-swimlane = ["merman-analysis/diagram-swimlane", "merman-core/diagram-swimlane"]
-diagram-timeline = ["merman-analysis/diagram-timeline", "merman-core/diagram-timeline"]
-diagram-tree-view = ["merman-analysis/diagram-tree-view", "merman-core/diagram-tree-view"]
-diagram-treemap = ["merman-analysis/diagram-treemap", "merman-core/diagram-treemap"]
-diagram-venn = ["merman-analysis/diagram-venn", "merman-core/diagram-venn"]
-diagram-wardley = ["merman-analysis/diagram-wardley", "merman-core/diagram-wardley"]
-diagram-xychart = ["merman-analysis/diagram-xychart", "merman-core/diagram-xychart"]
-diagram-zenuml = ["merman-analysis/diagram-zenuml", "merman-core/diagram-zenuml"]
+diagram-radar = ["merman-analysis/diagram-radar", "merman-core/diagram-radar", "merman-model/diagram-radar"]
+diagram-railroad = ["merman-analysis/diagram-railroad", "merman-core/diagram-railroad", "merman-model/diagram-railroad"]
+diagram-requirement = ["merman-analysis/diagram-requirement", "merman-core/diagram-requirement", "merman-model/diagram-requirement"]
+diagram-sankey = ["merman-analysis/diagram-sankey", "merman-core/diagram-sankey", "merman-model/diagram-sankey"]
+diagram-sequence = ["merman-analysis/diagram-sequence", "merman-core/diagram-sequence", "merman-model/diagram-sequence"]
+diagram-state = ["merman-analysis/diagram-state", "merman-core/diagram-state", "merman-model/diagram-state"]
+diagram-swimlane = ["merman-analysis/diagram-swimlane", "merman-core/diagram-swimlane", "merman-model/diagram-swimlane"]
+diagram-timeline = ["merman-analysis/diagram-timeline", "merman-core/diagram-timeline", "merman-model/diagram-timeline"]
+diagram-tree-view = ["merman-analysis/diagram-tree-view", "merman-core/diagram-tree-view", "merman-model/diagram-tree-view"]
+diagram-treemap = ["merman-analysis/diagram-treemap", "merman-core/diagram-treemap", "merman-model/diagram-treemap"]
+diagram-venn = ["merman-analysis/diagram-venn", "merman-core/diagram-venn", "merman-model/diagram-venn"]
+diagram-wardley = ["merman-analysis/diagram-wardley", "merman-core/diagram-wardley", "merman-model/diagram-wardley"]
+diagram-xychart = ["merman-analysis/diagram-xychart", "merman-core/diagram-xychart", "merman-model/diagram-xychart"]
+diagram-zenuml = ["merman-analysis/diagram-zenuml", "merman-core/diagram-zenuml", "merman-model/diagram-zenuml"]
 default = []
 system-clock = ["merman-analysis/system-clock", "merman-core/system-clock"]
 system-timezone = ["merman-analysis/system-timezone", "merman-core/system-timezone"]
@@ -104,4 +107,5 @@ system-timing = ["merman-analysis/system-timing", "merman-core/system-timing"]
 [dependencies]
 merman-analysis.workspace = true
 merman-core = { workspace = true, features = ["editor-facts"] }
+merman-model.workspace = true
 serde.workspace = true

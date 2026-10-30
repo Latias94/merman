@@ -1,9 +1,9 @@
 use crate::error::CliError;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use crate::error::InputRole;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use crate::error::{FileOperation, safe_path};
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use crate::input::{IO_CHUNK_BYTES, InputReadError};
 use crate::invocation::ResolvedInput;
 use crate::invocation::ResolvedInvocation;
@@ -11,18 +11,18 @@ use std::path::{Path, PathBuf};
 
 #[cfg(feature = "markdown")]
 use std::collections::HashMap;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use std::ffi::{OsStr, OsString};
 #[cfg(all(
-    any(feature = "analysis", feature = "svg", feature = "ascii"),
+    any(feature = "fixes", feature = "svg", feature = "ascii"),
     any(unix, all(windows, feature = "markdown"))
 ))]
 use std::fs::File;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use std::io::Write;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use std::path::Component;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use std::sync::{Arc, OnceLock};
 
 #[cfg(feature = "markdown")]
@@ -62,11 +62,11 @@ impl LocalPreflight {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PublicationGuards {
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     protected: Vec<GuardedInput>,
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     cwd: Option<PathBuf>,
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     scopes: Vec<Arc<PublicationScope>>,
     #[cfg(feature = "markdown")]
     transaction_root: Option<Arc<DirectoryGuard>>,
@@ -140,7 +140,7 @@ impl ApprovedTransactionRoot {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone)]
 struct GuardedInput {
     role: &'static str,
@@ -155,21 +155,21 @@ struct GuardedInput {
 
 impl PublicationGuards {
     fn new(cwd: Option<&Path>) -> Self {
-        #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
+        #[cfg(not(any(feature = "fixes", feature = "svg", feature = "ascii")))]
         let _ = cwd;
         Self {
-            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
             protected: Vec::new(),
-            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
             cwd: cwd.map(Path::to_path_buf),
-            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
             scopes: Vec::new(),
             #[cfg(feature = "markdown")]
             transaction_root: None,
         }
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn protect(&mut self, inputs: &[ProtectedInput]) {
         self.protected
             .extend(inputs.iter().map(|input| GuardedInput {
@@ -203,7 +203,7 @@ impl PublicationGuards {
         Ok(())
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     pub(crate) fn verify(&self) -> Result<(), CliError> {
         for input in &self.protected {
             let identity = same_file::Handle::from_path(&input.absolute).map_err(|source| {
@@ -223,17 +223,17 @@ impl PublicationGuards {
         Ok(())
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn approve_exact(&mut self, target: FileTarget) -> Result<(), CliError> {
         self.approve_exact_with_policy(target, false)
     }
 
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "fixes")]
     fn approve_fix_write(&mut self, target: FileTarget) -> Result<(), CliError> {
         self.approve_exact_with_policy(target, true)
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn approve_exact_with_policy(
         &mut self,
         target: FileTarget,
@@ -279,7 +279,7 @@ impl PublicationGuards {
         Ok(())
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn approve_scope(&mut self, scope: PublicationScope) -> Result<(), CliError> {
         #[cfg(feature = "markdown")]
         for existing in &self.scopes {
@@ -396,7 +396,7 @@ impl PublicationGuards {
         Ok(matching)
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn publication_for(&self, requested: &Path) -> Result<ApprovedPublication, CliError> {
         self.verify()?;
         let lexical = lexical_absolute(requested, self.working_directory()?);
@@ -424,7 +424,7 @@ impl PublicationGuards {
         })
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn working_directory(&self) -> Result<&Path, CliError> {
         self.cwd.as_deref().ok_or_else(|| {
             CliError::Io(std::io::Error::new(
@@ -445,7 +445,7 @@ pub(crate) fn preflight(
     #[allow(unused_mut)]
     let mut publications = PublicationGuards::new(Some(cwd));
     match &mut invocation {
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "fixes")]
         ResolvedInvocation::Fix(args) => {
             let inputs = preflight_fix(args, cwd, &mut publications)?;
             publications.protect(&inputs);
@@ -752,7 +752,7 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
             anchor_input(&mut args.input, cwd);
             anchor_optional_path(&mut args.analysis.config_file, cwd);
         }
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "fixes")]
         ResolvedInvocation::Fix(args) => {
             anchor_input(&mut args.input, cwd);
             anchor_optional_path(&mut args.analysis.config_file, cwd);
@@ -808,7 +808,7 @@ fn anchor_render_inputs(common: &mut crate::invocation::ResolvedRenderCommon, cw
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn preflight_fix(
     args: &mut crate::invocation::ResolvedFix,
     cwd: &Path,
@@ -951,7 +951,7 @@ fn render_inputs(
     Ok(inputs)
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 struct ProtectedInput {
     directory: bool,
@@ -963,7 +963,7 @@ struct ProtectedInput {
     identity: Arc<same_file::Handle>,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl ProtectedInput {
     fn inspect(
         role: &'static str,
@@ -1057,7 +1057,7 @@ impl ProtectedInput {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn input_error(role: InputRole, error: InputReadError) -> CliError {
     match role {
         InputRole::Primary => CliError::primary_input(error),
@@ -1065,7 +1065,7 @@ fn input_error(role: InputRole, error: InputReadError) -> CliError {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Clone, Copy)]
 enum MissingParent {
     Reject,
@@ -1073,7 +1073,7 @@ enum MissingParent {
     Allow,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 struct PublicationScope {
     matcher: PublicationMatcher,
@@ -1081,7 +1081,7 @@ struct PublicationScope {
     allow_protected_target: bool,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 enum PublicationMatcher {
     Exact {
@@ -1096,7 +1096,7 @@ enum PublicationMatcher {
     },
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl PublicationMatcher {
     fn matches(&self, lexical: &Path) -> bool {
         match self {
@@ -1139,7 +1139,7 @@ impl PublicationMatcher {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 struct ApprovedPublication {
     path: PathBuf,
@@ -1148,7 +1148,7 @@ struct ApprovedPublication {
     allow_protected_target: bool,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 struct DirectoryIdentity {
     handle: same_file::Handle,
@@ -1164,7 +1164,7 @@ struct DirectoryIdentity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FileSystemIdentity(u64);
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl DirectoryIdentity {
     fn open(path: &Path) -> std::io::Result<Self> {
         #[cfg(windows)]
@@ -1253,14 +1253,14 @@ fn windows_filesystem_identity(file: &File) -> std::io::Result<FileSystemIdentit
     )))
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 struct CanonicalDirectory {
     path: PathBuf,
     identity: Arc<DirectoryIdentity>,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 struct DirectoryGuard {
     expected: PathBuf,
@@ -1271,7 +1271,7 @@ struct DirectoryGuard {
     existed_at_preflight: bool,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl DirectoryGuard {
     fn existing(directory: CanonicalDirectory) -> Self {
         let CanonicalDirectory { path, identity } = directory;
@@ -1579,7 +1579,7 @@ fn require_transaction_descendant(
     Ok(())
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn publication_identity_changed(path: &Path) -> CliError {
     CliError::file(
         FileOperation::VerifyPublication,
@@ -1588,7 +1588,7 @@ fn publication_identity_changed(path: &Path) -> CliError {
     )
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 struct FileTarget {
     requested: PathBuf,
     canonical: PathBuf,
@@ -1680,7 +1680,7 @@ struct NumberedTargetGuard {
     existing: HashMap<OsString, Arc<same_file::Handle>>,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn preflight_file_target(
     requested: &Path,
     cwd: &Path,
@@ -1780,7 +1780,7 @@ fn has_multiple_hard_links(_path: &Path, _identity: &same_file::Handle) -> Resul
     Ok(true)
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn inspect_file_target(
     requested: &Path,
     absolute: &Path,
@@ -1971,7 +1971,7 @@ fn numbered_index_hint(file_name: &OsStr) -> Option<usize> {
     index.parse().ok()
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn reject_alias(
     output: &ProtectedInput,
     protected: &ProtectedInput,
@@ -1986,7 +1986,7 @@ fn reject_alias(
     Ok(())
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn alias_error(target: &Path, input: &ProtectedInput, target_role: &str) -> CliError {
     CliError::InvalidOutput(format!(
         "{target_role} {} aliases protected {} {}",
@@ -1996,7 +1996,7 @@ fn alias_error(target: &Path, input: &ProtectedInput, target_role: &str) -> CliE
     ))
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn prospective_directory(
     absolute: &Path,
     requested: &Path,
@@ -2034,7 +2034,7 @@ fn prospective_directory(
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn project_from_existing_ancestor(
     path: &Path,
     requested: &Path,
@@ -2079,12 +2079,12 @@ fn project_from_existing_ancestor(
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn open_canonical_directory(path: &Path, requested: &Path) -> Result<CanonicalDirectory, CliError> {
     open_canonical_directory_with(path, requested, |_| {})
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn open_canonical_directory_with(
     path: &Path,
     requested: &Path,
@@ -2116,7 +2116,7 @@ fn anchored_absolute(path: &Path, cwd: &Path) -> PathBuf {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn lexical_absolute(path: &Path, cwd: &Path) -> PathBuf {
     let absolute = anchored_absolute(path, cwd);
     let mut normalized = PathBuf::new();
@@ -2138,9 +2138,9 @@ fn lexical_absolute(path: &Path, cwd: &Path) -> PathBuf {
     normalized
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 pub(crate) trait PublicationBackend {
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn publish_file_verified(
         &mut self,
         path: &Path,
@@ -2215,7 +2215,7 @@ pub(crate) trait PublicationBackend {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 pub(crate) struct SystemPublicationBackend;
 
 #[cfg(feature = "markdown")]
@@ -2300,9 +2300,9 @@ impl AcquiredTransaction {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl PublicationBackend for SystemPublicationBackend {
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn publish_file_verified(
         &mut self,
         path: &Path,
@@ -2336,7 +2336,7 @@ impl PublicationBackend for SystemPublicationBackend {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 pub(crate) fn publish_atomic_file_verified(
     path: &Path,
     bytes: &[u8],
@@ -2370,7 +2370,7 @@ fn publish_atomic_file_controlled(
     )
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 trait AtomicBackend {
     type Stage: Write;
 
@@ -2384,10 +2384,10 @@ trait AtomicBackend {
     fn commit(&self, stage: Self::Stage) -> std::io::Result<()>;
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 struct SystemAtomicBackend;
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl AtomicBackend for SystemAtomicBackend {
     type Stage = atomic_write_file::AtomicWriteFile;
 
@@ -2409,7 +2409,7 @@ impl AtomicBackend for SystemAtomicBackend {
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[cfg(test)]
 fn publish_with_backend_and_verifier<B: AtomicBackend>(
     path: &Path,
@@ -2421,7 +2421,7 @@ fn publish_with_backend_and_verifier<B: AtomicBackend>(
     publish_with_backend_and_callbacks(path, bytes, publications, backend, verify, || Ok(()))
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn publish_with_backend_and_callbacks<B: AtomicBackend>(
     path: &Path,
     bytes: &[u8],
@@ -2455,7 +2455,7 @@ fn publish_with_backend_and_callbacks<B: AtomicBackend>(
         .map_err(|source| CliError::file(FileOperation::CommitAtomicReplacement, path, source))
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn verify_commit_preconditions<B: AtomicBackend>(
     requested_path: &Path,
     approved: &ApprovedPublication,
@@ -2474,7 +2474,7 @@ fn verify_commit_preconditions<B: AtomicBackend>(
     verify(&approved.path)
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn verify_publication_target(
     approved: &ApprovedPublication,
     protected: &[GuardedInput],
@@ -2533,7 +2533,7 @@ fn verify_publication_target(
     }
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 fn publication_target_changed(path: &Path) -> CliError {
     CliError::file(
         FileOperation::VerifyPublication,
@@ -2542,7 +2542,7 @@ fn publication_target_changed(path: &Path) -> CliError {
     )
 }
 
-#[cfg(all(any(feature = "analysis", feature = "svg", feature = "ascii"), unix))]
+#[cfg(all(any(feature = "fixes", feature = "svg", feature = "ascii"), unix))]
 fn verify_atomic_parent(
     stage: &atomic_write_file::AtomicWriteFile,
     path: &Path,
@@ -2572,10 +2572,7 @@ fn verify_atomic_parent(
     Ok(())
 }
 
-#[cfg(all(
-    any(feature = "analysis", feature = "svg", feature = "ascii"),
-    not(unix)
-))]
+#[cfg(all(any(feature = "fixes", feature = "svg", feature = "ascii"), not(unix)))]
 fn verify_atomic_parent(
     _stage: &atomic_write_file::AtomicWriteFile,
     path: &Path,
@@ -2593,7 +2590,7 @@ fn verify_atomic_parent(
     Ok(())
 }
 
-#[cfg(all(test, any(feature = "analysis", feature = "svg", feature = "ascii")))]
+#[cfg(all(test, any(feature = "fixes", feature = "svg", feature = "ascii")))]
 mod tests {
     use super::*;
 
@@ -3265,7 +3262,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "fixes")]
     #[test]
     fn same_inode_mutation_after_custom_verification_is_rechecked_before_commit() {
         use std::fs::OpenOptions;

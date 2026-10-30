@@ -14,26 +14,6 @@ pub(crate) use crate::presentation::diagram::{
     BuiltInRenderSemanticParser, RenderSemanticParseOutput, ResolvedRenderParser,
 };
 
-pub use merman_model::warnings::{
-    AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
-    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
-};
-
-#[cfg(all(
-    feature = "compat-json",
-    any(
-        feature = "diagram-block",
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-git-graph"
-    )
-))]
-pub(crate) fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<String> {
-    facts.iter().map(|fact| fact.message.clone()).collect()
-}
-
 /// A panic captured with its original payload for the legacy rethrow adapter.
 pub struct CapturedPanic {
     message: String,

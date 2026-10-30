@@ -35,12 +35,19 @@ pub struct FlowchartComplexity {
 ))]
 impl FlowchartComplexity {
     pub fn from_model(model: &FlowchartModel) -> Self {
+        let mut complexity = Self::without_depth(model);
+        complexity.subgraph_depth =
+            flowchart_subgraph_depth_with_control(model, None).unwrap_or(usize::MAX);
+        complexity
+    }
+
+    pub(super) fn without_depth(model: &FlowchartModel) -> Self {
         Self {
             nodes: model.nodes.len().saturating_add(model.subgraphs.len()),
             edges: model.edges.len(),
             subgraphs: model.subgraphs.len(),
             label_bytes: flowchart_text_bytes(model),
-            subgraph_depth: flowchart_subgraph_depth(model),
+            subgraph_depth: 0,
         }
     }
 
@@ -161,6 +168,12 @@ impl ClassComplexity {
 
     /// Counts topology only, excluding retained authored and visual text.
     pub fn topology_from_view(model: &ClassTopologyView<'_>) -> Self {
+        let mut complexity = Self::topology_without_depth(model);
+        complexity.namespace_depth = class_namespace_depth(model.effective_namespaces());
+        complexity
+    }
+
+    pub(super) fn topology_without_depth(model: &ClassTopologyView<'_>) -> Self {
         Self {
             nodes: model
                 .classes()
@@ -174,7 +187,7 @@ impl ClassComplexity {
                 .saturating_add(model.notes().filter(|note| note.class_id.is_some()).count()),
             namespaces: model.namespaces().len(),
             label_bytes: 0,
-            namespace_depth: class_namespace_depth(model.effective_namespaces()),
+            namespace_depth: 0,
         }
     }
 
@@ -468,36 +481,54 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
-    if model.subgraphs.is_empty() {
-        return 0;
+pub(super) fn flowchart_subgraph_depth_with_control(
+    model: &FlowchartModel,
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<usize> {
+    if let Some(control) = control {
+        control.checkpoint()?;
     }
-    let indices = model
-        .subgraphs
-        .iter()
-        .enumerate()
-        .map(|(index, subgraph)| (subgraph.id.as_str(), index))
-        .collect::<std::collections::HashMap<_, _>>();
-    let mut children = vec![Vec::new(); model.subgraphs.len()];
+    if model.subgraphs.is_empty() {
+        return Ok(0);
+    }
+    let mut indices = std::collections::HashMap::with_capacity(model.subgraphs.len());
+    for (index, subgraph) in model.subgraphs.iter().enumerate() {
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
+        indices.insert(subgraph.id.as_str(), index);
+    }
     let mut incoming = vec![0usize; model.subgraphs.len()];
-    for (parent, subgraph) in model.subgraphs.iter().enumerate() {
+    for subgraph in &model.subgraphs {
         for member in &subgraph.nodes {
+            if let Some(control) = control {
+                control.checkpoint()?;
+            }
             let Some(&child) = indices.get(member.as_str()) else {
                 continue;
             };
-            children[parent].push(child);
             incoming[child] = incoming[child].saturating_add(1);
         }
     }
     let mut queue = std::collections::VecDeque::new();
     let mut depths = vec![1usize; model.subgraphs.len()];
     for (index, incoming) in incoming.iter().enumerate() {
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
         if *incoming == 0 {
             queue.push_back(index);
         }
     }
     while let Some(parent) = queue.pop_front() {
-        for &child in &children[parent] {
+        // Traverse existing members instead of copying an adjacency table into scratch.
+        for member in &model.subgraphs[parent].nodes {
+            if let Some(control) = control {
+                control.checkpoint()?;
+            }
+            let Some(&child) = indices.get(member.as_str()) else {
+                continue;
+            };
             depths[child] = depths[child].max(depths[parent].saturating_add(1));
             incoming[child] = incoming[child].saturating_sub(1);
             if incoming[child] == 0 {
@@ -505,7 +536,7 @@ fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
             }
         }
     }
-    depths.into_iter().max().unwrap_or(0)
+    Ok(depths.into_iter().max().unwrap_or(0))
 }
 
 #[cfg(feature = "diagram-class")]
@@ -513,26 +544,45 @@ fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
 pub fn class_namespace_depth(
     namespaces: &indexmap::IndexMap<String, crate::families::class::Namespace>,
 ) -> usize {
-    if namespaces.is_empty() {
-        return 0;
+    class_namespace_depth_with_control(namespaces, None).unwrap_or(usize::MAX)
+}
+
+#[cfg(feature = "diagram-class")]
+pub(super) fn class_namespace_depth_with_control(
+    namespaces: &indexmap::IndexMap<String, crate::families::class::Namespace>,
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<usize> {
+    if let Some(control) = control {
+        control.checkpoint()?;
     }
-    let indices = namespaces
-        .keys()
-        .enumerate()
-        .map(|(index, id)| (id.as_str(), index))
-        .collect::<std::collections::HashMap<_, _>>();
-    let parents = namespaces
-        .values()
-        .map(|namespace| {
+    if namespaces.is_empty() {
+        return Ok(0);
+    }
+    let mut indices = std::collections::HashMap::with_capacity(namespaces.len());
+    for (index, id) in namespaces.keys().enumerate() {
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
+        indices.insert(id.as_str(), index);
+    }
+    let mut parents = Vec::with_capacity(namespaces.len());
+    for namespace in namespaces.values() {
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
+        parents.push(
             namespace
                 .parent
                 .as_deref()
-                .and_then(|parent| indices.get(parent).copied())
-        })
-        .collect::<Vec<_>>();
+                .and_then(|parent| indices.get(parent).copied()),
+        );
+    }
     let mut depths = vec![0usize; parents.len()];
     let mut completed = vec![false; parents.len()];
     for start in 0..parents.len() {
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
         if completed[start] {
             continue;
         }
@@ -540,6 +590,9 @@ pub fn class_namespace_depth(
         let mut positions = std::collections::HashMap::new();
         let mut cursor = Some(start);
         while let Some(index) = cursor {
+            if let Some(control) = control {
+                control.checkpoint()?;
+            }
             if completed[index] || positions.contains_key(&index) {
                 break;
             }
@@ -552,12 +605,15 @@ pub fn class_namespace_depth(
             .map(|index| depths[index])
             .unwrap_or(0);
         for index in path.into_iter().rev() {
+            if let Some(control) = control {
+                control.checkpoint()?;
+            }
             depth = depth.saturating_add(1);
             depths[index] = depth;
             completed[index] = true;
         }
     }
-    depths.into_iter().max().unwrap_or(0)
+    Ok(depths.into_iter().max().unwrap_or(0))
 }
 
 #[cfg(feature = "diagram-mindmap")]

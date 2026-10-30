@@ -2329,6 +2329,7 @@ dependencies = [
  "merman-editor-core",
  "merman-export",
  "merman-fixture-render-context",
+ "merman-markup",
  "merman-model",
  "merman-render",
  "merman-theme-authoring-fixtures",
@@ -2349,6 +2350,8 @@ version = "0.9.3"
 dependencies = [
  "jsonschema",
  "merman-core",
+ "merman-markup",
+ "merman-model",
  "serde",
  "serde-saphyr",
  "serde_json",
@@ -2484,6 +2487,7 @@ version = "0.9.3"
 dependencies = [
  "merman-analysis",
  "merman-core",
+ "merman-model",
  "serde",
 ]
 
@@ -2505,7 +2509,7 @@ dependencies = [
  "image",
  "krilla",
  "krilla-svg",
- "merman-core",
+ "merman-model",
  "merman-render",
  "png",
  "quick-xml",
@@ -5047,6 +5051,7 @@ dependencies = [
  "cc",
  "merman-core",
  "merman-fixture-render-context",
+ "merman-model",
  "serde",
  "serde_json",
  "tree-sitter",

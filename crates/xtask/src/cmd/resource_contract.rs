@@ -593,12 +593,13 @@ fn render_typescript(contract: &RuntimeResourceContract) -> String {
     }
     out.push_str("] as const);\nexport type ResourceProfile = (typeof RESOURCE_PROFILES)[number];\nconst RESOURCE_PROFILE_ID_SET: ReadonlySet<string> = new Set(RESOURCE_PROFILES);\nconst RESOURCE_PROFILE_RESTRICTIONS: Readonly<Record<ResourceProfile, ReadonlySet<ResourceProfile>>> = Object.freeze({\n");
     for ceiling in profiles {
-        let ceiling_profile = merman_core::resources::ResourceProfile::from_id(ceiling.id)
+        let ceiling_profile = merman::model::resources::ResourceProfile::from_id(ceiling.id)
             .expect("runtime resource profiles come from the core descriptor");
         write!(out, "  {:?}: new Set<ResourceProfile>([", ceiling.id).unwrap();
         for requested in profiles {
-            let requested_profile = merman_core::resources::ResourceProfile::from_id(requested.id)
-                .expect("runtime resource profiles come from the core descriptor");
+            let requested_profile =
+                merman::model::resources::ResourceProfile::from_id(requested.id)
+                    .expect("runtime resource profiles come from the core descriptor");
             if requested_profile.is_no_looser_than(ceiling_profile) {
                 write!(out, "{:?},", requested.id).unwrap();
             }

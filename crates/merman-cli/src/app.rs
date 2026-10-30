@@ -282,8 +282,9 @@ pub(crate) fn cli_command() -> clap::Command {
             subcommand.after_help(
                 "Examples:\n  merman-cli lint diagram.mmd\n  merman-cli lint --format json diagram.mmd\n\nMore options: `merman-cli lint --help` shows advanced rule, runtime, and resource controls.",
             )
-        })
-        .mut_subcommand("fix", |subcommand| {
+        });
+    #[cfg(feature = "fixes")]
+    let command = command.mut_subcommand("fix", |subcommand| {
             subcommand.after_help(
                 "Examples:\n  merman-cli fix --check diagram.mmd\n  merman-cli fix --diff diagram.mmd\n\nMore options: `merman-cli fix --help` shows advanced rule, runtime, and resource controls.",
             )
@@ -770,14 +771,14 @@ mod tests {
         }
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     struct RejectingPublication {
         calls: Arc<AtomicUsize>,
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     impl crate::output::PublicationBackend for RejectingPublication {
-        #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+        #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
         fn publish_file_verified(
             &mut self,
             _path: &std::path::Path,
@@ -811,7 +812,7 @@ mod tests {
 
     #[cfg(feature = "markdown")]
     impl crate::output::PublicationBackend for RejectingCommitPublication {
-        #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+        #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
         fn publish_file_verified(
             &mut self,
             path: &std::path::Path,
@@ -897,12 +898,12 @@ mod tests {
             stderr,
             #[cfg(feature = "network-icons")]
             network: Box::new(crate::network::SystemNetworkAcquirer),
-            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
             publication: Box::new(crate::output::SystemPublicationBackend),
         }
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     fn execution_with_publication(
         stdin: impl Read + Send + 'static,
         stdout: SharedWriter,

@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_theme_font_size_css_or_root_number_px_opt;
 use crate::diagram_theme::{
@@ -73,10 +73,7 @@ impl JourneyTypographyThemePlan {
         // remains a compatibility fallback for the unthemed path and must not shadow a typed
         // family theme value.
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let configured_font_size =
             config_theme_font_size_css_or_root_number_px_opt(effective_config.as_value());
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;

@@ -1,4 +1,4 @@
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::*;
 use futures::executor::block_on;
 use serde_json::json;
@@ -91,9 +91,10 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
         .unwrap();
     assert_eq!(default.effective_config.get_str("layout"), Some("swimlane"));
     // Mermaid 12 gives an explicit initialized layout precedence over the family default.
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "layout": "dagre"
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "layout": "dagre"
+        })));
 
     let site_default = engine
         .parse_metadata_sync("swimlane-beta LR\nA-->B\n")

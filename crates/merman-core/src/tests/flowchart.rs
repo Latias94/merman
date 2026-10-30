@@ -1,6 +1,7 @@
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::*;
 use futures::executor::block_on;
+use merman_model::warnings::FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID;
 use serde_json::json;
 
 #[test]
@@ -34,11 +35,17 @@ fn parse_diagram_flowchart_basic_graph() {
         })
     );
 
-    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &res.meta)
-        .expect("flowchart typed model");
+    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(
+        text,
+        &crate::diagrams::source_metadata_for_test(&res.meta),
+    )
+    .expect("flowchart typed model");
     assert_eq!(
-        crate::diagrams::flowchart::render_model_to_compat_json(&typed, &res.meta)
-            .expect("flowchart compatibility projection"),
+        merman_model::families::flowchart::compat::project(
+            &typed,
+            &merman_model::presentation::compat::CompatJsonMetadata::from(&res.meta)
+        )
+        .expect("flowchart compatibility projection"),
         res.model,
         "Flowchart typed compatibility projection must preserve the exact public JSON"
     );
@@ -262,8 +269,11 @@ fn parse_typed_flowchart(text: &str) -> crate::diagrams::flowchart::FlowchartMod
     let parsed = block_on(MermaidEngine::new().parse_diagram(text, ParseOptions::default()))
         .unwrap()
         .unwrap();
-    crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &parsed.meta)
-        .expect("typed flowchart model")
+    crate::diagrams::flowchart::parse_flowchart_model_for_render(
+        text,
+        &crate::diagrams::source_metadata_for_test(&parsed.meta),
+    )
+    .expect("typed flowchart model")
 }
 
 #[test]
@@ -3101,7 +3111,7 @@ fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
 
 #[test]
 fn parse_diagram_flowchart_subgraph_inherits_global_direction_when_enabled() {
-    let mut site = PresentationConfig::empty_object();
+    let mut site = SourcePresentationConfig::empty_object();
     site.set_value("flowchart.inheritDir", json!(true));
     let engine = MermaidEngine::new().with_site_config(site);
     let text = "graph LR;subgraph TOP;A-->B;end;";
@@ -3110,8 +3120,11 @@ fn parse_diagram_flowchart_subgraph_inherits_global_direction_when_enabled() {
         .unwrap();
     assert_eq!(res.model["subgraphs"][0]["dir"], json!("LR"));
     assert!(res.model["subgraphs"][0].get("hasExplicitDir").is_none());
-    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &res.meta)
-        .expect("flowchart typed model");
+    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(
+        text,
+        &crate::diagrams::source_metadata_for_test(&res.meta),
+    )
+    .expect("flowchart typed model");
     assert!(!typed.subgraphs[0].has_explicit_dir);
 }
 
@@ -3590,8 +3603,11 @@ fn parse_diagram_flowchart_classdef_partial_redefinitions_preserve_class_order()
             "delta": ["stroke:blue"]
         })
     );
-    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &res.meta)
-        .expect("flowchart typed model");
+    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(
+        text,
+        &crate::diagrams::source_metadata_for_test(&res.meta),
+    )
+    .expect("flowchart typed model");
     assert_eq!(
         typed
             .class_defs
@@ -4926,7 +4942,9 @@ fn parse_diagram_flowchart_wide_flat_statements_preserve_node_and_edge_order() {
         source.push_str(&format!("a{index}-->b{index}\n"));
     }
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({"maxEdges": 512})))
+        .with_site_config(SourcePresentationConfig::from_value(
+            json!({"maxEdges": 512}),
+        ))
         .parse_diagram_sync(&source, ParseOptions::strict())
         .unwrap()
         .unwrap();

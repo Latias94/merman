@@ -80,10 +80,11 @@ fn try_render_zenuml_with_theme(
     theme: &DiagramTheme,
     require_portable: bool,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, MermaidEngine::new())
+    let parsed = common::install_parse_compatibility(theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed ZenUML")
-        .expect("detect themed ZenUML");
+        .expect("detect themed ZenUML")
+        .into_presentation();
     let environment = if require_portable {
         RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -111,7 +112,8 @@ fn try_render_zenuml_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ZenUML resource-bound fixture")
-        .expect("detect ZenUML resource-bound fixture");
+        .expect("detect ZenUML resource-bound fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -366,12 +368,11 @@ Bob-->Alice: Reply
 
 fn render_zenuml_source_config(source: &str, config: serde_json::Value) -> String {
     let parsed = MermaidEngine::new()
-        .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-            config,
-        ))
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
@@ -479,14 +480,17 @@ fn zenuml_configured_css_removes_forbidden_scalars_at_the_xml_boundary() {
 fn zenuml_configured_css_obeys_the_actual_svg_byte_ceiling() {
     let render = |policy| {
         let parsed = MermaidEngine::new()
-            .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables":{"zenuml":{"fontFamily":r#""A&B", monospace"#}}
-                }),
-            ))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables":{"zenuml":{"fontFamily":r#""A&B", monospace"#}}
+                    }),
+                ),
+            )
             .parse_diagram_for_render_model_sync("zenuml\nA->B: request\n", ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic()
             .with_resource_policy(policy)
             .begin_session()
@@ -1138,3 +1142,6 @@ fn zenuml_small_source_font_keeps_icons_inside_their_reserved_rows() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -1,5 +1,8 @@
 //! Canonical XY chart data and explicit output display policy.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use crate::MermaidConfig;
 use serde::{Deserialize, Serialize, Serializer};
 

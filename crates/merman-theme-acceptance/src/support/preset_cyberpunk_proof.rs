@@ -1,5 +1,6 @@
 use merman::__theme_acceptance::TargetArtifactView;
-use merman::{DiagramFamilyId, RasterOutput, RenderedDocument};
+use merman::model::family::DiagramFamilyId;
+use merman::{RasterOutput, RenderedDocument};
 
 use super::state_proof::verify_host_admission;
 use crate::observation::C6TargetArtifact;

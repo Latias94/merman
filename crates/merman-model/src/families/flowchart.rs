@@ -1,5 +1,8 @@
 //! Canonical Flowchart data shared by Flowchart, Swimlane, and Agentflow consumers.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 pub mod shapes;
 
 use crate::warnings::DiagramWarningFact;
@@ -108,6 +111,34 @@ impl FlowchartSubgraphStyles {
                 style,
             },
         );
+    }
+
+    /// Checks each retained CSS source against its canonical declaration owner.
+    ///
+    /// Same-ID insertion already selects the latest source, including its ordinal. Validation
+    /// checks that retained entry without imposing uniqueness on the model's subgraph IDs.
+    pub fn validate_for_model_controlled(
+        &self,
+        model: &FlowchartModel,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<(), &'static str>> {
+        control.checkpoint()?;
+        if let Some(sources) = &self.sources {
+            for (id, source) in sources.iter() {
+                control.checkpoint()?;
+                if model
+                    .subgraphs
+                    .get(source.declaration_ordinal)
+                    .is_none_or(|subgraph| subgraph.id != *id)
+                {
+                    return Ok(Err(
+                        "flowchart subgraph CSS source does not match its declaration ordinal",
+                    ));
+                }
+            }
+        }
+        control.checkpoint()?;
+        Ok(Ok(()))
     }
 
     /// Returns the retained string bytes, excluding shared allocation overhead.

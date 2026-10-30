@@ -17,7 +17,8 @@ fn state_html_entity_break_spelling_remains_one_visible_line() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse State label")
-        .expect("detect State");
+        .expect("detect State")
+        .into_presentation();
     let requests = Arc::new(Mutex::new(Vec::new()));
     let recorded = requests.clone();
     let measurer = DeterministicTextMeasurer::default().with_width_callback(move |text, _| {

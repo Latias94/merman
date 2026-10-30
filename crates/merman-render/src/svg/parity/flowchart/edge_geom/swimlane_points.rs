@@ -148,7 +148,8 @@ mod tests {
         };
         use crate::svg::parity::flowchart::svg_emit::FlowchartSvgModelRequest;
         use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
-        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions};
+        use merman_model::presentation::RenderSemanticModel;
 
         // Mermaid 12.2 edges.spec.js supplies a two-point swimlane route while
         // getConfig().layout is ELK. Use real rectangle intersections here.
@@ -158,9 +159,14 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let render_context = parsed.flowchart_render_context().unwrap().clone();
-        let (metadata, semantic) = parsed.into_parts();
+            .unwrap()
+            .into_presentation();
+        let render_context = parsed
+            .render_context()
+            .flowchart_render_context()
+            .unwrap()
+            .clone();
+        let (metadata, semantic, _) = parsed.into_parts();
         assert_eq!(metadata.effective_config.get_str("layout"), Some("elk"));
         let RenderSemanticModel::Flowchart(model) = semantic else {
             panic!("expected Flowchart semantic model");

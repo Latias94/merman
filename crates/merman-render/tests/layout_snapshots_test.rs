@@ -1,9 +1,9 @@
 mod common;
 
 use common::legacy_init_theme_compat_config;
-use merman_core::time::CivilDate;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_fixture_render_context::RenderContextCatalog;
+use merman_model::time::CivilDate;
 use merman_render::LayoutOptions;
 use merman_render::family;
 use regex::Regex;
@@ -227,7 +227,7 @@ fn parser_only_layout_exclusions_use_exact_family_facts() {
 #[cfg(all(feature = "layout-elk", feature = "layout-cytoscape"))]
 #[test]
 fn fixtures_match_layout_golden_snapshots_when_present() {
-    let runtime_policy = merman_core::runtime::RuntimePolicy::deterministic()
+    let runtime_policy = merman_model::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
         .with_fixed_today(Some(CivilDate::new(2026, 2, 15).expect("valid date")));
@@ -275,13 +275,13 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                     mmd_path.display()
                 )
             })
-            .map(|context| {
-                merman_core::presentation::PresentationConfig::from_value(
-                    context.site_config_value(),
-                )
-            });
+            .map(|context| common::presentation_config(context.site_config_value()));
         let fixture_engine = match fixture_site_config {
-            Some(site_config) => engine.clone().with_site_config(site_config),
+            Some(site_config) => engine.clone().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_config(
+                    site_config.as_config().clone(),
+                ),
+            ),
             None => engine.clone(),
         };
 
@@ -292,7 +292,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                     suppress_errors: true,
                 },
             )) {
-                Ok(Some(v)) => v,
+                Ok(Some(v)) => v.into_presentation(),
                 Ok(None) => {
                     failures.push(format!("no diagram detected in {}", mmd_path.display()));
                     continue;
@@ -322,7 +322,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
         let mut layout_json = match artifact.layout_json() {
             Ok(artifact_json) => artifact_json
                 .get("layout")
-                .map(|value| merman_core::ManagedSemanticJson::from(value).into_unmanaged_value())
+                .map(|value| merman_model::ManagedJson::from(value).into_unmanaged_value())
                 .expect("layout artifact contains layout projection"),
             Err(err) => {
                 failures.push(format!(

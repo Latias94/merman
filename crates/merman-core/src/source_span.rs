@@ -1,4 +1,4 @@
-pub use merman_model::source::SourceSpan;
+use merman_model::source::SourceSpan;
 
 pub(crate) fn line_content_end(source: &str, end: usize) -> usize {
     let end = end.min(source.len());

@@ -25,7 +25,7 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub use_html_labels: bool,
-    pub mermaid_config: &'a merman_core::presentation::PresentationConfig,
+    pub mermaid_config: &'a merman_model::presentation::PresentationConfig,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,

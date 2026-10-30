@@ -2,12 +2,12 @@
 
 #[cfg(feature = "png")]
 use merman::PngRequest;
+use merman::model::MAX_DIAGRAM_NESTING_DEPTH;
 use merman::svg::{RenderResourcePolicy, RenderResourceProfile, SvgPipeline, SvgRenderOptions};
 use merman::{
     OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
     SvgRequest,
 };
-use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 const ZED_57389_SEQUENCE_LOOP_END: &str =

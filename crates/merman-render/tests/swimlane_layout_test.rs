@@ -324,7 +324,8 @@ fn try_layout_swimlane(source: &str) -> Result<SwimlaneLayout, String> {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .map_err(|error| format!("parse failed: {error}"))?
-        .ok_or_else(|| "no diagram detected".to_string())?;
+        .ok_or_else(|| "no diagram detected".to_string())?
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.swimlane-fixed").unwrap(),
         "1",
@@ -357,7 +358,8 @@ fn layout_swimlane_with_width_aware_measurer(source: &str) -> SwimlaneLayout {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
-        .expect("detect swimlane");
+        .expect("detect swimlane")
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.swimlane-width-aware").unwrap(),
         "1",
@@ -382,7 +384,8 @@ fn layout_swimlane_with_font_size_aware_measurer(source: &str) -> SwimlaneLayout
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
-        .expect("detect swimlane");
+        .expect("detect swimlane")
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.swimlane-font-size-aware").unwrap(),
         "1",

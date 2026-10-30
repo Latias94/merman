@@ -488,6 +488,7 @@ fn compiled_capability_ids() -> Vec<&'static str> {
 
     include_capability!("analysis", "analysis");
     include_capability!("ascii", "ascii");
+    include_capability!("fixes", "fixes");
     include_capability!("icons", "icons");
     include_capability!("jpeg", "jpeg");
     include_capability!("layout-cytoscape", "layout-cytoscape");
@@ -557,6 +558,11 @@ mod tests {
     fn compiled_tool_ids_follow_their_feature_boundaries() {
         let ids = compiled_capability_ids();
 
+        assert_eq!(ids.contains(&"fixes"), cfg!(feature = "fixes"));
+        assert_eq!(
+            compiled_command_ids().contains(&"fix".to_string()),
+            cfg!(feature = "fixes")
+        );
         assert_eq!(ids.contains(&"icons"), cfg!(feature = "icons"));
         assert_eq!(ids.contains(&"markdown"), cfg!(feature = "markdown"));
         assert_eq!(ids.contains(&"rustdoc"), cfg!(feature = "rustdoc"));

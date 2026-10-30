@@ -1,5 +1,5 @@
 use crate::svg_observation::{SvgArtifactObservation, SvgElementObservation};
-use merman::DiagramFamilyId;
+use merman::model::family::DiagramFamilyId;
 
 use crate::runner::{
     C6ProofError, C6ProofResult,

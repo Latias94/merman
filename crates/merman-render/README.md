@@ -2,14 +2,14 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-render.svg)](https://crates.io/crates/merman-render) [![Documentation](https://docs.rs/merman-render/badge.svg)](https://docs.rs/merman-render) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-`merman-render` is the low-level layout and SVG crate behind [merman](https://crates.io/crates/merman). It consumes typed `merman-core` family semantics and produces compatibility layout JSON or Mermaid-like SVG through one family artifact.
+`merman-render` is the low-level layout and SVG crate behind [merman](https://crates.io/crates/merman). It consumes immutable `merman-model::presentation::PresentationDiagram` data and produces compatibility layout JSON or Mermaid-like SVG through one family artifact.
 
 > **Implementation crate:** this crate is published to support Merman's Cargo dependency chain,
 > not as the normal product entry point. Applications should depend on
 > [`merman`](https://crates.io/crates/merman) and use its operation-scoped `Renderer` with a typed
 > target request.
 
-Direct use is reserved for Merman maintainers and advanced integrations that deliberately own the typed core model, render session, text measurement, layout, and SVG postprocessing lifecycle.
+Direct users own the typed presentation data, render session, text measurement, layout, and SVG postprocessing lifecycle. This package has no production dependency on Mermaid source parsing. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for independent data construction.
 
 ## What It Provides
 
@@ -26,10 +26,10 @@ Direct use is reserved for Merman maintainers and advanced integrations that del
 ## Feature Selection
 
 Defaults are empty. Select `all-diagrams` or the required `diagram-*` families for layout and SVG
-handlers; these selectors also forward to core. SVG itself is intrinsic to this crate. For example,
+handlers; these selectors also forward to model data. SVG itself is intrinsic to this crate. For example,
 `default-features = false, features = ["diagram-flowchart", "diagram-gantt"]` selects those two
 families without optional engines or math. Family payloads and artifacts are conditional public
-types. If another dependency widens core, a family missing its local render handler returns an
+types. If another dependency widens model data, a family missing its local render handler returns an
 explicit unsupported result before backend planning. See the
 [migration guide](../../docs/FEATURES.md#select-diagram-families).
 
@@ -66,7 +66,8 @@ This is a breaking replacement for independently configured layout and SVG servi
 ## Low-Level Pipeline Example
 
 ```rust
-use merman_core::{MermaidEngine, OperationControl, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::OperationControl;
 use merman_render::{
     environment::RenderEnvironment, family, LayoutOptions,
 };
@@ -84,7 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout_options = LayoutOptions::headless_svg_defaults();
     let control = OperationControl::new();
     let session = RenderEnvironment::deterministic().begin_session_with_control(control)?;
-    let artifact = family::prepare(&parsed, &layout_options, session)?;
+    let artifact = family::prepare(parsed.presentation(), &layout_options, session)?;
 
     // Compatibility layout JSON projects from this exact typed family artifact.
     let layout_json = artifact.layout_json()?;

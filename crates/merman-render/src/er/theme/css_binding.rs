@@ -148,11 +148,10 @@ fn fade(value: &str) -> Result<String, ColorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
 
     fn resolve(config: serde_json::Value) -> ErCssBinding {
-        let config = PresentationConfig::from_value(config);
+        let config = crate::test_support::presentation_config(config);
         ErCssBinding::resolve(
             config.as_value(),
             &InheritedFontStackPlan::resolve_property_local(None, &config),

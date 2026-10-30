@@ -9,8 +9,9 @@ use crate::{
 };
 use merman_core::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
+    EditorSemanticRole, EditorSemanticSymbol,
 };
+use merman_model::SourceSpan;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::mem::size_of;
@@ -68,7 +69,7 @@ impl AnalysisResourceLimit {
     pub const fn id(self) -> &'static str {
         match self {
             Self::SourceBytes { .. } => {
-                merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str()
+                merman_model::resources::InputResourceLimitId::MaxSourceBytes.as_str()
             }
             Self::DocumentDiagrams { .. } => crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
         }

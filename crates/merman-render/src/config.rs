@@ -150,7 +150,7 @@ pub(crate) fn config_diagram_look(cfg: &Value) -> DiagramLook<'_> {
 }
 
 pub(crate) fn mermaid_config_diagram_look(
-    cfg: &merman_core::presentation::PresentationConfig,
+    cfg: &merman_model::presentation::PresentationConfig,
 ) -> DiagramLook<'_> {
     DiagramLook::from_raw(cfg.get_str("look"))
 }

@@ -2,11 +2,11 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman_core::runtime::RuntimePolicy;
+use merman::model::presentation::RenderSemanticModel;
+use merman::model::runtime::RuntimePolicy;
 use merman_core::{
     DiagramParseOutcome, DiagramParseSnapshot, EditorSemanticCompleteness, EditorSemanticRole,
     MermaidEngine, ParseOptions, ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts,
-    RenderSemanticModel,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -593,7 +593,8 @@ fn execute_state_shape(seed: u64) -> Result<Value, String> {
             .root()
             .and_then(|root| model.document.get(root))
             .ok_or("State shape mode requires its canonical root document")?;
-        let complexity = merman_core::resources::model_complexity_from_parsed_render(&parsed);
+        let complexity =
+            merman::model::resources::model_complexity_from_presentation(parsed.presentation());
         let compatibility = parsed
             .compatibility_json()
             .map_err(|error| error.to_string())?;

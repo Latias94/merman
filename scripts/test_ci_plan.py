@@ -204,6 +204,8 @@ class PlannerTests(unittest.TestCase):
             "crates/merman/src/render.rs": True,
             "crates/merman/src/svg/mod.rs": True,
             "crates/merman-core/src/diagram/mod.rs": True,
+            "crates/merman-model/src/families/gantt.rs": True,
+            "crates/merman-markup/src/sanitize/fragment.rs": True,
             "crates/merman-render/src/lib.rs": True,
             "crates/xtask/src/cmd/compare/xml.rs": True,
             "crates/xtask/src/cmd/flowchart_elk_corpus.rs": True,
@@ -259,6 +261,8 @@ class PlannerTests(unittest.TestCase):
                 "python",
             },
             "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-model/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-markup/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman-ffi/src/lib.rs": {"core", "fuzz", "hygiene", "platform"},
             "crates/merman-render/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman/src/lib.rs": {"core", "fuzz", "hygiene"},
@@ -896,6 +900,14 @@ class TreeSitterWindowsWorkflowTests(unittest.TestCase):
 
 
 class WorkflowFontDependenciesTests(unittest.TestCase):
+    def test_performance_paths_include_shared_model_and_markup_sources(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[1] / ".github/workflows/performance.yml"
+        ).read_text(encoding="utf-8")
+        paths = workflow.split("    paths:\n", 1)[1].split("  schedule:", 1)[0]
+        for root in ["merman-model", "merman-markup"]:
+            self.assertIn(f'      - "crates/{root}/**"', paths)
+
     def test_manual_full_owner_verification_is_explicit_and_opt_in(self) -> None:
         from scripts.test_release_workflow_security import workflow_job
 

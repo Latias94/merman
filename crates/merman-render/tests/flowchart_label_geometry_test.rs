@@ -1,5 +1,4 @@
 use futures::executor::block_on;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::model::FlowchartLayout;
@@ -23,13 +22,16 @@ const LAYOUTS: &[&str] = if cfg!(feature = "layout-elk") {
 fn render(source: &str, layout: &str) -> (FlowchartLayout, String) {
     let parsed = block_on(
         MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"layout": layout}),
-            ))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"layout": layout}),
+                ),
+            )
             .parse_diagram_for_render_model(source, ParseOptions::default()),
     )
     .expect("parse diagram")
-    .expect("detect flowchart");
+    .expect("detect flowchart")
+    .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -302,3 +304,6 @@ fn hourglass_fixture_labels_ignore_bounds_cached_before_the_label_was_cleared() 
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

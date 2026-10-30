@@ -1265,11 +1265,11 @@ mod tests {
             let merman_model::SemanticDiagramModel::State(semantic) = &semantic.model else {
                 panic!("expected canonical State");
             };
-            let full = merman_core::MermaidEngine::new()
+            let full = merman_core::presentation::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .expect("full state source should parse")
                 .expect("state source should be detected");
-            let merman_core::RenderSemanticModel::State(full) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::State(full) = full.model() else {
                 panic!("expected full State");
             };
             let mut canonical_resources = ResourceContext::new(policy);

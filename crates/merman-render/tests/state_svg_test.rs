@@ -1,12 +1,11 @@
 type FamilyFixture = (
-    merman_core::ParsedDiagramRender,
+    merman_model::presentation::PresentationDiagram,
     merman_render::LayoutOptions,
     merman_render::environment::RenderSession,
 );
 
 mod common;
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 
 use merman_render::LayoutOptions;
@@ -33,20 +32,24 @@ use merman_render::text::{
 
 // These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
 fn classic_engine() -> MermaidEngine {
-    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-        "theme": "default",
-        "look": "classic",
-        "layout": "dagre"
-    })))
+    MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "layout": "dagre"
+        })),
+    )
 }
 
 // Typed adapter fixtures select their Mermaid baseline through the recipe, leaving
 // external configuration free to own only the properties each case authors.
 fn classic_typed_engine() -> MermaidEngine {
-    MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-        "look": "classic",
-        "layout": "dagre"
-    })))
+    MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "look": "classic",
+            "layout": "dagre"
+        })),
+    )
 }
 
 fn state_theme_spec_with_theme(theme: &str) -> DiagramThemeSpec {
@@ -371,7 +374,8 @@ fn render_state_layout_and_svg_from_text_in_environment(
     let parsed = classic_engine()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse State source")
-        .expect("detect State diagram");
+        .expect("detect State diagram")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare State artifact");
     let projection = artifact.layout_json().expect("State layout projection");
@@ -390,7 +394,8 @@ fn render_state_svg_from_text_with_engine(engine: MermaidEngine, text: &str) -> 
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare State artifact");
 
@@ -412,7 +417,8 @@ fn try_render_state_svg_with_resource_policy(
     let parsed = classic_engine()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse State resource-bound fixture")
-        .expect("detect State resource-bound fixture");
+        .expect("detect State resource-bound fixture")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
@@ -527,10 +533,11 @@ fn prepare_state_artifact_from_text_with_theme_in_environment(
     environment: &RenderEnvironment,
 ) -> FamilyFixture {
     let session = environment.begin_session_with_theme(theme).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     (parsed, LayoutOptions::default(), session)
 }
 
@@ -575,13 +582,17 @@ fn render_strict_state_svg_with_theme_and_config(
 ) -> (String, StateThemeEvidenceCounts) {
     let (engine, source) = match origin {
         "site" => (
-            classic_typed_engine().with_site_config(PresentationConfig::from_value(config)),
+            classic_typed_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
             source.to_string(),
         ),
         "source" => (
-            classic_typed_engine().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"secure": []}),
-            )),
+            classic_typed_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"secure": []}),
+                ),
+            ),
             {
                 let directive = format!(
                     "%%{{init: {}}}%%\n",
@@ -603,10 +614,11 @@ fn render_strict_state_svg_with_theme_and_config(
         ),
         other => panic!("unsupported State config origin {other}"),
     };
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap_or_else(|error| panic!("parse strict {origin} State source: {error}"))
-        .unwrap_or_else(|| panic!("detect strict {origin} State source"));
+        .unwrap_or_else(|| panic!("detect strict {origin} State source"))
+        .into_presentation();
     // Raw recipe compatibility remains an escape hatch. These cases verify typed
     // family terminals and exact family evidence independently of that residual.
     let session = RenderEnvironment::deterministic()
@@ -865,10 +877,11 @@ fn state_note_clear_radius_remains_strictly_unsupported() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable State note session");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, classic_engine())
+    let parsed = common::install_parse_compatibility(&theme, classic_engine())
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State note source")
-        .expect("State diagram detected");
+        .expect("State diagram detected")
+        .into_presentation();
     let error = match family::prepare(&parsed, &LayoutOptions::default(), session) {
         Ok(_) => panic!("clearing State Note radius must fail closed in portable mode"),
         Err(error) => error,
@@ -878,7 +891,7 @@ fn state_note_clear_radius_remains_strictly_unsupported() {
         matches!(
             error,
             merman_render::Error::UnverifiedFamilyTheme {
-                family_id: merman_core::DiagramFamilyId::STATE,
+                family_id: merman_model::family::DiagramFamilyId::STATE,
                 residual_count: 1,
             }
         ),
@@ -980,10 +993,11 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable State session");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, classic_engine())
+    let parsed = common::install_parse_compatibility(&theme, classic_engine())
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State source")
-        .expect("State diagram detected");
+        .expect("State diagram detected")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare strict portable State artifact");
     artifact
@@ -994,10 +1008,11 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable State session without edges");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, classic_engine())
+    let parsed = common::install_parse_compatibility(&theme, classic_engine())
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State source without edges")
-        .expect("State diagram detected");
+        .expect("State diagram detected")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare strict portable State artifact without edges");
     let debug = SvgDebugOptions {
@@ -1212,11 +1227,11 @@ fn state_svg_terminal_effect_region_uses_the_session_resource_intersection() {
             .with_theme_portability_requirement(portability)
             .begin_session_with_theme(&theme)
             .expect("begin State session");
-        let parsed =
-            merman_render::__private::install_parse_compatibility(&theme, classic_engine())
-                .parse_diagram_for_render_model_sync(source, ParseOptions::default())
-                .expect("parse State source")
-                .expect("State diagram detected");
+        let parsed = common::install_parse_compatibility(&theme, classic_engine())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse State source")
+            .expect("State diagram detected")
+            .into_presentation();
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare State artifact");
         let error =
@@ -1236,7 +1251,7 @@ fn state_svg_terminal_effect_region_uses_the_session_resource_intersection() {
         assert_eq!(resource.max, 2);
         assert_eq!(
             resource.profile,
-            Some(merman_core::resources::ResourceProfile::Interactive)
+            Some(merman_model::resources::ResourceProfile::Interactive)
         );
         assert!(resource.explicit_overrides.iter().any(|resource_override| {
             resource_override.id == ThemeResourceLimitId::MaxEffectFilterRegionMagnitude
@@ -3370,15 +3385,19 @@ fn render_unhosted_state_svg_with_config(
 ) -> String {
     let (engine, source) = if origin == "site" {
         (
-            classic_typed_engine().with_site_config(PresentationConfig::from_value(config)),
+            classic_typed_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
             source.to_string(),
         )
     } else {
         assert_eq!(origin, "source");
         (
-            classic_typed_engine().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"secure": []}),
-            )),
+            classic_typed_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"secure": []}),
+                ),
+            ),
             format!("%%{{init: {config}}}%%\n{source}"),
         )
     };
@@ -4806,7 +4825,7 @@ note right of Idle : split surface
 }
 
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
-    let site_config = PresentationConfig::from_value(serde_json::json!({
+    let site_config = common::presentation_config(serde_json::json!({
         "look": "handDrawn",
         "handDrawnSeed": seed,
         "themeVariables": {
@@ -4834,7 +4853,14 @@ state Join <<join>>
 Join --> [*]
 note right of Idle : seeded note"#;
 
-    render_state_svg_from_text_with_engine(classic_engine().with_site_config(site_config), source)
+    render_state_svg_from_text_with_engine(
+        classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_config(
+                site_config.as_config().clone(),
+            ),
+        ),
+        source,
+    )
 }
 
 #[test]
@@ -4842,9 +4868,11 @@ fn state_svg_invalid_default_look_falls_back_to_the_family_neo_default() {
     let source = "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n";
     let baseline = render_state_svg_from_text_with_engine(MermaidEngine::new(), source);
     let svg = render_state_svg_from_text_with_engine(
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "look": "default"
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "look": "default"
+            })),
+        ),
         source,
     );
 
@@ -4914,8 +4942,8 @@ fn state_svg_cross_composite_default_min_width_reaches_all_leaf_labels() {
 #[test]
 fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
     for look in ["classic", "neo"] {
-        let engine =
-            classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
                 "look": look,
                 "layout": "elk",
                 "themeVariables": {
@@ -4927,7 +4955,8 @@ fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
                     "background": "#667788",
                     "nodeBorder": "#778899"
                 }
-            })));
+            })),
+        );
         let svg = render_state_svg_from_text_with_engine(
             engine,
             "stateDiagram-v2\n[*] --> Ready\nReady --> Done: finish\nDone --> [*]\n",
@@ -5004,8 +5033,8 @@ fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
 #[test]
 fn state_neo_rough_base_attributes_do_not_override_the_theme_stylesheet() {
     for gradient in [false, true] {
-        let engine =
-            classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
                 "look": "neo",
                 "themeVariables": {
                     "mainBkg": "#110011",
@@ -5017,7 +5046,8 @@ fn state_neo_rough_base_attributes_do_not_override_the_theme_stylesheet() {
                     "strokeWidth": 9,
                     "useGradient": gradient
                 }
-            })));
+            })),
+        );
         let svg = render_state_svg_from_text_with_engine(
             engine,
             r#"stateDiagram-v2
@@ -5065,8 +5095,8 @@ note right of Idle : terminal note
 
 #[test]
 fn state_svg_classic_look_honors_theme_css_options() {
-    let engine =
-        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "look": "classic",
             "themeVariables": {
                 "transitionColor": "#202020",
@@ -5090,7 +5120,8 @@ fn state_svg_classic_look_honors_theme_css_options() {
                 "stateBorder": "#040404",
                 "compositeTitleBackground": "#050505"
             }
-        })));
+        })),
+    );
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -5144,8 +5175,8 @@ Active --> [*]: done"#,
 
 #[test]
 fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
-    let engine =
-        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "look": "neo",
             "themeVariables": {
                 "transitionColor": "#202020",
@@ -5158,7 +5189,8 @@ fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
                 "dropShadow": "url(#drop-shadow)",
                 "radius": 3
             }
-        })));
+        })),
+    );
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -5227,8 +5259,8 @@ fn state_svg_hand_drawn_seed_controls_visible_rough_paths() {
 
 #[test]
 fn state_hand_drawn_terminals_follow_shape_specific_mermaid_fallbacks() {
-    let engine =
-        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "look": "handDrawn",
             "handDrawnSeed": 7,
             "htmlLabels": false,
@@ -5247,7 +5279,8 @@ fn state_hand_drawn_terminals_follow_shape_specific_mermaid_fallbacks() {
                 "altBackground": "#bb00bb",
                 "background": "#cc00cc"
             }
-        })));
+        })),
+    );
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -6245,19 +6278,22 @@ fn state_composite_paint_uses_large_and_multiline_title_measurements() {
         }
         for html_labels in [true, false] {
             for title in ["Large title", "First<br/>Second"] {
-                let engine = classic_engine().with_site_config(PresentationConfig::from_value(
-                    serde_json::json!({
-                        "layout": layout,
-                        "look": "classic",
-                        "htmlLabels": html_labels,
-                        "themeVariables": { "fontSize": "32px" }
-                    }),
-                ));
+                let engine = classic_engine().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "layout": layout,
+                            "look": "classic",
+                            "htmlLabels": html_labels,
+                            "themeVariables": { "fontSize": "32px" }
+                        }),
+                    ),
+                );
                 let source = format!("stateDiagram-v2\nstate \"{title}\" as Parent {{\n A\n}}\n");
                 let parsed = engine
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                     .expect("parse composite")
-                    .expect("State diagram");
+                    .expect("State diagram")
+                    .into_presentation();
                 let session = RenderEnvironment::deterministic().begin_session().unwrap();
                 let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
                     .expect("prepare composite");
@@ -6411,12 +6447,13 @@ Display : Running
 #[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_empty_edge_labels() {
     for backend in ["elk", "dagre"] {
-        let engine =
-            classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
                 "layout": backend,
                 "htmlLabels": false,
                 "flowchart": {"htmlLabels": true}
-            })));
+            })),
+        );
         let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA --> B\n");
         let document = roxmltree::Document::parse(&svg).expect("State SVG");
         let labels: Vec<_> = document
@@ -6517,7 +6554,8 @@ Active --> Active: LOG
     let parsed = classic_engine()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let projection = artifact.layout_json().unwrap();
     let layout: merman_render::model::StateDiagramLayout =
@@ -6618,9 +6656,11 @@ stateDiagram-v2
     );
 
     let loose = render_state_svg_from_text_with_engine(
-        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "securityLevel": "loose"
-        }))),
+        classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "securityLevel": "loose"
+            })),
+        ),
         r#"stateDiagram-v2
 S1
 click S1 href "javascript:alert(1)"
@@ -6717,9 +6757,11 @@ click S1 "data:text/html,unsafe" "Data"
 #[test]
 fn state_svg_loose_repeated_clicks_preserve_each_href_and_target() {
     let svg = render_state_svg_from_text_with_engine(
-        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "securityLevel": "loose"
-        }))),
+        classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "securityLevel": "loose"
+            })),
+        ),
         r#"stateDiagram-v2
 S1
 click S1 "https://example.test/first" "First"
@@ -6785,8 +6827,8 @@ click S1 "https://example.test/last" ""
 
 #[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
-    let engine =
-        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "stateBkg": "#101827",
                 "stateBorder": "#38bdf8",
@@ -6801,7 +6843,8 @@ fn state_svg_honors_theme_options_on_visible_rough_paths() {
                 "noteBkgColor": "#fef3c7",
                 "noteBorderColor": "#92400e"
             }
-        })));
+        })),
+    );
     let svg = render_state_svg_from_text_with_engine(
         engine,
         r#"stateDiagram-v2
@@ -7001,7 +7044,9 @@ fn state_svg_plain_rect_radius_uses_effective_theme_for_both_label_modes() {
             if let Some(radius) = radius.clone() {
                 config["themeVariables"] = serde_json::json!({"radius": radius});
             }
-            let engine = classic_engine().with_site_config(PresentationConfig::from_value(config));
+            let engine = classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            );
             let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA\n");
             let document = roxmltree::Document::parse(&svg).expect("State SVG");
             let rect = document
@@ -7041,7 +7086,9 @@ fn state_svg_small_terminal_shadow_uses_effective_theme_and_look() {
         if let Some(shadow) = shadow.clone() {
             config["themeVariables"] = serde_json::json!({"nodeShadow": shadow});
         }
-        let engine = classic_engine().with_site_config(PresentationConfig::from_value(config));
+        let engine = classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        );
         let svg = render_state_svg_from_text_with_engine(
             engine,
             "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
@@ -7104,7 +7151,9 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
                 format!("stateDiagram-v2\nstate \"{label}\" as N\n")
             };
             let svg = render_state_svg_from_text_with_engine(
-                classic_engine().with_site_config(PresentationConfig::from_value(config)),
+                classic_engine().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
                 &source,
             );
             let document = roxmltree::Document::parse(&svg).expect("State SVG");
@@ -7132,9 +7181,11 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
         }
     }
     let svg = render_state_svg_from_text_with_engine(
-        classic_engine().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "htmlLabels": false, "state": {"minNodeWidth": 120}
-        }))),
+        classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "htmlLabels": false, "state": {"minNodeWidth": 120}
+            })),
+        ),
         "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
     );
     let document = roxmltree::Document::parse(&svg).expect("State SVG");

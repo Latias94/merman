@@ -1,8 +1,9 @@
 use super::{ByteSpan, FenceTextIndex, FenceTextIndexSource};
 use merman_core::{
     EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, SourceSpan,
+    EditorSemanticSymbol,
 };
+use merman_model::SourceSpan;
 
 fn entity(
     name: impl Into<String>,

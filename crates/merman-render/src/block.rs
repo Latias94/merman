@@ -2,7 +2,7 @@ use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNo
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -78,7 +78,7 @@ impl BlockPreparedLabels {
         config: &PresentationConfig,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
         if !html_labels {
             return Ok(Self::default());
         }
@@ -86,7 +86,7 @@ impl BlockPreparedLabels {
         let config = crate::graph_label::flowchart_label_sanitize_config(config);
         let mut prepared = Self::default();
         for node in &model.blocks_flat {
-            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
             if prepared.nodes.contains_key(&node.id) {
                 continue;
             }
@@ -122,7 +122,7 @@ impl BlockPreparedHtmlLabel {
     fn prepare(
         raw: &str,
         key_bytes: usize,
-        config: &PresentationConfig,
+        config: &merman_model::MermaidConfig,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
         use crate::html::{HtmlOutputError, HtmlSanitizeSink};
@@ -144,20 +144,19 @@ impl BlockPreparedHtmlLabel {
             max,
             work_meter,
             &parse_work,
-            merman_core::OperationPhase::Layout,
+            merman_model::OperationPhase::Layout,
         );
         // Keep entity-authored angle brackets as text until HTML parsing consumes them.
         let fragment = (|| {
             if raw.is_empty() {
                 return Ok(String::new());
             }
-            let text =
-                merman_markup::sanitize::sanitize_text_with_sink(raw, config.as_config(), &sink)?;
+            let text = merman_markup::sanitize::sanitize_text_with_sink(raw, config, &sink)?;
             let html = format!(
                 "<p>{}</p>",
                 text.replace("\\n", "<br />").replace('\n', "<br />")
             );
-            merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink)
+            merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config, &sink)
         })();
         let xhtml = match fragment {
             Ok(xhtml) => xhtml,
@@ -173,7 +172,7 @@ impl BlockPreparedHtmlLabel {
             // Preserve the sanitizer's fail-closed behavior for malformed input/allocation.
             Err(_) => String::new(),
         };
-        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
         let work_control =
             crate::layout_work::OperationLayoutWorkControl::new(Arc::clone(work_meter));
         let reservation = work_control
@@ -1042,7 +1041,7 @@ pub(crate) fn layout_block_diagram_typed(
         html_labels,
         text_style,
         measurer,
-        &PresentationConfig::from_value(effective_config.clone()),
+        &crate::test_support::presentation_config(effective_config.clone()),
         &Arc::new(OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         )),
@@ -1199,7 +1198,7 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
         });
     }
 
-    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+    work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     Ok((
         BlockDiagramLayout {
             nodes,
@@ -1328,11 +1327,11 @@ mod tests {
         let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let config = merman_core::presentation::PresentationConfig::from_value(
-            serde_json::json!({"securityLevel": "loose"}),
-        );
-        let prepared = super::BlockPreparedHtmlLabel::prepare("A&amp;B<br/>C", 1, &config, &meter)
-            .expect("prepare the final Block HTML terminal");
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"securityLevel": "loose"}));
+        let prepared =
+            super::BlockPreparedHtmlLabel::prepare("A&amp;B<br/>C", 1, config.as_config(), &meter)
+                .expect("prepare the final Block HTML terminal");
         let fragment = format!("<root>{}</root>", prepared.xhtml);
         let document = crate::xml_dom::Document::parse(&fragment).expect("prepared XHTML");
         assert_eq!(
@@ -1363,8 +1362,9 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .expect("parse HTML Block labels")
-            .expect("detect Block");
-        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            .expect("detect Block")
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Block(model) = parsed.model() else {
             panic!("expected a typed Block model");
         };
         let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
@@ -1420,9 +1420,8 @@ mod tests {
     fn block_prepared_html_preserves_retained_and_work_rejections() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
-        let config = merman_core::presentation::PresentationConfig::from_value(
-            serde_json::json!({"securityLevel": "loose"}),
-        );
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"securityLevel": "loose"}));
         for (limit, value, expected) in [
             (
                 ResourceLimitId::MaxPreparedTextRetainedBytes,
@@ -1440,8 +1439,13 @@ mod tests {
                     .with_limit(limit, value)
                     .unwrap(),
             ));
-            let error = super::BlockPreparedHtmlLabel::prepare("<b>label</b>", 1, &config, &meter)
-                .expect_err("Block HTML preparation must respect its operation budget");
+            let error = super::BlockPreparedHtmlLabel::prepare(
+                "<b>label</b>",
+                1,
+                config.as_config(),
+                &meter,
+            )
+            .expect_err("Block HTML preparation must respect its operation budget");
             let crate::Error::ResourceLimitExceeded(error) = error else {
                 panic!("expected the original resource rejection");
             };
@@ -1453,21 +1457,21 @@ mod tests {
 
     #[test]
     fn block_prepared_html_preserves_layout_cancellation() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new_with_control(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         ));
-        let config = merman_core::presentation::PresentationConfig::from_value(
-            serde_json::json!({"securityLevel": "loose"}),
-        );
-        let error = super::BlockPreparedHtmlLabel::prepare("<b>label</b>", 1, &config, &meter)
-            .expect_err("Block HTML preparation must preserve cancellation");
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"securityLevel": "loose"}));
+        let error =
+            super::BlockPreparedHtmlLabel::prepare("<b>label</b>", 1, config.as_config(), &meter)
+                .expect_err("Block HTML preparation must preserve cancellation");
         let crate::Error::Cancelled(error) = error else {
             panic!("expected cancellation");
         };
-        assert_eq!(error.phase, merman_core::OperationPhase::Layout);
+        assert_eq!(error.phase, merman_model::OperationPhase::Layout);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 

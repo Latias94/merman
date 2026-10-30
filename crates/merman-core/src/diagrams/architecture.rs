@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::strip_line_ending;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -12,13 +12,15 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
-pub use merman_model::families::architecture::{
+pub(crate) use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureEdgeModel, ArchitectureGroupModel,
     ArchitectureLayoutDirection, ArchitectureLayoutHintModel, ArchitectureNodeKind,
     ArchitectureNodeModel,
 };
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+#[cfg(all(test, feature = "compat-json"))]
+use serde_json::json;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -721,7 +723,7 @@ pub(crate) fn parse_architecture_semantic_model_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_architecture(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_architecture(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let model = parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")?;
     render_model_to_compat_json(&model, meta)
@@ -731,7 +733,7 @@ pub(crate) fn parse_architecture(code: &str, meta: &PresentationMetadata) -> Res
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<CombinedSemanticParse> {
     control.checkpoint()?;
@@ -761,140 +763,32 @@ pub(crate) fn sanitize_common_db_fields(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &ArchitectureDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let control = OperationControl::new();
-    render_model_to_compat_json_controlled(model, meta, &control)
-        .expect("a private parse control cannot be cancelled")
+    merman_model::families::architecture::compat::project(model, &meta.compat_json_metadata())
+        .map_err(Into::into)
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &ArchitectureDiagramModel,
-    meta: &PresentationMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<Value>> {
-    control.checkpoint()?;
-    let mut config = crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value());
-    if meta.config.as_value().get("layout").is_none()
-        && let Some(obj) = config.as_object_mut()
-    {
-        obj.insert("layout".to_string(), Value::String("dagre".to_string()));
-    }
-    control.checkpoint()?;
-
-    let mut edges = Vec::with_capacity(model.edges.len());
-    for (index, edge) in model.edges.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        edges.push(architecture_render_edge_to_compat_json(edge));
-    }
-    let mut nodes = Vec::with_capacity(model.nodes.len());
-    let mut services = Vec::new();
-    let mut junctions = Vec::new();
-    for (index, node) in model.nodes.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let value = architecture_render_node_to_compat_json(node, &edges, control)?;
-        match node.node_type {
-            ArchitectureNodeKind::Service => services.push(value.clone()),
-            ArchitectureNodeKind::Junction => junctions.push(value.clone()),
-        }
-        nodes.push(value);
-    }
-    let mut groups = Vec::with_capacity(model.groups.len());
-    for (index, group) in model.groups.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        groups.push(json!({
-            "id": group.id,
-            "icon": group.icon,
-            "title": group.title,
-            "in": group.in_group,
-        }));
-    }
-    let mut layout_hints = Vec::with_capacity(model.layout_hints.len());
-    for (hint_index, hint) in model.layout_hints.iter().enumerate() {
-        if hint_index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let mut members = Vec::with_capacity(hint.members.len());
-        for (member_index, member) in hint.members.iter().enumerate() {
-            if member_index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            members.push(Value::String(member.clone()));
-        }
-        layout_hints.push(json!({
-            "direction": hint.direction.as_str(),
-            "members": members,
-        }));
-    }
-
-    let mut out = Map::with_capacity(11);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("title".to_string(), json!(&model.title));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("groups".to_string(), Value::Array(groups));
-    out.insert("nodes".to_string(), Value::Array(nodes));
-    out.insert("services".to_string(), Value::Array(services));
-    out.insert("junctions".to_string(), Value::Array(junctions));
-    out.insert("edges".to_string(), Value::Array(edges));
-    out.insert("layoutHints".to_string(), Value::Array(layout_hints));
-    out.insert("config".to_string(), config);
-    control.checkpoint()?;
-    Ok(Ok(Value::Object(out)))
-}
-
-#[cfg(feature = "compat-json")]
-fn architecture_render_edge_to_compat_json(edge: &ArchitectureEdgeModel) -> Value {
-    json!({
-        "lhsId": edge.lhs_id,
-        "lhsDir": edge.lhs_dir.to_string(),
-        "lhsInto": edge.lhs_into,
-        "lhsGroup": edge.lhs_group,
-        "rhsId": edge.rhs_id,
-        "rhsDir": edge.rhs_dir.to_string(),
-        "rhsInto": edge.rhs_into,
-        "rhsGroup": edge.rhs_group,
-        "title": edge.title,
-    })
-}
-
-#[cfg(feature = "compat-json")]
-fn architecture_render_node_to_compat_json(
-    node: &ArchitectureNodeModel,
-    edges: &[Value],
-    control: &OperationControl,
-) -> OperationControlResult<Value> {
-    let mut node_edges = Vec::with_capacity(node.edge_indices.len());
-    for (index, edge_index) in node.edge_indices.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if let Some(edge) = edges.get(*edge_index) {
-            node_edges.push(edge.clone());
-        }
-    }
-    Ok(json!({
-        "id": node.id,
-        "type": node.node_type,
-        "edges": node_edges,
-        "icon": node.icon,
-        "iconText": node.icon_text,
-        "title": node.title,
-        "in": node.in_group,
-    }))
+    meta: &SourcePresentationMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value>> {
+    Ok(
+        merman_model::families::architecture::compat::project_controlled(
+            model,
+            &meta.compat_json_metadata(),
+            control,
+        )?
+        .map_err(Into::into),
+    )
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_architecture_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<ArchitectureDiagramModel> {
     parse::parse_model_controlled(code, &meta.diagram_type, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -903,7 +797,7 @@ pub(crate) fn parse_architecture_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_architecture_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<ArchitectureDiagramModel>> {
     parse::parse_model_controlled(code, &meta.diagram_type, control)
@@ -933,11 +827,11 @@ mod tests {
         }
     }
 
-    fn test_meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn test_meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "architecture".to_string(),
             config: MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
     }
@@ -1844,14 +1738,14 @@ group child(cloud)[Child] in root\n";
     fn architecture_combined_projection_honors_custom_registry_replacement() {
         fn detect_architecture(
             code: &str,
-            _config: &mut crate::presentation::PresentationConfig,
+            _config: &mut crate::presentation::SourcePresentationConfig,
         ) -> bool {
             code.starts_with("architecture-beta")
         }
 
         fn custom_architecture_parser(
             _code: &str,
-            _meta: &PresentationMetadata,
+            _meta: &SourcePresentationMetadata,
             control: &crate::OperationControl,
         ) -> crate::OperationControlResult<Result<Value>> {
             control.checkpoint()?;
@@ -2452,10 +2346,10 @@ mod semantic_tests {
     #[test]
     fn architecture_compat_layout_presence_uses_authored_config() {
         let model = ArchitectureDiagramModel::default();
-        let mut meta = PresentationMetadata {
+        let mut meta = SourcePresentationMetadata {
             diagram_type: "architecture".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::from_value(
+            effective_config: crate::presentation::SourcePresentationConfig::from_value(
                 serde_json::json!({"layout": "elk"}),
             ),
             title: None,
@@ -2473,10 +2367,10 @@ mod semantic_tests {
     #[cfg(feature = "presentation")]
     #[test]
     fn architecture_typed_projection_omits_editor_observers() {
-        let metadata = PresentationMetadata {
+        let metadata = SourcePresentationMetadata {
             diagram_type: "architecture".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         #[cfg(feature = "editor-facts")]

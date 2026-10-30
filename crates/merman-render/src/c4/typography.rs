@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_theme_font_size_css_or_root_number_px_opt;
 use crate::diagram_theme::{
@@ -85,10 +85,7 @@ impl C4TypographyThemePlan {
         // The theme-variable path is the typed base-size owner. A top-level `fontSize` remains a
         // Mermaid-compatible fallback and must not shadow an active typed value.
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_css = match (theme, typed_font_size_active) {
             (Some(theme), true) => {
@@ -359,7 +356,7 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
-    use merman_core::presentation::PresentationConfig;
+    use merman_model::presentation::PresentationConfig;
 
     #[test]
     fn title_receipt_requires_matching_css_and_optional_title() {
@@ -423,7 +420,7 @@ mod tests {
             ]
         }))
         .expect("C4 actual-type fixture");
-        let config = PresentationConfig::from_value(serde_json::json!({"c4": {
+        let config = crate::test_support::presentation_config(serde_json::json!({"c4": {
             "custom_typeFontFamily": "  Custom Sans ;  ", "custom_typeFontSize": "19",
             "custom_typeFontWeight": 600, "custom_type_bg_color": "var(--card)",
             "custom_type_border_color": "", "custom_type_font_color": 42,

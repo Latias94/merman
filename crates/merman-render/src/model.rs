@@ -212,7 +212,7 @@ impl EdgePaintGeometryOutput {
         &self,
         writer: &mut impl std::io::Write,
         resources: crate::resources::RenderResourcePolicy,
-        control: &merman_core::OperationControl,
+        control: &merman_model::OperationControl,
     ) -> crate::Result<()> {
         let meter =
             crate::resources::OperationWorkMeter::new_with_control(resources, control.clone());
@@ -227,7 +227,7 @@ impl EdgePaintGeometryOutput {
             return Err(error.into());
         }
         result?;
-        meter.checkpoint(merman_core::OperationPhase::Emit)?;
+        meter.checkpoint(merman_model::OperationPhase::Emit)?;
         Ok(())
     }
 }

@@ -17,7 +17,7 @@ pub struct BindingPreparedSource {
     source: merman::PreparedSource,
     artifact: Arc<crate::ValidatedArtifactContract>,
     runtime_policy_id: &'static str,
-    runtime_policy: merman::runtime::RuntimePolicy,
+    runtime_policy: merman::model::runtime::RuntimePolicy,
     base_options: common::BaseBindingOptions,
     defaults: RenderOperationConfig,
     default_options: common::BindingOptions,

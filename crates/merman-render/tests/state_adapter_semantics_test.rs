@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -7,10 +6,11 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render(source: &str, config: serde_json::Value) -> String {
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(config))
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse State")
-        .expect("State diagram");
+        .expect("State diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::default(), session)
         .expect("prepare State")
@@ -114,3 +114,6 @@ fn state_elk_normalizes_breaks_before_markdown_block_parsing() {
         ["-", "l1", "-", "l2"]
     );
 }
+
+#[allow(dead_code)]
+mod common;

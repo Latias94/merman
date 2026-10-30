@@ -14,7 +14,8 @@ fn render_svg(diagram_id: &str, source: &str) -> String {
     let engine = legacy_init_theme_compat_engine();
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout_options = LayoutOptions::headless_svg_defaults();
     let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");

@@ -182,9 +182,9 @@ mod tests {
 
     #[test]
     fn canonical_kanban_retains_authored_metadata_and_matches_full_terminal_output() {
-        use merman_core::{
-            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
-        };
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::SemanticDiagramModel;
+        use merman_model::presentation::RenderSemanticModel;
 
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();

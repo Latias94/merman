@@ -2136,7 +2136,7 @@ mod tests {
             effective_image_pixels: 1,
             limited: false,
         };
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
 
         assert!(
             crate::pdf_native_filter_fully_localized(

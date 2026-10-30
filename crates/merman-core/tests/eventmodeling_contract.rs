@@ -2,7 +2,10 @@
 
 #[cfg(feature = "editor-facts")]
 use merman_core::EditorSemanticCompleteness;
-use merman_core::{Error, MermaidEngine, ParseOptions, SourceSpan};
+use {
+    merman_core::{Error, MermaidEngine, ParseOptions},
+    merman_model::source::SourceSpan,
+};
 
 #[test]
 fn duplicate_eventmodeling_frame_ids_fail_all_parse_routes_with_source_spans() {

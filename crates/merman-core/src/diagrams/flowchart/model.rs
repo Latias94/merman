@@ -3,8 +3,8 @@ use crate::SourceSpan;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use merman_model::families::flowchart::FlowSubgraphVertexStyle;
 #[cfg(feature = "presentation")]
-pub use merman_model::families::flowchart::FlowchartRenderContext;
-pub use merman_model::families::flowchart::{
+pub(crate) use merman_model::families::flowchart::FlowchartRenderContext;
+pub(crate) use merman_model::families::flowchart::{
     FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
     FlowNodeProvenance, FlowSubgraph, FlowchartModel, FlowchartSubgraphStyles,
 };
@@ -193,11 +193,11 @@ mod subgraph_style_serialization_tests {
     fn subgraph_styles_remain_excluded_from_the_existing_typed_wire_and_complexity() {
         let mut model: FlowchartModel = serde_json::from_str(r#"{"nodes":[],"edges":[]}"#).unwrap();
         let wire = serde_json::to_string(&model).unwrap();
-        let complexity = crate::resources::ModelComplexity::from_serializable(&model);
+        let complexity = merman_model::resources::ModelComplexity::from_serializable(&model);
         model.subgraph_vertex_styles = styles();
         assert_eq!(serde_json::to_string(&model).unwrap(), wire);
         assert_eq!(
-            crate::resources::ModelComplexity::from_serializable(&model),
+            merman_model::resources::ModelComplexity::from_serializable(&model),
             complexity
         );
     }

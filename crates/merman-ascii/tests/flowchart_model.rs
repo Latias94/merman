@@ -4,11 +4,12 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiLayoutProfile,
     AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::{MermaidEngine, OperationControl, ParseOptions};
+use merman_core::{ParseOptions, presentation::MermaidEngine};
+use merman_model::OperationControl;
 use merman_model::families::flowchart::{
     FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowchartModel,
 };
+use merman_model::presentation::RenderSemanticModel;
 use merman_model::resources::ResourceProfile;
 use std::path::Path;
 use support::render_model;

@@ -8,10 +8,10 @@ use crate::model::{
 use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use merman_core::presentation::PresentationConfig;
-#[cfg(test)]
-use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 use merman_layout_elk as elk;
+use merman_model::presentation::PresentationConfig;
+#[cfg(test)]
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
@@ -825,15 +825,15 @@ fn polyline_midpoint(points: &[LayoutPoint]) -> Option<LayoutPoint> {
     }
 }
 
-/// Builds the ELK input graph from the complete parser-owned Flowchart render artifact.
+/// Builds the ELK input graph from paired immutable Flowchart presentation data.
 ///
 /// Flowchart labels retain source spelling that is not recoverable from the public semantic
 /// model alone (for example an authored `&lt;` versus a literal `<`). Accepting the parsed artifact
-/// keeps that provenance paired with the effective configuration and prevents diagnostics from
+/// keeps those declared facts paired with the effective configuration and prevents diagnostics from
 /// silently measuring a different createText payload than the normal render pipeline.
 #[cfg(test)]
 pub(crate) fn build_flowchart_elk_graph(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
@@ -846,7 +846,10 @@ pub(crate) fn build_flowchart_elk_graph(
         });
     };
     let empty_sources = FlowchartRenderContext::default();
-    let render_label_sources = parsed.flowchart_render_context().unwrap_or(&empty_sources);
+    let render_label_sources = parsed
+        .render_context()
+        .flowchart_render_context()
+        .unwrap_or(&empty_sources);
     build_flowchart_elk_graph_with_render_labels(
         model,
         render_label_sources,
@@ -1948,7 +1951,8 @@ mod tests {
             let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                 .expect("parse")
-                .expect("diagram");
+                .expect("diagram")
+                .into_presentation();
             let graph =
                 super::build_flowchart_elk_graph(&parsed, &NonLatticeComputedLengthMeasurer, None)
                     .expect("measured graph");
@@ -2081,7 +2085,7 @@ mod tests {
                 ParseOptions::default(),
             )
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected").into_presentation();
         let graph =
             super::build_flowchart_elk_graph(&parsed, &NonLatticeComputedLengthMeasurer, None)
                 .expect("ELK graph");
@@ -2101,7 +2105,7 @@ mod tests {
         let mut group = subgraph("Group".to_owned(), vec!["A".to_owned()]);
         group.title = "$$x$$".to_owned();
         model.subgraphs.push(group);
-        let config = PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "htmlLabels": true,
             "flowchart": {"htmlLabels": true, "wrappingWidth": 96}
         }));
@@ -2158,8 +2162,10 @@ C["$$x$$"] -->|"$$x$$"| D
                 merman_core::ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Flowchart(model) = parsed.model()
+        else {
             panic!("Flowchart model");
         };
         let node_index = model.nodes.iter().position(|node| node.id == "C").unwrap();
@@ -2168,7 +2174,7 @@ C["$$x$$"] -->|"$$x$$"| D
             .iter()
             .position(|edge| edge.from == "C" && edge.to == "D")
             .unwrap();
-        let config = PresentationConfig::from_value(
+        let config = crate::test_support::presentation_config(
             json!({"htmlLabels":true, "flowchart":{"htmlLabels":true}}),
         );
         let session = crate::environment::RenderEnvironment::deterministic()
@@ -2189,7 +2195,7 @@ C["$$x$$"] -->|"$$x$$"| D
         .unwrap();
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             model,
-            parsed.flowchart_render_context().unwrap(),
+            parsed.render_context().flowchart_render_context().unwrap(),
             &config,
             &measurer,
             None,
@@ -2255,7 +2261,7 @@ C["$$x$$"] -->|"$$x$$"| D
             "Group".to_string(),
             vec!["A".to_string(), "B".to_string()],
         ));
-        let config = PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "htmlLabels": false,
             "flowchart": {"htmlLabels": false, "wrappingWidth": 96}
         }));
@@ -2386,7 +2392,8 @@ C["$$x$$"] -->|"$$x$$"| D
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected")
+            .into_presentation();
         let graph = super::build_flowchart_elk_graph(
             &parsed,
             &crate::text::DeterministicTextMeasurer::default(),
@@ -2848,7 +2855,7 @@ C["$$x$$"] -->|"$$x$$"| D
                     "G".into(),
                     vec!["A".into(), "B".into(), "C".into()],
                 ));
-                let config = PresentationConfig::from_value(serde_json::json!({
+                let config = crate::test_support::presentation_config(serde_json::json!({
                     "elk": { "orientFeedbackEdges": enabled }
                 }));
                 let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2912,7 +2919,7 @@ C["$$x$$"] -->|"$$x$$"| D
             vec![edge("L-A-B", "A", "B", None)],
         );
         // Keep this threshold at the provider boundary, not the optional feedback pre-pass.
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "elk": { "orientFeedbackEdges": false }
         }));
         let (_, adapter_work) = adapter_graph_and_work(&model, &config);
@@ -3653,7 +3660,7 @@ C["$$x$$"] -->|"$$x$$"| D
             ],
             vec![edge("L-A-B", "A", "B", None)],
         );
-        let config = PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "elk": {
                 "mergeEdges": true,
                 "layeringStrategy": "COFFMAN_GRAHAM",
@@ -3789,7 +3796,7 @@ C["$$x$$"] -->|"$$x$$"| D
             ],
             vec![edge("L-A-B", "A", "B", None)],
         );
-        let config = PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "elk": {
                 "considerModelOrder": "NONE",
                 "cycleBreakingStrategy": "MODEL_ORDER",
@@ -3834,7 +3841,7 @@ C["$$x$$"] -->|"$$x$$"| D
                 edge("L-C-A", "C", "A", None),
             ],
         );
-        let config = PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "elk": {
                 "keepEntryNodeOnTop": true
             }
@@ -3877,7 +3884,7 @@ C["$$x$$"] -->|"$$x$$"| D
                                 declared.iter().map(|id| (*id).to_owned()).collect(),
                             ));
                         }
-                        let config = PresentationConfig::from_value(json!({
+                        let config = crate::test_support::presentation_config(json!({
                             "elk": { "keepEntryNodeOnTop": enabled }
                         }));
                         let graph = build_flowchart_elk_graph(
@@ -3926,7 +3933,7 @@ C["$$x$$"] -->|"$$x$$"| D
             model
                 .subgraphs
                 .push(subgraph("group".to_string(), Vec::new()));
-            let config = PresentationConfig::from_value(json!({
+            let config = crate::test_support::presentation_config(json!({
                 "elk": { "keepEntryNodeOnTop": true }
             }));
             let graph = build_flowchart_elk_graph(
@@ -4031,7 +4038,8 @@ C["$$x$$"] -->|"$$x$$"| D
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse")
-            .expect("diagram");
+            .expect("diagram")
+            .into_presentation();
         let graph = super::build_flowchart_elk_graph(
             &parsed,
             &crate::text::DeterministicTextMeasurer::default(),

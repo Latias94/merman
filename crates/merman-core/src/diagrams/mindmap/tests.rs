@@ -3,6 +3,8 @@ use super::*;
 use crate::{EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole};
 use crate::{MermaidEngine, ParseOptions, RenderSemanticModel, SourceSpan};
 use futures::executor::block_on;
+use merman_model::families::mindmap::compat;
+use merman_model::presentation::compat::CompatJsonMetadata;
 use serde_json::Value;
 
 fn parse(text: &str) -> crate::ManagedSemanticJson {
@@ -700,7 +702,7 @@ fn mindmap_diagram_id_is_stable_for_the_same_operation_seed() {
 fn mindmap_diagram_id_is_domain_derived_from_the_operation_seed() {
     fn diagram_id(seed: u64) -> String {
         let engine = MermaidEngine::new().with_runtime_policy(
-            crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
+            merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
         );
         block_on(engine.parse_diagram("mindmap\nroot\n", ParseOptions::default()))
             .unwrap()
@@ -741,8 +743,14 @@ fn mindmap_typed_render_model_projects_exact_compatibility_json() {
     let parsed = block_on(engine.parse_diagram(source, ParseOptions::strict()))
         .unwrap()
         .unwrap();
-    let typed = parse_mindmap_model_for_render(source, &parsed.meta).unwrap();
-    let mut projected = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
+    let typed = parse_mindmap_model_for_render(
+        source,
+        &crate::diagrams::source_metadata_for_test(&parsed.meta),
+    )
+    .unwrap();
+    let mut metadata = CompatJsonMetadata::from(&parsed.meta);
+    metadata.diagram_id = Some("test-mindmap");
+    let mut projected = compat::project(&typed, &metadata).unwrap();
     let mut expected = parsed.model.into_unmanaged_value();
 
     projected["diagramId"] = Value::String("<dynamic>".to_string());
@@ -766,17 +774,17 @@ fn mindmap_json_projection_observes_cancellation_inside_large_models() {
     let parsed = block_on(engine.parse_diagram(&source, ParseOptions::strict()))
         .unwrap()
         .unwrap();
-    let typed = parse_mindmap_model_for_render(&source, &parsed.meta).unwrap();
+    let typed = parse_mindmap_model_for_render(
+        &source,
+        &crate::diagrams::source_metadata_for_test(&parsed.meta),
+    )
+    .unwrap();
     let control = crate::OperationControl::new();
     control.cancel_after_checkpoints(2);
 
     assert!(
-        super::render_model::render_model_to_compat_json_controlled(
-            &typed,
-            &parsed.meta,
-            &control,
-        )
-        .is_err()
+        compat::project_controlled(&typed, &CompatJsonMetadata::from(&parsed.meta), &control,)
+            .is_err()
     );
 }
 
@@ -808,15 +816,16 @@ fn mindmap_projection_cancels_after_deep_completed_subtree_child() {
                 + DEPTH;
             control.cancel_after_checkpoints(checkpoints);
             assert!(matches!(
-                super::render_model::mindmap_root_node_to_compat_json_controlled(
+                compat::root_node_controlled(
                     model,
-                    parsed.metadata(),
+                    &CompatJsonMetadata::from(parsed.metadata()),
                     &control
                 ),
                 Err(crate::OperationCancelled { .. })
             ));
-            let projected =
-                super::render_model::render_model_to_compat_json(model, parsed.metadata()).unwrap();
+            let mut metadata = CompatJsonMetadata::from(parsed.metadata());
+            metadata.diagram_id = Some("test-mindmap");
+            let projected = compat::project(model, &metadata).unwrap();
             drop(crate::ManagedSemanticJson::from_value(projected));
             drop(parsed);
         },
@@ -846,9 +855,9 @@ fn mindmap_projection_failure_drops_deep_completed_children_child() {
                 }
             }
             assert!(
-                super::render_model::mindmap_root_node_to_compat_json_controlled(
+                compat::root_node_controlled(
                     &model,
-                    parsed.metadata(),
+                    &CompatJsonMetadata::from(parsed.metadata()),
                     &crate::OperationControl::new()
                 )
                 .unwrap()

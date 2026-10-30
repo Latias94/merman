@@ -2,8 +2,8 @@ use super::ingest::ResolvedIcon;
 use super::xml::ValidatedIconBody;
 use super::{IconCurrentColorUse, IconRenderRequest, RenderedIcon};
 use crate::svg::pipeline::validate_well_formed_svg_with_controls;
-use merman_core::OperationPhase;
 use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use merman_model::OperationPhase;
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use std::cell::Cell;
@@ -854,7 +854,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<String>, usize) {
         let icon = resolved_icon(body);
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -882,7 +882,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<Vec<String>>, usize, usize) {
         let icon = resolved_icon(body);
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -930,7 +930,7 @@ mod tests {
     #[test]
     fn bounded_sanitizer_accepts_exact_output_limit_and_rejects_one_less() {
         let input = r#"<a href="https://example.com" target="_blank">example</a>"#;
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -970,7 +970,7 @@ mod tests {
             Err(BoundedSanitizeError::AllocationFailed)
         );
 
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -988,7 +988,7 @@ mod tests {
     fn bounded_sanitizer_admits_parser_input_independently_of_output() {
         let input = "<script>removed</script><b>ok</b>";
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -1009,7 +1009,7 @@ mod tests {
     #[test]
     fn bounded_sanitizer_charges_tree_storage_and_replays_cancellation() {
         let input = "<b>ok</b>";
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -1030,7 +1030,7 @@ mod tests {
             )),
         ));
 
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(8);
         let meter = OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input(),

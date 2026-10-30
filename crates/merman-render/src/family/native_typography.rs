@@ -1,7 +1,5 @@
-use merman_core::{
-    OperationControl, OperationControlResult, OperationPhase, ParsedDiagramRender,
-    RenderSemanticModel,
-};
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+use merman_model::{OperationControl, OperationControlResult, OperationPhase};
 
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -114,7 +112,7 @@ mod declaration_scan {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use merman_core::OperationPhase;
+        use merman_model::OperationPhase;
 
         #[test]
         fn declarations_preserve_property_case_and_ignore_values() {
@@ -210,7 +208,7 @@ mod declaration_scan {
 
 /// Inspects the paired canonical declarations used by the selected family renderer.
 pub fn unsupported_native_text_style(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
     let control = control.for_phase(OperationPhase::Semantic);
@@ -219,6 +217,7 @@ pub fn unsupported_native_text_style(
     if let RenderSemanticModel::Flowchart(model) = parsed.model() {
         let default_context = Default::default();
         let context = parsed
+            .render_context()
             .flowchart_render_context()
             .unwrap_or(&default_context);
         for (ordinal, subgraph) in model.subgraphs.iter().enumerate() {
@@ -448,9 +447,8 @@ fn unsupported_native_model_text_style(
         RenderSemanticModel::Agentflow(model) => {
             declaration_scan::style_lists(model.authored.declaration_styles(), &control)
         }
-        // Another consumer can widen core features without enabling this renderer's handler.
+        // Another consumer can widen model features without enabling this renderer's handler.
         // Family planning retains responsibility for rejecting an unavailable renderer.
-        #[cfg(not(feature = "all-diagrams"))]
         #[allow(unreachable_patterns)]
         _ => Ok(None),
     }
@@ -458,7 +456,7 @@ fn unsupported_native_model_text_style(
 
 /// Inspects only the inline HTML labels that the selected family actually renders as HTML.
 pub fn unsupported_native_html_style(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
     let control = control.for_phase(OperationPhase::Semantic);
@@ -470,6 +468,7 @@ pub fn unsupported_native_html_style(
             unsupported_native_flowchart_html_style(
                 model,
                 parsed
+                    .render_context()
                     .flowchart_render_context()
                     .unwrap_or(&default_context),
                 &parsed.metadata().effective_config,
@@ -522,7 +521,7 @@ pub fn unsupported_native_html_style(
 fn unsupported_native_flowchart_html_style(
     model: &merman_model::families::flowchart::FlowchartModel,
     context: &merman_model::families::flowchart::FlowchartRenderContext,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
     swimlane: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
@@ -592,7 +591,8 @@ fn unsupported_native_flowchart_html_style(
 #[cfg(all(test, feature = "diagram-block"))]
 mod tests {
     use super::*;
-    use merman_core::{BuiltinRenderSemantic, MermaidEngine, ParseOptions};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::BuiltinRenderSemantic;
 
     #[test]
     fn native_admission_cancels_among_flat_records_without_declarations() {
@@ -611,8 +611,9 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("block-beta\nA\n", ParseOptions::strict())
             .unwrap()
-            .unwrap();
-        let (metadata, RenderSemanticModel::Block(mut model)) = parsed.into_parts() else {
+            .unwrap()
+            .into_presentation();
+        let (metadata, RenderSemanticModel::Block(mut model), _) = parsed.into_parts() else {
             panic!("Block model");
         };
         model.blocks_flat[0].children.push(usize::MAX);

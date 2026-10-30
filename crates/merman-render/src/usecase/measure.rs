@@ -156,7 +156,7 @@ fn styled(
 }
 
 struct LabelContext<'a> {
-    config: &'a merman_core::presentation::PresentationConfig,
+    config: &'a merman_model::presentation::PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
@@ -453,7 +453,7 @@ fn escaped_markdown(text: &str) -> String {
 
 pub(super) fn measure(
     model: &UsecaseDiagramModel,
-    full_config: &merman_core::presentation::PresentationConfig,
+    full_config: &merman_model::presentation::PresentationConfig,
     css_binding: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
@@ -1028,7 +1028,7 @@ mod tests {
             let config = json!({"htmlLabels": html});
             let (nodes, edges) = measure(
                 &model,
-                &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+                &crate::test_support::presentation_config(config.clone()),
                 &UsecaseCssBinding::new(&config),
                 &DeterministicTextMeasurer::default(),
                 None,
@@ -1085,7 +1085,7 @@ mod tests {
         let mut work = work();
         let (mut nodes, mut edges) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
             &css_binding,
             &DeterministicTextMeasurer::default(),
             None,
@@ -1158,9 +1158,7 @@ mod tests {
         let measurer = DeterministicTextMeasurer::default();
         let (small, _) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(
-                json!({"usecase": {"minNodeWidth": 900}}),
-            ),
+            &crate::test_support::presentation_config(json!({"usecase": {"minNodeWidth": 900}})),
             &UsecaseCssBinding::new(&json!({"usecase": {"minNodeWidth": 900}})),
             &measurer,
             None,
@@ -1169,9 +1167,7 @@ mod tests {
         .unwrap();
         let (large, _) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(
-                json!({"usecase": {"actorFontSize": 40}}),
-            ),
+            &crate::test_support::presentation_config(json!({"usecase": {"actorFontSize": 40}})),
             &UsecaseCssBinding::new(&json!({"usecase": {"actorFontSize": 40}})),
             &measurer,
             None,
@@ -1199,7 +1195,7 @@ mod tests {
         });
         let (nodes, _) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             &UsecaseCssBinding::new(&json!({})),
             &DeterministicTextMeasurer::default(),
             None,

@@ -2020,11 +2020,10 @@ mod tests {
     #[test]
     fn canonical_xychart_view_matches_full_visibility_and_empty_projection() {
         use crate::xychart::XyChartView;
-        use merman_core::presentation::PresentationConfig;
-        use merman_core::{
-            MermaidConfig, MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel,
-            SemanticParser,
-        };
+        use merman_core::presentation::SourcePresentationConfig;
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::presentation::RenderSemanticModel;
+        use merman_model::{MermaidConfig, SemanticDiagramModel};
 
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();
@@ -2041,7 +2040,7 @@ mod tests {
             let parser =
                 SemanticParser::new().with_site_config(MermaidConfig::from_value(config.clone()));
             let engine =
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
+                MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(config));
             for source in [
                 "xychart\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Sales 0 --> 10\nbar Actual [2, 4]\n",
                 "xychart horizontal\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Sales 0 --> 10\nbar Actual [2, 4]\nline Forecast [4, 6]\n",

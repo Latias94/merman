@@ -31,16 +31,17 @@ pub(super) struct ClassPaintBinding {
 
 impl ClassPaintBinding {
     pub(super) fn compatibility(
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         owner_paths: &[&'static str],
         css: String,
     ) -> Self {
         Self {
             compatibility_css: css.clone(),
             css,
-            config_origin: owner_paths.iter().copied().find(|path| {
-                merman_core::__private::config_paint_overrides_typed_default(config, path)
-            }),
+            config_origin: owner_paths
+                .iter()
+                .copied()
+                .find(|path| config.config_paint_overrides_typed_default(path)),
             ..Self::default()
         }
     }

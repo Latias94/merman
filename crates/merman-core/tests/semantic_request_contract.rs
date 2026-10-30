@@ -1,11 +1,12 @@
 #[cfg(feature = "diagram-flowchart")]
-use merman_core::MermaidConfig;
-use merman_core::runtime::OperationContext;
+use merman_model::config::MermaidConfig;
+use merman_model::runtime::OperationContext;
 #[cfg(feature = "diagram-gantt")]
-use merman_core::runtime::RuntimePolicy;
-use merman_core::{
-    Error, OperationControl, ParseOptions, ParsedSemanticDiagram, SemanticDiagramModel,
-    SemanticParser,
+use merman_model::runtime::RuntimePolicy;
+use {
+    merman_core::{Error, ParseOptions, SemanticParser},
+    merman_model::operation::OperationControl,
+    merman_model::semantic::{ParsedSemanticDiagram, SemanticDiagramModel},
 };
 
 fn parse(
@@ -47,8 +48,8 @@ fn semantic_request_does_not_suppress_preprocessing_failures() {
     let context = parser.begin_operation().unwrap();
     let deep_directive = format!(
         "%%{{init: {}true{}}}%%\nerror\n",
-        "[".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
-        "]".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "[".repeat(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "]".repeat(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1),
     );
     for source in [
         "---\ntitle: Missing closing delimiter\n",
@@ -100,7 +101,7 @@ fn semantic_request_accepts_the_builtin_error_family_without_presentation() {
     };
     assert_eq!(model.diagram_type, "error");
     assert_eq!(model.error_message, None);
-    assert!(merman_core::resources::model_complexity_from_semantic_model(&parsed.model).items > 0);
+    assert!(merman_model::resources::model_complexity_from_semantic_model(&parsed.model).items > 0);
 }
 
 #[test]
@@ -174,7 +175,7 @@ fn semantic_request_lenient_family_failure_retains_admitted_metadata_and_error_t
         model.error_message.as_deref(),
         Some(strict.to_string().as_str())
     );
-    let complexity = merman_core::resources::model_complexity_from_semantic_model(&parsed.model);
+    let complexity = merman_model::resources::model_complexity_from_semantic_model(&parsed.model);
     assert!(complexity.text_bytes >= strict.to_string().len());
 }
 
@@ -264,7 +265,7 @@ fn semantic_request_matches_full_parser_shared_success_failure_and_recovery_outc
                     match (&lean.model, full.model()) {
                         (
                             SemanticDiagramModel::Flowchart(lean),
-                            merman_core::RenderSemanticModel::Flowchart(full),
+                            merman_model::presentation::RenderSemanticModel::Flowchart(full),
                         ) => {
                             assert_eq!(
                                 serde_json::to_value(lean).unwrap(),
@@ -273,7 +274,7 @@ fn semantic_request_matches_full_parser_shared_success_failure_and_recovery_outc
                         }
                         (
                             SemanticDiagramModel::Error(lean),
-                            merman_core::RenderSemanticModel::Error(full),
+                            merman_model::presentation::RenderSemanticModel::Error(full),
                         ) => assert_eq!(lean, full),
                         _ => panic!("different model families for {source}"),
                     }
@@ -317,7 +318,7 @@ fn semantic_flowchart_accessibility_preserves_common_db_normalization() {
             #[cfg(feature = "presentation")]
             {
                 let full = merman_core::MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_config(config),
+                    merman_core::presentation::SourcePresentationConfig::from_config(config),
                 );
                 let parsed = full
                     .parse_diagram_for_render_model_with_type_sync(
@@ -327,7 +328,9 @@ fn semantic_flowchart_accessibility_preserves_common_db_normalization() {
                     )
                     .unwrap()
                     .unwrap();
-                let merman_core::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+                let merman_model::presentation::RenderSemanticModel::Flowchart(model) =
+                    parsed.model()
+                else {
                     panic!("expected shared Flowchart semantics");
                 };
                 assert_eq!(serde_json::to_value(model).unwrap(), expected);

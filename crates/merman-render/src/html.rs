@@ -2,8 +2,8 @@
 
 use std::cell::Cell;
 
-use merman_core::OperationPhase;
 use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use merman_model::OperationPhase;
 
 use crate::resources::{OperationWorkError, OperationWorkMeter, ResourceLimitPhase};
 
@@ -155,8 +155,8 @@ mod tests {
     use super::*;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 
-    fn loose_config() -> merman_core::MermaidConfig {
-        merman_core::MermaidConfig::from_value(serde_json::json!({
+    fn loose_config() -> merman_model::MermaidConfig {
+        merman_model::MermaidConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))
     }
@@ -218,7 +218,7 @@ mod tests {
     fn html5_ancestor_scan_work_preserves_cancellation() {
         struct CancelDuringScan<'a> {
             inner: HtmlSanitizeSink<'a>,
-            control: &'a merman_core::OperationControl,
+            control: &'a merman_model::OperationControl,
             scanned: Cell<usize>,
         }
         impl SanitizeOutputSink for CancelDuringScan<'_> {
@@ -263,7 +263,7 @@ mod tests {
             }
         }
         for phase in [OperationPhase::Layout, OperationPhase::Emit] {
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::OperationControl::new();
             let meter = OperationWorkMeter::new_with_control(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
                 control.clone(),
@@ -343,7 +343,7 @@ mod tests {
     fn svg_context_parser_preserves_emit_cancellation() {
         struct CancelOnSecondParse<'a> {
             inner: HtmlSanitizeSink<'a>,
-            control: &'a merman_core::OperationControl,
+            control: &'a merman_model::OperationControl,
             epochs: Cell<usize>,
         }
         impl SanitizeOutputSink for CancelOnSecondParse<'_> {
@@ -389,7 +389,7 @@ mod tests {
                 self.inner.push_output_chunk(output, chunk)
             }
         }
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let meter = OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control.clone(),

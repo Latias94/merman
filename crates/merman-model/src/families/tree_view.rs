@@ -1,3 +1,6 @@
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 /// Node type for a TreeView file.
 pub const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
 /// Node type for a TreeView directory, including the default root.

@@ -1,16 +1,13 @@
 #[cfg(feature = "compat-json")]
-use std::collections::HashMap;
-
-#[cfg(feature = "compat-json")]
-use serde_json::{Map, Number, Value, json};
+use serde_json::Value;
 
 #[cfg(test)]
 use super::NODE_TYPE_DEFAULT;
 use super::{MindmapDisplayPolicy, NODE_TYPE_HEXAGON, NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT};
 #[cfg(feature = "compat-json")]
-use crate::{Error, json_value::ManagedJson};
+use crate::Error;
 use crate::{
-    MermaidConfig, OperationControl, OperationControlResult, PresentationMetadata, Result,
+    MermaidConfig, OperationControl, OperationControlResult, Result, SourcePresentationMetadata,
 };
 
 use merman_model::families::mindmap::{
@@ -19,7 +16,7 @@ use merman_model::families::mindmap::{
 
 pub(super) fn model_into_render_model_controlled(
     model: super::MindmapDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MindmapDiagramRenderModel>> {
     control.checkpoint()?;
@@ -293,353 +290,25 @@ impl MindmapProjection {
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &MindmapDiagramRenderModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let control = OperationControl::new();
-    render_model_to_compat_json_controlled(model, meta, &control)
+    render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &MindmapDiagramRenderModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
-    control.checkpoint()?;
-    let mut nodes = Vec::with_capacity(model.nodes.len());
-    for (index, node) in model.nodes.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        nodes.push(mindmap_node_to_compat_json(node));
-    }
-    let mut edges = Vec::with_capacity(model.edges.len());
-    for (index, edge) in model.edges.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        edges.push(mindmap_edge_to_compat_json(edge));
-    }
-    let config = ManagedJson::from_value(crate::json_value::clone_value_nonrecursive(
-        meta.effective_config.as_value(),
-    ));
-    control.checkpoint()?;
-
-    if model.nodes.is_empty() {
-        let mut root = Map::with_capacity(3);
-        root.insert("nodes".to_string(), Value::Array(nodes));
-        root.insert("edges".to_string(), Value::Array(edges));
-        root.insert("config".to_string(), config.into_unmanaged_value());
-        return Ok(Ok(Value::Object(root)));
-    }
-
-    let mut shapes = Map::new();
-    for (index, node) in model.nodes.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        shapes.insert(
-            node.id.clone(),
-            json!({
-                "shape": node.shape,
-                "width": crate::json_value::number_value(node.width),
-                "height": crate::json_value::number_value(node.height),
-                "padding": crate::json_value::number_value(node.padding),
-            }),
-        );
-    }
-
-    let root_node = match mindmap_root_node_to_compat_json_controlled(model, meta, control)? {
-        Ok(root) => root,
-        Err(error) => return Ok(Err(error)),
-    };
-    let mut root = Map::with_capacity(12);
-    root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    root.insert("nodes".to_string(), Value::Array(nodes));
-    root.insert("edges".to_string(), Value::Array(edges));
-    root.insert("config".to_string(), config.into_unmanaged_value());
-    root.insert("rootNode".to_string(), root_node.into_unmanaged_value());
-    root.insert("markers".to_string(), json!(["point"]));
-    root.insert("direction".to_string(), Value::String("TB".to_string()));
-    root.insert("nodeSpacing".to_string(), Number::from(50).into());
-    root.insert("rankSpacing".to_string(), Number::from(50).into());
-    root.insert("shapes".to_string(), Value::Object(shapes));
-    root.insert("diagramId".to_string(), Value::String(mindmap_diagram_id()));
-    let root = ManagedJson::from_value(Value::Object(root));
-    control.checkpoint()?;
-    Ok(Ok(root.into_unmanaged_value()))
-}
-
-#[cfg(feature = "compat-json")]
-fn mindmap_diagram_id() -> String {
-    let mut hex = crate::runtime::generated_id_hex("mindmap.diagram-id", 0, 32).into_bytes();
-    hex[12] = b'4';
-    let variant = hex_digit(hex[16]);
-    hex[16] = b"89ab"[(variant & 0x03) as usize];
-
-    let hex = String::from_utf8(hex).expect("generated hexadecimal ID is valid UTF-8");
-    format!(
-        "mindmap-{}-{}-{}-{}-{}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    )
-}
-
-#[cfg(feature = "compat-json")]
-fn hex_digit(value: u8) -> u8 {
-    match value {
-        b'0'..=b'9' => value - b'0',
-        b'a'..=b'f' => value - b'a' + 10,
-        _ => unreachable!("generated ID contains only lowercase hexadecimal digits"),
-    }
-}
-
-#[cfg(feature = "compat-json")]
-fn mindmap_node_to_compat_json(node: &MindmapDiagramRenderNode) -> Value {
-    let mut out = Map::with_capacity(20);
-    out.insert("id".to_string(), Value::String(node.id.clone()));
-    out.insert("domId".to_string(), Value::String(node.dom_id.clone()));
-    out.insert("label".to_string(), Value::String(node.label.clone()));
-    if !node.label_type.is_empty() {
-        out.insert(
-            "labelType".to_string(),
-            Value::String(node.label_type.clone()),
-        );
-    }
-    out.insert("isGroup".to_string(), Value::Bool(node.is_group));
-    out.insert("shape".to_string(), Value::String(node.shape.clone()));
-    out.insert(
-        "width".to_string(),
-        crate::json_value::number_value(node.width),
+    let diagram_id = merman_model::families::mindmap::diagram_id_from_context(
+        &crate::runtime::active_operation_context(),
     );
-    out.insert(
-        "height".to_string(),
-        crate::json_value::number_value(node.height),
-    );
-    out.insert(
-        "padding".to_string(),
-        crate::json_value::number_value(node.padding),
-    );
-    out.insert(
-        "cssClasses".to_string(),
-        Value::String(node.css_classes.clone()),
-    );
-    out.insert("cssStyles".to_string(), json!(&node.css_styles));
-    out.insert("centerLabel".to_string(), Value::Bool(true));
-    out.insert("look".to_string(), Value::String(node.look.clone()));
-    if let Some(icon) = &node.icon {
-        out.insert("icon".to_string(), Value::String(icon.clone()));
-    }
-    if let Some(x) = node.x {
-        out.insert("x".to_string(), crate::json_value::number_value(x));
-    }
-    if let Some(y) = node.y {
-        out.insert("y".to_string(), crate::json_value::number_value(y));
-    }
-    out.insert("level".to_string(), Number::from(node.level).into());
-    out.insert("nodeId".to_string(), Value::String(node.node_id.clone()));
-    out.insert("type".to_string(), Number::from(node.node_type).into());
-    if let Some(section) = node.section {
-        out.insert("section".to_string(), Number::from(section).into());
-    }
-    Value::Object(out)
-}
-
-#[cfg(feature = "compat-json")]
-fn mindmap_edge_to_compat_json(edge: &MindmapDiagramRenderEdge) -> Value {
-    let mut out = Map::with_capacity(10);
-    out.insert("id".to_string(), Value::String(edge.id.clone()));
-    out.insert("start".to_string(), Value::String(edge.start.clone()));
-    out.insert("end".to_string(), Value::String(edge.end.clone()));
-    out.insert("type".to_string(), Value::String(edge.edge_type.clone()));
-    out.insert("curve".to_string(), Value::String(edge.curve.clone()));
-    out.insert(
-        "thickness".to_string(),
-        Value::String(edge.thickness.clone()),
-    );
-    out.insert("look".to_string(), Value::String(edge.look.clone()));
-    out.insert("classes".to_string(), Value::String(edge.classes.clone()));
-    out.insert("depth".to_string(), Number::from(edge.depth).into());
-    if let Some(section) = edge.section {
-        out.insert("section".to_string(), Number::from(section).into());
-    }
-    Value::Object(out)
-}
-
-#[cfg(feature = "compat-json")]
-pub(super) fn mindmap_root_node_to_compat_json_controlled(
-    model: &MindmapDiagramRenderModel,
-    meta: &PresentationMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<ManagedJson>> {
-    let mut node_index = HashMap::with_capacity(model.nodes.len());
-    for (index, node) in model.nodes.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if node_index.insert(node.id.as_str(), index).is_some() {
-            return Ok(Err(invalid_mindmap_model(
-                meta,
-                format!("duplicate mindmap node id `{}`", node.id),
-            )));
-        }
-    }
-
-    let mut root_index = None;
-    for (index, node) in model.nodes.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if node.level == 0 {
-            root_index = Some(index);
-            break;
-        }
-    }
-    let Some(root_index) = root_index else {
-        return Ok(Err(invalid_mindmap_model(
-            meta,
-            "mindmap root node is missing",
-        )));
-    };
-    let mut children = vec![Vec::new(); model.nodes.len()];
-    control.checkpoint()?;
-    for (index, edge) in model.edges.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let Some(&parent) = node_index.get(edge.start.as_str()) else {
-            return Ok(Err(invalid_mindmap_model(
-                meta,
-                format!("mindmap edge `{}` references missing start node", edge.id),
-            )));
-        };
-        let Some(&child) = node_index.get(edge.end.as_str()) else {
-            return Ok(Err(invalid_mindmap_model(
-                meta,
-                format!("mindmap edge `{}` references missing end node", edge.id),
-            )));
-        };
-        children[parent].push(child);
-    }
-
-    let mut values = vec![None::<ManagedJson>; model.nodes.len()];
-    let mut stack = vec![(root_index, false)];
-    let mut processed = 0usize;
-    while let Some((index, expanded)) = stack.pop() {
-        if processed.is_multiple_of(128) {
-            control.checkpoint()?;
-        }
-        processed = processed.saturating_add(1);
-        if expanded {
-            let node = &model.nodes[index];
-            let mut child_values = Vec::with_capacity(children[index].len());
-            for &child in &children[index] {
-                control.checkpoint()?;
-                child_values.push(values[child].take().unwrap_or_default());
-            }
-            let value = match mindmap_root_record(node, child_values, meta) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(error)),
-            };
-            values[index] = Some(value);
-        } else {
-            stack.push((index, true));
-            for child in children[index].iter().rev() {
-                control.checkpoint()?;
-                stack.push((*child, false));
-            }
-        }
-    }
-
-    control.checkpoint()?;
-    Ok(Ok(values[root_index].take().unwrap_or_default()))
-}
-
-#[cfg(feature = "compat-json")]
-fn mindmap_root_record(
-    node: &MindmapDiagramRenderNode,
-    children: Vec<ManagedJson>,
-    meta: &PresentationMetadata,
-) -> Result<ManagedJson> {
-    let id = node.id.parse::<i64>().map_err(|_| {
-        invalid_mindmap_model(
-            meta,
-            format!("invalid numeric mindmap node id `{}`", node.id),
-        )
-    })?;
-    let mut out = Map::with_capacity(15);
-    out.insert("id".to_string(), Number::from(id).into());
-    out.insert("nodeId".to_string(), Value::String(node.node_id.clone()));
-    out.insert("level".to_string(), Number::from(node.level).into());
-    out.insert("descr".to_string(), Value::String(node.label.clone()));
-    out.insert("type".to_string(), Number::from(node.node_type).into());
-    out.insert(
-        "children".to_string(),
-        Value::Array(
-            children
-                .into_iter()
-                .map(ManagedJson::into_unmanaged_value)
-                .collect(),
-        ),
-    );
-    out.insert(
-        "width".to_string(),
-        crate::json_value::number_value(node.width),
-    );
-    out.insert(
-        "padding".to_string(),
-        crate::json_value::number_value(node.padding),
-    );
-    if let Some(section) = node.section {
-        out.insert("section".to_string(), Number::from(section).into());
-    }
-    if node.height != 0.0 {
-        out.insert(
-            "height".to_string(),
-            crate::json_value::number_value(node.height),
-        );
-    }
-    if let Some(class) = mindmap_custom_class(node) {
-        out.insert("class".to_string(), Value::String(class));
-    }
-    if let Some(icon) = &node.icon {
-        out.insert("icon".to_string(), Value::String(icon.clone()));
-    }
-    if let Some(x) = node.x {
-        out.insert("x".to_string(), crate::json_value::number_value(x));
-    }
-    if let Some(y) = node.y {
-        out.insert("y".to_string(), crate::json_value::number_value(y));
-    }
-    if node.level == 0 {
-        out.insert("isRoot".to_string(), Value::Bool(true));
-    }
-    Ok(ManagedJson::from_value(Value::Object(out)))
-}
-
-#[cfg(feature = "compat-json")]
-fn mindmap_custom_class(node: &MindmapDiagramRenderNode) -> Option<String> {
-    let prefix = if node.level == 0 {
-        "mindmap-node section-root section--1".to_string()
-    } else if let Some(section) = node.section {
-        format!("mindmap-node section-{section}")
-    } else {
-        "mindmap-node".to_string()
-    };
-    node.css_classes
-        .strip_prefix(&prefix)
-        .map(str::trim)
-        .filter(|class| !class.is_empty())
-        .map(str::to_string)
-}
-
-#[cfg(feature = "compat-json")]
-fn invalid_mindmap_model(meta: &PresentationMetadata, message: impl Into<String>) -> Error {
-    Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
+    let mut projection = meta.compat_json_metadata();
+    projection.diagram_id = Some(&diagram_id);
+    merman_model::families::mindmap::compat::project_controlled(model, &projection, control)
+        .map(|result| result.map_err(Error::from))
 }
 
 #[cfg(test)]
@@ -680,10 +349,10 @@ mod tests {
             .expect("root child");
         }
 
-        let metadata = PresentationMetadata {
+        let metadata = SourcePresentationMetadata {
             diagram_type: "mindmap".to_string(),
             config: config.clone(),
-            effective_config: crate::presentation::PresentationConfig::from_value(
+            effective_config: crate::presentation::SourcePresentationConfig::from_value(
                 crate::json_value::clone_value_nonrecursive(config.as_value()),
             ),
             title: None,

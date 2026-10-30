@@ -1,6 +1,6 @@
 use clap::builder::{PossibleValue, PossibleValuesParser, TypedValueParser};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
-use merman::time::{CivilDate, UtcOffset};
+use merman::model::time::{CivilDate, UtcOffset};
 #[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 use std::path::PathBuf;
@@ -35,7 +35,7 @@ pub(crate) enum RawCommand {
     #[cfg(feature = "analysis")]
     /// Analyze Mermaid source and print diagnostics JSON or text.
     Lint(LintArgs),
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "fixes")]
     /// Apply non-conflicting diagnostics fixes to Mermaid or Markdown source.
     Fix(FixArgs),
     #[cfg(feature = "analysis")]
@@ -114,7 +114,7 @@ pub(crate) struct ResourceCliArgs {
     #[arg(
         long = "resource-profile",
         value_parser = resource_profile_value_parser(),
-        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        default_value_t = merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE,
         help_heading = "Resource controls",
         hide_short_help = true
     )]
@@ -134,7 +134,7 @@ pub(crate) struct ResourceCliArgs {
 impl Default for ResourceCliArgs {
     fn default() -> Self {
         Self {
-            profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+            profile: merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE,
             limits: Vec::new(),
         }
     }
@@ -162,7 +162,7 @@ pub(crate) struct DetectResourceCliArgs {
     #[arg(
         long = "resource-profile",
         value_parser = resource_profile_value_parser(),
-        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        default_value_t = merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE,
         help_heading = "Source limits",
         hide_short_help = true
     )]
@@ -284,7 +284,7 @@ pub(crate) struct LintArgs {
     pub(crate) resources: ResourceCliArgs,
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 #[derive(Debug, ClapArgs)]
 pub(crate) struct FixArgs {
     /// Input Mermaid or Markdown file. Use `-` for stdin.
@@ -1802,11 +1802,11 @@ pub(crate) enum SvgPipelineKind {
     ResvgSafe,
 }
 
-pub(crate) type ResourceProfile = merman::resources::ResourceProfile;
+pub(crate) type ResourceProfile = merman::model::resources::ResourceProfile;
 
 fn resource_profile_value_parser() -> impl TypedValueParser<Value = ResourceProfile> {
     PossibleValuesParser::new(
-        merman::resources::RESOURCE_PROFILE_DESCRIPTORS
+        merman::model::resources::RESOURCE_PROFILE_DESCRIPTORS
             .iter()
             .map(|descriptor| PossibleValue::new(descriptor.id).help(descriptor.purpose)),
     )
@@ -1859,7 +1859,7 @@ fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, S
 fn parse_detect_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {
     let resource_override = parse_resource_limit_override(value)?;
     if resource_override.stable_id
-        != merman::resources::InputResourceLimitId::MaxSourceBytes.as_str()
+        != merman::model::resources::InputResourceLimitId::MaxSourceBytes.as_str()
     {
         return Err(
             "detect only accepts the `max_source_bytes` resource limit override".to_string(),
@@ -2120,7 +2120,7 @@ fn parse_lint_rule_id(value: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn parse_fix_rule_id(value: &str) -> Result<String, String> {
     let Some(descriptor) = configurable_rule_descriptor(value) else {
         return Err(format!(
@@ -2133,7 +2133,7 @@ fn parse_fix_rule_id(value: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn parse_fix_id(value: &str) -> Result<crate::fix::FixId, String> {
     value
         .parse::<crate::fix::FixId>()

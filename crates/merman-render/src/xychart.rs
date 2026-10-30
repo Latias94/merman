@@ -1965,10 +1965,9 @@ mod tests {
             },
             display: Default::default(),
         };
-        let config =
-            merman_core::presentation::PresentationConfig::from_value(json!({ "xyChart": {
-                "width": 700, "height": height, "showLegend": legend
-            }}));
+        let config = crate::test_support::presentation_config(json!({ "xyChart": {
+            "width": 700, "height": height, "showLegend": legend
+        }}));
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::interactive(),
         );
@@ -2117,12 +2116,12 @@ mod tests {
         let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "xychart\ntitle Chart\nx-axis Categories [One, Two, Three]\ny-axis Amount 0 --> 40\nline Series [10, 30, 20]",
             merman_core::ParseOptions::strict(),
-        ).unwrap().unwrap();
-        let merman_core::RenderSemanticModel::XyChart(model) = parsed.model() else {
+        ).unwrap().unwrap().into_presentation();
+        let merman_model::presentation::RenderSemanticModel::XyChart(model) = parsed.model() else {
             panic!("expected XYChart render model");
         };
         let measurer = RecordingFont(Mutex::new(Vec::new()));
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "fontFamily":"Inter, sans-serif", "xyChart":{"showLegend":true},
         }));
         let work_meter = crate::resources::OperationWorkMeter::new(

@@ -16,7 +16,7 @@ use crate::{
 };
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 use std::collections::HashSet;
@@ -24,9 +24,6 @@ use std::collections::HashSet;
 #[cfg(feature = "presentation")]
 use merman_model::families::pie::PieOutputData;
 use merman_model::families::pie::{PieDiagramModel, PieSection};
-
-#[cfg(feature = "compat-json")]
-mod compat;
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut PieDiagramModel,
@@ -52,14 +49,14 @@ impl PieSemanticSource {
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let (model, output_data) = self.into_render_parts();
         render_model_to_compat_json(&model, output_data, meta)
     }
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_pie(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_pie(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let source = parse_pie_semantic_source(code, meta)?;
     source.into_compat_json(meta)
 }
@@ -68,7 +65,7 @@ pub(crate) fn parse_pie(code: &str, meta: &PresentationMetadata) -> Result<Value
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_pie_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_pie_semantic_source_controlled(
@@ -93,15 +90,19 @@ pub(crate) fn parse_pie_json_and_editor_facts(
 pub(crate) fn render_model_to_compat_json(
     model: &PieDiagramModel,
     output_data: PieOutputData,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(compat::project(model, output_data, &meta.diagram_type))
+    Ok(merman_model::families::pie::compat::project(
+        model,
+        output_data,
+        &meta.diagram_type,
+    ))
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_pie_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<(PieDiagramModel, PieOutputData)> {
     Ok(parse_pie_semantic_source(code, meta)?.into_render_parts())
 }
@@ -109,7 +110,7 @@ pub(crate) fn parse_pie_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_pie_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<(PieDiagramModel, PieOutputData)>> {
     let construction = construct_pie_semantic_source_controlled(
@@ -180,7 +181,10 @@ pub(crate) fn parse_pie_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
-fn parse_pie_semantic_source(code: &str, meta: &PresentationMetadata) -> Result<PieSemanticSource> {
+fn parse_pie_semantic_source(
+    code: &str,
+    meta: &SourcePresentationMetadata,
+) -> Result<PieSemanticSource> {
     construct_pie_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -659,17 +663,17 @@ mod tests {
     use crate::EditorSemanticCompleteness;
     use crate::MermaidConfig;
     #[cfg(feature = "presentation")]
-    use crate::PresentationMetadata;
+    use crate::SourcePresentationMetadata;
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use crate::{Error, MermaidEngine, ParseOptions, SourceSpan};
     use serde_json::json;
 
     #[cfg(feature = "presentation")]
-    fn metadata() -> PresentationMetadata {
-        PresentationMetadata {
+    fn metadata() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "pie".to_string(),
             config: MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
     }
@@ -1112,10 +1116,10 @@ mod output_data_tests {
 
     #[test]
     fn full_producer_preserves_empty_output_independently_of_json_projection() {
-        let meta = crate::PresentationMetadata {
+        let meta = crate::SourcePresentationMetadata {
             diagram_type: "pie".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         let parse = |source| {

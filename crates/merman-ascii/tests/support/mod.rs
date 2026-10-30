@@ -3,9 +3,10 @@ use merman_ascii::{
     TerminalWidthProfile,
 };
 pub(crate) mod full_model;
-use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
-use merman_core::{
-    MermaidEngine, OperationControl, ParseOptions, SemanticParser, runtime::OperationContext,
+use merman_core::presentation::{MermaidEngine, diagram::ParsedDiagramRender};
+use merman_core::{ParseOptions, SemanticParser};
+use merman_model::{
+    OperationControl, presentation::RenderSemanticModel, runtime::OperationContext,
 };
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;

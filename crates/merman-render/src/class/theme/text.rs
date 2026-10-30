@@ -111,7 +111,7 @@ impl ClassTextPaint {
 impl ClassTextThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
         let mut text_rules = BTreeMap::new();
         let mut shadowed = BTreeMap::new();
@@ -191,9 +191,9 @@ impl ClassTextThemePlan {
             })
         });
         let owned = |paths: &[&str]| {
-            paths.iter().any(|path| {
-                merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
-            })
+            paths
+                .iter()
+                .any(|path| effective_config.config_paint_overrides_typed_default(path))
         };
         let edge_paint = (!owned(&[
             "themeVariables.classText",
@@ -221,10 +221,7 @@ impl ClassTextThemePlan {
             })
         });
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let typed_font_size = theme.filter(|_| typed_font_size_active).map(|theme| {
             crate::number_format::canonicalize_number(f64::from(theme.typography().font_size_px()))
@@ -422,8 +419,8 @@ impl ClassTextThemePlan {
     pub(crate) fn root_dependent_source_residuals(
         model: &merman_model::families::class::ClassDiagram,
         diagram_use_html_labels: bool,
-        control: &merman_core::OperationControl,
-    ) -> merman_core::OperationControlResult<Vec<crate::diagram_theme::SourceStyleResidual>> {
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<Vec<crate::diagram_theme::SourceStyleResidual>> {
         use crate::diagram_theme::{
             SourceStyleChannel, SourceStyleDeclaration, SourceStyleProvenance, SourceStyleResidual,
             SourceStyleResidualReason,
@@ -932,11 +929,12 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("Class model");
         };
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         assert!(
             ClassTextThemePlan::root_dependent_source_residuals(model, false, &control)
                 .unwrap()
@@ -958,8 +956,9 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Class(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("Class model");
         };
         assert!(model.class("A").unwrap().styles.is_empty());
@@ -967,7 +966,7 @@ mod tests {
             ClassTextThemePlan::root_dependent_source_residuals(
                 model,
                 true,
-                &merman_core::OperationControl::new(),
+                &merman_model::OperationControl::new(),
             )
             .unwrap()
             .is_empty()
@@ -1098,7 +1097,7 @@ mod tests {
 
     #[test]
     fn inactive_plan_separates_class_probe_and_displayed_font_precedence() {
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "fontFamily": "Class Root, monospace",
             "themeVariables": {
                 "fontFamily": "Class Theme, sans-serif"
@@ -1121,7 +1120,7 @@ mod tests {
 
     #[test]
     fn node_style_facts_are_sealed_once_and_missing_ids_fail_closed() {
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let plan = ClassTextThemePlan::resolve(None, &config);
 
         assert!(matches!(
@@ -1198,13 +1197,14 @@ mod tests {
                 } else {
                     "classDiagram\nclass Account\n"
                 };
-                let parsed = crate::__private::install_parse_compatibility(
+                let parsed = crate::test_support::install_parse_compatibility(
                     &theme,
                     merman_core::MermaidEngine::new(),
                 )
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
                 let session = RenderEnvironment::deterministic()
                     .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
                     .begin_session_with_theme(&theme)

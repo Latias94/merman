@@ -42,7 +42,7 @@ pub(crate) struct ArchitectureGroupThemePlan {
 impl ArchitectureGroupThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
         group_count: usize,
         edge_count: usize,
         work_meter: &OperationWorkMeter,
@@ -284,19 +284,15 @@ pub(crate) struct ArchitectureThemeOutcome {
 }
 
 fn mermaid_owns_group_stroke(
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
 ) -> bool {
-    if merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.archGroupBorderColor",
-    ) {
+    if effective_config.config_paint_overrides_typed_default("themeVariables.archGroupBorderColor")
+    {
         return true;
     }
-    merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.primaryBorderColor",
-    ) && effective_config.get_str("themeVariables.archGroupBorderColor")
-        == effective_config.get_str("themeVariables.primaryBorderColor")
+    effective_config.config_paint_overrides_typed_default("themeVariables.primaryBorderColor")
+        && effective_config.get_str("themeVariables.archGroupBorderColor")
+            == effective_config.get_str("themeVariables.primaryBorderColor")
 }
 
 fn selector_matches_any_group(selector: FamilyThemeSelectorShape, group_count: usize) -> bool {

@@ -8,7 +8,9 @@ use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourceLimitId, Them
 use crate::common::BindingError;
 
 fn general_binding_theme_resource_policy() -> ThemeResourcePolicy {
-    ThemeResourcePolicy::for_profile(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE)
+    ThemeResourcePolicy::for_profile(
+        merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+    )
 }
 
 /// Materializes one editable design as the contract-owned JSON wire.
@@ -160,7 +162,7 @@ pub(crate) fn materialization_error(
         let descriptor = limit.descriptor();
         let profile = policy
             .profile()
-            .map(merman::resources::ResourceProfile::id)
+            .map(merman::model::resources::ResourceProfile::id)
             .unwrap_or("custom-theme-policy");
         BindingError::resource_limit(
             descriptor.phase.as_str(),

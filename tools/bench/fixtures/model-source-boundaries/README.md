@@ -7,8 +7,7 @@ benchmarks. Commit this fixture before running the base, then retain those recei
 production code. The driver reads committed source and fixture revisions, never dirty fixture bytes.
 
 The original base fixture is pinned at `2e71bfa333b5e9ae6dcee41bdad2be81c162e444`.
-The current fixture migrates model imports to `merman-model` while retaining the same runtime inputs
-and consumed fields. Use that original fixture revision for the pre-extraction base; use a committed
+The current fixture migrates model imports to `merman-model` and borrows the source result's shared `PresentationDiagram` for graphical output, retaining the same runtime inputs and consumed fields. Use that original fixture revision for the pre-extraction base; use a committed
 current fixture for the candidate. The base has no `merman-model` package.
 
 | Recipe | Fixture feature | Consumed output |

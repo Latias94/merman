@@ -1,5 +1,8 @@
 //! Flat Block data, palette facts, and declared compatibility field presence.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use crate::resources::ModelComplexity;
 use crate::warnings::DiagramWarningFact;
 use indexmap::IndexMap;

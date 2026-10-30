@@ -13,7 +13,7 @@ path = "capture.rs"
 
 [dependencies]
 merman-bindings-core = { path = "../../../crates/merman-bindings-core", features = ["all-diagrams", "svg", "png"] }
-merman-core = { path = "../../../crates/merman-core" }
+merman = { path = "../../../crates/merman", default-features = false }
 merman-export = { path = "../../../crates/merman-export", features = ["native-fonts"] }
 serde_json = "1"
 usvg = { version = "=0.47.0", default-features = false, features = ["text"] }

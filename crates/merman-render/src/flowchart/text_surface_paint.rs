@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -109,10 +109,7 @@ impl FlowchartTextSurfacePaintPlan {
             theme: theme.cloned(),
             style,
             fill,
-            config_owned: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.titleColor",
-            ),
+            config_owned: config.config_paint_overrides_typed_default("themeVariables.titleColor"),
             ordinal_rules: theme.is_some_and(|theme| {
                 theme.family_rules().any(|(_, rule)| {
                     matches!(
@@ -136,7 +133,7 @@ impl FlowchartTextSurfacePaintPlan {
         if !self.requested() {
             return Ok(());
         }
-        work.checkpoint(merman_core::OperationPhase::Emit)?;
+        work.checkpoint(merman_model::OperationPhase::Emit)?;
         let mut terminal = self
             .terminal
             .lock()

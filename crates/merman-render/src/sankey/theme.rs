@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
@@ -61,10 +61,8 @@ impl SankeyTypographyThemePlan {
         label_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let config_owns_text_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.textColor",
-        );
+        let config_owns_text_fill =
+            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let mut text_fill = None;
         let mut text_rules = BTreeMap::<usize, SankeyTextRuleObservation>::new();
         if let Some(theme) = theme {
@@ -620,7 +618,7 @@ impl SankeyNodePalettePlan {
         };
         let mut links = Vec::with_capacity(layout.links.len());
         for link in &layout.links {
-            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
             #[cfg(test)]
             {
                 self.endpoint_lookups += 1;
@@ -799,7 +797,7 @@ mod tests {
 
     #[test]
     fn unthemed_binding_keeps_label_background_and_link_paint_semantics() {
-        let config = PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "sankey": {"linkColor": "var(--link)", "labelStyle": "outlined"},
             "themeVariables": {"background": "fallback", "mainBkg": "",
                 "textColor": "currentColor"}
@@ -811,7 +809,7 @@ mod tests {
         assert!(plan.outlined_labels());
         assert_eq!(plan.common_css().text_color(), "currentColor");
 
-        let ignored = PresentationConfig::from_value(json!({"sankey": {
+        let ignored = crate::test_support::presentation_config(json!({"sankey": {
             "$ref": "schema", "linkColor": "source", "labelStyle": "outlined"
         }}));
         let fallback = SankeyTypographyThemePlan::resolve(None, &ignored, 1, &meter).unwrap();
@@ -919,7 +917,7 @@ mod tests {
 
     fn palette_plan(config: serde_json::Value) -> (SankeyNodePalettePlan, ResolvedDiagramTheme) {
         let layout = layout(&["A", "B"]);
-        let config = PresentationConfig::from_value(config);
+        let config = crate::test_support::presentation_config(config);
         let theme = resolved_node_palette(&["#123456", "#abcdef"]);
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -982,7 +980,7 @@ mod tests {
             ));
             let plan = SankeyTypographyThemePlan::resolve(
                 Some(&theme),
-                &PresentationConfig::from_value(json!({})),
+                &crate::test_support::presentation_config(json!({})),
                 2,
                 &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
             )
@@ -1008,7 +1006,7 @@ mod tests {
 
         let missing_css = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1029,7 +1027,7 @@ mod tests {
 
         let duplicate_css = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1050,7 +1048,7 @@ mod tests {
 
         let reordered = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1077,7 +1075,7 @@ mod tests {
         ));
         let wrong_font = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1102,7 +1100,7 @@ mod tests {
 
         let inconsistent_surfaces = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
@@ -1135,7 +1133,7 @@ mod tests {
         ));
         let plan = SankeyTypographyThemePlan::resolve(
             Some(&theme),
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             2,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )

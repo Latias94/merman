@@ -1,9 +1,7 @@
 #![cfg(feature = "svg")]
 
-use merman::{
-    DiagramFamilyId, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
-    SvgRequest,
-};
+use merman::model::family::DiagramFamilyId;
+use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, Box<RenderError>> {
     let request = SvgRequest {

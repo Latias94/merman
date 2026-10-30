@@ -1,15 +1,16 @@
 #![cfg(feature = "diagram-flowchart")]
 #![cfg(feature = "compat-json")]
 
-use merman_core::presentation::PresentationConfig;
+use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use serde_json::json;
 
 #[test]
 fn public_parse_config_contains_only_admitted_source_overrides() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "securityLevel": "strict", "secure": ["securityLevel", "maxTextSize"]
-    })));
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "securityLevel": "strict", "secure": ["securityLevel", "maxTextSize"]
+        })));
     for source in [
         "%%{init: {\"securityLevel\":\"loose\",\"maxTextSize\":1,\"flowchart\":{\"htmlLabels\":false}}}%%\nflowchart TD\n A-->B",
         "---\nconfig:\n  securityLevel: loose\n  maxTextSize: 1\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\n A-->B",
@@ -177,7 +178,7 @@ fn legacy_init_uses_upstream_detector_keys_before_source_admission() {
                         diagram_type,
                         &source,
                         ParseOptions::strict(),
-                        &merman_core::OperationControl::new(),
+                        &merman_model::operation::OperationControl::new(),
                     )
                     .unwrap()
                     .unwrap()
@@ -213,7 +214,8 @@ fn mindmap_compatibility_projection_retains_the_final_layout_selection() {
             json!("elk"),
         ),
     ] {
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(site));
+        let engine =
+            MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(site));
         let source = format!("{prefix}mindmap\nroot\n  child");
         let parsed = engine
             .parse_diagram_sync(&source, ParseOptions::strict())

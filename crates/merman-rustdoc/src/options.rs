@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use merman::{
-    resources::ResourceProfile,
+    model::resources::ResourceProfile,
     svg::{RenderResourcePolicy, ResourceLimitId},
 };
 use proc_macro2::TokenStream;

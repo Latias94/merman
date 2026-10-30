@@ -1,7 +1,7 @@
 use merman_core::preprocess::SourceConfigEvidence;
 
 pub(crate) fn capture_source_config_evidence(source: &str) -> SourceConfigEvidence {
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     match merman_core::SemanticParser::new()
         .capture_diagram_snapshot_controlled_sync(source, &control)
         .expect("a private parse control cannot be cancelled")
@@ -14,7 +14,7 @@ pub(crate) fn capture_source_config_evidence(source: &str) -> SourceConfigEviden
     }
 }
 
-pub(crate) fn capture_source_metadata(source: &str) -> Option<merman_core::SemanticMetadata> {
+pub(crate) fn capture_source_metadata(source: &str) -> Option<merman_model::SemanticMetadata> {
     match merman_core::SemanticParser::new().capture_diagram_snapshot_sync(source) {
         merman_core::SemanticSnapshotCapture::Snapshot(snapshot)
             if !snapshot.recovered_incomplete_directive() =>

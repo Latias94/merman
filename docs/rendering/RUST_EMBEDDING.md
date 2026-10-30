@@ -40,7 +40,8 @@ merman = { path = "../merman/crates/merman", default-features = false, features 
 ```
 
 ```rust
-use merman::{OperationControl, Renderer, SemanticDiagramModel, SemanticParser};
+use merman::model::SemanticDiagramModel;
+use merman::{OperationControl, Renderer, SemanticParser};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let renderer = Renderer::new().with_semantic_parser(SemanticParser::new());
@@ -93,7 +94,7 @@ inspection or ASCII while full presentation returns the theme error.
 The former `HeadlessRenderer` and its source-to-SVG methods are replaced by `Renderer::render`. Keep reusable engine configuration on the renderer and per-output settings on `SvgRequest`:
 
 ```rust
-use merman::presentation::PresentationConfig;
+use merman::SourcePresentationConfig;
 use merman::svg::{CssOverridePostprocessor, SvgPipeline};
 use merman::{
     MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
@@ -101,7 +102,7 @@ use merman::{
 
 fn render_for_host(
     source: &str,
-    config: PresentationConfig,
+    config: SourcePresentationConfig,
     diagram_id: String,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let renderer = Renderer::new()
@@ -120,9 +121,9 @@ fn render_for_host(
 }
 ```
 
-`MermaidEngine::with_site_config` requires `merman::presentation::PresentationConfig`. Wrap an
-existing `MermaidConfig` with `PresentationConfig::from_config(config)`, or construct the full
-config with `PresentationConfig::from_value(value)`. `with_presentation_engine` installs full
+`MermaidEngine::with_site_config` requires `merman::SourcePresentationConfig`. Wrap an
+existing `MermaidConfig` with `SourcePresentationConfig::from_config(config)`, or construct the full
+config with `SourcePresentationConfig::from_value(value)`. `with_presentation_engine` installs full
 configuration, detectors and custom adapters independently of `with_semantic_parser`; it does
 not replace the parser used by semantic or ordinary ASCII requests.
 
@@ -165,7 +166,7 @@ merman = { path = "../merman/crates/merman", default-features = false, features 
 These 13 logical families cover that reference snapshot's allowlist; `graph`, State header variants, and `xychart-beta` use the selector of their owning family. The all-family recipe retains parser availability beyond that allowlist; the subset recipe deliberately rejects other languages. Neither declaration adds ELK or math. Review newly accepted languages separately if the host later expands its allowlist.
 
 Migrate the alpha.5 API as well: move `with_site_config` to `MermaidEngine` with a
-`PresentationConfig`, install it through `Renderer::with_presentation_engine`, move
+`SourcePresentationConfig`, install it through `Renderer::with_presentation_engine`, move
 `with_diagram_id` to the SVG request, remove `with_vendored_text_measurer`, and replace
 `render_svg_with_pipeline_sync` with the operation above. Keep the host's theme configuration,
 readability policy, and output checks. The independent feature consumer exercises all 13 families

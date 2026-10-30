@@ -1,6 +1,6 @@
 use crate::Result;
+use crate::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use cssparser::{Delimiter, Parser};
-use merman_core::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use std::borrow::Cow;
 use std::convert::Infallible;
 

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -107,14 +107,9 @@ impl RequirementTextPaintPlan {
             theme: theme.cloned(),
             style,
             fill,
-            node_owned: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.nodeTextColor",
-            ),
-            relation_owned: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.relationLabelColor",
-            ),
+            node_owned: config.config_paint_overrides_typed_default("themeVariables.nodeTextColor"),
+            relation_owned: config
+                .config_paint_overrides_typed_default("themeVariables.relationLabelColor"),
             ordinal_rules: theme.is_some_and(|theme| {
                 theme
                     .family_rules()

@@ -530,7 +530,8 @@ mod tests {
         FlowchartSvgModelRequest, render_flowchart_svg_model,
     };
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
 
     fn render_measured_shape(
         shape: &str,
@@ -545,9 +546,14 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
-        let render_context = parsed.flowchart_render_context().unwrap().clone();
-        let (metadata, semantic) = parsed.into_parts();
+            .unwrap()
+            .into_presentation();
+        let render_context = parsed
+            .render_context()
+            .flowchart_render_context()
+            .unwrap()
+            .clone();
+        let (metadata, semantic, _) = parsed.into_parts();
         let RenderSemanticModel::Flowchart(model) = semantic else {
             panic!("expected Flowchart");
         };

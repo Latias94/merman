@@ -8,16 +8,33 @@ publish = false
 
 [features]
 default = []
-facade = ["dep:merman"]
+source = ["dep:merman-core"]
+facade = ["source", "dep:merman"]
 renderer = ["dep:merman-render"]
 ascii = ["dep:merman-ascii"]
-editor = ["dep:merman-editor-core", "dep:merman-analysis"]
+editor = ["source", "dep:merman-editor-core", "dep:merman-analysis"]
+data-flowchart = ["merman-model/diagram-flowchart"]
+data-gantt = ["merman-model/diagram-gantt"]
+data-all = ["data-flowchart", "data-gantt", "merman-model/all-diagrams"]
+source-output-facts = [
+    "source", "renderer",
+    "merman-core/diagram-info", "merman-core/diagram-pie",
+    "merman-core/diagram-journey", "merman-core/diagram-timeline",
+    "merman-core/diagram-packet", "merman-core/diagram-radar",
+    "merman-render/diagram-info", "merman-render/diagram-pie",
+    "merman-render/diagram-journey", "merman-render/diagram-timeline",
+    "merman-render/diagram-packet", "merman-render/diagram-radar",
+]
 omitted-sequence = []
 
 [dependencies]
 merman = { path = "../../../../merman", default-features = false, optional = true }
-merman-core = { path = "../../../../merman-core", default-features = false, features = ["presentation", "compat-json", "editor-facts"] }
+merman-core = { path = "../../../../merman-core", default-features = false, optional = true, features = ["presentation", "editor-facts"] }
+merman-model = { path = "../../../../merman-model", default-features = false }
 merman-render = { path = "../../../../merman-render", default-features = false, optional = true }
 merman-ascii = { path = "../../../../merman-ascii", default-features = false, optional = true }
 merman-editor-core = { path = "../../../../merman-editor-core", default-features = false, optional = true }
 merman-analysis = { path = "../../../../merman-analysis", default-features = false, optional = true }
+
+[dev-dependencies]
+merman-model = { path = "../../../../merman-model", default-features = false, features = ["all-diagrams"] }

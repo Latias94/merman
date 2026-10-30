@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use merman_core::{OperationControl, OperationControlResult};
+use merman_model::{OperationControl, OperationControlResult};
 
 use super::{
     CssFontSizeContext, CssValueAnalysis, CssValuePolicy, ParsedStyleDeclaration,

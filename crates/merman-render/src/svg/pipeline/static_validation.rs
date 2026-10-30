@@ -1423,7 +1423,7 @@ fn static_validation_error(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn validate_static_with_limits(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
         let session = crate::environment::RenderEnvironment::deterministic()
@@ -1488,7 +1488,7 @@ mod tests {
             &mut || {
                 checkpoints = checkpoints.saturating_add(1);
                 if checkpoints == 2 {
-                    Err(Error::Cancelled(merman_core::OperationCancelled {
+                    Err(Error::Cancelled(merman_model::OperationCancelled {
                         phase: OperationPhase::Postprocess,
                         reason: CancelReason::Requested,
                     }))

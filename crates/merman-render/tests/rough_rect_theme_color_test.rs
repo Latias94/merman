@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -7,19 +6,22 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
 
 fn render_paths(source: &str, color: &str, seed: u32) -> Vec<String> {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "layout":"dagre", "theme":"default", "look":"neo", "htmlLabels":false,
-        "handDrawnSeed":seed,
-        "themeVariables": {
-            "noteBkgColor":color, "noteBorderColor":color,
-            "mainBkg":color, "nodeBorder":color, "lineColor":color,
-            "requirementBackground":color, "requirementBorderColor":color
-        }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "layout":"dagre", "theme":"default", "look":"neo", "htmlLabels":false,
+            "handDrawnSeed":seed,
+            "themeVariables": {
+                "noteBkgColor":color, "noteBorderColor":color,
+                "mainBkg":color, "nodeBorder":color, "lineColor":color,
+                "requirementBackground":color, "requirementBorderColor":color
+            }
+        })),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse diagram")
-        .expect("detect diagram");
+        .expect("detect diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare diagram")
@@ -106,3 +108,6 @@ fn rough_shape_geometry_never_slices_arbitrary_css_color_as_utf8_bytes() {
         );
     }
 }
+
+#[allow(dead_code)]
+mod common;

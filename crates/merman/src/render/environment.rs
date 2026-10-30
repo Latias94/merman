@@ -1,4 +1,4 @@
-use merman_core::{OperationControl, resources::InputResourcePolicy};
+use merman_model::{OperationControl, resources::InputResourcePolicy};
 use merman_render::{
     RenderCapabilityPolicy,
     diagram_theme::{DiagramTheme, ThemeResourcePolicy},
@@ -241,7 +241,7 @@ impl SvgEnvironment {
     pub(super) fn begin_session_in_context(
         &self,
         theme: Option<&DiagramTheme>,
-        context: merman_core::runtime::OperationContext,
+        context: merman_model::runtime::OperationContext,
         control: OperationControl,
     ) -> Result<merman_render::environment::RenderSession, RenderError> {
         match theme {

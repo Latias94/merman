@@ -121,7 +121,7 @@ fn retained_source_outlives_the_lazy_engine_and_keeps_runtime_and_theme_defaults
         "theme":{"preset":"editor-light"},
         "site_config":{"flowchart":{"htmlLabels":false}}
     }"#;
-    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+    let runtime_policy = merman::model::runtime::RuntimePolicy::deterministic()
         .with_fixed_unix_millis(1_771_113_600_000)
         .with_fixed_seed(42);
     let engine = BindingEngine::with_runtime_policy(options, runtime_policy).unwrap();

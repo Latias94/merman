@@ -2802,10 +2802,10 @@ mod inline_planning_tests {
 pub fn unsupported_html_label_style(
     label: &str,
     label_type: &str,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
     unsupported_properties: &[&str],
-    control: &merman_core::OperationControl,
-) -> Result<Option<String>, merman_core::OperationCancelled> {
+    control: &merman_model::OperationControl,
+) -> Result<Option<String>, merman_model::OperationCancelled> {
     use cssparser::{Delimiter, Parser};
     use quick_xml::{Reader, events::Event};
 
@@ -2821,7 +2821,7 @@ pub fn unsupported_html_label_style(
         usize::MAX,
         &work_meter,
         &parse_work,
-        merman_core::OperationPhase::Layout,
+        merman_model::OperationPhase::Layout,
     );
     let html =
         match merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink) {
@@ -2906,13 +2906,13 @@ pub fn unsupported_html_label_style(
 ))]
 #[test]
 fn unsupported_html_style_checks_cancellation_during_fragment_recovery() {
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     control.cancel_after_checkpoints(8);
     let label = "<span>label</span>".repeat(64);
     let error = unsupported_html_label_style(
         &label,
         "text",
-        &merman_core::presentation::PresentationConfig::default(),
+        &merman_model::presentation::PresentationConfig::default(),
         &[],
         &control,
     )

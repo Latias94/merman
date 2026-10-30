@@ -38,7 +38,7 @@ pub(crate) struct ErBaseFontSizePlan {
 impl ErBaseFontSizePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
         let configured_font_size_px =
             crate::config::config_theme_or_root_font_size_px_opt(effective_config.as_value())
@@ -58,10 +58,7 @@ impl ErBaseFontSizePlan {
             })
         });
         let config_owns = typed_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_active = typed_requested && !config_owns;
         let (font_size_px, font_size_css) = match theme {
             Some(theme) if typed_active => {
@@ -347,7 +344,7 @@ impl ErEntityThemePlan {
     )]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
         inherited_font_stack: InheritedFontStackPlan,
         base_font_size: ErBaseFontSizePlan,
         relationship_html_labels: bool,
@@ -630,7 +627,7 @@ impl ErEntityThemePlan {
             let mermaid_owns_text = match terminal_id {
                 ErTextTerminalId::DiagramTitle => mermaid_owns_paint_input(
                     effective_config,
-                    merman_core::__private::ErPaintInput::Text,
+                    merman_model::presentation::ErPaintInput::Text,
                 ),
                 ErTextTerminalId::SubgraphLabel(id) => {
                     visible_subgraph_styles
@@ -639,13 +636,11 @@ impl ErEntityThemePlan {
                         || (effective_config
                             .get_str("themeVariables.titleColor")
                             .is_some()
-                            && merman_core::__private::config_paint_overrides_typed_default(
-                                effective_config,
-                                "themeVariables.titleColor",
-                            ))
+                            && effective_config
+                                .config_paint_overrides_typed_default("themeVariables.titleColor"))
                         || mermaid_owns_paint_input(
                             effective_config,
-                            merman_core::__private::ErPaintInput::Text,
+                            merman_model::presentation::ErPaintInput::Text,
                         )
                 }
                 ErTextTerminalId::RelationLabel(_) => mermaid_owns_relation_text,
@@ -1303,8 +1298,8 @@ fn table_occurrence_count(
     }
 }
 
-fn mermaid_owns_entity_fill(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
+fn mermaid_owns_entity_fill(config: &merman_model::presentation::PresentationConfig) -> bool {
+    config.config_paint_overrides_typed_default("themeVariables.mainBkg")
         || (matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
@@ -1312,29 +1307,24 @@ fn mermaid_owns_entity_fill(config: &merman_core::presentation::PresentationConf
             && entity_palette_has_colors(config, "borderColorArray"))
 }
 
-fn mermaid_owns_entity_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_paint_overrides_typed_default(
-        config,
-        "themeVariables.nodeBorder",
-    ) || (matches!(
-        config.get_str("theme"),
-        Some("redux-color" | "redux-dark-color")
-    ) && mermaid_owns_entity_palette(config, "borderColorArray"))
+fn mermaid_owns_entity_stroke(config: &merman_model::presentation::PresentationConfig) -> bool {
+    config.config_paint_overrides_typed_default("themeVariables.nodeBorder")
+        || (matches!(
+            config.get_str("theme"),
+            Some("redux-color" | "redux-dark-color")
+        ) && mermaid_owns_entity_palette(config, "borderColorArray"))
 }
 
 fn mermaid_owns_entity_palette(
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
     key: &str,
 ) -> bool {
     entity_palette_has_colors(config, key)
-        && merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            &format!("themeVariables.{key}"),
-        )
+        && config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
 }
 
 fn entity_palette_has_colors(
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
     key: &str,
 ) -> bool {
     // Match the writer's string-array consumer without allocating a second palette. Background
@@ -1345,34 +1335,36 @@ fn entity_palette_has_colors(
 }
 
 fn mermaid_owns_paint_input(
-    config: &merman_core::presentation::PresentationConfig,
-    input: merman_core::__private::ErPaintInput,
+    config: &merman_model::presentation::PresentationConfig,
+    input: merman_model::presentation::ErPaintInput,
 ) -> bool {
-    merman_core::__private::er_paint_inputs(config).is_none_or(|inputs| inputs.is_owned(input))
+    config
+        .er_paint_inputs()
+        .is_none_or(|inputs| inputs.is_owned(input))
 }
 
-fn mermaid_owns_relation_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
-    mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Line)
+fn mermaid_owns_relation_stroke(config: &merman_model::presentation::PresentationConfig) -> bool {
+    mermaid_owns_paint_input(config, merman_model::presentation::ErPaintInput::Line)
 }
 
 fn mermaid_owns_text_fill(
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
     html_labels: bool,
 ) -> bool {
     if html_labels && config.get_str("themeVariables.nodeTextColor").is_some() {
-        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText)
+        mermaid_owns_paint_input(config, merman_model::presentation::ErPaintInput::NodeText)
     } else {
-        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Text)
+        mermaid_owns_paint_input(config, merman_model::presentation::ErPaintInput::Text)
     }
 }
 
 fn mermaid_owns_table_fill(
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
     variant: ThemeVariant,
 ) -> bool {
     let input = match variant {
-        ThemeVariant::Odd => merman_core::__private::ErPaintInput::OddRow,
-        ThemeVariant::Even => merman_core::__private::ErPaintInput::EvenRow,
+        ThemeVariant::Odd => merman_model::presentation::ErPaintInput::OddRow,
+        ThemeVariant::Even => merman_model::presentation::ErPaintInput::EvenRow,
         _ => return false,
     };
     mermaid_owns_paint_input(config, input)
@@ -1421,11 +1413,12 @@ mod tests {
         ] {
             let parsed = theme
                 .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_value(site),
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
                 ))
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let config = &parsed.metadata().effective_config;
             assert_eq!(config.get_str("theme"), Some("redux-color"));
             assert_eq!(mermaid_owns_entity_fill(config), expected_owned, "{source}");
@@ -1471,7 +1464,7 @@ mod tests {
         ] {
             let parsed = theme
                 .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_value(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
                         serde_json::json!({"themeVariables": variables}),
                     ),
                 ))
@@ -1480,7 +1473,8 @@ mod tests {
                     merman_core::ParseOptions::strict(),
                 )
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let config = &parsed.metadata().effective_config;
             assert_eq!(
                 mermaid_owns_entity_fill(config),

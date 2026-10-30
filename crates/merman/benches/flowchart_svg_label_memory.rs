@@ -2,7 +2,7 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::runtime::RuntimePolicy;
+use merman::model::runtime::RuntimePolicy;
 use merman::{
     MermaidEngine, OperationControl, ParseOptions, PresentationArtifact, RenderOutput,
     RenderRequest, Renderer,
@@ -326,7 +326,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
             let (count, unique) = projected_node_labels(semantic)?;
             (
                 semantic.diagram_type() == DIAGRAM_TYPE,
-                semantic.family_id() == Some(merman::DiagramFamilyId::FLOWCHART),
+                semantic.family_id() == Some(merman::model::family::DiagramFamilyId::FLOWCHART),
                 semantic.metadata().effective_config.get_bool("htmlLabels") == Some(false),
                 count,
                 unique,

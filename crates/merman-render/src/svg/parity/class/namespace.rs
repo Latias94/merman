@@ -20,7 +20,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub bounds_dy: f64,
     pub use_html_labels: bool,
     pub look: &'a str,
-    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
     pub emit: ClassEmitCheckpoint<'a>,

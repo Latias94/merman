@@ -1,5 +1,8 @@
 //! Canonical architecture nodes, groups, edges, and layout hints.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

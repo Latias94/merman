@@ -1,5 +1,6 @@
-use merman_core::presentation::PresentationConfig;
-use merman_core::{ManagedSemanticJson, MermaidEngine, ParseOptions};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::ManagedJson;
+use merman_model::presentation::PresentationConfig;
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -8,12 +9,17 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
 use std::collections::BTreeSet;
 
-fn render(source: &str, config: PresentationConfig) -> (ManagedSemanticJson, String) {
+fn render(source: &str, config: PresentationConfig) -> (ManagedJson, String) {
     let parsed = MermaidEngine::new()
-        .with_site_config(config)
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_config(
+                config.as_config().clone(),
+            ),
+        )
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse metadata regression fixture")
-        .expect("detect metadata regression fixture");
+        .expect("detect metadata regression fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout = artifact.layout_json().unwrap();
@@ -58,7 +64,7 @@ fn ishikawa_omits_retired_text_bbox_metadata_but_keeps_layout_and_text_geometry(
     for look in ["classic", "handDrawn"] {
         let (projection, svg) = render(
             source,
-            PresentationConfig::from_value(json!({
+            common::presentation_config(json!({
                 "look": look, "handDrawnSeed": 7
             })),
         );
@@ -147,7 +153,7 @@ fn ishikawa_omits_retired_text_bbox_metadata_but_keeps_layout_and_text_geometry(
 fn tree_view_omits_retired_edge_ids_but_keeps_line_geometry_and_paint() {
     let (projection, svg) = render(
         "treeView-beta\nRoot/\n    Child\n        Leaf\n",
-        PresentationConfig::from_value(json!({
+        common::presentation_config(json!({
             "themeVariables": {"treeView": {"lineColor": "#123456"}}
         })),
     );
@@ -195,7 +201,7 @@ fn hand_drawn_clusters_omit_retired_path_ids_but_keep_authored_paint_and_live_id
     for layout in ["dagre", "swimlane"] {
         let (_, svg) = render(
             source,
-            PresentationConfig::from_value(json!({
+            common::presentation_config(json!({
                 "layout": layout, "look": "handDrawn", "handDrawnSeed": 7
             })),
         );
@@ -226,3 +232,6 @@ fn hand_drawn_clusters_omit_retired_path_ids_but_keep_authored_paint_and_live_id
         assert!(paths.iter().all(|path| path.attribute("id").is_none()));
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -1,3 +1,6 @@
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use crate::warnings::DiagramWarningFact;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

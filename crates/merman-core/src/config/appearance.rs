@@ -2,7 +2,7 @@
 
 use super::appearance_selection::{APPEARANCE_KEYS, AppearanceOrigin, select_appearance_value};
 #[cfg(test)]
-use super::presentation::PresentationConfig;
+use super::presentation::SourcePresentationConfig;
 use crate::{MermaidConfig, MermaidThemeId, family};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -78,7 +78,7 @@ impl<'a> AppearanceDecision<'a> {
 
     pub(crate) fn apply_to_presentation(
         &self,
-        effective: &mut super::presentation::PresentationConfig,
+        effective: &mut super::presentation::SourcePresentationConfig,
     ) {
         effective.set_source_theme_palette(self.winners[0].as_ref().is_some_and(|winner| {
             matches!(winner.origin, AppearanceOrigin::Source)
@@ -124,7 +124,7 @@ pub(crate) fn resolve_appearance(
     initialize: &MermaidConfig,
     compatibility: Option<&MermaidConfig>,
     defaults: &MermaidConfig,
-    effective: &mut PresentationConfig,
+    effective: &mut SourcePresentationConfig,
 ) {
     let decision =
         AppearanceDecision::resolve(diagram_type, source, initialize, compatibility, defaults);
@@ -133,14 +133,14 @@ pub(crate) fn resolve_appearance(
 
 #[cfg(test)]
 mod tests {
-    use super::super::presentation::PresentationConfig;
+    use super::super::presentation::SourcePresentationConfig;
     use super::*;
     use serde_json::json;
 
     #[test]
     fn source_selected_palette_owns_paint_without_claiming_typography_or_geometry() {
         let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
-        let empty = PresentationConfig::empty_object();
+        let empty = SourcePresentationConfig::empty_object();
         for (source, initialize, compatibility, expected) in [
             (json!({"theme": "base"}), json!({}), json!({}), true),
             (json!({"theme": "default"}), json!({}), json!({}), true),
@@ -159,7 +159,7 @@ mod tests {
                 Some(&compatibility),
                 &defaults,
             );
-            let mut effective = PresentationConfig::from_value(json!({
+            let mut effective = SourcePresentationConfig::from_value(json!({
                 "themeVariables": {"textColor": "#333", "fontFamily": "serif", "fontSize": "16px"}
             }));
             decision.apply_to_presentation(&mut effective);
@@ -184,14 +184,14 @@ mod tests {
         }
     }
 
-    fn resolve(initialize: Value, source: Value) -> PresentationConfig {
+    fn resolve(initialize: Value, source: Value) -> SourcePresentationConfig {
         let defaults = MermaidConfig::from_value(json!({
             "theme": "default", "look": "classic", "layout": "elk",
             "flowchart": { "theme": "redux-color", "look": "neo" },
         }));
         let initialize = MermaidConfig::from_value(initialize);
         let source = MermaidConfig::from_value(source);
-        let mut effective = PresentationConfig::from_config(defaults.clone());
+        let mut effective = SourcePresentationConfig::from_config(defaults.clone());
         effective.deep_merge(initialize.as_value());
         effective.deep_merge(source.as_value());
         resolve_appearance(
@@ -212,7 +212,7 @@ mod tests {
         let defaults = MermaidConfig::from_value(json!({"theme": "default", "layout": "dagre"}));
         let decision =
             AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
-        let mut effective = PresentationConfig::from_value(json!({"theme": "dark"}));
+        let mut effective = SourcePresentationConfig::from_value(json!({"theme": "dark"}));
         decision.apply_to_presentation(&mut effective);
         assert!(effective.explicit_config_owns_path("theme"));
         assert!(effective.explicit_config_owns_path("layout"));
@@ -235,7 +235,7 @@ mod tests {
         let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
         let decision =
             AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
-        let original = PresentationConfig::from_value(json!({
+        let original = SourcePresentationConfig::from_value(json!({
             "theme": "dark", "look": "classic", "layout": "dagre",
             "flowchart": {"theme": "dark", "look": "classic", "layout": "dagre"},
         }));
@@ -381,7 +381,7 @@ mod tests {
             ),
         ] {
             let defaults = MermaidConfig::from_value(json!({"layout": "elk"}));
-            let mut effective = PresentationConfig::from_config(defaults.clone());
+            let mut effective = SourcePresentationConfig::from_config(defaults.clone());
             let initialize = MermaidConfig::from_value(initialize);
             let source = MermaidConfig::from_value(source);
             effective.deep_merge(initialize.as_value());

@@ -42,6 +42,7 @@ const ALL_OPTIONAL_COMMANDS: &[&str] = &[
 const DEFAULT_CAPABILITIES: &[&str] = &[
     "analysis",
     "ascii",
+    "fixes",
     "icons",
     "jpeg",
     "layout-cytoscape",
@@ -209,6 +210,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
         "analysis",
         #[cfg(feature = "ascii")]
         "ascii",
+        #[cfg(feature = "fixes")]
+        "fixes",
         #[cfg(feature = "icons")]
         "icons",
         #[cfg(feature = "jpeg")]
@@ -258,7 +261,10 @@ fn expected_commands(capabilities: &[&str]) -> Vec<String> {
         "parse".to_string(),
     ]);
     if capabilities.contains("analysis") {
-        commands.extend(["fix", "lint", "lint-rules"].map(str::to_string));
+        commands.extend(["lint", "lint-rules"].map(str::to_string));
+    }
+    if capabilities.contains("fixes") {
+        commands.insert("fix".to_string());
     }
     if capabilities.contains("svg") {
         commands.extend(["layout", "mmdc", "render"].map(str::to_string));
@@ -673,9 +679,25 @@ fn workflow_analysis() {
         let payload: Value = serde_json::from_slice(&lint.stdout).expect("lint JSON");
         assert!(payload["diagnostics"].is_array());
 
-        let fix = run(&["fix", "-"], b"flowchart\nA-->B\n", None);
-        assert_success(&fix, "fix stdin");
-        assert!(fix.stdout.starts_with(b"flowchart TB\n"));
+        assert!(
+            payload["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|diagnostic| diagnostic.get("fixes").is_none())
+        );
+        #[cfg(feature = "fixes")]
+        {
+            let fix = run(&["fix", "-"], b"flowchart\nA-->B\n", None);
+            assert_success(&fix, "fix stdin");
+            assert!(fix.stdout.starts_with(b"flowchart TB\n"));
+        }
+        #[cfg(not(feature = "fixes"))]
+        assert!(
+            !run(&["fix", "-"], b"flowchart\nA-->B\n", None)
+                .status
+                .success()
+        );
     }
     #[cfg(not(feature = "analysis"))]
     panic!("analysis matrix case was built without feature analysis");

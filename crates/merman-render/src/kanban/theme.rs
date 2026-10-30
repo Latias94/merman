@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
 use merman_markup::theme_color::{darken, lighten};
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -62,10 +62,7 @@ impl KanbanTypographyPlan {
             })
         });
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let configured_theme_font_size = config_owns_font_size
             .then(|| {
                 positive_font_size(crate::config::config_f64_css_px(
@@ -298,21 +295,15 @@ impl KanbanTaskTheme {
         let item_count = occurrences.len();
 
         let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::Task);
-        let source_owned_card_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.background",
-        );
-        let source_owned_card_stroke = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.nodeBorder",
-        );
+        let source_owned_card_fill =
+            effective_config.config_paint_overrides_typed_default("themeVariables.background");
+        let source_owned_card_stroke =
+            effective_config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
         // Query only the terminal path consumed by the Kanban writer. Core provenance may carry
         // derived ownership into `textColor`; upstream inputs such as `primaryTextColor` are not
         // enumerated here as a second ownership authority.
-        let source_owned_label = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.textColor",
-        );
+        let source_owned_label =
+            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let mut items = Vec::with_capacity(item_count);
         let mut typed_fill_rule_occurrences = BTreeMap::<usize, usize>::new();
         let mut typed_stroke_rule_occurrences = BTreeMap::<usize, usize>::new();
@@ -1123,7 +1114,7 @@ mod tests {
         ThemeStylePatch, ThemeTarget,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::presentation::PresentationConfig;
+    use merman_model::presentation::PresentationConfig;
 
     #[test]
     fn baseline_keeps_only_item_count_and_skips_terminal_evidence() {

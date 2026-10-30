@@ -1,5 +1,8 @@
 //! Canonical Agentflow graph, authored style facts, and pure containment views.
 
+#[cfg(feature = "compat-json")]
+pub mod compat;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};

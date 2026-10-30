@@ -1,6 +1,5 @@
 //! Node effects must reach shape terminals without changing label or source ownership.
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -67,15 +66,18 @@ fn render_with_html_labels(
     strict: bool,
     html_labels: bool,
 ) -> merman_render::Result<RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(
+    let parsed = common::install_parse_compatibility(
         theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            json!({"htmlLabels":html_labels, "look":look}),
-        )),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                json!({"htmlLabels":html_labels, "look":look}),
+            ),
+        ),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()
-    .unwrap();
+    .unwrap()
+    .into_presentation();
     let mut environment = RenderEnvironment::deterministic();
     if strict {
         environment = environment
@@ -442,10 +444,10 @@ fn diamond_miter_stroke_is_inside_the_filter_region_even_without_blur() {
 fn host_region_ceiling_is_enforced_before_node_filter_emission() {
     use merman_render::diagram_theme::{ThemeResourceLimitId, ThemeResourcePolicy};
     let theme = theme(ThemeRuleSet::default());
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
         .parse_diagram_for_render_model_sync("---\nconfig:\n  look: classic\n  theme: default\n  layout: dagre\n---\nflowchart LR\nA --> B", ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap().into_presentation();
     let ceiling = ThemeResourcePolicy::default()
         .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 1)
         .unwrap();
@@ -1697,3 +1699,6 @@ fn typed_html_background_padding_keeps_natural_paint_and_retains_a_residual() {
         );
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -1,7 +1,6 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
@@ -55,10 +54,11 @@ fn render_radar_with_theme_requirement(
     engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Radar")
-        .expect("detect themed Radar");
+        .expect("detect themed Radar")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -92,7 +92,8 @@ fn render_radar_svg_from_text(text: &str) -> String {
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse radar")
-        .expect("detect radar");
+        .expect("detect radar")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact =
         family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout radar");
@@ -111,7 +112,8 @@ fn try_render_radar_svg_with_resource_policy(
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Radar resource-bound fixture")
-        .expect("detect Radar resource-bound fixture");
+        .expect("detect Radar resource-bound fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -254,9 +256,11 @@ fn radar_default_title_fill_preserves_winners_and_configuration_owners() {
                         "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n"
                     };
                     let engine = if config_owner {
-                        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                            serde_json::json!({"themeVariables":{"titleColor":"#445566"}}),
-                        ))
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(
+                                serde_json::json!({"themeVariables":{"titleColor":"#445566"}}),
+                            ),
+                        )
                     } else {
                         MermaidEngine::new()
                     };
@@ -353,20 +357,24 @@ fn radar_typography_config_ownership_is_property_local() {
     for (source, engine, expected_font) in [
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "fontFamily": "RadarThemeOwner" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontFamily": "RadarThemeOwner" }
+                    }),
+                ),
+            ),
             "RadarThemeOwner",
         ),
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "fontFamily": "RadarRootOwner"
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "fontFamily": "RadarRootOwner"
+                    }),
+                ),
+            ),
             "RadarRootOwner",
         ),
         (
@@ -398,11 +406,13 @@ fn radar_typography_config_ownership_is_property_local() {
     for (source, engine, expected_size, typed_applies) in [
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "fontSize": "22px" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontSize": "22px" }
+                    }),
+                ),
+            ),
             "22px",
             false,
         ),
@@ -417,11 +427,13 @@ fn radar_typography_config_ownership_is_property_local() {
         ),
         (
             "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "fontSize": "31px"
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "fontSize": "31px"
+                    }),
+                ),
+            ),
             "24px",
             true,
         ),
@@ -582,22 +594,26 @@ fn radar_explicit_color_scale_slot_outranks_the_typed_series_palette() {
     let cases = [
         (
             "radar-beta\naxis A,B,C\ncurve One{1,2,3}\ncurve Two{3,2,1}\n",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "cScale0": "#fedcba" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "cScale0": "#fedcba" }
+                    }),
+                ),
+            ),
         ),
         (
             concat!(
                 "%%{init: {\"themeVariables\": {\"cScale0\": \"#fedcba\"}}}%%\n",
                 "radar-beta\naxis A,B,C\ncurve One{1,2,3}\ncurve Two{3,2,1}\n",
             ),
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "secure": []
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                ),
+            ),
         ),
     ];
 
@@ -663,11 +679,11 @@ fn radar_series_palette_fails_closed_beyond_the_twelve_slot_surface() {
         .join("\n");
     let source = format!("radar-beta\naxis A,B,C\n{curves}\n");
 
-    let parsed =
-        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-            .expect("parse oversized themed Radar")
-            .expect("detect oversized themed Radar");
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .expect("parse oversized themed Radar")
+        .expect("detect oversized themed Radar")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -689,17 +705,19 @@ fn radar_series_palette_fails_closed_beyond_the_twelve_slot_surface() {
 #[test]
 fn radar_series_palette_fails_closed_for_a_non_twelve_theme_color_limit() {
     let theme = radar_series_palette_theme(&["#123456"]);
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "THEME_COLOR_LIMIT": 2 }
-        })));
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+        })),
+    );
+    let parsed = common::install_parse_compatibility(&theme, engine)
         .parse_diagram_for_render_model_sync(
             "radar-beta\naxis A,B,C\ncurve One{1,2,3}\n",
             ParseOptions::strict(),
         )
         .expect("parse nonstandard-limit themed Radar")
-        .expect("detect nonstandard-limit themed Radar");
+        .expect("detect nonstandard-limit themed Radar")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -878,7 +896,9 @@ fn radar_axis_configuration_owns_only_its_color_channel() {
         let rendered = render_radar_with_theme_and_engine(
             "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
         );
         let css = radar_stylesheet(rendered.svg());
         assert!(
@@ -1030,7 +1050,9 @@ fn radar_text_and_title_configuration_own_their_actual_channels() {
         let rendered = render_radar_with_theme_and_engine(
             RADAR_TEXT_SOURCE,
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
         );
         let css = radar_stylesheet(rendered.svg());
         assert!(

@@ -19,7 +19,7 @@ artifact-profile-required = true
 [features]
 presentation = ["merman-markup/color", "merman-model/presentation-data"]
 editor-facts = ["granit-parser/comments"]
-compat-json = ["presentation"]
+compat-json = ["presentation", "merman-model/compat-json"]
 terminal-text = ["merman-model/terminal-text"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [

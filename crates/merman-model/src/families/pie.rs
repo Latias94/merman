@@ -30,3 +30,6 @@ pub enum PieOutputData {
     #[default]
     Model,
 }
+
+#[cfg(feature = "compat-json")]
+pub mod compat;

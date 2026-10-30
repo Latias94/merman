@@ -1,11 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::{
-    __private::{
-        ThemeCompatibilityConsumptionDisposition, ThemeCompatibilityFieldConsumption,
-        ThemeCompatibilityFieldKind, ThemeParseEvidence,
-    },
-    presentation::PresentationConfig,
+use merman_model::presentation::{
+    PresentationConfig, ThemeCompatibilityConsumptionDisposition, ThemeCompatibilityEvidence,
+    ThemeCompatibilityFieldConsumption, ThemeCompatibilityFieldKind,
 };
 
 use crate::diagram_theme::{
@@ -86,7 +83,7 @@ pub(crate) struct PacketThemeOutcome {
 impl PacketThemeOutcome {
     pub(crate) fn compatibility_consumptions(
         &self,
-        parse_evidence: &ThemeParseEvidence,
+        parse_evidence: &ThemeCompatibilityEvidence,
     ) -> Box<[ThemeCompatibilityFieldConsumption]> {
         let Some((disposition, canonical_dark_mode)) = self.compatibility else {
             return Box::new([]);
@@ -378,7 +375,7 @@ impl PacketThemeSelection {
 pub(crate) fn deferred_mermaid_compatibility_consumptions(
     theme: Option<&ResolvedDiagramTheme>,
     effective_config: &PresentationConfig,
-    parse_evidence: &ThemeParseEvidence,
+    parse_evidence: &ThemeCompatibilityEvidence,
 ) -> Box<[ThemeCompatibilityFieldConsumption]> {
     let Some(theme) = theme else {
         return Box::new([]);
@@ -411,7 +408,7 @@ fn has_complete_direct_text_surface_plan(theme: &ResolvedDiagramTheme) -> bool {
 }
 
 fn packet_text_surface_compatibility_consumptions(
-    parse_evidence: &ThemeParseEvidence,
+    parse_evidence: &ThemeCompatibilityEvidence,
     disposition: ThemeCompatibilityConsumptionDisposition,
     consume_dark_mode: bool,
 ) -> Box<[ThemeCompatibilityFieldConsumption]> {
@@ -481,10 +478,10 @@ const fn selector_intersects_default_occurrences(
 }
 
 fn packet_config_owns_font_stack(config: &PresentationConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.fontFamily")
-        || merman_core::__private::config_path_overrides_typed_default(config, "fontFamily")
+    config.config_path_overrides_typed_default("themeVariables.fontFamily")
+        || config.config_path_overrides_typed_default("fontFamily")
 }
 
 fn packet_config_path_owns(config: &PresentationConfig, path: &str) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, path)
+    config.config_path_overrides_typed_default(path)
 }

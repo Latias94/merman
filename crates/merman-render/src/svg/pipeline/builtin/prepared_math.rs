@@ -689,9 +689,9 @@ mod tests {
                 &mut || {
                     checkpoints += 1;
                     if checkpoints == stop {
-                        Err(Error::Cancelled(merman_core::OperationCancelled {
-                            phase: merman_core::OperationPhase::Postprocess,
-                            reason: merman_core::CancelReason::Requested,
+                        Err(Error::Cancelled(merman_model::OperationCancelled {
+                            phase: merman_model::OperationPhase::Postprocess,
+                            reason: merman_model::CancelReason::Requested,
                         }))
                     } else {
                         Ok(())

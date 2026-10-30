@@ -2,7 +2,7 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::runtime::RuntimePolicy;
+use merman::model::runtime::RuntimePolicy;
 use merman::{
     MermaidEngine, OperationControl, ParseOptions, PresentationArtifact, RenderOutput,
     RenderRequest, Renderer,
@@ -360,7 +360,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
         match semantic.as_ref() {
             Some(semantic) => (
                 semantic.diagram_type() == DIAGRAM_TYPE,
-                semantic.family_id() == Some(merman::DiagramFamilyId::SEQUENCE),
+                semantic.family_id() == Some(merman::model::family::DiagramFamilyId::SEQUENCE),
                 projected_message_count(semantic)? == message_count,
             ),
             None => (false, false, false),

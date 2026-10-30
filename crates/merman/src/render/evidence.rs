@@ -145,7 +145,7 @@ impl NativeFontDiagnostics {
 pub struct RenderEvidence {
     execution_path: super::OperationExecutionPath,
     session: merman_render::environment::RenderSessionReport,
-    family_id: merman_core::DiagramFamilyId,
+    family_id: merman_model::family::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
     theme_diagnostics: Box<[ThemeDiagnostic]>,
     required_capabilities: Box<[merman_render::RenderCapability]>,
@@ -286,7 +286,7 @@ impl RenderEvidence {
         self.session().measurement()
     }
 
-    pub fn operation_context(&self) -> &merman_core::runtime::OperationContext {
+    pub fn operation_context(&self) -> &merman_model::runtime::OperationContext {
         self.session().operation_context()
     }
 
@@ -294,11 +294,11 @@ impl RenderEvidence {
         self.session().unix_millis()
     }
 
-    pub const fn local_date(&self) -> merman_core::time::CivilDate {
+    pub const fn local_date(&self) -> merman_model::time::CivilDate {
         self.session().local_date()
     }
 
-    pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZoneProvenance {
+    pub fn local_time_zone(&self) -> &merman_model::time::LocalTimeZoneProvenance {
         self.session().local_time_zone()
     }
 
@@ -310,7 +310,7 @@ impl RenderEvidence {
         self.session().layout_work_units()
     }
 
-    pub const fn family_id(&self) -> merman_core::DiagramFamilyId {
+    pub const fn family_id(&self) -> merman_model::family::DiagramFamilyId {
         self.family_id
     }
 
