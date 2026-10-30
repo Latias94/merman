@@ -4302,6 +4302,110 @@ fn sequence_box_titles_share_measured_height_and_use_actor_font_when_drawn() {
 }
 
 #[test]
+fn sequence_builtin_neo_box_shadow_fits_the_root_viewport() {
+    let svg = render_sequence_svg_from_fixture("box_variants.mmd");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let (viewbox, _) = root_view_box_and_max_width(&svg);
+    let right = viewbox[0] + viewbox[2];
+    let bottom = viewbox[1] + viewbox[3];
+    let mut checked = 0;
+    for frame in document
+        .descendants()
+        .filter(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+    {
+        let number = |name| frame.attribute(name).unwrap().parse::<f64>().unwrap();
+        let x = number("x");
+        let y = number("y");
+        assert!(x - 0.5 >= viewbox[0] && y - 0.5 >= viewbox[1]);
+        assert!(x + number("width") + 4.5 <= right);
+        assert!(y + number("height") + 4.5 <= bottom);
+        checked += 1;
+    }
+    assert!(checked > 0);
+}
+
+#[test]
+fn sequence_builtin_neo_box_shadow_ignores_nonpositive_sizes() {
+    for (dimension, margin, text_margin, mirror, margin_y, expected_size) in [
+        ("width", 10, -100, true, 10, -10.0),
+        ("width", 10, -95, true, 10, 0.0),
+        ("height", -41, 5, false, 0, -2.5),
+        ("height", -40, 5, false, 0, 0.0),
+    ] {
+        let outputs = ["none", "url(#drop-shadow)"].map(|drop_shadow| {
+            let config = serde_json::json!({
+                "look": "neo",
+                "theme": "redux",
+                "sequence": {
+                    "width": 150,
+                    "height": 100,
+                    "wrap": false,
+                    "boxMargin": margin,
+                    "boxTextMargin": text_margin,
+                    "mirrorActors": mirror,
+                    "diagramMarginX": 50,
+                    "diagramMarginY": margin_y
+                },
+                "themeVariables": {"dropShadow": drop_shadow}
+            });
+            let source =
+                format!("---\nconfig: {config}\n---\nsequenceDiagram\nbox\nparticipant A\nend\n");
+            let svg = render_sequence_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.attribute("data-look") == Some("neo")),
+                "both renders must retain Neo actor geometry"
+            );
+            let frames = document
+                .descendants()
+                .filter(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+                .collect::<Vec<_>>();
+            assert_eq!(frames.len(), 1, "the box rectangle must remain in the DOM");
+            let frame = frames[0];
+            let number = |name| frame.attribute(name).unwrap().parse::<f64>().unwrap();
+            assert_eq!(
+                number(dimension),
+                expected_size,
+                "{dimension}/{drop_shadow}"
+            );
+            let other_dimension = if dimension == "width" {
+                "height"
+            } else {
+                "width"
+            };
+            assert!(number(other_dimension) > 0.0);
+
+            let diagram_id = document.root_element().attribute("id").unwrap();
+            let expected_filter = if drop_shadow == "none" {
+                "none".to_string()
+            } else {
+                format!("url(#{diagram_id}-drop-shadow)")
+            };
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("Sequence stylesheet");
+            assert!(css.contains(&format!("g rect.rect{{filter:{expected_filter};")));
+
+            let geometry = ["x", "y", "width", "height"].map(number);
+            (geometry, root_view_box_and_max_width(&svg))
+        });
+        assert_eq!(
+            outputs[0].0, outputs[1].0,
+            "filter changes must preserve box geometry"
+        );
+        // Nonpositive dimensions disable the SVG rectangle, including its filter output.
+        assert_eq!(
+            outputs[0].1, outputs[1].1,
+            "a box with {dimension}={expected_size} must not expand the root for a shadow"
+        );
+    }
+}
+
+#[test]
 fn sequence_box_frames_use_source_padding_and_global_cursor() {
     for (mirror, expected_height) in [(false, 139.0), (true, 264.0)] {
         let config = serde_json::json!({

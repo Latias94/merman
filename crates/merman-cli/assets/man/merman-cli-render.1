@@ -234,7 +234,7 @@ Load a local font file and enable native Mermaid text measurement; repeatable, e
 Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable
 .TP
 \fB\-\-font\-measurement\fR \fI<FONT_MEASUREMENT>\fR
-Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied
+Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout
 .sp
 \fIPossible values:\fR
 .RS 14
@@ -245,7 +245,7 @@ native
 .RE
 .TP
 \fB\-\-font\-system\fR \fI<FONT_SYSTEM>\fR
-Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested
+Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected
 .sp
 \fIPossible values:\fR
 .RS 14

@@ -56,7 +56,8 @@ pub(super) fn sequence_css(
     let actor_border = theme.actor_border.as_str();
     let actor_fill = theme.actor_fill.as_str();
     let stroke_width = theme.stroke_width.as_str();
-    let drop_shadow = theme.drop_shadow.as_str();
+    // The Sequence writer owns diagram-prefixed filter definitions and attribute references.
+    let drop_shadow = scoped_drop_shadow(id, theme.drop_shadow.as_str());
     let note_border = theme.note_border.as_str();
     let note_fill = theme.note_fill.as_str();
     let actor_text = theme.actor_text.as_str();
@@ -72,7 +73,7 @@ pub(super) fn sequence_css(
     let activation_fill = theme.activation_fill.as_str();
     let activation_border = theme.activation_border.as_str();
     let node_border = theme.node_border.as_str();
-    let label_box_filter = theme.label_box_filter.as_str();
+    let label_box_filter = scoped_drop_shadow(id, theme.label_box_filter.as_str());
 
     let _ = write!(
         &mut out,
@@ -279,6 +280,39 @@ mod tests {
         );
         assert!(!css.contains(".actor-man line{"));
         assert!(!css.contains(".actor-man circle,#seq line{stroke:"));
+    }
+
+    #[test]
+    fn sequence_css_scopes_builtin_drop_shadow_to_the_owned_filter() {
+        let css = sequence_css(
+            "seq",
+            &json!({
+                "look": "neo",
+                "themeVariables": {"dropShadow": "url(#drop-shadow)"}
+            }),
+        );
+
+        // Actor, note, loop label and background rectangles share the emitted definition.
+        assert_eq!(
+            css.matches("filter:url(#seq-drop-shadow)").count(),
+            4,
+            "{css}"
+        );
+        assert!(!css.contains("url(#drop-shadow)"), "{css}");
+
+        let custom = sequence_css(
+            "seq",
+            &json!({
+                "look": "neo",
+                "themeVariables": {"dropShadow": "url(#custom-shadow)"}
+            }),
+        );
+        assert_eq!(
+            custom.matches("filter:url(#custom-shadow)").count(),
+            4,
+            "{custom}"
+        );
+        assert!(!custom.contains("url(#seq-custom-shadow)"), "{custom}");
     }
 
     #[test]

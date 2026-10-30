@@ -686,6 +686,11 @@ fn prepare_font_context(
     use merman::svg::export::NativeFontOptions;
 
     let explicit = !args.sources.is_empty();
+    let native_requested = args.measurement == Some(FontMeasurementKind::Native)
+        || (!raw_svg
+            && !svg_output
+            && args.measurement.is_none()
+            && cfg!(feature = "system-fonts"));
     if args.max_measurements.is_some() {
         if raw_svg {
             return Err(CliError::InvalidInput(
@@ -693,9 +698,7 @@ fn prepare_font_context(
             ));
         }
         if args.measurement == Some(FontMeasurementKind::Deterministic)
-            || !(explicit
-                || args.measurement == Some(FontMeasurementKind::Native)
-                || args.system == Some(FontSystemKind::On))
+            || !(explicit || native_requested || args.system == Some(FontSystemKind::On))
         {
             return Err(CliError::InvalidInput(
                 "--font-max-measurements requires native text measurement; provide --font-file or --font-dir, or select --font-measurement native".to_owned(),
@@ -731,7 +734,6 @@ fn prepare_font_context(
         }
         return Ok(None);
     }
-    let native_requested = args.measurement == Some(FontMeasurementKind::Native);
     let use_system = args.system == Some(FontSystemKind::On)
         || (!raw_svg
             && !explicit
