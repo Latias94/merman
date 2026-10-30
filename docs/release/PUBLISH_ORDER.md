@@ -1,13 +1,29 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-22 (Asia/Shanghai)
+Last updated: 2026-10-30 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Published maintenance release: `0.9.2` on `release/0.9.x`, based on immutable `v0.9.1`. Rust crates, CLI/LSP, Web, Node, Python, Flutter, Android, and Apple delivery are verified below. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`; independent versions retain separate release tracks.
+Published maintenance release: `0.9.3` on `release/0.9.x`, based on immutable `v0.9.2`. The workspace Rust crates, CLI/LSP, and native C/WASI SDK archives are verified below. Other registries and platform packages retain their separately verified versions. Main's development changes and independently versioned packages remain on their own release tracks.
+
+## 0.9.3 publication
+
+Published on 2026-10-30 (Asia/Shanghai) after the maintainer explicitly authorized the workspace Rust crates, CLI/LSP, and native C/WASI SDK surfaces. Immutable `v0.9.3` resolves to `3b915f69c02d55b873d252cf6c8a6048e7f3427d`, tree `fc57c459736f1857b5bdc6dd148d9bb0ad645e9c`, the merge of [PR #254](https://github.com/Latias94/merman/pull/254). Source-matched [preflight 40999149557](https://github.com/Latias94/merman/actions/runs/40999149557), attempt 1, passed all 47 jobs, including 18 SDK archive qualifications and three native/WASI/CLI output comparisons. Its workflow revision, run head, artifact source, and release tag all identify that same commit.
+
+| Surface | Verified delivery | Owner evidence |
+| --- | --- | --- |
+| Rust workspace | All 23 crates at `0.9.3` across seven complete topological batches. Independent post-publication queries of the crates.io API and non-yanked sparse index match every prepared `.crate` checksum and the source-bound receipts. | [41005974629](https://github.com/Latias94/merman/actions/runs/41005974629), attempt 1 |
+| CLI and LSP | All five native targets, installers, checksums, and verification manifest are public: 26 assets. The downloaded bundle passes its owner verifier and source-bound attestation check; downloaded Windows CLI/LSP archives also pass execution smoke locally. | [41005974469](https://github.com/Latias94/merman/actions/runs/41005974469), all 21 jobs successful |
+| Native C and WASI SDKs | All 18 standard/math/full archives and 18 checksum sidecars are public. Downloaded archive bytes match the qualified producer; manifests, catalogs, ABI/capabilities, scoped license materials, payload hashes, and publisher attestations pass verification. | [Producer 40999149557](https://github.com/Latias94/merman/actions/runs/40999149557), [publisher 41008921699](https://github.com/Latias94/merman/actions/runs/41008921699), attempt 1 |
+
+The public [v0.9.3 Release](https://github.com/Latias94/merman/releases/tag/v0.9.3) contains 62 assets. SDK checksum files use LF after the publisher creates verified snapshots; Windows producer checksum files use CRLF, with identical filenames and archive digests. SDK archive bytes themselves are unchanged. Native SDK execution qualification covers the recorded C/C++ consumers and SVG/PNG controls; the output catalog alone does not establish equal smoke coverage for every codec.
+
+Web/npm, Node/npm, PyPI, pub.dev, Android AAR, Apple XCFramework, Pages, independent packages, and external package-manager submissions were outside this publication scope. Their non-publishing preflight checks do not establish registry availability. The earlier [candidate preflight 40990939540](https://github.com/Latias94/merman/actions/runs/40990939540) had a Flutter setup timeout and is not the publication receipt; the final source-matched preflight above passed Flutter package validation.
+
+The post-publication changelog edit improves wording only. It removes preparation history and repeated protocol details while retaining user-visible changes, migration instructions, and attribution. Published tags, packages, and archive bytes remain immutable; the archived changelogs retain their original wording.
 
 ## 0.9.2 preparation
 

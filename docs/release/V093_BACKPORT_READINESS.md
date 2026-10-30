@@ -1,6 +1,6 @@
 # 0.9.3 release readiness
 
-Reviewed on 2026-10-30 in Asia/Shanghai. This is a preparation record, not a publication receipt. Publication is on hold until the maintainer explicitly authorizes it.
+Historical preparation review, recorded on 2026-10-30 in Asia/Shanghai. The maintainer subsequently authorized publication, and v0.9.3 was published from `3b915f69c02d55b873d252cf6c8a6048e7f3427d`. See the [publication snapshot](PUBLISH_ORDER.md#093-publication) for verified crates, CLI/LSP, and native C/WASI SDK delivery. Preparation holds and pending gates below retain their original audit context.
 
 ## Decision and source boundary
 

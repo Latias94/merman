@@ -4,13 +4,13 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [0.9.3] - 2026-10-30
 
-- Sequence diagrams and GitGraph tag backgrounds resolve their diagram-scoped built-in Neo shadows. Sequence viewports include box-frame strokes and restored built-in Neo shadows to prevent clipping. [#255](https://github.com/Latias94/merman/pull/255)
+- Use loaded Iconify packs with `createNodeEngine({ iconPacks })`; icons are scoped to that engine. [#247](https://github.com/Latias94/merman/pull/247)
+- Fix clipped labels, font sizing, literal text, and HTML/entity handling, including wrapped Swimlane edge labels and valid Class-note XML. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
+- Restore Neo shadows in Sequence diagrams and GitGraph tag backgrounds, and prevent Sequence boxes from clipping at the diagram edges. [#255](https://github.com/Latias94/merman/pull/255)
+- Honor Gantt `tickInterval`, Mindmap root padding/width, and Sequence numbering, participant visibility, and note alignment. When combining init directives, replace legacy `config` with explicit namespaces or frontmatter. [#252](https://github.com/Latias94/merman/pull/252)
+- Preserve `%` in Flowchart node IDs and accept brackets in YAML frontmatter comments and block text. Separate Flowchart header directions from the diagram body with a newline or semicolon. [#241](https://github.com/Latias94/merman/pull/241), [#251](https://github.com/Latias94/merman/pull/251)
 
-- Flowchart preserves percent-containing node IDs, and YAML frontmatter no longer mistakes brackets in comments or block text for nested collections. [#241](https://github.com/Latias94/merman/pull/241), [#251](https://github.com/Latias94/merman/pull/251)
-- `createNodeEngine({ iconPacks })` accepts already-loaded Iconify JSON for icons scoped to that engine. The application owns loading and credentials. [#247](https://github.com/Latias94/merman/pull/247)
-- Correct label sizing, configured fonts, literal text, and HTML/entity handling across SVG diagrams, including wrapped Swimlane edge labels and valid Class-note XML. Review updated output snapshots. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
-- Apply Gantt `tickInterval`, Mindmap root padding and width settings, and Sequence numbering, participant visibility, and note alignment. Init directives follow Mermaid 12.1.0's filtering and merge order. [#252](https://github.com/Latias94/merman/pull/252)
-- Refresh the native and WASM dependency graphs while retaining Mermaid 12.1.0, Options JSON schema 2, Node transport 1, and text-measurement protocol 1 with its 22 operations (0..21). The host literal-height extension (operation 22) is deferred; see the [host guide](../../docs/bindings/HOST_TEXT_MEASUREMENT.md) for callback limits. Native C/WASI SDK archives have separate APIs and capabilities; this package continues to provide its own SVG recipe. See the [workspace changelog](../../CHANGELOG.md). [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247)
+Review SVG snapshots after upgrading. See the [workspace changelog](../../CHANGELOG.md) for the complete release.
 
 ## [0.9.2] - 2026-10-22
 
