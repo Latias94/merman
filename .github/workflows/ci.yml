@@ -1406,7 +1406,17 @@ jobs:
           version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
           python3 scripts/apple_package.py --output-dir target/apple-package --version "$version"
           python3 scripts/apple_qualify.py --package-archive "target/apple-package/Merman-swiftpm-v$version.zip" \
-            --work-dir target/apple-qualification --version "$version" --simulator
+            --work-dir target/apple-qualification --version "$version" --simulator --compare-original
+
+      - name: Retain Apple installed-consumer and size evidence
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: apple-installed-consumer
+          if-no-files-found: error
+          path: |
+            target/apple-qualification/qualification.json
+            target/apple-qualification/installed/*.json
+            target/apple-qualification/comparison/original.json
 
   npm-owner:
     name: npm-owner
