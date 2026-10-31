@@ -4,9 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to upload the XCFramework to, for example v0.8.0-alpha.5"
+        description: "Matching version tag; the tag need not exist for a nonpublishing candidate"
         required: true
         type: string
+      source_ref:
+        description: "Immutable commit, main, or the matching release tag"
+        default: main
+        type: string
+      publish:
+        description: "Upload qualified packages to an existing immutable tagged release"
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -31,6 +39,8 @@ jobs:
         shell: bash
         env:
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
 
@@ -44,7 +54,19 @@ jobs:
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
 
           [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
-          SOURCE_REF="refs/tags/$RELEASE_TAG"
+          if [[ "$PUBLISH" == true ]]; then
+            [[ "$DISPATCH_SOURCE_REF" == "$RELEASE_TAG" || "$DISPATCH_SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]] ||
+              fail "publishing requires source_ref to be the matching immutable tag"
+            SOURCE_REF="refs/tags/$RELEASE_TAG"
+          elif [[ "$DISPATCH_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            SOURCE_REF="$DISPATCH_SOURCE_REF"
+          elif [[ "$DISPATCH_SOURCE_REF" == main || "$DISPATCH_SOURCE_REF" == refs/heads/main ]]; then
+            SOURCE_REF=refs/heads/main
+          elif [[ "$DISPATCH_SOURCE_REF" == "$RELEASE_TAG" || "$DISPATCH_SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
+            SOURCE_REF="refs/tags/$RELEASE_TAG"
+          else
+            fail "source_ref must be an immutable commit, main, or the matching release tag"
+          fi
 
           VERSION="${RELEASE_TAG#v}"
           [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
@@ -67,14 +89,21 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          SOURCE_REF: ${{ steps.release.outputs.source_ref }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse "HEAD^{commit}")"
           source_tree="$(git rev-parse "HEAD^{tree}")"
-          tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
-          tag_tree="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tree}")"
-          test "$source_sha" = "$tag_sha"
-          test "$source_tree" = "$tag_tree"
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            test "$source_sha" = "$SOURCE_REF"
+          fi
+          if [[ "$PUBLISH" == true || "$SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
+            tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+            tag_tree="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tree}")"
+            test "$source_sha" = "$tag_sha"
+            test "$source_tree" = "$tag_tree"
+          fi
           {
             printf 'source_sha=%s\n' "$source_sha"
             printf 'source_tree=%s\n' "$source_tree"
@@ -83,8 +112,11 @@ jobs:
   build:
     needs: validate-inputs
     runs-on: macos-15
+    timeout-minutes: 180
     permissions:
       contents: read
+    env:
+      CARGO_BUILD_JOBS: "2"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -139,34 +171,28 @@ jobs:
       - name: Validate Swift package
         run: |
           swift package describe
-          swift build
-          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
-          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git ls-files --error-unmatch -- platforms/apple/Sources/Merman/Generated/Merman.swift platforms/apple/Sources/Merman/Generated/MermanFFI.h platforms/apple/Sources/Merman/Generated/MermanFFI.modulemap
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
-      - name: Package XCFramework
+      - name: Package matching SwiftPM and XCFramework distributions
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          cd platforms/apple
-          ARCHIVE="Merman.xcframework-${RELEASE_TAG}.zip"
-          STAGING="$(mktemp -d)"
-          cp -R Merman.xcframework "$STAGING/Merman.xcframework"
-          cp LICENSE THIRD_PARTY_NOTICES.md "$STAGING/"
-          cp -R THIRD_PARTY_LICENSES "$STAGING/THIRD_PARTY_LICENSES"
-          (
-            cd "$STAGING"
-            zip -qry "$OLDPWD/$ARCHIVE" Merman.xcframework LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES
-          )
-          unzip -Z1 "$ARCHIVE" | grep -Fx 'Merman.xcframework/Info.plist'
-          unzip -Z1 "$ARCHIVE" | grep -Fx 'LICENSE'
-          unzip -Z1 "$ARCHIVE" | grep -Fx 'THIRD_PARTY_NOTICES.md'
-          echo "APPLE_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
-          CHECKSUM=$(swift package compute-checksum "$ARCHIVE")
-          echo "CHECKSUM=$CHECKSUM" >> "$GITHUB_ENV"
-          echo "$CHECKSUM  $ARCHIVE" > "$ARCHIVE.checksum"
+          python3 scripts/apple_package.py --output-dir target/apple-package --version "$VERSION" \
+            --source-commit "$SOURCE_SHA" \
+            --artifact-url "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/Merman.xcframework-$RELEASE_TAG.zip"
+
+      - name: Qualify extracted package, simulator runtime and matched archive sizes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 scripts/apple_qualify.py \
+            --package-archive "target/apple-package/Merman-swiftpm-v$VERSION.zip" \
+            --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
 
       - name: Upload XCFramework artifact
         uses: actions/upload-artifact@v7.0.2
@@ -174,10 +200,22 @@ jobs:
           name: merman-apple-xcframework
           if-no-files-found: error
           path: |
-            platforms/apple/Merman.xcframework-*.zip
-            platforms/apple/Merman.xcframework-*.zip.checksum
+            target/apple-package/*.zip
+            target/apple-package/*.checksum
+            target/apple-package/*.Package.swift
+
+      - name: Retain consumer and size evidence
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-apple-qualification
+          if-no-files-found: error
+          path: |
+            target/apple-qualification/qualification.json
+            target/apple-qualification/installed/*.json
+            target/apple-qualification/comparison/original.json
 
   upload-release:
+    if: ${{ inputs.publish }}
     needs: [validate-inputs, build]
     runs-on: ubuntu-24.04
     environment: github-release
@@ -206,8 +244,8 @@ jobs:
             exit 1
           }
           shopt -s nullglob
-          assets=(platforms/apple/Merman.xcframework-*.zip platforms/apple/Merman.xcframework-*.zip.checksum)
-          test "${#assets[@]}" -eq 2
+          assets=(platforms/apple/*.zip platforms/apple/*.checksum platforms/apple/*.Package.swift)
+          test "${#assets[@]}" -eq 5
           is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
           if test "$is_draft" != false; then
             echo "::error::Publish GitHub Release $RELEASE_TAG before uploading XCFramework assets."
@@ -240,23 +278,27 @@ jobs:
           SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
         run: |
           set -euo pipefail
-          archive="Merman.xcframework-${RELEASE_TAG}.zip"
           verify_dir="$(mktemp -d)"
-          for name in "$archive" "$archive.checksum"; do
+          shopt -s nullglob
+          assets=(platforms/apple/*.zip platforms/apple/*.checksum platforms/apple/*.Package.swift)
+          test "${#assets[@]}" -eq 5
+          for asset in "${assets[@]}"; do
+            name="$(basename "$asset")"
             curl --disable --fail --location --silent --show-error \
               --output "$verify_dir/$name" \
               "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name"
+            cmp "$asset" "$verify_dir/$name"
           done
           (
             cd "$verify_dir"
-            sha256sum --check --strict "$archive.checksum"
+            sha256sum --check --strict ./*.checksum
           )
-          cmp "platforms/apple/$archive" "$verify_dir/$archive"
-          cmp "platforms/apple/$archive.checksum" "$verify_dir/$archive.checksum"
           {
             printf '## Apple delivery verified\n\n'
             printf 'Release: %s\n\nSource: %s\n\n' "$RELEASE_TAG" "$SOURCE_SHA"
-            printf -- '- [XCFramework](https://github.com/%s/releases/download/%s/%s)\n' "$GH_REPO" "$RELEASE_TAG" "$archive"
-            printf -- '- [Checksum](https://github.com/%s/releases/download/%s/%s.checksum)\n\n' "$GH_REPO" "$RELEASE_TAG" "$archive"
-            printf 'Both public downloads match the verified build artifact byte for byte.\n'
+            for asset in "${assets[@]}"; do
+              name="$(basename "$asset")"
+              printf -- '- [%s](https://github.com/%s/releases/download/%s/%s)\n' "$name" "$GH_REPO" "$RELEASE_TAG" "$name"
+            done
+            printf '\nAll public downloads match the qualified build artifacts byte for byte.\n'
           } >> "$GITHUB_STEP_SUMMARY"

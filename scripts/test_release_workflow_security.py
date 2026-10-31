@@ -83,6 +83,42 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    @unittest.skipUnless(BASH, "workflow execution requires Bash")
+    def test_apple_source_selection_separates_candidates_from_publication(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-apple.yml")
+        step = text.split("        id: release\n", 1)[1].split("\n      - ", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        commit = "a" * 40
+        cases = ((False, commit, commit), (False, "main", "refs/heads/main"),
+                 (True, "v0.9.3", "refs/tags/v0.9.3"), (True, "main", None),
+                 (True, commit, None), (False, "feature/other", None))
+        for publish, source, expected in cases:
+            with self.subTest(publish=publish, source=source), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / "output"
+                result = subprocess.run(
+                    [BASH, "-c", command], capture_output=True, text=True,
+                    env=dict(os.environ, DISPATCH_RELEASE_TAG="v0.9.3", DISPATCH_SOURCE_REF=source,
+                             PUBLISH=str(publish).lower(), GITHUB_OUTPUT=str(output)),
+                )
+                if expected:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn(f"source_ref={expected}\n", output.read_text())
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(output.exists())
+
+    def test_apple_candidate_is_nonpublishing_and_qualifies_installed_package(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-apple.yml")
+        self.assertIn("publish:", text)
+        self.assertIn("default: false", text)
+        self.assertIn("DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}", text)
+        self.assertIn("publishing requires source_ref to be the matching immutable tag", text)
+        self.assertIn("if: ${{ inputs.publish }}", workflow_job(text, "upload-release"))
+        build = workflow_job(text, "build")
+        self.assertIn("scripts/apple_package.py", build)
+        self.assertIn("scripts/apple_qualify.py", build)
+        self.assertIn("--simulator --compare-original", build)
+
     def test_apple_floor_uses_real_swift_59_and_retains_apple_consumers(self) -> None:
         workflow = read(CI_WORKFLOW)
         floor = workflow_job(workflow, "apple-swift-5-9-smoke")
@@ -101,8 +137,8 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("needs.ci-plan.outputs.platform == 'true'", apple)
         self.assertIn("runs-on: macos-15", apple)
         self.assertIn("bash scripts/build-apple-xcframework.sh", apple)
-        for target in ("arm64-apple-ios14.0", "arm64-apple-ios14.0-simulator"):
-            self.assertIn(f"swift build --triple {target} --sdk", apple)
+        self.assertIn("scripts/apple_qualify.py", apple)
+        self.assertIn("--simulator", apple)
         self.assertIn("MermanAppleSmoke", apple)
         self.assertIn("git diff --exit-code -- platforms/apple/Sources/Merman/Generated", apple)
 
@@ -1015,14 +1051,8 @@ jobs:
         for workflow in ("release-apple.yml", "release-preflight.yml"):
             job = "build" if workflow == "release-apple.yml" else "apple-xcframework"
             text = workflow_job(read(WORKFLOW_ROOT / workflow), job)
-            for triple, sdk in (
-                ("arm64-apple-ios14.0", "iphoneos"),
-                ("arm64-apple-ios14.0-simulator", "iphonesimulator"),
-            ):
-                self.assertIn(
-                    f'swift build --triple {triple} --sdk "$(xcrun --sdk {sdk} --show-sdk-path)"',
-                    text,
-                )
+            self.assertIn("scripts/apple_qualify.py", text)
+            self.assertIn("--simulator --compare-original", text)
 
     @unittest.skipUnless(BASH, "requires Bash")
     def test_apple_upload_recovers_only_matching_original_artifacts(self) -> None:
@@ -1068,7 +1098,10 @@ jobs:
         }
         """
         archive = "Merman.xcframework-v0.9.3.zip"
-        files = {archive: b"producer archive", f"{archive}.checksum": b"producer checksum"}
+        package = "Merman-swiftpm-v0.9.3.zip"
+        files = {archive: b"producer archive", f"{archive}.checksum": b"producer checksum",
+                 package: b"complete package", f"{package}.checksum": b"package checksum",
+                 "Merman-swiftpm-v0.9.3.Package.swift": b"remote manifest"}
         scenarios = (
             "empty", "zip-only", "checksum-only", "complete",
             "different-zip", "different-checksum", "partial-upload", "draft",
@@ -1123,8 +1156,10 @@ jobs:
                 expected = (
                     0 if scenario == "complete"
                     else 1 if scenario in {"zip-only", "checksum-only"}
-                    else 2
+                    else len(files)
                 )
+                if scenario == "zip-only":
+                    expected = len(files) - 1
                 uploaded = log.read_text().splitlines() if log.exists() else []
                 self.assertEqual(len(uploaded), expected)
                 self.assertEqual(len(set(uploaded)), expected)
@@ -1156,9 +1191,14 @@ jobs:
         archive = "Merman.xcframework-v0.9.3.zip"
         payload = b"verified producer archive"
         checksum = f"{hashlib.sha256(payload).hexdigest()}  {archive}\n".encode()
+        package = "Merman-swiftpm-v0.9.3.zip"
+        package_payload = b"verified complete package"
+        extra_files = {package: package_payload,
+                       f"{package}.checksum": f"{hashlib.sha256(package_payload).hexdigest()}  {package}\n".encode(),
+                       "Merman-swiftpm-v0.9.3.Package.swift": b"remote manifest"}
         for scenario in (
             "matching", "missing-archive", "corrupt-archive",
-            "changed-pair", "changed-checksum", "public-404",
+            "changed-pair", "changed-checksum", "changed-package", "changed-manifest", "public-404",
         ):
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -1168,6 +1208,9 @@ jobs:
                 public.mkdir()
                 (producer / archive).write_bytes(payload)
                 (producer / f"{archive}.checksum").write_bytes(checksum)
+                for name, data in extra_files.items():
+                    (producer / name).write_bytes(data)
+                    (public / name).write_bytes(data)
                 if scenario != "missing-archive":
                     (public / archive).write_bytes(payload)
                 (public / f"{archive}.checksum").write_bytes(checksum)
@@ -1180,6 +1223,9 @@ jobs:
                         )
                 elif scenario == "changed-checksum":
                     (public / f"{archive}.checksum").write_bytes(checksum + b"\n")
+                elif scenario in {"changed-package", "changed-manifest"}:
+                    name = package if scenario == "changed-package" else "Merman-swiftpm-v0.9.3.Package.swift"
+                    (public / name).write_bytes(b"different public payload")
                 summary = root / "summary.md"
                 result = subprocess.run(
                     [BASH, "-c", textwrap.dedent(download_stub) + command],

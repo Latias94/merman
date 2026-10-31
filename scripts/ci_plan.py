@@ -193,6 +193,10 @@ _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/verify_prerelease_compatibility.py": frozenset({"core", "hygiene"}),
 }
 _SCRIPT_PREFIX_OWNER_RULES = (
+    ("scripts/apple_", {"hygiene", "platform"}),
+    ("scripts/test_apple_", {"hygiene", "platform"}),
+    ("scripts/native_static_", {"hygiene", "platform", "security"}),
+    ("scripts/test_native_static_", {"hygiene", "platform", "security"}),
     ("scripts/sdk_", {"core", "hygiene", "platform", "security"}),
     ("scripts/test_sdk_", {"core", "hygiene", "platform", "security"}),
     ("scripts/build-python-", {"hygiene", "python"}),

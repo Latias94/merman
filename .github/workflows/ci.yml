@@ -1398,11 +1398,15 @@ jobs:
       - name: Validate Swift package
         run: |
           swift package describe
-          swift build
-          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
-          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
+
+      - name: Qualify installed SwiftPM package and simulator consumer
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
+          python3 scripts/apple_package.py --output-dir target/apple-package --version "$version"
+          python3 scripts/apple_qualify.py --package-archive "target/apple-package/Merman-swiftpm-v$version.zip" \
+            --work-dir target/apple-qualification --version "$version" --simulator
 
   npm-owner:
     name: npm-owner
