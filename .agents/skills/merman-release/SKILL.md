@@ -21,13 +21,15 @@ Before changing anything, classify the work as development, a workspace release,
 
 ## Authorization Boundary
 
-Treat the request as `prepare` unless the maintainer explicitly authorizes `ship` for a concrete version, source commit, channel, and surface set.
+Treat the request as `prepare` unless the maintainer has authorized shipping for the current version, channel, and surface set. Resolve the immutable source during preparation; the maintainer does not need to provide its commit hash or repeat authorization for the same release and necessary recovery.
 
 - `prepare` may update source files, run local checks, dispatch non-publishing preflight when requested, and inspect external state read-only.
 - `ship` may create or push a tag, dispatch a publishing or deployment workflow, modify a GitHub Release, or mutate a registry only within the named scope.
 - Pushing a `v<version>` release tag starts the tag-triggered CLI/LSP and crates.io workflows (`release.yml` and `release-crates.yml`). Flutter is a separate `flutter-v<version>` tag because pub.dev only publishes from that tag trigger. Authorization for the workspace tag never authorizes Python, Android, Apple, Web, Node, VS Code, or Flutter owner publication.
 - Python, Android, Apple, Web, VS Code, Homebrew, and GitHub Pages are separately authorized surfaces. Pages authorization must name a reviewed ref and approved 40-character commit; Web/npm or CI authorization does not cover dispatching `pages-deploy.yml` or a matching-path push to `main` or `master`.
-- Preparation, a green preflight, an existing plan, a partial prior release, or authorization from an earlier release never implies current shipping authorization.
+- Preparation, a green preflight, an existing plan, or authorization for a different release never adds publishing scope. Carry forward existing authorization for the current release and its selected surfaces.
+
+Before publication, review the complete `Release Workflows` table in `docs/release/RELEASING.md`, including channels outside the static FFI/native contract. In the existing dated Publish Order entry, record each relevant workspace-coupled channel as `selected` or `deferred`. For every deferred channel, record its current independently verified published version and evidence, or explicitly state that availability could not be verified. Honor a requested subset; preflight coverage and shared workspace versions do not expand its publication scope.
 
 ## Prerelease Lockstep Contract
 
@@ -106,6 +108,7 @@ surface, and the closest installation guides for the target release:
 - Use the exact target prerelease version in release-facing dependency examples. Label source-only Git installs and pin a reviewed 40-character commit.
 - Present normal use directly, without waiting-for-publication conditions such as “after this version is published” or “before publication, build locally”. Keep local builds in contributor/development sections.
 - Keep the root README focused on onboarding. Put detailed migrations in upgrade guides, and candidate status, pending channels, registry availability, source identities, and publication receipts in release records. Target-version usage examples do not assert registry acceptance.
+- Keep public binary download instructions for deferred channels at their verified published versions; preparing target-version examples does not justify linking to an unavailable channel archive. Summarize actual channel delivery in the public Release body.
 - Inspect the README bytes in the prepared crate, archive, or package before freezing its source. Complete the user documentation in this step rather than planning a post-publication README fix.
 
 Use a broad README version search before preflight and again after every publication or recovery:
@@ -214,7 +217,7 @@ Apple source compatibility is a compiler-floor contract. The Swift 5.9/Xcode 15.
 
 ## Ship
 
-Do not continue here without explicit `ship` authorization for the current release.
+Continue here within the current shipping authorization, carrying it forward for the same release, selected surfaces, and necessary recovery without asking again.
 
 Use only the `Tag And Push` commands in `docs/release/RELEASING.md`. They must verify that `HEAD` is the preflighted `SOURCE_SHA`, create the tag at that explicit commit, and push that tag without moving it.
 
@@ -225,10 +228,13 @@ from this skill.
 
 Skipped jobs must be explained by channel rules. A manual surface is not authorized merely because the tag-triggered bundle succeeded.
 
-After the primary GitHub Release exists, publish the full SDK matrix with the manual SDK publisher,
-using the successful source-matched qualification run. Do not treat preflight or Actions artifacts
-as public downloads. Follow the publisher's exact source/tag checks, verify all attached assets, and
-update the release body with download choices only after publication succeeds.
+Dispatch every selected manual owner; tag-triggered owners keep their documented trigger. For Apple, use the exact tag-based `--ref "$RELEASE_TAG"` dispatch in Tag And Push. Only workflow-only recovery may use the workflow definition from `main`; its artifact source remains the immutable release tag. A successful preflight, an existing upstream build artifact, or an asset name alone does not prove delivery of the selected source and bytes.
+
+If the SDK surface is selected, publish its full matrix after the primary GitHub Release exists,
+using the manual SDK publisher and successful source-matched qualification run. Do not treat
+preflight or Actions artifacts as public downloads. Follow the publisher's exact source/tag checks,
+verify all attached assets, and update the release body with download choices only after
+publication succeeds.
 
 ### GitHub Pages Deployment
 
@@ -272,10 +278,10 @@ all refer to the approved commit before reporting Pages complete.
 
 ## Verify
 
-Use direct GitHub, registry, and artifact evidence documented in `docs/release/RELEASING.md`. Confirm that:
+Use direct GitHub, registry, and artifact evidence documented in `docs/release/RELEASING.md`. Independently query each selected owner's registry or actual public GitHub Release assets. For selected surfaces, confirm that:
 
 - the GitHub Release state and assets match the channel and configured target matrix;
-- all 18 SDK archives and their 18 SHA-256 sidecars match the verified producer run before the SDK is marked available; the release body links only to assets confirmed present on that release;
+- for a selected SDK release, all 18 archives and their 18 SHA-256 sidecars match the verified producer run before the SDK is marked available; the release body links only to assets confirmed present on that release;
 - crates.io, npm, PyPI, and pub.dev show only the surfaces that were actually published;
 - every crates.io batch result receipt is `complete`, with no `pending_recovery` or `mismatch`
   state and no dependent batch started before its predecessors matched;
@@ -283,6 +289,10 @@ Use direct GitHub, registry, and artifact evidence documented in `docs/release/R
 - `main` remains green after any release-workflow repair.
 
 Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
+
+Apple owner success includes reading back the public ZIP and checksum sidecar as a pair, verifying the ZIP's SHA-256 against the sidecar, and using `cmp` to compare both files with the original upload candidates before reporting success; independently confirm those assets on the selected Release before marking Apple complete. Every selected channel requires a successful publishing owner and matching public delivery evidence before the selected scope is complete.
+
+The public Release body must list the channels actually delivered and the deferred channels still on their verified older versions. Keep selected channels awaiting delivery explicitly pending; retain detailed evidence in Publish Order without treating deferred channels as unfinished scope.
 
 ### Crates.io Receipt Inspection
 
@@ -315,7 +325,7 @@ and release record instead.
 Classify the failure before changing anything:
 
 - Source or manifest failure before publication: fix source, rerun preflight, and use a new tag only if nothing external accepted the broken version.
-- Workflow-only failure after tagging: fix the workflow on `main`, then rerun the authorized workflow against `refs/tags/<tag>` so provenance remains anchored to the release.
+- Workflow-only failure after tagging: fix the workflow on `main`, then rerun the authorized workflow against `refs/tags/<tag>` so provenance remains anchored to the release. Apple upload failures use the same-run recovery below.
 - Partial crates.io publication: retain the receipt artifact and rerun from the exact same immutable
   source. A rerun must download the prior attempt receipts; a new workflow run supplies the prior
   run id through `recovery_run_id`. Deterministic re-packaging must match the prior source, tree,
@@ -327,12 +337,13 @@ Classify the failure before changing anything:
   rerun the same workflow; do not issue a second manual publish attempt while acceptance is unknown.
 - A crates.io `mismatch` result is an incident requiring an explicit maintainer decision. Never
   auto-yank, silently resume, or publish dependent batches.
+- Apple GitHub Release assets: rerun the failed upload job in the same workflow run, consuming its original build artifact without rebuilding. Before uploading, download every existing same-named asset and compare it with that artifact using `cmp`; any difference fails before upload, and only missing items may be uploaded. Never use `--clobber` or mix archives repackaged by a new run with the original run's assets. The tag-scoped concurrency group spans workflow branches and uses `cancel-in-progress: false` to serialize active publishers without cancelling an in-progress run; it does not establish byte identity between separate builds.
 - Partial publication on other registries: rerun only idempotent or unfinished surfaces; never
   republish a version a registry accepted. For Web npm groups, use `recovery_run_id` to consume
   the original verified artifact instead of rebuilding it in a new run.
 - Any accepted external publication makes the release tag immutable unless the maintainer explicitly accepts the provenance risk of changing it.
 
-Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading an asset, changing a tag, or mutating a registry requires fresh `ship` authorization.
+Diagnosis and local fixes are `prepare` work. Continue publisher recovery and necessary uploads within the existing shipping authorization for the same release and selected surfaces without asking again. A new version, new surface, tag move, conflicting registry bytes, or incident yank needs the corresponding explicit maintainer decision.
 
 ## Known Traps
 
