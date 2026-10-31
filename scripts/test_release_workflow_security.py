@@ -83,6 +83,29 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_apple_floor_uses_real_swift_59_and_retains_apple_consumers(self) -> None:
+        workflow = read(CI_WORKFLOW)
+        floor = workflow_job(workflow, "apple-swift-5-9-smoke")
+        self.assertIn("needs.ci-plan.outputs.platform == 'true'", floor)
+        self.assertIn("runs-on: ubuntu-22.04", floor)
+        self.assertRegex(floor, r"image: swift:5\.9\.2-jammy@sha256:[0-9a-f]{64}")
+        self.assertIn("^Swift version 5\\.9\\.2", floor)
+        self.assertIn("swiftc -typecheck -swift-version 5 -module-name Merman", floor)
+        self.assertIn('cp "$merman_generated/MermanFFI.h" "$merman_headers/"', floor)
+        for source in ("Merman.swift", "MermanResourceContract.swift"):
+            self.assertIn(f'"$merman_generated/{source}"', floor)
+        self.assertNotIn("build-apple-xcframework.sh", floor)
+        self.assertNotIn("macos-14", workflow)
+
+        apple = workflow_job(workflow, "apple-uniffi-smoke")
+        self.assertIn("needs.ci-plan.outputs.platform == 'true'", apple)
+        self.assertIn("runs-on: macos-15", apple)
+        self.assertIn("bash scripts/build-apple-xcframework.sh", apple)
+        for target in ("arm64-apple-ios14.0", "arm64-apple-ios14.0-simulator"):
+            self.assertIn(f"swift build --triple {target} --sdk", apple)
+        self.assertIn("MermanAppleSmoke", apple)
+        self.assertIn("git diff --exit-code -- platforms/apple/Sources/Merman/Generated", apple)
+
     def test_sdk_native_qualification_uses_native_errors_and_relocatable_libraries(self) -> None:
         package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
         self.assertIn("python scripts/sdk_qualify.py", package)
