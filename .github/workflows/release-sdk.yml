@@ -138,7 +138,8 @@ jobs:
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           toolchain: 1.95.0
-          components: ${{ matrix.platform.kind == 'native' && !contains(matrix.platform.target, 'windows') && 'llvm-tools-preview' || '' }}
+          # Install rust-toolchain.toml components up front, before Cargo activates the override.
+          components: ${{ matrix.platform.kind == 'native' && !contains(matrix.platform.target, 'windows') && 'rustfmt, clippy, llvm-tools-preview' || 'rustfmt, clippy' }}
           targets: ${{ matrix.platform.target }}
       - name: Install the existing license report tool
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
@@ -194,6 +195,7 @@ jobs:
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           toolchain: 1.95.0
+          components: rustfmt, clippy
       - name: Build the descriptor-owned CLI release recipe once
         run: python scripts/artifact_profile_recipe.py cli-release --build-host --locked
       - name: Stage the comparison CLI with the normal CLI license material

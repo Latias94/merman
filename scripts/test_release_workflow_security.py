@@ -143,7 +143,13 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("git diff --exit-code -- platforms/apple/Sources/Merman/Generated", apple)
 
     def test_sdk_native_qualification_uses_native_errors_and_relocatable_libraries(self) -> None:
-        package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
+        workflow = read(WORKFLOW_ROOT / "release-sdk.yml")
+        package = workflow_job(workflow, "package")
+        required_components = tomllib.loads(read(ROOT / "rust-toolchain.toml"))["toolchain"]["components"]
+        for job in (package, workflow_job(workflow, "cli-reference")):
+            components = next(line for line in job.splitlines() if line.strip().startswith("components:"))
+            for component in required_components:
+                self.assertIn(component, components)
         self.assertIn("python scripts/sdk_qualify.py", package)
         self.assertNotIn("shell: python", package)
         qualifier = read(ROOT / "scripts/sdk_qualify.py")
