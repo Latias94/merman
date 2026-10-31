@@ -102,6 +102,18 @@ jobs:
             printf 'source_date_epoch=%s\n' "$source_date_epoch"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Explain preflight delivery boundary
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          {
+            printf '## Preflight only: no packages published\n\n'
+            printf 'This run validates %s. Successful builds and Actions artifacts do not make its platform packages available.\n\n' "$RELEASE_TAG"
+            printf 'Publish each selected channel through its owner, verify public delivery, and record deferred channels at their existing published versions.\n\n'
+            printf '[Publishing owners and channel checklist](https://github.com/%s/blob/%s/docs/release/RELEASING.md#release-workflows)\n' "$GITHUB_REPOSITORY" "$WORKFLOW_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   versions-and-packages:
     needs: validate-inputs
     name: versions-and-packages
