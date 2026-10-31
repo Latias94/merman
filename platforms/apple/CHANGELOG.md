@@ -16,7 +16,9 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.9.3] - 2026-10-30
 
-These changes are available in the `v0.9.3` source. The published XCFramework release asset remains at `0.9.2`.
+The matching XCFramework archive and checksum are available on the
+[v0.9.3 Release](https://github.com/Latias94/merman/releases/tag/v0.9.3). Use the `v0.9.3`
+checkout for the generated Swift facade and `Package.swift`.
 
 - Fix clipped labels, font sizing, literal text, and HTML/entity handling, including wrapped Swimlane edge labels and valid Class-note XML. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - Restore Neo shadows in Sequence diagrams and GitGraph tag backgrounds, and prevent Sequence boxes from clipping at the diagram edges. [#255](https://github.com/Latias94/merman/pull/255)

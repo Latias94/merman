@@ -1,6 +1,6 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.9.3` is the latest published workspace release and retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Its Rust crates, CLI/LSP, and native C/WASI SDKs are available; Web, Node, Python, Flutter, Android, and Apple retain their separately published `0.9.2` packages. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
+Use this index to choose an upgrade path by the version you have installed. Merman `0.9.3` is the latest published workspace release and retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Its Rust crates, CLI/LSP, native C/WASI SDKs, and Apple XCFramework are available; Web, Node, Python, Flutter, and Android retain their separately published `0.9.2` packages. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
 Development now targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
 for the selected graph and behavior changes. Published release histories retain their original baselines.
