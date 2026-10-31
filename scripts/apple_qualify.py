@@ -35,19 +35,22 @@ def compare_sizes(original: int, staged: int) -> dict:
             "reduction_fraction": 1 - staged / original}
 
 
-def validate_consumer(path: Path, *, capabilities, outputs, version: str) -> dict:
+def validate_consumer(path: Path, *, capabilities, outputs, diagram_families, version: str) -> dict:
     from platforms.wasi.common import validate_svg
 
     result = json.loads(path.read_text())
     catalog = result["catalog"]
     if (catalog["package_version"] != version
             or catalog["capabilities"]["capability_ids"] != list(capabilities)
-            or catalog["capabilities"]["output_ids"] != list(outputs)):
+            or catalog["capabilities"]["output_ids"] != list(outputs)
+            or catalog.get("registry", {}).get("diagram_families") != list(diagram_families)):
         raise ValueError("installed Apple capability catalog does not match the descriptor")
     for name in ("basic", "math"):
         output = result[name]
         validate_svg(output["svg"].encode(), output["metadata"],
                      mathematical=True if name == "math" else None)
+        if name == "basic" and not all(label in output["svg"] for label in ("Hello", "World")):
+            raise ValueError("installed ordinary SVG is missing its fixture labels")
     if result["rejected_capability_ids"] != ["jpeg", "math", "pdf", "png"]:
         raise ValueError("installed Apple policy/codec controls did not complete")
     return result
@@ -59,7 +62,7 @@ def compile_consumer(package: Path, source: Path, work: Path, *, triple=None, sd
     (project / "Package.swift").write_text(
         '// swift-tools-version: 5.9\nimport PackageDescription\n'
         'let package = Package(name: "InstalledConsumer", platforms: [.macOS(.v12), .iOS(.v14)], '
-        f'dependencies: [.package(name: "Merman", path: {json.dumps(str(package))})], '
+        f'dependencies: [.package(name: "Merman", path: {json.dumps(str(package), ensure_ascii=False)})], '
         'targets: [.executableTarget(name: "InstalledConsumer", '
         'dependencies: [.product(name: "Merman", package: "Merman")], path: "Sources")])\n'
     )
@@ -83,9 +86,10 @@ def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
     binary = compile_consumer(package, source, work_dir / "macos")
     output = work_dir / "macos.json"
     with output.open("w") as stream:
-        run([binary], cwd=work_dir, stdout=stream)
+        run([binary], cwd=work_dir, stdout=stream, timeout=120)
     result = validate_consumer(output, capabilities=profile.capabilities,
-                               outputs=profile.outputs, version=version)
+                               outputs=profile.outputs, diagram_families=profile.diagram_families,
+                               version=version)
     report = {"macos_binary_bytes": binary.stat().st_size,
               "macos_math_sha256": hashlib.sha256(result["math"]["svg"].encode()).hexdigest()}
     device_sdk = run(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], cwd=work_dir,
@@ -99,7 +103,7 @@ def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
                                   triple=f"{arch}-apple-ios14.0-simulator", sdk=sim_sdk)
     if simulator:
         devices = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "--json"],
-                                  cwd=work_dir, capture_output=True, text=True).stdout)
+                                  cwd=work_dir, capture_output=True, text=True, timeout=60).stdout)
         available = [d for runtime, entries in devices["devices"].items() if ".iOS-" in runtime
                      for d in entries if d.get("isAvailable")]
         if not available:
@@ -109,17 +113,18 @@ def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
         started = selected["state"] != "Booted"
         try:
             if started:
-                run(["xcrun", "simctl", "boot", udid], cwd=work_dir)
-                run(["xcrun", "simctl", "bootstatus", udid, "-b"], cwd=work_dir)
+                run(["xcrun", "simctl", "boot", udid], cwd=work_dir, timeout=60)
+                run(["xcrun", "simctl", "bootstatus", udid, "-b"], cwd=work_dir, timeout=300)
             sim_output = work_dir / "simulator.json"
             with sim_output.open("w") as stream:
-                run(["xcrun", "simctl", "spawn", udid, sim_binary], cwd=work_dir, stdout=stream)
+                run(["xcrun", "simctl", "spawn", udid, sim_binary], cwd=work_dir, stdout=stream, timeout=120)
             validate_consumer(sim_output, capabilities=profile.capabilities,
-                              outputs=profile.outputs, version=version)
+                              outputs=profile.outputs, diagram_families=profile.diagram_families,
+                              version=version)
             report["simulator_runtime"] = "passed"
         finally:
             if started:
-                run(["xcrun", "simctl", "shutdown", udid], cwd=work_dir)
+                run(["xcrun", "simctl", "shutdown", udid], cwd=work_dir, timeout=30)
     else:
         report["simulator_runtime"] = "not-requested"
     return report, result
@@ -166,9 +171,10 @@ def compare_original(*, repo_root: Path, package_dir: Path, work_dir: Path,
     original_binary = compile_consumer(original_package, source, work_dir / "original-consumer")
     output = work_dir / "original.json"
     with output.open("w") as stream:
-        run([original_binary], cwd=work_dir, stdout=stream)
+        run([original_binary], cwd=work_dir, stdout=stream, timeout=120)
     original_result = validate_consumer(output, capabilities=profile.capabilities,
-                                       outputs=profile.outputs, version=version)
+                                       outputs=profile.outputs, diagram_families=profile.diagram_families,
+                                       version=version)
     if original_result != staged_result:
         raise ValueError("staged and original static-library consumer outputs differ")
     report["original_linked_macos_bytes"] = original_binary.stat().st_size

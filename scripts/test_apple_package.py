@@ -293,6 +293,12 @@ class ApplePackageTests(unittest.TestCase):
                     self.package()
                 self.entries[0][field] = original
 
+    def test_existing_file_outside_framework_cannot_be_declared_as_a_library(self):
+        self.entries[0]["LibraryPath"] = "../../Sources/Merman/Generated/MermanFFI.h"
+        self.save_plist()
+        with self.assertRaisesRegex(ArchiveVerificationError, "path|traversal"):
+            self.package()
+
     def test_invalid_plist_is_rejected_as_an_artifact_error(self):
         for content in ("not a plist", "<?xml version='1.0'?><plist><dict>"):
             with self.subTest(content=content):
