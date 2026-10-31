@@ -6,7 +6,9 @@
 
 use super::{MindmapEdgeModel, MindmapNodeModel};
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
+use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
+use merman_model::OperationPhase;
 
 const SIBLING_GAP: f64 = 20.0;
 const CONNECTION_PADDING: f64 = 40.0;
@@ -721,7 +723,9 @@ pub(super) fn layout(
     model_nodes: &[MindmapNodeModel],
     model_edges: &[MindmapEdgeModel],
     edge_indices: &[(usize, usize)],
+    work_meter: &OperationWorkMeter,
 ) -> Result<Vec<LayoutEdge>> {
+    work_meter.checkpoint(OperationPhase::Layout)?;
     if layout_nodes.is_empty() {
         return Err(Error::InvalidModel {
             message: "tidy-tree layout requires at least one node".to_string(),
@@ -731,9 +735,20 @@ pub(super) fn layout(
     let mut child_indices = vec![Vec::new(); layout_nodes.len()];
     let mut has_parent = vec![false; layout_nodes.len()];
     for (source, target) in edge_indices.iter().copied() {
+        work_meter.checkpoint(OperationPhase::Layout)?;
+        // Indices resolve internal IDs, not authored names or labels. Reject shared descendants
+        // before the builder copies a subtree per incoming path. Adapter work is already prepaid.
+        if std::mem::replace(&mut has_parent[target], true) {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "tidy-tree node {} has more than one parent edge",
+                    layout_nodes[target].id
+                ),
+            });
+        }
         child_indices[source].push(target);
-        has_parent[target] = true;
     }
+    work_meter.checkpoint(OperationPhase::Layout)?;
     let root = has_parent
         .iter()
         .position(|has_parent| !has_parent)
@@ -904,6 +919,64 @@ mod tests {
                 label_height: None,
             })
             .collect()
+    }
+
+    #[test]
+    fn mindmap_model_admission_observes_cancellation_before_parent_rejection() {
+        use merman_model::{CancelReason, OperationControl};
+
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        );
+        let edges = [(0, 1), (0, 2), (1, 3), (2, 3)];
+        // Let entry and the first three edges pass; cancel at the conflicting incoming edge.
+        control.cancel_after_checkpoints(edges.len());
+        let error = layout(&mut layout_nodes(4), &[], &[], &edges, &meter)
+            .expect_err("parent admission must observe the existing operation control");
+        let Error::Cancelled(cancelled) = error else {
+            panic!("cancellation must take precedence over the invalid parent relationship");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(cancelled.reason, CancelReason::Requested);
+        assert_eq!(
+            meter.used(),
+            0,
+            "validation must not charge prepaid work twice"
+        );
+    }
+
+    #[test]
+    fn mindmap_model_admission_replays_resource_terminal_before_later_cancellation() {
+        use crate::resources::{OperationWorkError, RenderResourcePolicy, ResourceLimitId};
+        use merman_model::OperationControl;
+
+        let control = OperationControl::new();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("positive work limit");
+        let meter = OperationWorkMeter::new_with_control(policy, control.clone());
+        let OperationWorkError::ResourceLimitExceeded(first) = meter
+            .charge(2)
+            .expect_err("latch the existing layout resource terminal")
+        else {
+            panic!("expected a layout work limit");
+        };
+        control.cancel();
+        let error = layout(
+            &mut layout_nodes(4),
+            &[],
+            &[],
+            &[(0, 1), (0, 2), (1, 3), (2, 3)],
+            &meter,
+        )
+        .expect_err("the first terminal must win before model admission");
+        let Error::ResourceLimitExceeded(replayed) = error else {
+            panic!("resource rejection must survive later cancellation and invalid model data");
+        };
+        assert_eq!(replayed, first);
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]

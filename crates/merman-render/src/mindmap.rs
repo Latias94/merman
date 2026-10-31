@@ -687,6 +687,7 @@ fn layout_mindmap_diagram_model(
             &model.nodes,
             &model.edges,
             &edge_indices,
+            work_meter.as_ref(),
         )?)
     } else {
         #[cfg(feature = "layout-cytoscape")]
@@ -797,6 +798,121 @@ fn layout_mindmap_diagram_model(
 
 #[cfg(all(test, feature = "diagram-mindmap"))]
 mod tests {
+    fn independent_tidy_tree_presentation(
+        edges: &[(usize, usize)],
+    ) -> merman_model::presentation::PresentationDiagram {
+        use merman_model::presentation::{
+            AuthoredPresentationMetadata, PresentationContext, PresentationDiagram,
+            RenderSemanticModel,
+        };
+        use merman_model::resources::InputResourcePolicy;
+        use merman_model::{MermaidConfig, OperationControl};
+        use serde_json::json;
+
+        let nodes = [0, 1, 1, 2]
+            .into_iter()
+            .enumerate()
+            .map(|(index, level)| {
+                json!({
+                    "id": index.to_string(),
+                    "domId": format!("node_{index}"),
+                    "label": "Repeated",
+                    "shape": "rect",
+                    "cssClasses": if index == 0 {
+                        "mindmap-node section-root section--1"
+                    } else {
+                        "mindmap-node section-0"
+                    },
+                    "nodeId": "repeated-authored-name",
+                    "level": level
+                })
+            })
+            .collect::<Vec<_>>();
+        let edges = edges
+            .iter()
+            .enumerate()
+            .map(|(index, (start, end))| {
+                json!({
+                    "id": format!("edge_{index}"),
+                    "start": start.to_string(),
+                    "end": end.to_string()
+                })
+            })
+            .collect::<Vec<_>>();
+        let model = serde_json::from_value(json!({ "nodes": nodes, "edges": edges }))
+            .expect("independent Mindmap full data");
+        let config = MermaidConfig::from_value(json!({
+            "layout": "tidy-tree",
+            "htmlLabels": false
+        }));
+        PresentationDiagram::try_new(
+            AuthoredPresentationMetadata {
+                diagram_type: "mindmap".to_string(),
+                config: config.clone(),
+                effective_config: config,
+                title: None,
+                theme_recipe: None,
+            },
+            RenderSemanticModel::Mindmap(model),
+            PresentationContext::Mindmap {
+                diagram_id: "independent-mindmap".to_string(),
+            },
+            &InputResourcePolicy::default(),
+            &OperationControl::new(),
+        )
+        .expect("presentation construction should not cancel")
+        .expect("construction leaves layout-specific graph admission to the renderer")
+    }
+
+    #[test]
+    fn mindmap_model_admission_rejects_multiple_incoming_edges() {
+        for (edges, target) in [
+            ([(0, 1), (0, 2), (1, 3), (2, 3)].as_slice(), "3"),
+            ([(0, 1), (0, 1)].as_slice(), "1"),
+        ] {
+            let parsed = independent_tidy_tree_presentation(edges);
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("begin independent render session");
+            let result = crate::family::prepare(&parsed, &crate::LayoutOptions::default(), session);
+            let Err(crate::Error::InvalidModel { message }) = result else {
+                panic!("tidy-tree must reject multiple incoming edges before subtree expansion");
+            };
+            assert_eq!(
+                message,
+                format!("tidy-tree node {target} has more than one parent edge")
+            );
+        }
+    }
+
+    #[test]
+    fn mindmap_model_admission_accepts_tree_with_repeated_authored_names_and_labels() {
+        let parsed = independent_tidy_tree_presentation(&[(0, 1), (0, 2), (1, 3)]);
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin independent render session");
+        let artifact = crate::family::prepare(&parsed, &crate::LayoutOptions::default(), session)
+            .expect("distinct internal IDs form a valid tree despite repeated authored data");
+        let rendered = artifact
+            .render_svg(
+                &crate::svg::SvgRenderOptions {
+                    diagram_id: Some("independent-mindmap".to_string()),
+                    ..Default::default()
+                },
+                &crate::svg::SvgDebugOptions::default(),
+            )
+            .expect("render independent Mindmap without a compatibility JSON projection");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Mindmap SVG");
+        let labels = document
+            .descendants()
+            .filter(|node| node.is_text() && node.text() == Some("Repeated"))
+            .count();
+        assert_eq!(
+            labels, 4,
+            "every distinct node must retain its authored label"
+        );
+    }
+
     #[test]
     fn mindmap_prepared_html_owns_the_sanitized_structure_and_releases_retained_bytes() {
         let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
