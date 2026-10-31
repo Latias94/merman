@@ -461,16 +461,31 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     let mut section_inputs = Vec::new();
     let mut node_index = 0;
     while node_index < model.nodes.len() {
-        if !model.nodes[node_index].is_group {
+        let section = &model.nodes[node_index];
+        if !section.is_group {
             node_index += 1;
             continue;
         }
         let item_start = node_index + 1;
         let mut item_end = item_start;
         while item_end < model.nodes.len() && !model.nodes[item_end].is_group {
+            let item = &model.nodes[item_end];
+            // Full Kanban data is an occurrence sequence: each section is followed by its
+            // cards, including repeated section IDs. Do not silently reparent malformed data
+            // or regroup it by ID and duplicate already-expanded source occurrences.
+            if let Some(parent) = item.parent_id.as_deref()
+                && parent != section.id
+            {
+                return Err(crate::Error::InvalidModel {
+                    message: format!(
+                        "Kanban card {} must follow its declared section {}",
+                        item.id, section.id
+                    ),
+                });
+            }
             item_end += 1;
         }
-        section_inputs.push((&model.nodes[node_index], item_start..item_end));
+        section_inputs.push((section, item_start..item_end));
         node_index = item_end;
     }
     let item_capacity = section_inputs
@@ -1289,8 +1304,8 @@ mod tests {
         let model = KanbanDiagramRenderModel {
             nodes: vec![
                 section("todo", "Todo"),
-                section("doing", "Doing"),
                 item("task-1", "Task", "todo"),
+                section("doing", "Doing"),
             ],
         };
         let measurer = DeterministicTextMeasurer {

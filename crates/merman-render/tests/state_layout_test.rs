@@ -1,4 +1,12 @@
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::families::state::{
+    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
+};
+use merman_model::presentation::{
+    AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
+};
+use merman_model::resources::InputResourcePolicy;
+use merman_model::{MermaidConfig, OperationControl, OperationPhase};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -92,6 +100,226 @@ fn layout_state_from_text_with_options_and_policy(
         family::prepare(&parsed, &LayoutOptions::default(), session).expect("typed State layout");
     let projection = artifact.layout_json().expect("State layout projection");
     serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).expect("State layout")
+}
+
+fn state_presentation_from_nodes(nodes: serde_json::Value) -> PresentationDiagram {
+    let config = MermaidConfig::from_value(serde_json::json!({"layout": "dagre"}));
+    let nodes: Vec<StateDiagramRenderNode> = serde_json::from_value(nodes).unwrap();
+    PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "stateDiagram".to_string(),
+            config: config.clone(),
+            effective_config: config,
+            title: None,
+            theme_recipe: None,
+        },
+        RenderSemanticModel::State(StateDiagramRenderModel {
+            direction: "TB".to_string(),
+            nodes,
+            ..Default::default()
+        }),
+        PresentationContext::None,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("construct State presentation")
+    .expect("admit State presentation data")
+}
+
+#[test]
+fn state_direct_model_rejects_parent_cycles_after_layout_id_mapping() {
+    for nodes in [
+        serde_json::json!([
+            {"id": "A", "domId": "shared", "isGroup": true, "shape": "rect"},
+            {"id": "B", "domId": "shared", "parentId": "A", "shape": "rect"}
+        ]),
+        serde_json::json!([
+            {"id": "A", "domId": "x", "parentId": "B", "shape": "rect"},
+            {"id": "B", "domId": "y", "isGroup": true, "shape": "rect"},
+            {"id": "C", "domId": "y", "parentId": "A", "shape": "rect"}
+        ]),
+    ] {
+        let presentation = state_presentation_from_nodes(nodes);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let error = family::prepare(&presentation, &LayoutOptions::default(), session)
+            .err()
+            .expect("acyclic semantic IDs must not hide a cyclic layout forest");
+        let merman_render::Error::InvalidModel { message } = error else {
+            panic!("expected InvalidModel, got {error:?}");
+        };
+        assert!(message.contains("state layout parent cycle"), "{message}");
+    }
+}
+
+#[test]
+fn state_direct_model_rejects_generated_helper_parent_collision() {
+    let presentation = state_presentation_from_nodes(serde_json::json!([
+        {"id": "P", "domId": "A---A---1", "isGroup": true, "shape": "rect"},
+        {"id": "A", "domId": "state-A", "parentId": "P", "shape": "rect"}
+    ]));
+    let (metadata, mut model, context) = presentation.into_parts();
+    let RenderSemanticModel::State(state) = &mut model else {
+        panic!("expected State model");
+    };
+    state.edges.push(StateDiagramRenderEdge {
+        id: "loop".to_string(),
+        start: "A".to_string(),
+        end: "A".to_string(),
+        ..Default::default()
+    });
+    let presentation = PresentationDiagram::try_from_frozen(
+        metadata,
+        model,
+        context,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .unwrap()
+    .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let error = family::prepare(&presentation, &LayoutOptions::default(), session)
+        .err()
+        .expect("generated helper IDs must also belong to an acyclic layout forest");
+    let merman_render::Error::InvalidModel { message } = error else {
+        panic!("expected InvalidModel, got {error:?}");
+    };
+    assert!(message.contains("state layout parent cycle"), "{message}");
+}
+
+#[test]
+fn state_direct_model_preserves_note_group_merges_and_authored_labels() {
+    let presentation = state_presentation_from_nodes(serde_json::json!([
+        {"id": "Outer", "domId": "outer", "isGroup": true, "shape": "rect"},
+        {"id": "A----parent", "domId": "first-group", "isGroup": true,
+         "shape": "noteGroup", "parentId": "Outer"},
+        {"id": "A----parent-2", "domId": "last-group", "isGroup": true,
+         "shape": "noteGroup", "parentId": "Outer"},
+        {"id": "A", "domId": "state-A", "shape": "rect", "parentId": "A----parent",
+         "label": "Repeated label"},
+        {"id": "note-1", "domId": "note-1", "shape": "note", "parentId": "A----parent",
+         "label": "Repeated label"},
+        {"id": "note-2", "domId": "note-2", "shape": "note", "parentId": "A----parent-2",
+         "label": "Repeated label"}
+    ]));
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(&presentation, &LayoutOptions::default(), session)
+        .expect("intentional note-group aliases must remain valid");
+    let projection = artifact.layout_json().unwrap();
+    let layout: StateDiagramLayout =
+        serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).unwrap();
+    let group = layout
+        .clusters
+        .iter()
+        .find(|group| group.id == "A----parent-2")
+        .expect("last note group is the physical cluster");
+    assert!(
+        !layout
+            .clusters
+            .iter()
+            .any(|group| group.id == "A----parent")
+    );
+    for id in ["A", "note-1", "note-2"] {
+        let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
+        assert!(rect_contains(
+            rect_from_cluster(group),
+            rect_from_node(node),
+            1e-6
+        ));
+    }
+    let RenderSemanticModel::State(model) = presentation.model() else {
+        panic!("expected State model");
+    };
+    for node in model.nodes.iter().filter(|node| !node.is_group) {
+        assert_eq!(node.label.as_ref().unwrap(), "Repeated label");
+    }
+}
+
+#[test]
+fn state_direct_model_parent_admission_preserves_operation_terminals() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+        TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use std::sync::Arc;
+
+    struct CancellingHost;
+    impl HostTextMeasurer for CancellingHost {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(None)
+        }
+
+        fn measure_with_control(
+            &self,
+            _request: HostTextMeasurementRequest<'_>,
+            control: &OperationControl,
+        ) -> HostMeasurementResult {
+            control.cancel();
+            Ok(None)
+        }
+    }
+
+    let presentation = state_presentation_from_nodes(serde_json::json!([
+        {"id": "A", "domId": "shared", "isGroup": true, "shape": "rect"},
+        {"id": "B", "domId": "shared", "parentId": "A", "shape": "rect"}
+    ]));
+    let control = OperationControl::new();
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.state-parent-cancellation").unwrap(),
+        "v1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(CancellingHost),
+            TextMeasurementPhase::ALL,
+        ))
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    assert!(
+        matches!(
+            family::prepare(&presentation, &LayoutOptions::default(), session),
+            Err(merman_render::Error::Cancelled(_)),
+        ),
+        "cancellation during node label measurement must precede the cycle error"
+    );
+
+    for cancel_first in [true, false] {
+        let control = OperationControl::new();
+        let policy = RenderResourcePolicy::interactive()
+            .with_limit(merman_render::ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        if cancel_first {
+            control.cancel();
+        }
+        let error = family::prepare(&presentation, &LayoutOptions::default(), session)
+            .err()
+            .expect("operation terminal must precede State structural rejection");
+        if cancel_first {
+            assert!(matches!(error, merman_render::Error::Cancelled(_)));
+        } else {
+            let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+                panic!("expected adapter resource rejection, got {error:?}");
+            };
+            assert_eq!(limit.limit, "max_layout_work_units");
+            assert!(limit.actual > limit.max);
+        }
+        let terminal = control
+            .terminal_checkpoint_at(OperationPhase::Layout)
+            .unwrap_err();
+        control.cancel();
+        assert_eq!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Layout)
+                .unwrap_err(),
+            terminal,
+            "later cancellation must preserve the first operation terminal",
+        );
+    }
 }
 
 #[test]

@@ -119,6 +119,11 @@ fn compute_sum(nodes: &mut [HierNode], idx: usize, work_meter: &OperationWorkMet
                     .iter()
                     .filter_map(|&child_idx| nodes.get(child_idx).map(|child| child.value))
                     .sum::<f64>();
+            if !sum.is_finite() {
+                return Err(Error::InvalidModel {
+                    message: "Treemap aggregate value must be finite".to_string(),
+                });
+            }
             if let Some(node) = nodes.get_mut(node_idx) {
                 node.value = sum;
             }
@@ -581,6 +586,11 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
     } else {
         500.0
     };
+    if !width.is_finite() || !height.is_finite() {
+        return Err(Error::InvalidModel {
+            message: "Treemap dimensions must be finite".to_string(),
+        });
+    }
 
     let mut nodes: Vec<HierNode> = Vec::new();
     push_node(&mut nodes, model, work_meter)?;
@@ -613,6 +623,15 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
 
     work_meter.charge(preorder.len())?;
     for &idx in &preorder {
+        let node = &nodes[idx];
+        if ![node.x0, node.y0, node.x1, node.y1]
+            .iter()
+            .all(|coordinate| coordinate.is_finite())
+        {
+            return Err(Error::InvalidModel {
+                message: "Treemap derived geometry must be finite".to_string(),
+            });
+        }
         treemap_round_node(&mut nodes, idx);
     }
 

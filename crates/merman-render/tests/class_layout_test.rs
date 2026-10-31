@@ -27,6 +27,222 @@ fn class_model(parsed: &PresentationDiagram) -> &merman_model::families::class::
     model
 }
 
+fn independent_class_presentation(
+    namespaces: serde_json::Value,
+    classes: serde_json::Value,
+) -> PresentationDiagram {
+    use merman_model::families::class::{ClassDiagram, ClassDiagramModel};
+    use merman_model::presentation::{AuthoredPresentationMetadata, PresentationContext};
+    use merman_model::resources::InputResourcePolicy;
+    use merman_model::{MermaidConfig, OperationControl};
+    use serde_json::json;
+
+    let model: ClassDiagramModel = serde_json::from_value(json!({
+        "type": "classDiagram",
+        "direction": "TB",
+        "classes": classes,
+        "namespaces": namespaces,
+        "constants": {
+            "lineType": {"line": 0, "dottedLine": 1},
+            "relationType": {
+                "none": -1, "aggregation": 0, "extension": 1,
+                "composition": 2, "dependency": 3, "lollipop": 4
+            }
+        }
+    }))
+    .expect("independently authored Class data");
+    let config = MermaidConfig::from_value(json!({
+        "layout": "dagre",
+        "htmlLabels": false,
+        "class": {"hierarchicalNamespaces": true}
+    }));
+    let model = ClassDiagram::new(model, &config);
+    PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "classDiagram".to_string(),
+            config: config.clone(),
+            effective_config: config,
+            title: None,
+            theme_recipe: None,
+        },
+        RenderSemanticModel::Class(model),
+        PresentationContext::None,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("presentation construction should not cancel")
+    .expect("layout owns normalized parent admission")
+}
+
+#[test]
+fn class_direct_input_rejects_normalized_namespace_parent_cycles() {
+    use serde_json::json;
+
+    for namespaces in [
+        json!({"A": {"id": "A", "parent": " A "}}),
+        json!({
+            "A": {"id": "A", "parent": " B "},
+            "B": {"id": "B", "parent": "\tA\n"}
+        }),
+        json!({
+            "A": {"id": "B", "parent": " A "},
+            "B": {"id": "A"}
+        }),
+    ] {
+        let parsed = independent_class_presentation(namespaces, json!({}));
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .err()
+            .expect("normalized namespace cycles must be rejected before graph materialization");
+        let merman_render::Error::InvalidModel { message } = error else {
+            panic!("expected invalid Class hierarchy, got {error:?}");
+        };
+        assert!(message.contains("namespace parent cycle"));
+    }
+}
+
+#[test]
+fn class_direct_input_rejects_class_payload_alias_parent_cycles() {
+    use serde_json::json;
+
+    for (namespaces, parent) in [
+        (json!({"A": {"id": "A"}}), " A "),
+        (
+            json!({
+                "A": {"id": "A"},
+                "B": {"id": "B", "parent": " A "}
+            }),
+            " B ",
+        ),
+    ] {
+        let parsed = independent_class_presentation(
+            namespaces,
+            json!({"Alias": {
+                "id": "A", "label": "Repeated", "text": "Repeated", "parent": parent
+            }}),
+        );
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .err()
+            .expect("class payload aliases must not create a namespace cycle");
+        let merman_render::Error::InvalidModel { message } = error else {
+            panic!("expected invalid Class hierarchy, got {error:?}");
+        };
+        assert!(message.contains("namespace parent cycle"));
+        assert_eq!(class_model(&parsed).model().classes["Alias"].id, "A");
+        assert_eq!(
+            class_model(&parsed).model().classes["Alias"]
+                .parent
+                .as_deref(),
+            Some(parent)
+        );
+    }
+}
+
+#[test]
+fn class_direct_input_preserves_whitespace_parents_and_repeated_labels() {
+    use serde_json::json;
+
+    for root_parent in [" \t ", " Missing "] {
+        let parsed = independent_class_presentation(
+            json!({
+                "A": {"id": "A", "label": "Repeated", "parent": root_parent},
+                "B": {"id": "B", "label": "Repeated", "parent": " A "}
+            }),
+            json!({
+                "Leaf": {"id": "Leaf", "label": "Repeated", "text": "Repeated", "parent": " B "},
+                "Other": {"id": "Other", "label": "Repeated", "text": "Repeated", "parent": " A "}
+            }),
+        );
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .expect("whitespace parents resolve without changing authored identities or labels");
+        let projection = artifact.layout_json().expect("Class layout projection");
+        let layout: ClassDiagramLayout =
+            serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone())
+                .expect("Class layout");
+        let outer = layout
+            .clusters
+            .iter()
+            .find(|cluster| cluster.id == "A")
+            .unwrap();
+        let inner = layout
+            .clusters
+            .iter()
+            .find(|cluster| cluster.id == "B")
+            .unwrap();
+        let leaf = layout.nodes.iter().find(|node| node.id == "Leaf").unwrap();
+        let other = layout.nodes.iter().find(|node| node.id == "Other").unwrap();
+        assert!(rect_contains(
+            rect_from_cluster(outer),
+            rect_from_cluster(inner),
+            0.01
+        ));
+        assert!(rect_contains(
+            rect_from_cluster(inner),
+            rect_from_node(leaf),
+            0.01
+        ));
+        assert!(rect_contains(
+            rect_from_cluster(outer),
+            rect_from_node(other),
+            0.01
+        ));
+        assert_eq!(outer.title, "Repeated");
+        assert_eq!(inner.title, "Repeated");
+        let model = class_model(&parsed).model();
+        assert_eq!(model.namespaces["A"].parent.as_deref(), Some(root_parent));
+        assert_eq!(model.namespaces["B"].parent.as_deref(), Some(" A "));
+        assert_eq!(model.classes["Leaf"].parent.as_deref(), Some(" B "));
+        assert_eq!(model.classes["Leaf"].label, model.classes["Other"].label);
+    }
+}
+
+#[test]
+fn class_direct_input_parent_validation_preserves_operation_error_priority() {
+    use merman_model::OperationControl;
+    use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
+    use serde_json::json;
+
+    let parsed = independent_class_presentation(
+        json!({"A": {"id": "A", "parent": " A "}}),
+        json!({"Leaf": {"id": "Leaf", "label": "Leaf", "text": "Leaf"}}),
+    );
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    control.cancel();
+    assert!(matches!(
+        family::prepare(&parsed, &LayoutOptions::default(), session),
+        Err(merman_render::Error::Cancelled(_))
+    ));
+
+    let control = OperationControl::new();
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxModelItems, 1)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let error = family::plan_render(&parsed, &session)
+        .err()
+        .expect("raw resource admission must precede hierarchy validation");
+    let merman_render::Error::ResourceLimitExceeded(first) = error else {
+        panic!("expected model resource limit, got {error:?}");
+    };
+    assert_eq!(first.limit, ResourceLimitId::MaxModelItems.as_str());
+    control.cancel();
+    let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .err()
+        .expect("the resource terminal must survive later cancellation");
+    let merman_render::Error::ResourceLimitExceeded(replayed) = error else {
+        panic!("expected the first resource terminal, got {error:?}");
+    };
+    assert_eq!(replayed, first);
+}
+
 fn layout_class_with_dagre(text: &str, environment: &RenderEnvironment) -> ClassDiagramLayout {
     let parsed = parse_class(text);
     let session = environment.begin_session().unwrap();

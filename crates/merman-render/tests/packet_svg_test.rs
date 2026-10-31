@@ -13,6 +13,161 @@ use merman_render::model::PacketDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{DiagramFamilyId, LayoutOptions};
 
+fn independent_packet_presentation(
+    packet: Vec<Vec<merman_model::families::packet::PacketBlock>>,
+    config: serde_json::Value,
+) -> merman_model::presentation::PresentationDiagram {
+    use merman_model::families::packet::PacketDiagramModel;
+    use merman_model::presentation::{
+        AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
+    };
+    use merman_model::resources::InputResourcePolicy;
+    use merman_model::{MermaidConfig, OperationControl};
+
+    let config = MermaidConfig::from_value(config);
+    PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "packet".to_string(),
+            config: config.clone(),
+            effective_config: config,
+            title: None,
+            theme_recipe: None,
+        },
+        RenderSemanticModel::Packet(PacketDiagramModel {
+            packet,
+            ..Default::default()
+        }),
+        PresentationContext::None,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("independent Packet construction is active")
+    .expect("small Packet model passes construction resource admission")
+}
+
+#[test]
+fn packet_direct_input_rejects_impossible_block_ranges() {
+    use merman_model::families::packet::PacketBlock;
+
+    for (start, end) in [
+        (-1, 0),
+        (1, 0),
+        (0, i64::MAX),
+        (i64::MIN, i64::MAX),
+        (31, 32),
+    ] {
+        for order in ["ascending", "descending"] {
+            let parsed = independent_packet_presentation(
+                vec![vec![PacketBlock {
+                    start,
+                    end,
+                    bits: 1,
+                    label: "Field".to_string(),
+                }]],
+                serde_json::json!({"packet": {"bitOrder": order}}),
+            );
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+                .err()
+                .expect("impossible Packet ranges must return an error instead of overflowing");
+            assert!(matches!(error, merman_render::Error::InvalidModel { .. }));
+        }
+    }
+}
+
+#[test]
+fn packet_direct_input_preserves_split_rows_and_single_bit_fields() {
+    use merman_model::families::packet::PacketBlock;
+
+    for order in ["ascending", "descending"] {
+        let block = |start, end| PacketBlock {
+            start,
+            end,
+            bits: end - start + 1,
+            label: format!("{start}-{end}"),
+        };
+        let parsed = independent_packet_presentation(
+            vec![vec![block(0, 7)], vec![block(8, 11), block(12, 12)]],
+            serde_json::json!({"packet": {"bitsPerRow": 8, "bitOrder": order}}),
+        );
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .expect("source-shaped split rows remain valid in both bit orders");
+        let projection = artifact.layout_json().unwrap();
+        let layout: PacketDiagramLayout =
+            serde_json::from_value(projection["layout"]["PacketDiagram"].clone()).unwrap();
+        assert_eq!(layout.words.len(), 2);
+        let blocks: Vec<_> = layout.words.iter().flat_map(|word| &word.blocks).collect();
+        assert_eq!(
+            blocks
+                .iter()
+                .map(|block| (block.start, block.end))
+                .collect::<Vec<_>>(),
+            [(0, 7), (8, 11), (12, 12)]
+        );
+        assert_eq!(
+            blocks.iter().map(|block| block.width).collect::<Vec<_>>(),
+            [251.0, 123.0, 27.0]
+        );
+        assert_eq!(
+            blocks.iter().map(|block| block.x).collect::<Vec<_>>(),
+            if order == "ascending" {
+                [1.0, 1.0, 129.0]
+            } else {
+                [1.0, 129.0, 97.0]
+            }
+        );
+    }
+}
+
+#[test]
+fn packet_direct_input_validation_preserves_operation_error_priority() {
+    use merman_model::OperationControl;
+    use merman_model::families::packet::PacketBlock;
+    use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    let parsed = independent_packet_presentation(
+        vec![vec![PacketBlock {
+            start: 0,
+            end: i64::MAX,
+            bits: 1,
+            label: "Field".to_string(),
+        }]],
+        serde_json::json!({}),
+    );
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    control.cancel();
+    assert!(matches!(
+        family::prepare(&parsed, &LayoutOptions::default(), session),
+        Err(merman_render::Error::Cancelled(_))
+    ));
+
+    let control = OperationControl::new();
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxModelItems, 1)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let error = family::plan_render(&parsed, &session).err().unwrap();
+    let merman_render::Error::ResourceLimitExceeded(first) = error else {
+        panic!("expected model resource admission before Packet validation, got {error:?}");
+    };
+    assert_eq!(first.limit, ResourceLimitId::MaxModelItems.as_str());
+    control.cancel();
+    let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .err()
+        .unwrap();
+    assert!(matches!(
+        error,
+        merman_render::Error::ResourceLimitExceeded(replayed) if replayed == first
+    ));
+}
+
 fn packet_font_theme(font_family: &str) -> DiagramTheme {
     packet_font_stack_theme(
         FontStack::single(font_family).expect("valid Packet fixture font family"),

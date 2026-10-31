@@ -1154,6 +1154,33 @@ fn layout_er_diagram_dagre_typed(
     prepared_labels: Arc<ErPreparedLabels>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
+    let membership_count = model.subgraphs.iter().try_fold(0usize, |count, subgraph| {
+        work_control.checked_add(count, subgraph.nodes.len())
+    })?;
+    let helper_count = work_control.checked_mul(
+        model
+            .relationships
+            .iter()
+            .filter(|r| r.entity_a == r.entity_b)
+            .count(),
+        2,
+    )?;
+    let parent_count = work_control.checked_add(membership_count, helper_count)?;
+    if parent_count != 0 {
+        let slots = work_control.checked_add(
+            work_control.checked_add(model.entities.len(), model.subgraphs.len())?,
+            helper_count,
+        )?;
+        // Only Dagre builds this parent plan. Admit its scratch, checked forest batch and
+        // numeric-key updates conservatively before allocating any of that derived graph.
+        let height = usize::BITS as usize - slots.saturating_sub(1).leading_zeros() as usize + 1;
+        let parent_work = work_control.checked_mul(
+            work_control.checked_add(slots, parent_count)?,
+            work_control.checked_mul(height, 12)?,
+        )?;
+        work_control.charge_adapter(parent_work)?;
+    }
+
     let ErLayoutSettings {
         graph: graph_label,
         label_style,
@@ -1253,8 +1280,11 @@ fn layout_er_diagram_dagre_typed(
         );
     }
 
-    // Apply compound membership after every node has been inserted so nested groups and group
-    // endpoints are available to Dagre's parent index.
+    // Retain the last membership assignment in its original mutation order. Graphlib's checked
+    // batch requires each child once; replaying only its last assignment preserves reparenting and
+    // ordinary child-key order without a potentially quadratic ancestor scan per declaration.
+    let mut parent_assignments = Vec::new();
+    let mut last_parent_assignment = HashMap::new();
     for subgraph in &model.subgraphs {
         for member in &subgraph.nodes {
             let child_id = if subgraph_ids.contains(member.as_str()) {
@@ -1264,8 +1294,11 @@ fn layout_er_diagram_dagre_typed(
             } else {
                 continue;
             };
-            if child_id != subgraph.id && g.has_node(&child_id) && g.has_node(&subgraph.id) {
-                g.set_parent_ref(&child_id, &subgraph.id);
+            if child_id != subgraph.id
+                && let (Some(child), Some(parent)) = (g.node_ix(&child_id), g.node_ix(&subgraph.id))
+            {
+                last_parent_assignment.insert(child, parent_assignments.len());
+                parent_assignments.push((child, parent));
             }
         }
     }
@@ -1291,7 +1324,10 @@ fn layout_er_diagram_dagre_typed(
             let node_id = r.entity_a.as_str();
             let special_1 = format!("{node_id}---{node_id}---1");
             let special_2 = format!("{node_id}---{node_id}---2");
-            let parent_id = g.parent(node_id).map(str::to_owned);
+            let parent = g
+                .node_ix(node_id)
+                .and_then(|child| last_parent_assignment.get(&child))
+                .map(|&index| parent_assignments[index].1);
 
             if g.node(&special_1).is_none() {
                 g.set_node(
@@ -1313,11 +1349,13 @@ fn layout_er_diagram_dagre_typed(
                     },
                 );
             }
-            if let Some(parent_id) = parent_id.as_deref()
-                && g.has_node(parent_id)
-            {
-                g.set_parent_ref(&special_1, parent_id);
-                g.set_parent_ref(&special_2, parent_id);
+            if let Some(parent) = parent {
+                for helper in [&special_1, &special_2] {
+                    if let Some(child) = g.node_ix(helper) {
+                        last_parent_assignment.insert(child, parent_assignments.len());
+                        parent_assignments.push((child, parent));
+                    }
+                }
             }
 
             let (label_w, label_h) = if r.role_a.trim().is_empty() {
@@ -1403,6 +1441,30 @@ fn layout_er_diagram_dagre_typed(
                 ..Default::default()
             }),
         );
+    }
+
+    // The adapter reservation precedes this scratch and all helper expansion. Check the sticky
+    // operation terminal again after label measurement, before reporting an invalid forest.
+    work_control.checked_add(0, 0)?;
+    let mut ordinal = 0;
+    parent_assignments.retain(|(child, _)| {
+        let keep = last_parent_assignment.get(child) == Some(&ordinal);
+        ordinal += 1;
+        keep
+    });
+    if let Err(error) = g.try_set_unparented_parents_ix(&parent_assignments) {
+        let message = match error {
+            dugong::graphlib::GraphError::ParentCycle {
+                child_ix,
+                parent_ix,
+            } => format!(
+                "ER parent cycle setting {} as parent of {}",
+                g.node_id_by_ix(parent_ix).unwrap_or("<removed>"),
+                g.node_id_by_ix(child_ix).unwrap_or("<removed>"),
+            ),
+            error => format!("invalid ER parent assignments: {error}"),
+        };
+        return Err(Error::InvalidModel { message });
     }
 
     dugong::layout_controlled(&mut g, work_control)

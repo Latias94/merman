@@ -1338,7 +1338,7 @@ fn state_layout_adapter_work(
     work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
     // This node tranche already reserves the linear parent-index and traversal work below.
-    // Keep cycle validation inside this reservation so the public W/W-1 boundary stays stable.
+    // Keep semantic cycle validation inside this reservation so its W/W-1 boundary stays stable.
     let node_work = work_control.checked_mul(model.nodes.len(), 12)?;
     let edge_work = work_control.checked_mul(model.edges.len(), 8)?;
     let state_work = work_control.checked_mul(model.states.len(), 4)?;
@@ -1595,6 +1595,7 @@ fn build_state_diagram_dagre_input(
     style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
     label_sidecar: Option<&super::StateLabelSidecarBuilder>,
+    mut work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<StateDagreInput> {
     // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
     // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
@@ -1649,6 +1650,40 @@ fn build_state_diagram_dagre_input(
     let wrap_mode = settings.wrap_mode;
     let wrapping_width = settings.wrapping_width;
 
+    if let Some(work_control) = work_control.as_deref_mut() {
+        let helper_count = work_control.checked_mul(
+            model
+                .edges
+                .iter()
+                .filter(|edge| edge.start == edge.end)
+                .count(),
+            2,
+        )?;
+        let parent_count = work_control.checked_add(
+            model
+                .nodes
+                .iter()
+                .filter(|node| node.parent_id.is_some())
+                .count(),
+            helper_count,
+        )?;
+        if parent_count != 0 {
+            let slots = work_control.checked_add(
+                work_control.checked_mul(model.nodes.len(), 2)?,
+                work_control.checked_mul(model.edges.len(), 4)?,
+            )?;
+            // Dagre alone assembles this actual-ID forest. Include forward placeholders and
+            // helpers in a conservative scratch/batch bound before the parent plan is allocated.
+            let height =
+                usize::BITS as usize - slots.saturating_sub(1).leading_zeros() as usize + 1;
+            let parent_work = work_control.checked_mul(
+                work_control.checked_add(slots, parent_count)?,
+                work_control.checked_mul(height, 12)?,
+            )?;
+            work_control.charge_adapter(parent_work)?;
+        }
+    }
+
     let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
         multigraph: true,
@@ -1661,6 +1696,10 @@ fn build_state_diagram_dagre_input(
     // Mermaid's renderer interleaves `setNode` and `setParent` for each node. Graphlib inserts a
     // parent that has not been seen yet when `setParent` runs, so preserving this operation order
     // is observable in Dagre's insertion-order tie breaking.
+    // Ensure referenced parents at that same point, but defer ownership until the actual layout
+    // IDs (including intentional note-group merges) and helper nodes form one checked forest.
+    let mut parent_assignments = Vec::new();
+    let mut last_parent_assignment = HashMap::new();
     for n in &model.nodes {
         if hidden_prefixes.is_hidden(n.id.as_str()) {
             continue;
@@ -1695,7 +1734,13 @@ fn build_state_diagram_dagre_input(
                 .get(parent)
                 .cloned()
                 .unwrap_or_else(|| parent.clone());
-            graph.set_parent(dagre_id, parent_id);
+            graph.ensure_node_ref(&parent_id);
+            if let (Some(child), Some(parent)) =
+                (graph.node_ix(&dagre_id), graph.node_ix(&parent_id))
+            {
+                last_parent_assignment.insert(child, parent_assignments.len());
+                parent_assignments.push((child, parent));
+            }
         }
     }
 
@@ -1784,9 +1829,17 @@ fn build_state_diagram_dagre_input(
                 ..Default::default()
             },
         );
-        if let Some(parent) = graph.parent(&node_dagre_id).map(|s| s.to_string()) {
-            graph.set_parent(special1.clone(), parent.clone());
-            graph.set_parent(special2.clone(), parent);
+        let parent = graph
+            .node_ix(&node_dagre_id)
+            .and_then(|child| last_parent_assignment.get(&child))
+            .map(|&index| parent_assignments[index].1);
+        if let Some(parent) = parent {
+            for helper in [&special1, &special2] {
+                if let Some(child) = graph.node_ix(helper) {
+                    last_parent_assignment.insert(child, parent_assignments.len());
+                    parent_assignments.push((child, parent));
+                }
+            }
         }
 
         let mut edge1 = base.clone();
@@ -1824,6 +1877,34 @@ fn build_state_diagram_dagre_input(
         );
         graph.set_edge_named(special1, special2.clone(), Some(name_mid), Some(edge_mid));
         graph.set_edge_named(special2, node_dagre_id, Some(name2), Some(edge2));
+    }
+
+    if let Some(work_control) = work_control {
+        // A label callback may have terminated the operation since the prepaid adapter tranche.
+        // Preserve that terminal before attempting the batch or reporting malformed model data.
+        work_control.checked_add(0, 0)?;
+    }
+    // Repeated semantic rows and note groups may share a layout ID. Retain its last parent
+    // assignment in mutation order, preserving Graphlib's child ordering and overwrite semantics.
+    let mut ordinal = 0;
+    parent_assignments.retain(|(child, _)| {
+        let keep = last_parent_assignment.get(child) == Some(&ordinal);
+        ordinal += 1;
+        keep
+    });
+    if let Err(error) = graph.try_set_unparented_parents_ix(&parent_assignments) {
+        let message = match error {
+            dugong::graphlib::GraphError::ParentCycle {
+                child_ix,
+                parent_ix,
+            } => format!(
+                "state layout parent cycle setting {} as parent of {}",
+                graph.node_id_by_ix(parent_ix).unwrap_or("<removed>"),
+                graph.node_id_by_ix(child_ix).unwrap_or("<removed>"),
+            ),
+            error => format!("invalid state layout parent assignments: {error}"),
+        };
+        return Err(Error::InvalidModel { message });
     }
 
     Ok(StateDagreInput {
@@ -1865,6 +1946,7 @@ fn layout_state_diagram_inner(
         style_plan,
         measurer,
         label_sidecar,
+        Some(&mut *work_control),
     )?;
 
     let cluster_dir =
@@ -2284,8 +2366,15 @@ pub fn debug_build_state_diagram_dagre_graph(
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
     let style_plan = super::StateStylePlan::resolve_unthemed(model, effective_config);
     Ok(
-        build_state_diagram_dagre_input(model, effective_config, &style_plan, measurer, None)?
-            .graph,
+        build_state_diagram_dagre_input(
+            model,
+            effective_config,
+            &style_plan,
+            measurer,
+            None,
+            None,
+        )?
+        .graph,
     )
 }
 
@@ -2451,6 +2540,7 @@ mod tests {
             parsed.metadata().effective_config.as_value(),
             &style_plan,
             &DeterministicTextMeasurer::default(),
+            None,
             None,
         )
         .expect("build State Dagre input");

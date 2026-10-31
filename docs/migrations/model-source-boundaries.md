@@ -83,6 +83,22 @@ An application that already owns typed data can use `PresentationDiagram::try_ne
 
 Use `PresentationContext` for irrecoverable family facts such as explicit empty output, Flowchart label/style order, and Class style precedence. Manual values default to their ordinary model projection. A nonempty Mindmap requires an explicit output identity; source producers capture it once and repeated outputs reuse it. Mermaid's internal Mindmap node identities form a single-parent tree; repeated authored names and label text remain valid.
 
+Direct producers must also preserve the full model's structural representation. Output admission
+returns typed errors for invalid data, including these family requirements:
+
+- Class, State, and ER containment must stay acyclic after parent normalization and mapping to
+  layout identities. Display labels do not identify parents.
+- Each reachable Block child record has one parent. Column-span totals must fit the model's
+  integer range; separate records may retain equal authored IDs or labels.
+- Packet fields must already be split at the configured `bitsPerRow` boundaries. Each block has
+  nonnegative, ordered, representable inclusive endpoints and fits within its row.
+- Kanban presentation data lists each section immediately before its visible cards, whose
+  `parent_id` matches that section. Repeated section IDs retain their own expanded card occurrences;
+  do not regroup an already-expanded sequence by ID. Non-group entries before the first section
+  and detached entries without a parent retain their non-rendering behavior.
+- Treemap weights must produce finite aggregate values and coordinates. Extremely large finite
+  inputs can still overflow intermediate geometry and return `InvalidModel`.
+
 Request compatibility JSON on the complete presentation value when its frozen output facts matter. A raw model's compatibility projector uses the ordinary default context. Enable `merman-model/compat-json` for independent projection; a source producer can retain presentation facts without enabling `merman-core/compat-json`.
 
 ## Request fixes explicitly
