@@ -16,7 +16,8 @@
     "url": "https://github.com/Latias94/merman.git"
   },
   "engines": {
-    "vscode": "^1.140.0"
+    "vscode": "^1.140.0",
+    "npm": ">=12.2.1"
   },
   "categories": [
     "Programming Languages",
@@ -642,11 +643,17 @@
     "typescript": "7.0.2"
   },
   "overrides": {
+    "vscode-languageclient": {
+      "minimatch": "11.0.3"
+    },
     "@vscode/vsce": {
       "@azure/identity": {
         "@azure/msal-node": "7.1.1"
       }
     }
+  },
+  "patchedDependencies": {
+    "vscode-languageclient@11.0.0": "patches/vscode-languageclient@11.0.0.patch"
   },
   "allowScripts": {
     "@vscode/vsce-sign@2.1.0": true,
