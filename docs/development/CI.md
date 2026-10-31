@@ -44,8 +44,12 @@ sets and subprocess-scoped acceptance flags; no job-wide feature union or accept
 The offline all-feature public theme consumer remains in `build-test`, after experimental
 platform-font builds have fetched its dependencies. Rust caches retain registry data with
 `cache-targets: false`; these jobs do not transfer compiled targets or reuse results from a
-different source revision. The split adds cold compiler and runner costs that need actual CI
-measurement before a speedup can be reported.
+different source revision. In the successful #259 PR run, Linux `build-test` took 32.7 minutes,
+feature checks 34.5 minutes and theme checks 22.5 minutes; the complete gate took 52.8 minutes
+including queues, compared with 86.2 minutes in the preceding #258 PR run. Their combined core
+runner time rose from 85.6 to 89.7 minutes in that observation. The subsequent main run also
+passed, with the complete gate waiting on the queued Playground consumer. These are workflow
+observations, not controlled compiler benchmarks; the linked record preserves both costs.
 
 ## Windows Checkout Paths
 
