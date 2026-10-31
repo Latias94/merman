@@ -786,6 +786,40 @@ independent consumers and all 57 build cases. Generated legal files did not chan
 existing parser/render and six consumer measurements retain their original source identities;
 this continuation changed the private generator and its Kotlin output, rather than library code.
 
+## Independent review follow-up, 2026-10-31
+
+Four independent review lanes examined the candidate at
+`2fb9c8f850469cb7b644b00b572e58dbe806514f` against main
+`4e9fa48139361bb30f81cb86d413597643978a4f`: Core/model construction and lifecycle,
+output/security and direct-model consumers, requested fixes and host bindings, and dependency/
+publication recipes. This was a bounded static review rather than a repeat of the platform matrix.
+No actionable findings were confirmed in the Core/model and diagnostics/binding lanes. Two P1
+findings in the other lanes required follow-up:
+
+- Coupled development dependencies now participate in the publication graph. ASCII and Render
+  retain versioned Core test dependencies in their Cargo packages, so Core must pass the registry
+  visibility barrier before their batch is prepared. Two isolated offline packaging probes confirmed
+  that path-only development dependencies are omitted while versioned ones require registry
+  resolution. The fix passed 57 publisher/release Python tests, byte-compilation checks and actual
+  workspace batch assertions, then independent review. Private test fixtures remain outside the
+  coupled graph; no second manifest or dependency resolver was added.
+- Directly constructed Mindmap data can contain a multi-parent DAG even though the source producer
+  always builds a single-parent tree. Tidy-tree previously copied descendants once per incoming path,
+  allowing exponential temporary storage from a small layered DAG. Its adjacency pass now rejects
+  a second incoming edge before subtree expansion, including duplicate edges from the same parent.
+  The check uses internal identity, preserves repeated authored names/labels, and observes the
+  existing operation control without charging prepaid adapter work twice. Other layout backends
+  are unchanged. Independent patch review confirmed the execution boundary and error ordering.
+  The focused Mindmap nextest run passed all 59 selected tests, including four new regression
+  tests, existing source/SVG cases and the small-stack deep-chain contract (run
+  `77d2acc9-7515-4a1b-8857-033d47587865`). Package formatting, diff hygiene and the indexed-path
+  budget also passed. The existing complete matrix and platform owners were not rerun locally.
+
+The PR CI owners `apple-swift-5-9-smoke` and `apple-uniffi-smoke` cover the remaining Swift,
+XCFramework and actual Swift-consumer execution. Complete Flutter Apple slices and the macOS Dart
+consumer have a separate existing owner, Release Preflight's `flutter-dry-run`; ordinary PR CI's
+Ubuntu platform-binding job is not evidence for that full Apple scope.
+
 ## Outstanding applicable qualification
 
 Implementation, structural exclusions and the recorded correctness/measurement results do not
@@ -797,7 +831,8 @@ replace platform-owned execution. M6/M8 and the overall goal remain open for the
 
 This gate is pending, not not-applicable. Run its existing CI/preflight commands against the
 final candidate when the matching environment is available; no new validation framework is
-required. There has been no push, branch merge, tag, registry publication or hosted release.
+required. No push, branch merge, tag, registry publication or hosted release was performed during
+the local qualification runs; subsequent PR handoff does not imply release authorization.
 The [migration guide](../migrations/model-source-boundaries.md) covers package/import selection,
 presentation-data/source configuration and requested fixes. Published `0.9.3` and older changelog
 sections remain identical to remote main; the next breaking source release requires the release
