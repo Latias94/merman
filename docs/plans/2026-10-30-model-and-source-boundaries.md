@@ -15,8 +15,9 @@ Implementation began with M0 baseline preparation on 2026-10-30; the [implementa
 As of 2026-10-31, shared ownership, all family data, model-driven ASCII, requested fixes,
 parser-independent graphics and API retirement are implemented and validated. The strict matrix
 passed 765 checks over 46 profiles; final correctness, six fixed-consumer comparisons, four cold
-observations and recorded installed products passed their respective controls. M6/M8 remain open
-for applicable Apple, Linux native package and Android instrumentation evidence. See
+observations and recorded installed products passed their respective controls. The continuation
+also passed Linux Node GNU/musl installed packages and Android API 29/34 instrumentation.
+M6/M8 remain open for applicable Apple/Xcode evidence. See
 [outstanding qualification](../reviews/2026-10-30-model-source-boundaries-implementation.md#outstanding-applicable-qualification);
 missing environments are not treated as successful or not-applicable execution.
 
@@ -199,7 +200,7 @@ The table tracks completed slices; the [implementation record](../reviews/2026-1
 | [x] M3 — Model-driven ASCII | Retarget ASCII production dependencies/features; derive capabilities from local handlers; migrate the facade's source intersection and full-context adapters. | Independent model/ASCII graphs exclude source ingestion. Primary/fallback/report outputs match the frozen consumers; control, admission and asymmetric-feature owners passed. |
 | [x] M4 — Requested fixes | Split feature inclusion from per-projection generation; migrate immutable evidence and host owners; remove eager replacement generation. | Diagnostics omit the writer; Omit/Generate reuse one generation. Exact diagnostics/fixes, mapping, identity, retention and broad-union/narrow-host owners passed. |
 | [x] M5 — Parser-independent graphics | Extract the unique markup/CSS/color owner, immutable presentation input and data projections; retain the source-owned parsed-result wrapper; migrate engine/theme installation to the facade; remove Render/Export production core edges and forwarding. | Independent output closures exclude core/YAML/JSON5; full Render and source-authority/security/measurement owners passed, including structure/parity/parity-root DOM checks. |
-| [ ] M6 — Products and authority | Update Cargo selectors, artifact/feature descriptors, exact release recipes, host catalogs, CI source-path ownership, generated source/legal materials, package ownership and publish order. Migrate all examples/docs. | Implementation, all 46 profiles, legal/source packages and recorded installed products passed. Applicable Apple, Linux native package and Android device owners remain pending. |
+| [ ] M6 — Products and authority | Update Cargo selectors, artifact/feature descriptors, exact release recipes, host catalogs, CI source-path ownership, generated source/legal materials, package ownership and publish order. Migrate all examples/docs. | Implementation, all 46 profiles, legal/source packages and recorded installed products passed, including Linux Node GNU/musl and Android devices. Applicable Apple/Xcode owners remain pending. |
 | [x] M7 — Retirement | Delete old public model paths, obsolete wrappers, empty modules and temporary forwarding. Close the cross-package private-export inventory. | Complete family/private-export inventory reconciled; all in-repository consumers use final owners. Dedicated theme-acceptance cfg and public Rustdoc passed. |
 | [ ] M8 — Closeout | Run final correctness/feature/parity owners once against the final source; repeat independent measurements; record observed benefits, limitations and migrations. | Final graph/size and cold observations are recorded. M8 remains open until all applicable platform qualification has execution evidence. |
 

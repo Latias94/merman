@@ -1,6 +1,6 @@
 # Model/source boundaries implementation record
 
-Status: source ownership and API retirement implemented; final correctness, installed-consumer and measurement checkpoints recorded on 2026-10-31. M6/M8 remain open for outstanding applicable platform qualification. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
+Status: source ownership and API retirement implemented; final correctness, installed-consumer and measurement checkpoints recorded on 2026-10-31. Linux Node GNU/musl and Android device qualification passed in the platform continuation; M6/M8 remain open for Apple/Xcode execution. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
 
 ## Frozen source and observations
 
@@ -20,7 +20,7 @@ Status: source ownership and API retirement implemented; final correctness, inst
 | M3 | Complete | ASCII uses model directly; fixed independent primary/fallback/report outputs match. Its external closure fell from 84 to 28 without source ingestion. |
 | M4 | Complete | Default-off requested fixes, immutable evidence and host declarations passed diagnostics-only, requested-fix, broad-union and exact product checks. |
 | M5 | Complete | Single markup owner and checked immutable presentation retained parser-free output closures. Full Render passed 5,574 tests, and all three blocking DOM policies passed. |
-| M6 | Implemented; platform qualification open | All 46 profiles, strict feature/closure checks, legal/source-package owners and recorded installed consumers passed. Apple, Linux native package targets and Android device qualification remain applicable. |
+| M6 | Implemented; Apple qualification open | All 46 profiles, strict feature/closure checks, legal/source-package owners and recorded installed consumers passed. Linux Node GNU/musl and Android API 29/34 instrumentation now pass; Apple/Xcode remains applicable. |
 | M7 | Complete | Obsolete public model paths, wrappers and source-to-render bridges retired. The complete family inventory and dedicated theme acceptance cfg passed. |
 | M8 | In progress | Six final consumer measurements and four cold observations passed their fixed-output controls. Outstanding platform evidence is listed below; no publication has run. |
 
@@ -742,6 +742,50 @@ The five actual Web npm tarballs also passed the package-group pack and independ
 verification on Linux. Their original compiled-input/provenance hashes were checked and retained;
 checkout line-ending differences were identified separately rather than rewriting those hashes.
 
+## Platform continuation, 2026-10-31
+
+Starting the installed Docker Desktop service made the existing Linux GNU builder available.
+The fixed image identity was verified to provide Rust 1.95.0, Node 24.13.1 and glibc 2.31.
+At source `7e8b587c48e349a03af62766f3b65f23ec05d4c0`, the exact Node GNU candidate passed
+build/runtime probing, assembly, verification, local tarball packing, offline fresh installation
+and the installed SVG/theme/icon/recipe smoke. The first Windows bind-mount run compiled and
+probed successfully but failed its final directory rename with `EACCES`; the successful retry
+used a task-owned native Linux Docker volume and the unchanged build owner. This closes the
+GNU-floor package gap. The existing CI musl image recipe also passed actual build/runtime probing,
+assembly, verification, local packing, offline fresh installation and the complete installed smoke
+in its matching Alpine environment. A first helper launch expected Python, which that minimal
+image does not include; the successful run used the existing CI shell sequence without adding an
+image dependency. GNU/musl raw logs, installed consumers and tarball hashes remain in the owned
+D-drive output root. Container resources were bounded and ordinary Cargo owners ran serially.
+
+Real Android instrumentation exposed a missing `fixes` entry in the generated Kotlin artifact
+expectation, despite the Rust JNI declaration and `android-native` descriptor already agreeing.
+The generator now explicitly selects `fixes` and compiles that implementation in xtask. A narrow
+regression compares its materialized Android capabilities with the descriptor; the Kotlin
+validator remains strict. The initial API 34 run failed eight of nine cases after initializer
+failure. After the generated-contract correction, all nine cases passed on both API 34 and the
+CI-matching API 29 default x86_64 image with hardware acceleration. The API 34 retry used the
+three-file change later committed as `7e8b587c4`; API 29 and final AAR checks used that committed
+source. The fixed-source AAR was reassembled and verified, and all 46 JVM tests passed again.
+Rust JNI byte inputs were unchanged.
+The full Windows xtask suite now passes 694 tests, including the new regression; binding
+generation/freshness and package formatting also passed.
+
+All emulator storage, downloaded API 29 tools/images and AVDs were task-owned. Existing accepted
+SDK license records were copied without supplying a new license answer. Both headless emulators
+were shut down after their tests. The Docker context was not changed, and the independent Linux
+source clone/volume did not overwrite the primary checkout. Docker Desktop was returned to its
+original stopped state after confirming no other containers were running. Receipts, failure logs,
+device XML, source hashes and the reassembled AAR identity are indexed under
+`target/m8-platform-continuation-20261031/`.
+
+The final checks after the generator/compiler-feature change passed all 46 artifact profiles,
+capability surface, native ABI, representative dependency closures, 13 source license reports,
+446 legal projections and the third-party contract. The regular feature matrix also passed its
+independent consumers and all 57 build cases. Generated legal files did not change. The
+existing parser/render and six consumer measurements retain their original source identities;
+this continuation changed the private generator and its Kotlin output, rather than library code.
+
 ## Outstanding applicable qualification
 
 Implementation, structural exclusions and the recorded correctness/measurement results do not
@@ -750,10 +794,8 @@ replace platform-owned execution. M6/M8 and the overall goal remain open for the
 | Owner | Remaining evidence / environment |
 | --- | --- |
 | Apple bindings and Flutter Apple slices | XCFramework, generated Swift/typechecks and actual Swift consumers require macOS/Xcode. Windows UniFFI/Python is separate evidence. |
-| Linux Node native packages | GNU build/install smoke must run in the declared glibc 2.31 builder; musl has its own package owner. Ubuntu 26.04 tests cannot prove either product. Docker endpoints were unavailable locally. |
-| Android instrumentation | Actual device/emulator JNI loading and instrumentation remain unexecuted. Read-only inventory found no connected device or available running emulator. AAR/JVM results retain their narrower scope. |
 
-These gates are pending, not not-applicable. Run their existing CI/preflight commands against the
+This gate is pending, not not-applicable. Run its existing CI/preflight commands against the
 final candidate when the matching environment is available; no new validation framework is
 required. There has been no push, branch merge, tag, registry publication or hosted release.
 The [migration guide](../migrations/model-source-boundaries.md) covers package/import selection,
