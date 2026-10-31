@@ -20,6 +20,152 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+fn independent_treemap_presentation(
+    values: &[f64],
+    config: serde_json::Value,
+) -> merman_model::presentation::PresentationDiagram {
+    use merman_model::families::treemap::{
+        TreemapDiagramModel, TreemapDiagramRenderModel, TreemapNode,
+    };
+    use merman_model::presentation::{
+        AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
+    };
+    use merman_model::resources::InputResourcePolicy;
+    use merman_model::{MermaidConfig, OperationControl};
+
+    let model = TreemapDiagramModel {
+        root: TreemapNode {
+            children: Some((0..values.len()).collect()),
+            ..Default::default()
+        },
+        nodes: values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| TreemapNode {
+                name: format!("Leaf{index}"),
+                value: Some(serde_json::json!(value).into()),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let config = MermaidConfig::from_value(config);
+    PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "treemap".to_string(),
+            config: config.clone(),
+            effective_config: config,
+            title: None,
+            theme_recipe: None,
+        },
+        RenderSemanticModel::Treemap(TreemapDiagramRenderModel::from_semantic_model(model)),
+        PresentationContext::None,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("independent Treemap construction is active")
+    .expect("small Treemap model passes construction resource admission")
+}
+
+#[test]
+fn treemap_direct_input_rejects_nonfinite_derived_values() {
+    for (values, config, reason) in [
+        (vec![1e308], serde_json::json!({}), "derived geometry"),
+        (vec![1e308, 1e308], serde_json::json!({}), "aggregate value"),
+        (
+            vec![1.0],
+            serde_json::json!({"treemap": {"nodeWidth": 1e308}}),
+            "dimensions",
+        ),
+        (
+            vec![1.0],
+            serde_json::json!({"treemap": {"nodeHeight": 1e308}}),
+            "dimensions",
+        ),
+    ] {
+        let parsed = independent_treemap_presentation(&values, config);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .err()
+            .expect("finite inputs must not produce a successful nonfinite Treemap layout");
+        assert!(
+            matches!(
+                error,
+                merman_render::Error::InvalidModel { ref message } if message.contains(reason)
+            ),
+            "{error:?}"
+        );
+    }
+}
+
+#[test]
+fn treemap_direct_input_preserves_finite_geometry_and_weight_proportions() {
+    for values in [[3.0, 2.0], [1e150, 1e150]] {
+        let parsed = independent_treemap_presentation(&values, serde_json::json!({}));
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .expect("finite ordinary and large supported weights remain valid");
+        let projection = artifact.layout_json().unwrap();
+        let layout: merman_render::model::TreemapDiagramLayout =
+            serde_json::from_value(projection["layout"]["TreemapDiagram"].clone()).unwrap();
+        assert_eq!((layout.width, layout.height), (1000.0, 400.0));
+        assert_eq!(layout.leaves.len(), 2);
+        for (index, leaf) in layout.leaves.iter().enumerate() {
+            assert_eq!(leaf.name, format!("Leaf{index}"));
+            assert_eq!(leaf.value, values[index]);
+            assert!(
+                [leaf.x0, leaf.y0, leaf.x1, leaf.y1]
+                    .iter()
+                    .all(|v| v.is_finite())
+            );
+        }
+        let areas: Vec<_> = layout
+            .leaves
+            .iter()
+            .map(|leaf| (leaf.x1 - leaf.x0) * (leaf.y1 - leaf.y0))
+            .collect();
+        assert!((areas[0] / areas[1] - values[0] / values[1]).abs() < 0.02);
+    }
+}
+
+#[test]
+fn treemap_direct_input_validation_preserves_operation_error_priority() {
+    use merman_model::OperationControl;
+
+    let parsed = independent_treemap_presentation(&[1e308, 1e308], serde_json::json!({}));
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    control.cancel();
+    assert!(matches!(
+        family::prepare(&parsed, &LayoutOptions::default(), session),
+        Err(merman_render::Error::Cancelled(_))
+    ));
+
+    let control = OperationControl::new();
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxModelItems, 1)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let error = family::plan_render(&parsed, &session).err().unwrap();
+    let merman_render::Error::ResourceLimitExceeded(first) = error else {
+        panic!("expected model resource admission before Treemap validation, got {error:?}");
+    };
+    assert_eq!(first.limit, ResourceLimitId::MaxModelItems.as_str());
+    control.cancel();
+    let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .err()
+        .unwrap();
+    assert!(matches!(
+        error,
+        merman_render::Error::ResourceLimitExceeded(replayed) if replayed == first
+    ));
+}
+
 #[derive(Default)]
 struct CountingTreemapHost {
     calls: AtomicUsize,

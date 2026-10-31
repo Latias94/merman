@@ -17,6 +17,166 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{DiagramFamilyId, LayoutOptions};
 use regex::Regex;
 
+fn independent_block_presentation(
+    model: merman_model::families::block::BlockDiagramModel,
+) -> merman_model::presentation::PresentationDiagram {
+    use merman_model::families::block::BlockDiagramRenderModel;
+    use merman_model::presentation::{
+        AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
+    };
+    use merman_model::resources::InputResourcePolicy;
+    use merman_model::{MermaidConfig, OperationControl};
+
+    PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "block".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+            theme_recipe: None,
+        },
+        RenderSemanticModel::Block(BlockDiagramRenderModel::from_semantic_model(model)),
+        PresentationContext::None,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("independent Block construction is active")
+    .expect("small Block model passes construction resource admission")
+}
+
+fn independent_block_tree(
+    children: &[&[usize]],
+) -> merman_model::families::block::BlockDiagramModel {
+    use merman_model::families::block::{BlockDiagramModel, BlockNode};
+
+    BlockDiagramModel {
+        root: Some(0),
+        blocks_flat: children
+            .iter()
+            .enumerate()
+            .map(|(index, children)| BlockNode {
+                id: if index == 0 {
+                    "root".to_string()
+                } else {
+                    format!("node{index}")
+                },
+                label: "Repeated label".to_string(),
+                block_type: if children.is_empty() {
+                    "square".to_string()
+                } else {
+                    "composite".to_string()
+                },
+                children: children.to_vec(),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn block_direct_input_rejects_repeated_child_indices_before_layout_expansion() {
+    for model in [
+        independent_block_tree(&[&[1, 1], &[]]),
+        independent_block_tree(&[&[1, 2], &[3], &[3], &[]]),
+    ] {
+        let parsed = independent_block_presentation(model);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .err()
+            .expect("a flat child record cannot own two layout occurrences");
+        assert!(matches!(
+            error,
+            merman_render::Error::InvalidModel { ref message }
+                if message.contains("repeated Block child index")
+        ));
+    }
+}
+
+#[test]
+fn block_direct_input_checks_normalized_column_span_totals() {
+    for second_span in [1, 0, i64::MIN] {
+        let mut model = independent_block_tree(&[&[1, 2], &[], &[]]);
+        model.blocks_flat[1].width_in_columns = Some(i64::MAX);
+        model.blocks_flat[2].width_in_columns = Some(second_span);
+        let parsed = independent_block_presentation(model);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .err()
+            .expect("normalized child spans must fit before grid arithmetic");
+        assert!(matches!(
+            error,
+            merman_render::Error::InvalidModel { ref message }
+                if message.contains("Block column span")
+        ));
+    }
+}
+
+#[test]
+fn block_direct_input_preserves_distinct_records_and_supported_column_spans() {
+    for (first_span, second_span) in [(0, -3), (i64::MAX - 1, 1)] {
+        let mut model = independent_block_tree(&[&[1, 2], &[], &[]]);
+        model.blocks_flat[1].id = "Repeated".to_string();
+        model.blocks_flat[2].id = "Repeated".to_string();
+        model.blocks_flat[1].width_in_columns = Some(first_span);
+        model.blocks_flat[2].width_in_columns = Some(second_span);
+        let parsed = independent_block_presentation(model);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .expect("distinct flat records and representable normalized spans remain valid");
+        let projection = artifact.layout_json().expect("project finite Block layout");
+        let layout: merman_render::model::BlockDiagramLayout =
+            serde_json::from_value(projection["layout"]["BlockDiagram"].clone()).unwrap();
+        assert_eq!(layout.nodes.len(), 2);
+        for node in &layout.nodes {
+            assert_eq!(node.id, "Repeated");
+            assert!(
+                [node.x, node.y, node.width, node.height]
+                    .iter()
+                    .all(|v| v.is_finite())
+            );
+        }
+    }
+}
+
+#[test]
+fn block_direct_input_validation_preserves_operation_error_priority() {
+    use merman_model::OperationControl;
+
+    let parsed = independent_block_presentation(independent_block_tree(&[&[1, 1], &[]]));
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    control.cancel();
+    assert!(matches!(
+        family::prepare(&parsed, &LayoutOptions::default(), session),
+        Err(merman_render::Error::Cancelled(_))
+    ));
+
+    let control = OperationControl::new();
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxModelItems, 1)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let error = family::plan_render(&parsed, &session).err().unwrap();
+    let merman_render::Error::ResourceLimitExceeded(first) = error else {
+        panic!("expected model resource admission before Block validation, got {error:?}");
+    };
+    assert_eq!(first.limit, ResourceLimitId::MaxModelItems.as_str());
+    control.cancel();
+    let error = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .err()
+        .unwrap();
+    assert!(matches!(
+        error,
+        merman_render::Error::ResourceLimitExceeded(replayed) if replayed == first
+    ));
+}
+
 fn render_block_svg_from_text(text: &str) -> String {
     let engine = MermaidEngine::new();
     render_block_svg_from_text_with_engine(&engine, text)

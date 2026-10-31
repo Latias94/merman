@@ -2813,13 +2813,12 @@ fn measure_class_diagram(
             ),
         );
 
-        if let Some(parent) = model
-            .namespace(id)
-            .and_then(|ns| ns.namespace.parent.as_deref())
-            .map(str::trim)
-            .filter(|parent| !parent.is_empty())
-            && model.namespace(parent).is_some()
-        {
+        if let Some(parent) = class_layout_parent(
+            model,
+            model
+                .namespace(id)
+                .and_then(|ns| ns.namespace.parent.as_deref()),
+        ) {
             g.set_parent(id.to_string(), parent.to_string());
         }
     }
@@ -2832,9 +2831,7 @@ fn measure_class_diagram(
             &mut class_node_style_facts_by_id,
             &mut prepared_labels,
         )?;
-        if let Some(parent) = c.parent.map(str::trim).filter(|s| !s.is_empty())
-            && model.namespace(parent).is_some()
-        {
+        if let Some(parent) = class_layout_parent(model, c.parent) {
             g.set_parent(c.id.clone(), parent.to_string());
         }
     }
@@ -2848,9 +2845,7 @@ fn measure_class_diagram(
 
     for n in model.notes() {
         insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
-        if let Some(parent) = n.parent.map(str::trim).filter(|s| !s.is_empty())
-            && model.namespace(parent).is_some()
-        {
+        if let Some(parent) = class_layout_parent(model, n.parent) {
             g.set_parent(n.id.to_string(), parent.to_string());
         }
     }
@@ -3174,11 +3169,19 @@ pub fn debug_build_class_diagram_dagre_graph(
     Ok(measured.graph.to_dagre())
 }
 
+fn class_layout_parent<'a>(model: &ClassDiagramModel, parent: Option<&'a str>) -> Option<&'a str> {
+    parent
+        .map(str::trim)
+        .filter(|parent| !parent.is_empty())
+        .filter(|parent| model.namespace(parent).is_some())
+}
+
 fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
     const UNVISITED: u8 = 0;
     const VISITING: u8 = 1;
     const COMPLETE: u8 = 2;
 
+    // Every parent target is a namespace key; other graph IDs cannot close a parent cycle.
     let ids = model.namespaces().map(|(id, _)| id).collect::<Vec<_>>();
     let index_by_id = ids
         .iter()
@@ -3186,15 +3189,32 @@ fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
         .enumerate()
         .map(|(index, id)| (id, index))
         .collect::<FxHashMap<_, _>>();
-    let parents = ids
-        .iter()
-        .map(|id| {
-            model
-                .namespace(id)
-                .and_then(|namespace| namespace.namespace.parent.as_deref())
-                .and_then(|parent| index_by_id.get(parent).copied())
-        })
-        .collect::<Vec<_>>();
+    let mut parents = vec![None; ids.len()];
+    // Parent targets are namespace keys, but materialization writes each payload's ID.
+    // Reproduce those assignments, including later class/note aliases that replace a parent.
+    for (_, namespace) in model.namespaces() {
+        let id = namespace.namespace.id.as_str();
+        if let Some(&index) = index_by_id.get(id) {
+            parents[index] = class_layout_parent(
+                model,
+                model
+                    .namespace(id)
+                    .and_then(|ns| ns.namespace.parent.as_deref()),
+            )
+            .and_then(|parent| index_by_id.get(parent).copied());
+        }
+    }
+    for (id, parent) in model
+        .classes()
+        .map(|(_, class)| (class.node.id.as_str(), class.parent))
+        .chain(model.notes().map(|note| (note.id, note.parent)))
+    {
+        if let Some(&index) = index_by_id.get(id)
+            && let Some(parent) = class_layout_parent(model, parent)
+        {
+            parents[index] = index_by_id.get(parent).copied();
+        }
+    }
     let mut state = vec![UNVISITED; ids.len()];
     let mut depth = vec![0_usize; ids.len()];
 

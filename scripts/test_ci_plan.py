@@ -963,6 +963,70 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn('"svg-parity":{"owner":"core"', gate)
         self.assertIn("needs.ci-plan.outputs.svg_parity == 'true'", gate)
 
+    def test_feature_and_theme_lanes_remain_required_core_results(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        core = workflow_job(ci, "build-test")
+        feature = workflow_job(ci, "feature-contracts")
+        theme = workflow_job(ci, "theme-contracts")
+        gate = workflow_job(ci, "pr-gate")
+        for name, job in (("feature-contracts", feature), ("theme-contracts", theme)):
+            with self.subTest(job=name):
+                self.assertIn("needs: ci-plan", job)
+                self.assertIn("if: ${{ needs.ci-plan.outputs.core == 'true' }}", job)
+                self.assertNotIn("needs: build-test", job)
+                self.assertNotIn("continue-on-error", job)
+                self.assertIn(f"      - {name}\n", gate)
+                self.assertIn(
+                    f'"{name}":{{"owner":"core","required":true,"result":"${{{{ needs.{name}.result }}}}"}}',
+                    gate,
+                )
+
+        # Generated checks retain their materialized DOMPurify/Node bootstrap. The
+        # offline all-feature consumer follows real experimental font-query builds.
+        self.assertIn("verify-generated", core)
+        self.assertNotIn("verify-feature-matrix", core)
+        self.assertIn("verify-feature-matrix", feature)
+        self.assertIn("aarch64-linux-android wasm32-unknown-unknown", feature)
+        self.assertIn("--test rustdoc_cli", core)
+        self.assertIn("Test Rustdoc family subsets", feature)
+        self.assertIn("Test representative ASCII public contracts", feature)
+        self.assertIn("verify_theme_acceptance_boundary.py", core)
+        self.assertLess(
+            core.index("Test experimental platform font CLI contracts on every host"),
+            core.index("verify_theme_acceptance_boundary.py"),
+        )
+        self.assertNotIn("verify_theme_acceptance_boundary.py", feature)
+        self.assertNotIn("verify_theme_acceptance_boundary.py", theme)
+        self.assertIn("Test preset qualification and family terminal behavior", theme)
+        self.assertIn("Test optimized theme evidence and qualification rejection", theme)
+        self.assertIn("Test theme authoring and Flowchart paint across SVG and PNG", theme)
+        self.assertNotIn("run_theme_acceptance.py", core)
+        for job in (core, feature, theme):
+            self.assertNotIn("      RUSTFLAGS:", job)
+            self.assertNotIn("      CARGO_ENCODED_RUSTFLAGS:", job)
+
+        owners = {name: name == "core" for name in OWNER_NAMES}
+        jobs = {
+            name: {"owner": "core", "required": True, "result": "success"}
+            for name in ("build-test", "feature-contracts", "theme-contracts")
+        }
+        self.assertEqual(evaluate_gate(owners, jobs)["selected"], sorted(jobs))
+        for name in ("feature-contracts", "theme-contracts"):
+            for result in ("failure", "cancelled", "skipped", ""):
+                with self.subTest(job=name, result=result):
+                    jobs[name]["result"] = result
+                    with self.assertRaises(GateError):
+                        evaluate_gate(owners, jobs)
+                    jobs[name]["result"] = "success"
+        owners["core"] = False
+        for job in jobs.values():
+            job["result"] = "skipped"
+        summary = evaluate_gate(owners, jobs)
+        self.assertEqual(summary["selected"], [])
+        self.assertEqual(summary["skipped"], sorted(jobs))
+
     def test_parser_differential_has_bounded_reference_and_independent_discovery_owners(self) -> None:
         from scripts.test_release_workflow_security import workflow_job
 
@@ -1068,9 +1132,21 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
             ),
             (
                 "build-test",
-                "node-contracts",
+                "feature-contracts",
                 "Install Linux font build dependencies",
                 "cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet",
+            ),
+            (
+                "feature-contracts",
+                "theme-contracts",
+                "Install Linux font dependencies and test fonts",
+                "cargo run --locked -p xtask -- verify-feature-matrix",
+            ),
+            (
+                "theme-contracts",
+                "svg-parity",
+                "Install Linux font dependencies and test fonts",
+                "python3 scripts/run_theme_acceptance.py nextest run",
             ),
         ):
             with self.subTest(owner=owner):

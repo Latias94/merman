@@ -1,4 +1,10 @@
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::families::er::{ErDiagramModel, ErEntity, ErRelationship, ErSubgraph};
+use merman_model::presentation::{
+    AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
+};
+use merman_model::resources::InputResourcePolicy;
+use merman_model::{MermaidConfig, OperationControl, OperationPhase};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -21,6 +27,210 @@ fn layout_er(text: &str) -> ErDiagramLayout {
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("ER layout");
     let projection = artifact.layout_json().expect("serialize ER layout");
     serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
+}
+
+fn er_presentation_from_model(model: ErDiagramModel) -> PresentationDiagram {
+    let config = MermaidConfig::from_value(serde_json::json!({"layout": "dagre"}));
+    PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "erDiagram".to_string(),
+            config: config.clone(),
+            effective_config: config,
+            title: None,
+            theme_recipe: None,
+        },
+        RenderSemanticModel::Er(model),
+        PresentationContext::None,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("construct ER presentation")
+    .expect("admit ER presentation data")
+}
+
+fn er_cyclic_compound_model() -> ErDiagramModel {
+    ErDiagramModel {
+        direction: "TB".to_string(),
+        subgraphs: [("A", "B"), ("B", "A")]
+            .into_iter()
+            .map(|(id, child)| ErSubgraph {
+                id: id.to_string(),
+                title: "Repeated label".to_string(),
+                nodes: vec![child.to_string()],
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn er_direct_model_rejects_compound_and_helper_parent_cycles() {
+    let helper_collision = ErDiagramModel {
+        direction: "TB".to_string(),
+        entities: [(
+            "A".to_string(),
+            ErEntity {
+                id: "entity-A-0".to_string(),
+                label: "A".to_string(),
+                ..Default::default()
+            },
+        )]
+        .into_iter()
+        .collect(),
+        subgraphs: vec![ErSubgraph {
+            id: "entity-A-0---entity-A-0---1".to_string(),
+            title: "Group".to_string(),
+            nodes: vec!["A".to_string()],
+            ..Default::default()
+        }],
+        relationships: vec![ErRelationship {
+            entity_a: "entity-A-0".to_string(),
+            entity_b: "entity-A-0".to_string(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    for model in [er_cyclic_compound_model(), helper_collision] {
+        let presentation = er_presentation_from_model(model);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let error = family::prepare(&presentation, &LayoutOptions::default(), session)
+            .err()
+            .expect("external ER containment cycle must return an error");
+        let merman_render::Error::InvalidModel { message } = error else {
+            panic!("expected InvalidModel, got {error:?}");
+        };
+        assert!(message.contains("ER parent cycle"), "{message}");
+    }
+}
+
+#[test]
+fn er_direct_model_preserves_membership_overwrites_and_child_order() {
+    let model = ErDiagramModel {
+        direction: "TB".to_string(),
+        entities: ["ONE", "TWO", "THREE"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| {
+                (
+                    name.to_string(),
+                    ErEntity {
+                        id: format!("entity-{name}-{index}"),
+                        label: "Repeated label".to_string(),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect(),
+        subgraphs: [
+            ("Left", vec!["ONE", "TWO", "ONE", "THREE"]),
+            ("Right", vec!["THREE"]),
+        ]
+        .into_iter()
+        .map(|(id, nodes)| ErSubgraph {
+            id: id.to_string(),
+            title: "Repeated label".to_string(),
+            nodes: nodes.into_iter().map(str::to_string).collect(),
+            ..Default::default()
+        })
+        .collect(),
+        ..Default::default()
+    };
+    let mut final_membership = model.clone();
+    final_membership.subgraphs[0].nodes = vec!["TWO".to_string(), "ONE".to_string()];
+    let project = |model| {
+        let presentation = er_presentation_from_model(model);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&presentation, &LayoutOptions::default(), session)
+            .expect("repeated ER memberships remain valid");
+        artifact.layout_json().unwrap()["layout"]["ErDiagram"].clone()
+    };
+    assert_eq!(project(model), project(final_membership));
+}
+
+#[test]
+fn er_direct_model_parent_admission_preserves_operation_terminals() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+        TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use std::sync::Arc;
+
+    struct CancellingHost;
+    impl HostTextMeasurer for CancellingHost {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(None)
+        }
+
+        fn measure_with_control(
+            &self,
+            _request: HostTextMeasurementRequest<'_>,
+            control: &OperationControl,
+        ) -> HostMeasurementResult {
+            control.cancel();
+            Ok(None)
+        }
+    }
+
+    let presentation = er_presentation_from_model(er_cyclic_compound_model());
+    let control = OperationControl::new();
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.er-parent-cancellation").unwrap(),
+        "v1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(CancellingHost),
+            TextMeasurementPhase::ALL,
+        ))
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    assert!(
+        matches!(
+            family::prepare(&presentation, &LayoutOptions::default(), session),
+            Err(merman_render::Error::Cancelled(_)),
+        ),
+        "cancellation during group label measurement must precede the cycle error"
+    );
+
+    for cancel_first in [true, false] {
+        let control = OperationControl::new();
+        let policy = merman_render::RenderResourcePolicy::interactive()
+            .with_limit(merman_render::ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        if cancel_first {
+            control.cancel();
+        }
+        let error = family::prepare(&presentation, &LayoutOptions::default(), session)
+            .err()
+            .expect("operation terminal must precede ER structural rejection");
+        if cancel_first {
+            assert!(matches!(error, merman_render::Error::Cancelled(_)));
+        } else {
+            let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+                panic!("expected adapter resource rejection, got {error:?}");
+            };
+            assert_eq!(limit.limit, "max_layout_work_units");
+            assert!(limit.actual > limit.max);
+        }
+        let terminal = control
+            .terminal_checkpoint_at(OperationPhase::Layout)
+            .unwrap_err();
+        control.cancel();
+        assert_eq!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Layout)
+                .unwrap_err(),
+            terminal,
+            "later cancellation must preserve the first operation terminal",
+        );
+    }
 }
 
 #[test]

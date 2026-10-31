@@ -451,18 +451,10 @@ jobs:
         if: matrix.parity
         run: node --test tools/mermaid-cli/reference-runtime.test.mjs crates/merman-render/tests/katex_flowchart_probe.test.cjs
 
-      - name: Verify pull-request architecture contracts
+      - name: Verify generated architecture contracts
         if: matrix.parity
         run: |
           cargo run --locked -p xtask -- verify-generated
-          cargo run --locked -p xtask -- verify-feature-matrix
-
-      - name: Test isolated consumers without diagram families
-        if: matrix.parity
-        run: |
-          cargo nextest run --locked -p merman-core --no-default-features --test diagram_features --cargo-quiet
-          cargo nextest run --locked -p merman-analysis --no-default-features --test diagram_features --cargo-quiet
-          cargo nextest run --locked -p merman-editor-core --no-default-features --test diagram_features --cargo-quiet
 
       - name: Install native export test fonts (Linux)
         if: runner.os == 'Linux'
@@ -536,54 +528,80 @@ jobs:
           cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,rustdoc \
             --test rustdoc_cli --cargo-quiet
 
-      - name: Check committed Rustdoc fragments before documentation
-        if: matrix.parity
-        run: cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
-
-      - name: Test architecture compile-fail contracts
-        if: matrix.parity
-        run: |
-          cargo test -p merman-render --doc --features all-diagrams
-          cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
-
-      - name: Test preset qualification and family terminal behavior
-        if: matrix.parity
-        run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked \
-            -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
-            --lib --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,all-diagrams \
-              --test preset_qualification \
-            --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
-            --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
-            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
-
-      - name: Test optimized theme evidence and qualification rejection
-        if: matrix.parity
-        run: |
-          cargo test --release --locked -p merman-render --no-default-features \
-            --lib family::evidence_support::tests
-          python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
-            --lib preset_qualification::
-
       - name: Verify published theme acceptance boundary
         if: matrix.parity
         run: python3 scripts/verify_theme_acceptance_boundary.py
 
-      - name: Test theme authoring and Flowchart paint across SVG and PNG
-        if: matrix.parity
+  feature-contracts:
+    name: feature-contracts
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.core == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Install feature contract Rust targets
+        run: rustup target add aarch64-linux-android wasm32-unknown-unknown
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.87.29
+        with:
+          tool: nextest@0.9.148
+
+      - name: Free disk space (Ubuntu)
+        shell: bash
         run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
-            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,system-fonts,compat-json --test theme_authoring \
-            --test theme_flowchart_markers --test theme_flowchart_geometry \
-            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
-            --test render_operation --test theme_composed_effects --cargo-quiet
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            "$AGENT_TOOLSDIRECTORY/CodeQL"
+          sudo docker image prune --all --force || true
+          df -h
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          cache-targets: false
+
+      - name: Install Linux font dependencies and test fonts
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
+
+      - name: Verify representative Cargo feature matrix
+        run: cargo run --locked -p xtask -- verify-feature-matrix
+
+      - name: Test isolated consumers without diagram families
+        run: |
+          cargo nextest run --locked -p merman-core --no-default-features --test diagram_features --cargo-quiet
+          cargo nextest run --locked -p merman-analysis --no-default-features --test diagram_features --cargo-quiet
+          cargo nextest run --locked -p merman-editor-core --no-default-features --test diagram_features --cargo-quiet
+
+      - name: Check committed Rustdoc fragments before documentation
+        run: cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
+
+      - name: Test architecture compile-fail contracts
+        run: |
+          cargo test -p merman-render --doc --features all-diagrams
+          cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: Test Rustdoc family subsets, math opt-in, and exact artifact recipe
-        if: matrix.parity
         run: |
           cargo nextest run --locked -p merman-rustdoc --no-default-features \
             --features svg --cargo-quiet
@@ -609,7 +627,6 @@ jobs:
           cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
       - name: Test representative Cargo feature unification contract
-        if: matrix.parity
         run: |
           ambient_render_features="merman-bindings-core/all-diagrams,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
           cargo nextest run --locked -p merman-bindings-core -p merman-ffi \
@@ -624,25 +641,21 @@ jobs:
             -E 'test(math_labels_require_the_cli_owned_capability)'
 
       - name: Verify committed upstream alignment manifests
-        if: matrix.parity
         run: cargo run --locked -p xtask -- check-alignment
 
       - name: Test system adapter feature contracts
-        if: matrix.parity
         run: |
           cargo nextest run -p merman --no-default-features \
             --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
             --test runtime_determinism --test render_timezone --cargo-quiet
 
       - name: Test C FFI artifact-profile contract
-        if: matrix.parity
         run: |
           features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features "$features" --cargo-quiet
 
       - name: Check public ASCII feature closure
-        if: matrix.parity
         run: |
           cargo check -p merman-uniffi --no-default-features
           cargo check --locked --no-default-features --lib \
@@ -653,7 +666,6 @@ jobs:
             --no-default-features --features ascii
 
       - name: Test representative ASCII public contracts
-        if: matrix.parity
         run: |
           cargo nextest run --locked -p merman --no-default-features --features all-diagrams,ascii \
             --test ascii_api -E 'test(renderer_renders_ascii_flowchart_from_mermaid_text)' \
@@ -670,6 +682,84 @@ jobs:
             --features all-diagrams,ascii --lib \
             -E 'test(wasm_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
             --cargo-quiet
+
+  theme-contracts:
+    name: theme-contracts
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.core == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.87.29
+        with:
+          tool: nextest@0.9.148
+
+      - name: Free disk space (Ubuntu)
+        shell: bash
+        run: |
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            "$AGENT_TOOLSDIRECTORY/CodeQL"
+          sudo docker image prune --all --force || true
+          df -h
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          cache-targets: false
+
+      - name: Install Linux font dependencies and test fonts
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
+
+      - name: Test preset qualification and family terminal behavior
+        run: |
+          python3 scripts/run_theme_acceptance.py nextest run --locked \
+            -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
+            --lib --cargo-quiet
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
+            --no-default-features --features png,all-diagrams \
+              --test preset_qualification \
+            --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
+            --cargo-quiet
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
+            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
+
+      - name: Test optimized theme evidence and qualification rejection
+        run: |
+          cargo test --release --locked -p merman-render --no-default-features \
+            --lib family::evidence_support::tests
+          python3 scripts/run_theme_acceptance.py test --release --locked \
+            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
+            --lib preset_qualification::
+
+      - name: Test theme authoring and Flowchart paint across SVG and PNG
+        run: |
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
+            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,system-fonts,compat-json --test theme_authoring \
+            --test theme_flowchart_markers --test theme_flowchart_geometry \
+            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
+            --test render_operation --test theme_composed_effects --cargo-quiet
 
   svg-parity:
     name: svg-parity
@@ -1411,6 +1501,8 @@ jobs:
       - cli-distribution
       - arch-package
       - build-test
+      - feature-contracts
+      - theme-contracts
       - svg-parity
       - node-contracts
       - typst-package
@@ -1448,6 +1540,8 @@ jobs:
             "cli-distribution":{"owner":"cli","required":true,"result":"${{ needs.cli-distribution.result }}"},
             "arch-package":{"owner":"arch","required":true,"result":"${{ needs.arch-package.result }}"},
             "build-test":{"owner":"core","required":true,"result":"${{ needs.build-test.result }}"},
+            "feature-contracts":{"owner":"core","required":true,"result":"${{ needs.feature-contracts.result }}"},
+            "theme-contracts":{"owner":"core","required":true,"result":"${{ needs.theme-contracts.result }}"},
             "svg-parity":{"owner":"core","required":${{ needs.ci-plan.outputs.svg_parity == 'true' }},"result":"${{ needs.svg-parity.result }}"},
             "node-contracts":{"owner":"node","required":true,"result":"${{ needs.node-contracts.result }}"},
             "typst-package":{"owner":"typst","required":${{ github.event_name != 'push' }},"result":"${{ needs.typst-package.result }}"},

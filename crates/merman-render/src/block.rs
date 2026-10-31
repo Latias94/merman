@@ -882,10 +882,16 @@ fn invalid_block_columns_error() -> Error {
     }
 }
 
-fn validate_block_columns(root: usize, records: &[BlockNode]) -> Result<()> {
+fn validate_block_columns(
+    root: usize,
+    records: &[BlockNode],
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
     let mut stack = vec![(root, false)];
     let mut active = vec![false; records.len()];
+    let mut seen = vec![false; records.len()];
     while let Some((index, complete)) = stack.pop() {
+        work_meter.charge(1)?;
         let Some(block) = records.get(index) else {
             return Err(Error::InvalidModel {
                 message: format!("invalid Block child index {index}"),
@@ -900,8 +906,26 @@ fn validate_block_columns(root: usize, records: &[BlockNode]) -> Result<()> {
                 message: "cyclic Block child indices".to_string(),
             });
         }
+        if std::mem::replace(&mut seen[index], true) {
+            return Err(Error::InvalidModel {
+                message: format!("repeated Block child index {index}"),
+            });
+        }
         if block.columns == Some(0) {
             return Err(invalid_block_columns_error());
+        }
+        work_meter.charge(block.children.len())?;
+        let mut column_span = 0i64;
+        for &child in &block.children {
+            let child = records.get(child).ok_or_else(|| Error::InvalidModel {
+                message: format!("invalid Block child index {child}"),
+            })?;
+            // Match to_sized_block_shallow before grid sizing and column-position arithmetic.
+            column_span = column_span
+                .checked_add(child.width_in_columns.unwrap_or(1).max(1))
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "Block column span exceeds the supported integer range".to_string(),
+                })?;
         }
         active[index] = true;
         stack.push((index, true));
@@ -1071,7 +1095,7 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
             message: "missing block root composite".to_string(),
         })?;
 
-    validate_block_columns(root, &model.blocks_flat)?;
+    validate_block_columns(root, &model.blocks_flat, work_meter)?;
 
     let shape_sources = resolve_block_node_sources(model);
     let prepared_labels = BlockPreparedLabels::prepare(

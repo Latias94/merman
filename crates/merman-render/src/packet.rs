@@ -1,6 +1,6 @@
-use crate::Result;
 use crate::model::{Bounds, PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
 use crate::text::TextMeasurer;
+use crate::{Error, Result};
 use merman_model::families::packet::PacketDiagramModel;
 
 mod config;
@@ -44,8 +44,25 @@ pub(crate) fn layout_packet_diagram_typed(
         let word_y = (row_number as f64) * total_row_height + cfg.padding_y;
         let mut blocks: Vec<PacketBlockLayout> = Vec::new();
         for block in word {
-            let bits = block.end - block.start + 1;
+            if block.start < 0 || block.end < block.start {
+                return Err(Error::InvalidModel {
+                    message: "Packet block ranges must be nonnegative and ordered".to_string(),
+                });
+            }
+            let bits = block
+                .end
+                .checked_sub(block.start)
+                .and_then(|width| width.checked_add(1))
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "Packet block range exceeds the supported integer range".to_string(),
+                })?;
             let first_column = block.start % cfg.bits_per_row;
+            // Source construction splits fields at row boundaries before producing these blocks.
+            if bits > cfg.bits_per_row - first_column {
+                return Err(Error::InvalidModel {
+                    message: "Packet block range crosses a row boundary".to_string(),
+                });
+            }
             let column = match cfg.bit_order {
                 PacketBitOrder::Ascending => first_column,
                 PacketBitOrder::Descending => cfg.bits_per_row - first_column - bits,

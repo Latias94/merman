@@ -17,7 +17,9 @@ parser-independent graphics and API retirement are implemented and validated. Th
 passed 765 checks over 46 profiles; final correctness, six fixed-consumer comparisons, four cold
 observations and recorded installed products passed their respective controls. The continuation
 also passed Linux Node GNU/musl installed packages and Android API 29/34 instrumentation.
-M6/M8 remain open for applicable Apple/Xcode evidence. See
+Implementation was merged in [#258](https://github.com/Latias94/merman/pull/258); both Apple
+Swift/UniFFI PR CI owners passed on the final PR head. M6/M8 remain open for complete Flutter
+Apple slices and the macOS Dart consumer, owned by Release Preflight's `flutter-dry-run`. See
 [outstanding qualification](../reviews/2026-10-30-model-source-boundaries-implementation.md#outstanding-applicable-qualification);
 missing environments are not treated as successful or not-applicable execution.
 
@@ -200,9 +202,9 @@ The table tracks completed slices; the [implementation record](../reviews/2026-1
 | [x] M3 — Model-driven ASCII | Retarget ASCII production dependencies/features; derive capabilities from local handlers; migrate the facade's source intersection and full-context adapters. | Independent model/ASCII graphs exclude source ingestion. Primary/fallback/report outputs match the frozen consumers; control, admission and asymmetric-feature owners passed. |
 | [x] M4 — Requested fixes | Split feature inclusion from per-projection generation; migrate immutable evidence and host owners; remove eager replacement generation. | Diagnostics omit the writer; Omit/Generate reuse one generation. Exact diagnostics/fixes, mapping, identity, retention and broad-union/narrow-host owners passed. |
 | [x] M5 — Parser-independent graphics | Extract the unique markup/CSS/color owner, immutable presentation input and data projections; retain the source-owned parsed-result wrapper; migrate engine/theme installation to the facade; remove Render/Export production core edges and forwarding. | Independent output closures exclude core/YAML/JSON5; full Render and source-authority/security/measurement owners passed, including structure/parity/parity-root DOM checks. |
-| [ ] M6 — Products and authority | Update Cargo selectors, artifact/feature descriptors, exact release recipes, host catalogs, CI source-path ownership, generated source/legal materials, package ownership and publish order. Migrate all examples/docs. | Implementation, all 46 profiles, legal/source packages and recorded installed products passed, including Linux Node GNU/musl and Android devices. Applicable Apple/Xcode owners remain pending. |
+| [ ] M6 — Products and authority | Update Cargo selectors, artifact/feature descriptors, exact release recipes, host catalogs, CI source-path ownership, generated source/legal materials, package ownership and publish order. Migrate all examples/docs. | Implementation, all 46 profiles, legal/source packages and recorded installed products passed, including Linux Node GNU/musl, Android devices and Apple Swift/UniFFI PR CI owners. Complete Flutter Apple slices and the macOS Dart consumer remain unqualified. |
 | [x] M7 — Retirement | Delete old public model paths, obsolete wrappers, empty modules and temporary forwarding. Close the cross-package private-export inventory. | Complete family/private-export inventory reconciled; all in-repository consumers use final owners. Dedicated theme-acceptance cfg and public Rustdoc passed. |
-| [ ] M8 — Closeout | Run final correctness/feature/parity owners once against the final source; repeat independent measurements; record observed benefits, limitations and migrations. | Final graph/size and cold observations are recorded. M8 remains open until all applicable platform qualification has execution evidence. |
+| [ ] M8 — Closeout | Run final correctness/feature/parity owners once against the final source; repeat independent measurements; record observed benefits, limitations and migrations. | Final graph/size and cold observations retain their recorded source identities. Final #258 PR CI and performance contracts passed. M8 remains open for the outstanding Flutter Apple/macOS qualification. |
 
 M4 can be developed independently after its evidence interfaces and host ownership are settled; integrate after M1/M2 if imports overlap. Serialize Cargo work in the parent worktree. Parallel workers may own disjoint family-data groups or host migrations, but share the final type definitions and must not revert each other's changes.
 
@@ -275,7 +277,7 @@ Do not run every full gate after each data move. Use focused tests while iterati
 
 Closeout requires every slice and applicable acceptance case above, a reconciled family/retirement inventory, clean final dependency receipts, and a concise user-facing migration guide. Record exact old-to-new imports, selector semantics, analysis defaults, fixes-capable products and code-action capability behavior. The next breaking source release must use the release policy's appropriate new pre-1.0 minor rather than a maintenance patch. Package versions are not changed by this planning commit.
 
-Historical 0.9.3 tags/artifacts and the maintenance line keep their published contracts. No graph reduction is attributed to merely renaming packages or moving a dependency to another transitive path. The design review record below establishes planning readiness; implementation and measured acceptance remain open.
+Historical 0.9.3 tags/artifacts and the maintenance line keep their published contracts. No graph reduction is attributed to merely renaming packages or moving a dependency to another transitive path. The design review below records planning readiness; implementation has since merged in #258, measurements retain their recorded scopes, and the remaining platform qualification is listed in the implementation record.
 
 ## Design review record
 

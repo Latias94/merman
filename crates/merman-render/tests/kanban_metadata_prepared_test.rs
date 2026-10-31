@@ -174,3 +174,75 @@ fn kanban_metadata_prepared_html_obeys_the_retained_text_budget() {
         ResourceLimitId::MaxPreparedTextRetainedBytes.as_str()
     );
 }
+
+fn authored_board(
+    nodes: Vec<merman_model::families::kanban::KanbanRenderNode>,
+) -> merman_model::presentation::PresentationDiagram {
+    use merman_model::presentation::{
+        AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
+    };
+
+    PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "kanban".into(),
+            config: Default::default(),
+            effective_config: Default::default(),
+            title: None,
+            theme_recipe: None,
+        },
+        RenderSemanticModel::Kanban(merman_model::families::kanban::KanbanDiagramRenderModel {
+            nodes,
+        }),
+        PresentationContext::default(),
+        &merman_model::resources::InputResourcePolicy::default(),
+        &merman_model::OperationControl::new(),
+    )
+    .unwrap()
+    .unwrap()
+}
+
+#[test]
+fn kanban_authored_visible_cards_reject_mismatched_sections() {
+    use merman_model::families::kanban::KanbanRenderNode;
+
+    let section = |id: &str| {
+        let mut node = KanbanRenderNode::new(id, "Repeated label");
+        node.is_group = true;
+        node
+    };
+    let card = |parent: Option<&str>| {
+        let mut node = KanbanRenderNode::new("X", "Repeated label");
+        node.parent_id = parent.map(str::to_owned);
+        node
+    };
+    let board = authored_board(vec![section("A"), section("B"), card(Some("A"))]);
+    let error = family::prepare(
+        &board,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .err()
+    .expect("a visible card must not be silently moved");
+    assert!(matches!(error, merman_render::Error::InvalidModel { .. }));
+
+    let board = authored_board(vec![
+        card(Some("A")), // Entries before any section retain their non-rendering behavior.
+        section("A"),
+        card(None), // Detached entries are also deliberately invisible.
+        card(Some("A")),
+        section("A"),
+        card(Some("A")),
+    ]);
+    let artifact = family::prepare(
+        &board,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .expect("repeated section/card occurrences retain their declared order");
+    let projection = artifact.layout_json().unwrap();
+    let layout = &projection["layout"]["KanbanDiagram"];
+    assert_eq!(layout["sections"].as_array().unwrap().len(), 2);
+    assert_eq!(layout["items"].as_array().unwrap().len(), 2);
+    assert_eq!(layout["items"][0]["parent_id"], "A");
+    assert_eq!(layout["items"][1]["parent_id"], "A");
+}
