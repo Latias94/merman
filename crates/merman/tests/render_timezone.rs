@@ -17,7 +17,7 @@ use merman::{
 #[cfg(feature = "ascii")]
 use merman::{
     ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy},
-    diagrams::gantt::{GanttDiagramModel, GanttTask, GanttTerminalView},
+    model::families::gantt::{GanttDiagramModel, GanttTask, GanttTerminalView},
 };
 #[cfg(feature = "ascii")]
 use merman_ascii::AsciiDiagram;
