@@ -608,9 +608,13 @@ jobs:
           if [ "$1" = 'api' ]; then
             printf '%s\\n' "$SOURCE_SHA"
           elif [ "$1 $2" = 'release view' ]; then
-            for file in "$TEST_PUBLIC/"*; do
-              if [ -f "$file" ]; then basename "$file"; fi
-            done
+            if [ "$5" = 'isDraft' ]; then
+              printf '%s\\n' "${TEST_DRAFT:-false}"
+            else
+              for file in "$TEST_PUBLIC/"*; do
+                if [ -f "$file" ]; then basename "$file"; fi
+              done
+            fi
           elif [ "$1 $2" = 'release download' ]; then
             local destination='' pattern=''
             shift 3
@@ -640,7 +644,7 @@ jobs:
         files = {archive: b"producer archive", f"{archive}.checksum": b"producer checksum"}
         scenarios = (
             "empty", "zip-only", "checksum-only", "complete",
-            "different-zip", "different-checksum", "partial-upload",
+            "different-zip", "different-checksum", "partial-upload", "draft",
         )
         for scenario in scenarios:
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
@@ -652,7 +656,7 @@ jobs:
                 for name, payload in files.items():
                     (producer / name).write_bytes(payload)
                     if (
-                        scenario in {"complete", "different-zip", "different-checksum"}
+                        scenario in {"complete", "different-zip", "different-checksum", "draft"}
                         or (scenario == "zip-only" and name == archive)
                         or (scenario == "checksum-only" and name != archive)
                     ):
@@ -669,6 +673,7 @@ jobs:
                     TEST_PUBLIC=str(public),
                     TEST_UPLOAD_LOG=str(log),
                     TEST_FAIL_UPLOAD="1" if scenario == "partial-upload" else "0",
+                    TEST_DRAFT="true" if scenario == "draft" else "false",
                 )
                 def execute() -> subprocess.CompletedProcess[str]:
                     return subprocess.run(
@@ -676,7 +681,7 @@ jobs:
                         cwd=root, env=environment, capture_output=True, text=True, check=False,
                     )
                 result = execute()
-                if scenario.startswith("different-"):
+                if scenario.startswith("different-") or scenario == "draft":
                     self.assertNotEqual(result.returncode, 0)
                     self.assertFalse(log.exists())
                     continue
@@ -702,19 +707,23 @@ jobs:
         workflow = read(WORKFLOW_ROOT / "release-apple.yml")
         step = workflow.split("        id: verify-published\n", 1)[1]
         command = textwrap.dedent(step.split("        run: |\n", 1)[1])
-        gh_stub = """
+        self.assertNotIn("GH_TOKEN:", step)
+        download_stub = """
         gh() {
-          test "$1 $2" = 'release download' || return 1
-          local destination=''
+          echo 'Public verification must not use authenticated gh downloads' >&2
+          return 1
+        }
+        curl() {
+          if [ "${TEST_BLOCK_PUBLIC:-0}" = '1' ]; then return 22; fi
+          local destination='' name=''
           while [ "$#" -gt 0 ]; do
-            if [ "$1" = '--dir' ]; then
-              destination="$2"
-              shift 2
-            else
-              shift
-            fi
+            case "$1" in
+              --output) destination="$2"; shift 2 ;;
+              https://*) name="${1##*/}"; shift ;;
+              *) shift ;;
+            esac
           done
-          cp "$TEST_PUBLIC/"* "$destination/"
+          cp "$TEST_PUBLIC/$name" "$destination"
         }
         """
         archive = "Merman.xcframework-v0.9.3.zip"
@@ -722,7 +731,7 @@ jobs:
         checksum = f"{hashlib.sha256(payload).hexdigest()}  {archive}\n".encode()
         for scenario in (
             "matching", "missing-archive", "corrupt-archive",
-            "changed-pair", "changed-checksum",
+            "changed-pair", "changed-checksum", "public-404",
         ):
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -746,7 +755,7 @@ jobs:
                     (public / f"{archive}.checksum").write_bytes(checksum + b"\n")
                 summary = root / "summary.md"
                 result = subprocess.run(
-                    [BASH, "-c", textwrap.dedent(gh_stub) + command],
+                    [BASH, "-c", textwrap.dedent(download_stub) + command],
                     cwd=root,
                     env=dict(
                         os.environ,
@@ -754,6 +763,7 @@ jobs:
                         SOURCE_SHA="a" * 40,
                         GH_REPO="Latias94/merman",
                         TEST_PUBLIC=str(public),
+                        TEST_BLOCK_PUBLIC="1" if scenario == "public-404" else "0",
                         GITHUB_STEP_SUMMARY=str(summary),
                     ),
                     capture_output=True,

@@ -207,6 +207,11 @@ jobs:
           shopt -s nullglob
           assets=(platforms/apple/Merman.xcframework-*.zip platforms/apple/Merman.xcframework-*.zip.checksum)
           test "${#assets[@]}" -eq 2
+          is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
+          if test "$is_draft" != false; then
+            echo "::error::Publish GitHub Release $RELEASE_TAG before uploading XCFramework assets."
+            exit 1
+          fi
           if ! existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"; then
             echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading XCFramework assets."
             exit 1
@@ -229,7 +234,6 @@ jobs:
       - name: Verify published XCFramework bytes
         id: verify-published
         env:
-          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
           SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
@@ -237,8 +241,11 @@ jobs:
           set -euo pipefail
           archive="Merman.xcframework-${RELEASE_TAG}.zip"
           verify_dir="$(mktemp -d)"
-          gh release download "$RELEASE_TAG" \
-            --pattern "$archive" --pattern "$archive.checksum" --dir "$verify_dir"
+          for name in "$archive" "$archive.checksum"; do
+            curl --disable --fail --location --silent --show-error \
+              --output "$verify_dir/$name" \
+              "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name"
+          done
           (
             cd "$verify_dir"
             sha256sum --check --strict "$archive.checksum"

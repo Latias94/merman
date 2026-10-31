@@ -228,7 +228,8 @@ from this skill.
 
 Skipped jobs must be explained by channel rules. A manual surface is not authorized merely because the tag-triggered bundle succeeded.
 
-Dispatch every selected manual owner; tag-triggered owners keep their documented trigger. For Apple, use the exact tag-based `--ref "$RELEASE_TAG"` dispatch in Tag And Push. Only workflow-only recovery may use the workflow definition from `main`; its artifact source remains the immutable release tag. A successful preflight, an existing upstream build artifact, or an asset name alone does not prove delivery of the selected source and bytes.
+Dispatch every selected manual owner using Tag And Push; tag-triggered owners keep their
+owning trigger. Preflight and Actions artifacts do not establish public delivery.
 
 If the SDK surface is selected, publish its full matrix after the primary GitHub Release exists,
 using the manual SDK publisher and successful source-matched qualification run. Do not treat
@@ -290,7 +291,8 @@ Use direct GitHub, registry, and artifact evidence documented in `docs/release/R
 
 Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
 
-Apple owner success includes reading back the public ZIP and checksum sidecar as a pair, verifying the ZIP's SHA-256 against the sidecar, and using `cmp` to compare both files with the original upload candidates before reporting success; independently confirm those assets on the selected Release before marking Apple complete. Every selected channel requires a successful publishing owner and matching public delivery evidence before the selected scope is complete.
+For Apple, follow the public-download verification in Tag And Push. Every selected channel
+requires its publishing owner to succeed and matching public delivery evidence before completion.
 
 The public Release body must list the channels actually delivered and the deferred channels still on their verified older versions. Keep selected channels awaiting delivery explicitly pending; retain detailed evidence in Publish Order without treating deferred channels as unfinished scope.
 
@@ -337,7 +339,9 @@ Classify the failure before changing anything:
   rerun the same workflow; do not issue a second manual publish attempt while acceptance is unknown.
 - A crates.io `mismatch` result is an incident requiring an explicit maintainer decision. Never
   auto-yank, silently resume, or publish dependent batches.
-- Apple GitHub Release assets: rerun the failed upload job in the same workflow run, consuming its original build artifact without rebuilding. Before uploading, download every existing same-named asset and compare it with that artifact using `cmp`; any difference fails before upload, and only missing items may be uploaded. Never use `--clobber` or mix archives repackaged by a new run with the original run's assets. The tag-scoped concurrency group spans workflow branches and uses `cancel-in-progress: false` to serialize active publishers without cancelling an in-progress run; it does not establish byte identity between separate builds.
+- Apple GitHub Release assets: follow [Tag And Push](../../../docs/release/RELEASING.md#tag-and-push).
+  Rerun only the failed upload job in the original run, retaining its build artifact and the owner's
+  existing-asset comparison.
 - Partial publication on other registries: rerun only idempotent or unfinished surfaces; never
   republish a version a registry accepted. For Web npm groups, use `recovery_run_id` to consume
   the original verified artifact instead of rebuilding it in a new run.
