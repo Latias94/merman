@@ -844,36 +844,52 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertIs(diagnostic_report["candidate_admission"], False)
 
     def test_elk_hierarchy_dry_run_verifies_probe_source_provenance(self) -> None:
-        report, exit_code = run_native_memory.execute(
-            self.args(
-                lane="flowchart-elk-separate-children-memory",
-                contract=str(ELK_HIERARCHY_CONTRACT_PATH),
-                dry_run=True,
-            )
-        )
-
-        self.assertEqual(exit_code, 0)
-        self.assertEqual(report["recipe"]["bench"], "elk_hierarchy_memory")
-        self.assertEqual(report["recipe"]["features"], ["all-diagrams", "layout-elk"])
-        self.assertEqual(len(report["inputs"]["probe_inputs"]), 2)
-
-        damaged = json.loads(ELK_HIERARCHY_CONTRACT_PATH.read_text(encoding="utf-8"))
-        damaged["probe"]["inputs"][0]["sha256"] = "b" * 64
+        contract = json.loads(ELK_HIERARCHY_CONTRACT_PATH.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as raw:
-            contract_path = Path(raw) / "elk-hierarchy-damaged.json"
-            contract_path.write_text(json.dumps(damaged), encoding="utf-8")
-            failed, failed_exit = run_native_memory.execute(
-                self.args(
+            checkout = Path(raw) / "checkout"
+            paths = {"Cargo.toml", "Cargo.lock", contract["probe"]["package_manifest"]}
+            paths.update(item["path"] for item in contract["probe"]["inputs"])
+            for relative in paths:
+                path = checkout / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                # Reproduce Git's eol=lf checkout even when a Windows editor wrote CRLF.
+                path.write_bytes((ROOT / relative).read_bytes().replace(b"\r\n", b"\n"))
+            with mock.patch.object(
+                run_native_memory, "_git_provenance", return_value=dict(CLEAN_SOURCE)
+            ):
+                args = self.args(
+                    repo_root=str(checkout),
                     lane="flowchart-elk-separate-children-memory",
-                    contract=str(contract_path),
+                    contract=str(ELK_HIERARCHY_CONTRACT_PATH),
                     dry_run=True,
                 )
-            )
-        self.assertEqual(failed_exit, 2)
-        self.assertIn(
-            "owner contract probe input digest differs at index 0",
-            failed["contract_errors"],
-        )
+                report, exit_code = run_native_memory.execute(args)
+                self.assertEqual(exit_code, 0, report["contract_errors"])
+                self.assertEqual(report["recipe"]["bench"], "elk_hierarchy_memory")
+                self.assertEqual(report["recipe"]["features"], ["all-diagrams", "layout-elk"])
+                self.assertEqual(len(report["inputs"]["probe_inputs"]), 2)
+
+                damaged = json.loads(json.dumps(contract))
+                damaged["probe"]["inputs"][0]["sha256"] = "b" * 64
+                contract_path = Path(raw) / "elk-hierarchy-damaged.json"
+                contract_path.write_text(json.dumps(damaged), encoding="utf-8")
+                args.contract = str(contract_path)
+                failed, failed_exit = run_native_memory.execute(args)
+                self.assertEqual(failed_exit, 2)
+                self.assertIn(
+                    "owner contract probe input digest differs at index 0",
+                    failed["contract_errors"],
+                )
+
+                args.contract = str(ELK_HIERARCHY_CONTRACT_PATH)
+                probe_path = checkout / contract["probe"]["inputs"][0]["path"]
+                probe_path.write_bytes(probe_path.read_bytes() + b"// provenance drift\n")
+                failed, failed_exit = run_native_memory.execute(args)
+                self.assertEqual(failed_exit, 2)
+                self.assertIn(
+                    "owner contract probe input digest differs at index 0",
+                    failed["contract_errors"],
+                )
 
     def test_elk_hierarchy_probe_rejects_semantic_and_workload_drift(self) -> None:
         lane = self.elk_hierarchy_lane()

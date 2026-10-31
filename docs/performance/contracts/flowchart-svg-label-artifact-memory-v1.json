@@ -18,7 +18,7 @@
     "inputs": [
       {
         "path": "crates/merman/benches/flowchart_svg_label_memory.rs",
-        "sha256": "098bbe63caabdd81ec6cb2ea44797735c8648fd51c8cbe5d5a63f413a51c215f"
+        "sha256": "b49129c36b7b880e52ffb925805067437581b4942ca4006207b735358ff7b506"
       },
       {
         "path": "crates/merman/benches/native_memory/allocator.rs",
@@ -26,7 +26,7 @@
       },
       {
         "path": "crates/merman/Cargo.toml",
-        "sha256": "b32d6599428949c7cdb11c5426372ff60ee4ac4e748247e04192e27c8800efbb"
+        "sha256": "c051bba11e6abe6b6c745d358acfd4fb3d2d6652208de9d5a60f617f9e90e941"
       },
       {
         "path": "Cargo.lock",
