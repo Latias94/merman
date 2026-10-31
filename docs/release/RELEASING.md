@@ -794,17 +794,18 @@ Apple uses a tag-scoped concurrency group shared across workflow branches with
 `cancel-in-progress: false`. This serializes active runs for the same tag without cancelling an
 in-progress publisher; it does not make archives rebuilt by separate runs byte-identical.
 
-Before any upload, Apple downloads each existing same-named asset and uses `cmp` against this
-run's original artifact. Any difference fails before uploading; matching assets are kept and only
+Before any upload, Apple requires a published, non-draft Release, then downloads each existing
+same-named asset and uses `cmp` against this run's original artifact. Any difference fails before uploading; matching assets are kept and only
 missing items are uploaded. If the upload job fails, rerun that failed upload job within the same
 workflow run so it consumes the original build artifact. Do not rerun the build job or dispatch a
 new run to retry that upload: repackaging the same source can produce different archive bytes,
 which must not be mixed with assets from the original run. Existing assets are never clobbered.
 
-After uploading, the Apple owner downloads the public `Merman.xcframework-${RELEASE_TAG}.zip` and
-its checksum sidecar as a pair, verifies the ZIP's SHA-256 against the sidecar, and uses `cmp` to
+After uploading, the Apple owner anonymously downloads the public
+`Merman.xcframework-${RELEASE_TAG}.zip` and its checksum sidecar as a pair, verifies the ZIP's SHA-256 against the sidecar, and uses `cmp` to
 compare both files with the original upload candidates before reporting success. Independently
-confirm those assets on the selected Release before marking Apple complete. An existing upstream
+confirm those assets on the selected Release before marking Apple complete. Authenticated access
+to a draft Release does not prove public availability. An existing upstream
 build artifact does not mean preflight published the XCFramework; existing public assets must
 still match the selected source and bytes.
 
