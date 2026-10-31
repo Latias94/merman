@@ -184,7 +184,7 @@ jobs:
         run: |
           python3 scripts/apple_package.py --output-dir target/apple-package --version "$VERSION" \
             --source-commit "$SOURCE_SHA" \
-            --artifact-url "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/Merman.xcframework-$RELEASE_TAG.zip"
+            --artifact-url "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/Merman.xcframework-${RELEASE_TAG}.zip"
 
       - name: Qualify extracted package, simulator runtime and matched archive sizes
         env:

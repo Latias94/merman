@@ -20,7 +20,6 @@ DEFAULT_DESCRIPTOR = REPO_ROOT / "capabilities" / "artifact-profiles-v2.json"
 CargoBuildTool = Literal["cargo", "cargo-zigbuild"]
 EXACT_NATIVE_CARGO_PROFILES = frozenset({"native-distribution", "native-sdk"})
 PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
-# Product policy selects identity; the descriptor owns capabilities and targets.
 RECOMMENDED_PRODUCTS = {
     "swift": "apple-uniffi-native",
     "c": "sdk-native-full",

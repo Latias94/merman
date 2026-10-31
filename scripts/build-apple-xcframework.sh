@@ -125,6 +125,7 @@ generate_swift_bindings() {
 
 cleanup_binding_generator_target() {
     rm -rf -- "$BINDING_GENERATOR_TARGET_DIR"
+    rm -rf -- "$OUT_DIR/thin"
 }
 
 require_tool rustup
@@ -182,6 +183,7 @@ if [[ "${#XC_ARGS[@]}" -eq 0 ]]; then
     exit 2
 fi
 
+rm -rf -- "$OUT_DIR/thin"
 generate_swift_bindings
 cp "$SWIFT_BINDINGS_DIR/MermanFFI.h" "$INCLUDE_DIR/MermanFFI.h"
 cp "$SWIFT_BINDINGS_DIR/MermanFFI.modulemap" "$INCLUDE_DIR/module.modulemap"

@@ -36,7 +36,6 @@ def compare_sizes(original: int, staged: int) -> dict:
 
 
 def validate_consumer(path: Path, *, capabilities, outputs, version: str) -> dict:
-    # Reuse the native/WASI SVG occurrence and glyph-path assertion.
     from platforms.wasi.common import validate_svg
 
     result = json.loads(path.read_text())
@@ -57,7 +56,6 @@ def validate_consumer(path: Path, *, capabilities, outputs, version: str) -> dic
 def compile_consumer(package: Path, source: Path, work: Path, *, triple=None, sdk=None) -> Path:
     project = work / "consumer"
     project.mkdir(parents=True)
-    # This consumer resolves only the extracted package. No source-tree dependency.
     (project / "Package.swift").write_text(
         '// swift-tools-version: 5.9\nimport PackageDescription\n'
         'let package = Package(name: "InstalledConsumer", platforms: [.macOS(.v12), .iOS(.v14)], '
@@ -76,7 +74,7 @@ def compile_consumer(package: Path, source: Path, work: Path, *, triple=None, sd
 
 
 def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
-                    version: str, simulator: bool) -> dict:
+                    version: str, simulator: bool) -> tuple[dict, dict]:
     profile = next(p for p in load_artifact_profiles(repo_root / "capabilities/artifact-profiles-v2.json")
                    if p.profile_id == "apple-uniffi-native")
     work_dir.mkdir(parents=True, exist_ok=False)
@@ -124,7 +122,7 @@ def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
                 run(["xcrun", "simctl", "shutdown", udid], cwd=work_dir)
     else:
         report["simulator_runtime"] = "not-requested"
-    return report
+    return report, result
 
 
 def compare_original(*, repo_root: Path, package_dir: Path, work_dir: Path,
@@ -139,7 +137,13 @@ def compare_original(*, repo_root: Path, package_dir: Path, work_dir: Path,
     info = plistlib.loads((framework / "Info.plist").read_bytes())
     work_dir.mkdir(parents=True, exist_ok=False)
     original_package = work_dir / "original-package"
-    shutil.copytree(package_dir, original_package)
+    library_paths = {str(Path("Merman.xcframework") / entry["LibraryIdentifier"] / entry["LibraryPath"])
+                     for entry in info["AvailableLibraries"]}
+    shutil.copytree(
+        package_dir, original_package,
+        ignore=lambda directory, names: [name for name in names
+            if str((Path(directory) / name).relative_to(package_dir)) in library_paths],
+    )
     original = original_package / "Merman.xcframework"
     for entry in info["AvailableLibraries"]:
         libraries = [repo_root / "target" / target / profile.cargo.cargo_profile /
@@ -150,7 +154,6 @@ def compare_original(*, repo_root: Path, package_dir: Path, work_dir: Path,
         else:
             run(["lipo", "-create", *libraries, "-output", destination], cwd=work_dir)
     sizes = []
-    # Match the compression algorithm and file inventory, measuring only the XCF payload.
     for name, root in (("original", original), ("staged", framework)):
         archive = work_dir / f"{name}.zip"
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zipped:
@@ -187,13 +190,14 @@ def main() -> int:
     with zipfile.ZipFile(args.package_archive) as archive:
         archive.extractall(extracted)
     package = next(extracted.glob("*/Package.swift")).parent
-    report = qualify_package(repo_root=REPO_ROOT, package_dir=package,
-                             work_dir=work / "installed", version=args.version, simulator=args.simulator)
+    report, staged_result = qualify_package(repo_root=REPO_ROOT, package_dir=package,
+                                           work_dir=work / "installed", version=args.version,
+                                           simulator=args.simulator)
     if args.compare_original:
         report["matched_size"] = compare_original(repo_root=REPO_ROOT, package_dir=package,
                                                   work_dir=work / "comparison",
                                                   version=args.version,
-                                                  staged_result=json.loads((work / "installed/macos.json").read_text()))
+                                                  staged_result=staged_result)
     (work / "qualification.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
     return 0
