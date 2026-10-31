@@ -193,10 +193,9 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 self.assertFalse(recipe.default_features)
                 self.assertTrue(recipe.features)
 
-    def test_prebuilt_native_profiles_share_one_default_sku(self) -> None:
+    def test_other_native_products_retain_their_existing_default_sku(self) -> None:
         profile_ids = (
             "android-native",
-            "apple-uniffi-native",
             "flutter-android-native",
             "flutter-desktop-native",
             "flutter-ios-native",
@@ -226,6 +225,16 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     baseline["cargo"]["features"],
                 )
                 self.assertEqual(candidate["expected"], baseline["expected"])
+
+    def test_recommended_svg_products_include_math_and_elk(self) -> None:
+        for host in ("swift", "c", "wasi"):
+            with self.subTest(host=host):
+                profile = artifact_profile_recipe.recommend_artifact_profile(host)
+                self.assertTrue({"math", "layout-elk", "svg"}.issubset(profile.capabilities))
+                self.assertTrue({"math", "layout-elk", "svg"}.issubset(profile.cargo.features))
+        apple = artifact_profile_recipe.recommend_artifact_profile("swift")
+        self.assertEqual(apple.outputs, ("ascii", "svg"))
+        self.assertFalse({"png", "jpeg", "pdf", "native-fonts"}.intersection(apple.capabilities))
 
     def test_c_abi_reference_profile_remains_complete(self) -> None:
         recipe = load_artifact_profile("c-abi-native")
