@@ -924,7 +924,7 @@ fn document_allocation_failed() -> AsciiError {
 #[cfg(test)]
 fn compatibility_policy() -> AsciiResourcePolicy {
     AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     )
 }
 
@@ -1140,7 +1140,7 @@ mod tests {
         AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext,
     };
     use crate::{AsciiColorMode, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn styled_line_writes_role_runs_to_canvas() {

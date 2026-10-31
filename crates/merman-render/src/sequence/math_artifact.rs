@@ -254,7 +254,7 @@ impl SequenceMathArtifactStore for SequenceMathSidecar {
 
 pub(crate) struct SequenceMathSidecarBuilder<'a> {
     backend: Option<ConfiguredMathBackend>,
-    config: merman_core::presentation::PresentationConfig,
+    config: merman_model::presentation::PresentationConfig,
     text_measurer: &'a dyn TextMeasurer,
     work_meter: Arc<OperationWorkMeter>,
     actor_terminal_emissions: usize,
@@ -265,7 +265,7 @@ pub(crate) struct SequenceMathSidecarBuilder<'a> {
 impl<'a> SequenceMathSidecarBuilder<'a> {
     pub(crate) fn new(
         backend: Option<&ConfiguredMathBackend>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         text_measurer: &'a dyn TextMeasurer,
         work_meter: Arc<OperationWorkMeter>,
     ) -> Self {
@@ -454,7 +454,7 @@ mod tests {
         fn render_html_label(
             &self,
             text: &str,
-            _config: &merman_core::presentation::PresentationConfig,
+            _config: &merman_model::presentation::PresentationConfig,
         ) -> Option<String> {
             Some(format!("<span>{text}</span>"))
         }
@@ -462,7 +462,7 @@ mod tests {
         fn measure_sequence_html_label_with_style(
             &self,
             _text: &str,
-            _config: &merman_core::presentation::PresentationConfig,
+            _config: &merman_model::presentation::PresentationConfig,
             _style: &TextStyle,
         ) -> Option<TextMetrics> {
             self.prepare_calls.fetch_add(1, Ordering::SeqCst);
@@ -495,7 +495,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         );
@@ -557,7 +557,7 @@ mod tests {
         let backend = ConfiguredMathBackend::external(Arc::new(CountingSequenceMathRenderer {
             prepare_calls: calls,
         }));
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let style = TextStyle::default();
         let text_measurer = DeterministicTextMeasurer::default();
         let measuring_meter = Arc::new(OperationWorkMeter::new(
@@ -636,7 +636,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         );
@@ -668,7 +668,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         );
@@ -712,7 +712,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         )
@@ -760,7 +760,7 @@ mod tests {
         let text_measurer = DeterministicTextMeasurer::default();
         let builder = SequenceMathSidecarBuilder::new(
             Some(&backend),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             &text_measurer,
             Arc::clone(&meter),
         )

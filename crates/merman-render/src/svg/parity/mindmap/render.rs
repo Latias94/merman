@@ -134,7 +134,7 @@ fn include_mindmap_path_bounds(
 
 fn mindmap_viewport_bounds_from_layout(
     layout: &MindmapDiagramLayout,
-    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
+    model: &merman_model::families::mindmap::MindmapDiagramRenderModel,
 ) -> Option<Bounds> {
     let mut layout_nodes: std::collections::BTreeMap<&str, &LayoutNode> =
         std::collections::BTreeMap::new();
@@ -549,7 +549,7 @@ fn mindmap_css(
 fn write_mindmap_edge_label(
     out: &mut impl SvgOutput,
     edge_id: &str,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> Result<()> {
     if !crate::config::config_effective_html_labels(config.as_value()) {
         let _ = write!(
@@ -574,8 +574,8 @@ fn write_mindmap_edge_label(
 
 pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
-    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
-    config: &merman_core::presentation::PresentationConfig,
+    model: &merman_model::families::mindmap::MindmapDiagramRenderModel,
+    config: &merman_model::presentation::PresentationConfig,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
     prepared_labels: &crate::mindmap::MindmapPreparedLabels,
     options: &SvgExecution<'_>,
@@ -610,7 +610,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     fn mk_label(
         out: &mut impl SvgOutput,
         spec: MindmapLabelSpec<'_>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         _font_family_css: &str,
         options: &SvgExecution<'_>,
         text_style: &TextStyle,
@@ -728,7 +728,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 .unwrap_or(usize::MAX),
             work_meter,
             &parse_work,
-            merman_core::OperationPhase::Emit,
+            merman_model::OperationPhase::Emit,
         );
 
         fn escape_amp_preserving_entities(raw: &str) -> String {
@@ -744,7 +744,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     diagram_type: "mindmap".to_string(),
                 })?;
             let html = crate::html::resolve_svg_fragment(
-                merman_core::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink),
+                merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink),
                 work_meter,
             )?;
             out.push_str(&escape_amp_preserving_entities(&html));
@@ -1473,7 +1473,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     drop(_g_render_svg);
 
     timings.total = total_timer
-        .map(merman_core::runtime::OperationTimer::elapsed)
+        .map(merman_model::runtime::OperationTimer::elapsed)
         .unwrap_or_default();
     if timing.is_enabled() {
         eprintln!(
@@ -1523,7 +1523,7 @@ mod tests {
                 if complete {
                     raw["themeVariables"]["gradientStop"] = serde_json::json!("currentColor");
                 }
-                let config = merman_core::presentation::PresentationConfig::from_value(raw);
+                let config = crate::test_support::presentation_config(raw);
                 let meter = crate::resources::OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
                 );
@@ -1613,7 +1613,7 @@ mod tests {
         let error = write_mindmap_edge_label(
             &mut out,
             "edge-0",
-            &merman_core::presentation::PresentationConfig::empty_object(),
+            &merman_model::presentation::PresentationConfig::empty_object(),
         )
         .expect_err("the rejecting sink must stop Mindmap edge-label emission");
 
@@ -1642,7 +1642,7 @@ mod tests {
 
     #[test]
     fn mindmap_css_stops_at_the_first_bounded_sink_checkpoint() {
-        let config = merman_core::presentation::PresentationConfig::empty_object();
+        let config = merman_model::presentation::PresentationConfig::empty_object();
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -1684,11 +1684,11 @@ mod tests {
             }
         });
 
-        let config = merman_core::presentation::PresentationConfig::from_value(cfg);
+        let config = crate::test_support::presentation_config(cfg);
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let model = merman_core::diagrams::mindmap::MindmapDiagramRenderModel::default();
+        let model = merman_model::families::mindmap::MindmapDiagramRenderModel::default();
         let node_palette =
             crate::mindmap::MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter)
                 .unwrap();
@@ -1728,8 +1728,8 @@ mod tests {
                 max_y: 49.0,
             }),
         };
-        let model = merman_core::diagrams::mindmap::MindmapDiagramRenderModel {
-            nodes: vec![merman_core::diagrams::mindmap::MindmapDiagramRenderNode {
+        let model = merman_model::families::mindmap::MindmapDiagramRenderModel {
+            nodes: vec![merman_model::families::mindmap::MindmapDiagramRenderNode {
                 id: "0".to_string(),
                 dom_id: "node_0".to_string(),
                 label: "I am a cloud".to_string(),

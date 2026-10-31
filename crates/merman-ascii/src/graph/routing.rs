@@ -103,7 +103,7 @@ impl<'execution> RoutePaintCursor<'execution> {
 
     fn checkpoint(&mut self) -> Result<()> {
         self.execution
-            .checkpoint_loop(merman_core::OperationPhase::Emit, self.iteration)?;
+            .checkpoint_loop(merman_model::OperationPhase::Emit, self.iteration)?;
         self.iteration = self.iteration.saturating_add(1);
         Ok(())
     }
@@ -174,7 +174,7 @@ impl PreparedRoute {
     #[cfg(test)]
     fn paint_body(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
         let policy = crate::resource::AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let mut cursor = RoutePaintCursor::new(AsciiExecution::for_test(&policy));
         self.paint_body_with_cursor(drawing, &mut cursor)
@@ -183,7 +183,7 @@ impl PreparedRoute {
     #[cfg(test)]
     fn paint_markers(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
         let policy = crate::resource::AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let mut cursor = RoutePaintCursor::new(AsciiExecution::for_test(&policy));
         self.paint_markers_with_cursor(drawing, &mut cursor)
@@ -223,11 +223,11 @@ impl RouteScene {
     ) -> Result<()> {
         let mut cursor = RoutePaintCursor::new(execution);
         for route in &self.routes {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             route.paint_body_with_cursor(drawing, &mut cursor)?;
         }
         for route in &self.routes {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             route.paint_markers_with_cursor(drawing, &mut cursor)?;
         }
         Ok(())
@@ -260,9 +260,9 @@ impl RouteScene {
         execution: AsciiExecution<'_>,
     ) -> Result<()> {
         for route in &self.routes {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             for label in &route.plan.labels {
-                execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                execution.checkpoint(merman_model::OperationPhase::Emit)?;
                 let text = self.labels.get(label.descriptor)?;
                 let label = transform.apply(EdgeLabel {
                     text,
@@ -342,8 +342,8 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RouteScenePlan<'a>> {
-    execution.rebind_resource_context(resources, merman_core::OperationPhase::Layout);
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let topology = if graph.groups.is_empty() {
         None
     } else {
@@ -381,7 +381,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     )?;
 
     for (edge_index, edge) in canonical_edges.iter().enumerate() {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         if edge.stroke == super::model::GraphEdgeStroke::Invisible {
             continue;
         }
@@ -433,7 +433,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         };
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
-            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
             let Some(plan) = plan.resolve_node_attachments(&from, &to, charset, resources)? else {
                 continue;
             };
@@ -480,14 +480,14 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         )?;
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     allocate_route_label_placements(&mut routes, &mut occupancy, resources, graph.diagram_type())?;
 
     let mut width = 0;
     let mut height = 0;
     let mut planned_cell_count = 0usize;
     for route in &routes {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
         planned_cell_count = planned_cell_count
             .checked_add(route.plan.active_cells().count())
             .ok_or_else(|| {
@@ -500,7 +500,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         height = height.max(plan_height);
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     Ok(RouteScenePlan {
         routes,
         extent: (width, height),
@@ -646,7 +646,7 @@ pub(super) fn prepare_route_scene(
     charset: &GraphCharset,
 ) -> Result<RouteScene> {
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
     prepare_route_scene_with_resources(graph, graph_layout, edges, charset, &mut resources)?
         .materialize(&resources)
@@ -696,7 +696,7 @@ fn group_endpoint_layout(group: &GroupLayout, charset: &GraphCharset) -> NodeLay
 #[cfg(test)]
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
     let policy = crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     );
     let mut cursor = RoutePaintCursor::new(AsciiExecution::for_test(&policy));
     paint_route_plan_body_with_cursor(drawing, plan, &mut cursor)?;

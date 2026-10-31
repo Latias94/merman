@@ -16,7 +16,7 @@ use crate::safe_text::{
     NormalizedTextPlan, NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_text,
     try_plan_normalized_trimmed_text,
 };
-use merman_core::diagrams::flowchart::{
+use merman_model::families::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
     FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
 };
@@ -32,7 +32,7 @@ pub(crate) fn from_flowchart_model(
     resources: &mut ResourceContext,
 ) -> Result<AsciiGraph> {
     let policy = resources.policy();
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let layout_policy = options.flowchart_layout();
     from_flowchart_model_with_execution(
         model,
@@ -48,7 +48,7 @@ pub(crate) fn from_flowchart_model_with_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
-    execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
+    execution.rebind_resource_context(resources, merman_model::OperationPhase::Semantic);
     resources.transaction(|resources| {
         from_flowchart_model_transactional(model, &layout_policy, resources, execution)
     })
@@ -209,7 +209,7 @@ fn from_flowchart_model_transactional(
 }
 
 fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
-    execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)
+    execution.checkpoint_loop(merman_model::OperationPhase::Semantic, iteration)
 }
 
 fn parse_flow_edge_marker(marker: CoreFlowEdgeMarker) -> GraphEdgeMarker {
@@ -868,12 +868,12 @@ fn validate_supported_flowchart_model(
 mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::diagrams::flowchart::{
+    use merman_model::families::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowNodeProvenance,
         FlowSubgraph,
     };
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{OperationControl, OperationPhase};
 
     fn flow_node(id: &str) -> FlowNode {
         FlowNode {

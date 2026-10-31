@@ -4,7 +4,7 @@ use merman as parse_api;
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgPipeline, TextMeasurementPolicy};
 use merman::{
     OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
-    SvgRequest, runtime::RuntimePolicy,
+    SvgRequest, model::runtime::RuntimePolicy,
 };
 use roxmltree::Document;
 

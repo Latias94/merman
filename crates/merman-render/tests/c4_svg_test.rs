@@ -26,7 +26,8 @@ fn try_render_c4_svg_with_environment(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = environment.begin_session().expect("begin render session");
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
@@ -90,10 +91,11 @@ fn render_c4_with_preset(
     engine: MermaidEngine,
 ) -> String {
     let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+    let parsed = common::install_parse_compatibility(&theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .unwrap();
@@ -171,7 +173,7 @@ fn c4_node_source_and_site_paints_override_only_their_properties() {
     let source = "C4Context\nSystem(a, \"A\")\nSystem(b, \"B\")\nUpdateElementStyle(a, $fontColor=\"red\", $bgColor=\"yellow\")\n";
     for prefix in ["", "---\nconfig: {theme: base}\n---\n"] {
         let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
                 "c4": {"system_font_color": "green", "system_border_color": "blue"}
             })),
         );
@@ -353,12 +355,13 @@ fn c4_source_relationship_paints_keep_shared_markers_without_host_paint() {
             }})
         };
         let parsed = MermaidEngine::new()
-            .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-                config,
-            ))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            )
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .unwrap()
@@ -530,7 +533,7 @@ fn c4_host_relation_paint_preserves_explicit_source_and_site_owners() {
             body.to_owned()
         };
         let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
                 "c4": {
                     "boundary_bg_color": "#334455", "boundary_border_color": "#667788",
                     "boundary_font_color": "green", "relationship_text_color": "orange",
@@ -698,7 +701,9 @@ fn c4_unconsumed_palette_variables_do_not_own_native_role_defaults() {
         let source = format!("{prefix}{body}");
         let engine = || {
             MermaidEngine::new().with_site_config(
-                merman_core::presentation::PresentationConfig::from_value(site_config.clone()),
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    site_config.clone(),
+                ),
             )
         };
         let svg = render_c4_with_preset(
@@ -797,7 +802,7 @@ fn c4_unconsumed_palette_variables_do_not_certify_unsupported_role_facets() {
         };
         style.paint.opacity = Specified::Value(0.5);
         let theme = c4_cluster_rules_theme([ThemeRule::new(target, style)]);
-        let engine = MermaidEngine::new().with_site_config(merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": {"textColor": "#abcdef", "lineColor": "#fedcba", "clusterBkg": "#123456", "clusterBorder": "#654321"}
         })));
         let error = try_render_c4_rendered_with_engine(source, &theme, engine)
@@ -879,10 +884,11 @@ fn try_render_c4_rendered_with_engine(
     theme: &DiagramTheme,
     engine: MermaidEngine,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed C4 diagram")
-        .expect("detect themed C4 diagram");
+        .expect("detect themed C4 diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
@@ -912,7 +918,8 @@ fn try_render_c4_svg_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse C4 resource-bound fixture")
-        .expect("detect C4 resource-bound fixture");
+        .expect("detect C4 resource-bound fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -927,7 +934,8 @@ fn layout_c4_with_options(source: &str, options: &LayoutOptions) -> C4DiagramLay
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, options, session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize C4 layout");
@@ -1245,7 +1253,7 @@ fn c4_text_fill_reaches_untitled_nodes_but_preserves_explicit_text_color() {
         .compile(spec.clone())
         .expect("typed text theme");
     let owned_engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(
+        merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
         ),
     );
@@ -1555,7 +1563,7 @@ fn c4_text_palette_respects_the_fill_winner_and_host_color_owner() {
     for config_owned in [false, true] {
         let engine = if config_owned {
             MermaidEngine::new().with_site_config(
-                merman_core::presentation::PresentationConfig::from_value(
+                merman_core::presentation::SourcePresentationConfig::from_value(
                     serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
                 ),
             )
@@ -1881,7 +1889,8 @@ fn c4_public_layout_and_svg_render_handle_deep_boundary_chain() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "c4");
 
     let options = LayoutOptions::default();
@@ -2396,7 +2405,7 @@ UpdateRelStyle(system, external, $textColor="{authored_color}")
 "#
     );
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({"c4": {
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({"c4": {
             "boundary_font_color": site_color,
             "relationship_text_color": site_color
         }})),
@@ -2404,7 +2413,8 @@ UpdateRelStyle(system, external, $textColor="{authored_color}")
     let parsed = engine
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()
@@ -2433,3 +2443,6 @@ UpdateRelStyle(system, external, $textColor="{authored_color}")
             .all(|node| node.attribute("data-probe").is_none())
     );
 }
+
+#[allow(dead_code)]
+mod common;

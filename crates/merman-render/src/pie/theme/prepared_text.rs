@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use merman_core::diagrams::pie::PieDiagramRenderModel;
-use merman_core::presentation::PresentationConfig;
+use merman_model::families::pie::PieDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -100,7 +100,7 @@ pub(super) struct PiePreparedText {
 
 impl PiePreparedText {
     pub(super) fn new(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         title: Option<&str>,
         config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
@@ -116,9 +116,7 @@ impl PiePreparedText {
         let base_size_active = base_size_requested
             && !["themeVariables.fontSize", "fontSize"]
                 .into_iter()
-                .any(|path| {
-                    merman_core::__private::config_path_overrides_typed_default(config, path)
-                });
+                .any(|path| config.config_path_overrides_typed_default(path));
         let mut css = PieCssBinding::new(
             config.as_value(),
             Some(inherited_font_stack.font_family_css()),
@@ -230,14 +228,8 @@ impl PiePreparedText {
                 );
             }
 
-            let fill_owned = merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                role.fill_path(),
-            );
-            let size_owned = merman_core::__private::config_path_overrides_typed_default(
-                config,
-                role.size_path(),
-            );
+            let fill_owned = config.config_paint_overrides_typed_default(role.fill_path());
+            let size_owned = config.config_path_overrides_typed_default(role.size_path());
             let mut owners = BTreeMap::new();
             if !fill_owned
                 && let Some(fill) = resolve_direct_static_fill(
@@ -519,7 +511,7 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
-    use merman_core::diagrams::pie::PieSection;
+    use merman_model::families::pie::PieSection;
 
     #[test]
     fn pie_text_visibility_decodes_entities_and_filters_forbidden_xml_scalars() {
@@ -553,7 +545,7 @@ mod tests {
             )
             .unwrap()
             .resolve(DiagramFamilyId::PIE);
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.title = Some("Title".to_owned());
         model.sections = ["#32;\u{1}", "Beta"]
             .map(|label| PieSection {

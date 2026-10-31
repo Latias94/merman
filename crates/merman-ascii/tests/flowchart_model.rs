@@ -4,12 +4,13 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiLayoutProfile,
     AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::flowchart::{
+use merman_core::{ParseOptions, presentation::MermaidEngine};
+use merman_model::OperationControl;
+use merman_model::families::flowchart::{
     FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowchartModel,
 };
-use merman_core::resources::ResourceProfile;
-use merman_core::{MermaidEngine, OperationControl, ParseOptions};
+use merman_model::presentation::RenderSemanticModel;
+use merman_model::resources::ResourceProfile;
 use std::path::Path;
 use support::render_model;
 use unicode_width::UnicodeWidthStr;
@@ -27,7 +28,7 @@ fn render_flowchart_with_resources(
         .parse_diagram_sync(input)
         .expect("canonical flowchart should parse");
 
-    let context = merman_core::runtime::RuntimePolicy::deterministic()
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic test operation context");
     AsciiRenderer::new(*options)?.render_parsed(

@@ -27,12 +27,12 @@ use rough_cache::*;
 use style::*;
 use viewport::*;
 
-type StateSvgModel = merman_core::diagrams::state::StateDiagramRenderModel;
-type StateSvgState = merman_core::diagrams::state::StateRecord;
-type StateSvgLink = merman_core::diagrams::state::StateLink;
-type StateSvgLinks = merman_core::diagrams::state::StateLinks;
-type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
-type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
+type StateSvgModel = merman_model::families::state::StateDiagramRenderModel;
+type StateSvgState = merman_model::families::state::StateRecord;
+type StateSvgLink = merman_model::families::state::StateLink;
+type StateSvgLinks = merman_model::families::state::StateLinks;
+type StateSvgNode = merman_model::families::state::StateDiagramRenderNode;
+type StateSvgEdge = merman_model::families::state::StateDiagramRenderEdge;
 
 fn state_transition_marker_id(diagram_id: impl SvgDiagramIdValue, ordinal: usize) -> String {
     format!("{diagram_id}_stateDiagram-barbEnd-{ordinal}")

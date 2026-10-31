@@ -16,11 +16,12 @@ owners rather than being duplicated across Markdown files.
 | Check diagram coverage and parity evidence | [Alignment dashboard](alignment/STATUS.md) |
 | Embed or export SVG safely | [SVG output pipeline](rendering/SVG_OUTPUT_PIPELINE.md) and [rendering security](security/RENDERING_SECURITY.md) |
 | Understand architecture decisions | [Architecture decision records](adr/) and [alignment authority map](alignment/README.md) |
+| Follow the breaking model/source dependency cleanup | [Execution plan](plans/2026-10-30-model-and-source-boundaries.md), [implementation record](reviews/2026-10-30-model-source-boundaries-implementation.md), [family inventory](plans/2026-10-30-family-data-inventory.md), and [ADR-0099](adr/0099-model-and-source-boundaries.md) |
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |
 | Compare releases or substantiate release claims | [Comparative release reports](release/RELEASE_REPORTS.md) |
 | Upgrade between releases or native/query contracts | [Versioned upgrade index](release/README.md), including [alpha.7 → 0.8.0](release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) |
-| Migrate current-source semantic JSON or deep diagram models | [Deep diagram lifecycle migration](migrations/deep-diagram-lifecycle.md) |
+| Migrate current-source Rust models, output inputs, or semantic JSON | [Model/source migration](migrations/model-source-boundaries.md) and [deep diagram lifecycle migration](migrations/deep-diagram-lifecycle.md) |
 | Reuse parsed source, migrate geometry budgets, or mount responsive Web diagrams | [Current development migration](migrations/render-reuse-host-integration.md) |
 | Align to another Mermaid release | [Mermaid upgrade playbook](release/MERMAID_UPGRADE_PLAYBOOK.md) |
 

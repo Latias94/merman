@@ -1128,7 +1128,7 @@ impl Resolver<'_> {
         if opacity == 1.0 {
             return Ok(color);
         }
-        use merman_core::theme_color::{ColorChannel, ThemeColor};
+        use merman_markup::theme_color::{ColorChannel, ThemeColor};
         let color =
             ThemeColor::parse(&color).map_err(|error| failure(path, "color", error.to_string()))?;
         let opacity = opacity

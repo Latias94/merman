@@ -10,9 +10,9 @@ use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
 use crate::resource::ResourceContext;
 use crate::style_color::{parse_border_color, parse_css_color};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_model::families::flowchart::FlowchartModel;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use rustc_hash::FxHashMap as HashMap;
 

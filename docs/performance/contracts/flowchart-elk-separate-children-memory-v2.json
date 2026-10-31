@@ -17,7 +17,7 @@
     "inputs": [
       {
         "path": "crates/merman/benches/elk_hierarchy_memory.rs",
-        "sha256": "614e2a5555a010cc1ab66d48c45475c99da1b665c54e6401e8c6d16d835604af"
+        "sha256": "07b8f5fcedeba45f0bbe45d850507a45f4e24d595a68e06c55e350e1c4115030"
       },
       {
         "path": "crates/merman/benches/native_memory/allocator.rs",

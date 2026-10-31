@@ -108,7 +108,7 @@ impl FlowchartEdgeStrokeWidthResolution {
 impl FlowchartEdgeStylePlan {
     pub(crate) fn prepare_for_model(
         model: &crate::flowchart::FlowchartModel,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
         swimlane: bool,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
@@ -125,10 +125,7 @@ impl FlowchartEdgeStylePlan {
             work_meter,
         )?;
         plan.edge_stroke_width_config_override =
-            merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.strokeWidth",
-            );
+            effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
         Ok(plan)
     }
 
@@ -313,13 +310,13 @@ impl FlowchartEdgeStylePlan {
         mut self,
         model: &crate::flowchart::FlowchartModel,
         edge_theme: &crate::flowchart::FlowchartEdgeThemeStyle,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
         work: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let hand_drawn = flowchart_config_diagram_look(config).is_hand_drawn();
         for (index, edge) in model.edges.iter().enumerate() {
-            work.checkpoint(merman_core::OperationPhase::Layout)?;
+            work.checkpoint(merman_model::OperationPhase::Layout)?;
             let key = crate::flowchart::FlowchartEdgeKey::new(index);
             let width = self.resolve_edge_stroke_width(
                 key,

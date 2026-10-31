@@ -477,7 +477,7 @@ mod tests {
         let guard =
             orient_feedback_edges(&mut graph, &serde_json::json!({}), &mut Some(&mut work()))
                 .unwrap();
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let mut cancelled =
             OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new_with_control(

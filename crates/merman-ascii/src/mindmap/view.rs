@@ -3,8 +3,8 @@ use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use crate::safe_text::charge_text_layout;
-use merman_core::diagrams::mindmap::{MindmapTerminalEdge as EdgeView, MindmapTerminalView};
-pub(super) use merman_core::diagrams::mindmap::{
+use merman_model::families::mindmap::{MindmapTerminalEdge as EdgeView, MindmapTerminalView};
+pub(super) use merman_model::families::mindmap::{
     MindmapTerminalNode as NodeView, MindmapTerminalNodeId as NodeId,
 };
 
@@ -33,8 +33,8 @@ impl<'a> From<MindmapTerminalView<'a>> for MindmapView<'a> {
 }
 
 #[cfg(test)]
-impl<'a> From<&'a merman_core::diagrams::mindmap::MindmapDiagramRenderModel> for MindmapView<'a> {
-    fn from(model: &'a merman_core::diagrams::mindmap::MindmapDiagramRenderModel) -> Self {
+impl<'a> From<&'a merman_model::families::mindmap::MindmapDiagramRenderModel> for MindmapView<'a> {
+    fn from(model: &'a merman_model::families::mindmap::MindmapDiagramRenderModel) -> Self {
         MindmapTerminalView::from_render(model).into()
     }
 }
@@ -42,14 +42,14 @@ impl<'a> From<&'a merman_core::diagrams::mindmap::MindmapDiagramRenderModel> for
 #[cfg(test)]
 impl<'a>
     From<(
-        &'a merman_core::diagrams::mindmap::MindmapDiagramModel,
-        &'a merman_core::MermaidConfig,
+        &'a merman_model::families::mindmap::MindmapDiagramModel,
+        &'a merman_model::MermaidConfig,
     )> for MindmapView<'a>
 {
     fn from(
         (model, config): (
-            &'a merman_core::diagrams::mindmap::MindmapDiagramModel,
-            &'a merman_core::MermaidConfig,
+            &'a merman_model::families::mindmap::MindmapDiagramModel,
+            &'a merman_model::MermaidConfig,
         ),
     ) -> Self {
         MindmapTerminalView::from_semantic(model, config).into()
@@ -84,7 +84,7 @@ impl<'a> MindmapView<'a> {
         }
         let mut count = 0;
         self.model.try_visit_child_counts(|child_count| {
-            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
             resources.charge_layout_work(1)?;
             count = resources.checked_work_add(count, child_count)?;
             Ok::<(), AsciiError>(())
@@ -100,11 +100,11 @@ impl<'a> MindmapView<'a> {
     ) -> Result<()> {
         self.model.try_visit_edges(
             || {
-                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                execution.checkpoint(merman_model::OperationPhase::Layout)?;
                 resources.charge_layout_work(1)
             },
             |edge| {
-                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                execution.checkpoint(merman_model::OperationPhase::Layout)?;
                 visit(edge)
             },
         )

@@ -1,7 +1,7 @@
 use super::super::roughjs_common::ops_to_svg_path_d;
 use super::super::*;
-use merman_core::diagrams::venn::VennDiagramModel;
-use merman_core::theme_color::transparentize;
+use merman_markup::theme_color::transparentize;
+use merman_model::families::venn::VennDiagramModel;
 use std::collections::HashMap;
 use std::str::FromStr as _;
 

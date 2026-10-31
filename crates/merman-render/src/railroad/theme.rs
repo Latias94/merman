@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use super::RailroadStyle;
 use crate::diagram_theme::{
@@ -673,7 +673,7 @@ fn railroad_config_owns_rule_name_text_fill(config: &PresentationConfig) -> bool
 fn railroad_config_owns_any<const N: usize>(config: &PresentationConfig, paths: [&str; N]) -> bool {
     paths
         .into_iter()
-        .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path))
+        .any(|path| config.config_path_overrides_typed_default(path))
 }
 
 fn railroad_config_owns_any_paint<const N: usize>(
@@ -682,5 +682,5 @@ fn railroad_config_owns_any_paint<const N: usize>(
 ) -> bool {
     paths
         .into_iter()
-        .any(|path| merman_core::__private::config_paint_overrides_typed_default(config, path))
+        .any(|path| config.config_paint_overrides_typed_default(path))
 }

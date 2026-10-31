@@ -386,7 +386,7 @@
     ]
   },
   "generatedOutputs": [
-    "crates/merman-core/src/generated/mermaid_reference.rs",
+    "crates/merman-model/src/baseline.rs",
     "crates/xtask/src/generated/mermaid_reference.rs",
     "playground/src/generated/mermaid-reference.ts"
   ]

@@ -2,7 +2,10 @@
 #![cfg(feature = "compat-json")]
 
 use futures::executor::block_on;
-use merman_core::{MAX_DIAGRAM_NESTING_DEPTH, MermaidEngine, ParseOptions};
+use {
+    merman_core::{MermaidEngine, ParseOptions},
+    merman_model::MAX_DIAGRAM_NESTING_DEPTH,
+};
 
 fn parse_ok(input: &str) {
     let engine = MermaidEngine::new();

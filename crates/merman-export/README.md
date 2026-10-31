@@ -12,7 +12,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
-This guide targets `merman-export 0.9.3`. Match the documentation and generated artifacts to the version installed in your project.
+This guide targets the development checkout after published `0.9.3`. Independent presentation data and explicit font-discovery features belong to the next breaking development release; use the `v0.9.3` tagged guide for the maintenance APIs and codec defaults. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for current imports and output handoffs.
 
 ## Choose A Feature
 
@@ -77,7 +77,7 @@ merman-export = { version = "0.9.3", default-features = false, features = ["png"
 ```
 
 ```rust
-use merman_core::OperationControl;
+use merman_model::OperationControl;
 use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits, bundled_font_data};
 
 fn font_context(
@@ -176,13 +176,13 @@ operation control:
 
 ```toml
 [dependencies]
-merman-core = { version = "0.9.3", default-features = false }
+merman-model = { version = "0.9.3", default-features = false }
 merman-render = { version = "0.9.3", default-features = false }
 merman-export = { version = "0.9.3", default-features = false, features = ["png", "system-fonts"] }
 ```
 
 ```rust
-use merman_core::OperationControl;
+use merman_model::OperationControl;
 use merman_export::{RasterOptions, svg_to_png_controlled};
 use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 

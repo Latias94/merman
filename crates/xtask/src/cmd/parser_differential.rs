@@ -1,5 +1,5 @@
 use crate::XtaskError;
-use merman_core::presentation::PresentationConfig;
+use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -422,8 +422,9 @@ fn sequence_observation(model: &Value, title: Option<&str>) -> Value {
     out
 }
 fn local(case: &Case) -> Result<Outcome, XtaskError> {
-    let engine = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(case.site_config.clone()));
+    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+        case.site_config.clone(),
+    ));
     match engine.parse_diagram_sync(&case.source, ParseOptions::strict()) {
         Ok(Some(parsed)) => {
             let observation = if case.lane == "public" {

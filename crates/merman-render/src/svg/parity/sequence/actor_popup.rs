@@ -2,7 +2,7 @@ use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
-use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
+use crate::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
 use rustc_hash::FxHashMap;
 
 use crate::text::TextStyle;
@@ -24,7 +24,7 @@ pub(super) fn render_sequence_actor_popup_menus(
     out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    sanitize_config: &merman_core::presentation::PresentationConfig,
+    sanitize_config: &merman_model::presentation::PresentationConfig,
     options: SequenceActorPopupOptions,
     actor_popup_widths: &std::collections::HashMap<String, f64>,
     label_ctx: &super::actor_shapes::ActorLabelContext<'_>,
@@ -120,7 +120,7 @@ pub(super) fn render_sequence_actor_popup_menus(
                 continue;
             };
             let security_level_loose = sanitize_config.get_str("securityLevel") == Some("loose");
-            let href = merman_core::utils::sanitize_url(href);
+            let href = merman_markup::url::sanitize_url(href);
             let href = prepare_mermaid_navigation_href(
                 &href,
                 MermaidNavigationSecurity::from_security_level_loose(security_level_loose),

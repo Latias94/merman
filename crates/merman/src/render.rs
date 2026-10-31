@@ -8,11 +8,12 @@ use crate::operation_runner::Operation;
 #[cfg(feature = "svg")]
 use crate::operation_runner::OperationExecution;
 use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
+use merman_core::{ParseOptions, SemanticParser};
 #[cfg(any(feature = "ascii", feature = "svg"))]
-use merman_core::OperationPhase;
-use merman_core::{
+use merman_model::OperationPhase;
+use merman_model::{
     OperationCancelled, OperationControl, OperationResourceDomain, OperationResourceOverride,
-    OperationResourceProvenance, ParseOptions, SemanticParser, resources::InputResourcePolicy,
+    OperationResourceProvenance, resources::InputResourcePolicy,
 };
 
 #[cfg(feature = "ascii")]
@@ -95,14 +96,14 @@ use std::sync::OnceLock;
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SvgLayoutOutput {
-    layout: merman_core::ManagedSemanticJson,
+    layout: merman_model::ManagedJson,
     gantt_time_axis: Option<merman_render::family::GanttTimeAxisDiagnostics>,
 }
 
 #[cfg(feature = "svg")]
 impl SvgLayoutOutput {
     fn new(
-        layout: merman_core::ManagedSemanticJson,
+        layout: merman_model::ManagedJson,
         gantt_time_axis: Option<merman_render::family::GanttTimeAxisDiagnostics>,
     ) -> Self {
         Self {
@@ -111,7 +112,7 @@ impl SvgLayoutOutput {
         }
     }
 
-    pub fn layout(&self) -> &merman_core::ManagedSemanticJson {
+    pub fn layout(&self) -> &merman_model::ManagedJson {
         &self.layout
     }
 
@@ -124,7 +125,7 @@ impl SvgLayoutOutput {
     pub fn into_parts(
         self,
     ) -> (
-        merman_core::ManagedSemanticJson,
+        merman_model::ManagedJson,
         Option<merman_render::family::GanttTimeAxisDiagnostics>,
     ) {
         (self.layout, self.gantt_time_axis)
@@ -184,8 +185,8 @@ impl From<merman_core::Error> for RenderError {
     }
 }
 
-impl From<merman_core::runtime::RuntimePolicyError> for RenderError {
-    fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
+impl From<merman_model::runtime::RuntimePolicyError> for RenderError {
+    fn from(error: merman_model::runtime::RuntimePolicyError) -> Self {
         Self::RuntimePolicy(TerminalRuntimePolicyError::from(error))
     }
 }
@@ -195,7 +196,13 @@ impl From<merman_render::Error> for RenderError {
     fn from(error: merman_render::Error) -> Self {
         match error {
             merman_render::Error::Cancelled(cancelled) => Self::Cancelled(cancelled),
-            merman_render::Error::SemanticProjection(error) => Self::from(error),
+            merman_render::Error::SemanticProjection(error) => {
+                let (diagram_type, message) = error.into_parts();
+                Self::from(merman_core::Error::diagram_parse_fallback(
+                    diagram_type,
+                    message,
+                ))
+            }
             merman_render::Error::PortabilityUnavailableForTarget { target } => {
                 Self::PortabilityUnavailableForTarget { target }
             }
@@ -264,7 +271,7 @@ impl ResourceLimitExceeded {
         }
     }
 
-    pub(crate) fn from_input(error: merman_core::resources::InputResourceLimitExceeded) -> Self {
+    pub(crate) fn from_input(error: merman_model::resources::InputResourceLimitExceeded) -> Self {
         Self {
             id: error.limit,
             phase: error.phase.as_str(),
@@ -855,6 +862,9 @@ pub struct Renderer {
     parser: SemanticParser,
     #[cfg(feature = "presentation")]
     presentation_engine: PresentationEngineSource,
+    #[cfg(feature = "svg")]
+    theme_plan:
+        std::sync::Arc<std::sync::Mutex<Option<merman_core::presentation::ThemeCompatibilityPlan>>>,
     parse_options: ParseOptions,
     resources: InputResourcePolicy,
     resources_explicit: bool,
@@ -873,6 +883,8 @@ impl Default for Renderer {
             parser: SemanticParser::new(),
             #[cfg(feature = "presentation")]
             presentation_engine: PresentationEngineSource::Inherited(OnceLock::new()),
+            #[cfg(feature = "svg")]
+            theme_plan: Default::default(),
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
             resources_explicit: false,
@@ -908,7 +920,7 @@ impl Renderer {
         self
     }
 
-    pub fn with_runtime_policy(mut self, policy: merman_core::runtime::RuntimePolicy) -> Self {
+    pub fn with_runtime_policy(mut self, policy: merman_model::runtime::RuntimePolicy) -> Self {
         self.parser = self.parser.with_runtime_policy(policy.clone());
         #[cfg(feature = "presentation")]
         match &mut self.presentation_engine {
@@ -948,9 +960,11 @@ impl Renderer {
             PresentationEngineSource::Explicit(engine) => engine,
             PresentationEngineSource::Inherited(cache) => cache.get_or_init(|| {
                 MermaidEngine::new()
-                    .with_site_config(merman_core::presentation::PresentationConfig::from_config(
-                        self.parser.site_config_overrides().clone(),
-                    ))
+                    .with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_config(
+                            self.parser.site_config_overrides().clone(),
+                        ),
+                    )
                     .with_runtime_policy(self.parser.runtime_policy().clone())
             }),
         }
@@ -1042,10 +1056,25 @@ impl Renderer {
         });
         #[cfg(feature = "svg")]
         let themed_engine = theme.as_ref().map(|theme| {
-            merman_render::__private::install_parse_compatibility(
-                theme,
-                self.presentation_engine().clone(),
-            )
+            let recipe = theme.compatibility_recipe();
+            // Retain one source installation plan per facade. Changing themes replaces the
+            // cached recipe without accumulating an unbounded catalog of host theme inputs.
+            let plan = {
+                let mut cached = self
+                    .theme_plan
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                let plan = cached.get_or_insert_with(|| {
+                    merman_core::presentation::ThemeCompatibilityPlan::from_recipe(recipe.clone())
+                });
+                if plan.recipe() != recipe {
+                    *plan = merman_core::presentation::ThemeCompatibilityPlan::from_recipe(
+                        recipe.clone(),
+                    );
+                }
+                plan.clone()
+            };
+            self.presentation_engine().clone().with_theme_plan(&plan)
         });
         #[cfg(feature = "svg")]
         let operation_engine = themed_engine
@@ -1177,7 +1206,10 @@ impl SemanticArtifact {
     /// Consumes canonical meaning into semantic inspection or terminal output.
     /// Graphical targets require an independently requested full presentation parse.
     pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
-        crate::operation_runner::checkpoint(self.control(), merman_core::OperationPhase::Semantic)?;
+        crate::operation_runner::checkpoint(
+            self.control(),
+            merman_model::OperationPhase::Semantic,
+        )?;
         match target {
             RenderTarget::Semantic => Ok(RenderOutput::Semantic(Some(self))),
             #[cfg(feature = "ascii")]
@@ -1227,11 +1259,11 @@ fn render_ascii_target(
 impl PresentationArtifact {
     /// Returns Mermaid's compatibility semantic JSON projection without exposing family internals.
     #[cfg(feature = "compat-json")]
-    pub fn compatibility_json(&self) -> Result<merman_core::ManagedSemanticJson, RenderError> {
+    pub fn compatibility_json(&self) -> Result<merman_model::ManagedJson, RenderError> {
         self.parsed()
-            .model()
-            .compatibility_json_controlled(self.parsed().metadata(), self.control())
+            .compatibility_json_controlled(self.control())
             .map_err(RenderError::Cancelled)?
+            .map_err(merman_core::Error::from)
             .map_err(RenderError::from)
     }
 
@@ -1300,7 +1332,7 @@ impl PresentationArtifact {
             RenderTarget::Presentation => {
                 crate::operation_runner::checkpoint(
                     self.control(),
-                    merman_core::OperationPhase::Semantic,
+                    merman_model::OperationPhase::Semantic,
                 )?;
                 Ok(RenderOutput::Presentation(Some(self)))
             }
@@ -1613,10 +1645,10 @@ fn render_document_target(
 
 #[cfg(all(feature = "ascii", feature = "presentation"))]
 fn ascii_diagram_from_full(
-    model: &merman_core::RenderSemanticModel,
+    model: &merman_model::presentation::RenderSemanticModel,
 ) -> merman_ascii::AsciiDiagram<'_> {
     use merman_ascii::AsciiDiagram;
-    use merman_core::RenderSemanticModel;
+    use merman_model::presentation::RenderSemanticModel;
 
     match model {
         #[cfg(feature = "diagram-class")]
@@ -1626,31 +1658,31 @@ fn ascii_diagram_from_full(
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         RenderSemanticModel::Flowchart(model) => AsciiDiagram::Flowchart(model),
         #[cfg(feature = "diagram-gantt")]
-        RenderSemanticModel::Gantt(model) => {
-            AsciiDiagram::Gantt(merman_core::diagrams::gantt::GanttTerminalView::from_render(model))
-        }
+        RenderSemanticModel::Gantt(model) => AsciiDiagram::Gantt(
+            merman_model::families::gantt::GanttTerminalView::from_render(model),
+        ),
         #[cfg(feature = "diagram-git-graph")]
         RenderSemanticModel::GitGraph(model) => AsciiDiagram::GitGraph(model),
         #[cfg(feature = "diagram-journey")]
-        RenderSemanticModel::Journey(model) => AsciiDiagram::Journey(&model.semantic),
+        RenderSemanticModel::Journey(model) => AsciiDiagram::Journey(model),
         #[cfg(feature = "diagram-kanban")]
         RenderSemanticModel::Kanban(model) => AsciiDiagram::Kanban(
-            merman_core::diagrams::kanban::KanbanTerminalView::from_render(model),
+            merman_model::families::kanban::KanbanTerminalView::from_render(model),
         ),
         #[cfg(feature = "diagram-mindmap")]
         RenderSemanticModel::Mindmap(model) => AsciiDiagram::Mindmap(
-            merman_core::diagrams::mindmap::MindmapTerminalView::from_render(model),
+            merman_model::families::mindmap::MindmapTerminalView::from_render(model),
         ),
         #[cfg(feature = "diagram-packet")]
-        RenderSemanticModel::Packet(model) => AsciiDiagram::Packet(&model.semantic),
+        RenderSemanticModel::Packet(model) => AsciiDiagram::Packet(model),
         #[cfg(feature = "diagram-sequence")]
         RenderSemanticModel::Sequence(model) => AsciiDiagram::Sequence(model),
         #[cfg(feature = "diagram-state")]
-        RenderSemanticModel::State(model) => {
-            AsciiDiagram::State(merman_core::diagrams::state::StateTerminalView::from_render(model))
-        }
+        RenderSemanticModel::State(model) => AsciiDiagram::State(
+            merman_model::families::state::StateTerminalView::from_render(model),
+        ),
         #[cfg(feature = "diagram-timeline")]
-        RenderSemanticModel::Timeline(model) => AsciiDiagram::Timeline(&model.semantic),
+        RenderSemanticModel::Timeline(model) => AsciiDiagram::Timeline(model),
         #[cfg(feature = "diagram-tree-view")]
         RenderSemanticModel::TreeView(model) => AsciiDiagram::TreeView(model),
         #[cfg(feature = "diagram-xychart")]
@@ -1777,7 +1809,7 @@ mod tests {
     #[test]
     fn themed_document_input_admission_preserves_request_renderer_environment_precedence() {
         use super::{RenderRequest, Renderer, SvgEnvironment, SvgRequest};
-        use merman_core::{
+        use merman_model::{
             OperationControl,
             resources::{InputResourceLimitId, InputResourcePolicy},
         };
@@ -1852,9 +1884,9 @@ mod tests {
 
     #[test]
     fn render_environment_cancellation_maps_to_the_common_cancelled_variant() {
-        let cancelled = merman_core::OperationCancelled {
-            phase: merman_core::OperationPhase::Layout,
-            reason: merman_core::CancelReason::Requested,
+        let cancelled = merman_model::OperationCancelled {
+            phase: merman_model::OperationPhase::Layout,
+            reason: merman_model::CancelReason::Requested,
         };
 
         let error = RenderError::from(

@@ -1,5 +1,5 @@
 use super::FlowEdge;
-use merman_core::diagrams::flowchart::FlowEdgeMarker;
+use merman_model::families::flowchart::FlowEdgeMarker;
 
 pub(crate) fn flowchart_dagre_merges_self_loop_segments(keyword: &str) -> bool {
     // Mermaid 12.2 dagre/index.js excludes Agentflow from its fixed diagram-type allowlist.
@@ -111,7 +111,7 @@ fn flowchart_self_loop_edge_from_base(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::flowchart::{FlowEdgeStroke, FlowEdgeVisibility};
+    use merman_model::families::flowchart::{FlowEdgeStroke, FlowEdgeVisibility};
 
     fn self_loop(start_marker: FlowEdgeMarker, end_marker: FlowEdgeMarker) -> FlowEdge {
         FlowEdge {

@@ -323,9 +323,13 @@ python3 tools/publish.py --list-crates-io-packages
 ```
 
 The helper selects crates.io-publishable `workspace_members`, excludes names listed in
-`workspace.metadata.merman-release.independent-packages`, follows every non-dev workspace path
-dependency (including optional, target-specific, renamed, and build dependencies), rejects a
-publishable crate that depends on a private workspace member, and topologically sorts the graph.
+`workspace.metadata.merman-release.independent-packages`, and follows coupled workspace path
+dependencies, including optional, target-specific, renamed, build, and development dependencies.
+Versioned development dependencies remain in Cargo's packaged manifests, so their coupled
+packages must pass the registry visibility barrier before a consumer's batch is prepared. Private
+path-only development fixtures remain outside the release graph. Normal/build dependencies on
+private workspace members and coupled dependency cycles are rejected before publication. The resulting
+graph is topologically sorted; these release-order edges do not change production dependencies.
 Independent package dependencies are treated as external registry inputs and are verified by their
 dedicated workflows. Only crates within the same coupled batch use lexical ordering. The local
 publish flow, release preflight, and release workflow consume this same projection; Markdown is

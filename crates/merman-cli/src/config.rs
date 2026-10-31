@@ -7,8 +7,8 @@ use crate::io::read_named_text_file;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::io::read_named_text_file_controlled;
 use crate::resources::ResolvedResourcePolicy;
-use merman::presentation::PresentationConfig;
-use merman::runtime::RuntimePolicy;
+use merman::SourcePresentationConfig;
+use merman::model::runtime::RuntimePolicy;
 use merman::{MermaidConfig, MermaidEngine, ParseOptions};
 use serde_json::Value;
 use std::path::Path;
@@ -79,7 +79,7 @@ fn engine_from_config(
     site_config: MermaidConfig,
 ) -> MermaidEngine {
     runtime.apply_engine(
-        MermaidEngine::new().with_site_config(PresentationConfig::from_config(site_config)),
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_config(site_config)),
     )
 }
 
@@ -283,7 +283,7 @@ pub(crate) fn rustdoc_renderer_for_resolved(
 ) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     let mut site_config = site_config_for_resolved(parse, resources, control)?;
-    let mut secure = merman::generated::default_site_config()
+    let mut secure = merman::default_site_config()
         .as_value()
         .get("secure")
         .and_then(Value::as_array)
@@ -474,9 +474,12 @@ fn renderer_from_config(
         .map(|input| input.compile(&compiler, control))
         .transpose()?;
     let renderer = merman::Renderer::new()
-        .with_presentation_engine(runtime.apply_engine(
-            MermaidEngine::new().with_site_config(PresentationConfig::from_config(site_config)),
-        ))
+        .with_presentation_engine(
+            runtime.apply_engine(
+                MermaidEngine::new()
+                    .with_site_config(SourcePresentationConfig::from_config(site_config)),
+            ),
+        )
         .with_parse_options(parse_options)
         .with_resource_policy(*resources.input_policy());
     let svg_request = merman::SvgRequest {
@@ -553,7 +556,7 @@ mod tests {
 
     #[cfg(feature = "svg")]
     fn default_resources() -> ResolvedResourcePolicy {
-        ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
+        ResolvedResourcePolicy::for_profile(merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE)
     }
 
     #[cfg(feature = "svg")]
@@ -726,8 +729,9 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn selected_profile_remains_the_host_ceiling_when_a_theme_is_attached_later() {
-        let resources =
-            ResolvedResourcePolicy::for_profile(merman::resources::ResourceProfile::Constrained);
+        let resources = ResolvedResourcePolicy::for_profile(
+            merman::model::resources::ResourceProfile::Constrained,
+        );
         let mut renderer = renderer_for(
             &ParseCliArgs::default(),
             &RenderCliArgs::default(),
@@ -787,11 +791,11 @@ mod tests {
 
         assert_eq!(
             context.clock_source(),
-            merman::runtime::RuntimeValueSource::Fixed
+            merman::model::runtime::RuntimeValueSource::Fixed
         );
         assert_eq!(
             context.random_source(),
-            merman::runtime::RuntimeValueSource::Fixed
+            merman::model::runtime::RuntimeValueSource::Fixed
         );
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(0));
         assert!(context.timing().is_none());
@@ -818,11 +822,11 @@ mod tests {
 
         assert_eq!(
             context.clock_source(),
-            merman::runtime::RuntimeValueSource::System
+            merman::model::runtime::RuntimeValueSource::System
         );
         assert_eq!(
             context.random_source(),
-            merman::runtime::RuntimeValueSource::System
+            merman::model::runtime::RuntimeValueSource::System
         );
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
         assert!(context.timing().is_none());
@@ -843,7 +847,7 @@ mod tests {
 
         assert_eq!(
             context.clock_source(),
-            merman::runtime::RuntimeValueSource::Fixed
+            merman::model::runtime::RuntimeValueSource::Fixed
         );
         assert!(context.timing().is_some());
     }
@@ -851,7 +855,7 @@ mod tests {
     #[test]
     fn boundary_fixed_today_returns_invalid_input_instead_of_panicking() {
         let args = RuntimeCliArgs {
-            fixed_today: Some(merman::time::CivilDate::new(i32::MIN, 1, 1).unwrap()),
+            fixed_today: Some(merman::model::time::CivilDate::new(i32::MIN, 1, 1).unwrap()),
             fixed_local_offset_minutes: Some(1439),
             ..Default::default()
         };

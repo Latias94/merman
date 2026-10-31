@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::quadrant_chart::QuadrantChartDiagramModel;
+use merman_model::families::quadrant_chart::QuadrantChartDiagramModel;
 
 // QuadrantChart diagram SVG renderer implementation (split from parity.rs).
 

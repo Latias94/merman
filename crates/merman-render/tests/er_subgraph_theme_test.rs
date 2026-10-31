@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
@@ -40,14 +39,16 @@ fn render_cluster_with_spec(
     let source = format!(
         "---\nconfig: {config}\n---\nerDiagram\nsubgraph Orders [\"**Order** Domain\"]\n CUSTOMER\nend\nstyle CUSTOMER color:#556677\n{source_style}\n"
     );
-    let parsed = merman_render::__private::install_parse_compatibility(
+    let parsed = common::install_parse_compatibility(
         &theme,
-        MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({"secure": []})),
+        ),
     )
     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
     .expect("parse ER cluster")
-    .expect("detect ER cluster");
+    .expect("detect ER cluster")
+    .into_presentation();
     assert_eq!(
         parsed
             .metadata()
@@ -102,11 +103,11 @@ end
 class Shared last
 style Shared stroke-width:7px
 "##;
-    let parsed =
-        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse duplicate ER clusters")
-            .expect("detect ER diagram");
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse duplicate ER clusters")
+        .expect("detect ER diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin ER session");
@@ -249,7 +250,7 @@ fn subgraph_source_typography_is_fail_closed_until_measured() {
     ] {
         let spec = DiagramThemeSpec::new().with_typography(
             merman_render::diagram_theme::TypographySpec::default().with_family_style(
-                merman_core::DiagramFamilyId::ER,
+                merman_model::family::DiagramFamilyId::ER,
                 ThemeTextStyle::default()
                     .with_font_stack(FontStack::single("ErTypedFace").expect("font stack"))
                     .with_font_size_px(24.0)
@@ -280,7 +281,10 @@ fn subgraph_source_typography_is_fail_closed_until_measured() {
         .expect_err("unmeasured source cluster typography must be rejected");
         assert_eq!(
             error.unverified_family_theme(),
-            Some((merman_core::DiagramFamilyId::ER, 1))
+            Some((merman_model::family::DiagramFamilyId::ER, 1))
         );
     }
 }
+
+#[allow(dead_code)]
+mod common;

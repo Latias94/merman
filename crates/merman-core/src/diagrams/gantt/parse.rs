@@ -11,8 +11,6 @@ use crate::{
 use crate::{
     OperationControl, OperationControlResult, SourceSpan, family::CombinedSemanticFailure,
 };
-#[cfg(feature = "compat-json")]
-use serde_json::Map;
 #[cfg(test)]
 use std::cell::Cell;
 
@@ -954,7 +952,7 @@ pub(crate) fn parse_gantt_semantic_model_controlled(
     };
     Ok(SemanticConstruction {
         model: model.map(|mut model| {
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut model, &metadata.semantic_config);
             model
         }),
         #[cfg(feature = "editor-facts")]
@@ -963,7 +961,7 @@ pub(crate) fn parse_gantt_semantic_model_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_gantt(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_gantt(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
     };
@@ -974,10 +972,14 @@ pub(crate) fn parse_gantt(code: &str, meta: &PresentationMetadata) -> Result<Val
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_gantt_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<GanttDiagramRenderModel> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
-        return Ok(GanttDiagramRenderModel::empty_compatibility_output());
+        return Ok(GanttDiagramRenderModel::from_output_data(
+            GanttDiagramModel::default(),
+            String::new(),
+            GanttOutputData::Empty,
+        ));
     };
     gantt_db_to_render_model(db)
 }
@@ -985,7 +987,7 @@ pub(crate) fn parse_gantt_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_gantt_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
     let construction = construct_gantt_semantic_source_controlled(
@@ -1002,14 +1004,18 @@ pub(crate) fn parse_gantt_model_for_render_controlled(
     };
     match source.db {
         Some(db) => gantt_db_to_render_model_controlled(db, control),
-        None => Ok(Ok(GanttDiagramRenderModel::empty_compatibility_output())),
+        None => Ok(Ok(GanttDiagramRenderModel::from_output_data(
+            GanttDiagramModel::default(),
+            String::new(),
+            GanttOutputData::Empty,
+        ))),
     }
 }
 
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_gantt_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = match construct_gantt_semantic_source_controlled(
@@ -1040,7 +1046,7 @@ struct GanttSemanticSource {
 impl GanttSemanticSource {
     fn into_combined_parts_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self { db, editor_facts } = self;
@@ -1062,7 +1068,7 @@ impl GanttSemanticSource {
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_gantt_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<GanttSemanticSource> {
     construct_gantt_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
@@ -1070,7 +1076,7 @@ fn parse_gantt_semantic_source(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_gantt_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
     construct_gantt_semantic_source_controlled(
         code,
@@ -1239,134 +1245,24 @@ fn parse_gantt_semantic_source_once(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &GanttDiagramRenderModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let control = OperationControl::new();
-    render_model_to_compat_json_controlled(model, meta, &control)
-        .expect("a private parse control cannot be cancelled")
+    merman_model::families::gantt::compat::project(model, &meta.compat_json_metadata())
+        .map_err(Into::into)
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(feature = "compat-json", any(test, feature = "editor-facts")))]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &GanttDiagramRenderModel,
-    meta: &PresentationMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<Value>> {
-    control.checkpoint()?;
-    if model.compatibility_output == CompatibilityOutputState::Empty {
-        return Ok(Ok(json!({})));
-    }
-
-    let includes = strings_to_json_controlled(&model.includes, control)?;
-    let excludes = strings_to_json_controlled(&model.excludes, control)?;
-    let sections = strings_to_json_controlled(&model.sections, control)?;
-    let tasks = serialize_gantt_tasks_controlled(&model.tasks, control)?;
-    let links = string_map_to_json_controlled(&model.links, control)?;
-    let click_events = serialize_map_to_json_controlled(&model.click_events, control)?;
-
-    let mut out = Map::with_capacity(19);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("title".to_string(), json!(&model.title));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert(
-        "dateFormat".to_string(),
-        Value::String(model.date_format.clone()),
-    );
-    out.insert(
-        "axisFormat".to_string(),
-        Value::String(model.axis_format.clone()),
-    );
-    out.insert("tickInterval".to_string(), json!(&model.tick_interval));
-    out.insert(
-        "todayMarker".to_string(),
-        Value::String(model.today_marker.clone()),
-    );
-    out.insert("includes".to_string(), Value::Array(includes));
-    out.insert("excludes".to_string(), Value::Array(excludes));
-    out.insert(
-        "inclusiveEndDates".to_string(),
-        Value::Bool(model.inclusive_end_dates),
-    );
-    out.insert("topAxis".to_string(), Value::Bool(model.top_axis));
-    out.insert("weekday".to_string(), Value::String(model.weekday.clone()));
-    out.insert("weekend".to_string(), Value::String(model.weekend.clone()));
-    out.insert(
-        "displayMode".to_string(),
-        Value::String(model.display_mode.clone()),
-    );
-    out.insert("sections".to_string(), Value::Array(sections));
-    out.insert("tasks".to_string(), Value::Array(tasks));
-    out.insert("links".to_string(), Value::Object(links));
-    out.insert("clickEvents".to_string(), Value::Object(click_events));
-    control.checkpoint()?;
-    Ok(Ok(Value::Object(out)))
-}
-
-#[cfg(feature = "compat-json")]
-fn strings_to_json_controlled(
-    strings: &[String],
-    control: &OperationControl,
-) -> OperationControlResult<Vec<Value>> {
-    let mut values = Vec::with_capacity(strings.len());
-    for (index, value) in strings.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        values.push(Value::String(value.clone()));
-    }
-    Ok(values)
-}
-
-#[cfg(feature = "compat-json")]
-fn serialize_gantt_tasks_controlled(
-    tasks: &[GanttRenderTask],
-    control: &OperationControl,
-) -> OperationControlResult<Vec<Value>> {
-    let mut values = Vec::with_capacity(tasks.len());
-    for (index, task) in tasks.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let mut value = json!(task);
-        if let Some(object) = value.as_object_mut() {
-            object.remove("sectionIndex");
-            object.remove("startConstraint");
-            object.remove("endConstraint");
-        }
-        values.push(value);
-    }
-    Ok(values)
-}
-
-#[cfg(feature = "compat-json")]
-fn string_map_to_json_controlled(
-    values: &HashMap<String, String>,
-    control: &OperationControl,
-) -> OperationControlResult<Map<String, Value>> {
-    let mut out = Map::with_capacity(values.len());
-    for (index, (key, value)) in values.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        out.insert(key.clone(), Value::String(value.clone()));
-    }
-    Ok(out)
-}
-
-#[cfg(feature = "compat-json")]
-fn serialize_map_to_json_controlled<T: serde::Serialize>(
-    values: &HashMap<String, T>,
-    control: &OperationControl,
-) -> OperationControlResult<Map<String, Value>> {
-    let mut out = Map::with_capacity(values.len());
-    for (index, (key, value)) in values.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        out.insert(key.clone(), json!(value));
-    }
-    Ok(out)
+    meta: &SourcePresentationMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value>> {
+    Ok(merman_model::families::gantt::compat::project_controlled(
+        model,
+        &meta.compat_json_metadata(),
+        control,
+    )?
+    .map_err(Into::into))
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
@@ -1384,12 +1280,7 @@ pub(super) fn gantt_db_to_render_model_controlled(
     let display_mode = std::mem::take(&mut db.display_mode);
     Ok(
         gantt_db_to_model_controlled(db, raw_task_to_render_task, control)?.map(|model| {
-            GanttDiagramRenderModel {
-                model,
-                display_mode,
-                #[cfg(feature = "compat-json")]
-                compatibility_output: CompatibilityOutputState::Model,
-            }
+            GanttDiagramRenderModel::from_output_data(model, display_mode, GanttOutputData::Model)
         }),
     )
 }

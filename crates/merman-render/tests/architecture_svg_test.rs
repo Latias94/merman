@@ -1,12 +1,11 @@
 #![cfg(feature = "layout-cytoscape")]
 
 type FamilyFixture = (
-    merman_core::ParsedDiagramRender,
+    merman_model::presentation::PresentationDiagram,
     merman_render::LayoutOptions,
     merman_render::environment::RenderSession,
 );
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
@@ -138,7 +137,8 @@ fn prepare_architecture_text_with_engine(engine: &MermaidEngine, text: &str) -> 
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let layout_options = LayoutOptions::headless_svg_defaults();
     let session = RenderEnvironment::deterministic()
         .begin_session()
@@ -175,10 +175,11 @@ fn prepare_architecture_with_theme_and_environment(
     engine: MermaidEngine,
     environment: RenderEnvironment,
 ) -> FamilyFixture {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Architecture")
-        .expect("detect themed Architecture");
+        .expect("detect themed Architecture")
+        .into_presentation();
     let session = environment
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
@@ -303,7 +304,8 @@ service worker(test:rocket)[Worker]
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse architecture")
-        .expect("architecture detected");
+        .expect("architecture detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_icon_registry(registry)
         .begin_session()
@@ -556,7 +558,7 @@ fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
 
 #[test]
 fn architecture_svg_honors_mermaid_11_15_style_theme_variables() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
     })));
     let text = r##"%%{init: {"themeVariables": {"lineColor": "#445566", "primaryBorderColor": "#778899", "archEdgeColor": "#010203", "archEdgeArrowColor": "#040506", "archEdgeWidth": 7, "archGroupBorderColor": "#070809", "archGroupBorderWidth": "6px"}}}%%
@@ -796,7 +798,8 @@ fn architecture_layout_caches_service_child_bounds() {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
@@ -814,10 +817,12 @@ fn architecture_layout_caches_service_child_bounds() {
 
 #[test]
 fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_size() {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "themeVariables": { "fontSize": "24px" },
-        "architecture": { "fontSize": 16 }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "themeVariables": { "fontSize": "24px" },
+            "architecture": { "fontSize": 16 }
+        })),
+    );
     let svg = render_architecture_text_with_engine_and_options(
         &engine,
         include_str!(
@@ -858,9 +863,11 @@ fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_la
         prepare_architecture_with_theme_and_environment(
             source,
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "architecture": { "fontSize": 19 }
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "architecture": { "fontSize": 19 }
+                })),
+            ),
             counting_architecture_environment(Arc::clone(&host)),
         );
     let artifact = family::prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4)
@@ -1016,7 +1023,8 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let layout_options = LayoutOptions::headless_svg_defaults();
     let artifact =
         family::prepare(&parsed, &layout_options, session).expect("prepare Architecture artifact");
@@ -1115,14 +1123,15 @@ fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
     fn render_with_seed(source: &str, ambient_seed: u64) -> (ArchitectureDiagramLayout, String) {
         let session = RenderEnvironment::deterministic()
             .with_runtime_policy(
-                merman_core::runtime::RuntimePolicy::deterministic().with_fixed_seed(ambient_seed),
+                merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(ambient_seed),
             )
             .begin_session()
             .expect("begin render session");
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected")
+            .into_presentation();
         let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("prepare Architecture artifact");
         let layout: ArchitectureDiagramLayout = serde_json::from_value(
@@ -1236,7 +1245,9 @@ fn repair_u7_architecture_source_owned_stroke_suppresses_unsupported_stroke_only
                 prepare_architecture_with_theme_and_environment(
                     source,
                     &theme,
-                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
                     RenderEnvironment::deterministic(),
                 );
             let artifact = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
@@ -1289,7 +1300,8 @@ fn architecture_without_theme_measures_service_titles_only_for_the_viewport() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),
@@ -1391,15 +1403,18 @@ fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
             ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, patch)),
         ))
         .unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(
+    let parsed = common::install_parse_compatibility(
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            json!({"themeVariables":{"archEdgeColor":"#abcdef"}}),
-        )),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                json!({"themeVariables":{"archEdgeColor":"#abcdef"}}),
+            ),
+        ),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()
-    .unwrap();
+    .unwrap()
+    .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1413,3 +1428,6 @@ fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
         "the source-owned stroke cannot certify an unsupported Edge.fill sibling"
     );
 }
+
+#[allow(dead_code)]
+mod common;

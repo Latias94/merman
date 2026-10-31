@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
@@ -12,63 +12,20 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, Result, SourceSpan};
+use merman_model::families::tree_view::{TREE_VIEW_DIRECTORY_NODE_TYPE, TREE_VIEW_FILE_NODE_TYPE};
+pub(crate) use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
-#[cfg(feature = "compat-json")]
-use std::collections::HashMap;
+use serde_json::Value;
+#[cfg(all(test, feature = "compat-json"))]
+use serde_json::json;
 
-const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
-const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TreeViewNode {
-    pub id: i64,
-    pub level: i64,
-    pub name: String,
-    #[serde(rename = "nodeType")]
-    pub node_type: String,
-    #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
-    pub css_class: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub children: Vec<TreeViewNode>,
-}
-
-impl Default for TreeViewNode {
-    fn default() -> Self {
-        Self {
-            id: 0,
-            level: -1,
-            name: "/".to_string(),
-            node_type: TREE_VIEW_DIRECTORY_NODE_TYPE.to_string(),
-            css_class: None,
-            icon: None,
-            description: None,
-            children: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct TreeViewDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    pub root: TreeViewNode,
-}
-
-impl TreeViewDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut TreeViewDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -95,7 +52,10 @@ struct TreeViewParseOutcome {
 impl TreeViewParseOutcome {
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
-    fn into_combined(self, meta: &PresentationMetadata) -> crate::family::CombinedSemanticParse {
+    fn into_combined(
+        self,
+        meta: &SourcePresentationMetadata,
+    ) -> crate::family::CombinedSemanticParse {
         let Self {
             snapshot,
             first_issue,
@@ -223,7 +183,7 @@ struct ArenaNode {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_tree_view(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_tree_view(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let model =
         parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")?;
@@ -234,7 +194,7 @@ pub(crate) fn parse_tree_view(code: &str, meta: &PresentationMetadata) -> Result
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_tree_view_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let parsed = parse_tree_view_input_controlled(
@@ -251,7 +211,7 @@ pub(crate) fn parse_tree_view_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_tree_view_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<TreeViewDiagramModel> {
     parse_tree_view_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
@@ -260,7 +220,7 @@ pub(crate) fn parse_tree_view_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_tree_view_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<TreeViewDiagramModel>> {
     Ok(construct_tree_view_model_controlled(
@@ -289,7 +249,7 @@ pub(crate) fn parse_tree_view_semantic_model_controlled(
         control,
     )?
     .map_model(|mut model| {
-        model.sanitize_common_db_fields(&meta.semantic_config);
+        sanitize_common_db_fields(&mut model, &meta.semantic_config);
         model
     }))
 }
@@ -345,18 +305,10 @@ fn construct_tree_view_model_controlled(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &TreeViewDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut nodes = Vec::new();
-    flatten_nodes(&model.root, &mut nodes);
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "root": tree_view_node_to_value(&model.root),
-        "nodes": nodes,
-    }))
+    merman_model::families::tree_view::compat::project(model, &meta.compat_json_metadata())
+        .map_err(Into::into)
 }
 
 fn parse_tree_view_input_controlled(
@@ -677,82 +629,6 @@ fn arena_node_to_model(arena: &[ArenaNode], idx: usize) -> TreeViewNode {
         .get_mut(idx)
         .and_then(Option::take)
         .unwrap_or_default()
-}
-
-#[cfg(feature = "compat-json")]
-fn flatten_nodes(node: &TreeViewNode, out: &mut Vec<Value>) {
-    let mut stack = vec![node];
-    while let Some(current) = stack.pop() {
-        out.push(tree_view_flat_node_to_value(current));
-        for child in current.children.iter().rev() {
-            stack.push(child);
-        }
-    }
-}
-
-#[cfg(feature = "compat-json")]
-fn tree_view_node_to_value(root: &TreeViewNode) -> Value {
-    let mut values: HashMap<*const TreeViewNode, Value> = HashMap::new();
-    let mut stack = vec![(root, false)];
-
-    while let Some((node, visited)) = stack.pop() {
-        let node_ptr = std::ptr::from_ref(node);
-        if visited {
-            let children = node
-                .children
-                .iter()
-                .filter_map(|child| values.remove(&std::ptr::from_ref(child)))
-                .collect::<Vec<_>>();
-            values.insert(
-                node_ptr,
-                tree_view_node_with_children_to_value(node, children),
-            );
-        } else {
-            stack.push((node, true));
-            for child in node.children.iter().rev() {
-                stack.push((child, false));
-            }
-        }
-    }
-
-    values.remove(&std::ptr::from_ref(root)).unwrap_or_else(|| {
-        json!({
-            "id": 0,
-            "level": -1,
-            "name": "/",
-            "nodeType": TREE_VIEW_DIRECTORY_NODE_TYPE,
-            "children": [],
-        })
-    })
-}
-
-#[cfg(feature = "compat-json")]
-fn tree_view_flat_node_to_value(node: &TreeViewNode) -> Value {
-    let mut value = serde_json::Map::new();
-    value.insert("id".to_string(), json!(node.id));
-    value.insert("level".to_string(), json!(node.level));
-    value.insert("name".to_string(), json!(node.name));
-    value.insert("nodeType".to_string(), json!(node.node_type));
-    if let Some(css_class) = &node.css_class {
-        value.insert("cssClass".to_string(), json!(css_class));
-    }
-    if let Some(icon) = &node.icon {
-        value.insert("icon".to_string(), json!(icon));
-    }
-    if let Some(description) = &node.description {
-        value.insert("description".to_string(), json!(description));
-    }
-    Value::Object(value)
-}
-
-#[cfg(feature = "compat-json")]
-fn tree_view_node_with_children_to_value(node: &TreeViewNode, children: Vec<Value>) -> Value {
-    let mut value = match tree_view_flat_node_to_value(node) {
-        Value::Object(value) => value,
-        _ => serde_json::Map::new(),
-    };
-    value.insert("children".to_string(), Value::Array(children));
-    Value::Object(value)
 }
 
 fn parse_node_line_details(
@@ -1445,13 +1321,13 @@ mod tests {
     use crate::EditorExpectedSyntaxKind;
     #[cfg(feature = "editor-facts")]
     use crate::MermaidEngine;
-    use crate::{MermaidConfig, PresentationMetadata, SourceSpan};
+    use crate::{MermaidConfig, SourcePresentationMetadata, SourceSpan};
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "treeView".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -1533,7 +1409,7 @@ plain file.ts ## entry point
     #[test]
     fn sanitizes_descriptions_before_projecting_tree_view_semantics() {
         let mut meta = meta();
-        meta.effective_config = crate::presentation::PresentationConfig::from_value(json!({
+        meta.effective_config = crate::presentation::SourcePresentationConfig::from_value(json!({
             "securityLevel": "strict"
         }));
         let source = "treeView-beta\nfile.txt ## <style>.bad{display:none}</style><b>safe</b>\n";
@@ -1908,7 +1784,7 @@ treeView-beta
         assert_eq!(compat["title"], json!(typed.title));
         assert_eq!(compat["accTitle"], json!(typed.acc_title));
         assert_eq!(compat["accDescr"], json!(typed.acc_descr));
-        assert_eq!(compat["root"], tree_view_node_to_value(&typed.root));
+        assert_eq!(compat["root"], serde_json::to_value(&typed.root).unwrap());
     }
 
     #[test]

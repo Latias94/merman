@@ -1,0 +1,31 @@
+[package]
+name = "merman-markup"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared Mermaid HTML safety, URL normalization, CSS structure, and color operations."
+documentation = "https://docs.rs/merman-markup"
+readme = "README.md"
+keywords = ["mermaid", "html", "sanitization", "css", "color"]
+categories = ["text-processing", "web-programming", "visualization"]
+
+[package.metadata.merman]
+artifact-profile-required = true
+
+[features]
+default = []
+html = ["dep:html5ever", "dep:htmlize"]
+url = ["dep:url"]
+color = ["dep:ryu-js"]
+
+[dependencies]
+merman-model.workspace = true
+serde_json.workspace = true
+html5ever = { workspace = true, optional = true }
+htmlize = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+ryu-js = { workspace = true, optional = true }

@@ -1,6 +1,6 @@
 use merman::{
-    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
-    presentation::PresentationConfig,
+    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer,
+    SourcePresentationConfig, SvgRequest,
 };
 
 const SOURCE: &str = r#"flowchart TD
@@ -10,7 +10,7 @@ const SOURCE: &str = r#"flowchart TD
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Keep application defaults outside user-authored Mermaid source.
-    let site_config = PresentationConfig::from_value(serde_json::json!({
+    let site_config = SourcePresentationConfig::from_value(serde_json::json!({
         "theme": "base",
         "fontFamily": "system-ui",
         "themeVariables": {

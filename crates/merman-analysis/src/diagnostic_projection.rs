@@ -1,3 +1,5 @@
+#[cfg(feature = "fixes")]
+use crate::repair::{FixProjection, RepairEvidence};
 use crate::rules::INTERNAL_RULE_REGISTRY_GAP_RULE;
 use crate::rules::{
     DIAGRAM_PARSE_RULE, DIAGRAM_PARSE_RULE_ID, INTERNAL_FAILURE_RULE, INVALID_DIRECTIVE_JSON_RULE,
@@ -8,11 +10,12 @@ use crate::rules::{
 use crate::rules::{INVALID_THEME_COLOR_RULE, THEME_EVALUATION_LIMIT_RULE};
 use crate::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisDiagnosticPolicy,
-    AnalysisStatus, DiagnosticFix, DiagnosticRelated, DiagnosticSpan, SourceMap,
+    AnalysisStatus, DiagnosticRelated, DiagnosticSpan, SourceMap,
 };
 use merman_core::{
     EditorSemanticDiagnosticKind, Error as CoreError, ParseDiagnostic, ParseDiagnosticSpanKind,
 };
+
 const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
 
 /// Policy-neutral diagnostic meaning retained by an analysis generation.
@@ -25,7 +28,8 @@ pub(crate) struct DiagnosticCandidate {
     span: Option<DiagnosticSpan>,
     related: Vec<DiagnosticRelated>,
     help: Option<String>,
-    fixes: Vec<DiagnosticFix>,
+    #[cfg(feature = "fixes")]
+    repair: Option<RepairEvidence>,
     suppressors: &'static [RuleDescriptor],
     parse_location: Option<ParseDiagnosticLocation>,
     recovery_kind: Option<EditorSemanticDiagnosticKind>,
@@ -42,7 +46,8 @@ impl DiagnosticCandidate {
             span: None,
             related: Vec::new(),
             help: None,
-            fixes: Vec::new(),
+            #[cfg(feature = "fixes")]
+            repair: None,
             suppressors: &[],
             parse_location: None,
             recovery_kind: None,
@@ -75,9 +80,28 @@ impl DiagnosticCandidate {
         self
     }
 
-    pub(crate) fn with_fix(mut self, fix: DiagnosticFix) -> Self {
-        self.fixes.push(fix);
+    #[cfg(feature = "fixes")]
+    pub(crate) fn with_repair(mut self, repair: RepairEvidence) -> Self {
+        self.repair = Some(repair);
         self
+    }
+
+    #[cfg(feature = "fixes")]
+    pub(crate) fn set_repair(&mut self, repair: RepairEvidence) {
+        self.repair = Some(repair);
+    }
+
+    #[cfg(feature = "fixes")]
+    pub(crate) fn map_repair_to_document(
+        mut self,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        if let Some(repair) = self.repair.take() {
+            self.repair = repair.map_to_document(source_map, body_start, cancellation)?;
+        }
+        Ok(self)
     }
 
     pub(crate) fn with_suppressors(mut self, suppressors: &'static [RuleDescriptor]) -> Self {
@@ -103,13 +127,9 @@ impl DiagnosticCandidate {
 
     pub(crate) fn try_map_locations<E>(
         mut self,
-        map: impl FnOnce(
-            &mut Option<DiagnosticSpan>,
-            &mut Vec<DiagnosticRelated>,
-            &mut Vec<DiagnosticFix>,
-        ) -> Result<(), E>,
+        map: impl FnOnce(&mut Option<DiagnosticSpan>, &mut Vec<DiagnosticRelated>) -> Result<(), E>,
     ) -> Result<Self, E> {
-        map(&mut self.span, &mut self.related, &mut self.fixes)?;
+        map(&mut self.span, &mut self.related)?;
         Ok(self)
     }
 
@@ -133,9 +153,13 @@ impl DiagnosticCandidate {
             help_capacity: self.help.as_ref().map(String::capacity),
             related: &self.related,
             related_capacity: self.related.capacity(),
-            fixes: &self.fixes,
-            fixes_capacity: self.fixes.capacity(),
+            fixes: &[],
+            fixes_capacity: 0,
         });
+        #[cfg(feature = "fixes")]
+        if let Some(repair) = &self.repair {
+            weight.add_repair_evidence(repair);
+        }
     }
 
     fn materialize(&self, severity: crate::DiagnosticSeverity) -> AnalysisDiagnostic {
@@ -151,7 +175,7 @@ impl DiagnosticCandidate {
             span: self.span,
             related: self.related.clone(),
             help: self.help.clone(),
-            fixes: self.fixes.clone(),
+            fixes: Vec::new(),
         }
     }
 
@@ -180,6 +204,8 @@ pub(crate) fn append_projected_diagnostic_candidates(
 ) -> Result<(), AnalysisCancelled> {
     let rule_config = &policy.rule_config;
     let mut primary_parse: Option<ProjectedPrimaryParse> = None;
+    #[cfg(feature = "fixes")]
+    let mut fixes = FixProjection::default();
 
     for (index, candidate) in candidates.iter().enumerate() {
         if index.is_multiple_of(128) {
@@ -190,6 +216,15 @@ pub(crate) fn append_projected_diagnostic_candidates(
         }
 
         let diagnostic = candidate.materialize(rule_config.severity_for(candidate.descriptor));
+        #[cfg(feature = "fixes")]
+        let mut diagnostic = diagnostic;
+        #[cfg(feature = "fixes")]
+        if policy.fix_generation == crate::FixGeneration::Generate
+            && let Some(repair) = &candidate.repair
+            && let Some(fix) = fixes.materialize(repair, cancellation)?
+        {
+            diagnostic.fixes.push(fix);
+        }
         if let Some(kind) = candidate.recovery_kind {
             let merged = primary_parse.is_some_and(|primary: ProjectedPrimaryParse| {
                 crate::recovery::merge_duplicate_parse_recovery_diagnostic(
@@ -537,7 +572,7 @@ mod tests {
         },
     };
     #[cfg(feature = "compat-json")]
-    use merman_core::theme_color::ColorError;
+    use merman_markup::theme_color::ColorError;
 
     #[cfg(feature = "compat-json")]
     #[test]
@@ -564,11 +599,13 @@ mod tests {
     #[test]
     fn theme_evaluation_limits_are_resource_diagnostics_without_source_ownership() {
         let projection = core_error_candidate(
-            &CoreError::ThemeEvaluationLimit(merman_core::ThemeEvaluationLimitExceeded {
-                limit: "THEME_COLOR_LIMIT",
-                requested: "65".to_string(),
-                max: 64,
-            }),
+            &CoreError::ThemeEvaluationLimit(
+                merman_model::presentation::ThemeEvaluationLimitExceeded {
+                    limit: "THEME_COLOR_LIMIT",
+                    requested: "65".to_string(),
+                    max: 64,
+                },
+            ),
             &SourceMap::new("flowchart TD\nA-->B\n"),
         );
 
@@ -653,60 +690,20 @@ mod tests {
     }
 
     #[test]
-    fn candidate_retained_weight_counts_dynamic_fields_and_shared_fix_edits_once() {
-        fn retained_weight(candidates: &[DiagnosticCandidate]) -> usize {
-            let mut weight = crate::payload::DiagnosticRetainedWeight::default();
-            for candidate in candidates {
-                candidate.add_estimated_owned_heap_bytes(&mut weight);
-            }
-            weight.finish()
-        }
-
-        let span = SourceMap::new("flowchart TD\nA-->B\n")
-            .whole_source_span()
-            .expect("fixture span");
+    fn candidate_retained_weight_counts_dynamic_fields() {
+        let mut weight = crate::payload::DiagnosticRetainedWeight::default();
         let base = DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "message");
-        let rich = DiagnosticCandidate::new(
-            INVALID_THEME_COLOR_RULE,
-            "candidate message allocation".repeat(8),
-        )
-        .with_diagram_type("flowchart-v2".repeat(8))
-        .with_help("candidate help allocation".repeat(8))
-        .with_related(DiagnosticRelated {
-            message: "related allocation".repeat(8),
-            span: Some(span),
-        })
-        .with_fix(DiagnosticFix::new(
-            "fix allocation".repeat(8),
-            vec![crate::DiagnosticFixEdit::new(
-                span,
-                "replacement allocation".repeat(8),
-            )],
-        ));
-
-        assert!(retained_weight(&[rich]) > retained_weight(&[base]));
-
-        let make_fix = || {
-            DiagnosticFix::new(
-                "shared fix allocation".repeat(8),
-                vec![crate::DiagnosticFixEdit::new(
-                    span,
-                    "shared replacement allocation".repeat(8),
-                )],
-            )
-        };
-        let shared_fix = make_fix();
-        let shared = [
-            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "first")
-                .with_fix(shared_fix.clone()),
-            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "second").with_fix(shared_fix),
-        ];
-        let distinct = [
-            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "first").with_fix(make_fix()),
-            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "second").with_fix(make_fix()),
-        ];
-
-        assert!(retained_weight(&distinct) > retained_weight(&shared));
+        base.add_estimated_owned_heap_bytes(&mut weight);
+        let base_weight = weight.finish();
+        let rich = DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "message".repeat(128))
+            .with_help("help".repeat(128))
+            .with_related(DiagnosticRelated {
+                message: "related".repeat(128),
+                span: None,
+            });
+        let mut weight = crate::payload::DiagnosticRetainedWeight::default();
+        rich.add_estimated_owned_heap_bytes(&mut weight);
+        assert!(weight.finish() > base_weight);
     }
 
     #[test]

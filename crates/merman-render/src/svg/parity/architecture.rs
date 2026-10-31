@@ -23,7 +23,7 @@ impl<'a> ArchitectureEmitCheckpoints<'a> {
 
     pub(super) fn checkpoint(self) -> crate::Result<()> {
         self.work_meter
-            .checkpoint(merman_core::OperationPhase::Emit)
+            .checkpoint(merman_model::OperationPhase::Emit)
             .map_err(Into::into)
     }
 }

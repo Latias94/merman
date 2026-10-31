@@ -413,9 +413,30 @@ pub fn editor_code_actions(
 }
 
 fn code_actions_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
-    let uri = context.analyzed.snapshot().uri().as_str();
-    let diagnostics = analysis_payload_to_diagnostics(context.analyzed.payload());
-    js_value(&code_actions_for_diagnostics(&diagnostics, uri))
+    if !crate::wasm_artifact_contract()
+        .capability_keys()
+        .any(|key| key == merman_bindings_core::CapabilityKey::Fixes)
+    {
+        return Err(binding_error_to_js(BindingError::missing_capability(
+            "fixes",
+            "code-action generation requires the fixes capability",
+        )));
+    }
+    #[cfg(feature = "fixes")]
+    {
+        let uri = context.analyzed.snapshot().uri().as_str();
+        let payload = context.analyzed.project_with_requested_fixes();
+        let diagnostics = analysis_payload_to_diagnostics(&payload);
+        js_value(&code_actions_for_diagnostics(&diagnostics, uri))
+    }
+    #[cfg(not(feature = "fixes"))]
+    {
+        let _ = context;
+        Err(binding_error_to_js(BindingError::missing_capability(
+            "fixes",
+            "code-action generation requires the fixes capability",
+        )))
+    }
 }
 
 #[wasm_bindgen(js_name = editorCompletions)]
@@ -1601,13 +1622,38 @@ mod tests {
         assert_eq!(edits[1].new_text, "late");
     }
 
+    #[cfg(feature = "fixes")]
     #[test]
     fn wasm_code_actions_include_frontmatter_config_migration_quickfix() {
         let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let uri = "file:///tmp/example.mmd";
-        let payload =
-            editor_analysis_payload(source, Some(r#"{"lint":{"profile":"recommended"}}"#), uri)
-                .expect("analysis payload");
+        let context = build_editor_document_analysis(
+            source,
+            uri,
+            1,
+            Some(r#"{"lint":{"profile":"recommended"}}"#),
+        )
+        .expect("analysis context");
+        let generation = context.shared_analysis_generation();
+        assert!(
+            context
+                .payload()
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.fixes.is_empty())
+        );
+        let payload = context.project_with_requested_fixes();
+        assert!(Arc::ptr_eq(
+            &generation,
+            &context.shared_analysis_generation()
+        ));
+        assert!(
+            context
+                .payload()
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.fixes.is_empty())
+        );
         let diagnostics = analysis_payload_to_diagnostics(&payload);
         let actions = code_actions_for_diagnostics(&diagnostics, uri);
 

@@ -1,6 +1,8 @@
 #![cfg(feature = "diagram-kanban")]
 
-use merman_core::{MermaidEngine, OperationControl, ParseOptions, ParsedDiagramRender};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::OperationControl;
+use merman_model::presentation::PresentationDiagram;
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity,
@@ -19,15 +21,16 @@ use std::sync::{
 
 const SOURCE: &str = "---\nconfig:\n  mindmap:\n    padding: 8\n  kanban:\n    ticketBaseUrl: https://example.invalid/ticket/#TICKET#\n---\nkanban\n  todo[待办]\n    a[\"**第一项**<br/>第二行\"]@{ticket: T-1, assigned: Alice}\n    aa[Another]\n  doing[Doing]\n    b[Second]\n  done[Done]\n    c[Third]";
 
-fn parse(source: &str) -> ParsedDiagramRender {
+fn parse(source: &str) -> PresentationDiagram {
     MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()
+        .into_presentation()
 }
 
 fn render(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     options: &LayoutOptions,
     environment: RenderEnvironment,
 ) -> (

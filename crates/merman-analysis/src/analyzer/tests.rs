@@ -4,12 +4,14 @@ use crate::{
     AnalysisCancellationToken, AnalysisStatus, DiagnosticCategory, DiagnosticSeverity,
     FenceTextIndexSource, SourceDescriptor, SourceMap,
 };
-use merman_core::{EditorSemanticDiagnostic, MermaidConfig, SourceSpan};
+use merman_core::EditorSemanticDiagnostic;
 #[cfg(feature = "compat-json")]
-use merman_core::{
-    ParsedDiagram,
-    presentation::{PresentationConfig, PresentationMetadata},
+use merman_core::presentation::{
+    SourcePresentationConfig, SourcePresentationMetadata, diagram::ParsedDiagram,
 };
+#[cfg(feature = "compat-json")]
+use merman_model::presentation::{PresentationConfig, PresentationMetadata};
+use merman_model::{MermaidConfig, SourceSpan};
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -53,26 +55,26 @@ fn capture_document_diagram_for_test(
 }
 
 #[cfg(feature = "compat-json")]
-fn detect_captured_config_fixture(source: &str, _config: &mut PresentationConfig) -> bool {
+fn detect_captured_config_fixture(source: &str, _config: &mut SourcePresentationConfig) -> bool {
     source.trim_start().starts_with("captured-config-fixture")
 }
 
 #[cfg(feature = "compat-json")]
-fn detect_markdown_custom_fixture(source: &str, _config: &mut PresentationConfig) -> bool {
+fn detect_markdown_custom_fixture(source: &str, _config: &mut SourcePresentationConfig) -> bool {
     source.trim_start().starts_with("markdown-custom-fixture")
 }
 
 #[cfg(feature = "compat-json")]
-fn panicking_detector(_source: &str, _config: &mut PresentationConfig) -> bool {
+fn panicking_detector(_source: &str, _config: &mut SourcePresentationConfig) -> bool {
     panic!("detector fixture panic")
 }
 
 #[cfg(feature = "compat-json")]
 fn captured_config_panicking_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    _control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    _control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     CAPTURED_CONFIG_PANIC_CALLS.fetch_add(1, Ordering::SeqCst);
     panic!("captured config fixture panic")
 }
@@ -80,18 +82,18 @@ fn captured_config_panicking_parser(
 #[cfg(feature = "compat-json")]
 fn non_string_panicking_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    _control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    _control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     std::panic::panic_any(42_u8)
 }
 
 #[cfg(feature = "compat-json")]
 fn unknown_warning_flowchart_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     Ok(Ok(json!({
         "warningFacts": [{
@@ -105,9 +107,9 @@ fn unknown_warning_flowchart_parser(
 #[cfg(feature = "compat-json")]
 fn counting_flowchart_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     REPROJECTION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -116,9 +118,9 @@ fn counting_flowchart_parser(
 #[cfg(feature = "compat-json")]
 fn derived_analyzer_counting_flowchart_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     DERIVED_ANALYZER_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -127,9 +129,9 @@ fn derived_analyzer_counting_flowchart_parser(
 #[cfg(feature = "compat-json")]
 fn markdown_counting_custom_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     MARKDOWN_CUSTOM_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -138,16 +140,16 @@ fn markdown_counting_custom_parser(
 #[cfg(feature = "compat-json")]
 fn markdown_first_success_then_cancel_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     if MARKDOWN_PARTIAL_CAPTURE_CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
         Ok(Ok(json!({ "warningFacts": [] })))
     } else {
-        Err(merman_core::OperationCancelled {
-            phase: merman_core::OperationPhase::Analysis,
-            reason: merman_core::CancelReason::Requested,
+        Err(merman_model::OperationCancelled {
+            phase: merman_model::OperationPhase::Analysis,
+            reason: merman_model::CancelReason::Requested,
         })
     }
 }
@@ -155,9 +157,9 @@ fn markdown_first_success_then_cancel_parser(
 #[cfg(feature = "compat-json")]
 fn rejected_source_counting_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     REJECTED_SOURCE_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -166,18 +168,18 @@ fn rejected_source_counting_parser(
 #[cfg(feature = "compat-json")]
 fn panicking_flowchart_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    _control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    _control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     panic!("fixture parser panic")
 }
 
 #[cfg(feature = "compat-json")]
 fn failing_flowchart_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     Ok(Err(merman_core::InternalFailure::new(
         "fixture parser subsystem failure",
@@ -188,9 +190,9 @@ fn failing_flowchart_parser(
 #[cfg(feature = "compat-json")]
 fn malformed_flowchart_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     Ok(Ok(malformed_flowchart_parsed_diagram()
         .model
@@ -200,9 +202,9 @@ fn malformed_flowchart_parser(
 #[cfg(feature = "compat-json")]
 fn cancelling_flowchart_parser(
     _source: &str,
-    _metadata: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    _metadata: &SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.cancel();
     control.checkpoint()?;
     unreachable!("cancelled parser must stop at its checkpoint")
@@ -218,6 +220,7 @@ fn semantic_analyzer_derivations_preserve_identity_scope_and_replace_site_config
     let cloned = base.clone();
     let diagnostics = base.with_diagnostic_policy(AnalysisDiagnosticPolicy {
         rule_config: AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ..Default::default()
     });
     assert_eq!(base.environment_identity(), cloned.environment_identity());
     assert_eq!(
@@ -235,7 +238,7 @@ fn semantic_analyzer_derivations_preserve_identity_scope_and_replace_site_config
     let mut snapshot_policy = base.options().snapshot_policy().clone();
     snapshot_policy.site_config = None;
     snapshot_policy.runtime_policy =
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42_000);
+        merman_model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42_000);
     let snapshot = base.with_snapshot_policy(snapshot_policy);
     assert_ne!(base.environment_identity(), snapshot.environment_identity());
     let snapshot_facts = snapshot.analyze_facts(source);
@@ -271,10 +274,10 @@ fn semantic_analyzer_derivations_preserve_identity_scope_and_replace_site_config
 #[cfg(feature = "compat-json")]
 fn custom_engine_uses_the_runtime_policy_owned_by_analysis_options() {
     let engine = merman_core::presentation::MermaidEngine::new().with_runtime_policy(
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1_000),
+        merman_model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1_000),
     );
     let options = AnalysisOptions::default().with_runtime_policy(
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(2_000),
+        merman_model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(2_000),
     );
 
     let analyzer = Analyzer::with_mermaid_engine(engine, options.clone());
@@ -290,7 +293,7 @@ fn custom_engine_uses_the_runtime_policy_owned_by_analysis_options() {
 fn custom_engine_uses_the_exact_site_config_owned_by_analysis_options() {
     let source = "erDiagram\nA ||--o{ B : owns\n";
     let stale_engine = merman_core::presentation::MermaidEngine::new().with_site_config(
-        PresentationConfig::from_value(json!({ "layout": "elk", "theme": "dark" })),
+        SourcePresentationConfig::from_value(json!({ "layout": "elk", "theme": "dark" })),
     );
 
     for options in [
@@ -321,6 +324,7 @@ fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
     let cloned = base.clone();
     let diagnostics = base.with_diagnostic_policy(AnalysisDiagnosticPolicy {
         rule_config: AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ..Default::default()
     });
 
     assert_eq!(base.environment_identity(), cloned.environment_identity());
@@ -334,7 +338,7 @@ fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
     snapshot_policy.source = SourceDescriptor::diagram().with_path("file:///derived.mmd");
     snapshot_policy.resources.max_source_bytes = Some(4_096);
     snapshot_policy.runtime_policy =
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42_000);
+        merman_model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42_000);
     let snapshot = base.with_snapshot_policy(snapshot_policy.clone());
 
     assert_ne!(base.environment_identity(), snapshot.environment_identity());
@@ -386,10 +390,10 @@ fn analysis_generation_releases_parse_only_site_config_storage() {
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_site_config(site_config.clone())
-            .with_fixed_today(merman_core::time::CivilDate::new(2026, 7, 30)),
+            .with_fixed_today(merman_model::time::CivilDate::new(2026, 7, 30)),
     );
     let generation = analyzer
-        .analyze_generation("flowchart TD\nA-->B\n")
+        .analyze_generation("%%{ init: {theme: 'dark'} }%%\nflowchart TD\nA-->B\n")
         .into_ready()
         .expect("probe source should produce a generation");
 
@@ -398,6 +402,21 @@ fn analysis_generation_releases_parse_only_site_config_storage() {
 
     assert_eq!(mutable_allocation.cast_const(), original_allocation);
     assert_eq!(generation.source(), &SourceDescriptor::diagram());
+    #[cfg(feature = "fixes")]
+    {
+        let policy = AnalysisDiagnosticPolicy {
+            rule_config: AnalysisRuleConfig::default()
+                .with_profile(crate::AnalysisRuleProfile::Recommended),
+            fix_generation: crate::FixGeneration::Generate,
+        };
+        assert!(
+            generation
+                .project(&policy)
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { !diagnostic.fixes.is_empty() })
+        );
+    }
 }
 
 #[test]
@@ -1381,14 +1400,17 @@ fn editor_recovery_without_a_parser_span_falls_back_to_the_whole_source() {
 }
 
 #[test]
+#[cfg(feature = "fixes")]
 fn analyze_init_directive_alias_emits_safe_fix() {
     let analyzer = Analyzer::with_options(
-        AnalysisOptions::default().with_rule_config(
-            AnalysisRuleConfig::default()
-                .with_profile(AnalysisRuleProfile::Recommended)
-                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
-                .unwrap(),
-        ),
+        AnalysisOptions::default()
+            .with_fix_generation(crate::FixGeneration::Generate)
+            .with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                    .unwrap(),
+            ),
     );
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
     let payload = analyzer.analyze(source);
@@ -1612,10 +1634,8 @@ fn captured_config_survives_custom_parser_panic_without_a_second_engine() {
         .analyze_generation(source)
         .into_ready()
         .expect("fixture is within the source limit");
-    let first = generation.project(&AnalysisDiagnosticPolicy {
-        rule_config: rule_config.clone(),
-    });
-    let second = generation.project(&AnalysisDiagnosticPolicy { rule_config });
+    let first = generation.project(&crate::test_support::diagnostic_policy(rule_config.clone()));
+    let second = generation.project(&crate::test_support::diagnostic_policy(rule_config));
 
     assert_eq!(first, second);
     assert_eq!(CAPTURED_CONFIG_PANIC_CALLS.load(Ordering::SeqCst), 1);
@@ -1628,11 +1648,16 @@ fn captured_config_survives_custom_parser_panic_without_a_second_engine() {
         .iter()
         .find(|diagnostic| diagnostic.id == crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
         .expect("captured metadata should retain the authoring diagnostic");
-    assert_eq!(migration.fixes.len(), 1);
-    assert!(migration.fixes[0].is_preferred);
-    assert!(migration.fixes[0].edits.iter().any(|edit| {
-        edit.replacement.contains("config:") && edit.replacement.contains("theme: dark")
-    }));
+    #[cfg(not(feature = "fixes"))]
+    assert!(migration.fixes.is_empty());
+    #[cfg(feature = "fixes")]
+    {
+        assert_eq!(migration.fixes.len(), 1);
+        assert!(migration.fixes[0].is_preferred);
+        assert!(migration.fixes[0].edits.iter().any(|edit| {
+            edit.replacement.contains("config:") && edit.replacement.contains("theme: dark")
+        }));
+    }
 }
 
 #[test]
@@ -1746,7 +1771,8 @@ fn policy_neutral_candidate_corpus_covers_available_backend_rules() {
         invalid_theme_analyzer,
     ) = {
         let mut unsupported_engine = merman_core::presentation::MermaidEngine::new();
-        *unsupported_engine.diagram_registry_mut() = merman_core::diagram::DiagramRegistry::new();
+        *unsupported_engine.diagram_registry_mut() =
+            merman_core::presentation::diagram::DiagramRegistry::new();
 
         let mut panic_engine = merman_core::presentation::MermaidEngine::new();
         panic_engine
@@ -1784,8 +1810,8 @@ fn policy_neutral_candidate_corpus_covers_available_backend_rules() {
     };
     let nested_directive_config = format!(
         "{}0{}",
-        "[".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
-        "]".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "[".repeat(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "]".repeat(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1),
     );
     let invalid_directive_source = Box::leak(
         format!("%%{{ init: {nested_directive_config} }}%%\nflowchart TD\nA-->B\n")
@@ -1931,13 +1957,16 @@ fn policy_neutral_candidate_corpus_covers_available_backend_rules() {
     let policies = [
         AnalysisDiagnosticPolicy {
             rule_config: AnalysisRuleConfig::default(),
+            ..Default::default()
         },
         AnalysisDiagnosticPolicy {
             rule_config: AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended),
+            ..Default::default()
         },
         AnalysisDiagnosticPolicy {
             rule_config: strict_rules,
+            ..Default::default()
         },
     ];
     let mut observed_rule_ids = BTreeSet::new();
@@ -2043,6 +2072,7 @@ fn config_authoring_rule_dominance_reprojects_all_four_enablement_combinations()
         generation
             .project(&AnalysisDiagnosticPolicy {
                 rule_config: severity_only,
+                ..Default::default()
             })
             .diagnostics
             .is_empty(),
@@ -2091,7 +2121,7 @@ fn config_authoring_rule_dominance_reprojects_all_four_enablement_combinations()
             )
             .unwrap();
 
-        let payload = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        let payload = generation.project(&crate::test_support::diagnostic_policy(rules));
         assert_eq!(payload.diagnostics.len(), usize::from(expected.is_some()));
         if let Some(expected) = expected {
             let diagnostic = &payload.diagnostics[0];
@@ -2104,7 +2134,10 @@ fn config_authoring_rule_dominance_reprojects_all_four_enablement_combinations()
                     DiagnosticSeverity::Warning
                 }
             );
+            #[cfg(feature = "fixes")]
             assert_eq!(diagnostic.fixes.len(), 1);
+            #[cfg(not(feature = "fixes"))]
+            assert!(diagnostic.fixes.is_empty());
         }
     }
 }
@@ -2149,7 +2182,10 @@ fn parse_and_recovery_rules_reproject_all_four_enablement_combinations() {
                 .unwrap();
         }
 
-        let payload = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        let payload = generation.project(&AnalysisDiagnosticPolicy {
+            rule_config: rules,
+            ..Default::default()
+        });
         assert_eq!(
             payload.valid, expected_valid,
             "parse={parse} recovery={recovery}"
@@ -2297,7 +2333,10 @@ fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
                 .unwrap();
         }
 
-        let projected = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        let projected = generation.project(&AnalysisDiagnosticPolicy {
+            rule_config: rules,
+            ..Default::default()
+        });
         assert_eq!(
             projected.diagnostics.len(),
             usize::from(expected_id.is_some()) * 2,
@@ -2391,17 +2430,17 @@ fn agentflow_domain_diagnostics_preserve_parse_success_and_source_ranges() {
 
     for (rule_id, severity, source_text) in [
         (
-            merman_core::AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
+            merman_model::warnings::AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
             DiagnosticSeverity::Error,
             "removed((Circle))",
         ),
         (
-            merman_core::AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID,
+            merman_model::warnings::AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID,
             DiagnosticSeverity::Warning,
             "unsupported@{ shape: cloud }",
         ),
         (
-            merman_core::AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID,
+            merman_model::warnings::AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID,
             DiagnosticSeverity::Warning,
             "B",
         ),
@@ -2482,6 +2521,7 @@ fn analysis_rule_registry_gap_surfaces_as_internal_error() {
         &candidates,
         &crate::AnalysisDiagnosticPolicy {
             rule_config: AnalysisRuleConfig::default(),
+            ..Default::default()
         },
         &crate::AnalysisCancellationToken::new(),
     )

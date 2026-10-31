@@ -98,7 +98,7 @@ mod tests {
             .expect("render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let effective_config = merman_core::presentation::PresentationConfig::default();
+        let effective_config = merman_model::presentation::PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
             None,
@@ -115,7 +115,7 @@ mod tests {
         )
         .expect("SVG execution");
         let layout = crate::info::layout_info_diagram_typed(
-            &merman_core::diagrams::info::InfoDiagramRenderModel::default(),
+            &merman_model::families::info::InfoDiagramModel::default(),
             &typography_theme,
         )
         .expect("Info layout");

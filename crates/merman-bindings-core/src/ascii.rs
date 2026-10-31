@@ -12,16 +12,16 @@ pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
 pub(crate) struct CachedAsciiEngine {
     renderer: merman::Renderer,
     request: merman::AsciiRequest,
-    resource_profile: merman::resources::ResourceProfile,
+    resource_profile: merman::model::resources::ResourceProfile,
 }
 
 pub(crate) struct AsciiOperationConfig {
-    runtime_policy: merman::runtime::RuntimePolicy,
+    runtime_policy: merman::model::runtime::RuntimePolicy,
     parse_options: merman::ParseOptions,
     render_options: merman::ascii::AsciiRenderOptions,
     viewport: merman::ascii::AsciiViewportPolicy,
     ascii_resources: merman::ascii::AsciiResourcePolicy,
-    resources: merman::resources::InputResourcePolicy,
+    resources: merman::model::resources::InputResourcePolicy,
     site_config: Option<merman::MermaidConfig>,
 }
 
@@ -52,7 +52,7 @@ impl CachedAsciiEngine {
 impl AsciiOperationConfig {
     pub(crate) fn compile(
         options: &crate::common::BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
+        runtime_policy: merman::model::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
         let parse_options = if options
             .parse
@@ -361,7 +361,7 @@ fn invalid_ascii_option(field: &'static str, message: &'static str) -> BindingEr
 
 fn classify_render_error(
     err: merman::RenderError,
-    resource_profile: merman::resources::ResourceProfile,
+    resource_profile: merman::model::resources::ResourceProfile,
 ) -> BindingError {
     match err {
         merman::RenderError::NoDiagram => no_diagram_error(),
@@ -463,7 +463,7 @@ mod tests {
                 })
                 .into(),
             ),
-            merman::resources::ResourceProfile::Interactive,
+            merman::model::resources::ResourceProfile::Interactive,
         );
 
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn ascii_parse_error_preserves_code_span_and_safe_context_in_binding_payload() {
-        let span = merman::SourceSpan::new(3, 8);
+        let span = merman::model::SourceSpan::new(3, 8);
         let diagnostic = merman::ParseDiagnostic::new("bad input")
             .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
             .with_code("merman.test");
@@ -629,7 +629,7 @@ mod tests {
                 "flow\u{1b}",
                 diagnostic,
             )),
-            merman::resources::ResourceProfile::Interactive,
+            merman::model::resources::ResourceProfile::Interactive,
         );
 
         let details = error
@@ -665,11 +665,11 @@ mod tests {
     fn nested_runtime_policy_errors_preserve_missing_capability_binding_classification() {
         let error = classify_render_error(
             merman::RenderError::from(merman::Error::RuntimePolicy(
-                merman::runtime::RuntimePolicyError::MissingCapability(
-                    merman::runtime::RuntimeCapability::SystemRandom,
+                merman::model::runtime::RuntimePolicyError::MissingCapability(
+                    merman::model::runtime::RuntimeCapability::SystemRandom,
                 ),
             )),
-            merman::resources::ResourceProfile::Interactive,
+            merman::model::resources::ResourceProfile::Interactive,
         );
 
         assert_eq!(error.status(), BindingStatus::UnsupportedOperation);

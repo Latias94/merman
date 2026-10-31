@@ -19,13 +19,13 @@ use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::SequenceDiagramModel;
 use super::Tok;
 use super::ast::{ActionArena, Actions};
 use super::db::SequenceDb;
 #[cfg(feature = "editor-facts")]
 use super::db::{is_css_color_value, split_box_color_and_title};
 use super::lexer::Lexer;
+use super::model::SequenceDiagramModel;
 use super::sequence_grammar;
 
 #[cfg(test)]
@@ -210,7 +210,7 @@ pub(crate) fn parse_sequence_semantic_model_controlled(
             editor_facts,
         }) => {
             let mut model = db.into_model();
-            model.sanitize_common_db_fields(&meta.semantic_config);
+            super::sanitize_common_db_fields(&mut model, &meta.semantic_config);
             SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]
@@ -777,15 +777,15 @@ mod tests {
     use crate::EditorSemanticRole;
     use crate::MermaidConfig;
     #[cfg(feature = "compat-json")]
-    use crate::PresentationMetadata;
+    use crate::SourcePresentationMetadata;
     use std::fmt::Write as _;
 
     #[cfg(feature = "compat-json")]
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "sequence".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }

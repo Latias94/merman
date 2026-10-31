@@ -1,14 +1,14 @@
 /// A cheap, runtime-independent cancellation signal for CPU-bound analysis.
 #[derive(Debug, Clone)]
 pub struct AnalysisCancellationToken {
-    operation: merman_core::OperationControl,
+    operation: merman_model::OperationControl,
 }
 
 impl Default for AnalysisCancellationToken {
     fn default() -> Self {
         Self {
-            operation: merman_core::OperationControl::new()
-                .for_phase(merman_core::OperationPhase::Analysis),
+            operation: merman_model::OperationControl::new()
+                .for_phase(merman_model::OperationPhase::Analysis),
         }
     }
 }
@@ -22,9 +22,9 @@ impl AnalysisCancellationToken {
     ///
     /// Unnamed analysis checkpoints report the analysis phase while cancellation and deadline
     /// state remain shared with the caller.
-    pub fn from_operation_control(operation: &merman_core::OperationControl) -> Self {
+    pub fn from_operation_control(operation: &merman_model::OperationControl) -> Self {
         Self {
-            operation: operation.for_phase(merman_core::OperationPhase::Analysis),
+            operation: operation.for_phase(merman_model::OperationPhase::Analysis),
         }
     }
 
@@ -49,11 +49,11 @@ impl AnalysisCancellationToken {
 
     /// Returns the structured terminal condition currently observed by this analysis token.
     #[must_use]
-    pub fn operation_cancellation(&self) -> Option<merman_core::OperationCancelled> {
+    pub fn operation_cancellation(&self) -> Option<merman_model::OperationCancelled> {
         self.operation.checkpoint().err()
     }
 
-    pub(crate) fn operation_control(&self) -> &merman_core::OperationControl {
+    pub(crate) fn operation_control(&self) -> &merman_model::OperationControl {
         &self.operation
     }
 
@@ -102,26 +102,26 @@ mod tests {
 
     #[test]
     fn caller_operation_cancellation_propagates_with_analysis_phase() {
-        let operation = merman_core::OperationControl::new();
+        let operation = merman_model::OperationControl::new();
         let token = AnalysisCancellationToken::from_operation_control(&operation);
 
         operation.cancel();
 
         assert_eq!(token.checkpoint(), Err(AnalysisCancelled));
         let error = token.operation_cancellation().unwrap();
-        assert_eq!(error.phase, merman_core::OperationPhase::Analysis);
-        assert_eq!(error.reason, merman_core::CancelReason::Requested);
+        assert_eq!(error.phase, merman_model::OperationPhase::Analysis);
+        assert_eq!(error.reason, merman_model::CancelReason::Requested);
     }
 
     #[test]
     fn caller_operation_deadline_propagates_with_analysis_phase() {
         let operation =
-            merman_core::OperationControl::new().with_deadline(std::time::Duration::ZERO);
+            merman_model::OperationControl::new().with_deadline(std::time::Duration::ZERO);
         let token = AnalysisCancellationToken::from_operation_control(&operation);
 
         assert_eq!(token.checkpoint(), Err(AnalysisCancelled));
         let error = token.operation_cancellation().unwrap();
-        assert_eq!(error.phase, merman_core::OperationPhase::Analysis);
-        assert_eq!(error.reason, merman_core::CancelReason::DeadlineExceeded);
+        assert_eq!(error.phase, merman_model::OperationPhase::Analysis);
+        assert_eq!(error.reason, merman_model::CancelReason::DeadlineExceeded);
     }
 }

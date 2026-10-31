@@ -492,7 +492,7 @@ mod tests {
     use crate::options::TerminalWidthProfile;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use crate::terminal::TerminalCellText;
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     fn edge(label: &str, from: &str, to: &str) -> AsciiGraphEdge {
         AsciiGraphEdge {

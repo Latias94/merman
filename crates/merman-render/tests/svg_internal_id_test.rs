@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -43,7 +42,8 @@ fn render_svg_from_text_with_engine_and_environment(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout_options = LayoutOptions::default();
     let artifact = family::prepare(&parsed, &layout_options, session).expect("layout ok");
@@ -379,9 +379,11 @@ fn tree_view_iconify_internal_ids_are_scoped_per_node_and_deterministic() {
         ..SvgRenderOptions::default()
     };
     let input = "treeView-beta\nRoot\n    One icon(foo:bar-baz)\n    Two icon(foo-bar:baz)\n    Three icon(foo:bar-baz-2)\n";
-    let loose_engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-        serde_json::json!({ "securityLevel": "loose" }),
-    ));
+    let loose_engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({ "securityLevel": "loose" }),
+        ),
+    );
 
     let svg = render_svg_from_text_with_engine_and_environment(
         input,
@@ -511,3 +513,6 @@ fn internal_iconify_ids(svg: &str) -> Vec<String> {
     }
     ids
 }
+
+#[allow(dead_code)]
+mod common;

@@ -399,9 +399,9 @@ checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
 
 [[package]]
 name = "brotli"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6737ce8b81460bf9407909f73ff50bf13f7cb8577e1e76715f57ed0eba58ba44"
+checksum = "627b7cfb0578f0eafce087a90fcd40add1231900b69e4d4de2d456260a4f5d81"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
@@ -1077,7 +1077,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2021,9 +2021,9 @@ dependencies = [
 
 [[package]]
 name = "json5"
-version = "1.3.4"
+version = "1.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1628f14e201e5d6683248a22736547a083c2c176652d65b1068be73dab213a28"
+checksum = "e46128c9fb848c29097da3149e627cce5496d0b2820a9be06d12ee266c09c749"
 dependencies = [
  "serde",
  "ucd-trie",
@@ -2031,9 +2031,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.60.1"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65de752665c4a06528af6759955eecf60ba73ae7442d35349963a09c8031cd71"
+checksum = "a42a11b47492e6a2cc76e9c7bcc8077776cb31dac444e0795d7f61bcc6441c08"
 dependencies = [
  "ahash",
  "bytecount",
@@ -2059,18 +2059,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.60.1"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f8a848331614144c03e815fb931f238c9e342bd7ab501b29e35d647e7cd5688"
+checksum = "107aeb6ff14b8deb5610096a8ce5c554ec89806b521147eaeb3cae05b07edb7a"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.60.1"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a5a947ef798eeacacb43edf29b1d0ab64bdf5e2c9fbcaad10ee8663d922b544"
+checksum = "e281d6b177bb4834f2ffd6f92aa0443cffe29c996b251c8d94eb6f456186feba"
 dependencies = [
  "ahash",
  "bytecount",
@@ -2329,6 +2329,8 @@ dependencies = [
  "merman-editor-core",
  "merman-export",
  "merman-fixture-render-context",
+ "merman-markup",
+ "merman-model",
  "merman-render",
  "merman-theme-authoring-fixtures",
  "merman-theme-contract",
@@ -2348,6 +2350,8 @@ version = "0.9.3"
 dependencies = [
  "jsonschema",
  "merman-core",
+ "merman-markup",
+ "merman-model",
  "serde",
  "serde-saphyr",
  "serde_json",
@@ -2370,6 +2374,7 @@ dependencies = [
  "data-encoding",
  "dugong",
  "merman-core",
+ "merman-model",
  "rustc-hash",
  "serde",
  "serde_json",
@@ -2451,27 +2456,19 @@ version = "0.9.3"
 dependencies = [
  "cssparser",
  "futures",
- "getrandom 0.4.3",
  "granit-parser",
- "html5ever",
- "htmlize",
  "indexmap",
- "jiff",
  "json5",
  "lalrpop-util",
  "merman-fixture-render-context",
+ "merman-markup",
+ "merman-model",
  "regex",
  "rustc-hash",
- "ryu-js",
  "serde",
  "serde_json",
- "sha2",
  "thiserror 2.0.21",
  "unicode-general-category",
- "unicode-segmentation",
- "unicode-width",
- "url",
- "web-time",
 ]
 
 [[package]]
@@ -2490,6 +2487,7 @@ version = "0.9.3"
 dependencies = [
  "merman-analysis",
  "merman-core",
+ "merman-model",
  "serde",
 ]
 
@@ -2511,7 +2509,7 @@ dependencies = [
  "image",
  "krilla",
  "krilla-svg",
- "merman-core",
+ "merman-model",
  "merman-render",
  "png",
  "quick-xml",
@@ -2585,6 +2583,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-markup"
+version = "0.9.3"
+dependencies = [
+ "html5ever",
+ "htmlize",
+ "merman-model",
+ "ryu-js",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "merman-model"
+version = "0.9.3"
+dependencies = [
+ "getrandom 0.4.3",
+ "htmlize",
+ "indexmap",
+ "jiff",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "unicode-segmentation",
+ "unicode-width",
+ "web-time",
+]
+
+[[package]]
 name = "merman-render"
 version = "0.9.3"
 dependencies = [
@@ -2603,6 +2631,8 @@ dependencies = [
  "merman-core",
  "merman-fixture-render-context",
  "merman-layout-elk",
+ "merman-markup",
+ "merman-model",
  "merman-theme-contract",
  "merman-unicode-linebreak",
  "pulldown-cmark",
@@ -3513,7 +3543,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3758,9 +3788,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.60.1"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "922268812b6f9e20b4ab0f1efe8e07036958eed7346ceddb31c777b5531fd11f"
+checksum = "f42818036d3b37cda6bd4c494543158a36e431cb717015ef7c93acc6ba214d3b"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -3988,15 +4018,15 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.5"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4053,7 +4083,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4649,7 +4679,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5021,6 +5051,7 @@ dependencies = [
  "cc",
  "merman-core",
  "merman-fixture-render-context",
+ "merman-model",
  "serde",
  "serde_json",
  "tree-sitter",
@@ -5595,7 +5626,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5860,8 +5891,6 @@ dependencies = [
  "base64 0.23.1",
  "brotli",
  "cssparser",
- "data-encoding",
- "dugong",
  "flate2",
  "fs2",
  "futures",
@@ -5871,9 +5900,7 @@ dependencies = [
  "merman-analysis",
  "merman-bindings-core",
  "merman-core",
- "merman-editor-core",
  "merman-fixture-render-context",
- "merman-layout-elk",
  "merman-render",
  "merman-typst-plugin",
  "regex",

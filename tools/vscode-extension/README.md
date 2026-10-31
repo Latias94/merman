@@ -33,11 +33,15 @@ Install the platform-specific VSIX produced by the GitHub workflow for your oper
 
 ### Extension development
 
-1. Install extension dependencies and build:
+Use Node.js `24.21.0` and npm `12.2.1` or later; CI pins those exact versions. npm's
+native dependency patches require the checked-in v4 lockfile and are applied even
+with `--ignore-scripts`.
+
+1. Install the locked extension dependencies and build:
 
    ```bash
    cd tools/vscode-extension
-   npm install
+   npm ci
    npm run build
    ```
 
@@ -64,6 +68,18 @@ Install the platform-specific VSIX produced by the GitHub workflow for your oper
    Cargo fallback runs `cargo run -p merman-lsp --no-default-features --features stdio --` and `cargo run -p merman-cli --` from a trusted workspace. Use `merman.server.cargoArgs` and `merman.cli.cargoArgs` for extra Cargo flags such as `--profile` or `--features`.
 
 4. Open a `.mmd`, `.mermaid`, `.md`, `.markdown`, or `.mdx` file and edit a Mermaid diagram.
+
+The scoped `vscode-languageclient` override selects minimatch `11.0.3` to address
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+Client `11.0.0` still calls `Minimatch.makeRe()`, which minimatch 11 removed. The
+[local client patch](patches/vscode-languageclient@11.0.0.patch) replaces those two
+preflight calls with an empty compiled-pattern check, preserving rejection of
+empty and comment patterns. The actual client consumers are covered by
+`scripts/languageclient-glob.test.mjs`. Remove the override and patch together
+when a released client admits the patched matcher and supports its API.
+
+The existing esbuild step bundles the patched client into `dist/extension.js`.
+Packaged VSIX users need neither npm nor an installation script to apply it.
 
 ## Commands
 

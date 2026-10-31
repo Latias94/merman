@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use merman_core::diagrams::state::StateDiagramRenderNode;
-use merman_core::presentation::PresentationConfig;
+use merman_model::families::state::StateDiagramRenderNode;
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 use crate::diagram_theme::{ThemeTarget, ThemeTypographyProperty};
@@ -316,15 +316,13 @@ impl<'a> StateCompatibilityResolver<'a> {
     }
 
     fn paint_path_is_owned(&self, path: &str) -> bool {
-        self.config.is_some_and(|config| {
-            merman_core::__private::config_paint_overrides_typed_default(config, path)
-        })
+        self.config
+            .is_some_and(|config| config.config_paint_overrides_typed_default(path))
     }
 
     fn path_is_owned(&self, path: &str) -> bool {
-        self.config.is_some_and(|config| {
-            merman_core::__private::config_path_overrides_typed_default(config, path)
-        })
+        self.config
+            .is_some_and(|config| config.config_path_overrides_typed_default(path))
     }
 }
 
@@ -1154,7 +1152,7 @@ fn value_at_dotted_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::state::StateDiagramRenderNode;
+    use merman_model::families::state::StateDiagramRenderNode;
     use serde_json::json;
 
     #[test]
@@ -1396,24 +1394,22 @@ mod tests {
     #[test]
     fn gradient_source_ownership_only_reaches_enabled_gradient_terminals() {
         let mut config = merman_core::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
-                "themeVariables": { "gradientStart": "#123456" },
-            })))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": { "gradientStart": "#123456" },
+                })),
+            )
             .parse_metadata_sync("stateDiagram-v2\nReady --> Done\n")
             .unwrap()
             .effective_config;
-        assert!(merman_core::__private::config_path_overrides_typed_default(
-            &config,
-            "themeVariables.gradientStart",
-        ));
-        assert!(
-            !merman_core::__private::config_path_overrides_typed_default(
-                &config,
-                "themeVariables.useGradient",
-            )
-        );
+        assert!(config.config_path_overrides_typed_default("themeVariables.gradientStart"));
+        assert!(!config.config_path_overrides_typed_default("themeVariables.useGradient"));
 
-        config.set_value("themeVariables.useGradient", json!(false));
+        config = crate::test_support::set_config_value(
+            config,
+            "themeVariables.useGradient",
+            json!(false),
+        );
         let disabled = StateCompatibilityPlan::from_config(&config);
         assert!(!disabled.owns(
             StateTerminalSurface::StateNeo,
@@ -1424,7 +1420,11 @@ mod tests {
             StateTerminalPaintProperty::Stroke,
         ));
 
-        config.set_value("themeVariables.useGradient", json!(true));
+        config = crate::test_support::set_config_value(
+            config,
+            "themeVariables.useGradient",
+            json!(true),
+        );
         let enabled = StateCompatibilityPlan::from_config(&config);
         assert!(enabled.owns(
             StateTerminalSurface::StateNeo,

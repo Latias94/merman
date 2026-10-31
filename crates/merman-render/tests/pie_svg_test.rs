@@ -1,7 +1,8 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{DiagramFamilyId, ParseOptions};
+use merman_core::ParseOptions;
+use merman_model::family::DiagramFamilyId;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
     EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontStack, OrdinalPalette,
@@ -22,7 +23,8 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
@@ -42,7 +44,8 @@ fn render_pie_from_text_with_options(text: &str, options: &SvgRenderOptions) -> 
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
@@ -102,13 +105,11 @@ fn try_render_pie_with_theme_requirement(
     theme: &DiagramTheme,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(
-        theme,
-        legacy_init_theme_compat_engine(),
-    )
-    .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
-    .expect("parse themed Pie")
-    .expect("detect themed Pie");
+    let parsed = common::install_parse_compatibility(theme, legacy_init_theme_compat_engine())
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .expect("parse themed Pie")
+        .expect("detect themed Pie")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_theme_portability_requirement(portability)
@@ -1058,7 +1059,8 @@ fn try_render_pie_svg_with_resource_policy(
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Pie resource-bound fixture")
-        .expect("detect Pie resource-bound fixture");
+        .expect("detect Pie resource-bound fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_resource_policy(resource_policy)
@@ -1121,7 +1123,8 @@ fn render_pie_with_svg_limit(
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let policy = RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
         .unwrap();

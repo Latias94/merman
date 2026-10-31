@@ -2,7 +2,7 @@
 
 //! Headless layout + rendering for Mermaid diagrams.
 //!
-//! This crate consumes `merman-core`'s semantic models and produces:
+//! This crate consumes `merman-model` presentation data and produces:
 //! - a layout JSON (geometry + routes)
 //! - Mermaid-like SVG output with DOM parity checks against upstream baselines
 //!
@@ -10,7 +10,7 @@
 //! `all-diagrams` explicitly; optional layout engines and math remain independent selectors.
 //! Family-owned typed layout APIs are conditional on those selections. Use
 //! [`family::supports_diagram_type`] to inspect this renderer's local handler availability:
-//! another dependency may enable additional core parsers without enabling their renderers.
+//! another dependency may enable additional model families without enabling their renderers.
 
 #[cfg(feature = "layout-cytoscape")]
 #[cfg(feature = "diagram-architecture")]
@@ -236,6 +236,7 @@ pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 pub mod svg;
+pub mod svg_security;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -289,7 +290,7 @@ pub mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 pub mod zenuml;
 
-pub use merman_core::DiagramFamilyId;
+pub use merman_model::family::DiagramFamilyId;
 
 /// Workspace-internal implementation seams with no compatibility promise.
 ///
@@ -610,14 +611,6 @@ pub mod __private {
     ) -> bool {
         report.font_seal().is_complete()
     }
-
-    /// Installs a compiled theme's explicit Mermaid compatibility and selected-family bridge.
-    pub fn install_parse_compatibility(
-        theme: &crate::diagram_theme::DiagramTheme,
-        engine: merman_core::MermaidEngine,
-    ) -> merman_core::MermaidEngine {
-        merman_core::__private::install_theme_compatibility(engine, theme.parse_compatibility())
-    }
 }
 
 /// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
@@ -718,15 +711,15 @@ impl std::fmt::Display for RenderCapability {
 #[cfg(test)]
 use crate::environment::RenderSession;
 use crate::environment::{RoutedTextMeasurer, TextMeasurementPhase};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
+#[cfg(feature = "diagram-class")]
+use merman_model::families::class::ClassDiagram;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-use merman_core::diagrams::flowchart::FlowchartModel;
-#[cfg(feature = "diagram-class")]
-use merman_core::models::class_diagram::ClassDiagram;
+use merman_model::families::flowchart::FlowchartModel;
 
 pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RenderResourceLimitId,
@@ -740,7 +733,7 @@ pub use resources::{
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
-    Cancelled(#[from] merman_core::OperationCancelled),
+    Cancelled(#[from] merman_model::OperationCancelled),
     #[error("unsupported diagram type for layout: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
     #[error("layout adaptation `{adaptation}` is unsupported for diagram `{diagram_type}`")]
@@ -807,7 +800,9 @@ pub enum Error {
         residual_count: usize,
     },
     #[error(transparent)]
-    SemanticProjection(merman_core::Error),
+    SemanticProjection(merman_model::presentation::compat::CompatProjectionError),
+    #[error(transparent)]
+    PresentationConfig(#[from] merman_model::presentation::PresentationConfigError),
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
     #[error("parsed diagram is bound to a different theme session")]
@@ -824,7 +819,7 @@ pub enum Error {
     NonRenderableCustomModel {
         diagram_type: String,
         model_name: String,
-        provenance: merman_core::CustomJsonProvenance,
+        provenance: merman_model::presentation::CustomJsonProvenance,
     },
     #[error("SVG postprocessor `{pass}` failed: {message}")]
     SvgPostprocess { pass: String, message: String },
@@ -837,13 +832,13 @@ pub enum Error {
     #[error(transparent)]
     ThemeResourceLimitExceeded(#[from] crate::diagram_theme::ThemeResourceLimitExceeded),
     #[error(transparent)]
-    OperationResourceTerminal(merman_core::OperationLedgerError),
+    OperationResourceTerminal(merman_model::OperationLedgerError),
     #[error(transparent)]
-    Color(#[from] merman_core::theme_color::ColorError),
+    Color(#[from] merman_markup::theme_color::ColorError),
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
-    OperationTimingUnavailable(#[from] merman_core::runtime::OperationTimingUnavailable),
+    OperationTimingUnavailable(#[from] merman_model::runtime::OperationTimingUnavailable),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -1157,7 +1152,7 @@ impl<'a> LayoutExecution<'a> {
         self.family.session().work_meter().as_ref()
     }
 
-    pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
+    pub(crate) fn local_time_zone(&self) -> &merman_model::time::LocalTimeZone {
         self.family.session().local_time_zone()
     }
 
@@ -1188,7 +1183,7 @@ impl std::ops::Deref for LayoutExecution<'_> {
 #[cfg(feature = "diagram-class")]
 pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
     typography_theme: &crate::class::ClassTextThemePlan,
     render_config: &crate::class::ClassRenderConfig,
@@ -1233,7 +1228,7 @@ pub(crate) fn layout_class_typed_by_engine(
 ))]
 pub(crate) fn layout_flowchart_typed_by_engine(
     model: &FlowchartModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
     let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
@@ -1244,7 +1239,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     )?;
     layout_flowchart_typed_with_render_labels_by_engine(
         model,
-        &merman_core::diagrams::flowchart::FlowchartRenderContext::default(),
+        &merman_model::families::flowchart::FlowchartRenderContext::default(),
         effective_config,
         options,
         None,
@@ -1259,8 +1254,8 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 ))]
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     model: &FlowchartModel,
-    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    render_label_sources: &merman_model::families::flowchart::FlowchartRenderContext,
+    effective_config: &merman_model::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
@@ -1303,11 +1298,11 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
-    #[cfg(feature = "layout-elk")]
-    use merman_core::ParsedDiagramRender;
-    #[cfg(feature = "layout-elk")]
-    use merman_core::RenderSemanticModel;
     use merman_core::{MermaidEngine, ParseOptions};
+    #[cfg(feature = "layout-elk")]
+    use merman_model::presentation::PresentationDiagram;
+    #[cfg(feature = "layout-elk")]
+    use merman_model::presentation::RenderSemanticModel;
 
     #[test]
     fn render_capability_ids_and_error_accessor_are_stable() {
@@ -1357,7 +1352,7 @@ mod tests {
 
     #[cfg(feature = "layout-elk")]
     fn flowchart_layout(
-        parsed: &ParsedDiagramRender,
+        parsed: &PresentationDiagram,
         options: &LayoutOptions,
         session: &RenderSession,
     ) -> model::FlowchartLayout {
@@ -1374,7 +1369,7 @@ mod tests {
 
     #[cfg(feature = "layout-elk")]
     fn class_layout(
-        parsed: &ParsedDiagramRender,
+        parsed: &PresentationDiagram,
         options: &LayoutOptions,
         session: &RenderSession,
     ) -> model::ClassDiagramLayout {
@@ -1406,7 +1401,8 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse")
-            .expect("diagram");
+            .expect("diagram")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
@@ -1440,7 +1436,7 @@ mod tests {
         fn capture(seed: u64) -> merman_layout_elk::ElkOperationSeed {
             let session = crate::environment::RenderEnvironment::deterministic()
                 .with_runtime_policy(
-                    merman_core::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
+                    merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
                 )
                 .begin_session()
                 .expect("render session");
@@ -1469,7 +1465,8 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
 
         let artifact = crate::family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         assert_eq!(artifact.family_id(), crate::DiagramFamilyId::FLOWCHART);
@@ -1494,7 +1491,8 @@ A-->B
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
 
         assert_eq!(parsed.metadata().diagram_type, "flowchart-v2");
         let layout = flowchart_layout(&parsed, &LayoutOptions::default(), &session);
@@ -1514,7 +1512,8 @@ A-->B
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
@@ -1545,7 +1544,8 @@ A-->B
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
@@ -1572,7 +1572,8 @@ A-->B
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("class source should produce a render model");
+            .expect("class source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
@@ -1636,7 +1637,8 @@ Animal <|-- Duck
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
 
         assert_eq!(parsed.metadata().diagram_type, "classDiagram");
         let layout = class_layout(&parsed, &LayoutOptions::default(), &session);
@@ -1663,7 +1665,8 @@ Animal <|-- Duck
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
@@ -1695,7 +1698,8 @@ Animal <|-- Duck
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
@@ -1727,7 +1731,8 @@ Animal <|-- Duck
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let options = LayoutOptions::default();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
@@ -1943,7 +1948,8 @@ id1(Start)-->id2(Stop)
                 let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let session = crate::environment::RenderEnvironment::deterministic()
                     .begin_session()
                     .unwrap();
@@ -1987,7 +1993,8 @@ id1(Start)-->id2(Stop)
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
@@ -1999,7 +2006,8 @@ id1(Start)-->id2(Stop)
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let dagre_session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
@@ -2034,7 +2042,8 @@ id1(Start)-->id2(Stop)
                 let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let session = crate::environment::RenderEnvironment::deterministic()
                     .begin_session()
                     .unwrap();
@@ -2058,7 +2067,8 @@ id1(Start)-->id2(Stop)
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_capability_policy(RenderCapabilityPolicy::deny_all())
             .begin_session()
@@ -2098,7 +2108,8 @@ id1(Start)-->id2(Stop)
                 let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let session = crate::environment::RenderEnvironment::deterministic()
                     .with_capability_policy(RenderCapabilityPolicy::deny_all())
                     .begin_session()
@@ -2304,3 +2315,6 @@ pub use resources::SequenceComplexity;
 
 #[cfg(feature = "diagram-zenuml")]
 pub use resources::ZenumlComplexity;
+
+#[cfg(test)]
+mod test_support;

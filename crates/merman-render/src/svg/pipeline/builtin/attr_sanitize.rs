@@ -1,6 +1,6 @@
 use crate::Result;
+use crate::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use cssparser::{Delimiter, Parser};
-use merman_core::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use std::borrow::Cow;
 use std::convert::Infallible;
 
@@ -390,13 +390,13 @@ fn css_value_violates_url_safety<E>(
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<bool, E> {
     checkpoint()?;
-    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let decoded = merman_model::text::decode_html_entities_to_unicode(value);
     checkpoint()?;
     Ok(sanitize_css_value_with_checkpoints(decoded.as_ref(), checkpoint)?.is_none())
 }
 
 fn normalize_url_attr_for_scheme_check(value: &str) -> String {
-    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let decoded = merman_model::text::decode_html_entities_to_unicode(value);
     let mut out = String::with_capacity(decoded.len());
     for ch in decoded.trim().chars() {
         if !ch.is_whitespace() && !ch.is_control() {
@@ -407,7 +407,7 @@ fn normalize_url_attr_for_scheme_check(value: &str) -> String {
 }
 
 pub(in crate::svg::pipeline) fn is_safe_data_image_url(value: &str) -> bool {
-    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let decoded = merman_model::text::decode_html_entities_to_unicode(value);
     let Ok(url) = data_url::DataUrl::process(decoded.as_ref()) else {
         return false;
     };
@@ -632,7 +632,7 @@ fn parse_css_declarations<E>(
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<Vec<(String, String)>, E> {
     checkpoint()?;
-    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let decoded = merman_model::text::decode_html_entities_to_unicode(value);
     checkpoint()?;
     let mut parser = Parser::new(&decoded);
     let mut declarations = Vec::new();

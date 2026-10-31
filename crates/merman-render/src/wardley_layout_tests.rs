@@ -4,7 +4,7 @@ use crate::wardley::{
     WardleyArrowDirection, WardleyFontWeight, WardleyNodeShapeLayout, WardleySourceOverlayLayout,
     layout_wardley_diagram_typed,
 };
-use merman_core::diagrams::wardley::{
+use merman_model::families::wardley::{
     WardleyAccelerator, WardleyAnnotation, WardleyAxes, WardleyDeaccelerator, WardleyDiagramModel,
     WardleyFlowDirection, WardleyLink, WardleyNode, WardleyNote, WardleyPipeline, WardleyPoint,
     WardleySize, WardleySourceStrategy, WardleyTrend,
@@ -30,8 +30,9 @@ fn annotations_measure_the_family_font_override_used_by_svg() {
             merman_core::ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
-    let merman_core::RenderSemanticModel::Wardley(model) = parsed.model() else {
+        .unwrap()
+        .into_presentation();
+    let merman_model::presentation::RenderSemanticModel::Wardley(model) = parsed.model() else {
         panic!("expected Wardley render model");
     };
     let measurer = FontProbe(RefCell::new(Vec::new()));

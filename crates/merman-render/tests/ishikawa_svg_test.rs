@@ -1,7 +1,6 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
@@ -79,10 +78,11 @@ fn try_render_ishikawa_with_theme_requirement_and_id(
     portability: ThemePortabilityRequirement,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Ishikawa")
-        .expect("detect themed Ishikawa");
+        .expect("detect themed Ishikawa")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -146,13 +146,14 @@ fn ishikawa_layout_json_with_theme(
     theme: &DiagramTheme,
     engine: MermaidEngine,
 ) -> serde_json::Value {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(
             &ishikawa_theme_source("classic"),
             ParseOptions::strict(),
         )
         .expect("parse themed Ishikawa layout")
-        .expect("detect themed Ishikawa layout");
+        .expect("detect themed Ishikawa layout")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(theme)
         .expect("begin themed Ishikawa layout session");
@@ -173,7 +174,8 @@ fn try_render_ishikawa_svg_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Ishikawa resource-bound fixture")
-        .expect("detect Ishikawa diagram");
+        .expect("detect Ishikawa diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(policy)
         .begin_session()
@@ -265,7 +267,8 @@ ishikawa-beta
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "ishikawa");
 
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
@@ -445,7 +448,8 @@ ishikawa-beta
         let parsed = legacy_init_theme_compat_engine()
             .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         artifact
             .render_svg(
@@ -730,11 +734,12 @@ fn ishikawa_theme_font_family_keeps_precedence_over_root_font_family() {
         ishikawa_typography_theme(ThemeTextStyle::default().with_font_stack(
             FontStack::single("IshikawaTyped").expect("valid Ishikawa typed font"),
         ));
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontFamily": "IshikawaRootFont",
             "themeVariables": { "fontFamily": "IshikawaThemeFont" }
-        })));
+        })),
+    );
     let rendered = render_ishikawa_with_theme(&ishikawa_theme_source("classic"), &theme, engine);
     let stylesheet = ishikawa_stylesheet(rendered.svg());
 
@@ -874,9 +879,11 @@ fn ishikawa_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not(
     let config_owned = render_ishikawa_with_theme(
         &source,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "fontSize": "22px !important" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": "22px !important" }
+            })),
+        ),
     );
     let config_stylesheet = ishikawa_stylesheet(config_owned.svg());
     assert!(
@@ -915,9 +922,11 @@ fn ishikawa_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not(
     let root_owned = render_ishikawa_with_theme(
         &source,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "fontSize": "31px"
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "fontSize": "31px"
+            })),
+        ),
     );
     let root_stylesheet = ishikawa_stylesheet(root_owned.svg());
     assert!(
@@ -953,15 +962,19 @@ fn ishikawa_typed_font_size_does_not_change_layout_but_root_size_does() {
     let baseline = ishikawa_typography_theme(ThemeTextStyle::default());
     let root_small = ishikawa_layout_json_with_theme(
         &baseline,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "fontSize": "12px"
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "fontSize": "12px"
+            })),
+        ),
     );
     let root_large = ishikawa_layout_json_with_theme(
         &baseline,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "fontSize": "48px"
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "fontSize": "48px"
+            })),
+        ),
     );
     assert_ne!(
         root_small, root_large,
@@ -1002,9 +1015,11 @@ fn ishikawa_typography_config_ownership_is_property_local() {
     let config_size = render_ishikawa_with_theme(
         &ishikawa_theme_source("classic"),
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "fontSize": "22px" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": "22px" }
+            })),
+        ),
     );
     let stylesheet = ishikawa_stylesheet(config_size.svg());
     assert!(stylesheet.contains("font-family: IshikawaTyped;"));
@@ -1017,9 +1032,11 @@ fn ishikawa_typography_config_ownership_is_property_local() {
     let config_stack = render_ishikawa_with_theme(
         &ishikawa_theme_source("classic"),
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "fontFamily": "IshikawaConfigured" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontFamily": "IshikawaConfigured" }
+            })),
+        ),
     );
     let stylesheet = ishikawa_stylesheet(config_stack.svg());
     assert!(stylesheet.contains("font-family: IshikawaConfigured;"));
@@ -1073,9 +1090,11 @@ fn ishikawa_explicit_text_color_outranks_typed_text_fill() {
     );
 
     for look in ["classic", "handDrawn"] {
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            serde_json::json!({ "themeVariables": { "textColor": "#fedcba" } }),
-        ));
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({ "themeVariables": { "textColor": "#fedcba" } }),
+            ),
+        );
         let rendered = render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, engine);
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid owned Ishikawa SVG");
@@ -1176,7 +1195,8 @@ fn ishikawa_deep_hierarchy_projects_and_renders_flat_model() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
 
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
@@ -1224,9 +1244,11 @@ fn ishikawa_text_palette_is_shadowed_by_the_config_owned_fill_domain() {
             let engine = if source_owner {
                 MermaidEngine::new()
             } else {
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                    serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
-                ))
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
+                    ),
+                )
             };
             let rendered = render_ishikawa_with_theme(&source, &theme, engine);
             let css = ishikawa_stylesheet(rendered.svg());

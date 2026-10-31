@@ -41,7 +41,7 @@ impl CachedRenderEngine {
         self.plan.prepare_source(source_text(source)?, control)
     }
 
-    pub(crate) fn runtime_policy(&self) -> merman::runtime::RuntimePolicy {
+    pub(crate) fn runtime_policy(&self) -> merman::model::runtime::RuntimePolicy {
         self.plan.runtime_policy()
     }
 
@@ -153,7 +153,7 @@ impl CachedRenderEngine {
 impl RenderOperationConfig {
     pub(crate) fn compile(
         options: &BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
+        runtime_policy: merman::model::runtime::RuntimePolicy,
         capability_policy: merman::svg::RenderCapabilityPolicy,
         theme: Option<merman::svg::DiagramTheme>,
         theme_resources: merman::svg::ThemeResourcePolicy,
@@ -611,7 +611,7 @@ A[Plain source]"##,
         let environment = merman::SvgEnvironment::deterministic();
         let renderer = merman::Renderer::new().with_presentation_engine(
             merman::MermaidEngine::new().with_site_config(
-                merman::presentation::PresentationConfig::from_value(serde_json::json!({
+                merman::SourcePresentationConfig::from_value(serde_json::json!({
                     "layout": "dagre",
                 })),
             ),

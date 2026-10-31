@@ -1,8 +1,8 @@
 pub(super) fn normalize_xhtml_fragment_for_foreign_object(raw: &str) -> String {
-    let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+    let config = merman_model::MermaidConfig::from_value(serde_json::json!({
         "securityLevel": "strict"
     }));
-    merman_core::sanitize::sanitize_xhtml_in_svg_context(raw, &config)
+    merman_markup::sanitize::sanitize_xhtml_in_svg_context(raw, &config)
 }
 
 #[cfg(test)]

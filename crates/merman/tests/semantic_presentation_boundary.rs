@@ -104,10 +104,12 @@ fn replacing_semantic_parser_refreshes_inherited_presentation_runtime() {
         if warm {
             renderer.presentation_engine();
         }
-        let renderer =
-            renderer.with_semantic_parser(merman::SemanticParser::new().with_runtime_policy(
-                merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(UNIX_MILLIS),
-            ));
+        let renderer = renderer.with_semantic_parser(
+            merman::SemanticParser::new().with_runtime_policy(
+                merman::model::runtime::RuntimePolicy::deterministic()
+                    .with_fixed_unix_millis(UNIX_MILLIS),
+            ),
+        );
         let prepared = renderer
             .prepare_source(merman::PrepareSourceRequest::new(
                 "flowchart TD\nA-->B",
@@ -128,13 +130,16 @@ fn replacing_semantic_parser_refreshes_inherited_presentation_runtime() {
 fn replacing_semantic_parser_retains_explicit_presentation_configuration() {
     const UNIX_MILLIS: i64 = 1_771_113_600_000;
     let engine = merman::MermaidEngine::new().with_site_config(
-        merman::presentation::PresentationConfig::from_value(serde_json::json!({"theme": "dark"})),
+        merman::SourcePresentationConfig::from_value(serde_json::json!({"theme": "dark"})),
     );
     let renderer = Renderer::new()
         .with_presentation_engine(engine)
-        .with_semantic_parser(merman::SemanticParser::new().with_runtime_policy(
-            merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(UNIX_MILLIS),
-        ));
+        .with_semantic_parser(
+            merman::SemanticParser::new().with_runtime_policy(
+                merman::model::runtime::RuntimePolicy::deterministic()
+                    .with_fixed_unix_millis(UNIX_MILLIS),
+            ),
+        );
     let artifact = renderer
         .prepare_presentation("flowchart TD\nA-->B", OperationControl::new())
         .unwrap()

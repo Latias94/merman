@@ -1,9 +1,9 @@
 mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions};
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyTask};
-use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineTask};
+use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
+use merman_model::families::timeline::{TimelineDiagramModel, TimelineTask};
+use merman_model::presentation::RenderSemanticModel;
 use support::{render_model, render_source};
 
 fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> TimelineTask {
@@ -79,7 +79,7 @@ fn journey_duplicate_sections_preserve_parser_occurrence_ownership() {
 
 #[test]
 fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
-    let mut timeline = TimelineDiagramRenderModel::default();
+    let mut timeline = TimelineDiagramModel::default();
     timeline.sections = vec!["Known".to_string()];
     timeline.tasks = vec![
         timeline_task("Known", Some(0), "Declared"),
@@ -104,7 +104,7 @@ fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
         )
     );
 
-    let mut journey = JourneyDiagramRenderModel::default();
+    let mut journey = JourneyDiagramModel::default();
     journey.sections = vec!["Known".to_string()];
     journey.tasks = vec![
         journey_task("Known", Some(0), "Declared"),
@@ -131,7 +131,7 @@ fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
 
 #[test]
 fn duplicate_direct_section_labels_require_an_occurrence_index() {
-    let mut timeline = TimelineDiagramRenderModel::default();
+    let mut timeline = TimelineDiagramModel::default();
     timeline.sections = vec!["Repeated".to_string(), "Repeated".to_string()];
     timeline.tasks = vec![timeline_task("Repeated", None, "Ambiguous")];
     let error = render_model(
@@ -147,7 +147,7 @@ fn duplicate_direct_section_labels_require_an_occurrence_index() {
         }
     );
 
-    let mut journey = JourneyDiagramRenderModel::default();
+    let mut journey = JourneyDiagramModel::default();
     journey.sections = vec!["Repeated".to_string(), "Repeated".to_string()];
     journey.tasks = vec![journey_task("Repeated", None, "Ambiguous")];
     let error = render_model(
@@ -166,7 +166,7 @@ fn duplicate_direct_section_labels_require_an_occurrence_index() {
 
 #[test]
 fn explicit_section_occurrences_must_be_in_bounds_and_match_the_label() {
-    let mut timeline = TimelineDiagramRenderModel::default();
+    let mut timeline = TimelineDiagramModel::default();
     timeline.sections = vec!["Known".to_string()];
     timeline.tasks = vec![timeline_task("Known", Some(1), "Out of bounds")];
     let error = render_model(
@@ -182,7 +182,7 @@ fn explicit_section_occurrences_must_be_in_bounds_and_match_the_label() {
         }
     );
 
-    let mut journey = JourneyDiagramRenderModel::default();
+    let mut journey = JourneyDiagramModel::default();
     journey.sections = vec!["Known".to_string()];
     journey.tasks = vec![journey_task("Other", Some(0), "Mismatch")];
     let error = render_model(

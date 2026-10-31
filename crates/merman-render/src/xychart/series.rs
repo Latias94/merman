@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::diagrams::xychart::{XyChartDiagramRenderModel, XyChartPlotType};
-use merman_core::presentation::PresentationConfig;
+use merman_model::families::xy_chart::{XyChartDiagramRenderModel, XyChartPlotType};
+use merman_model::presentation::PresentationConfig;
 
 use crate::chart_palette::plot_color_from_palette;
 use crate::diagram_theme::{
@@ -78,16 +78,20 @@ mod tests {
         assert_eq!(baseline.fill_css(0), Some("#123456"));
         for token in [fallback.as_str(), "var(--series)", " , "] {
             let config = merman_core::MermaidEngine::new()
-                .with_site_config(PresentationConfig::from_value(serde_json::json!({
-                    "themeVariables": { "xyChart": { "plotColorPalette": token } }
-                })))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "themeVariables": { "xyChart": { "plotColorPalette": token } }
+                        }),
+                    ),
+                )
                 .parse_metadata_sync(source)
                 .unwrap()
                 .effective_config;
-            assert!(merman_core::__private::config_path_overrides_typed_default(
-                &config,
-                "themeVariables.xyChart.plotColorPalette",
-            ));
+            assert!(
+                config
+                    .config_path_overrides_typed_default("themeVariables.xyChart.plotColorPalette")
+            );
             let bound_css =
                 super::super::css_binding::XyChartCssBinding::resolve(config.as_value());
             let plan =
@@ -243,10 +247,8 @@ impl XyChartSeriesPaintPlan {
         if routes.is_empty() && plan.palette.is_none() && plan.effect_binding.is_none() {
             return Ok(plan);
         }
-        let source_colors = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.xyChart.plotColorPalette",
-        );
+        let source_colors =
+            config.config_paint_overrides_typed_default("themeVariables.xyChart.plotColorPalette");
         let mut effects: BTreeMap<String, Option<Arc<SvgShadowEffect>>> = BTreeMap::new();
         for (index, paint) in plan.paints.iter_mut().enumerate() {
             let mut style = theme.style_with_work_meter(

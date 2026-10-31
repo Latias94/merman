@@ -3,12 +3,12 @@
 use merman::svg::{DiagramThemeCompiler, ThemePreset};
 use merman::{
     DetectorRegistry, MermaidEngine, OperationControl, RenderError, RenderOutput, RenderRequest,
-    Renderer, presentation::PresentationConfig,
+    Renderer, SourcePresentationConfig,
 };
 
 const SOURCE: &str = "stateDiagram-v2\nReady --> Done\n";
 
-fn replace_config_with_nested_theme(_source: &str, config: &mut PresentationConfig) -> bool {
+fn replace_config_with_nested_theme(_source: &str, config: &mut SourcePresentationConfig) -> bool {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(ThemePreset::EditorDark)
         .unwrap();
@@ -18,7 +18,11 @@ fn replace_config_with_nested_theme(_source: &str, config: &mut PresentationConf
     else {
         panic!("nested themed semantic operation must produce a diagram");
     };
-    *config = semantic.metadata().effective_config.clone();
+    *config = SourcePresentationConfig::from_frozen_controlled(
+        semantic.metadata().effective_config.clone(),
+        &OperationControl::new(),
+    )
+    .unwrap();
     true
 }
 

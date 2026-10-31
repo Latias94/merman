@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::{
     LineCursor, leading_whitespace_len, split_statement_suffix_hash_or_semi,
     starts_with_case_insensitive,
@@ -12,7 +12,7 @@ use crate::{
 };
 use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::BTreeSet;
@@ -23,157 +23,26 @@ thread_local! {
 }
 
 #[cfg(test)]
-fn reset_journey_syntax_construction_count() {
+pub(crate) fn reset_journey_syntax_construction_count() {
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.set(0);
 }
 
 #[cfg(test)]
-fn journey_syntax_construction_count() -> usize {
+pub(crate) fn journey_syntax_construction_count() -> usize {
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-fn is_false(v: &bool) -> bool {
-    !*v
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct JourneyTask {
-    pub score: i64,
-    #[serde(default, rename = "scoreIsNaN", skip_serializing_if = "is_false")]
-    pub score_is_nan: bool,
-    #[serde(default)]
-    pub people: Vec<String>,
-    pub section: String,
-    /// Index of the authored section occurrence in `JourneyDiagramModel::sections`.
-    ///
-    /// `None` represents a task without parser-backed occurrence ownership, including tasks
-    /// authored before any section and legacy direct models.
-    #[serde(
-        default,
-        rename = "sectionIndex",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub section_index: Option<usize>,
-    #[serde(rename = "type")]
-    pub task_type: String,
-    pub task: String,
-}
-
-/// Canonical meaning of a Journey diagram, without compatibility-output state.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct JourneyDiagramModel {
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    pub sections: Vec<String>,
-    pub tasks: Vec<JourneyTask>,
-    pub actors: Vec<String>,
-}
-
-impl JourneyDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
-}
-
 #[cfg(feature = "presentation")]
-#[derive(Debug, Clone, serde::Serialize, Default)]
-#[serde(transparent)]
-pub struct JourneyDiagramRenderModel {
-    pub semantic: JourneyDiagramModel,
-    #[cfg(feature = "compat-json")]
-    #[serde(skip)]
-    compatibility_output: CompatibilityOutputState,
-}
+use merman_model::families::journey::JourneyOutputData;
+use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
 
-#[cfg(feature = "presentation")]
-impl std::ops::Deref for JourneyDiagramRenderModel {
-    type Target = JourneyDiagramModel;
-
-    fn deref(&self) -> &Self::Target {
-        &self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl std::ops::DerefMut for JourneyDiagramRenderModel {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.semantic
-    }
-}
-
-#[cfg(feature = "presentation")]
-impl<'de> serde::Deserialize<'de> for JourneyDiagramRenderModel {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
-        #[derive(serde::Deserialize)]
-        struct Wire {
-            title: Option<String>,
-            #[serde(rename = "accTitle")]
-            acc_title: Option<String>,
-            #[serde(rename = "accDescr")]
-            acc_descr: Option<String>,
-            #[serde(default)]
-            sections: Vec<String>,
-            #[serde(default)]
-            tasks: Vec<JourneyTask>,
-            #[serde(default)]
-            actors: Vec<String>,
-        }
-        let wire = <Wire as serde::Deserialize>::deserialize(deserializer)?;
-        Ok(Self {
-            semantic: JourneyDiagramModel {
-                title: wire.title,
-                acc_title: wire.acc_title,
-                acc_descr: wire.acc_descr,
-                sections: wire.sections,
-                tasks: wire.tasks,
-                actors: wire.actors,
-            },
-            #[cfg(feature = "compat-json")]
-            compatibility_output: CompatibilityOutputState::Model,
-        })
-    }
-}
-#[cfg(all(test, feature = "presentation"))]
-mod terminal_wire_tests {
-    use super::*;
-
-    #[test]
-    fn full_wire_stays_flat_and_preserves_collection_defaults() {
-        let full: JourneyDiagramRenderModel =
-            serde_json::from_value(serde_json::json!({"title": "Retained"})).unwrap();
-        let expected = serde_json::json!({"title": "Retained", "accTitle": null, "accDescr": null, "sections": [], "tasks": [], "actors": []});
-        assert_eq!(serde_json::to_value(&full).unwrap(), expected);
-        assert_eq!(serde_json::to_value(&full.semantic).unwrap(), expected);
-        assert!(
-            serde_json::from_value::<JourneyDiagramModel>(serde_json::json!({"title": "Retained"}))
-                .is_err()
-        );
-        let roundtrip: JourneyDiagramRenderModel =
-            serde_json::from_value(expected.clone()).unwrap();
-        assert_eq!(serde_json::to_value(roundtrip).unwrap(), expected);
-    }
-}
-
-#[cfg(feature = "compat-json")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum CompatibilityOutputState {
-    Empty,
-    #[default]
-    Model,
-}
-
-#[cfg(feature = "presentation")]
-impl JourneyDiagramRenderModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        self.semantic.sanitize_common_db_fields(config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut JourneyDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Default)]
@@ -253,20 +122,22 @@ impl JourneyDb {
 
 struct JourneySemanticSource {
     model: JourneyDiagramModel,
-    #[cfg(feature = "compat-json")]
-    compatibility_output: CompatibilityOutputState,
+    #[cfg(feature = "presentation")]
+    output_data: JourneyOutputData,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 #[cfg(feature = "presentation")]
 impl JourneySemanticSource {
-    fn into_render_model(self) -> JourneyDiagramRenderModel {
-        JourneyDiagramRenderModel {
-            semantic: self.model,
-            #[cfg(feature = "compat-json")]
-            compatibility_output: self.compatibility_output,
-        }
+    fn into_render_parts(self) -> (JourneyDiagramModel, JourneyOutputData) {
+        (self.model, self.output_data)
+    }
+
+    #[cfg(feature = "compat-json")]
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
+        let (model, output_data) = self.into_render_parts();
+        render_model_to_compat_json(&model, output_data, meta)
     }
 }
 
@@ -374,7 +245,7 @@ fn strip_comment_prefix(line: &str) -> &str {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_journey(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_journey(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let source = construct_journey_semantic_source(
         code,
         &meta.diagram_type,
@@ -382,14 +253,14 @@ pub(crate) fn parse_journey(code: &str, meta: &PresentationMetadata) -> Result<V
         EditorFactsDemand::Omit,
     )
     .map_err(CombinedSemanticFailure::into_error)?;
-    render_model_to_compat_json(&source.into_render_model(), meta)
+    source.into_compat_json(meta)
 }
 
 #[cfg(feature = "compat-json")]
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_journey_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_journey_semantic_source_controlled(
@@ -402,7 +273,7 @@ pub(crate) fn parse_journey_json_and_editor_facts(
         construction,
         |mut source| {
             let editor_facts = source.editor_facts.take().unwrap_or_default();
-            let model = render_model_to_compat_json(&source.into_render_model(), meta);
+            let model = source.into_compat_json(meta);
             (model, editor_facts)
         },
         CombinedSemanticFailure::into_parts,
@@ -428,7 +299,7 @@ pub(crate) fn parse_journey_semantic_model_controlled(
             #[cfg(feature = "editor-facts")]
             let editor_facts = source.editor_facts;
             let mut model = source.model;
-            model.sanitize_common_db_fields(config);
+            sanitize_common_db_fields(&mut model, config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]
@@ -464,54 +335,38 @@ pub(crate) fn parse_journey_semantic_model_controlled(
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &JourneyDiagramRenderModel,
-    meta: &PresentationMetadata,
+    model: &JourneyDiagramModel,
+    output_data: JourneyOutputData,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    if model.compatibility_output == CompatibilityOutputState::Empty {
-        return Ok(json!({}));
-    }
-    let mut tasks =
-        serde_json::to_value(&model.tasks).expect("Journey tasks must remain JSON-serializable");
-    for task in tasks
-        .as_array_mut()
-        .expect("Journey tasks must serialize to an array")
-    {
-        if let Some(task) = task.as_object_mut() {
-            task.remove("sectionIndex");
-        }
-    }
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": &model.title,
-        "accTitle": &model.acc_title,
-        "accDescr": &model.acc_descr,
-        "sections": &model.sections,
-        "tasks": tasks,
-        "actors": &model.actors,
-    }))
+    Ok(merman_model::families::journey::compat::project(
+        model,
+        output_data,
+        &meta.diagram_type,
+    ))
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_journey_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
-) -> Result<JourneyDiagramRenderModel> {
+    meta: &SourcePresentationMetadata,
+) -> Result<(JourneyDiagramModel, JourneyOutputData)> {
     construct_journey_semantic_source(
         code,
         &meta.diagram_type,
         #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
     )
-    .map(JourneySemanticSource::into_render_model)
+    .map(JourneySemanticSource::into_render_parts)
     .map_err(CombinedSemanticFailure::into_error)
 }
 
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_journey_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<JourneyDiagramRenderModel>> {
+) -> OperationControlResult<Result<(JourneyDiagramModel, JourneyOutputData)>> {
     let construction = construct_journey_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -524,7 +379,7 @@ pub(crate) fn parse_journey_model_for_render_controlled(
         Err(failure) => return Ok(Err(failure.into_error())),
     };
     control.checkpoint()?;
-    Ok(Ok(source.into_render_model()))
+    Ok(Ok(source.into_render_parts()))
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
@@ -866,11 +721,11 @@ fn parse_journey_semantic_source(
     };
     Ok(Ok(JourneySemanticSource {
         model,
-        #[cfg(feature = "compat-json")]
-        compatibility_output: if header_seen {
-            CompatibilityOutputState::Model
+        #[cfg(feature = "presentation")]
+        output_data: if header_seen {
+            JourneyOutputData::Model
         } else {
-            CompatibilityOutputState::Empty
+            JourneyOutputData::Empty
         },
         #[cfg(feature = "editor-facts")]
         editor_facts,
@@ -1145,27 +1000,41 @@ A task: 5: Alice, Bob\n";
             .expect("standalone Journey JSON parse returns a diagram");
         reset_journey_syntax_construction_count();
         crate::editor::test_work::reset();
-        parse_journey(text, &parsed.meta).expect("Journey JSON projection succeeds");
-        assert_eq!(journey_syntax_construction_count(), 1);
-        assert_eq!(crate::editor::test_work::read(), Default::default());
-
-        reset_journey_syntax_construction_count();
-        let typed = parse_journey_model_for_render(text, &parsed.meta)
-            .expect("Journey typed projection succeeds");
-        assert_eq!(journey_syntax_construction_count(), 1);
-        assert_eq!(crate::editor::test_work::read(), Default::default());
-
-        reset_journey_syntax_construction_count();
-        let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_journey_json_and_editor_facts(text, &parsed.meta, &OperationControl::new()),
+        parse_journey(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
         )
-        .expect("Journey combined projection succeeds");
+        .expect("Journey JSON projection succeeds");
+        assert_eq!(journey_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        reset_journey_syntax_construction_count();
+        let (typed, _output_data) = parse_journey_model_for_render(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("Journey typed projection succeeds");
+        assert_eq!(journey_syntax_construction_count(), 1);
+        assert_eq!(crate::editor::test_work::read(), Default::default());
+
+        reset_journey_syntax_construction_count();
+        let (combined_json, combined_editor) =
+            crate::family::test_support::into_result(parse_journey_json_and_editor_facts(
+                text,
+                &crate::diagrams::source_metadata_for_test(&parsed.meta),
+                &OperationControl::new(),
+            ))
+            .expect("Journey combined projection succeeds");
         assert_eq!(journey_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
         assert!(!combined_editor.symbols.is_empty());
 
         assert_eq!(
-            render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
+            merman_model::families::journey::compat::project(
+                &typed,
+                _output_data,
+                &parsed.meta.diagram_type
+            ),
             combined_json
         );
         assert_eq!(parsed.model["type"], "journey");
@@ -1176,18 +1045,18 @@ A task: 5: Alice, Bob\n";
     #[cfg(feature = "compat-json")]
     #[test]
     fn journey_typed_projection_preserves_empty_and_header_only_output_states() {
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "journey".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
         for source in ["", "journey"] {
             let compat = parse_journey(source, &meta).unwrap();
-            let typed = parse_journey_model_for_render(source, &meta).unwrap();
+            let (typed, _output_data) = parse_journey_model_for_render(source, &meta).unwrap();
 
             assert_eq!(
-                render_model_to_compat_json(&typed, &meta).unwrap(),
+                render_model_to_compat_json(&typed, _output_data, &meta).unwrap(),
                 compat,
                 "projection drift for {source:?}"
             );
@@ -1236,13 +1105,13 @@ A task: 5: Alice, Bob\n";
 
         #[cfg(feature = "presentation")]
         {
-            let meta = crate::PresentationMetadata {
+            let meta = crate::SourcePresentationMetadata {
                 diagram_type: "journey".to_string(),
                 config: crate::MermaidConfig::default(),
-                effective_config: crate::presentation::PresentationConfig::default(),
+                effective_config: crate::presentation::SourcePresentationConfig::default(),
                 title: None,
             };
-            let render = parse_journey_model_for_render(source, &meta).unwrap();
+            let (render, _output_data) = parse_journey_model_for_render(source, &meta).unwrap();
             assert_eq!(
                 serde_json::to_value(&semantic).unwrap(),
                 serde_json::to_value(render).unwrap()
@@ -1266,10 +1135,10 @@ A task: 5: Alice, Bob\n";
         .model
         .unwrap();
         #[cfg(feature = "compat-json")]
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "journey".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         };
 
@@ -1353,10 +1222,10 @@ A task: 5: Alice, Bob\n";
         let facts = crate::family::test_support::editor_facts(
             parse_journey_json_and_editor_facts,
             text,
-            &PresentationMetadata {
+            &SourcePresentationMetadata {
                 diagram_type: "journey".to_string(),
                 config: crate::MermaidConfig::empty_object(),
-                effective_config: crate::presentation::PresentationConfig::empty_object(),
+                effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
                 title: None,
             },
         );
@@ -1505,7 +1374,7 @@ R task: 5:\n",
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("duplicate Journey sections should parse")
             .expect("Journey source should be detected");
-        let crate::diagram::RenderSemanticModel::Journey(model) = parsed.model() else {
+        let merman_model::presentation::RenderSemanticModel::Journey(model) = parsed.model() else {
             panic!("expected a Journey render model");
         };
 
@@ -1526,7 +1395,8 @@ R task: 5:\n",
             json!(0)
         );
 
-        let compat = render_model_to_compat_json(model, parsed.metadata())
+        let compat = parsed
+            .compatibility_json()
             .expect("Journey compatibility projection should serialize");
         assert!(compat["tasks"][0].get("sectionIndex").is_none());
     }
@@ -1608,5 +1478,55 @@ R task: 5:\n",
                 "Do shopping".to_string()
             ]
         );
+    }
+}
+
+#[cfg(all(test, feature = "presentation"))]
+mod output_data_tests {
+    use super::*;
+
+    #[test]
+    fn full_producer_preserves_empty_output_independently_of_json_projection() {
+        let meta = crate::SourcePresentationMetadata {
+            diagram_type: "journey".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
+            title: None,
+        };
+        let parse = |source| {
+            parse_journey_model_for_render_controlled(
+                source,
+                &meta,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap()
+        };
+        let (empty, empty_output) = parse("");
+        let (header, header_output) = parse("journey");
+        assert_eq!(empty_output, JourneyOutputData::Empty);
+        assert_eq!(header_output, JourneyOutputData::Model);
+        assert_eq!(JourneyOutputData::default(), JourneyOutputData::Model);
+        // Identical canonical values must not erase the source producer's distinct output shape.
+        assert_eq!(
+            serde_json::to_value(&empty).unwrap(),
+            serde_json::to_value(&header).unwrap()
+        );
+        #[cfg(feature = "compat-json")]
+        {
+            assert_eq!(
+                render_model_to_compat_json(&empty, empty_output, &meta).unwrap(),
+                serde_json::json!({})
+            );
+            assert_eq!(
+                render_model_to_compat_json(
+                    &JourneyDiagramModel::default(),
+                    JourneyOutputData::default(),
+                    &meta
+                )
+                .unwrap()["type"],
+                "journey"
+            );
+        }
     }
 }

@@ -13,7 +13,8 @@ fn render(body: &str, html_labels: bool) -> (serde_json::Value, String) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ER text-stage fixture")
-        .expect("detect ER text-stage fixture");
+        .expect("detect ER text-stage fixture")
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),

@@ -387,7 +387,7 @@ impl AnalysisDiagnostic {
 #[derive(Debug, Default)]
 pub(crate) struct DiagnosticRetainedWeight {
     weight: RetainedWeight,
-    fix_edit_allocations: BTreeSet<usize>,
+    shared_allocations: BTreeSet<usize>,
 }
 
 pub(crate) struct DiagnosticDynamicWeight<'a> {
@@ -442,7 +442,7 @@ impl DiagnosticRetainedWeight {
                 continue;
             }
             let allocation = Arc::as_ptr(&fix.edits) as *const DiagnosticFixEdit as usize;
-            if !self.fix_edit_allocations.insert(allocation) {
+            if !self.shared_allocations.insert(allocation) {
                 continue;
             }
             weight.add(ARC_ALLOCATION_OVERHEAD);
@@ -450,6 +450,15 @@ impl DiagnosticRetainedWeight {
             for edit in fix.edits.iter() {
                 weight.add_string(&edit.replacement);
             }
+        }
+    }
+
+    #[cfg(feature = "fixes")]
+    pub(crate) fn add_repair_evidence(&mut self, repair: &crate::repair::RepairEvidence) {
+        if let Some((allocation, evidence)) = repair.retained_allocation()
+            && self.shared_allocations.insert(allocation)
+        {
+            self.weight.add(evidence.estimated_owned_heap_bytes());
         }
     }
 

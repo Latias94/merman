@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor};
+use merman_markup::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor};
 
 use super::ThemeCompileValidationError;
 

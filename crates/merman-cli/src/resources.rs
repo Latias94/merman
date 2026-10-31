@@ -1,8 +1,8 @@
 #[cfg(feature = "ascii")]
 use merman::ascii::{AsciiResourceLimitId, AsciiResourcePolicy};
 #[cfg(not(feature = "svg"))]
-use merman::resources::{InputResourceLimitId, InputResourceLimitOverrideError};
-use merman::resources::{InputResourcePolicy, ResourceProfile};
+use merman::model::resources::{InputResourceLimitId, InputResourceLimitOverrideError};
+use merman::model::resources::{InputResourcePolicy, ResourceProfile};
 #[cfg(feature = "svg")]
 use merman::svg::{
     IconRegistryResourceLimitId, RenderResourcePolicy, ResourceLimitId as RenderResourceLimitId,
@@ -956,7 +956,7 @@ mod tests {
         assert_eq!(trusted.batch().default_jobs, 8);
         assert_eq!(unbounded.batch().default_jobs, 32);
 
-        let source = merman::resources::InputResourceLimitId::MaxSourceBytes;
+        let source = merman::model::resources::InputResourceLimitId::MaxSourceBytes;
         assert_budget_le(
             constrained
                 .input_policy()
@@ -1034,7 +1034,7 @@ mod tests {
         assert_eq!(
             policy
                 .input_policy()
-                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+                .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes),
             Some(17)
         );
         assert_eq!(policy.files().css_bytes, Some(23));

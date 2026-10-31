@@ -412,7 +412,7 @@ impl GraphNodeShapeSemantics {
         options: &AsciiRenderOptions,
     ) -> GraphNodeShapeSize {
         let resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
         let policy = options.flowchart_layout().graph_policy();
         self.try_size_for_label_metrics(label.width(), label.content_height(), &policy, &resources)
@@ -682,7 +682,7 @@ mod tests {
             }
         }
 
-        for name in merman_core::diagrams::flowchart::flowchart_pinned_shape_names() {
+        for name in merman_model::families::flowchart::shapes::pinned_shape_names() {
             assert!(
                 registered.contains(name),
                 "pinned Mermaid shape {name:?} is missing a terminal disposition"

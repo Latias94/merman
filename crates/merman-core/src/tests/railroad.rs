@@ -409,7 +409,7 @@ fn parse_railroad_variants_expose_typed_render_models() {
             .unwrap();
 
         assert_eq!(parsed.metadata().diagram_type, diagram_type);
-        assert!(parsed.model().supports_diagram_type(diagram_type));
+        assert!(parsed.model().matches_diagram_type(diagram_type));
         let RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model for {diagram_type}");
         };

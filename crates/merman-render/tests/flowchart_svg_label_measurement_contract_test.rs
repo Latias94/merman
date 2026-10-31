@@ -171,7 +171,8 @@ fn render_flowchart_with_host(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
-        .expect("detect flowchart");
+        .expect("detect flowchart")
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new(format!(
             "test.flowchart-sidecar-{case_name}-{}",
@@ -292,12 +293,15 @@ end
         };
         for outcome in [HostOutcome::Success, HostOutcome::Missing] {
             let parsed = MermaidEngine::new()
-                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-                    serde_json::json!({ "layout": backend }),
-                ))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({ "layout": backend }),
+                    ),
+                )
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .expect("parse empty subgraph")
-                .expect("detect flowchart");
+                .expect("detect flowchart")
+                .into_presentation();
             let identity = TextMeasurementProfileIdentity::new(
                 MeasurementProfileId::new(format!(
                     "test.flowchart-empty-subgraph-{backend}-{collapsed}-{}",
@@ -543,10 +547,10 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
             "elk",
         ] {
             for html in [false, true] {
-                let engine = merman_render::__private::install_parse_compatibility(
+                let engine = common::install_parse_compatibility(
                 &theme,
                 MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_value(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
                         serde_json::json!({"layout":backend, "htmlLabels": html, "fontWeight": root_weight}),
                     ),
                 ),
@@ -557,7 +561,7 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap().into_presentation();
                 let identity = TextMeasurementProfileIdentity::new(
                     MeasurementProfileId::new("test.flowchart-label-weight").unwrap(),
                     "1",
@@ -674,8 +678,8 @@ fn node_shaped_subgraph_weights_match_their_measured_label_boxes() {
             .unwrap(),
             host.clone(),
         );
-        let engine = merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new().with_site_config(
-            merman_core::presentation::PresentationConfig::from_value(serde_json::json!({"layout":backend,"htmlLabels":true,"flowchart":{"wrappingWidth":1000}})),
+        let engine = common::install_parse_compatibility(&theme, MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({"layout":backend,"htmlLabels":true,"flowchart":{"wrappingWidth":1000}})),
         ));
         let source = format!(
             "flowchart LR\nsubgraph G[GroupTitle]\nend\nstyle G font-weight:bolder\n{}",
@@ -688,7 +692,8 @@ fn node_shaped_subgraph_weights_match_their_measured_label_boxes() {
         let parsed = engine
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
             .begin_session_with_theme(&theme)
@@ -766,7 +771,8 @@ fn node_minimum_width_matches_html_and_svg_labels_for_each_layout_backend() {
             let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .expect("parse minimum width fixture")
-                .expect("detect flowchart");
+                .expect("detect flowchart")
+                .into_presentation();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
             let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let projection = artifact.layout_json().unwrap();
@@ -846,7 +852,8 @@ fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
                 let parsed = MermaidEngine::new()
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let identity = TextMeasurementProfileIdentity::new(
                     MeasurementProfileId::new("test.shape-label-bbox-y").unwrap(),
                     "1",
@@ -897,3 +904,6 @@ fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -10,7 +10,7 @@ pub(crate) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str
     if !text.contains('\u{fb02}') && !text.contains('\u{00b6}') && !text.contains('#') {
         return Cow::Borrowed(text);
     }
-    merman_core::entities::decode_mermaid_entities_to_unicode(text)
+    merman_model::text::decode_mermaid_entities_to_unicode(text)
 }
 
 /// Mirrors Mermaid `createText.ts::decodeHTMLEntities` for SVG text nodes.
@@ -35,7 +35,7 @@ pub(crate) fn decode_svg_text_content_entities(text: &str) -> Cow<'_, str> {
 /// The replacement order matters: for example `&amp;quot;` becomes `"` (two-step), while
 /// `&amp;lt;` stays as `&lt;` (one-step).
 pub(crate) fn decode_entities_minimal(text: &str) -> String {
-    merman_core::entities::decode_entities_minimal(text)
+    merman_model::text::decode_entities_minimal(text)
 }
 
 pub(crate) fn decode_entities_minimal_cow(text: &str) -> Cow<'_, str> {

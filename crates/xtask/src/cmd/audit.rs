@@ -78,7 +78,7 @@ fn normalize_error_key(message: &str) -> String {
     ws.replace_all(first.trim(), " ").to_string()
 }
 
-fn detect_out_of_scope(meta: &merman::PresentationMetadata) -> Vec<String> {
+fn detect_out_of_scope(meta: &merman::model::presentation::PresentationMetadata) -> Vec<String> {
     let mut out = Vec::new();
 
     if let Some(layout) = meta.config.get_str("layout") {
@@ -144,7 +144,7 @@ fn absorbed_deferred_duplicate(
     deferred_root: &Path,
     path: &Path,
     expected_group: &str,
-    meta: &merman::PresentationMetadata,
+    meta: &merman::model::presentation::PresentationMetadata,
 ) -> Option<AbsorbedDeferredDuplicate> {
     let rel = path.strip_prefix(deferred_root).ok()?;
     let active_path = fixtures_root.join(rel);
@@ -414,11 +414,11 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     let out_path =
         out_path.unwrap_or_else(|| crate::cmd::target_root().join("audit").join("gaps.md"));
 
-    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+    let runtime_policy = merman::model::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
         .with_fixed_today(Some(
-            merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
+            merman::model::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let engine = merman::MermaidEngine::new().with_runtime_policy(runtime_policy);
 
@@ -1018,7 +1018,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn parse_meta(text: &str) -> merman::PresentationMetadata {
+    fn parse_meta(text: &str) -> merman::model::presentation::PresentationMetadata {
         let parsed = futures::executor::block_on(
             merman::MermaidEngine::new().parse_diagram(text, merman::ParseOptions::default()),
         )

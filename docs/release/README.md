@@ -8,6 +8,7 @@ for the selected graph and behavior changes. Published release histories retain 
 Development source builds also have a
 [prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md)
 covering Rust borrowing/snapshots, geometry budgets, Web mounts and explicit Kanban width adaptation.
+The [model/source migration](../migrations/model-source-boundaries.md) covers independent model and output packages, canonical Rust imports, immutable presentation input, and requested fixes.
 Current source also makes math explicit, including for the retained complete SVG feature aggregates;
 see [ADR-0097](../adr/0097-explicit-math-capability.md). CLI release archives still select math,
 while source-default CLI and generic SVG/Web recipes omit it. Published artifacts are unchanged.

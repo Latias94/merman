@@ -287,6 +287,6 @@ fn git_graph_summary_loop_observes_operation_cancellation() {
     assert!(matches!(
         error,
         AsciiError::Cancelled(cancelled)
-            if cancelled.phase == merman_core::OperationPhase::Emit
+            if cancelled.phase == merman_model::OperationPhase::Emit
     ));
 }

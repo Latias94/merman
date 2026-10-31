@@ -5,7 +5,7 @@ use crate::elk_edge_geometry;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle};
-use merman_core::diagrams::usecase::{UsecaseDiagramModel, UsecaseLabelType};
+use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseLabelType};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -138,13 +138,13 @@ pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::bor
 
 pub(crate) fn requires_math(
     model: &UsecaseDiagramModel,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> bool {
     if config.as_value().get("htmlLabels").and_then(Value::as_bool) == Some(false) {
         return false;
     }
     let has_math = |(text, kind): (&str, UsecaseLabelType)| {
-        let sanitized = merman_core::sanitize::sanitize_text(text, config.as_config());
+        let sanitized = merman_markup::sanitize::sanitize_text(text, config.as_config());
         crate::math::contains_delimited_math(&create_text_source(&sanitized, kind))
     };
     let mut labels = model
@@ -237,13 +237,13 @@ pub(crate) fn requires_math(
 
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecasePreparedArtifact> {
-    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+    work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let config_value = effective_config.as_value();
     let css_binding = UsecaseCssBinding::new(config_value);
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);

@@ -1,19 +1,19 @@
 mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy};
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask, GanttTask};
-use merman_core::diagrams::git_graph::{GitGraphCommit, GitGraphDiagramModel};
-use merman_core::diagrams::journey::JourneyDiagramRenderModel;
-use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
-use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
-use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
-use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
-use merman_core::diagrams::tree_view::TreeViewDiagramModel;
-use merman_core::{MermaidEngine, OperationControl, OperationPhase, RenderSemanticModel};
+use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask, GanttTask};
+use merman_model::families::git_graph::{GitGraphCommit, GitGraphDiagramModel};
+use merman_model::families::journey::JourneyDiagramModel;
+use merman_model::families::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+use merman_model::families::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
+use merman_model::families::packet::{PacketBlock, PacketDiagramModel};
+use merman_model::families::timeline::TimelineDiagramModel;
+use merman_model::families::tree_view::TreeViewDiagramModel;
+use merman_model::{OperationControl, OperationPhase, presentation::RenderSemanticModel};
 use support::{parse_model, render_controlled_model, render_model};
 
-fn operation_context() -> merman_core::runtime::OperationContext {
-    MermaidEngine::new()
+fn operation_context() -> merman_model::runtime::OperationContext {
+    merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic operation context should be available")
 }
@@ -60,7 +60,7 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
         warning_facts: Vec::new(),
     };
 
-    let mut journey = JourneyDiagramRenderModel::default();
+    let mut journey = JourneyDiagramModel::default();
     journey.sections.push("Planning".to_string());
 
     let kanban = KanbanDiagramRenderModel {
@@ -96,15 +96,15 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
         edges: Vec::new(),
     };
 
-    let mut packet = PacketDiagramRenderModel::default();
+    let mut packet = PacketDiagramModel::default();
     packet.packet = vec![vec![
-        PacketRenderBlock {
+        PacketBlock {
             start: 0,
             end: 0,
             bits: 1,
             label: "first".to_string(),
         },
-        PacketRenderBlock {
+        PacketBlock {
             start: 1,
             end: 1,
             bits: 1,
@@ -112,7 +112,7 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
         },
     ]];
 
-    let mut timeline = TimelineDiagramRenderModel::default();
+    let mut timeline = TimelineDiagramModel::default();
     timeline.sections.push("Planning".to_string());
 
     vec![
@@ -149,7 +149,7 @@ fn cancelled_operation_is_distinct_from_resource_exhaustion() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Admission
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -196,7 +196,7 @@ fn flowchart_projection_observes_cancellation_during_semantic_work() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Semantic
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -219,7 +219,7 @@ fn state_projection_observes_cancellation_during_semantic_work() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Semantic
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -244,7 +244,7 @@ fn flowchart_resource_admission_observes_cancellation_before_work_failure() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Semantic
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -269,7 +269,7 @@ fn state_resource_admission_observes_cancellation_before_work_failure() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Semantic
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -293,7 +293,7 @@ fn sequence_projection_observes_cancellation_at_semantic_checkpoint() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Semantic
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -318,7 +318,7 @@ fn class_resource_admission_observes_cancellation_before_layout_work_failure() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Semantic
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -343,7 +343,7 @@ fn er_resource_admission_observes_cancellation_before_layout_work_failure() {
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Semantic
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -368,7 +368,7 @@ fn xychart_resource_admission_observes_cancellation_before_layout_work_failure()
         error,
         AsciiError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Layout
-                && cancelled.reason == merman_core::CancelReason::Requested
+                && cancelled.reason == merman_model::CancelReason::Requested
     ));
 }
 
@@ -411,7 +411,7 @@ fn structured_text_resource_admission_observes_cancellation_before_layout_work_f
                 cancelled,
                 AsciiError::Cancelled(details)
                     if details.phase == OperationPhase::Layout
-                        && details.reason == merman_core::CancelReason::Requested
+                        && details.reason == merman_model::CancelReason::Requested
             ),
             "{diagram_type} should report layout cancellation before the resource ceiling: {cancelled:?}",
         );

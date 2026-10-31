@@ -14,8 +14,8 @@ use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
 #[cfg(test)]
-use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
-use merman_core::presentation::PresentationConfig;
+use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -4252,9 +4252,10 @@ fn layout_flowchart_with_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
     #[cfg(feature = "diagram-flowchart")]
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -4294,7 +4295,7 @@ flowchart TD
                 ParseOptions::default(),
             )
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected").into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
@@ -4352,7 +4353,7 @@ flowchart TD
                 ParseOptions::default(),
             )
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected").into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
@@ -4381,7 +4382,7 @@ flowchart TD
                 ParseOptions::default(),
             )
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected").into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
@@ -4430,7 +4431,8 @@ flowchart TD
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected")
+            .into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
@@ -4469,7 +4471,8 @@ flowchart TD
                 ParseOptions::default(),
             )
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected")
+            .into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
@@ -4678,7 +4681,8 @@ flowchart TD
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("flowchart TB\nA-->B\n", ParseOptions::default())
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected")
+            .into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
@@ -4710,7 +4714,8 @@ flowchart TD
                 ParseOptions::default(),
             )
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected")
+            .into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
@@ -4741,7 +4746,8 @@ flowchart TD
                 ParseOptions::default(),
             )
             .expect("parse ok")
-            .expect("diagram detected");
+            .expect("diagram detected")
+            .into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };

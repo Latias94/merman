@@ -483,7 +483,7 @@ fn render_state_diagram_svg_with_plan(
 
     drop(_g_finalize);
     timings.total = total_timer
-        .map(merman_core::runtime::OperationTimer::elapsed)
+        .map(merman_model::runtime::OperationTimer::elapsed)
         .unwrap_or_default();
     if timing.is_enabled() {
         eprintln!(
@@ -1301,8 +1301,9 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::State(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::State(model) = parsed.model() else {
             panic!("expected State render model");
         };
         let note = model

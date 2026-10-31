@@ -57,7 +57,7 @@ fn load_catalog() -> Result<Catalog, String> {
     let catalog: Catalog = serde_json::from_str(&contents)
         .map_err(|error| format!("parse parser diagnostic receipts: {error}"))?;
     if catalog.schema_version != 2
-        || catalog.mermaid_version != merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+        || catalog.mermaid_version != merman::model::baseline::PINNED_MERMAID_BASELINE_VERSION
         || catalog.mermaid_source_commit != crate::cmd::MERMAID_SOURCE_COMMIT
         || !catalog
             .entries

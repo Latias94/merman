@@ -2,6 +2,10 @@
 
 ## Status
 
+The next development package split and independent model/parser/output availability are selected
+by [ADR-0099](0099-model-and-source-boundaries.md); its execution plan tracks implementation. The positive family
+selectors and artifact source-parser expectations remain, with their final owners migrated together.
+
 The later [explicit math decision](0097-explicit-math-capability.md) supersedes the facade
 default and complete-aggregate clauses below. Current facade defaults use
 `all-diagrams,svg,layout-cytoscape,layout-elk` without math; `complete-svg` and

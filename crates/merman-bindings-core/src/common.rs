@@ -649,7 +649,7 @@ impl BindingError {
 }
 
 pub(crate) fn input_resource_limit_error(
-    error: merman::resources::InputResourceLimitExceeded,
+    error: merman::model::resources::InputResourceLimitExceeded,
 ) -> BindingError {
     let message = error.to_string();
     BindingError::resource_limit(
@@ -1551,7 +1551,7 @@ pub(crate) fn parse_request_overlay(
 ) -> Result<BindingRequestOverlay, BindingError> {
     #[cfg(feature = "svg")]
     let theme_resource_ceiling = merman::svg::ThemeResourcePolicy::for_profile(
-        merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
     );
     parse_request_overlay_for_contract(
         request_options_json,
@@ -1974,7 +1974,7 @@ fn theme_authoring_resource_policy(
     let selected_profile = requested_resources
         .and_then(|resources| resources.profile.as_deref())
         .map(|profile| {
-            merman::resources::ResourceProfile::from_id(profile).ok_or_else(|| {
+            merman::model::resources::ResourceProfile::from_id(profile).ok_or_else(|| {
                 BindingError::new(
                     BindingStatus::InvalidArgument,
                     format!("unsupported resources.profile: {profile}"),
@@ -1987,7 +1987,7 @@ fn theme_authoring_resource_policy(
         Some(profile) => merman::svg::ThemeResourcePolicy::for_profile(profile),
         None => host_ceiling.cloned().unwrap_or_else(|| {
             merman::svg::ThemeResourcePolicy::for_profile(
-                merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+                merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
             )
         }),
     };
@@ -2319,11 +2319,11 @@ pub(crate) fn binding_site_config(
 
 pub(crate) fn binding_fixed_today(
     options: &BindingOptions,
-) -> Result<Option<merman::time::CivilDate>, BindingError> {
+) -> Result<Option<merman::model::time::CivilDate>, BindingError> {
     let Some(today) = options.analysis.fixed_today.as_deref() else {
         return Ok(None);
     };
-    merman::time::CivilDate::from_str(today)
+    merman::model::time::CivilDate::from_str(today)
         .map(Some)
         .map_err(|_| {
             BindingError::new(
@@ -2339,7 +2339,7 @@ pub(crate) fn binding_fixed_local_offset_minutes(
     let Some(offset_minutes) = options.analysis.fixed_local_offset_minutes else {
         return Ok(None);
     };
-    let valid = merman::time::UtcOffset::from_minutes(offset_minutes).is_some();
+    let valid = merman::model::time::UtcOffset::from_minutes(offset_minutes).is_some();
     if !valid {
         return Err(BindingError::new(
             BindingStatus::InvalidArgument,
@@ -2351,8 +2351,8 @@ pub(crate) fn binding_fixed_local_offset_minutes(
 
 pub(crate) fn binding_runtime_policy_from(
     options: &BindingOptions,
-    mut runtime_policy: merman::runtime::RuntimePolicy,
-) -> Result<merman::runtime::RuntimePolicy, BindingError> {
+    mut runtime_policy: merman::model::runtime::RuntimePolicy,
+) -> Result<merman::model::runtime::RuntimePolicy, BindingError> {
     let today = binding_fixed_today(options)?;
     let offset_minutes = binding_fixed_local_offset_minutes(options)?;
     if let Some(offset_minutes) = offset_minutes {
@@ -2388,12 +2388,14 @@ pub(crate) fn runtime_policy_error(
 
 pub(crate) fn selected_runtime_policy(
     options: &BindingOptions,
-) -> Result<(BindingRuntimePolicy, merman::runtime::RuntimePolicy), BindingError> {
+) -> Result<(BindingRuntimePolicy, merman::model::runtime::RuntimePolicy), BindingError> {
     let selection = options.runtime_policy.unwrap_or_default();
     let runtime_policy = match selection {
-        BindingRuntimePolicy::Deterministic => merman::runtime::RuntimePolicy::deterministic(),
+        BindingRuntimePolicy::Deterministic => {
+            merman::model::runtime::RuntimePolicy::deterministic()
+        }
         BindingRuntimePolicy::Native => {
-            merman::runtime::RuntimePolicy::try_native().map_err(runtime_policy_error)?
+            merman::model::runtime::RuntimePolicy::try_native().map_err(runtime_policy_error)?
         }
     };
     Ok((selection, runtime_policy))
@@ -2419,7 +2421,7 @@ pub(crate) fn artifact_analysis_options(
     options: &BindingOptions,
 ) -> Result<merman_analysis::AnalysisOptions, BindingError> {
     let max_source_bytes = binding_input_resource_policy(options.analysis.resources.as_ref())?
-        .value(merman::resources::InputResourceLimitId::MaxSourceBytes);
+        .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes);
     let default_resources = ResourceOptionsJson::default();
     let max_document_diagrams = effective_resource_limits(
         options
@@ -2453,11 +2455,11 @@ pub(crate) fn artifact_analysis_options(
 
 pub(crate) fn binding_input_resource_policy(
     resources: Option<&ResourceOptionsJson>,
-) -> Result<merman::resources::InputResourcePolicy, BindingError> {
+) -> Result<merman::model::resources::InputResourcePolicy, BindingError> {
     let profile = resources
         .and_then(|resources| resources.profile.as_deref())
         .map(|id| {
-            merman::resources::ResourceProfile::from_id(id).ok_or_else(|| {
+            merman::model::resources::ResourceProfile::from_id(id).ok_or_else(|| {
                 BindingError::new(
                     BindingStatus::InvalidArgument,
                     format!("unsupported resources.profile: {id}"),
@@ -2465,11 +2467,13 @@ pub(crate) fn binding_input_resource_policy(
             })
         })
         .transpose()?
-        .unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE);
-    let mut policy = merman::resources::InputResourcePolicy::for_profile(profile);
+        .unwrap_or(merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE);
+    let mut policy = merman::model::resources::InputResourcePolicy::for_profile(profile);
     if let Some(resources) = resources {
         for (id, value) in &resources.limits {
-            if let Some(input_id) = merman::resources::InputResourceLimitId::from_stable_id(id) {
+            if let Some(input_id) =
+                merman::model::resources::InputResourceLimitId::from_stable_id(id)
+            {
                 policy.apply_limit(input_id, *value).map_err(|error| {
                     BindingError::new(BindingStatus::InvalidArgument, error.to_string())
                 })?;
@@ -2536,11 +2540,11 @@ pub(crate) fn binding_resource_policy(
 ))]
 fn binding_resource_profile(
     resources: Option<&ResourceOptionsJson>,
-) -> Result<merman::resources::ResourceProfile, BindingError> {
+) -> Result<merman::model::resources::ResourceProfile, BindingError> {
     Ok(resources
         .and_then(|resources| resources.profile.as_deref())
         .map(|id| {
-            merman::resources::ResourceProfile::from_id(id).ok_or_else(|| {
+            merman::model::resources::ResourceProfile::from_id(id).ok_or_else(|| {
                 BindingError::new(
                     BindingStatus::InvalidArgument,
                     format!("unsupported resources.profile: {id}"),
@@ -2548,7 +2552,7 @@ fn binding_resource_profile(
             })
         })
         .transpose()?
-        .unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE))
+        .unwrap_or(merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE))
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2661,7 +2665,7 @@ pub fn resource_options_json(
 ) -> Result<Vec<u8>, BindingError> {
     let profile = profile_id
         .map(|profile_id| {
-            merman::resources::ResourceProfile::from_id(profile_id).ok_or_else(|| {
+            merman::model::resources::ResourceProfile::from_id(profile_id).ok_or_else(|| {
                 BindingError::new(
                     BindingStatus::InvalidArgument,
                     format!("unsupported resources.profile: {profile_id}"),
@@ -2905,14 +2909,14 @@ struct ThemeResourceProfileHints {
     // those counters saturated so malformed or adversarial input cannot amplify this probe.
     locations: u8,
     profile_count: u8,
-    profile_presence: [bool; merman::resources::RESOURCE_PROFILE_COUNT],
+    profile_presence: [bool; merman::model::resources::RESOURCE_PROFILE_COUNT],
     canonical_shape: bool,
 }
 
 #[cfg(feature = "svg")]
 impl ThemeResourceProfileHints {
-    fn record_profile(&mut self, profile: merman::resources::ResourceProfile) {
-        let Some(index) = merman::resources::ResourceProfile::ALL
+    fn record_profile(&mut self, profile: merman::model::resources::ResourceProfile) {
+        let Some(index) = merman::model::resources::ResourceProfile::ALL
             .iter()
             .position(|candidate| *candidate == profile)
         else {
@@ -2936,11 +2940,11 @@ impl ThemeResourceProfileHints {
         }
     }
 
-    fn single_profile(&self) -> Option<merman::resources::ResourceProfile> {
+    fn single_profile(&self) -> Option<merman::model::resources::ResourceProfile> {
         if self.profile_count != 1 {
             return None;
         }
-        merman::resources::ResourceProfile::ALL
+        merman::model::resources::ResourceProfile::ALL
             .into_iter()
             .enumerate()
             .find_map(|(index, profile)| self.profile_presence[index].then_some(profile))
@@ -3097,7 +3101,7 @@ struct ResourceProfileIdVisitor;
 
 #[cfg(feature = "svg")]
 impl Visitor<'_> for ResourceProfileIdVisitor {
-    type Value = Option<merman::resources::ResourceProfile>;
+    type Value = Option<merman::model::resources::ResourceProfile>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("a resource profile ID")
@@ -3107,21 +3111,21 @@ impl Visitor<'_> for ResourceProfileIdVisitor {
     where
         E: serde::de::Error,
     {
-        Ok(merman::resources::ResourceProfile::from_id(value))
+        Ok(merman::model::resources::ResourceProfile::from_id(value))
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        Ok(merman::resources::ResourceProfile::from_id(value))
+        Ok(merman::model::resources::ResourceProfile::from_id(value))
     }
 }
 
 #[cfg(feature = "svg")]
 fn scan_known_resource_profile(
     raw: &RawValue,
-) -> Result<Option<merman::resources::ResourceProfile>, ()> {
+) -> Result<Option<merman::model::resources::ResourceProfile>, ()> {
     let encoded = raw.get().trim();
     if encoded == "null" {
         return Ok(None);
@@ -3132,7 +3136,7 @@ fn scan_known_resource_profile(
 
     // A matching ASCII ID cannot exceed six JSON bytes per decoded byte (`\uXXXX`). Keep the
     // escaped-string allocation bounded before asking Serde to decode it.
-    let max_encoded_len = merman::resources::ResourceProfile::ALL
+    let max_encoded_len = merman::model::resources::ResourceProfile::ALL
         .iter()
         .map(|profile| profile.id().len().saturating_mul(6).saturating_add(2))
         .max()
@@ -3245,10 +3249,10 @@ fn theme_resource_preflight_policy(
 
     let mut policy = host_ceiling.cloned().unwrap_or_else(|| {
         merman::svg::ThemeResourcePolicy::for_profile(
-            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+            merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
         )
     });
-    for (index, profile) in merman::resources::ResourceProfile::ALL
+    for (index, profile) in merman::model::resources::ResourceProfile::ALL
         .into_iter()
         .enumerate()
     {
@@ -3267,7 +3271,7 @@ fn restrict_theme_resource_policy(
     let Some(profile) = requested.and_then(|resources| resources.profile.as_deref()) else {
         return Ok(host.clone());
     };
-    let profile = merman::resources::ResourceProfile::from_id(profile).ok_or_else(|| {
+    let profile = merman::model::resources::ResourceProfile::from_id(profile).ok_or_else(|| {
         BindingError::new(
             BindingStatus::InvalidArgument,
             format!("unsupported resources.profile: {profile}"),
@@ -3339,12 +3343,12 @@ fn tighten_resource_options(
 
 fn binding_resource_profile_id(
     resources: &ResourceOptionsJson,
-) -> Result<merman::resources::ResourceProfile, BindingError> {
+) -> Result<merman::model::resources::ResourceProfile, BindingError> {
     resources
         .profile
         .as_deref()
         .map(|id| {
-            merman::resources::ResourceProfile::from_id(id).ok_or_else(|| {
+            merman::model::resources::ResourceProfile::from_id(id).ok_or_else(|| {
                 BindingError::new(
                     BindingStatus::InvalidArgument,
                     format!("unsupported resources.profile: {id}"),
@@ -3353,13 +3357,13 @@ fn binding_resource_profile_id(
         })
         .transpose()
         .map(|profile| {
-            profile.unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE)
+            profile.unwrap_or(merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE)
         })
 }
 
 fn resource_profile_ceiling_error(
-    requested: merman::resources::ResourceProfile,
-    ceiling: merman::resources::ResourceProfile,
+    requested: merman::model::resources::ResourceProfile,
+    ceiling: merman::model::resources::ResourceProfile,
 ) -> BindingError {
     BindingError::new(
         BindingStatus::OptionsJsonError,
@@ -3575,9 +3579,10 @@ mod tests {
 
     #[test]
     fn runtime_policy_errors_are_terminal_safe_and_structured() {
-        let error = runtime_policy_error(merman::runtime::RuntimePolicyError::SystemTimeZone(
-            "adapter\u{1b}\u{7}".to_string(),
-        ));
+        let error =
+            runtime_policy_error(merman::model::runtime::RuntimePolicyError::SystemTimeZone(
+                "adapter\u{1b}\u{7}".to_string(),
+            ));
 
         assert_eq!(error.status(), BindingStatus::RenderError);
         assert!(!error.message().contains('\u{1b}'));
@@ -3587,9 +3592,11 @@ mod tests {
             .expect("runtime-policy errors expose diagnostic details");
         assert_eq!(details.code, "merman.runtime_policy");
 
-        let missing = runtime_policy_error(merman::runtime::RuntimePolicyError::MissingCapability(
-            merman::runtime::RuntimeCapability::SystemRandom,
-        ));
+        let missing = runtime_policy_error(
+            merman::model::runtime::RuntimePolicyError::MissingCapability(
+                merman::model::runtime::RuntimeCapability::SystemRandom,
+            ),
+        );
         assert_eq!(missing.kind(), BindingErrorKind::MissingCapability);
         assert_eq!(missing.capability_id(), Some("system-random"));
         assert_eq!(
@@ -3866,7 +3873,7 @@ mod tests {
         assert_eq!(
             binding_input_resource_policy(Some(resources))
                 .unwrap()
-                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+                .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes),
             Some(4096)
         );
 
@@ -4554,12 +4561,12 @@ mod tests {
     fn distinct_profile_presence_matches_ordered_policy_reduction() {
         for (first, second) in [
             (
-                merman::resources::ResourceProfile::Constrained,
-                merman::resources::ResourceProfile::TrustedNative,
+                merman::model::resources::ResourceProfile::Constrained,
+                merman::model::resources::ResourceProfile::TrustedNative,
             ),
             (
-                merman::resources::ResourceProfile::TrustedNative,
-                merman::resources::ResourceProfile::Constrained,
+                merman::model::resources::ResourceProfile::TrustedNative,
+                merman::model::resources::ResourceProfile::Constrained,
             ),
         ] {
             let input = [

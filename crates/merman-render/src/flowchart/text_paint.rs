@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -148,16 +148,10 @@ impl FlowchartTextPaintPlan {
                         node_config_owned
                     }
                     FlowchartTextPaintChannel::Cluster => {
-                        merman_core::__private::config_paint_overrides_typed_default(
-                            config,
-                            "themeVariables.titleColor",
-                        )
+                        config.config_paint_overrides_typed_default("themeVariables.titleColor")
                     }
                     FlowchartTextPaintChannel::DiagramTitle => {
-                        merman_core::__private::config_paint_overrides_typed_default(
-                            config,
-                            "themeVariables.textColor",
-                        )
+                        config.config_paint_overrides_typed_default("themeVariables.textColor")
                     }
                 };
                 work.charge(theme.family_mechanism_routes().len())?;

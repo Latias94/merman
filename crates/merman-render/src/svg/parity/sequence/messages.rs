@@ -13,7 +13,7 @@ use crate::sequence::{
     measure_sequence_drawn_line_height, sequence_activation_stack_bounds,
     sequence_drawn_text_style, sequence_drawn_text_y,
 };
-use merman_core::diagrams::sequence::{
+use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
     SequenceMessageMarker, SequenceMessageStroke,
 };
@@ -210,7 +210,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    pub(super) sanitize_config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
     pub(super) diagram_id: SvgDiagramId<'a>,
@@ -264,7 +264,7 @@ fn message_data_attrs(msg_id: &str, from: &str, to: &str) -> String {
     )
 }
 
-fn is_reverse_arrow_type(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
+fn is_reverse_arrow_type(msg: &merman_model::families::sequence::SequenceMessage) -> bool {
     msg.signal_semantics()
         .is_some_and(|semantics| semantics.direction == SequenceMessageDirection::Reverse)
 }
@@ -290,7 +290,7 @@ impl SequenceAutonumberActivationBounds {
 
     fn handle_directive(
         &mut self,
-        msg: &merman_core::diagrams::sequence::SequenceMessage,
+        msg: &merman_model::families::sequence::SequenceMessage,
         ctx: &SequenceMessageRenderContext<'_>,
     ) -> bool {
         match msg.semantic_kind() {
@@ -330,7 +330,7 @@ impl SequenceAutonumberActivationBounds {
 fn sequence_number_marker_x(
     activation_bounds: &SequenceAutonumberActivationBounds,
     ctx: &SequenceMessageRenderContext<'_>,
-    msg: &merman_core::diagrams::sequence::SequenceMessage,
+    msg: &merman_model::families::sequence::SequenceMessage,
     from: &str,
     to: &str,
     startx: f64,
@@ -363,7 +363,7 @@ fn sequence_number_marker_x(
 fn write_central_connection_circles(
     out: &mut impl SvgOutput,
     ctx: &SequenceMessageRenderContext<'_>,
-    msg: &merman_core::diagrams::sequence::SequenceMessage,
+    msg: &merman_model::families::sequence::SequenceMessage,
     from: &str,
     to: &str,
     line_y: f64,
@@ -770,7 +770,7 @@ struct SequenceMessageTextLayout<'a> {
     margin: f64,
     style: &'a TextStyle,
     measurer: &'a dyn TextMeasurer,
-    config: &'a merman_core::presentation::PresentationConfig,
+    config: &'a merman_model::presentation::PresentationConfig,
 }
 
 fn render_sequence_message_text_lines<'a>(
@@ -821,7 +821,7 @@ fn render_sequence_message_text_lines<'a>(
 
 #[cfg(test)]
 fn default_sequence_typography(
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> (
     crate::sequence::SequenceTypographyPlan,
     crate::sequence::SequenceTypographyThemeReceipt,
@@ -913,7 +913,7 @@ mod tests {
         let actors = [
             (
                 "Alice".to_string(),
-                merman_core::diagrams::sequence::SequenceActor {
+                merman_model::families::sequence::SequenceActor {
                     name: "Alice".to_string(),
                     description: "Alice".to_string(),
                     actor_type: "participant".to_string(),
@@ -924,7 +924,7 @@ mod tests {
             ),
             (
                 "Bob".to_string(),
-                merman_core::diagrams::sequence::SequenceActor {
+                merman_model::families::sequence::SequenceActor {
                     name: "Bob".to_string(),
                     description: "Bob".to_string(),
                     actor_type: "participant".to_string(),
@@ -937,7 +937,7 @@ mod tests {
         .into_iter()
         .collect();
         let messages = (0..4)
-            .map(|index| merman_core::diagrams::sequence::SequenceMessage {
+            .map(|index| merman_model::families::sequence::SequenceMessage {
                 id: index.to_string(),
                 from: Some("Alice".to_string()),
                 to: Some("Bob".to_string()),
@@ -1019,7 +1019,7 @@ mod tests {
             .iter()
             .map(|edge| (edge.id.as_str(), edge))
             .collect::<FxHashMap<_, _>>();
-        let sanitize_config = merman_core::presentation::PresentationConfig::default();
+        let sanitize_config = merman_model::presentation::PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let message_text_style = TextStyle::default();
         let math_sidecar = crate::sequence::SequenceMathSidecar::default();
@@ -1097,7 +1097,7 @@ mod tests {
                 actor_order: Vec::new(),
                 actors: BTreeMap::new(),
                 boxes: Vec::new(),
-                messages: vec![merman_core::diagrams::sequence::SequenceMessage {
+                messages: vec![merman_model::families::sequence::SequenceMessage {
                     id: "0".to_string(),
                     from: Some("Alice".to_string()),
                     to: Some("Bob".to_string()),
@@ -1137,7 +1137,7 @@ mod tests {
                 .map(|edge| (edge.id.as_str(), edge))
                 .collect::<FxHashMap<_, _>>();
             let nodes_by_id = FxHashMap::default();
-            let sanitize_config = merman_core::presentation::PresentationConfig::default();
+            let sanitize_config = merman_model::presentation::PresentationConfig::default();
             let measurer = crate::text::DeterministicTextMeasurer::default();
             let message_text_style = TextStyle::default();
             let math_sidecar = crate::sequence::SequenceMathSidecar::default();
@@ -1213,7 +1213,7 @@ mod cancellation_tests {
     use super::{default_sequence_typography, render_sequence_message_text_lines};
     use crate::Error;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
 
     struct CancellingLines {
         control: OperationControl,
@@ -1253,7 +1253,7 @@ mod cancellation_tests {
         let typography_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let typography = crate::sequence::SequenceTypographyPlan::resolve(
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             None,
             &typography_meter,
         )
@@ -1270,7 +1270,7 @@ mod cancellation_tests {
                 margin: 10.0,
                 style: &crate::text::TextStyle::default(),
                 measurer: &crate::text::DeterministicTextMeasurer::default(),
-                config: &merman_core::presentation::PresentationConfig::default(),
+                config: &merman_model::presentation::PresentationConfig::default(),
             },
             typography.message(),
             &receipt,
@@ -1318,7 +1318,7 @@ mod cancellation_tests {
     fn message_rows_accumulate_raw_heights_after_decoding_and_preserve_explicit_dy() {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let style = crate::text::TextStyle::default();
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
         let (typography, typography_receipt) = default_sequence_typography(&config);
@@ -1379,7 +1379,7 @@ mod cancellation_tests {
             cancel: Some(control),
             ..Default::default()
         };
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
         let (typography, typography_receipt) = default_sequence_typography(&config);

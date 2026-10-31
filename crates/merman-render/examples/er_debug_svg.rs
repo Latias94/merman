@@ -15,7 +15,8 @@ fn main() {
     let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(&input, ParseOptions::default()))
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let session = RenderEnvironment::deterministic()
         .begin_session()

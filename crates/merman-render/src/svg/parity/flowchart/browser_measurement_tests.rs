@@ -7,7 +7,8 @@ use crate::environment::RenderEnvironment;
 use crate::model::{FlowchartLayout, LayoutPoint};
 use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::RenderSemanticModel;
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
@@ -308,8 +309,13 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .unwrap()
-            .unwrap();
-        let render_context = parsed.flowchart_render_context().unwrap().clone();
+            .unwrap()
+            .into_presentation();
+        let render_context = parsed
+            .render_context()
+            .flowchart_render_context()
+            .unwrap()
+            .clone();
         let environment = RenderEnvironment::deterministic();
         let artifact = crate::family::prepare(
             &parsed,
@@ -323,7 +329,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         .unwrap();
         // The public JSON projection omits this internal renderer ownership flag.
         layout.uses_elk_adapter_dom = true;
-        let (metadata, semantic) = parsed.into_parts();
+        let (metadata, semantic, _) = parsed.into_parts();
         let RenderSemanticModel::Flowchart(model) = semantic else {
             panic!("Flowchart")
         };

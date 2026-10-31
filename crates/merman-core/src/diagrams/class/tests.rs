@@ -1,11 +1,11 @@
 use super::*;
-use crate::{MermaidConfig, PresentationMetadata};
+use crate::{MermaidConfig, SourcePresentationMetadata};
 
-fn meta() -> PresentationMetadata {
-    PresentationMetadata {
+fn meta() -> SourcePresentationMetadata {
+    SourcePresentationMetadata {
         diagram_type: "classDiagram".to_string(),
         config: MermaidConfig::default(),
-        effective_config: crate::presentation::PresentationConfig::default(),
+        effective_config: crate::presentation::SourcePresentationConfig::default(),
         title: None,
     }
 }
@@ -66,7 +66,7 @@ A "" --> B
     let typed_json = serde_json::to_value(&model).unwrap();
     assert!(typed_json["relations"][0]["relationTitle1"].is_null());
     assert_eq!(typed_json["relations"][1]["relationTitle1"], "none");
-    let round_trip: crate::models::class_diagram::ClassDiagram =
+    let round_trip: merman_model::families::class::ClassDiagram =
         serde_json::from_value(typed_json).unwrap();
     assert_eq!(round_trip, model);
 
@@ -181,7 +181,7 @@ Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
         typed_json["namespaceFacadeAliases"]["Platform.FFI.DartBinding"],
         "DartBinding"
     );
-    let round_trip: crate::models::class_diagram::ClassDiagram =
+    let round_trip: merman_model::families::class::ClassDiagram =
         serde_json::from_value(typed_json).expect("typed class model should deserialize");
     assert_eq!(round_trip, model);
 

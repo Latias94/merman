@@ -1,14 +1,13 @@
 #![cfg(all(feature = "all-diagrams", feature = "compat-json"))]
 
 #[cfg(feature = "editor-facts")]
-use merman_core::presentation::PresentationConfig;
-#[cfg(feature = "editor-facts")]
-use merman_core::time::CivilDate;
+use merman_core::presentation::SourcePresentationConfig;
 #[cfg(feature = "editor-facts")]
 use merman_core::{EditorSemanticFacts, diagram_family_capabilities};
-use merman_core::{Error, MermaidEngine, SourceSpan};
 #[cfg(feature = "editor-facts")]
 use merman_fixture_render_context::RenderContextCatalog;
+#[cfg(feature = "editor-facts")]
+use merman_model::time::CivilDate;
 #[cfg(feature = "editor-facts")]
 use std::collections::BTreeMap;
 #[cfg(feature = "editor-facts")]
@@ -17,6 +16,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(feature = "editor-facts")]
 use std::sync::OnceLock;
+use {
+    merman_core::{Error, MermaidEngine},
+    merman_model::source::SourceSpan,
+};
 
 #[cfg(feature = "editor-facts")]
 fn workspace_root() -> PathBuf {
@@ -40,7 +43,7 @@ fn fixture_render_contexts() -> &'static RenderContextCatalog {
 }
 
 #[cfg(feature = "editor-facts")]
-fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
+fn fixture_site_config_for_path(path: &Path) -> Option<SourcePresentationConfig> {
     fixture_render_contexts()
         .context_for_fixture(path)
         .unwrap_or_else(|error| {
@@ -49,7 +52,7 @@ fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
                 path.display()
             )
         })
-        .map(|context| PresentationConfig::from_value(context.site_config_value()))
+        .map(|context| SourcePresentationConfig::from_value(context.site_config_value()))
 }
 
 #[cfg(feature = "editor-facts")]
@@ -222,7 +225,7 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
                     let merman_core::SemanticSnapshotCapture::Snapshot(recovery) = parser
                         .capture_diagram_recovery_snapshot_controlled_sync(
                             &source,
-                            &merman_core::OperationControl::new(),
+                            &merman_model::operation::OperationControl::new(),
                         )
                         .expect("fixture recovery capture must not be cancelled")
                     else {

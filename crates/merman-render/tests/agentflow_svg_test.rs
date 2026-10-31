@@ -75,7 +75,8 @@ end
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse agentflow")
-        .expect("agentflow render model");
+        .expect("agentflow render model")
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "agentflow");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
@@ -106,12 +107,14 @@ end
 fn agentflow_connectors_and_collapsed_flows_keep_visible_routes() {
     for backend in ["elk", "dagre"] {
         let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::PresentationConfig::from_value(json!({"layout": backend})),
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                json!({"layout": backend}),
+            ),
         );
         let parsed = engine.parse_diagram_for_render_model_sync(
             "agentflow-beta LR\nflow worker[Worker]\n甲[Input]@{shape: input}\n乙[Task]\n甲 --> 乙\n甲 --> 甲\nend\nworker@{view: collapsed}\nconnector api[API]\n甲 --> api",
             ParseOptions::strict(),
-        ).unwrap().unwrap();
+        ).unwrap().unwrap().into_presentation();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let projection = artifact.layout_json().unwrap();
@@ -429,7 +432,7 @@ fn agentflow_cyclic_container_references_preserve_visible_nodes() {
     for backend in ["elk", "dagre"] {
         for collapsed in [false, true] {
             let engine = MermaidEngine::new().with_site_config(
-                merman_core::presentation::PresentationConfig::from_value(
+                merman_core::presentation::SourcePresentationConfig::from_value(
                     json!({"layout": backend}),
                 ),
             );
@@ -444,7 +447,8 @@ fn agentflow_cyclic_container_references_preserve_visible_nodes() {
             let parsed = engine
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
             let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let projection = artifact.layout_json().unwrap();
@@ -488,7 +492,8 @@ click a href "https://example.com" "Open task" _blank
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     assert!(
@@ -544,14 +549,15 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
     ] {
         for backend in ["elk", "dagre"] {
             let engine = MermaidEngine::new().with_site_config(
-                merman_core::presentation::PresentationConfig::from_value(
+                merman_core::presentation::SourcePresentationConfig::from_value(
                     json!({"layout": backend}),
                 ),
             );
             let parsed = engine
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
             let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let rendered = artifact
@@ -579,7 +585,7 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
 #[test]
 fn agentflow_hand_drawn_containers_keep_flow_group_paint() {
     for backend in ["elk", "dagre"] {
-        let engine = MermaidEngine::new().with_site_config(merman_core::presentation::PresentationConfig::from_value(
+        let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(
             json!({"layout": backend, "look": "handDrawn", "themeVariables": {"flowContainerStroke": "#123456"}}),
         ));
         let parsed = engine
@@ -588,7 +594,8 @@ fn agentflow_hand_drawn_containers_keep_flow_group_paint() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let rendered = artifact
@@ -631,14 +638,15 @@ C@{label: "`**literal**`", labelType: text}
 "#;
     for html in [false, true] {
         let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::PresentationConfig::from_value(
+            merman_core::presentation::SourcePresentationConfig::from_value(
                 json!({"layout":"dagre", "htmlLabels":html}),
             ),
         );
         let parsed = engine
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
         let rendered = artifact
@@ -690,7 +698,7 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
         for html_labels in [false, true] {
             for flowchart in [json!({}), json!({"minNodeWidth": 10})] {
                 let engine = MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_value(json!({
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
                         "layout": backend,
                         "htmlLabels": html_labels,
                         "agentflow": { "minNodeWidth": 300 },
@@ -703,7 +711,8 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
                         ParseOptions::strict(),
                     )
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let session = RenderEnvironment::deterministic().begin_session().unwrap();
                 let artifact =
                     family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
@@ -721,7 +730,7 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
         let mut dimensions = Vec::new();
         for wrapping_width in [40, 200] {
             let engine = MermaidEngine::new().with_site_config(
-                merman_core::presentation::PresentationConfig::from_value(json!({
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
                     "layout": backend,
                     "htmlLabels": false,
                     "agentflow": { "minNodeWidth": 0, "wrappingWidth": wrapping_width },
@@ -734,7 +743,8 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
                     ParseOptions::strict(),
                 )
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let session = RenderEnvironment::deterministic().begin_session().unwrap();
             let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
             let projection = artifact.layout_json().unwrap();
@@ -767,7 +777,7 @@ fn render_agentflow_config_probe(
     } else {
         (
             MermaidEngine::new().with_site_config(
-                merman_core::presentation::PresentationConfig::from_value(config),
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
             ),
             source.to_owned(),
         )
@@ -775,7 +785,8 @@ fn render_agentflow_config_probe(
     let parsed = engine
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout = artifact.layout_json().unwrap()["layout"].clone();
@@ -908,3 +919,6 @@ fn agentflow_title_uses_family_margin_and_matching_css_class() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

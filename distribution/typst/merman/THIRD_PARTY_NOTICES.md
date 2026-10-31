@@ -105,7 +105,7 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 - Source path: `.`
 - Relationship: `generated`, `translated`
 - License: `(Apache-2.0 OR MPL-2.0)`
-- Local evidence: `crates/merman-core/src/generated/dompurify_defaults.rs`
+- Local evidence: `crates/merman-markup/src/generated/dompurify_defaults.rs`
 - Legal file: `THIRD_PARTY_LICENSES/dompurify/LICENSE`
 
 ### fmin
@@ -165,7 +165,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-model/src`, `crates/merman-markup/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
 ### non-layered-tidy-tree-layout
@@ -227,7 +227,7 @@ Merman's URL sanitization behavior is a source-backed Rust translation of saniti
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License: `MIT`
-- Local evidence: `crates/merman-core/src/utils.rs`
+- Local evidence: `crates/merman-markup/src/url.rs`
 - Legal file: `THIRD_PARTY_LICENSES/sanitize-url/LICENSE`
 
 ### unicode-linebreak

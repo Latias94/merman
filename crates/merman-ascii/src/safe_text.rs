@@ -146,7 +146,7 @@ use unicode_segmentation::UnicodeSegmentation;
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
     use std::cell::Cell;
 
     fn unbounded_policy() -> AsciiResourcePolicy {

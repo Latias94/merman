@@ -17,7 +17,7 @@ use crate::{
     SourceSpan, parse_diagnostic::lalrpop_parse_diagnostic,
 };
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -28,7 +28,7 @@ use std::collections::HashSet;
 #[cfg(feature = "presentation")]
 use super::StateDiagramRenderModel;
 use super::db::StateDb;
-use super::{Lexer, StateDiagramModel, StateDocument, StateStatement, Tok};
+use super::{Lexer, StateDiagramModel, StateDocumentScratch, StateStatement, Tok};
 
 #[cfg(test)]
 thread_local! {
@@ -49,7 +49,7 @@ type StateLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexErro
 type StateGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
 struct StateSyntaxOutcome {
-    document: std::result::Result<StateDocument, StateGrammarError>,
+    document: std::result::Result<StateDocumentScratch, StateGrammarError>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -90,7 +90,7 @@ impl StateSyntax {
             emitted = emitted.saturating_add(1);
             active
         });
-        let mut document = StateDocument::default();
+        let mut document = StateDocumentScratch::default();
         let parsed =
             super::state_grammar::RootParser::new().parse(&mut document, controlled_events);
         let document = parsed.map(|root| {
@@ -120,7 +120,7 @@ struct StateSemanticFailure {
 
 impl StateSemanticFailure {
     #[cfg(feature = "presentation")]
-    fn into_parse_error(self, meta: &PresentationMetadata, fallback_offset: usize) -> Error {
+    fn into_parse_error(self, meta: &SourcePresentationMetadata, fallback_offset: usize) -> Error {
         self.into_parse_error_for_type(&meta.diagram_type, fallback_offset)
     }
 
@@ -135,7 +135,7 @@ impl StateSemanticFailure {
     #[cfg(feature = "editor-facts")]
     fn into_error_and_editor_facts(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         fallback_offset: usize,
     ) -> (Error, EditorSemanticFacts) {
         self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
@@ -186,14 +186,14 @@ fn state_parse_diagnostic(error: &StateGrammarError, fallback_offset: usize) -> 
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_state(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_state(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_state_semantic_source(code, meta)?.db.into_model(meta)
 }
 
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_state_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
     let construction = construct_state_semantic_source(
@@ -229,7 +229,7 @@ pub(crate) fn parse_state_semantic_model_controlled(
         }) => {
             let model = match db.into_semantic_model_controlled(diagram_type, config, control)? {
                 Ok(mut model) => {
-                    model.sanitize_common_db_fields(config);
+                    super::sanitize_common_db_fields(&mut model, config);
                     control.checkpoint()?;
                     Ok(model)
                 }
@@ -263,7 +263,7 @@ pub(crate) fn parse_state_semantic_model_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_state_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_state_semantic_source(code, EditorFactsDemand::Capture, control)?;
@@ -304,7 +304,7 @@ pub(crate) fn parse_state_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 fn parse_state_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<StateSemanticSource> {
     construct_state_semantic_source(
         code,
@@ -358,7 +358,7 @@ fn construct_state_semantic_source(
 }
 
 pub(super) fn assign_divider_ids(
-    document: &mut StateDocument,
+    document: &mut StateDocumentScratch,
     cnt: &mut usize,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
@@ -371,7 +371,7 @@ pub(super) fn assign_divider_ids(
         if inspected.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        let Some(stmt) = document.documents[doc.0].get_mut(*index) else {
+        let Some(stmt) = document.get_mut(*doc).get_mut(*index) else {
             stack.pop();
             continue;
         };

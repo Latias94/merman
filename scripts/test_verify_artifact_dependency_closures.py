@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from typing import Sequence
@@ -26,6 +27,10 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     LINUX_REFERENCE_SCOPE,
     NATIVE_BINDING_FORBIDDEN_PACKAGES,
     NATIVE_BINDING_PROFILE_IDS,
+    NORMAL_BUILD_CLAIMS,
+    MODEL_ASCII_FORBIDDEN_PACKAGES,
+    SOURCE_INGESTION_PACKAGES,
+    DIAGNOSTICS_ONLY_PROFILE_IDS,
     PROFILE_TARGET_SCOPE,
     TREE_SITTER_ALLOWED_PROFILE_IDS,
     TREE_SITTER_FORBIDDEN_PACKAGES,
@@ -93,11 +98,13 @@ def case(
     loaded_recipe: CargoArtifactRecipe | None = None,
     loaded_claim: ClosureClaim | None = None,
     target: str = HOST_CLOSURE_REFERENCE_TARGET,
+    normal_build_claim: ClosureClaim | None = None,
 ) -> VerificationCase:
     return VerificationCase(
         recipe=loaded_recipe or recipe(profile_id),
         claim=loaded_claim or claim(profile_id),
         target=target,
+        normal_build_claim=normal_build_claim,
     )
 
 
@@ -248,6 +255,38 @@ def write_descriptor(
 
 
 class VerificationCaseTests(unittest.TestCase):
+    def test_normal_build_claims_cover_data_output_and_diagnostics_boundaries(self) -> None:
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()}
+        claims = {current.profile_id: current for current in NORMAL_BUILD_CLAIMS}
+        self.assertEqual(
+            set(claims),
+            {
+                "rust-model", "rust-model-all", "rust-markup", "rust-markup-full",
+                "rust-ascii", "rust-render-native-svg", "rust-export-jpeg",
+                "rust-export-png", "rust-export-pdf", "rust-export-native-fonts",
+                "rust-export-native-sdk",
+            } | DIAGNOSTICS_ONLY_PROFILE_IDS,
+        )
+        for profile_id, production_claim in claims.items():
+            with self.subTest(profile=profile_id):
+                self.assertEqual(cases[profile_id].normal_build_claim, production_claim)
+                self.assertIn(cases[profile_id].recipe.package, production_claim.required_packages)
+                if profile_id in DIAGNOSTICS_ONLY_PROFILE_IDS:
+                    self.assertEqual(production_claim.forbidden_packages, ("serde-saphyr",))
+                    self.assertIn(
+                        PackageFeatureExclusion("merman-analysis", ("fixes",)),
+                        production_claim.forbidden_features,
+                    )
+                else:
+                    self.assertTrue(set(SOURCE_INGESTION_PACKAGES) <= set(production_claim.forbidden_packages))
+        for profile_id in ["rust-model", "rust-model-all", "rust-ascii"]:
+            self.assertEqual(claims[profile_id].forbidden_packages, MODEL_ASCII_FORBIDDEN_PACKAGES)
+        for profile_id in ["rust-markup-full", "rust-render-native-svg", "rust-export-png"]:
+            self.assertNotIn("html5ever", claims[profile_id].forbidden_packages)
+            self.assertNotIn("url", claims[profile_id].forbidden_packages)
+        for profile_id in ["rust-static-svg", "web-ascii", "sdk-native-full"]:
+            self.assertIsNone(cases[profile_id].normal_build_claim)
+
     def test_generic_svg_profiles_reject_resolved_math_backend_payloads(self) -> None:
         profiles = {
             "rust-native-svg", "rust-render-native-svg", "rust-static-svg",
@@ -402,6 +441,7 @@ class VerificationCaseTests(unittest.TestCase):
                 load_verification_cases(
                     descriptor_path=descriptor,
                     semantic_claims=(),
+                    normal_build_claims=(),
                 )
 
     def test_repository_cases_cover_governed_profiles_and_declared_targets(self) -> None:
@@ -437,6 +477,17 @@ class VerificationCaseTests(unittest.TestCase):
                 load_verification_cases(
                     descriptor_path=descriptor,
                     semantic_claims=(claim("unexpected"),),
+                    normal_build_claims=(),
+                )
+
+    def test_normal_build_claims_must_reference_known_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            descriptor = write_descriptor(Path(temporary_directory), "known")
+            with self.assertRaisesRegex(ClosureVerificationError, "normal/build claims reference unknown"):
+                load_verification_cases(
+                    descriptor_path=descriptor,
+                    semantic_claims=(),
+                    normal_build_claims=(claim("unexpected"),),
                 )
 
     def test_cases_follow_descriptor_target_order(self) -> None:
@@ -452,6 +503,7 @@ class VerificationCaseTests(unittest.TestCase):
             cases = load_verification_cases(
                 descriptor_path=descriptor,
                 semantic_claims=(claim("cross"),),
+                normal_build_claims=(),
             )
 
         self.assertEqual(
@@ -613,6 +665,11 @@ class CargoMetadataCommandTests(unittest.TestCase):
         self.assertIn("--frozen", command)
         self.assertNotIn("--no-dedupe", command)
 
+        production = cargo_tree_command(current, probe_manifest=Path("probe/Cargo.toml"), normal_build=True)
+        self.assertEqual(production[production.index("--edges") + 1], "normal,build")
+        self.assertEqual(production[production.index("--target") + 1], current.target)
+        self.assertIn("--frozen", production)
+
     def test_probe_projects_features_and_normal_dependency_semantics(self) -> None:
         loaded = recipe(
             "cli-analysis",
@@ -625,27 +682,79 @@ class CargoMetadataCommandTests(unittest.TestCase):
             "version": "1.2.3",
             "edition": "2024",
             "manifest_path": str(SCRIPT_DIR.parent / loaded.manifest),
-            "features": {"analysis": ["dep:renamed-core"]},
+            "features": {
+                "analysis": [
+                    "local-analysis",
+                    "ignored-dev-tool",
+                    "dep:renamed-model",
+                    "renamed-model?/presentation-data",
+                    "renamed-model/diagram-agentflow",
+                    "merman-core/diagram-agentflow",
+                    "dev-parser/parse",
+                    "dep:build-tool",
+                    "build-tool?/derive",
+                    "build-tool/derive",
+                ],
+                "local-analysis": [],
+                "ignored-dev-tool": [],
+            },
             "dependencies": [
                 {
-                    "name": "merman-core",
+                    "name": "merman-model",
                     "source": None,
                     "req": "^1.2.3",
                     "kind": None,
-                    "rename": "renamed-core",
+                    "rename": "renamed-model",
                     "optional": True,
                     "uses_default_features": False,
-                    "features": ["svg"],
+                    "features": ["presentation-data"],
                     "target": "cfg(unix)",
                     "registry": None,
-                    "path": str(SCRIPT_DIR.parent / "crates/merman-core"),
+                    "path": str(SCRIPT_DIR.parent / "crates/merman-model"),
                 },
                 {
                     "name": "ignored-build-tool",
                     "source": "registry+https://github.com/rust-lang/crates.io-index",
                     "req": "^1",
                     "kind": "build",
+                    "rename": "build-tool",
+                    "optional": True,
+                    "uses_default_features": True,
+                    "features": [],
+                    "target": None,
+                    "registry": None,
+                },
+                {
+                    "name": "ignored-dev-tool",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "req": "^1",
+                    "kind": "dev",
                     "rename": None,
+                    "optional": False,
+                    "uses_default_features": True,
+                    "features": [],
+                    "target": None,
+                    "registry": None,
+                },
+                {
+                    "name": "merman-core",
+                    "source": None,
+                    "req": "^1.2.3",
+                    "kind": "dev",
+                    "rename": None,
+                    "optional": False,
+                    "uses_default_features": False,
+                    "features": [],
+                    "target": None,
+                    "registry": None,
+                    "path": str(SCRIPT_DIR.parent / "crates/merman-core"),
+                },
+                {
+                    "name": "source-test-parser",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "req": "^1",
+                    "kind": "dev",
+                    "rename": "dev-parser",
                     "optional": False,
                     "uses_default_features": True,
                     "features": [],
@@ -654,6 +763,11 @@ class CargoMetadataCommandTests(unittest.TestCase):
                 },
             ],
         }
+        package_metadata["dependencies"].append({
+            **package_metadata["dependencies"][0],
+            "kind": "dev",
+            "optional": False,
+        })
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             manifest = write_metadata_probe(
@@ -662,16 +776,59 @@ class CargoMetadataCommandTests(unittest.TestCase):
                 package_metadata=package_metadata,
             )
             text = manifest.read_text(encoding="utf-8")
+            production_manifest = write_metadata_probe(
+                case(
+                    "cli-analysis", loaded_recipe=loaded,
+                    normal_build_claim=claim("cli-analysis"),
+                ),
+                Path(temporary_directory) / "production",
+                package_metadata=package_metadata,
+            )
+            production_text = production_manifest.read_text(encoding="utf-8")
 
         self.assertIn('resolver = "2"', text)
-        self.assertIn('"analysis" = ["dep:renamed-core"]', text)
         self.assertIn('[target."cfg(unix)".dependencies]', text)
-        self.assertIn('"renamed-core" = {', text)
-        self.assertIn('package = "merman-core"', text)
+        self.assertIn('"renamed-model" = {', text)
+        self.assertIn('package = "merman-model"', text)
         self.assertIn('optional = true', text)
         self.assertIn('default-features = false', text)
-        self.assertIn('features = ["svg"]', text)
+        self.assertIn('features = ["presentation-data"]', text)
         self.assertNotIn("ignored-build-tool", text)
+        self.assertIn("[build-dependencies]", production_text)
+        self.assertIn('"build-tool" = {', production_text)
+        self.assertIn('[target."cfg(unix)".dependencies]', production_text)
+
+        retained_members = [
+            "local-analysis",
+            "ignored-dev-tool",
+            "dep:renamed-model",
+            "renamed-model?/presentation-data",
+            "renamed-model/diagram-agentflow",
+        ]
+        for normal_build, manifest_text in [(False, text), (True, production_text)]:
+            with self.subTest(normal_build=normal_build):
+                document = tomllib.loads(manifest_text)
+                self.assertEqual(
+                    document["features"],
+                    {
+                        "analysis": retained_members + ([
+                            "dep:build-tool", "build-tool?/derive", "build-tool/derive",
+                        ] if normal_build else []),
+                        "local-analysis": [],
+                        "ignored-dev-tool": [],
+                    },
+                )
+                self.assertNotIn("dev-dependencies", document)
+                self.assertNotIn("dependencies", document)
+                self.assertEqual(
+                    set(document["target"]["cfg(unix)"]["dependencies"]),
+                    {"renamed-model"},
+                )
+                self.assertNotIn("dev-dependencies", document["target"]["cfg(unix)"])
+                self.assertEqual(
+                    set(document.get("build-dependencies", {})),
+                    {"build-tool"} if normal_build else set(),
+                )
 
     def test_probe_rejects_an_empty_explicit_package_projection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -912,6 +1069,73 @@ class ClaimTests(unittest.TestCase):
 
 
 class VerificationTests(unittest.TestCase):
+    def test_normal_build_observation_keeps_runtime_checks_and_includes_proc_macros(self) -> None:
+        current = case(
+            loaded_claim=claim("fixture", forbidden=("tokio",)),
+            normal_build_claim=claim("fixture"),
+        )
+        document = metadata_document(
+            "fixture", {"fixture": (), "tokio": (), "derive-tool": ()},
+            proc_macros=("derive-tool",),
+        )
+        commands = []
+
+        def runner(command):
+            commands.append(command)
+            if command[1] == "metadata":
+                stdout = json.dumps(document)
+            elif command[command.index("--edges") + 1] == "normal,build":
+                stdout = "fixture v1.2.3\t\ntokio v1.2.3\t\nderive-tool v1.2.3\t\n"
+            else:
+                stdout = "fixture v1.2.3\t\n"
+            return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+        observations = verify_cases(
+            (current, current), runner=runner, probe_preparer=write_test_metadata_probe,
+        )
+        self.assertEqual([command[1] for command in commands], ["metadata", "tree", "tree"])
+        self.assertEqual(
+            [(item.dependency_scope, item.package_count) for item in observations],
+            [("runtime", 1), ("normal-build", 3)] * 2,
+        )
+
+    def test_normal_build_leaks_fail_even_when_the_runtime_graph_is_clean(self) -> None:
+        for package in ["json5", "source-derive"]:
+            with self.subTest(package=package):
+                current = case(normal_build_claim=claim("fixture", forbidden=(package,)))
+                document = metadata_document(
+                    "fixture", {"fixture": (), package: ()},
+                    proc_macros=(package,) if package == "source-derive" else (),
+                )
+
+                def runner(command):
+                    if command[1] == "metadata":
+                        stdout = json.dumps(document)
+                    elif command[command.index("--edges") + 1] == "normal,build":
+                        stdout = f"fixture v1.2.3\t\n{package} v1.2.3\t\n"
+                    else:
+                        stdout = "fixture v1.2.3\t\n"
+                    return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+                with self.assertRaises(ClosureVerificationError) as raised:
+                    verify_cases(
+                        (current,), runner=runner, probe_preparer=write_test_metadata_probe,
+                    )
+                self.assertIn("normal-build", str(raised.exception))
+                self.assertIn(f"forbidden packages present: {package}", str(raised.exception))
+
+    def test_normal_build_command_failure_is_fail_closed(self) -> None:
+        current = case(normal_build_claim=claim("fixture"))
+        output = json.dumps(metadata_document("fixture", {"fixture": ()}))
+
+        def runner(command):
+            if command[1] == "tree" and command[command.index("--edges") + 1] == "normal,build":
+                return subprocess.CompletedProcess(command, 101, stdout="", stderr="build graph failed")
+            return successful_cargo_result(command, output)
+
+        with self.assertRaisesRegex(ClosureVerificationError, "cargo tree normal/build exited with 101"):
+            verify_cases((current,), runner=runner, probe_preparer=write_test_metadata_probe)
+
     def test_every_target_runs_once_and_produces_runtime_evidence(self) -> None:
         targets = ("target-one", "target-two")
         loaded = recipe(

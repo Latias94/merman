@@ -225,7 +225,7 @@ fn policy_descriptors_drive_runtime_classification_and_field_schema_scope() {
                 .try_with_fixed_local_offset_minutes(60)
                 .unwrap(),
             AnalysisConfigPolicyId::SiteConfig => AnalysisOptions::default().with_site_config(
-                merman_core::MermaidConfig::from_value(json!({ "theme": "dark" })),
+                merman_model::MermaidConfig::from_value(json!({ "theme": "dark" })),
             ),
             AnalysisConfigPolicyId::Resources => {
                 AnalysisOptions::default().with_max_source_bytes(Some(1))

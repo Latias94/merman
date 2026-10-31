@@ -6,7 +6,7 @@ Parser-backed Mermaid diagnostics, lint metadata, and document source mapping wi
 
 Use `merman-analysis` directly when a Rust application needs to validate Mermaid, inspect diagnostics, analyze Markdown/MDX fences, or build editor tooling. Use [`merman`](https://crates.io/crates/merman) for rendering, [`merman-cli`](https://crates.io/crates/merman-cli) for command-line linting, or [`merman-lsp`](https://crates.io/crates/merman-lsp) for an editor protocol.
 
-This guide targets `merman-analysis 0.9.3`. Match the documentation and generated artifacts to the version installed in your project.
+This guide describes the current development checkout. Published `merman-analysis 0.9.3` retains its tagged API; the requested-fix feature and canonical model imports below belong to the next breaking development release. Match documentation and generated artifacts to the source or version in use.
 
 ## Source Feature Selection
 
@@ -48,6 +48,34 @@ Choose the narrowest API that owns the result you need:
 | Shared source storage and cooperative cancellation | `Analyzer::analyze_generation_shared_cancellable()` |
 
 `Analyzer::analyze_generation` returns `AnalysisCaptureOutcome` so callers can distinguish a completed `AnalysisGeneration` from an `AnalysisRejection`. A rejection exposes a typed `AnalysisResourceLimit` and its canonical diagnostics payload. A generation is bound to the parser environment and snapshot policy used for capture, but retains only the opaque environment identity and source metadata needed after parsing. It does not retain the site/runtime policy or an initial diagnostics payload. Call `AnalysisGeneration::project` with a diagnostic policy when the same capture needs another diagnostics projection.
+
+Fix generation requires both the optional `fixes` Cargo feature and a per-projection request.
+`AnalysisDiagnosticPolicy::fix_generation` defaults to `FixGeneration::Omit`, including in
+fixes-enabled builds. An editor or command that needs replacement edits can reuse the generation:
+
+```rust
+# #[cfg(feature = "fixes")]
+# {
+use merman_analysis::{AnalysisRuleProfile, Analyzer, FixGeneration};
+
+let analyzer = Analyzer::new();
+let generation = analyzer
+    .analyze_generation("%%{ init: {theme: 'dark'} }%%\nflowchart TD\nA-->B\n")
+    .into_ready()
+    .expect("source is within the configured analysis limit");
+let mut policy = analyzer.options().diagnostic_policy().clone();
+policy.rule_config = policy.rule_config.with_profile(AnalysisRuleProfile::Recommended);
+let diagnostics = generation.project(&policy);
+let with_fixes = generation.project(&policy.with_fix_generation(FixGeneration::Generate));
+assert_eq!(diagnostics.diagnostics.len(), with_fixes.diagnostics.len());
+# }
+```
+
+`AnalysisOptions::with_fix_generation` selects the policy for convenience entry points such as
+`Analyzer::analyze`. The selection changes neither snapshot identity nor options JSON. Without
+`fixes`, `FixGeneration::Generate` is unavailable and the YAML writer dependency is absent;
+`DiagnosticFix`, `DiagnosticFixEdit`, and their wire fields remain available for construction,
+decoding, and forwarding.
 
 The configured `SourceDescriptor` selects the canonical capture path. `SourceKind::Diagram` analyzes the whole input as one Mermaid diagram, while `SourceKind::Markdown` and `SourceKind::Mdx` extract fences and enforce `max_document_diagrams`; Analyzer entry points cannot create a Markdown identity around whole-document Mermaid facts. The free `analyze_document*` functions remain useful when the source descriptor varies per call.
 
@@ -99,7 +127,13 @@ let options = AnalysisOptions::default()
 
 `DiagnosticFix::edits` is shared immutable storage. Cloning a fix or projecting the same document-wide fix onto multiple diagnostics shares one edit allocation while JSON continues to serialize `edits` as the schema-1 array. Retained memory is therefore linear in the shared edit allocation, but schema-1 wire output still repeats the complete array for every diagnostic that owns the action; removing that wire repetition requires a future schema revision. Iterate or index the slice as before; construct fixes with `DiagnosticFix::new` instead of mutating the edit collection in place.
 
-Init-directive migration fixes are advisory and resource-bounded independently from source admission. Analysis skips the fix, while retaining the diagnostic, when the captured source config overrides exceed their 1 MiB owned-value budget, existing frontmatter input or materialized YAML exceeds 1 MiB, nesting exceeds 64 levels, the action would require more than 128 edits, or the final replacement exceeds 2 MiB. Frontmatter discovery, YAML parsing, rewrite scans, and output writes observe caller cancellation. Serializer-internal scalar formatting is a bounded atomic region constrained by those input, materialization, nesting, and output limits; the 2 MiB value is a final output-length bound rather than an exact peak-allocation claim.
+With `fixes` enabled, canonical candidates retain bounded immutable authored values and source
+locations from the original parse. Projection applies rule filtering, suppression, and severity
+before constructing any replacement text. Each diagram's aggregate frontmatter migration is
+generated and mapped once per projection, sharing its edit allocation across diagnostic owners.
+Later projections reuse the captured evidence without reparsing or retaining a mutable fix cache.
+
+Init-directive migration fixes are advisory and resource-bounded independently from source admission. Analysis skips the fix, while retaining the diagnostic, when the captured source config overrides exceed their 1 MiB owned-value budget, existing frontmatter input or materialized YAML exceeds 1 MiB, nesting exceeds 64 levels, the action would require more than 128 edits, or the final replacement exceeds 2 MiB. Capture, rewrite scans, and output writes observe caller cancellation. Serializer-internal scalar formatting is a bounded atomic region constrained by those input, materialization, nesting, and output limits; the 2 MiB value is a final output-length bound rather than an exact peak-allocation claim.
 
 ## What This Crate Owns
 

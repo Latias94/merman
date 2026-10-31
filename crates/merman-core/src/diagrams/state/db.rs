@@ -1,12 +1,10 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{
     Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult, Result,
 };
 use indexmap::IndexMap;
-#[cfg(feature = "compat-json")]
-use serde_json::Map;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -17,8 +15,8 @@ use super::model::StateModelConstruction;
 #[cfg(feature = "presentation")]
 use super::render_model::StateNodePresentation;
 use super::{
-    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDocument, StateDocumentId, StateEdge, StateLink,
-    StateLinks, StateNode, StateNote, StateRecord, StateRelation, StateStatement,
+    CSS_EDGE_NOTE_EDGE, StateDiagramModel, StateDocumentId, StateDocumentScratch, StateEdge,
+    StateLink, StateLinks, StateNode, StateNote, StateRecord, StateRelation, StateStatement,
     StateStatementNote, StateStatementState, StateStyleClass,
 };
 
@@ -50,7 +48,7 @@ struct StateDbRecord {
 
 #[derive(Debug, Default)]
 pub(super) struct StateDb {
-    document: StateDocument,
+    document: StateDocumentScratch,
     states: HashMap<String, StateDbRecord>,
     state_order: Vec<String>,
     relations: Vec<RelationEdge>,
@@ -109,7 +107,7 @@ impl StateDb {
 
     pub(super) fn set_root_doc(
         &mut self,
-        mut document: StateDocument,
+        mut document: StateDocumentScratch,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         self.translate_doc(&mut document, control)?;
@@ -129,11 +127,11 @@ impl StateDb {
 
     fn translate_state_concurrency_split(
         &mut self,
-        document: &mut StateDocument,
+        document: &mut StateDocumentScratch,
         doc: StateDocumentId,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        let old = std::mem::take(&mut document.documents[doc.0]);
+        let old = std::mem::take(document.get_mut(doc));
         let mut out = Vec::new();
         let mut current = Vec::new();
         let mut saw_divider = false;
@@ -155,13 +153,13 @@ impl StateDb {
             divider.doc = Some(document.push(std::mem::take(&mut current)));
             out.push(StateStatement::State(divider));
         }
-        document.documents[doc.0] = if saw_divider { out } else { current };
+        *document.get_mut(doc) = if saw_divider { out } else { current };
         Ok(())
     }
 
     fn translate_doc(
         &mut self,
-        document: &mut StateDocument,
+        document: &mut StateDocumentScratch,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         let Some(root) = document.root else {
@@ -173,7 +171,7 @@ impl StateDb {
             if inspected.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            let Some(stmt) = document.documents[doc.0].get_mut(*index) else {
+            let Some(stmt) = document.get_mut(*doc).get_mut(*index) else {
                 stack.pop();
                 continue;
             };
@@ -415,7 +413,7 @@ impl StateDb {
     }
 
     #[cfg(feature = "compat-json")]
-    pub(super) fn into_model(self, meta: &PresentationMetadata) -> Result<Value> {
+    pub(super) fn into_model(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let model = self
             .into_model_controlled(meta, &OperationControl::new())
             .expect("a private operation control cannot be cancelled")?;
@@ -425,7 +423,7 @@ impl StateDb {
     #[cfg(feature = "presentation")]
     pub(super) fn into_model_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
         match self.into_canonical_model_controlled(
@@ -434,9 +432,11 @@ impl StateDb {
             true,
             control,
         )? {
-            Ok(construction) => Ok(Ok(
-                construction.into_render_model(meta.effective_config.as_config(), control)?
-            )),
+            Ok(construction) => Ok(Ok(super::render_model::into_render_model(
+                construction,
+                meta.effective_config.as_config(),
+                control,
+            )?)),
             Err(error) => Ok(Err(error)),
         }
     }
@@ -593,6 +593,14 @@ impl StateDb {
             links.insert(key, declarations);
         }
 
+        let document = match document.finish_controlled(control)? {
+            Ok(document) => document,
+            Err(error) => {
+                return Ok(Err(Error::Internal(crate::InternalFailure::new(format!(
+                    "State document construction invariant failed: {error}"
+                )))));
+            }
+        };
         control.checkpoint()?;
         Ok(Ok(StateModelConstruction {
             model: StateDiagramModel {
@@ -672,19 +680,6 @@ fn state_dom_id(item_id: &str, counter: usize, ty: Option<&str>) -> String {
         .map(|t| format!("{DOMID_TYPE_SPACER}{t}"))
         .unwrap_or_default();
     format!("{DOMID_STATE}-{item_id}{type_str}-{counter}")
-}
-
-#[cfg(feature = "compat-json")]
-fn string_array_value(values: &[String]) -> Value {
-    Value::Array(values.iter().cloned().map(Value::String).collect())
-}
-
-#[cfg(feature = "compat-json")]
-fn option_string_value(value: &Option<String>) -> Value {
-    value
-        .as_ref()
-        .map(|v| Value::String(v.clone()))
-        .unwrap_or(Value::Null)
 }
 
 #[derive(Debug, Clone)]
@@ -879,7 +874,7 @@ impl From<OperationCancelled> for StateBuildError {
 }
 
 fn build_state_graph(
-    document: &StateDocument,
+    document: &StateDocumentScratch,
     states: &HashMap<String, StateDbRecord>,
     classes: &IndexMap<String, StyleClass>,
     config: &MermaidConfig,
@@ -896,7 +891,7 @@ fn build_state_graph(
     let mut graph_item_count: usize = 0;
 
     struct StateGraphContext<'a> {
-        document: &'a StateDocument,
+        document: &'a StateDocumentScratch,
         control: &'a OperationControl,
         states: &'a HashMap<String, StateDbRecord>,
         classes: &'a IndexMap<String, StyleClass>,
@@ -942,7 +937,12 @@ fn build_state_graph(
                 ctx.control.checkpoint()?;
             }
             inspected = inspected.saturating_add(1);
-            let Some(item) = ctx.document.documents[frame.doc.0].get(frame.index) else {
+            let Some(item) = ctx
+                .document
+                .get(frame.doc)
+                .expect("scratch document exists")
+                .get(frame.index)
+            else {
                 stack.pop();
                 continue;
             };
@@ -1098,7 +1098,7 @@ fn build_state_graph(
         if entry.node_type.is_none()
             && let Some(doc_id) = parsed_item.doc
         {
-            let doc = &ctx.document.documents[doc_id.0];
+            let doc = ctx.document.get(doc_id).expect("scratch document exists");
             entry.node_type = Some("group".to_string());
             entry.is_group = true;
             let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
@@ -1389,75 +1389,6 @@ fn build_state_graph(
     })
 }
 
-#[cfg(feature = "compat-json")]
-fn state_stmt_ref_to_json(state: &StateStatementState) -> Value {
-    let mut obj = Map::new();
-    obj.insert("id".to_string(), Value::String(state.id.clone()));
-    obj.insert("type".to_string(), Value::String(state.ty.clone()));
-    obj.insert("classes".to_string(), string_array_value(&state.classes));
-    Value::Object(obj)
-}
-
-#[cfg(feature = "compat-json")]
-pub(super) fn stmt_to_json_shallow(
-    stmt: &StateStatement,
-    doc: Option<crate::ManagedSemanticJson>,
-) -> crate::ManagedSemanticJson {
-    let value = match stmt {
-        StateStatement::Noop => Value::Null,
-        StateStatement::State(s) => {
-            let mut obj = Map::new();
-            obj.insert("stmt".to_string(), Value::String("state".to_string()));
-            obj.insert("id".to_string(), Value::String(s.id.clone()));
-            obj.insert("type".to_string(), Value::String(s.ty.clone()));
-            obj.insert(
-                "description".to_string(),
-                option_string_value(&s.description),
-            );
-            obj.insert(
-                "doc".to_string(),
-                doc.map(crate::ManagedSemanticJson::into_unmanaged_value)
-                    .unwrap_or(Value::Null),
-            );
-            obj.insert("classes".to_string(), string_array_value(&s.classes));
-            Value::Object(obj)
-        }
-        StateStatement::Relation(relation) => {
-            let mut obj = Map::new();
-            obj.insert("stmt".to_string(), Value::String("relation".to_string()));
-            obj.insert(
-                "state1".to_string(),
-                state_stmt_ref_to_json(&relation.state1),
-            );
-            obj.insert(
-                "state2".to_string(),
-                state_stmt_ref_to_json(&relation.state2),
-            );
-            obj.insert(
-                "description".to_string(),
-                option_string_value(&relation.description),
-            );
-            Value::Object(obj)
-        }
-        StateStatement::ClassDef { id, classes } => {
-            json!({ "stmt": "classDef", "id": id, "classes": classes })
-        }
-        StateStatement::ApplyClass { ids, class_name } => {
-            json!({ "stmt": "applyClass", "id": ids, "styleClass": class_name })
-        }
-        StateStatement::Style { ids, styles } => {
-            json!({ "stmt": "style", "id": ids, "styleClass": styles })
-        }
-        StateStatement::Direction(v) => json!({ "stmt": "dir", "value": v }),
-        StateStatement::AccTitle(t) => json!(t),
-        StateStatement::AccDescr(d) => json!(d),
-        StateStatement::Click(c) => {
-            json!({ "stmt": "click", "id": c.id, "url": c.url, "tooltip": c.tooltip })
-        }
-    };
-    value.into()
-}
-
 fn normalize_multiline_ws(input: &str) -> String {
     let trimmed = input.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
     let mut out = String::with_capacity(trimmed.len());
@@ -1480,16 +1411,16 @@ fn normalize_multiline_ws(input: &str) -> String {
 mod tests {
     use crate::diagrams::state::parse_state_model_for_render_controlled;
     use crate::{
-        MermaidConfig, MermaidEngine, OperationControl, ParseOptions, PresentationMetadata,
+        MermaidConfig, MermaidEngine, OperationControl, ParseOptions, SourcePresentationMetadata,
     };
     use serde_json::json;
 
-    fn meta(config: serde_json::Value) -> PresentationMetadata {
+    fn meta(config: serde_json::Value) -> SourcePresentationMetadata {
         let config = MermaidConfig::from_value(config);
-        PresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "stateDiagram".to_string(),
             config: config.clone(),
-            effective_config: crate::presentation::PresentationConfig::from_config(config),
+            effective_config: crate::presentation::SourcePresentationConfig::from_config(config),
             title: None,
         }
     }
@@ -1511,7 +1442,7 @@ mod tests {
             "click Done \"https://example.com/only\" \"Only tip\"\n",
         );
         let control = OperationControl::new();
-        let mut document = StateDocument::default();
+        let mut document = StateDocumentScratch::default();
         let root = state_grammar::RootParser::new()
             .parse(&mut document, Lexer::new(source))
             .expect("real State grammar accepts the ownership fixture");
@@ -1542,7 +1473,7 @@ mod tests {
             }
         }
 
-        let document_storage = db.document.documents.as_ptr();
+        let document_storage = db.document.root_statements().as_ptr();
         let common = (
             db.direction.as_ref().unwrap().as_ptr(),
             db.acc_title.as_ref().unwrap().as_ptr(),
@@ -1621,7 +1552,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(render_model::projected_document_count(), 0);
-        assert_eq!(model.document.documents.as_ptr(), document_storage);
+        assert_eq!(
+            model
+                .document
+                .get(model.document.root().unwrap())
+                .unwrap()
+                .as_ptr(),
+            document_storage
+        );
         assert_eq!(
             (
                 model.direction.as_ptr(),
@@ -1790,7 +1728,7 @@ mod tests {
             "style Ready fill:green,font-weight:bold\nReady --> Done\n",
         );
         let control = OperationControl::new();
-        let mut document = StateDocument::default();
+        let mut document = StateDocumentScratch::default();
         let root = state_grammar::RootParser::new()
             .parse(&mut document, Lexer::new(source))
             .expect("real State grammar accepts the slack fixture");
@@ -1954,7 +1892,7 @@ mod tests {
         use crate::diagrams::state::{Lexer, state_grammar};
 
         let control = OperationControl::new();
-        let mut document = StateDocument::default();
+        let mut document = StateDocumentScratch::default();
         let root = state_grammar::RootParser::new()
             .parse(
                 &mut document,
@@ -1963,7 +1901,7 @@ mod tests {
             .unwrap();
         document.root = Some(root);
         // The legacy hidden-note representation is programmatic, not authored grammar syntax.
-        let [StateStatement::State(state)] = document.documents[root.0].as_mut_slice() else {
+        let [StateStatement::State(state)] = document.get_mut(root).as_mut_slice() else {
             panic!("real grammar produces the positioned-note owner");
         };
         state.note.as_mut().unwrap().position = None;

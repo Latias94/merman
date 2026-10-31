@@ -2,7 +2,7 @@ use crate::{
     AnalysisConfigContract, AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile,
     DiagnosticSeverity,
 };
-use merman_core::{
+use merman_model::{
     MermaidConfig,
     time::{CivilDate, UtcOffset},
 };
@@ -129,7 +129,7 @@ impl AnalysisOptionsJson {
         let mut analysis = AnalysisOptions::default()
             .with_max_source_bytes(Self::resource_limit_from(
                 limits,
-                merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+                merman_model::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
             ))
             .with_max_document_diagrams(Self::resource_limit_from(
                 limits,
@@ -157,7 +157,7 @@ impl AnalysisOptionsJson {
     pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
         Ok(Self::resource_limit_from(
             self.validated_resource_limits()?,
-            merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+            merman_model::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
         ))
     }
 
@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(0));
         assert_eq!(
             context.clock_source(),
-            merman_core::runtime::RuntimeValueSource::Fixed
+            merman_model::runtime::RuntimeValueSource::Fixed
         );
     }
 

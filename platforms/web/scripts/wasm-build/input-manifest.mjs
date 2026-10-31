@@ -220,9 +220,15 @@ export function cargoMetadataForPreset({
       ],
       repoRoot,
     );
+    const repositoryPackageIds = new Set(
+      lockedRepositoryMetadata.packages.map((packageInfo) => packageInfo.id),
+    );
     return {
       ...probeMetadata,
-      wasm_input_package_ids: selectedCargoTreePackages(probeMetadata, treeOutput),
+      // The isolated consumer is not an input even when TMP is inside the repository.
+      wasm_input_package_ids: selectedCargoTreePackages(probeMetadata, treeOutput).filter(
+        (id) => repositoryPackageIds.has(id),
+      ),
     };
   } finally {
     rmSync(probeRoot, { recursive: true, force: true });
@@ -374,7 +380,7 @@ function workspaceDependencyPackages(metadata, repoRoot) {
   }
   const packagesById = new Map(metadata.packages.map((item) => [item.id, item]));
   const selected = metadata.wasm_input_package_ids;
-  if (!Array.isArray(selected) || !selected.includes(metadata.resolve.root)) {
+  if (!Array.isArray(selected) || selected.length === 0) {
     throw new Error("cargo metadata is missing the selected WASM input package tree.");
   }
   for (const id of selected) {

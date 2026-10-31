@@ -56,7 +56,7 @@ fn er_redux_color_id(border_colors: &[String], color_index: usize) -> Option<Str
 }
 
 fn er_color_indices(
-    model: &merman_core::diagrams::er::ErDiagramModel,
+    model: &merman_model::families::er::ErDiagramModel,
 ) -> std::collections::HashMap<String, usize> {
     fn insertion_index(id: &str) -> Option<usize> {
         id.rsplit_once('-')?.1.parse().ok()
@@ -292,7 +292,7 @@ fn render_er_subgraph_cluster(
 fn render_er_subgraph_clusters(
     out: &mut impl SvgOutput,
     clusters: &[crate::model::LayoutCluster],
-    model: &merman_core::diagrams::er::ErDiagramModel,
+    model: &merman_model::families::er::ErDiagramModel,
     context: ErSubgraphRenderContext<'_>,
     receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
 ) -> Result<()> {
@@ -383,9 +383,9 @@ fn write_er_marker_definition(
 
 pub(crate) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
-    model: &merman_core::diagrams::er::ErDiagramModel,
+    model: &merman_model::families::er::ErDiagramModel,
     entity_theme: &crate::er::ErEntityThemePlan,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
@@ -2100,8 +2100,7 @@ mod tests {
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use indexmap::IndexMap;
-    use merman_core::diagrams::er::{ErDiagramModel, ErEntity};
-    use merman_core::presentation::PresentationConfig;
+    use merman_model::families::er::{ErDiagramModel, ErEntity};
     use serde_json::json;
     use std::fmt;
     use std::ops::Range;
@@ -2199,11 +2198,11 @@ mod tests {
         });
         let fonts = crate::family::InheritedFontStackPlan::resolve_property_local(
             None,
-            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
         );
         let size = crate::er::ErBaseFontSizePlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
         );
         let theme = crate::er::ErCssBinding::resolve(&config, &fonts, &size);
         let borders = &theme.redux_border_colors;
@@ -2343,7 +2342,7 @@ mod tests {
             diagram_id: Some("er-colors".to_string()),
             ..SvgRenderOptions::default()
         };
-        let effective_config = PresentationConfig::from_value(config.clone());
+        let effective_config = crate::test_support::presentation_config(config.clone());
         let svg = with_test_svg_execution(DiagramFamilyId::ER, &options, |options| {
             let entity_theme = crate::er::ErEntityThemePlan::resolve(
                 None,

@@ -550,7 +550,7 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     node_id: &str,
 ) -> crate::Result<()> {
     ctx.work_meter
-        .checkpoint(merman_core::OperationPhase::Layout)
+        .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)?;
     if !ctx.layout_nodes_by_id.contains_key(node_id) {
         return Ok(());
@@ -571,6 +571,6 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     };
     shapes::advance_rough_geometry(ctx, &geometry, &mut label)?;
     ctx.work_meter
-        .checkpoint(merman_core::OperationPhase::Layout)
+        .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)
 }

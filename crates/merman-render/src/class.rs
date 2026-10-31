@@ -42,9 +42,9 @@ pub(crate) use theme::{
     ClassThemeOutcomes,
 };
 
-type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
-type ClassNode = merman_core::models::class_diagram::ClassNode;
-type ClassNote<'a> = merman_core::models::class_diagram::ClassNoteRenderView<'a>;
+type ClassDiagramModel = merman_model::families::class::ClassDiagram;
+type ClassNode = merman_model::families::class::ClassNode;
+type ClassNote<'a> = merman_model::families::class::ClassNoteRenderView<'a>;
 type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
 
@@ -122,7 +122,7 @@ pub(crate) fn class_layout_work_units(
     model: &ClassDiagramModel,
     work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
-    let complexity = merman_core::resources::ClassComplexity::from_model(model);
+    let complexity = merman_model::resources::ClassComplexity::from_model(model);
     let baseline = work_control.checked_mul(
         work_control.checked_add(complexity.nodes, complexity.edges)?,
         4,
@@ -144,7 +144,7 @@ pub(crate) fn class_layout_work_units(
 }
 
 pub(crate) fn class_member_display_text(
-    member: &merman_core::models::class_diagram::ClassMember,
+    member: &merman_model::families::class::ClassMember,
 ) -> String {
     // Mermaid ClassMember.parseMember preserves internal attribute whitespace in `text`;
     // shapeUtil.addText passes that text directly to createText, including spaces around ':'.
@@ -152,7 +152,7 @@ pub(crate) fn class_member_display_text(
 }
 
 pub(crate) fn class_member_create_text_input(
-    member: &merman_core::models::class_diagram::ClassMember,
+    member: &merman_model::families::class::ClassMember,
 ) -> String {
     class_member_display_text(member)
         .replace('<', "&lt;")
@@ -1243,7 +1243,7 @@ fn layout_prepared_node(
 
 struct ClassBoxMeasureCtx<'a> {
     measurer: &'a dyn TextMeasurer,
-    mermaid_config: &'a merman_core::presentation::PresentationConfig,
+    mermaid_config: &'a merman_model::presentation::PresentationConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     text_style: &'a TextStyle,
     html_calc_text_style: &'a TextStyle,
@@ -1260,7 +1260,7 @@ pub(crate) fn class_math_label_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_width_px: Option<f64>,
-    mermaid_config: &merman_core::presentation::PresentationConfig,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Option<crate::text::TextMetrics> {
     if !crate::math::contains_delimited_math(text) {
@@ -1810,7 +1810,7 @@ fn class_box_dimensions(
     let title_style_facts = label_style_facts(title_visible_style_facts.as_ref(), &title_text, "");
 
     let capture_fallback_row_metrics = capture_row_metrics && !prepare_html_labels;
-    let measure_rows = |rows: &[merman_core::models::class_diagram::ClassMember]| {
+    let measure_rows = |rows: &[merman_model::families::class::ClassMember]| {
         let mut rows_rect: Option<Rect> = None;
         let mut style_facts = ClassNodeLabelStyleFacts::default();
         let mut metrics_out: Option<Vec<crate::text::TextMetrics>> =
@@ -2102,10 +2102,10 @@ pub(crate) fn class_normalize_xhtml_br_tags(html: &str) -> String {
 
 pub(crate) fn class_note_html_fragment(
     note_src: &str,
-    mermaid_config: &merman_core::presentation::PresentationConfig,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
 ) -> String {
     let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-    let note_html = merman_core::sanitize::sanitize_xhtml(&note_html, mermaid_config.as_config());
+    let note_html = merman_markup::sanitize::sanitize_xhtml(&note_html, mermaid_config.as_config());
     class_normalize_xhtml_br_tags(&note_html)
 }
 
@@ -2113,7 +2113,7 @@ pub(crate) fn class_html_measure_note_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     note_src: &str,
-    mermaid_config: &merman_core::presentation::PresentationConfig,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
 ) -> crate::text::TextMetrics {
     let html = class_note_html_fragment(note_src, mermaid_config);
     crate::text::measure_html_with_inline_styles(measurer, &html, style, None, WrapMode::HtmlLike)
@@ -2486,7 +2486,7 @@ fn note_dimensions(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
     padding: f64,
-    mermaid_config: Option<&merman_core::presentation::PresentationConfig>,
+    mermaid_config: Option<&merman_model::presentation::PresentationConfig>,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64, crate::text::TextMetrics) {
     let p = padding.max(0.0);
@@ -2511,7 +2511,7 @@ fn label_metrics(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    mermaid_config: &merman_core::presentation::PresentationConfig,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64) {
     if text.trim().is_empty() {
@@ -2535,7 +2535,7 @@ fn prepare_edge_title(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    mermaid_config: &merman_core::presentation::PresentationConfig,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> (f64, f64, Option<ClassSvgLabel>) {
     let trimmed = text.trim();
@@ -2588,7 +2588,7 @@ fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: 
 
 pub(crate) fn layout_class_diagram_typed_with_config(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     typography_theme: &ClassTextThemePlan,
@@ -2622,7 +2622,7 @@ pub(crate) fn layout_class_diagram_typed_with_config(
 )]
 pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
@@ -2665,7 +2665,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
 )]
 fn measure_class_diagram(
     model: &ClassDiagramModel,
-    mermaid_config: &merman_core::presentation::PresentationConfig,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     render_config: &ClassRenderConfig,
@@ -3156,7 +3156,7 @@ fn layout_class_diagram_dagre(
 #[doc(hidden)]
 pub fn debug_build_class_diagram_dagre_graph(
     model: &ClassDiagramModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
     let typography_theme = ClassTextThemePlan::resolve(None, effective_config);
@@ -3227,11 +3227,11 @@ fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
 
         let mut next_depth = inherited_depth.unwrap_or(0);
         for index in path.into_iter().rev() {
-            if next_depth > merman_core::MAX_DIAGRAM_NESTING_DEPTH {
+            if next_depth > merman_model::MAX_DIAGRAM_NESTING_DEPTH {
                 return Err(Error::InvalidModel {
                     message: format!(
                         "class namespace nesting depth exceeds {} at {}",
-                        merman_core::MAX_DIAGRAM_NESTING_DEPTH,
+                        merman_model::MAX_DIAGRAM_NESTING_DEPTH,
                         ids[index]
                     ),
                 });
@@ -3943,8 +3943,9 @@ fn compute_bounds(
 mod tests {
     use dugong::graphlib::{Graph, GraphOptions};
     use dugong::{EdgeLabel, GraphLabel, NodeLabel};
-    use merman_core::models::class_diagram::Namespace;
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::families::class::Namespace;
+    use merman_model::presentation::RenderSemanticModel;
 
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
@@ -3959,13 +3960,13 @@ mod tests {
                 ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
-        let config = merman_core::presentation::PresentationConfig::from_value(
-            serde_json::json!({"htmlLabels":true}),
-        );
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
         let typography = super::ClassTextThemePlan::resolve(None, &config);
         let render_config = super::ClassRenderConfig::resolve(&config, &typography);
         let meter = Arc::new(OperationWorkMeter::new(
@@ -4041,13 +4042,13 @@ mod tests {
             let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::default())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let RenderSemanticModel::Class(model) = parsed.model() else {
                 panic!("expected Class model");
             };
-            let config = merman_core::presentation::PresentationConfig::from_value(
-                serde_json::json!({"htmlLabels":true}),
-            );
+            let config =
+                crate::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
             let typography = super::ClassTextThemePlan::resolve(None, &config);
             let render_config = super::ClassRenderConfig::resolve(&config, &typography);
             let measurer = DeterministicTextMeasurer::default();
@@ -4170,7 +4171,7 @@ mod tests {
 
         struct CancellingMeasurer {
             meter: Arc<OperationWorkMeter>,
-            control: merman_core::OperationControl,
+            control: merman_model::OperationControl,
         }
 
         impl TextMeasurer for CancellingMeasurer {
@@ -4199,16 +4200,16 @@ mod tests {
                 ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
-        let config = merman_core::presentation::PresentationConfig::from_value(
-            serde_json::json!({"htmlLabels":true}),
-        );
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
         let typography = super::ClassTextThemePlan::resolve(None, &config);
         let render_config = super::ClassRenderConfig::resolve(&config, &typography);
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let meter = Arc::new(OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control.clone(),
@@ -4246,9 +4247,10 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         for cancel in [false, true] {
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::OperationControl::new();
             let session = RenderEnvironment::deterministic()
                 .with_resource_policy(
                     RenderResourcePolicy::unbounded_for_trusted_input()
@@ -4296,13 +4298,12 @@ mod tests {
                 ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap().into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
-        let config = merman_core::presentation::PresentationConfig::from_value(
-            serde_json::json!({"htmlLabels":false}),
-        );
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"htmlLabels":false}));
         let typography = super::ClassTextThemePlan::resolve(None, &config);
         let render_config = super::ClassRenderConfig::resolve(&config, &typography);
         let measurer = DeterministicTextMeasurer::default();
@@ -4376,7 +4377,7 @@ mod tests {
     fn class_prepared_reservation_observes_cancellation_before_its_byte_ceiling() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let meter = std::sync::Arc::new(OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
@@ -4441,20 +4442,23 @@ mod tests {
                 .expect("within normal source budget");
             stage("source-budget-accepted-before-engine-parse");
             let parsed = MermaidEngine::new()
-                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-                    serde_json::json!({"htmlLabels": true, "securityLevel": security}),
-                ))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels": true, "securityLevel": security}),
+                    ),
+                )
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             stage("engine-parse-completed");
             let RenderSemanticModel::Class(model) = parsed.model() else {
                 panic!("expected Class")
             };
             policy
-                .check_model_complexity(crate::resources::ModelComplexity::from_render_model(
-                    parsed.model(),
-                ))
+                .check_model_complexity(
+                    merman_model::resources::model_complexity_from_render_model(parsed.model()),
+                )
                 .expect("within normal Class model budget");
             stage("model-budget-accepted");
             let label = model.class("Alpha").expect("Alpha class").label.clone();
@@ -4553,7 +4557,7 @@ mod tests {
                 ParseOptions::default(),
             )
             .expect("parse Class member whitespace")
-            .expect("detect Class diagram");
+            .expect("detect Class diagram").into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
@@ -4591,7 +4595,8 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse Class fixture")
-            .expect("detect Class fixture");
+            .expect("detect Class fixture")
+            .into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class render model");
         };
@@ -4623,7 +4628,8 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse Class source")
-            .expect("detect Class source");
+            .expect("detect Class source")
+            .into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
@@ -4706,7 +4712,8 @@ mod tests {
                     let parsed = MermaidEngine::new()
                         .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                         .unwrap()
-                        .unwrap();
+                        .unwrap()
+                        .into_presentation();
                     let RenderSemanticModel::Class(model) = parsed.model() else {
                         panic!("Class model")
                     };
@@ -4803,7 +4810,8 @@ mod tests {
                     ParseOptions::default(),
                 )
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let RenderSemanticModel::Class(model) = parsed.model() else {
                 panic!("Class model")
             };
@@ -4943,7 +4951,8 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("classDiagram\nA --> B", ParseOptions::default())
             .expect("parse Class source")
-            .expect("detect Class source");
+            .expect("detect Class source")
+            .into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
@@ -5051,7 +5060,7 @@ mod tests {
         fn render_html_label(
             &self,
             text: &str,
-            _config: &merman_core::presentation::PresentationConfig,
+            _config: &merman_model::presentation::PresentationConfig,
         ) -> Option<String> {
             text.contains("$$").then(|| text.to_string())
         }
@@ -5059,7 +5068,7 @@ mod tests {
         fn measure_html_label(
             &self,
             text: &str,
-            _config: &merman_core::presentation::PresentationConfig,
+            _config: &merman_model::presentation::PresentationConfig,
             _style: &TextStyle,
             _max_width_px: Option<f64>,
             _wrap_mode: WrapMode,
@@ -5082,7 +5091,7 @@ mod tests {
     }
 
     fn class_model_with_namespace_chain(count: usize) -> super::ClassDiagramModel {
-        let mut model: merman_core::models::class_diagram::ClassDiagramModel =
+        let mut model: merman_model::families::class::ClassDiagramModel =
             serde_json::from_value(serde_json::json!({
                 "type": "classDiagram",
                 "direction": "TB",
@@ -5114,7 +5123,7 @@ mod tests {
                 },
             );
         }
-        super::ClassDiagramModel::new(model, &merman_core::MermaidConfig::default())
+        super::ClassDiagramModel::new(model, &merman_model::MermaidConfig::default())
     }
 
     fn class_candidate_test_graph(
@@ -5246,7 +5255,7 @@ mod tests {
 
     #[test]
     fn class_namespace_hierarchy_accepts_the_shared_depth_boundary() {
-        let model = class_model_with_namespace_chain(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1);
+        let model = class_model_with_namespace_chain(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1);
 
         super::validate_class_namespace_hierarchy(&model)
             .expect("the shared maximum namespace nesting depth is valid");
@@ -5254,7 +5263,7 @@ mod tests {
 
     #[test]
     fn class_namespace_hierarchy_rejects_excessive_depth_without_recursion() {
-        let model = class_model_with_namespace_chain(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 2);
+        let model = class_model_with_namespace_chain(merman_model::MAX_DIAGRAM_NESTING_DEPTH + 2);
 
         let error = super::validate_class_namespace_hierarchy(&model)
             .expect_err("namespace nesting beyond the shared limit must be rejected");
@@ -5263,8 +5272,8 @@ mod tests {
             error.to_string(),
             format!(
                 "invalid semantic model: class namespace nesting depth exceeds {} at ns{}",
-                merman_core::MAX_DIAGRAM_NESTING_DEPTH,
-                merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1
+                merman_model::MAX_DIAGRAM_NESTING_DEPTH,
+                merman_model::MAX_DIAGRAM_NESTING_DEPTH + 1
             )
         );
     }
@@ -5273,7 +5282,7 @@ mod tests {
     fn class_namespace_hierarchy_rejects_parent_cycles() {
         let mut model = class_model_with_namespace_chain(3).into_model();
         model.namespaces["ns0"].parent = Some("ns2".to_string());
-        let model = super::ClassDiagramModel::new(model, &merman_core::MermaidConfig::default());
+        let model = super::ClassDiagramModel::new(model, &merman_model::MermaidConfig::default());
 
         let error = super::validate_class_namespace_hierarchy(&model)
             .expect_err("namespace parent cycles must be rejected");
@@ -5408,14 +5417,15 @@ mod tests {
                 ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected Class model");
         };
         let mut node = model.class("Vehicle").expect("Vehicle class").node.clone();
         node.members[0].css_style = "font-size:2em".to_owned();
         node.methods[0].css_style = "font-size:150%".to_owned();
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let style = TextStyle {
             font_size: 24.0,
             ..default_style()
@@ -5528,7 +5538,7 @@ mod tests {
             "domId": "classId-Formula-0"
         }))
         .expect("Class node");
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let text_style = default_style();
         let context = super::ClassBoxMeasureCtx {
             measurer: &ClassMathGeometryMeasurer,
@@ -5551,7 +5561,7 @@ mod tests {
 
     #[test]
     fn class_svg_math_note_keeps_math_renderer_width_in_note_geometry() {
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let style = default_style();
 
         let (width, height, metrics) = super::note_dimensions(

@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -8,13 +7,16 @@ use serde_json::{Value, json};
 
 fn render(source: &str, backend: &str) -> (Value, String) {
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
-            "layout": backend, "htmlLabels": false, "look": "classic",
-            "state": { "minNodeWidth": 180 },
-        })))
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "layout": backend, "htmlLabels": false, "look": "classic",
+                "state": { "minNodeWidth": 180 },
+            })),
+        )
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse State")
-        .expect("detect State");
+        .expect("detect State")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("session");
@@ -287,15 +289,18 @@ fn state_elk_subpixel_label_width_changes_route_topology() {
         let environment = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
         let parsed = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
-                "layout": "elk", "htmlLabels": true,
-            })))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "layout": "elk", "htmlLabels": true,
+                })),
+            )
             .parse_diagram_for_render_model_sync(
                 include_str!("../../../fixtures/state/upstream_pkgtests_statediagram_spec_015.mmd"),
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let artifact = family::prepare(
             &parsed,
             &LayoutOptions::headless_svg_defaults(),
@@ -401,7 +406,7 @@ fn state_elk_terminal_guard_preserves_browser_reserved_label_lane() {
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let render_with_straightening = |straighten: bool| {
         let parsed = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
+            .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(json!({
                 "layout": "elk", "htmlLabels": true, "elk": { "straightenEdges": straighten },
             })))
             .parse_diagram_for_render_model_sync(
@@ -409,7 +414,7 @@ fn state_elk_terminal_guard_preserves_browser_reserved_label_lane() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap().into_presentation();
         family::prepare(
             &parsed,
             &LayoutOptions::headless_svg_defaults(),
@@ -582,11 +587,11 @@ fn state_elk_compound_routes_with_controlled_browser_measurements() {
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({ "layout": "elk", "htmlLabels": true })))
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(json!({ "layout": "elk", "htmlLabels": true })))
         .parse_diagram_for_render_model_sync(
             include_str!("../../../fixtures/state/upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040.mmd"),
             ParseOptions::strict(),
-        ).unwrap().unwrap();
+        ).unwrap().unwrap().into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),
@@ -731,12 +736,15 @@ fn state_elk_remaining_routes_with_controlled_browser_measurements() {
         ),
     ] {
         let parsed = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(
-                json!({"layout": "elk", "htmlLabels": true}),
-            ))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    json!({"layout": "elk", "htmlLabels": true}),
+                ),
+            )
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let artifact = family::prepare(
             &parsed,
             &LayoutOptions::headless_svg_defaults(),
@@ -884,3 +892,6 @@ fn state_elk_cyclic_entry_uses_edge_order_inside_a_container() {
     };
     assert!(y("A") < y("B") && y("A") < y("C"), "{layout}");
 }
+
+#[allow(dead_code)]
+mod common;

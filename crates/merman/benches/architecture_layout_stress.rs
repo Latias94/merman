@@ -20,14 +20,15 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
     let mut group = c.benchmark_group("layout_stress");
     group.sample_size(50);
 
-    // Benchmark the canonical operation-owned preparation seam. The parsed model clone is part of
-    // the public API cost because raw family layout entry points are intentionally crate-private.
+    // Benchmark operation-owned preparation from the borrowed presentation data. Source parsing
+    // remains outside the layout measurement.
     group.bench_function("architecture_reasonable_height_prepare_x50", move |b| {
         b.iter(|| {
             for _ in 0..50usize {
                 let session = environment.begin_session().expect("render session");
                 let artifact =
-                    family::prepare(black_box(&parsed), &layout_options, session).expect("prepare");
+                    family::prepare(black_box(parsed.presentation()), &layout_options, session)
+                        .expect("prepare");
                 black_box(artifact.family_id());
             }
         });

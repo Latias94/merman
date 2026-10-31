@@ -1,6 +1,6 @@
 use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessage};
+use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessage};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct SequenceMessageBoundMetrics {
@@ -166,7 +166,7 @@ mod tests {
     use super::{SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner};
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::text::{DeterministicTextMeasurer, TextStyle};
-    use merman_core::diagrams::sequence::{
+    use merman_model::families::sequence::{
         SequenceDiagramModel, SequenceMessage, SequenceMessagePayload,
     };
     use std::collections::BTreeMap;

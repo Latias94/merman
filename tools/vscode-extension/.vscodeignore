@@ -6,6 +6,7 @@ tsconfig.json
 .gitignore
 package-lock.json
 scripts/**
+patches/**
 *.vsix
 !dist/extension.js
 !dist/extension.js.map

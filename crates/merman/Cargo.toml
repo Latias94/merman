@@ -43,6 +43,7 @@ features = [
 artifact-profile-required = true
 
 [features]
+fixes = ["analysis", "merman-analysis/fixes", "merman-editor-core?/fixes"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -81,6 +82,7 @@ all-diagrams = [
     "diagram-zenuml",
 ]
 diagram-architecture = [
+    "merman-model/diagram-architecture",
     "merman-core/diagram-architecture",
     "merman-analysis?/diagram-architecture",
     "merman-ascii?/diagram-architecture",
@@ -88,6 +90,7 @@ diagram-architecture = [
     "merman-render?/diagram-architecture",
 ]
 diagram-block = [
+    "merman-model/diagram-block",
     "merman-core/diagram-block",
     "merman-analysis?/diagram-block",
     "merman-ascii?/diagram-block",
@@ -95,6 +98,7 @@ diagram-block = [
     "merman-render?/diagram-block",
 ]
 diagram-c4 = [
+    "merman-model/diagram-c4",
     "merman-core/diagram-c4",
     "merman-analysis?/diagram-c4",
     "merman-ascii?/diagram-c4",
@@ -102,6 +106,7 @@ diagram-c4 = [
     "merman-render?/diagram-c4",
 ]
 diagram-class = [
+    "merman-model/diagram-class",
     "merman-core/diagram-class",
     "merman-analysis?/diagram-class",
     "merman-ascii?/diagram-class",
@@ -109,6 +114,7 @@ diagram-class = [
     "merman-render?/diagram-class",
 ]
 diagram-cynefin = [
+    "merman-model/diagram-cynefin",
     "merman-core/diagram-cynefin",
     "merman-analysis?/diagram-cynefin",
     "merman-ascii?/diagram-cynefin",
@@ -116,6 +122,7 @@ diagram-cynefin = [
     "merman-render?/diagram-cynefin",
 ]
 diagram-er = [
+    "merman-model/diagram-er",
     "merman-core/diagram-er",
     "merman-analysis?/diagram-er",
     "merman-ascii?/diagram-er",
@@ -123,6 +130,7 @@ diagram-er = [
     "merman-render?/diagram-er",
 ]
 diagram-event-modeling = [
+    "merman-model/diagram-event-modeling",
     "merman-core/diagram-event-modeling",
     "merman-analysis?/diagram-event-modeling",
     "merman-ascii?/diagram-event-modeling",
@@ -130,6 +138,7 @@ diagram-event-modeling = [
     "merman-render?/diagram-event-modeling",
 ]
 diagram-agentflow = [
+    "merman-model/diagram-agentflow",
     "merman-core/diagram-agentflow",
     "merman-analysis?/diagram-agentflow",
     "merman-ascii?/diagram-agentflow",
@@ -137,6 +146,7 @@ diagram-agentflow = [
     "merman-render?/diagram-agentflow",
 ]
 diagram-usecase = [
+    "merman-model/diagram-usecase",
     "merman-core/diagram-usecase",
     "merman-analysis?/diagram-usecase",
     "merman-ascii?/diagram-usecase",
@@ -144,6 +154,7 @@ diagram-usecase = [
     "merman-render?/diagram-usecase",
 ]
 diagram-flowchart = [
+    "merman-model/diagram-flowchart",
     "merman-core/diagram-flowchart",
     "merman-analysis?/diagram-flowchart",
     "merman-ascii?/diagram-flowchart",
@@ -151,6 +162,7 @@ diagram-flowchart = [
     "merman-render?/diagram-flowchart",
 ]
 diagram-gantt = [
+    "merman-model/diagram-gantt",
     "merman-core/diagram-gantt",
     "merman-analysis?/diagram-gantt",
     "merman-ascii?/diagram-gantt",
@@ -158,6 +170,7 @@ diagram-gantt = [
     "merman-render?/diagram-gantt",
 ]
 diagram-git-graph = [
+    "merman-model/diagram-git-graph",
     "merman-core/diagram-git-graph",
     "merman-analysis?/diagram-git-graph",
     "merman-ascii?/diagram-git-graph",
@@ -165,6 +178,7 @@ diagram-git-graph = [
     "merman-render?/diagram-git-graph",
 ]
 diagram-info = [
+    "merman-model/diagram-info",
     "merman-core/diagram-info",
     "merman-analysis?/diagram-info",
     "merman-ascii?/diagram-info",
@@ -172,6 +186,7 @@ diagram-info = [
     "merman-render?/diagram-info",
 ]
 diagram-ishikawa = [
+    "merman-model/diagram-ishikawa",
     "merman-core/diagram-ishikawa",
     "merman-analysis?/diagram-ishikawa",
     "merman-ascii?/diagram-ishikawa",
@@ -179,6 +194,7 @@ diagram-ishikawa = [
     "merman-render?/diagram-ishikawa",
 ]
 diagram-journey = [
+    "merman-model/diagram-journey",
     "merman-core/diagram-journey",
     "merman-analysis?/diagram-journey",
     "merman-ascii?/diagram-journey",
@@ -186,6 +202,7 @@ diagram-journey = [
     "merman-render?/diagram-journey",
 ]
 diagram-kanban = [
+    "merman-model/diagram-kanban",
     "merman-core/diagram-kanban",
     "merman-analysis?/diagram-kanban",
     "merman-ascii?/diagram-kanban",
@@ -193,6 +210,7 @@ diagram-kanban = [
     "merman-render?/diagram-kanban",
 ]
 diagram-mindmap = [
+    "merman-model/diagram-mindmap",
     "merman-core/diagram-mindmap",
     "merman-analysis?/diagram-mindmap",
     "merman-ascii?/diagram-mindmap",
@@ -200,6 +218,7 @@ diagram-mindmap = [
     "merman-render?/diagram-mindmap",
 ]
 diagram-packet = [
+    "merman-model/diagram-packet",
     "merman-core/diagram-packet",
     "merman-analysis?/diagram-packet",
     "merman-ascii?/diagram-packet",
@@ -207,6 +226,7 @@ diagram-packet = [
     "merman-render?/diagram-packet",
 ]
 diagram-pie = [
+    "merman-model/diagram-pie",
     "merman-core/diagram-pie",
     "merman-analysis?/diagram-pie",
     "merman-ascii?/diagram-pie",
@@ -214,6 +234,7 @@ diagram-pie = [
     "merman-render?/diagram-pie",
 ]
 diagram-quadrant-chart = [
+    "merman-model/diagram-quadrant-chart",
     "merman-core/diagram-quadrant-chart",
     "merman-analysis?/diagram-quadrant-chart",
     "merman-ascii?/diagram-quadrant-chart",
@@ -221,6 +242,7 @@ diagram-quadrant-chart = [
     "merman-render?/diagram-quadrant-chart",
 ]
 diagram-radar = [
+    "merman-model/diagram-radar",
     "merman-core/diagram-radar",
     "merman-analysis?/diagram-radar",
     "merman-ascii?/diagram-radar",
@@ -228,6 +250,7 @@ diagram-radar = [
     "merman-render?/diagram-radar",
 ]
 diagram-railroad = [
+    "merman-model/diagram-railroad",
     "merman-core/diagram-railroad",
     "merman-analysis?/diagram-railroad",
     "merman-ascii?/diagram-railroad",
@@ -235,6 +258,7 @@ diagram-railroad = [
     "merman-render?/diagram-railroad",
 ]
 diagram-requirement = [
+    "merman-model/diagram-requirement",
     "merman-core/diagram-requirement",
     "merman-analysis?/diagram-requirement",
     "merman-ascii?/diagram-requirement",
@@ -242,6 +266,7 @@ diagram-requirement = [
     "merman-render?/diagram-requirement",
 ]
 diagram-sankey = [
+    "merman-model/diagram-sankey",
     "merman-core/diagram-sankey",
     "merman-analysis?/diagram-sankey",
     "merman-ascii?/diagram-sankey",
@@ -249,6 +274,7 @@ diagram-sankey = [
     "merman-render?/diagram-sankey",
 ]
 diagram-sequence = [
+    "merman-model/diagram-sequence",
     "merman-core/diagram-sequence",
     "merman-analysis?/diagram-sequence",
     "merman-ascii?/diagram-sequence",
@@ -256,6 +282,7 @@ diagram-sequence = [
     "merman-render?/diagram-sequence",
 ]
 diagram-state = [
+    "merman-model/diagram-state",
     "merman-core/diagram-state",
     "merman-analysis?/diagram-state",
     "merman-ascii?/diagram-state",
@@ -263,6 +290,7 @@ diagram-state = [
     "merman-render?/diagram-state",
 ]
 diagram-swimlane = [
+    "merman-model/diagram-swimlane",
     "merman-core/diagram-swimlane",
     "merman-analysis?/diagram-swimlane",
     "merman-ascii?/diagram-swimlane",
@@ -270,6 +298,7 @@ diagram-swimlane = [
     "merman-render?/diagram-swimlane",
 ]
 diagram-timeline = [
+    "merman-model/diagram-timeline",
     "merman-core/diagram-timeline",
     "merman-analysis?/diagram-timeline",
     "merman-ascii?/diagram-timeline",
@@ -277,6 +306,7 @@ diagram-timeline = [
     "merman-render?/diagram-timeline",
 ]
 diagram-tree-view = [
+    "merman-model/diagram-tree-view",
     "merman-core/diagram-tree-view",
     "merman-analysis?/diagram-tree-view",
     "merman-ascii?/diagram-tree-view",
@@ -284,6 +314,7 @@ diagram-tree-view = [
     "merman-render?/diagram-tree-view",
 ]
 diagram-treemap = [
+    "merman-model/diagram-treemap",
     "merman-core/diagram-treemap",
     "merman-analysis?/diagram-treemap",
     "merman-ascii?/diagram-treemap",
@@ -291,6 +322,7 @@ diagram-treemap = [
     "merman-render?/diagram-treemap",
 ]
 diagram-venn = [
+    "merman-model/diagram-venn",
     "merman-core/diagram-venn",
     "merman-analysis?/diagram-venn",
     "merman-ascii?/diagram-venn",
@@ -298,6 +330,7 @@ diagram-venn = [
     "merman-render?/diagram-venn",
 ]
 diagram-wardley = [
+    "merman-model/diagram-wardley",
     "merman-core/diagram-wardley",
     "merman-analysis?/diagram-wardley",
     "merman-ascii?/diagram-wardley",
@@ -305,6 +338,7 @@ diagram-wardley = [
     "merman-render?/diagram-wardley",
 ]
 diagram-xychart = [
+    "merman-model/diagram-xychart",
     "merman-core/diagram-xychart",
     "merman-analysis?/diagram-xychart",
     "merman-ascii?/diagram-xychart",
@@ -312,6 +346,7 @@ diagram-xychart = [
     "merman-render?/diagram-xychart",
 ]
 diagram-zenuml = [
+    "merman-model/diagram-zenuml",
     "merman-core/diagram-zenuml",
     "merman-analysis?/diagram-zenuml",
     "merman-ascii?/diagram-zenuml",
@@ -319,11 +354,11 @@ diagram-zenuml = [
     "merman-render?/diagram-zenuml",
 ]
 default = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]
-system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
-system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
-system-random = ["merman-core/system-random", "merman-render?/system-random"]
-system-timing = ["merman-core/system-timing", "merman-render?/system-timing"]
-presentation = ["merman-core/presentation"]
+system-clock = ["merman-model/system-clock", "merman-core/system-clock", "merman-render?/system-clock"]
+system-timezone = ["merman-model/system-timezone", "merman-core/system-timezone", "merman-render?/system-timezone"]
+system-random = ["merman-model/system-random", "merman-core/system-random", "merman-render?/system-random"]
+system-timing = ["merman-model/system-timing", "merman-core/system-timing", "merman-render?/system-timing"]
+presentation = ["merman-core/presentation", "dep:merman-markup"]
 compat-json = ["presentation", "merman-core/compat-json"]
 editor-facts = ["merman-core/editor-facts"]
 svg = ["presentation", "dep:merman-render", "dep:merman-theme-contract"]
@@ -343,7 +378,9 @@ png = ["svg", "dep:merman-export", "merman-export/png"]
 jpeg = ["svg", "dep:merman-export", "merman-export/jpeg"]
 pdf = ["svg", "dep:merman-export", "merman-export/pdf"]
 [dependencies]
-merman-core = { workspace = true, features = ["terminal-text"] }
+merman-model = { workspace = true, features = ["terminal-text"] }
+merman-markup = { workspace = true, optional = true, features = ["color"] }
+merman-core.workspace = true
 merman-analysis = { workspace = true, optional = true }
 merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }

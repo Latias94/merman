@@ -1,6 +1,6 @@
 use crate::error::{AsciiError, Result};
-use merman_core::resources::{GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, ResourceProfile};
-use merman_core::{
+use merman_model::resources::{GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, ResourceProfile};
+use merman_model::{
     OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
     OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
 };
@@ -1041,7 +1041,7 @@ fn invalid_prebudgeted_output_plan() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::CancelReason;
+    use merman_model::CancelReason;
 
     #[test]
     fn descriptors_and_profile_matrix_are_total() {

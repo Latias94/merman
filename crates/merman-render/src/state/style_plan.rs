@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use merman_core::diagrams::state::{
+use merman_model::families::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode, StateStyleClass,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -797,7 +797,7 @@ impl StateStylePlan {
 
     pub(crate) fn resolve_with_config(
         model: &StateDiagramRenderModel,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
@@ -3319,7 +3319,7 @@ fn apply_source_shape_property(
         "fill" | "stroke" => {
             if declaration.is_single_component_value()
                 && (value.eq_ignore_ascii_case("none")
-                    || merman_core::theme_color::ThemeColor::parse(value).is_ok())
+                    || merman_markup::theme_color::ThemeColor::parse(value).is_ok())
             {
                 if declaration.property() == "fill" {
                     *fill = Some(value.to_string());
@@ -3425,7 +3425,7 @@ fn apply_source_text_property(
         }
         "color"
             if declaration.is_single_component_value()
-                && (merman_core::theme_color::ThemeColor::parse(value).is_ok()
+                && (merman_markup::theme_color::ThemeColor::parse(value).is_ok()
                     || value.eq_ignore_ascii_case("currentcolor")) =>
         {
             true
@@ -3707,7 +3707,7 @@ mod tests {
         OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
         ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
     };
-    use merman_core::diagrams::state::{
+    use merman_model::families::state::{
         StateDiagramRenderEdge, StateDiagramRenderNode, StateStyleClass,
     };
     use serde_json::json;
@@ -5307,7 +5307,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(
                 "%%{init: {\"themeVariables\": {\"fontFamily\": \"serif\", \"fontSize\": 30}}}%%\nstateDiagram-v2\nReady --> Done: Next\n",
                 merman_core::ParseOptions::strict()
-            ).unwrap().unwrap();
+            ).unwrap().unwrap().into_presentation();
         let mut model = StateDiagramRenderModel::default();
         model.nodes.extend([
             semantic_node("Ready", "rect"),
@@ -5381,7 +5381,7 @@ mod tests {
         ] {
             let parsed = theme
                 .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_value(json!({
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
                         "themeVariables": {"fontFamily": family}
                     })),
                 ))
@@ -5390,7 +5390,8 @@ mod tests {
                     merman_core::ParseOptions::strict(),
                 )
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let mut model = StateDiagramRenderModel::default();
             model.nodes.push(semantic_node("Ready", "rect"));
             let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
@@ -5446,7 +5447,7 @@ mod tests {
         ] {
             let parsed = theme
                 .install_parse_compatibility(merman_core::MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_value(json!({
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
                         "themeVariables": config
                     })),
                 ))
@@ -5455,7 +5456,8 @@ mod tests {
                     merman_core::ParseOptions::strict(),
                 )
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let mut model = StateDiagramRenderModel::default();
             model.style_classes.insert(
                 "repair".to_string(),

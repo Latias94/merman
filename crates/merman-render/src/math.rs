@@ -26,7 +26,7 @@ pub(crate) use prepared::{
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
 use crate::text::{TextMetrics, TextStyle, WrapMode};
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -305,7 +305,7 @@ pub(crate) fn render_math_html_label(
         return None;
     }
     let rendered = math_renderer?.render_html_label(text, config)?;
-    Some(merman_core::sanitize::sanitize_xhtml(
+    Some(merman_markup::sanitize::sanitize_xhtml(
         &rendered,
         config.as_config(),
     ))
@@ -973,8 +973,9 @@ mod tests {
     #[test]
     fn ratex_math_renderer_renders_pure_math_label_as_inline_svg() {
         let renderer = RatexMathRenderer;
-        let config =
-            PresentationConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let config = crate::test_support::presentation_config(
+            serde_json::json!({ "securityLevel": "loose" }),
+        );
 
         let html = renderer
             .render_html_label("$$x^2$$", &config)
@@ -989,7 +990,7 @@ mod tests {
             html.contains(r#"width="0.97153em""#),
             "unexpected SVG size: {html}"
         );
-        let sanitized = merman_core::sanitize::sanitize_text(&html, config.as_config());
+        let sanitized = merman_markup::sanitize::sanitize_text(&html, config.as_config());
         assert!(
             sanitized.contains("<svg") && sanitized.contains("<path"),
             "sanitizer should preserve RaTeX inline SVG: {sanitized}"

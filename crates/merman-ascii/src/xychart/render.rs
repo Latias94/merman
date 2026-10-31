@@ -30,8 +30,10 @@ use disclosure::{
     value_disclosure_line_width,
 };
 #[cfg(test)]
-use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
-use merman_core::diagrams::xychart::{XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartPlotType};
+use merman_model::families::xy_chart::XyChartDiagramRenderModel;
+use merman_model::families::xy_chart::{
+    XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartPlotType,
+};
 type ChartLine = StyledLine;
 type CategoryLabel = String;
 
@@ -240,7 +242,7 @@ fn render_xychart_diagram_controlled(
     // Start from the execution-owned context so a top-level report shares the render-wide
     // layout/document ledger with any later fallback attempt. Standalone family tests still get
     // an isolated context through `AsciiExecution::new_resource_context`.
-    let base_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let base_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     render_xychart_diagram_controlled_with_base(model, options, layout, execution, &base_resources)
 }
 
@@ -252,23 +254,23 @@ fn render_xychart_diagram_controlled_with_base(
     base_resources: &ResourceContext,
 ) -> Result<String> {
     options.validate()?;
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let orientation = validate_xychart_model(model)?;
     let mut resources =
-        execution.resource_context(base_resources, merman_core::OperationPhase::Layout);
+        execution.resource_context(base_resources, merman_model::OperationPhase::Layout);
     if model.plots.is_empty() {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         let emit_resources =
-            execution.resource_context(&resources, merman_core::OperationPhase::Emit);
+            execution.resource_context(&resources, merman_model::OperationPhase::Emit);
         let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
     }
     let cardinality = TerminalChartCardinality::measure(model, &mut resources)?;
     if cardinality.is_empty() {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         let emit_resources =
-            execution.resource_context(&resources, merman_core::OperationPhase::Emit);
+            execution.resource_context(&resources, merman_model::OperationPhase::Emit);
         let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
@@ -287,7 +289,7 @@ fn render_xychart_diagram_controlled_with_base(
     // Reject the primary plot extent before the plan retains any authored text. In particular,
     // direct typed models may contain very large series titles or x coordinates that are not
     // needed to decide whether the plot itself fits the configured grid.
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let plan = TerminalChartPlan::build(model, cardinality, horizontal, &mut resources)?;
     let context = ChartRenderContext {
         y_range: plan.y_range,
@@ -436,12 +438,12 @@ fn render_vertical(
     )?;
     document_plan.include_transient_grid(plot_extent.cells(), resources)?;
     let materialized_extent = document_plan.admit_grid(resources)?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     let mut emit_resources =
-        execution.resource_context(resources, merman_core::OperationPhase::Emit);
+        execution.resource_context(resources, merman_model::OperationPhase::Emit);
     let out = document_plan.materialize(materialized_extent, &mut emit_resources, |resources| {
         let mut plot_resources = resources
-            .with_operation_phase(merman_core::OperationPhase::Layout)
+            .with_operation_phase(merman_model::OperationPhase::Layout)
             .scoped();
         let mut plot = build_vertical_plot(
             plan,
@@ -485,7 +487,7 @@ fn render_vertical(
         }
 
         for (idx, row) in plot.rows.into_iter().enumerate() {
-            checkpoints.tick(merman_core::OperationPhase::Emit)?;
+            checkpoints.tick(merman_model::OperationPhase::Emit)?;
             let label = &tick_labels[idx];
             let mut line = new_chart_line(options, resources);
             push_axis_prefix(
@@ -497,7 +499,7 @@ fn render_vertical(
                 reserve_axis_slot,
                 resources,
             )?;
-            let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+            let mut checkpoint = || checkpoints.tick(merman_model::OperationPhase::Emit);
             line.try_push_line_with_checkpoint(&row, &plot_resources, &mut checkpoint)?;
             out.push(line, resources)?;
         }
@@ -625,9 +627,9 @@ fn render_horizontal(
     document_plan.include_transient_grid(plot_extent.cells(), resources)?;
     let compact_bar_values = horizontal_plan.into_compact_bar_values();
     let materialized_extent = document_plan.admit_grid(resources)?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     let mut emit_resources =
-        execution.resource_context(resources, merman_core::OperationPhase::Emit);
+        execution.resource_context(resources, merman_model::OperationPhase::Emit);
     let out = document_plan.materialize(materialized_extent, &mut emit_resources, |resources| {
         let categories = if show_x_labels {
             plan.materialize_horizontal_axis_labels(resources)?
@@ -635,7 +637,7 @@ fn render_horizontal(
             Vec::new()
         };
         let mut plot_resources = resources
-            .with_operation_phase(merman_core::OperationPhase::Layout)
+            .with_operation_phase(merman_model::OperationPhase::Layout)
             .scoped();
         let plot_rows = build_horizontal_plot_rows(
             plan,
@@ -656,7 +658,7 @@ fn render_horizontal(
         }
 
         for plot_row in &plot_rows {
-            checkpoints.tick(merman_core::OperationPhase::Emit)?;
+            checkpoints.tick(merman_model::OperationPhase::Emit)?;
             resources.charge_layout_work(1)?;
             let category = plot_row
                 .show_category_label
@@ -674,7 +676,7 @@ fn render_horizontal(
                 reserve_axis_slot,
                 resources,
             )?;
-            let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+            let mut checkpoint = || checkpoints.tick(merman_model::OperationPhase::Emit);
             line.try_push_line_with_checkpoint(&plot_row.line, &plot_resources, &mut checkpoint)?;
             if model.display.show_data_label
                 && uses_compact_bar_data_labels(model)
@@ -741,7 +743,7 @@ fn render_horizontal(
             let mut tick_line = new_chart_line(options, resources);
             resources.charge_layout_work(plot_prefix_width)?;
             tick_line.try_push_spaces(plot_prefix_width)?;
-            let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+            let mut checkpoint = || checkpoints.tick(merman_model::OperationPhase::Emit);
             tick_line.try_push_line_with_checkpoint(
                 &tick_labels,
                 &plot_resources,
@@ -1576,7 +1578,7 @@ fn overlay_vertical_category_ticks(
     checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     for index in 0..category_count {
-        checkpoints.tick(merman_core::OperationPhase::Emit)?;
+        checkpoints.tick(merman_model::OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         let position = plot_area.vertical_band_center(index, resources)?;
         let target = resources.checked_grid_add(plot_start, position)?;
@@ -1601,7 +1603,7 @@ fn overlay_horizontal_value_ticks(
             message: "must be at least 2",
         })?;
     for position in [0, last] {
-        checkpoints.tick(merman_core::OperationPhase::Emit)?;
+        checkpoints.tick(merman_model::OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         let target = resources.checked_grid_add(plot_start, position)?;
         line.try_set_role(target, tick, AsciiColorRole::ChartAxis)?;
@@ -1860,7 +1862,7 @@ fn finish_chart_lines_controlled(
 
 fn checkpoint_emitted_lines(rendered: &str, execution: AsciiExecution<'_>) -> Result<()> {
     for _ in rendered.lines() {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
     }
     Ok(())
 }
@@ -2001,12 +2003,12 @@ mod tests {
         AsciiColorMode, AsciiColorRole, AsciiError, AsciiRenderOptions, AsciiResourceLimitId,
         AsciiResourcePolicy, Result, TerminalWidthProfile,
     };
-    use merman_core::diagrams::xychart::{
+    use merman_model::families::xy_chart::{
         XyChartAxisDisplayPolicy, XyChartAxisModel, XyChartDiagramModel, XyChartDiagramRenderModel,
         XyChartDisplayPolicy, XyChartPlotModel, XyChartPlotType,
     };
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn render_xychart_diagram(
         model: &XyChartDiagramRenderModel,
@@ -2018,11 +2020,10 @@ mod tests {
     #[test]
     fn canonical_xychart_view_matches_full_visibility_and_empty_projection() {
         use crate::xychart::XyChartView;
-        use merman_core::presentation::PresentationConfig;
-        use merman_core::{
-            MermaidConfig, MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel,
-            SemanticParser,
-        };
+        use merman_core::presentation::SourcePresentationConfig;
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::presentation::RenderSemanticModel;
+        use merman_model::{MermaidConfig, SemanticDiagramModel};
 
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();
@@ -2039,7 +2040,7 @@ mod tests {
             let parser =
                 SemanticParser::new().with_site_config(MermaidConfig::from_value(config.clone()));
             let engine =
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
+                MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(config));
             for source in [
                 "xychart\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Sales 0 --> 10\nbar Actual [2, 4]\n",
                 "xychart horizontal\ntitle Revenue\nx-axis Quarter [Q1, Q2]\ny-axis Sales 0 --> 10\nbar Actual [2, 4]\nline Forecast [4, 6]\n",

@@ -49,6 +49,7 @@
         "analysis",
         "ascii",
         "editor",
+        "fixes",
         "layout-cytoscape",
         "layout-elk",
         "svg"
@@ -78,13 +79,13 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "02fff76dcb073c5e6c72acaff20a4783745c4e77ab0e6cfb1d0ea245f6e23a62",
+    "cargo_lock_sha256": "c19255d0822a0373fe1ccf76cb25c8e476c6ff5b483864c2c52482c94f576e68",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "fed5bc31bef31a468ad5cbbeb9e522f1b27b3c36b8a7736c41d67b20870c357b"
+    "artifact_profile_sha256": "e30078f4e02fbb05e50d4e939f4e5b4af66b758c048d2a2bc319aea11bc5dfbc"
   },
   "dependency_closure": {
     "package_count": 126,
-    "packages_sha256": "5f0f62c5d96cdf3178cb4246dc0db6e5d9bbc5e93ab48a072432b7838eae1528"
+    "packages_sha256": "37b9a17ebb08ac71f236ebd99ae9f22f00ff4399fd9ad8e59d49be119d75bb0a"
   },
   "licenses": [
     {
@@ -1251,7 +1252,7 @@
       "packages": [
         {
           "name": "json5",
-          "version": "1.3.4",
+          "version": "1.3.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [

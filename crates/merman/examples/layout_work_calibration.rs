@@ -1,11 +1,10 @@
 use merman::render::{ResourceLimitCause, ResourceLimitExceeded};
 use merman::svg::{RenderResourcePolicy, RenderResourceProfile, ResourceLimitId};
 use merman::{
-    MermaidEngine, OperationControl, PresentationArtifact, RenderError, RenderOutput,
-    RenderRequest, RenderTarget, Renderer, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
-    presentation::PresentationConfig,
+    MermaidEngine, OperationControl, ParseOptions, PresentationArtifact, RenderError, RenderOutput,
+    RenderRequest, RenderTarget, Renderer, SourcePresentationConfig, SvgEnvironment,
+    SvgLayoutOutput, SvgOutput, SvgRequest,
 };
-use merman_core::ParseOptions;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -367,7 +366,7 @@ struct CalibrationRenderer {
 
 impl CalibrationRenderer {
     fn new(policy: RenderResourcePolicy, theme: &str) -> Self {
-        let mut config = PresentationConfig::empty_object();
+        let mut config = SourcePresentationConfig::empty_object();
         config.set_value("theme", serde_json::Value::String(theme.to_string()));
         Self {
             renderer: Renderer::new()

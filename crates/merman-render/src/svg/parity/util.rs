@@ -2,7 +2,7 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor, rgba};
+use merman_markup::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor, rgba};
 use std::fmt::Write as _;
 
 use super::SvgOutput;

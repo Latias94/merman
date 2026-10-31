@@ -1,8 +1,8 @@
 mod support;
 
 use merman_ascii::AsciiRenderOptions;
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::{MermaidEngine, ParseOptions};
+use merman_core::{ParseOptions, presentation::MermaidEngine};
+use merman_model::presentation::RenderSemanticModel;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use support::render_model;

@@ -137,7 +137,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GraphLayout> {
-    execution.rebind_resource_context(resources, merman_core::OperationPhase::Layout);
+    execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
     checkpoint_layout(execution)?;
     grid::preflight_minimum_grid_extent(graph, layout_policy, resources)?;
     charge_graph_layout_work(graph, resources)?;
@@ -206,7 +206,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
 }
 
 fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)
+    execution.checkpoint(merman_model::OperationPhase::Layout)
 }
 
 pub(super) fn graph_canvas_extent(
@@ -265,7 +265,7 @@ fn charge_graph_layout_work(graph: &AsciiGraph, resources: &mut ResourceContext)
 #[cfg(test)]
 pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> GraphLayout {
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
     layout_graph_with_resources(graph, options, &mut resources)
         .expect("test graph layout work must remain representable")
@@ -276,8 +276,8 @@ mod tests {
     use super::*;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStroke, GraphGroupStyle};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn compact_two_groups(direction: GraphDirection, nested: bool) -> GraphLayout {
         let mut graph = AsciiGraph::new(direction);

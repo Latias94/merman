@@ -14,7 +14,8 @@ fn render_swimlane_with_layout(source: &str, diagram_id: &str) -> (String, Swiml
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
-        .expect("detect swimlane");
+        .expect("detect swimlane")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let layout = serde_json::from_value(

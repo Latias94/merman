@@ -37,7 +37,7 @@ struct FlowchartRootFrame<'data, 'plan> {
     dom_order: &'plan [&'data str],
     next_dom_index: usize,
     initialized: bool,
-    nested_start: Option<merman_core::runtime::OperationTimer>,
+    nested_start: Option<merman_model::runtime::OperationTimer>,
 }
 
 impl<'data, 'plan> FlowchartRootFrame<'data, 'plan> {
@@ -45,7 +45,7 @@ impl<'data, 'plan> FlowchartRootFrame<'data, 'plan> {
         cluster_id: Option<&'data str>,
         parent_origin_x: f64,
         parent_origin_y: f64,
-        nested_start: Option<merman_core::runtime::OperationTimer>,
+        nested_start: Option<merman_model::runtime::OperationTimer>,
     ) -> Self {
         Self {
             cluster_id,

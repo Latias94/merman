@@ -818,6 +818,14 @@ jobs:
         if: matrix.candidate == 'node-wasm'
         run: cargo install wasm-pack --version 0.15.0 --locked
 
+      - name: Install pinned wasm-opt for Node WASM
+        if: matrix.candidate == 'node-wasm'
+        uses: sigoden/install-binary@v1.3.0
+        with:
+          repo: WebAssembly/binaryen
+          name: wasm-opt
+          tag: version_133
+
       - name: Build and probe the real Node-WASM candidate
         if: matrix.candidate == 'node-wasm'
         run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm

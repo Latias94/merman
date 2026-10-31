@@ -420,7 +420,7 @@ impl Drop for BackendPermit {
 }
 
 fn semantic_phase_weight(resources: &ResolvedResourcePolicy) -> Result<u64, CliError> {
-    use merman::resources::InputResourceLimitId;
+    use merman::model::resources::InputResourceLimitId;
 
     let source = required_input_limit(
         resources,
@@ -466,7 +466,7 @@ fn layout_phase_weight(resources: &ResolvedResourcePolicy) -> Result<u64, CliErr
 
 fn required_input_limit(
     resources: &ResolvedResourcePolicy,
-    id: merman::resources::InputResourceLimitId,
+    id: merman::model::resources::InputResourceLimitId,
     name: &'static str,
 ) -> Result<u64, CliError> {
     required_usize_bound(resources.input_policy().value(id), name)
@@ -517,7 +517,7 @@ fn checked_sum(values: &[u64]) -> Result<u64, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman::resources::ResourceProfile;
+    use merman::model::resources::ResourceProfile;
     use std::sync::mpsc::{self, RecvTimeoutError};
     use std::time::Duration;
 

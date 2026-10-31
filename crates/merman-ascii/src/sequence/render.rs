@@ -13,7 +13,7 @@ use crate::options::{AsciiRenderOptions, SequenceLayoutPolicy};
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::ResourceContext;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 #[cfg(test)]
 pub(crate) fn render_sequence_diagram(
@@ -114,7 +114,7 @@ fn render_sequence_diagram_transactional(
         });
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     debug_assert_eq!(resources.policy(), *execution.resources());
     let mut layout_resources = execution.resource_context(resources, OperationPhase::Layout);
     let chars = SequenceChars::for_charset(layout_policy.structural_charset);
@@ -199,7 +199,7 @@ mod tests {
                 .with_limit(AsciiResourceLimitId::MaxGridCells, limit)
                 .expect("valid grid limit");
             let mut resources = ResourceContext::new(policy);
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::OperationControl::new();
             render_sequence_diagram_with_execution(
                 &diagram,
                 None,
@@ -239,7 +239,7 @@ mod tests {
         resources
             .charge_document_cells(3)
             .expect("the pre-existing document debit should fit");
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let error = render_sequence_diagram_with_execution(
             &diagram,
             None,
@@ -300,7 +300,7 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells)
             .expect("the exact final grid limit should be valid");
         let mut resources = ResourceContext::new(policy);
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
 
         let rendered = render_sequence_diagram_with_execution(
             &diagram,
@@ -373,7 +373,7 @@ mod tests {
         resources
             .charge_document_cells(3)
             .expect("the pre-existing document debit should fit");
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
 
         let error = render_sequence_diagram_with_execution(
             &diagram,

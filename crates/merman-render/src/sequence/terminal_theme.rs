@@ -3,7 +3,7 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedThemeStyle, ThemeTarget, ThemeVariant,
 };
 use crate::resources::OperationWorkMeter;
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use super::SequenceNumberLabelThemeReceipt;
 
@@ -71,21 +71,20 @@ pub(crate) struct SequencePreparedTerminalTheme {
 
 impl SequencePreparedTerminalTheme {
     pub(super) fn resolve(
-        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
+        model: &merman_model::families::sequence::SequenceDiagramModel,
         config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let owns =
-            |path| merman_core::__private::config_paint_overrides_typed_default(config, path);
+        let owns = |path| config.config_paint_overrides_typed_default(path);
         let mut note_count = 0usize;
         let mut has_lines = false;
         for message in &model.messages {
             work_meter.charge(1)?;
             let kind = message.semantic_kind();
             note_count +=
-                usize::from(kind == merman_core::diagrams::sequence::SequenceMessageKind::Note);
-            has_lines |= kind == merman_core::diagrams::sequence::SequenceMessageKind::Signal
+                usize::from(kind == merman_model::families::sequence::SequenceMessageKind::Note);
+            has_lines |= kind == merman_model::families::sequence::SequenceMessageKind::Signal
                 && message.from.is_some()
                 && message.to.is_some();
         }
@@ -145,10 +144,8 @@ impl SequencePreparedNumberTheme {
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut prepared = Self {
-            fill_overridden: merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.sequenceNumberColor",
-            ),
+            fill_overridden: config
+                .config_paint_overrides_typed_default("themeVariables.sequenceNumberColor"),
             ..Self::default()
         };
         let Some(theme) = theme else {
@@ -257,9 +254,13 @@ mod tests {
         let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let metadata = merman_core::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {"sequenceNumberColor": "#abcdef"}
-            })))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": {"sequenceNumberColor": "#abcdef"}
+                    }),
+                ),
+            )
             .parse_metadata_sync("sequenceDiagram\nautonumber\nAlice->>Bob: Hello")
             .expect("parse explicit Sequence number color");
         let prepared = SequencePreparedNumberTheme::resolve(

@@ -2294,7 +2294,8 @@ mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
     use std::sync::Arc;
 
     struct NonLatticeMeasurer {
@@ -2436,7 +2437,8 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .expect("parse state fixture")
-            .expect("detect state fixture");
+            .expect("detect state fixture")
+            .into_presentation();
         let RenderSemanticModel::State(model) = parsed.model() else {
             panic!("expected State render model");
         };

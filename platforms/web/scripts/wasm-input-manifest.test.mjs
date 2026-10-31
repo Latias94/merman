@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -84,7 +85,7 @@ describe("WASM input manifest", () => {
 
     assert.deepEqual(metadata, {
       ...expected,
-      wasm_input_package_ids: ["merman-wasm-freshness-probe", "merman-wasm"],
+      wasm_input_package_ids: ["merman-wasm"],
     });
     assert.equal(sourceObserved.command, "cargo");
     assert.equal(sourceObserved.cwd, fixture.repoRoot);
@@ -171,9 +172,53 @@ describe("WASM input manifest", () => {
 
     assert.deepEqual(metadata, {
       ...expected,
-      wasm_input_package_ids: ["merman-wasm-freshness-probe", "merman-wasm"],
+      wasm_input_package_ids: ["merman-wasm"],
     });
     assert.equal(calls, 2);
+  });
+
+  it("preserves every repository input when the metadata consumer uses an in-repository TMP", () => {
+    const fixture = createFixture();
+    for (const packageInfo of fixture.metadata.packages) packageInfo.version = "1.0.0";
+    const expectedInputs = collectWasmInputEntries(fixture);
+    const temporaryRoot = path.join(fixture.repoRoot, "target", "tmp");
+    mkdirSync(temporaryRoot, { recursive: true });
+    const previous = Object.fromEntries(
+      ["TMPDIR", "TMP", "TEMP"].map((name) => [name, process.env[name]]),
+    );
+    let probeRoot;
+    try {
+      for (const name of Object.keys(previous)) process.env[name] = temporaryRoot;
+      const metadata = cargoMetadataForPreset({
+        preset: preset(),
+        repoRoot: fixture.repoRoot,
+        repositoryMetadata: fixture.metadata,
+        capture(_command, args) {
+          if (args[0] === "tree") {
+            return "probe v0.0.0\nmerman-wasm v1.0.0\nmerman-core v1.0.0\nserde v1.0.0\n";
+          }
+          const manifest = args[args.indexOf("--manifest-path") + 1];
+          probeRoot = path.dirname(manifest);
+          assert.equal(path.dirname(probeRoot), temporaryRoot);
+          return JSON.stringify({
+            ...fixture.metadata,
+            workspace_members: ["probe"],
+            packages: [
+              { id: "probe", name: "probe", version: "0.0.0", source: null, manifest_path: manifest },
+              ...fixture.metadata.packages,
+            ],
+            resolve: { ...fixture.metadata.resolve, root: "probe" },
+          });
+        },
+      });
+      assert.equal(existsSync(probeRoot), false, "the consumer is removed before input collection");
+      assert.deepEqual(collectWasmInputEntries({ ...fixture, metadata }), expectedInputs);
+    } finally {
+      for (const [name, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 
   it("rejects an offline probe package absent from the locked repository graph", () => {

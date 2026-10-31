@@ -145,6 +145,12 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
     id: "editor",
     implicationIds: <String>{},
   ),
+  "fixes": MermanBindingCapabilitySpec(
+    id: "fixes",
+    implicationIds: <String>{
+      "analysis",
+    },
+  ),
   "icons": MermanBindingCapabilitySpec(
     id: "icons",
     implicationIds: <String>{},

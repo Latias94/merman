@@ -1025,8 +1025,8 @@ mod tests {
     use crate::resource::AsciiResourcePolicy;
     use crate::sequence::text::blank_line;
     #[cfg(not(target_arch = "wasm32"))]
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{OperationControl, OperationPhase};
 
     #[test]
     fn control_output_admits_aggregate_extent_before_frame_materialization() {
@@ -1188,7 +1188,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
     }
 
@@ -1254,7 +1254,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
         assert_eq!(resources.layout_work_used(), before_materialization);
     }

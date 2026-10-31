@@ -3,12 +3,12 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
-pub(super) use merman_core::terminal_text::{
+pub(super) use merman_model::text::terminal::{
     TerminalTextSegmentKind as NormalizedSegmentKind,
     scalar_requires_visible_escape as needs_control_escape, visible_escape, visible_escape_len,
 };
-pub use merman_core::terminal_text::{normalize_terminal_diagnostic, normalize_terminal_text};
-use merman_core::terminal_text::{
+pub use merman_model::text::terminal::{normalize_terminal_diagnostic, normalize_terminal_text};
+use merman_model::text::terminal::{
     terminal_grapheme_requires_normalization,
     try_normalize_terminal_line_text as try_normalize_core_terminal_line_text,
     visit_terminal_text_segments,

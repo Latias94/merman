@@ -38,7 +38,7 @@ pub(crate) struct ExecutionContext {
     pub(crate) stderr: SharedWriter,
     #[cfg(feature = "network-icons")]
     pub(crate) network: Box<dyn crate::network::NetworkAcquirer>,
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     pub(crate) publication: Box<dyn crate::output::PublicationBackend>,
 }
 
@@ -50,7 +50,7 @@ impl ExecutionContext {
             stderr: SharedWriter::new(io::stderr()),
             #[cfg(feature = "network-icons")]
             network: Box::new(crate::network::SystemNetworkAcquirer),
-            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
             publication: Box::new(crate::output::SystemPublicationBackend),
         }
     }

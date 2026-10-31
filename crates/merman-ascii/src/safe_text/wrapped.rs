@@ -711,7 +711,7 @@ fn invalid_wrapped_text_plan() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
 
     fn pass_config(resources: ResourceContext) -> WrappedPassConfig<'static> {
         let base_layout_work = resources.layout_work_used();

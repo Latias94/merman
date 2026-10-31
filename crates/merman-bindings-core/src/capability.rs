@@ -41,6 +41,11 @@ const COMPILED_CAPABILITY_BITS: u64 = COMPILED_SVG_CAPABILITY_BITS
     } else {
         0
     }
+    | if cfg!(feature = "fixes") {
+        CapabilityKey::Fixes.compact_bit()
+    } else {
+        0
+    }
     | if cfg!(feature = "ascii") {
         CapabilityKey::Ascii.compact_bit()
     } else {

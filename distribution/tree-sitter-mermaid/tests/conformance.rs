@@ -201,7 +201,7 @@ fn every_strict_valid_merman_fixture_has_a_clean_tree_sitter_tree() {
                 .unwrap_or_else(|error| panic!("{} render context: {error}", path.display()));
             let contextual_engine = context.map(|context| {
                 MermaidEngine::new().with_site_config(
-                    merman_core::presentation::PresentationConfig::from_value(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
                         context.site_config_value(),
                     ),
                 )
@@ -213,8 +213,9 @@ fn every_strict_valid_merman_fixture_has_a_clean_tree_sitter_tree() {
                 continue;
             };
 
-            let detected = merman_core::diagram_type_metadata_id(&diagram.meta.diagram_type)
-                .unwrap_or(diagram.meta.diagram_type.as_str());
+            let detected =
+                merman_model::family::diagram_type_metadata_id(&diagram.meta.diagram_type)
+                    .unwrap_or(diagram.meta.diagram_type.as_str());
             if detected != family.public_id {
                 *failure_counts
                     .entry(format!(

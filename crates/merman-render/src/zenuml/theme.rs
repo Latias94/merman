@@ -1,4 +1,4 @@
-use merman_core::diagrams::zenuml::ZenumlDiagramModel;
+use merman_model::families::zenuml::ZenumlDiagramModel;
 
 use super::{ZenumlDiagramLayout, resolve_zenuml_title};
 use crate::diagram_theme::{
@@ -123,7 +123,7 @@ impl ZenumlSourceStyle {
 impl ZenumlSourceStyle {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         work_meter: &OperationWorkMeter,
         replace_default_background: bool,
     ) -> crate::Result<Self> {
@@ -135,7 +135,7 @@ impl ZenumlSourceStyle {
             if style.colors.contains_key(slot.key) {
                 continue;
             }
-            if merman_core::__private::config_paint_overrides_typed_default(config, slot.global)
+            if config.config_paint_overrides_typed_default(slot.global)
                 && let Some(value) = config.get_str(slot.global)
             {
                 style.colors.insert(slot.key, value.to_owned());
@@ -177,10 +177,7 @@ impl ZenumlSourceStyle {
             }
         }
         if !style.colors.contains_key("backgroundColor")
-            && merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.background",
-            )
+            && config.config_paint_overrides_typed_default("themeVariables.background")
             && let Some(color) =
                 crate::config::value_at(config.as_value(), &["themeVariables", "background"])
                     .and_then(serde_json::Value::as_str)

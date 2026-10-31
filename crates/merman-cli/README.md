@@ -571,7 +571,8 @@ explicitly:
 | Build | Capabilities |
 | --- | --- |
 | `--no-default-features --features all-diagrams` | `detect`, `parse`, and `capabilities` |
-| `--no-default-features --features all-diagrams,analysis` | Lint, fixes, and rule metadata without render dependencies |
+| `--no-default-features --features all-diagrams,analysis` | Lint and rule metadata without render dependencies or replacement generation |
+| `--no-default-features --features all-diagrams,fixes` | Lint, the fix command, and rule metadata without render dependencies |
 | `--no-default-features --features all-diagrams,svg` | Basic deterministic SVG |
 | `--no-default-features --features all-diagrams,native-fonts` | SVG with explicit-font measurement controls, no output codecs |
 | `--no-default-features --features all-diagrams,ascii` | ASCII/Unicode without SVG |

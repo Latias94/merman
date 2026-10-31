@@ -1,12 +1,12 @@
 type FamilyFixture = (
-    merman_core::ParsedDiagramRender,
+    merman_model::presentation::PresentationDiagram,
     merman_render::LayoutOptions,
     merman_render::environment::RenderSession,
 );
 
-#[cfg(feature = "system-timing")]
-use merman_core::runtime::RuntimePolicy;
 use merman_core::{MermaidEngine, ParseOptions};
+#[cfg(feature = "system-timing")]
+use merman_model::runtime::RuntimePolicy;
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -35,7 +35,8 @@ fn prepare(source: &str, session: RenderSession) -> FamilyFixture {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse source")
-        .expect("detect diagram");
+        .expect("detect diagram")
+        .into_presentation();
     (parsed, LayoutOptions::headless_svg_defaults(), session)
 }
 

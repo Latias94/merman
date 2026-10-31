@@ -1,5 +1,6 @@
-use merman_core::diagrams::flowchart::FlowchartModel;
-use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::families::flowchart::FlowchartModel;
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
 use merman_render::Error;
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
@@ -11,7 +12,7 @@ use std::path::PathBuf;
 #[path = "support/generated_graphs.rs"]
 mod generated_graphs;
 
-fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
+fn flowchart_model(parsed: &PresentationDiagram) -> &FlowchartModel {
     let RenderSemanticModel::Flowchart(model) = parsed.model() else {
         panic!("expected Flowchart render model");
     };
@@ -169,7 +170,7 @@ fn generated_dagre_rectangular_graphs_preserve_topology_geometry_and_determinism
 }
 
 fn layout_flowchart_render_model(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     options: &LayoutOptions,
     _session: &RenderSession,
 ) -> merman_render::Result<FlowchartLayout> {
@@ -206,7 +207,7 @@ fn layout_dagre_flowchart(text: &str) -> FlowchartLayout {
     layout_flowchart_with_engine(
         text,
         MermaidEngine::new().with_site_config(
-            merman_core::presentation::PresentationConfig::from_value(
+            merman_core::presentation::SourcePresentationConfig::from_value(
                 serde_json::json!({"layout": "dagre"}),
             ),
         ),
@@ -221,7 +222,8 @@ fn layout_flowchart_with_engine(text: &str, engine: MermaidEngine) -> FlowchartL
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session).expect("layout ok")
 }
 
@@ -446,7 +448,8 @@ fn flowchart_layout_produces_positions_and_routes() {
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -511,7 +514,8 @@ fn flowchart_layout_respects_lr_direction() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
 
@@ -539,7 +543,7 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
     let text = std::fs::read_to_string(&path).expect("fixture");
 
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(
+        merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"layout": "dagre"}),
         ),
     );
@@ -547,7 +551,8 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
 
@@ -769,7 +774,8 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
         engine.parse_diagram_for_render_model(short_text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout_short =
         layout_flowchart_render_model(&parsed_short, &LayoutOptions::default(), &_session)
             .expect("layout ok");
@@ -784,7 +790,8 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
         engine.parse_diagram_for_render_model(long_text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed_long, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -827,7 +834,7 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
     .expect("read fixture");
 
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(
+        merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"layout": "dagre"}),
         ),
     );
@@ -835,7 +842,8 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
         .expect("layout ok");
 
@@ -880,7 +888,7 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
     let text_with_margin = "%%{init: {\"flowchart\": {\"subGraphTitleMargin\": {\"top\": 10, \"bottom\": 5}}}}%%\nflowchart TD\nsubgraph A\na-->b\nend\n";
 
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(
+        merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"layout": "dagre"}),
         ),
     );
@@ -889,7 +897,8 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
         engine.parse_diagram_for_render_model(text_no_margin, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout_no_margin =
         layout_flowchart_render_model(&parsed_no_margin, &LayoutOptions::default(), &_session)
             .expect("layout");
@@ -904,7 +913,8 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
         engine.parse_diagram_for_render_model(text_with_margin, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout_with_margin =
         layout_flowchart_render_model(&parsed_with_margin, &LayoutOptions::default(), &_session)
             .expect("layout");
@@ -934,7 +944,8 @@ fn flowchart_edge_label_is_included_in_subgraph_bounds() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -991,7 +1002,8 @@ fn flowchart_subgraph_dir_does_not_override_parent_layout_for_external_cluster()
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
 
@@ -1102,7 +1114,8 @@ fn flowchart_edge_to_ancestor_cluster_keeps_directioned_clusters_in_parent_root(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
         .expect("layout ok");
 
@@ -1136,7 +1149,8 @@ fn flowchart_nested_subgraph_labeled_edge_label_is_inside_inner_cluster() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -1178,7 +1192,7 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
 
     // Keep the minimum node width from hiding the measured-label relationship.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(
+        merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"layout": "dagre", "flowchart": {"minNodeWidth": 0}}),
         ),
     );
@@ -1186,7 +1200,8 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -1239,7 +1254,8 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -1278,7 +1294,8 @@ fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -1320,7 +1337,7 @@ fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
     );
 
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "default", "look": "classic",
             "flowchart": {"minNodeWidth": 0, "padding": 15}
         })),
@@ -1329,7 +1346,8 @@ fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
         .expect("layout ok");
     let model = flowchart_model(&parsed);
@@ -1403,7 +1421,8 @@ fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() 
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -1450,7 +1469,8 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -1500,7 +1520,7 @@ Z@{ shape: folder, label: "Label" }
 
     // Isolate label/shape rules from the release's default appearance and minimum width.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "default",
             "look": "classic",
             "flowchart": {"minNodeWidth": 0, "padding": 15}
@@ -1510,7 +1530,8 @@ Z@{ shape: folder, label: "Label" }
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2023,7 +2044,8 @@ fn flowchart_anchor_shape_ignores_label_for_layout() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2123,7 +2145,7 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
 
     // Isolate label/shape rules from the release's default appearance and minimum width.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "default",
             "look": "classic",
             "flowchart": {"minNodeWidth": 0, "padding": 15}
@@ -2133,7 +2155,8 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2273,7 +2296,7 @@ fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrappin
 
     // Isolate label/shape rules from the release's default appearance and minimum width.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "default",
             "look": "classic",
             "flowchart": {"minNodeWidth": 0, "padding": 15}
@@ -2283,7 +2306,8 @@ fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrappin
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
         .expect("layout ok");
@@ -2331,7 +2355,7 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
 
     // Isolate label/shape rules from the release's default appearance and minimum width.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "default",
             "look": "classic",
             "flowchart": {"minNodeWidth": 0, "padding": 15}
@@ -2341,7 +2365,8 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2406,7 +2431,8 @@ flowchart TB
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2446,7 +2472,7 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
 
     // Isolate label/shape rules from the release's default appearance and minimum width.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "layout": "dagre",
             "theme": "default",
             "look": "classic",
@@ -2457,7 +2483,8 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2503,7 +2530,7 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
 
     // Isolate label/shape rules from the release's default appearance and minimum width.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "layout": "dagre",
             "theme": "default",
             "look": "classic",
@@ -2514,7 +2541,8 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2580,7 +2608,7 @@ classDef small font-size:50%;
 
     // Keep the minimum node width from hiding the measured-label relationship.
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(
+        merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"flowchart": {"minNodeWidth": 0}}),
         ),
     );
@@ -2588,7 +2616,8 @@ classDef small font-size:50%;
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2716,7 +2745,8 @@ classDef italic font-style:italic;
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2789,7 +2819,8 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
             engine.parse_diagram_for_render_model(text, ParseOptions::default()),
         )
         .unwrap_or_else(|err| panic!("parse {name}: {err}"))
-        .unwrap_or_else(|| panic!("diagram detected for {name}"));
+        .unwrap_or_else(|| panic!("diagram detected for {name}"))
+        .into_presentation();
 
         let err = match layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         {
@@ -2817,7 +2848,7 @@ fn repeated_subgraph_self_membership_flattens_and_lays_out() {
         ParseOptions::default(),
     ))
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected").into_presentation();
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("self membership is flattened by Mermaid 12.1");
     assert_eq!(
@@ -2843,7 +2874,8 @@ fn non_cyclic_subgraph_membership_chain_still_lays_out() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2864,7 +2896,7 @@ fn dagre_duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
         .unwrap();
     let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph X\n    B\n  end\n  B --> C\n";
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(
+        merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"layout": "dagre"}),
         ),
     );
@@ -2872,7 +2904,8 @@ fn dagre_duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
-    .expect("diagram detected");
+    .expect("diagram detected")
+    .into_presentation();
 
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
@@ -2977,3 +3010,6 @@ fn dagre_duplicate_subgraph_id_keeps_first_title_when_later_definition_is_empty(
     assert_eq!(clusters.len(), 1);
     assert_eq!(clusters[0].title, "First title");
 }
+
+#[allow(dead_code)]
+mod common;

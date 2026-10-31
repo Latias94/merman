@@ -1,6 +1,6 @@
 use super::{SequenceLayoutCheckpoints, sequence_activation_start_x};
 use crate::model::{LayoutEdge, LayoutNode};
-use merman_core::diagrams::sequence::{SequenceDiagramModel, SequenceMessageKind};
+use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -185,8 +185,10 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Sequence(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Sequence(model) = parsed.model()
+        else {
             panic!("expected Sequence model");
         };
         let work = std::sync::Arc::new(OperationWorkMeter::new(
@@ -195,7 +197,7 @@ mod tests {
         let prepared = super::super::prepare_sequence_diagram_typed_with_title_and_work_meter(
             model,
             None,
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             None,
             &crate::text::DeterministicTextMeasurer::default(),
             None,

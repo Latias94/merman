@@ -219,7 +219,7 @@ merman-export = { version = "=0.8.0-alpha.6", default-features = false, features
 ```
 
 ```rust
-use merman_core::OperationControl;
+use merman_model::OperationControl;
 use merman_export::{
     PdfOptions, RasterOptions, svg_to_jpeg_controlled, svg_to_pdf_controlled,
     svg_to_png_controlled,

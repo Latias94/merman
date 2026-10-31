@@ -1,7 +1,8 @@
 #![cfg(merman_internal_theme_acceptance)]
 
+use merman::model::family::DiagramFamilyId;
 use merman::svg::{DiagramThemeCompiler, theme_preset_descriptors};
-use merman::{DiagramFamilyId, RenderArtifactKind, TargetAdmissionReason, TargetAdmissionStatus};
+use merman::{RenderArtifactKind, TargetAdmissionReason, TargetAdmissionStatus};
 use merman_theme_acceptance::inspect_preset_admission;
 
 #[test]

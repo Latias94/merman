@@ -21,8 +21,8 @@ pub(crate) struct SequencePreparedActorTheme {
 impl SequencePreparedActorTheme {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        sanitize_config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
+        sanitize_config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::sequence::SequenceDiagramModel,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<SequencePreparedActorTheme> {
         use crate::diagram_theme::{
@@ -31,14 +31,10 @@ impl SequencePreparedActorTheme {
         };
 
         let has_actors = !model.actor_order.is_empty();
-        let fill_overridden = merman_core::__private::config_paint_overrides_typed_default(
-            sanitize_config,
-            "themeVariables.actorBkg",
-        );
-        let stroke_overridden = merman_core::__private::config_paint_overrides_typed_default(
-            sanitize_config,
-            "themeVariables.actorBorder",
-        );
+        let fill_overridden =
+            sanitize_config.config_paint_overrides_typed_default("themeVariables.actorBkg");
+        let stroke_overridden =
+            sanitize_config.config_paint_overrides_typed_default("themeVariables.actorBorder");
         let Some(theme) = theme else {
             return Ok(Self {
                 fill_overridden,
@@ -111,10 +107,8 @@ impl SequencePreparedActorTheme {
         let typed_stroke = (!stroke_overridden && has_typed_actor_stroke)
             .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
             .flatten();
-        let width_overridden = merman_core::__private::config_path_overrides_typed_default(
-            sanitize_config,
-            "themeVariables.strokeWidth",
-        );
+        let width_overridden =
+            sanitize_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
         let stroke_width = style
             .as_ref()
             .and_then(|s| s.stroke_width())
@@ -198,8 +192,10 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Sequence(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Sequence(model) = parsed.model()
+        else {
             panic!("expected Sequence model");
         };
         let mut model = model.clone();
@@ -223,7 +219,7 @@ mod tests {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let prepared = SequencePreparedActorTheme::resolve(
             Some(&resolved),
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
             &model,
             &meter,
         )

@@ -8,7 +8,7 @@ use crate::common::{
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use crate::theme_execution_evidence::BindingThemeExecutionEvidence;
-use merman::presentation::PresentationConfig;
+use merman::SourcePresentationConfig;
 use merman::svg::{
     LayoutOptions, MeasurementProfileId, RenderCapability, RenderCapabilityPolicy,
     TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
@@ -18,12 +18,12 @@ use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnviron
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
     renderer: Renderer,
-    runtime_policy: merman::runtime::RuntimePolicy,
+    runtime_policy: merman::model::runtime::RuntimePolicy,
     svg: SvgRequest,
     theme: Option<merman::svg::DiagramTheme>,
     parse_options: merman::ParseOptions,
-    input_resources: merman::resources::InputResourcePolicy,
-    resource_profile: merman::resources::ResourceProfile,
+    input_resources: merman::model::resources::InputResourcePolicy,
+    resource_profile: merman::model::resources::ResourceProfile,
     render_resources: merman::svg::RenderResourcePolicy,
     #[cfg(feature = "native-fonts")]
     native_font_context: Option<merman::svg::export::NativeFontContext>,
@@ -36,8 +36,8 @@ pub(super) struct RenderRequestPlan {
 #[derive(Clone)]
 pub(super) struct RenderOperationConfig {
     environment: SvgEnvironment,
-    runtime_policy: merman::runtime::RuntimePolicy,
-    input_resources: merman::resources::InputResourcePolicy,
+    runtime_policy: merman::model::runtime::RuntimePolicy,
+    input_resources: merman::model::resources::InputResourcePolicy,
     render_resources: merman::svg::RenderResourcePolicy,
     lenient_parsing: bool,
     theme: Option<merman::svg::DiagramTheme>,
@@ -76,7 +76,7 @@ impl RenderRequestPlan {
             .ok_or_else(no_diagram_error)
     }
 
-    pub(super) fn runtime_policy(&self) -> merman::runtime::RuntimePolicy {
+    pub(super) fn runtime_policy(&self) -> merman::model::runtime::RuntimePolicy {
         self.runtime_policy.clone()
     }
 
@@ -356,17 +356,18 @@ impl RenderRequestPlan {
 pub(super) fn pipeline_for_options(
     options: &BindingOptions,
 ) -> Result<merman::svg::SvgPipeline, BindingError> {
-    Ok(
-        compile_for_test(options, merman::runtime::RuntimePolicy::deterministic())?
-            .output
-            .pipeline(),
-    )
+    Ok(compile_for_test(
+        options,
+        merman::model::runtime::RuntimePolicy::deterministic(),
+    )?
+    .output
+    .pipeline())
 }
 
 #[cfg(test)]
 fn compile_for_test(
     options: &BindingOptions,
-    runtime_policy: merman::runtime::RuntimePolicy,
+    runtime_policy: merman::model::runtime::RuntimePolicy,
 ) -> Result<RenderOperationConfig, BindingError> {
     let compiler = merman::svg::DiagramThemeCompiler::new();
     let theme = crate::theme::compile_theme_with(&compiler, options.theme.as_ref())?;
@@ -382,7 +383,7 @@ fn compile_for_test(
 impl RenderOperationConfig {
     pub(super) fn compile(
         options: &BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
+        runtime_policy: merman::model::runtime::RuntimePolicy,
         capability_policy: RenderCapabilityPolicy,
         theme: Option<merman::svg::DiagramTheme>,
         theme_resources: merman::svg::ThemeResourcePolicy,
@@ -566,7 +567,7 @@ impl RenderOperationConfig {
         let runtime_policy = self.runtime_policy;
         let mut engine = merman::MermaidEngine::new().with_runtime_policy(runtime_policy.clone());
         if let Some(site_config) = self.site_config {
-            engine = engine.with_site_config(PresentationConfig::from_config(site_config));
+            engine = engine.with_site_config(SourcePresentationConfig::from_config(site_config));
         }
         RenderRequestPlan {
             runtime_policy,
@@ -729,7 +730,7 @@ fn finite_nonnegative(value: f64, name: &'static str) -> Result<f64, BindingErro
 
 fn classify_render_error(
     err: merman::RenderError,
-    profile: merman::resources::ResourceProfile,
+    profile: merman::model::resources::ResourceProfile,
 ) -> BindingError {
     match err {
         #[cfg(feature = "native-fonts")]
@@ -839,11 +840,11 @@ mod tests {
     #[cfg(feature = "native-fonts")]
     #[test]
     fn native_font_errors_preserve_structured_operation_terminal_details() {
-        use merman_core::{
+        use merman::model::{
             CancelReason, OperationCancelled, OperationLedgerError, OperationPhase,
             OperationResourceDomain, OperationResourceLimitExceeded, OperationResourceProvenance,
         };
-        let profile = merman::resources::ResourceProfile::Interactive;
+        let profile = merman::model::resources::ResourceProfile::Interactive;
         let cancelled = classify_render_error(
             merman::svg::export::NativeFontError::Operation(OperationLedgerError::Cancelled(
                 OperationCancelled {
@@ -1144,7 +1145,7 @@ mod tests {
                 })
                 .into(),
             ),
-            merman::resources::ResourceProfile::Interactive,
+            merman::model::resources::ResourceProfile::Interactive,
         );
 
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
@@ -1154,7 +1155,7 @@ mod tests {
 
     #[test]
     fn graphical_parse_errors_are_terminal_safe_and_structured() {
-        let span = merman::SourceSpan::new(2, 7);
+        let span = merman::model::SourceSpan::new(2, 7);
         let diagnostic = merman::ParseDiagnostic::new("bad\u{7}input")
             .with_span(span, merman::ParseDiagnosticSpanKind::Exact)
             .with_code("merman.test\u{1b}");
@@ -1163,7 +1164,7 @@ mod tests {
                 "flow\u{1b}",
                 diagnostic,
             )),
-            merman::resources::ResourceProfile::Interactive,
+            merman::model::resources::ResourceProfile::Interactive,
         );
 
         assert_eq!(error.status(), BindingStatus::ParseError);
@@ -1202,8 +1203,11 @@ mod tests {
             }"##,
         )
         .expect("valid export options");
-        let config = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
-            .expect("export options compile");
+        let config = compile_for_test(
+            &options,
+            merman::model::runtime::RuntimePolicy::deterministic(),
+        )
+        .expect("export options compile");
         assert_eq!(config.raster_options.scale, 1.5);
         assert_eq!(config.raster_options.jpeg_quality, 82);
         let fit = config.raster_options.fit_to.expect("fit box");
@@ -1230,8 +1234,11 @@ mod tests {
             br#"{"svg":{"diagram_id":"docs-flow","viewBoxPadding":12.5}}"#,
         )
         .expect("valid SVG options");
-        let config = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
-            .expect("SVG options compile");
+        let config = compile_for_test(
+            &options,
+            merman::model::runtime::RuntimePolicy::deterministic(),
+        )
+        .expect("SVG options compile");
 
         assert_eq!(config.svg.diagram_id.as_deref(), Some("docs-flow"));
         assert_eq!(config.svg.viewbox_padding, 12.5);
@@ -1242,7 +1249,10 @@ mod tests {
     fn svg_viewbox_padding_rejects_negative_or_unrepresentable_values() {
         let error = crate::common::parse_options(br#"{"svg":{"viewbox_padding":-1}}"#)
             .and_then(|options| {
-                compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+                compile_for_test(
+                    &options,
+                    merman::model::runtime::RuntimePolicy::deterministic(),
+                )
             })
             .err()
             .expect("negative SVG padding");
@@ -1259,9 +1269,12 @@ mod tests {
     fn export_options_reject_backend_colors_that_would_be_ignored() {
         let options = crate::common::parse_options(br#"{"raster":{"matte":"not-a-color"}}"#)
             .expect("JSON shape is valid");
-        let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
-            .err()
-            .expect("unsupported backend color");
+        let error = compile_for_test(
+            &options,
+            merman::model::runtime::RuntimePolicy::deterministic(),
+        )
+        .err()
+        .expect("unsupported backend color");
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("raster.matte"));
     }
@@ -1292,9 +1305,12 @@ mod tests {
 
         for &(options_json, expected_field) in cases {
             let options = crate::common::parse_options(options_json).expect("valid JSON shape");
-            let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
-                .err()
-                .expect("invalid export option must fail before backend work");
+            let error = compile_for_test(
+                &options,
+                merman::model::runtime::RuntimePolicy::deterministic(),
+            )
+            .err()
+            .expect("invalid export option must fail before backend work");
             assert_eq!(error.status(), BindingStatus::InvalidArgument);
             assert!(
                 error.message().contains(expected_field),
@@ -1312,7 +1328,7 @@ mod tests {
                 actual: 5,
                 max: 4,
             }),
-            merman::resources::ResourceProfile::Constrained,
+            merman::model::resources::ResourceProfile::Constrained,
         );
         let details = error.resource_details().expect("resource details");
         assert_eq!(
@@ -1329,7 +1345,7 @@ mod tests {
                 actual: 5,
                 max: 4,
             }),
-            merman::resources::ResourceProfile::Constrained,
+            merman::model::resources::ResourceProfile::Constrained,
         );
         let details = error.resource_details().expect("PDF resource details");
         assert_eq!(
@@ -1353,7 +1369,7 @@ mod tests {
             .expect_err("fixture must exceed the constrained theme input ceiling");
         let error = classify_render_error(
             merman::RenderError::from(merman_render::Error::ThemeResourceLimitExceeded(resource)),
-            merman::resources::ResourceProfile::Interactive,
+            merman::model::resources::ResourceProfile::Interactive,
         );
         let details = error.resource_details().expect("theme resource details");
         assert_eq!(details.limit_id, "max_theme_encoded_bytes");
@@ -1372,7 +1388,7 @@ mod tests {
         assert_eq!(
             binding_runtime_policy_from(
                 &utc_options,
-                merman::runtime::RuntimePolicy::deterministic()
+                merman::model::runtime::RuntimePolicy::deterministic()
             )
             .expect("valid UTC midnight")
             .begin_operation()
@@ -1387,7 +1403,7 @@ mod tests {
         assert_eq!(
             binding_runtime_policy_from(
                 &east_one_options,
-                merman::runtime::RuntimePolicy::deterministic(),
+                merman::model::runtime::RuntimePolicy::deterministic(),
             )
             .expect("valid fixed-offset midnight")
             .begin_operation()
@@ -1406,9 +1422,11 @@ mod tests {
             }"#,
         )
         .expect("binding options JSON");
-        let error =
-            binding_runtime_policy_from(&options, merman::runtime::RuntimePolicy::deterministic())
-                .expect_err("boundary instant must be rejected");
+        let error = binding_runtime_policy_from(
+            &options,
+            merman::model::runtime::RuntimePolicy::deterministic(),
+        )
+        .expect_err("boundary instant must be rejected");
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("fixed_today"));
@@ -1420,7 +1438,8 @@ mod tests {
             .expect("binding options");
         let policy = binding_runtime_policy_from(
             &options,
-            merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(86_400_000),
+            merman::model::runtime::RuntimePolicy::deterministic()
+                .with_fixed_unix_millis(86_400_000),
         )
         .expect("binding time policy");
         let context = policy.begin_operation().expect("operation context");
@@ -1438,9 +1457,11 @@ mod tests {
             }"#,
         )
         .expect("binding options");
-        let policy =
-            binding_runtime_policy_from(&options, merman::runtime::RuntimePolicy::deterministic())
-                .expect("binding time policy");
+        let policy = binding_runtime_policy_from(
+            &options,
+            merman::model::runtime::RuntimePolicy::deterministic(),
+        )
+        .expect("binding time policy");
 
         let first = policy.begin_operation().expect("first operation");
         let second = policy.begin_operation().expect("second operation");

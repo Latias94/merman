@@ -498,8 +498,7 @@ fn markdown_to_lines(
                         .get(range.clone())
                         .filter(|raw| {
                             raw.contains('&')
-                                && merman_core::entities::decode_html_entities_to_unicode(raw)
-                                    .as_ref()
+                                && merman_model::text::decode_html_entities_to_unicode(raw).as_ref()
                                     == text
                         })
                         .unwrap_or(text);

@@ -8,7 +8,7 @@ use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::options::{GraphLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
 
@@ -1048,7 +1048,7 @@ mod tests {
     use crate::graph::layout::GridCoord;
     use crate::graph::model::{GraphDirection, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     fn node_layout(id: &str, x: usize, y: usize) -> NodeLayout {
         NodeLayout {
@@ -1141,7 +1141,7 @@ mod tests {
         );
         assert_eq!(below.layout_work_used(), 0);
 
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let cancelled = ResourceContext::new(exact_policy);
         let error = raw_group_bounds_batch(

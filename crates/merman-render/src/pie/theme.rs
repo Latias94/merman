@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::pie::PieDiagramRenderModel;
-use merman_core::presentation::PresentationConfig;
+use merman_model::families::pie::PieDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_string;
 use crate::diagram_theme::{
@@ -99,16 +99,13 @@ pub(crate) struct PieThemePlan {
 
 impl PieThemePlan {
     #[cfg(test)]
-    pub(crate) fn baseline(
-        model: &PieDiagramRenderModel,
-        effective_config: &serde_json::Value,
-    ) -> Self {
-        let effective_config = PresentationConfig::from_value(effective_config.clone());
+    pub(crate) fn baseline(model: &PieDiagramModel, effective_config: &serde_json::Value) -> Self {
+        let effective_config = crate::test_support::presentation_config(effective_config.clone());
         Self::baseline_with_config(model, &effective_config, None, model.title.as_deref())
     }
 
     fn baseline_with_config(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         title: Option<&str>,
@@ -136,7 +133,7 @@ impl PieThemePlan {
 
     #[cfg(test)]
     pub(crate) fn resolve(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
@@ -151,7 +148,7 @@ impl PieThemePlan {
     }
 
     pub(crate) fn resolve_with_title(
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: Option<&ResolvedDiagramTheme>,
         title: Option<&str>,
@@ -203,8 +200,7 @@ impl PieThemePlan {
                 self.palette_key = Some(key.clone());
                 let mut missing_typed_color = false;
                 for (index, paint) in self.paints.iter_mut().enumerate() {
-                    if merman_core::__private::config_paint_overrides_typed_default(
-                        effective_config,
+                    if effective_config.config_paint_overrides_typed_default(
                         MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                     ) {
                         continue;
@@ -246,7 +242,7 @@ impl PieThemePlan {
 
     fn resolve_rules(
         &mut self,
-        model: &PieDiagramRenderModel,
+        model: &PieDiagramModel,
         effective_config: &PresentationConfig,
         theme: &ResolvedDiagramTheme,
         work_meter: &OperationWorkMeter,
@@ -300,8 +296,7 @@ impl PieThemePlan {
                 ) else {
                     continue;
                 };
-                if merman_core::__private::config_paint_overrides_typed_default(
-                    effective_config,
+                if effective_config.config_paint_overrides_typed_default(
                     MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
                 ) {
                     suppressed_fill_rules.insert(fill.rule_index());
@@ -821,11 +816,11 @@ fn record_terminal_paint(
 }
 
 fn mermaid_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
-    merman_core::__private::config_paint_overrides_typed_default(effective_config, path)
+    effective_config.config_paint_overrides_typed_default(path)
 }
 
 fn explicit_config_owns_stroke_site(effective_config: &PresentationConfig, path: &str) -> bool {
-    merman_core::__private::explicit_config_owns_path(effective_config, path)
+    effective_config.explicit_config_owns_path(path)
 }
 
 fn typed_static_stroke(
@@ -972,13 +967,13 @@ mod tests {
         ThemeRuleSet, ThemeStylePatch,
     };
     use crate::resources::RenderResourcePolicy;
-    use merman_core::diagrams::pie::PieSection;
+    use merman_model::families::pie::PieSection;
     use serde_json::json;
 
     #[test]
     fn bound_css_preserves_raw_values_and_color_fallbacks_without_typed_theme() {
         let plan = PieThemePlan::baseline(
-            &PieDiagramRenderModel::default(),
+            &PieDiagramModel::default(),
             &json!({"themeVariables": {
                 "textColor": "var(--section-color)",
                 "taskTextDarkColor": "currentColor",
@@ -1016,8 +1011,8 @@ mod tests {
             .resolve(DiagramFamilyId::PIE);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let plan = PieThemePlan::resolve(
-            &PieDiagramRenderModel::default(),
-            &PresentationConfig::from_value(json!({})),
+            &PieDiagramModel::default(),
+            &crate::test_support::presentation_config(json!({})),
             Some(&theme),
             &meter,
         )
@@ -1045,7 +1040,7 @@ mod tests {
     }
 
     fn palette_plan(colors: &[&str]) -> (PieThemePlan, Vec<String>) {
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.sections = colors
             .iter()
             .enumerate()
@@ -1054,7 +1049,7 @@ mod tests {
                 value: 1.0,
             })
             .collect();
-        let config = PresentationConfig::from_value(json!({}));
+        let config = crate::test_support::presentation_config(json!({}));
         let theme = resolved_slice_palette(colors);
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
@@ -1069,7 +1064,7 @@ mod tests {
     }
 
     fn static_fill_plan(fill: CanvasPaint) -> (PieThemePlan, Vec<String>) {
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.sections = ["Alpha", "Beta"]
             .into_iter()
             .map(|label| PieSection {
@@ -1077,7 +1072,7 @@ mod tests {
                 value: 1.0,
             })
             .collect();
-        let config = PresentationConfig::from_value(json!({}));
+        let config = crate::test_support::presentation_config(json!({}));
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(

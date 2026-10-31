@@ -164,8 +164,8 @@ fn canonical_characterization_matrix_executes_representative_and_malformed_contr
                 })
                 .unwrap_or_else(|| panic!("{} returned no combined model", row.variant_id));
             assert_eq!(
-                crate::diagram_type_family_id(&parsed.metadata().diagram_type)
-                    .map(crate::DiagramFamilyId::as_str),
+                merman_model::family::diagram_type_family_id(&parsed.metadata().diagram_type)
+                    .map(merman_model::family::DiagramFamilyId::as_str),
                 Some(row.logical_family),
                 "{} combined detection left its logical family",
                 row.variant_id
@@ -1140,7 +1140,7 @@ fn custom_overlays_on_known_ids_work_without_builtin_parsers() {
         model.provenance(),
         crate::CustomJsonProvenance::SemanticRegistryOverlay
     );
-    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
+    assert!(!parsed.model().matches_diagram_type("flowchart-v2"));
     assert!(
         engine
             .parse_editor_semantic_facts_with_type_sync("flowchart-v2", source)
@@ -1169,5 +1169,5 @@ fn custom_overlays_on_known_ids_work_without_builtin_parsers() {
         model.provenance(),
         crate::CustomJsonProvenance::RenderRegistryOverlay
     );
-    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
+    assert!(!parsed.model().matches_diagram_type("flowchart-v2"));
 }

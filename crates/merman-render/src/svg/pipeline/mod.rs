@@ -1046,7 +1046,7 @@ pub fn finalize_resvg_svg(svg: &str, session: &RenderSession) -> Result<ResvgCom
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn render_session() -> RenderSession {
         crate::environment::RenderEnvironment::deterministic()
@@ -1314,7 +1314,8 @@ mod tests {
             let parsed = merman_core::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap_or_else(|error| panic!("{name}: {error}"))
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let artifact =
                 crate::family::prepare(&parsed, &crate::LayoutOptions::default(), render_session())
                     .unwrap_or_else(|error| panic!("{name}: {error}"));

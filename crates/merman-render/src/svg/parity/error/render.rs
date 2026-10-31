@@ -121,7 +121,7 @@ pub(crate) fn render_error_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::error_diagram::ErrorDiagramModel;
+    use merman_model::families::error::ErrorDiagramModel;
 
     fn render_message_with_viewport(message: Option<&str>) -> (String, f64) {
         let model = ErrorDiagramModel {
@@ -143,7 +143,7 @@ mod tests {
         let config = serde_json::json!({});
         let typography = crate::error::ErrorTypographyThemePlan::resolve_with_message(
             None,
-            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
             execution.text_measurer(),
             model.error_message.as_deref(),
         );

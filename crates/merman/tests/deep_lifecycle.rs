@@ -213,8 +213,12 @@ fn integrated_facade_lifecycle_child() {
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();
-                let expected = merman::resources::InputResourcePolicy::default()
-                    .check_render_model(direct.model())
+                let expected = merman::model::resources::InputResourcePolicy::default()
+                    .check_model_complexity(
+                        merman::model::resources::model_complexity_from_render_model(
+                            direct.model(),
+                        ),
+                    )
                     .unwrap_err();
                 drop(direct);
                 marker(started, "model", "done");
@@ -265,9 +269,11 @@ fn integrated_facade_lifecycle_child() {
                         ..Default::default()
                     };
                     let error = Renderer::new()
-                        .with_resource_policy(merman::resources::InputResourcePolicy::for_profile(
-                            merman::resources::ResourceProfile::UnboundedForTrustedInput,
-                        ))
+                        .with_resource_policy(
+                            merman::model::resources::InputResourcePolicy::for_profile(
+                                merman::model::resources::ResourceProfile::UnboundedForTrustedInput,
+                            ),
+                        )
                         .render(merman::RenderRequest::svg(
                             &source,
                             OperationControl::new(),
@@ -290,11 +296,14 @@ fn integrated_facade_lifecycle_child() {
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap();
-                let merman::RenderSemanticModel::Flowchart(model) = direct.model() else {
+                let merman::model::presentation::RenderSemanticModel::Flowchart(model) =
+                    direct.model()
+                else {
                     panic!("Flowchart model");
                 };
                 assert!(
-                    merman::resources::FlowchartComplexity::from_model(model).subgraph_depth <= 1
+                    merman::model::resources::FlowchartComplexity::from_model(model).subgraph_depth
+                        <= 1
                 );
                 drop(direct);
                 let artifact = renderer

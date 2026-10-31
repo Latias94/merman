@@ -47,7 +47,7 @@ pub(super) fn rank_dir_from(direction: &str) -> RankDir {
 
 pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str> {
     if text.contains('ﬂ') || text.contains('¶') || text.contains('#') {
-        return merman_core::entities::decode_mermaid_entities_to_unicode(text);
+        return merman_model::text::decode_mermaid_entities_to_unicode(text);
     }
 
     fn decode_html_entity(entity: &str) -> Option<char> {

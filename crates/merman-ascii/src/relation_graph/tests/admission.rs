@@ -136,7 +136,7 @@ fn relation_label_batch_admits_exact_replay_work_and_rolls_back_n_minus_one() ->
     const PRIOR_DOCUMENT: usize = 11;
     let raw_labels = ["plain", " north<br>south ", "\u{1b}right", "   "];
     let unbounded = AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     );
 
     let measured_resources = ResourceContext::new(unbounded);

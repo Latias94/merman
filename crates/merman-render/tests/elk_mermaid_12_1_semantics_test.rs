@@ -7,7 +7,6 @@
 //! 1fb7869866dd619168d840291c9c54b4f129758b.
 
 use base64::Engine as _;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -73,13 +72,16 @@ fn render_with_environment(
     environment: &RenderEnvironment,
 ) -> Rendered {
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
-            "layout": algorithm, "htmlLabels": false, "look": "classic",
-            "elk": elk_options,
-        })))
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "layout": algorithm, "htmlLabels": false, "look": "classic",
+                "elk": elk_options,
+            })),
+        )
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse real family fixture")
-        .expect("detect diagram");
+        .expect("detect diagram")
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),
@@ -815,3 +817,6 @@ fn requirement_main_labels_follow_their_straightened_paint_routes() {
         .collect();
     assert_labels_follow_straightened_routes(&sources);
 }
+
+#[allow(dead_code)]
+mod common;

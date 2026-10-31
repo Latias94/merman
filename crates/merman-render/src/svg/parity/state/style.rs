@@ -902,7 +902,7 @@ pub(super) fn state_svg_text_label(
     center_text: bool,
     style_attr: Option<&str>,
 ) -> String {
-    let decoded = merman_core::entities::restore_mermaid_entity_spelling(raw);
+    let decoded = merman_model::text::restore_mermaid_entity_spelling(raw);
     let source = decoded.replace("\\n", "\n");
     let lines = source
         .split('\n')
@@ -1043,7 +1043,7 @@ fn state_svg_text_label_lines<'a>(
 mod tests {
     use super::*;
     use crate::diagram_theme::{EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue};
-    use merman_core::diagrams::state::StateStyleClass;
+    use merman_model::families::state::StateStyleClass;
     use serde_json::json;
 
     #[test]

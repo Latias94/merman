@@ -4,7 +4,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::diagrams::xychart::{
+use merman_model::families::xy_chart::{
     XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotModel, XyChartPlotType,
 };
 use serde_json::Value;
@@ -1937,7 +1937,7 @@ mod tests {
 
     fn layout(title: &str, orientation: &str, height: f64, legend: bool) -> XyChartDiagramLayout {
         let model = XyChartDiagramRenderModel {
-            semantic: merman_core::diagrams::xychart::XyChartDiagramModel {
+            semantic: merman_model::families::xy_chart::XyChartDiagramModel {
                 orientation: orientation.to_string(),
                 title: Some(title.to_string()),
                 acc_title: None,
@@ -1965,10 +1965,9 @@ mod tests {
             },
             display: Default::default(),
         };
-        let config =
-            merman_core::presentation::PresentationConfig::from_value(json!({ "xyChart": {
-                "width": 700, "height": height, "showLegend": legend
-            }}));
+        let config = crate::test_support::presentation_config(json!({ "xyChart": {
+            "width": 700, "height": height, "showLegend": legend
+        }}));
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::interactive(),
         );
@@ -2117,12 +2116,12 @@ mod tests {
         let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "xychart\ntitle Chart\nx-axis Categories [One, Two, Three]\ny-axis Amount 0 --> 40\nline Series [10, 30, 20]",
             merman_core::ParseOptions::strict(),
-        ).unwrap().unwrap();
-        let merman_core::RenderSemanticModel::XyChart(model) = parsed.model() else {
+        ).unwrap().unwrap().into_presentation();
+        let merman_model::presentation::RenderSemanticModel::XyChart(model) = parsed.model() else {
             panic!("expected XYChart render model");
         };
         let measurer = RecordingFont(Mutex::new(Vec::new()));
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "fontFamily":"Inter, sans-serif", "xyChart":{"showLegend":true},
         }));
         let work_meter = crate::resources::OperationWorkMeter::new(

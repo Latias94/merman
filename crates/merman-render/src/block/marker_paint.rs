@@ -106,8 +106,8 @@ struct RuleObservation {
 impl BlockMarkerPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -137,8 +137,8 @@ impl BlockMarkerPaintPlan {
 
     fn resolve_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         _layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -166,14 +166,9 @@ impl BlockMarkerPaintPlan {
         }) {
             return Ok(plan);
         }
-        let config_fill = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.arrowheadColor",
-        );
-        let config_stroke = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.lineColor",
-        );
+        let config_fill =
+            config.config_paint_overrides_typed_default("themeVariables.arrowheadColor");
+        let config_stroke = config.config_paint_overrides_typed_default("themeVariables.lineColor");
         let mut marker_properties = BTreeSet::new();
         let mut cross_properties = BTreeSet::new();
         let mut block_properties = BTreeSet::new();
@@ -443,8 +438,9 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Block(model) = parsed.model() else {
             panic!("Block model")
         };
         let layout = crate::block::layout_block_diagram_typed(

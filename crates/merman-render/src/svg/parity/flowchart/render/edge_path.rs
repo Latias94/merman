@@ -5,7 +5,7 @@ use super::super::*;
 use std::fmt;
 
 #[cfg(test)]
-use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
+use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 
 const NEO_EDGE_MASK_PREFIX: &str = "stroke-dasharray: 0 ";
 const NEO_EDGE_MASK_DASH_PAIR: &str = "2 2 ";

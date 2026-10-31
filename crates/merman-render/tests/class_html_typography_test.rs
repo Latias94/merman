@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -84,7 +83,7 @@ fn render_class(layout: &str, node_style: &str) -> (String, Arc<FontRequests>) {
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(json!({
             "layout": layout,
             "htmlLabels": true,
             "securityLevel": "loose",
@@ -102,7 +101,7 @@ fn render_class(layout: &str, node_style: &str) -> (String, Arc<FontRequests>) {
             ParseOptions::default(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap().into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -197,3 +196,6 @@ fn class_html_node_span_fonts_follow_group_inheritance_before_xhtml_measurement(
     assert!(svg.contains("font-size:150%"));
     assert!(svg.contains("font-weight:lighter"));
 }
+
+#[allow(dead_code)]
+mod common;

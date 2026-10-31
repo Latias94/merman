@@ -9,7 +9,7 @@ use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
 use crate::options::GraphLayoutPolicy;
 use crate::resource::ResourceContext;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 /// One visibly empty cell separates unrelated frames and their contents.
 const COMPOUND_READING_GUTTER: isize = 1;
@@ -314,8 +314,8 @@ mod tests {
     use crate::resource::{
         AsciiResourceLimitCause, AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy,
     };
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl};
 
     fn sibling_nodes_and_envelopes() -> (Vec<NodeLayout>, Vec<GroupEnvelope>) {
         let nodes = vec![

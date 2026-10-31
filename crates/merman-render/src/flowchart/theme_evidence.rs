@@ -1450,7 +1450,7 @@ impl FlowchartThemeEvidenceRecorder {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
         state.cluster.emitted = true;
         for (rule_index, reason) in &style.residual_rules {
             state
@@ -1502,7 +1502,7 @@ impl FlowchartThemeEvidenceRecorder {
             || emission.font_stack.is_some()
             || emission.font_size.is_some()
             || emission.font_weight.is_some();
-        work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
         state.node.emitted = true;
         for (rule_index, reason) in &style.residual_rules {
             state
@@ -1667,7 +1667,7 @@ impl FlowchartThemeEvidenceRecorder {
         } else {
             style
         };
-        work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
         state.edge_ordinal = ordinal;
         state.edge.emitted = true;
         for (rule_index, reason) in &style.residual_rules {
@@ -1742,7 +1742,7 @@ impl FlowchartThemeEvidenceRecorder {
             || emission.font_size.is_some()
             || emission.font_weight.is_some()
             || emission.padding.is_some();
-        work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
         if label_emitted {
             state.edge_label.emitted = true;
             for (rule_index, reason) in &style.label.residual_rules {

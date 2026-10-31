@@ -2,7 +2,7 @@ use crate::input::InputReadError;
 #[cfg(feature = "ascii")]
 use serde::Serialize;
 use std::path::Path;
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -12,14 +12,14 @@ pub(crate) enum InputRole {
     Auxiliary,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FileOperation {
     Inspect,
     InspectIdentity,
     Canonicalize,
     VerifyPublication,
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "fixes")]
     VerifySourceSnapshot,
     #[cfg(feature = "markdown")]
     ReadDirectory,
@@ -30,7 +30,7 @@ pub(crate) enum FileOperation {
     CommitAtomicReplacement,
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl std::fmt::Display for FileOperation {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
@@ -38,7 +38,7 @@ impl std::fmt::Display for FileOperation {
             Self::InspectIdentity => "inspect the file identity of",
             Self::Canonicalize => "resolve",
             Self::VerifyPublication => "verify the preflight identity of",
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "fixes")]
             Self::VerifySourceSnapshot => "verify the acquired source snapshot of",
             #[cfg(feature = "markdown")]
             Self::ReadDirectory => "scan",
@@ -128,7 +128,7 @@ struct AsciiErrorReportResourceLimit {
 #[derive(Debug)]
 pub(crate) struct AsciiResourceError {
     details: merman::render::ResourceLimitExceeded,
-    profile: merman::resources::ResourceProfile,
+    profile: merman::model::resources::ResourceProfile,
 }
 
 #[cfg(feature = "ascii")]
@@ -198,7 +198,7 @@ pub(crate) enum CliError {
     Json(#[from] serde_json::Error),
     #[error("failed to serialize JSON output: {0}")]
     JsonOutput(serde_json::Error),
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     #[error("failed to {operation} {path:?}: {source}")]
     File {
         operation: FileOperation,
@@ -258,13 +258,13 @@ pub(crate) enum CliError {
     #[cfg(feature = "rustdoc")]
     #[error("Rustdoc output is stale at {path:?}: {reason}")]
     RustdocStale { path: PathBuf, reason: String },
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     InvalidOutput(String),
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "fixes")]
     #[error("refusing to overwrite concurrently modified source {path:?}: {reason}")]
     ConcurrentModification { path: PathBuf, reason: String },
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "fixes")]
     #[error("invalid diagnostic fix plan: {0}")]
     InvalidFixPlan(String),
     #[cfg(feature = "markdown")]
@@ -306,7 +306,7 @@ impl CliError {
     #[cfg(feature = "ascii")]
     pub(crate) fn ascii_resource(
         details: merman::render::ResourceLimitExceeded,
-        profile: merman::resources::ResourceProfile,
+        profile: merman::model::resources::ResourceProfile,
     ) -> Self {
         Self::AsciiResource(AsciiResourceError { details, profile })
     }
@@ -325,7 +325,7 @@ impl CliError {
         }
     }
 
-    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
     pub(crate) fn file(
         operation: FileOperation,
         path: impl AsRef<Path>,
@@ -384,7 +384,7 @@ impl CliError {
                     .is_some()
                 {
                     "merman.ascii.resource_limit"
-                } else if merman::resources::InputResourceLimitId::from_stable_id(
+                } else if merman::model::resources::InputResourceLimitId::from_stable_id(
                     resource.details.id,
                 )
                 .is_some()
@@ -419,15 +419,16 @@ impl CliError {
                     crate::input::ObservedSize::Exact(bytes)
                     | crate::input::ObservedSize::AtLeast(bytes) => *bytes,
                 };
-                let phase = merman::resources::InputResourceLimitId::from_stable_id(limit_id)
-                    .map_or("input", |id| id.descriptor().phase.as_str());
+                let phase =
+                    merman::model::resources::InputResourceLimitId::from_stable_id(limit_id)
+                        .map_or("input", |id| id.descriptor().phase.as_str());
                 details.resource_limit = Some(AsciiErrorReportResourceLimit {
                     id: limit_id,
                     phase,
                     actual,
                     maximum: *limit as u64,
                     cause: "ceiling",
-                    profile: profile.map(merman::resources::ResourceProfile::id),
+                    profile: profile.map(merman::model::resources::ResourceProfile::id),
                 });
             }
             Self::AsciiReportRequiresPlain => {
@@ -547,7 +548,7 @@ impl CliError {
             Self::InvalidInput(_) | Self::Json(_) | Self::MissingInput { .. } => {
                 ErrorCategory::Usage
             }
-            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
             Self::InvalidOutput(_) => ErrorCategory::Usage,
             Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } => ErrorCategory::Operational,
             #[cfg(any(feature = "icons", feature = "rustdoc"))]
@@ -564,11 +565,11 @@ impl CliError {
             Self::RustdocStale { .. } => ErrorCategory::Content,
             #[cfg(feature = "markdown")]
             Self::Transaction(_) => ErrorCategory::Operational,
-            #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+            #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
             Self::File { .. } => ErrorCategory::Operational,
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "fixes")]
             Self::ConcurrentModification { .. } => ErrorCategory::Operational,
-            #[cfg(feature = "analysis")]
+            #[cfg(feature = "fixes")]
             Self::InvalidFixPlan(_) => ErrorCategory::Content,
             #[cfg(feature = "markdown")]
             Self::MarkdownChart { source, .. } => source.category(),

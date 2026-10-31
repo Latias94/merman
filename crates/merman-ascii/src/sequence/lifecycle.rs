@@ -2,8 +2,8 @@ use super::projection_allocation_failed;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
-use merman_core::OperationPhase;
-use merman_core::diagrams::sequence::{
+use merman_model::OperationPhase;
+use merman_model::families::sequence::{
     SequenceActorLifecycle as CoreSequenceActorLifecycle, SequenceDiagramModel,
     SequenceMessageKind as CoreSequenceMessageKind,
 };
@@ -250,7 +250,7 @@ fn resolve_compatibility_actor_lifecycles(
 fn resolved_lifecycle_signal(
     model: &SequenceDiagramModel,
     model_index: usize,
-) -> Result<&merman_core::diagrams::sequence::SequenceMessage> {
+) -> Result<&merman_model::families::sequence::SequenceMessage> {
     let message = model
         .messages
         .get(model_index)
@@ -396,8 +396,9 @@ mod tests {
     use super::*;
     use crate::operation::AsciiExecution;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
+    use merman_model::resources::ResourceProfile;
 
     fn shared_anchor_model() -> SequenceDiagramModel {
         let parsed = MermaidEngine::new()

@@ -108,7 +108,7 @@ struct RankedGridPlacements {
 }
 
 fn checkpoint_layout(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
-    execution.checkpoint_loop(merman_core::OperationPhase::Layout, iteration)
+    execution.checkpoint_loop(merman_model::OperationPhase::Layout, iteration)
 }
 
 pub(super) fn preflight_minimum_grid_extent(
@@ -1005,7 +1005,7 @@ fn build_node_layouts(
 }
 
 fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: &mut usize) -> Result<()> {
-    execution.checkpoint_loop(merman_core::OperationPhase::Layout, *iteration)?;
+    execution.checkpoint_loop(merman_model::OperationPhase::Layout, *iteration)?;
     *iteration = iteration.saturating_add(1);
     Ok(())
 }
@@ -1099,8 +1099,8 @@ mod tests {
     use super::*;
     use crate::AsciiRenderOptions;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{OperationControl, OperationPhase};
 
     fn apply_test_edge_label_spacing(
         direction: GraphDirection,
@@ -1216,7 +1216,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
         assert_eq!(resources.layout_work_used(), 7);
         assert_eq!(resources.document_cells_used(), 11);

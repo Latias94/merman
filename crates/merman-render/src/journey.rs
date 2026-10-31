@@ -5,7 +5,7 @@ use crate::model::{
     JourneyTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyTask};
+use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
@@ -131,19 +131,19 @@ fn journey_actor_legend_line_width_px(
 
 #[cfg(test)]
 pub(crate) fn layout_journey_diagram_typed(
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
     let typography = JourneyTypographyThemePlan::resolve(
         None,
-        &merman_core::presentation::PresentationConfig::from_value(effective_config.clone()),
+        &crate::test_support::presentation_config(effective_config.clone()),
     );
     layout_journey_diagram_typed_with_resolved_typography(model, &typography, measurer)
 }
 
 pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
-    model: &JourneyDiagramRenderModel,
+    model: &JourneyDiagramModel,
     typography: &JourneyTypographyThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
@@ -395,12 +395,12 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
 #[cfg(test)]
 mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+    use merman_model::families::journey::JourneyDiagramModel;
     use serde_json::json;
 
     #[test]
     fn journey_layout_carries_use_max_width_config() {
-        let model = JourneyDiagramRenderModel::default();
+        let model = JourneyDiagramModel::default();
         let measurer = DeterministicTextMeasurer::default();
         let layout = super::layout_journey_diagram_typed(
             &model,
@@ -427,7 +427,7 @@ mod tests {
         let measurer = DeterministicTextMeasurer::default();
         let typography = super::JourneyTypographyThemePlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::empty_object(),
+            &merman_model::presentation::PresentationConfig::empty_object(),
         );
         let style = typography
             .css_binding()
@@ -468,7 +468,7 @@ mod tests {
     fn journey_actor_legend_width_uses_exact_bounding_client_rect_result() {
         let typography = super::JourneyTypographyThemePlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::empty_object(),
+            &merman_model::presentation::PresentationConfig::empty_object(),
         );
         let style = typography
             .css_binding()
@@ -485,7 +485,7 @@ mod tests {
         let measurer = DeterministicTextMeasurer::default();
         let typography = super::JourneyTypographyThemePlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::empty_object(),
+            &merman_model::presentation::PresentationConfig::empty_object(),
         );
         let style = typography
             .css_binding()

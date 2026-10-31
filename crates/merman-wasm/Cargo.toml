@@ -28,6 +28,7 @@ wasm-opt = ["-O", "--skip-pass=constraint-analysis"]
 omit-default-module-path = true
 
 [features]
+fixes = ["analysis", "merman-bindings-core/fixes", "merman-analysis?/fixes", "merman-editor-core?/fixes"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",

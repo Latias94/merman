@@ -21,7 +21,8 @@ fn class_prepared_html_and_svg_reject_a_one_byte_retained_limit() {
             let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let session = RenderEnvironment::deterministic()
                 .with_resource_policy(
                     RenderResourcePolicy::unbounded_for_trusted_input()
@@ -60,7 +61,8 @@ fn class_notes_do_not_retain_temporary_html_or_svg_preparations() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()

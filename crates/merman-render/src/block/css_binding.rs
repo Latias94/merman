@@ -34,7 +34,7 @@ pub(crate) struct BlockCssThemeBinding {
 impl BlockCssThemeBinding {
     pub(crate) fn prepare_class_definitions(
         &mut self,
-        definitions: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDef>,
+        definitions: &indexmap::IndexMap<String, merman_model::families::block::BlockClassDef>,
     ) {
         let declarations = |styles: &[String]| {
             styles
@@ -66,7 +66,7 @@ impl BlockCssThemeBinding {
         let title_color = token("titleColor", &text_color);
         let arrowhead_color = token("arrowheadColor", &line_color);
         let fade = |raw: String, opacity| -> crate::Result<String> {
-            use merman_core::theme_color::{ColorChannel, ThemeColor, rgba};
+            use merman_markup::theme_color::{ColorChannel, ThemeColor, rgba};
             let color = ThemeColor::parse(raw.trim())?;
             Ok(rgba(
                 color.channel(ColorChannel::Red),
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn class_declarations_preserve_duplicates_order_and_safe_source_spelling() {
-        let mut definition = merman_core::diagrams::block::BlockClassDef::default();
+        let mut definition = merman_model::families::block::BlockClassDef::default();
         definition.id = "branded".into();
         definition.styles = vec![
             "fill:red".into(),

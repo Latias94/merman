@@ -1,8 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, EditorDiagramDetection};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisGeneration,
-    AnalysisPayload, AnalysisRejection, Analyzer, SourceDescriptor,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisDiagnosticPolicy,
+    AnalysisGeneration, AnalysisPayload, AnalysisRejection, Analyzer, SourceDescriptor,
     analyze_document_generation_shared, analyze_document_generation_shared_cancellable,
 };
 use std::sync::Arc;
@@ -17,6 +17,7 @@ pub struct DocumentAnalysisContext {
 struct DocumentAnalysisContextInner {
     snapshot: DocumentSnapshot,
     payload: Arc<AnalysisPayload>,
+    diagnostic_policy: AnalysisDiagnosticPolicy,
 }
 
 impl DocumentAnalysisContext {
@@ -42,6 +43,21 @@ impl DocumentAnalysisContext {
 
     pub fn shared_payload(&self) -> Arc<AnalysisPayload> {
         Arc::clone(&self.inner.payload)
+    }
+
+    pub fn diagnostic_policy(&self) -> &AnalysisDiagnosticPolicy {
+        &self.inner.diagnostic_policy
+    }
+
+    /// Projects requested replacement edits from the same retained analysis generation.
+    #[cfg(feature = "fixes")]
+    pub fn project_with_requested_fixes(&self) -> AnalysisPayload {
+        self.analysis_generation().project(
+            &self
+                .diagnostic_policy()
+                .clone()
+                .with_fix_generation(merman_analysis::FixGeneration::Generate),
+        )
     }
 }
 
@@ -123,7 +139,11 @@ fn analysis_context(analyzer: &Analyzer, snapshot: DocumentSnapshot) -> Document
     let payload = snapshot
         .analysis_generation()
         .project(analyzer.options().diagnostic_policy());
-    analysis_context_ready(snapshot, payload)
+    analysis_context_ready(
+        snapshot,
+        payload,
+        analyzer.options().diagnostic_policy().clone(),
+    )
 }
 
 fn analysis_context_cancellable(
@@ -135,16 +155,25 @@ fn analysis_context_cancellable(
         .analysis_generation()
         .project_cancellable(analyzer.options().diagnostic_policy(), cancellation)?;
     cancellation.checkpoint()?;
-    Ok(analysis_context_ready(snapshot, payload))
+    Ok(analysis_context_ready(
+        snapshot,
+        payload,
+        analyzer.options().diagnostic_policy().clone(),
+    ))
 }
 
 fn analysis_context_ready(
     snapshot: DocumentSnapshot,
     payload: AnalysisPayload,
+    diagnostic_policy: AnalysisDiagnosticPolicy,
 ) -> DocumentAnalysisContext {
     let payload = Arc::new(payload);
     DocumentAnalysisContext {
-        inner: Arc::new(DocumentAnalysisContextInner { snapshot, payload }),
+        inner: Arc::new(DocumentAnalysisContextInner {
+            snapshot,
+            payload,
+            diagnostic_policy,
+        }),
     }
 }
 
@@ -173,6 +202,61 @@ mod tests {
         reset_diagnostic_projection_count,
     };
     use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile};
+
+    #[cfg(all(feature = "fixes", feature = "diagram-flowchart"))]
+    #[test]
+    fn requested_fixes_reuse_generation_and_leave_initial_diagnostics_unchanged() {
+        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ));
+        let context = analyze_document_context_with_shared_text(
+            &analyzer,
+            "file:///tmp/requested-fixes.mmd",
+            1,
+            Arc::from("flowchart\nA-->B\n"),
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+        let generation = context.shared_analysis_generation();
+        let initial = context.shared_payload();
+        assert!(
+            initial
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.fixes.is_empty())
+        );
+        let requested = context.project_with_requested_fixes();
+        assert!(
+            requested
+                .diagnostics
+                .iter()
+                .any(|diagnostic| !diagnostic.fixes.is_empty())
+        );
+        assert!(Arc::ptr_eq(
+            &generation,
+            &context.shared_analysis_generation()
+        ));
+        assert!(Arc::ptr_eq(&initial, &context.shared_payload()));
+        assert!(
+            context
+                .payload()
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.fixes.is_empty())
+        );
+        assert_eq!(
+            initial
+                .diagnostics
+                .iter()
+                .map(|diagnostic| (&diagnostic.id, &diagnostic.message, &diagnostic.span))
+                .collect::<Vec<_>>(),
+            requested
+                .diagnostics
+                .iter()
+                .map(|diagnostic| (&diagnostic.id, &diagnostic.message, &diagnostic.span))
+                .collect::<Vec<_>>(),
+        );
+    }
 
     #[test]
     fn diagnostic_reprojection_keeps_the_canonical_snapshot_generation() {

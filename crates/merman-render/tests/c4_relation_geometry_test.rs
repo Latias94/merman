@@ -9,7 +9,8 @@ fn render(source: &str) -> (C4DiagramLayout, String) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse C4")
-        .expect("C4 diagram");
+        .expect("C4 diagram")
+        .into_presentation();
     let environment = RenderEnvironment::deterministic();
     let session = environment.begin_session().expect("render session");
     let options = LayoutOptions::headless_svg_defaults().with_screen_available_width(4000.0);

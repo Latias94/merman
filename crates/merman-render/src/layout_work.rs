@@ -50,7 +50,8 @@ impl OperationLayoutWorkControl {
         if let Some(error) = self.rejection.borrow().clone() {
             return Err(error.into());
         }
-        self.meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        self.meter
+            .checkpoint(merman_model::OperationPhase::Layout)?;
         self.meter
             .reserve_prepared_text_retained_bytes(bytes)
             .map_err(Error::from)
@@ -58,7 +59,7 @@ impl OperationLayoutWorkControl {
 
     pub(crate) fn checked_add(&self, left: usize, right: usize) -> Result<usize> {
         self.meter
-            .checkpoint(merman_core::OperationPhase::Layout)
+            .checkpoint(merman_model::OperationPhase::Layout)
             .map_err(Error::from)?;
         left.checked_add(right)
             .ok_or_else(|| self.record_arithmetic_overflow().into())
@@ -66,7 +67,7 @@ impl OperationLayoutWorkControl {
 
     pub(crate) fn checked_mul(&self, left: usize, right: usize) -> Result<usize> {
         self.meter
-            .checkpoint(merman_core::OperationPhase::Layout)
+            .checkpoint(merman_model::OperationPhase::Layout)
             .map_err(Error::from)?;
         left.checked_mul(right)
             .ok_or_else(|| self.record_arithmetic_overflow().into())

@@ -1,4 +1,5 @@
-use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -11,14 +12,15 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
-fn parse_class(text: &str) -> ParsedDiagramRender {
+fn parse_class(text: &str) -> PresentationDiagram {
     MermaidEngine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected")
+        .into_presentation()
 }
 
-fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diagram::ClassDiagram {
+fn class_model(parsed: &PresentationDiagram) -> &merman_model::families::class::ClassDiagram {
     let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class render model");
     };
@@ -46,7 +48,7 @@ fn load_class_layout_fixture(name: &str) -> ClassDiagramLayout {
     layout_class_with_dagre(&text, &environment)
 }
 
-fn layout_class_text(text: &str) -> (ClassDiagramLayout, ParsedDiagramRender) {
+fn layout_class_text(text: &str) -> (ClassDiagramLayout, PresentationDiagram) {
     let environment = RenderEnvironment::deterministic();
     let parsed = parse_class(text);
     let layout = layout_class_with_dagre(text, &environment);

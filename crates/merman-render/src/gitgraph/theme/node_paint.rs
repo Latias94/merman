@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -56,7 +56,7 @@ impl GitGraphNodePaintPlan {
         }
         let style =
             theme.style_with_work_meter(ThemeTarget::Node, ThemeVariant::Default, None, work)?;
-        let paint_inputs = merman_core::__private::gitgraph_paint_inputs(config);
+        let paint_inputs = config.gitgraph_paint_inputs();
         let available_sources = paint_inputs.map_or(0, |inputs| inputs.available_sources());
         let fill = (available_sources & 0b111 != 0)
             .then(|| {

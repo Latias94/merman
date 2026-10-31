@@ -137,13 +137,39 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
         capture_keys,
     );
 
-    for (index, event) in Parser::new_from_str(input).enumerate() {
+    // Feature unification may enable comment support for semantic-only callers.
+    // Emit comments only when collecting editor evidence.
+    let options = granit_parser::options! {
+        #[cfg(feature = "editor-facts")]
+        emit_comments: capture_keys,
+        #[cfg(not(feature = "editor-facts"))]
+        emit_comments: false,
+    };
+    for (index, event) in Parser::new_from_str_with_options(input, options).enumerate() {
         if index % 64 == 0 {
             control.checkpoint()?;
         }
         let (event, _span) = match event {
             Ok(event) => event,
             Err(error) => {
+                #[cfg(feature = "editor-facts")]
+                if capture_keys && error.kind() == &granit_parser::ErrorKind::TooManyComments {
+                    // Optional editor evidence must not narrow semantic source acceptance.
+                    // Discard partial evidence and retry once without comment buffering,
+                    // preserving the caller's control and all semantic resource limits.
+                    drop(builder);
+                    return Ok(YamlValueCapture {
+                        value: parse_yaml_value_with_limits_controlled(
+                            input,
+                            max_input_bytes,
+                            max_nesting_depth,
+                            materialization_budget,
+                            control,
+                        )?,
+                        keys: Vec::new(),
+                        rewrite_safe: false,
+                    });
+                }
                 #[cfg(feature = "editor-facts")]
                 let (keys, _) = builder.take_capture();
                 return Ok(YamlValueCapture {
@@ -266,11 +292,9 @@ impl YamlValueBuilder {
             | Event::StreamEnd
             | Event::DocumentStart(..)
             | Event::DocumentEnd => Ok(()),
+            #[cfg(feature = "editor-facts")]
             Event::Comment(_, _) => {
-                #[cfg(feature = "editor-facts")]
-                {
-                    self.rewrite_safe = false;
-                }
+                self.rewrite_safe = false;
                 Ok(())
             }
             Event::Alias(anchor_id) => {
@@ -1081,8 +1105,9 @@ mod tests {
     fn parses_nested_yaml_without_recursion() {
         let value = parse_yaml_value(
             r#"
+# Configuration metadata.
 config:
-  theme: base
+  theme: base # Inline comment.
   flowchart:
     htmlLabels: true
   values: [1, 0x10, false, null]
@@ -1156,6 +1181,53 @@ second: *base
 
         assert_eq!(value["first"], value["base"]);
         assert_eq!(value["second"], value["base"]);
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn comment_capture_limit_preserves_semantic_values_and_resource_limits() {
+        let mut input = String::from("key: # first comment\n");
+        input.push_str(&"# buffered comment\n".repeat(128));
+        input.push_str("next:\n  value: true\n");
+        assert_eq!(
+            parse_yaml_value(&input, 16).expect("comments do not change YAML values"),
+            json!({ "key": null, "next": { "value": true } })
+        );
+
+        for (depth, budget) in [(16, 64 * 1024), (1, 64 * 1024), (16, 8)] {
+            let control = OperationControl::new();
+            let expected =
+                parse_yaml_value_with_limits_controlled(&input, 4096, depth, budget, &control)
+                    .expect("active control");
+            let captured = parse_yaml_value_with_limits_capture_controlled(
+                &input, 4096, depth, budget, &control,
+            )
+            .expect("active control");
+
+            assert_eq!(captured.value, expected, "depth={depth}, budget={budget}");
+            assert!(
+                captured.keys.is_empty(),
+                "partial evidence must be discarded"
+            );
+            assert!(
+                !captured.rewrite_safe,
+                "comments must not be lost by a rewrite"
+            );
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn comment_capture_limit_does_not_hide_later_yaml_syntax_errors() {
+        let mut input = String::from("key: # first comment\n");
+        input.push_str(&"# buffered comment\n".repeat(128));
+        input.push_str("next: [\n");
+        let expected = parse_yaml_value(&input, 16).expect_err("unclosed sequence");
+        let captured = capture_yaml(&input);
+
+        assert_eq!(captured.value, Err(expected));
+        assert!(captured.keys.is_empty());
+        assert!(!captured.rewrite_safe);
     }
 
     #[cfg(feature = "editor-facts")]

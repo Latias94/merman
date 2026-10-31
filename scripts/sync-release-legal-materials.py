@@ -73,6 +73,8 @@ DUAL_LICENSE_CRATE_ROOTS = (
     "crates/merman-ffi",
     "crates/merman-layout-elk",
     "crates/merman-lsp",
+    "crates/merman-model",
+    "crates/merman-markup",
     "crates/merman-render",
     "crates/merman-rustdoc",
     "crates/merman-typst-plugin",
@@ -99,6 +101,8 @@ CRATE_COMPONENTS = {
         "mermaid-rs-renderer",
     ),
     "crates/merman-core": ("dompurify", "mermaid", "sanitize-url", "zenuml-core"),
+    "crates/merman-model": ("mermaid",),
+    "crates/merman-markup": ("dompurify", "mermaid", "sanitize-url"),
     "crates/merman-export": ("sdk-cousine",),
     "crates/merman-render": (
         "d3-shape",

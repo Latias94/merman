@@ -4,7 +4,7 @@
 
 `merman-ascii` is the terminal/text rendering crate for [merman](https://github.com/Latias94/merman). It renders Mermaid typed models as stable ASCII or Unicode text output for terminals, logs, documentation pipelines, and environments where SVG is not the right output format.
 
-This crate is intentionally model-driven. It consumes typed models from `merman-core`; it does not parse Mermaid syntax itself.
+This crate consumes canonical and full data from `merman-model`. Its production dependencies do not include Mermaid source parsing. Applications can construct models directly or obtain them from `merman-core`.
 
 The host supplies width, charset, color mode, palette, and overflow policy. This crate does not probe
 terminal state or own a pager, cache, viewer, clipboard, or source-display policy. The
@@ -21,11 +21,11 @@ is preserved. This deterministic fallback prevents borders and routes from occup
 cells per structural token.
 
 `merman-ascii` has an empty default feature set. Select the positive `diagram-*` features for
-required families, or `all-diagrams` for the complete parser and terminal-adapter surface.
-Each selector forwards to `merman-core`; it does not enable system clock, time-zone, random,
-or timing adapters. Alpha.6 packages predate family selection. Parser availability alone does not promise a terminal projection.
+required families, or `all-diagrams` for the complete data and terminal-adapter surface.
+Each selector enables model data and this crate's local handler when one exists. It does not enable
+a source parser or system adapters. Model availability alone does not promise a terminal projection.
 
-> **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Direct users pass a `merman_core::ParsedSemanticDiagram` to `AsciiRenderer::render_parsed` or `render_parsed_report`, or supply a borrowed `AsciiDiagram` with `AsciiSourceContext`. A full `merman_core::RenderSemanticModel` requires explicit projection into the borrowed inputs.
+> **Implementation crate:** applications that ingest source can select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Direct model consumers pass a `merman_model::ParsedSemanticDiagram` to `AsciiRenderer::render_parsed` or `render_parsed_report`, or supply a borrowed `AsciiDiagram` with `AsciiSourceContext`. A full `merman_model::presentation::RenderSemanticModel` requires explicit projection into the borrowed inputs.
 
 This model renderer does not own a runtime-policy constructor, so it does not forward `system-*`
 features. Direct users construct `AsciiRenderer`, capture an `OperationContext` from their facade or
@@ -33,7 +33,7 @@ host runtime policy, and pass that context together with the caller-owned `Opera
 `AsciiResourcePolicy` to `AsciiRenderer::render_model`. Deterministic and sandboxed applications
 should provide explicit operation values instead of enabling system adapters.
 
-This guide targets `merman-ascii 0.9.3`. Match the documentation and generated artifacts to the version installed in your project.
+The model-package boundary described here applies to the development checkout. Released 0.9.3 uses the previous core model paths; use its tagged documentation when consuming that release.
 
 ## Quick Start
 
@@ -51,7 +51,7 @@ For a current-source checkout beside the application, select the required famili
 merman = { path = "../merman/crates/merman", default-features = false, features = ["ascii", "diagram-flowchart", "diagram-gantt"] }
 ```
 
-Depend on `merman-ascii` directly when the application owns a `merman_core::ParsedSemanticDiagram` for `AsciiRenderer::render_parsed` or `render_parsed_report`, or supplies a borrowed `AsciiDiagram` with `AsciiSourceContext`. Explicitly project a full `merman_core::RenderSemanticModel` into those borrowed inputs before rendering.
+Depend on `merman-ascii` directly when the application owns a `merman_model::ParsedSemanticDiagram` for `AsciiRenderer::render_parsed` or `render_parsed_report`, or supplies a borrowed `AsciiDiagram` with `AsciiSourceContext`. Explicitly project a full `merman_model::presentation::RenderSemanticModel` into those borrowed inputs before rendering.
 
 ## Supported Families
 
@@ -62,9 +62,9 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 | Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
 | Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
-Every compiled logical built-in family with a typed parser has one capability record, including
-unsupported terminal projections. These records describe this crate's local adapters, even when
-another dependency enables additional parsers in `merman-core`. Flowchart and Swimlane have
+Every selected logical model family has one capability record, including unsupported terminal
+projections. These records describe this crate's local adapters even when another dependency selects
+additional model data. The source facade intersects these capabilities with its actual parsers. Flowchart and Swimlane have
 separate rows and share their terminal implementation. `semantic_coverage`,
 `primary_projection`, and `structured_text_fallback` are independent; legacy `support_level` is
 derived from them. The same record exposes `layout_profiles`, `width_profiles`, `encodings`, and

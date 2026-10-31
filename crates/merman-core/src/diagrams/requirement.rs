@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
@@ -12,8 +12,12 @@ use crate::{
     Error, OperationControl, OperationControlResult, Result, SourceSpan,
     family::CombinedSemanticFailure,
 };
+pub(crate) use merman_model::families::requirement::{
+    RequirementClass, RequirementDiagramModel, RequirementElement, RequirementNode,
+    RequirementRelationship,
+};
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
@@ -33,83 +37,12 @@ pub(crate) fn requirement_syntax_construction_count() -> usize {
     REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequirementNode {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub node_type: String,
-    #[serde(default, rename = "requirementId")]
-    pub requirement_id: String,
-    #[serde(default)]
-    pub text: String,
-    #[serde(default)]
-    pub risk: String,
-    #[serde(default, rename = "verifyMethod")]
-    pub verify_method: String,
-    #[serde(default)]
-    pub css_styles: Vec<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequirementElement {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub element_type: String,
-    #[serde(default, rename = "docRef")]
-    pub doc_ref: String,
-    #[serde(default)]
-    pub css_styles: Vec<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RequirementRelationship {
-    #[serde(rename = "type")]
-    pub rel_type: String,
-    pub src: String,
-    pub dst: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequirementClass {
-    pub id: String,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Requirement declarations, relationships, and authored styles.
-pub struct RequirementDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub direction: String,
-    #[serde(default)]
-    pub requirements: Vec<RequirementNode>,
-    #[serde(default)]
-    pub elements: Vec<RequirementElement>,
-    #[serde(default)]
-    pub relationships: Vec<RequirementRelationship>,
-    #[serde(default)]
-    pub classes: BTreeMap<String, RequirementClass>,
-}
-
-impl RequirementDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut RequirementDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -363,7 +296,7 @@ fn push_styles(out: &mut Vec<String>, styles: &[String]) {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_requirement(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_requirement(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let model = parse_requirement_semantic_source(code, meta)?.model;
     render_model_to_compat_json(&model, meta)
 }
@@ -371,7 +304,7 @@ pub(crate) fn parse_requirement(code: &str, meta: &PresentationMetadata) -> Resu
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_requirement_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<RequirementDiagramModel> {
     Ok(parse_requirement_semantic_source(code, meta)?.model)
 }
@@ -379,7 +312,7 @@ pub(crate) fn parse_requirement_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_requirement_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RequirementDiagramModel>> {
     let construction = construct_requirement_semantic_source_controlled(
@@ -399,7 +332,7 @@ pub(crate) fn parse_requirement_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_requirement_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_requirement_semantic_source_controlled(
@@ -438,7 +371,7 @@ pub(crate) fn parse_requirement_semantic_model_controlled(
                 .needs_recovery()
                 .then_some(source.editor_facts);
             let mut model = source.model;
-            model.sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut model, &metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(model),
                 #[cfg(feature = "editor-facts")]
@@ -590,28 +523,16 @@ fn emit_parsed_requirement_styles(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &RequirementDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let mut out = Map::with_capacity(9);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("direction".to_string(), json!(&model.direction));
-    out.insert("requirements".to_string(), json!(&model.requirements));
-    out.insert("elements".to_string(), json!(&model.elements));
-    out.insert("relationships".to_string(), json!(&model.relationships));
-    out.insert("classes".to_string(), json!(&model.classes));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    merman_model::families::requirement::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn parse_requirement_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<RequirementSemanticSource> {
     construct_requirement_semantic_source(code, meta).map_err(CombinedSemanticFailure::into_error)
 }
@@ -619,7 +540,7 @@ fn parse_requirement_semantic_source(
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_requirement_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
     construct_requirement_semantic_source_controlled(
         code,
@@ -2356,11 +2277,11 @@ mod tests {
             .to_string()
     }
 
-    fn test_meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn test_meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "requirement".to_string(),
             config: MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
     }
@@ -2650,7 +2571,7 @@ mod tests {
             "login - verifies -> api\n",
         );
         let mut meta = test_meta();
-        meta.effective_config = crate::presentation::PresentationConfig::from_value(json!({
+        meta.effective_config = crate::presentation::SourcePresentationConfig::from_value(json!({
             "theme": "forest",
             "securityLevel": "strict"
         }));
@@ -3239,10 +3160,10 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::PresentationMetadata {
+            let full_metadata = crate::SourcePresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
-                effective_config: crate::presentation::PresentationConfig::from_config(
+                effective_config: crate::presentation::SourcePresentationConfig::from_config(
                     metadata.semantic_config.clone(),
                 ),
                 title: metadata.title.clone(),

@@ -218,7 +218,7 @@ mod prepared_tests {
             crate::DiagramFamilyId::SEQUENCE,
             &crate::svg::SvgRenderOptions::default(),
             |execution| {
-                let config = merman_core::presentation::PresentationConfig::default();
+                let config = merman_model::presentation::PresentationConfig::default();
                 let typography = crate::sequence::SequenceTypographyPlan::resolve(
                     &config,
                     None,

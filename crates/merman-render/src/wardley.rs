@@ -7,7 +7,7 @@ pub(crate) use theme::{
 use crate::config::{config_bool, config_f64_or};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::diagrams::wardley::{
+use merman_model::families::wardley::{
     WardleyDiagramModel, WardleyFlowDirection, WardleySourceStrategy,
 };
 use serde::Serialize;
@@ -660,8 +660,7 @@ pub(crate) fn layout_wardley_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
-    let config =
-        merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
+    let config = crate::test_support::presentation_config(effective_config.clone());
     let typography_theme = WardleyTypographyThemePlan::resolve(
         None,
         &config,

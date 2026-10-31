@@ -4,7 +4,10 @@
 use merman_core::{
     EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticKind, EditorSemanticRole,
 };
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+use {
+    merman_core::{MermaidEngine, ParseOptions},
+    merman_model::presentation::RenderSemanticModel,
+};
 
 #[test]
 fn usecase_public_parse_routes_preserve_preprocessed_source_identity() {
@@ -272,7 +275,7 @@ fn usecase_eof_diagnostics_keep_original_positions_across_public_routes() {
             let source = format!(
                 "---{separator}title: EOF{separator}---{separator}usecase-beta{separator}%% retained source line{separator}{body}"
             );
-            let expected = merman_core::SourceSpan::new(source.len(), source.len());
+            let expected = merman_model::source::SourceSpan::new(source.len(), source.len());
             for error in [
                 engine
                     .parse_diagram_sync(&source, ParseOptions::strict())

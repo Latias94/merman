@@ -51,7 +51,10 @@ const CASES: &[CaseSpec] = &[
 fn analyzer_for(case_name: &str) -> Analyzer {
     match case_name {
         "recommended_flowchart_fix" => {
-            Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+            let options = AnalysisOptions::default();
+            #[cfg(feature = "fixes")]
+            let options = options.with_fix_generation(merman_analysis::FixGeneration::Generate);
+            Analyzer::with_options(options.with_rule_config(
                 AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
             ))
         }
@@ -119,7 +122,20 @@ fn generation_refactor_preserves_independent_public_diagnostics_json() {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(actual_cases, *expected_cases);
+    let expected_cases = expected_cases.clone();
+    #[cfg(not(feature = "fixes"))]
+    let expected_cases = expected_cases
+        .into_iter()
+        .map(|mut case| {
+            // The historical fixture preserves full-product fixes; this isolated product cannot
+            // generate them. Keep every diagnostic field and the checked-in oracle unchanged.
+            for diagnostic in case["diagnostics"]["diagnostics"].as_array_mut().unwrap() {
+                diagnostic.as_object_mut().unwrap().remove("fixes");
+            }
+            case
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(actual_cases, expected_cases);
 }
 
 #[test]

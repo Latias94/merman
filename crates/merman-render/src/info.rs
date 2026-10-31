@@ -16,9 +16,9 @@ use crate::family::{
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::TextMeasurer;
-use merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
-use merman_core::diagrams::info::InfoDiagramRenderModel;
-use merman_core::presentation::PresentationConfig;
+use merman_model::baseline::PINNED_MERMAID_BASELINE_VERSION;
+use merman_model::families::info::InfoDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 const INFO_BASELINE_WIDTH_PX: f64 = 400.0;
 const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
@@ -177,10 +177,7 @@ impl InfoTypographyThemePlan {
             None
         };
         let config_owns_text_fill = theme.is_some()
-            && merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "themeVariables.textColor",
-            );
+            && effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let routes = info_theme_routes(theme, config_owns_text_fill, work_meter)?;
         let mut evidence = FamilyThemeOutcomes::default();
         if let Some(theme) = theme
@@ -425,7 +422,7 @@ fn info_theme_routes(
 }
 
 pub(crate) fn layout_info_diagram_typed(
-    model: &InfoDiagramRenderModel,
+    model: &InfoDiagramModel,
     typography_theme: &InfoTypographyThemePlan,
 ) -> Result<InfoDiagramLayout> {
     let _ = model.show_info;
@@ -511,9 +508,8 @@ mod tests {
             ),
         )
         .expect("resolve Info theme");
-        let layout =
-            layout_info_diagram_typed(&InfoDiagramRenderModel::default(), &typography_theme)
-                .expect("info layout");
+        let layout = layout_info_diagram_typed(&InfoDiagramModel::default(), &typography_theme)
+            .expect("info layout");
 
         assert_eq!(
             layout.bounds,

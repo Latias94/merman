@@ -1,5 +1,5 @@
 use crate::{Error, Result};
-use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineTask};
+use merman_model::families::timeline::{TimelineDiagramModel, TimelineTask};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
@@ -16,7 +16,7 @@ enum SectionLookup {
 }
 
 impl<'model> TimelineTaskIndex<'model> {
-    pub(super) fn new(model: &'model TimelineDiagramRenderModel) -> Result<Self> {
+    pub(super) fn new(model: &'model TimelineDiagramModel) -> Result<Self> {
         let mut section_lookup = HashMap::with_capacity(model.sections.len());
         for (section_index, section) in model.sections.iter().enumerate() {
             match section_lookup.entry(section.as_str()) {
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn indexes_parser_occurrences_and_unique_legacy_labels_once() {
-        let mut model = TimelineDiagramRenderModel::default();
+        let mut model = TimelineDiagramModel::default();
         model.sections = vec!["Repeated".into(), "Repeated".into(), "Unique".into()];
         model.tasks = vec![
             task(0, "Repeated", Some(0), "First"),
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn keeps_unmatched_legacy_tasks_as_orphans_in_model_order() {
-        let mut model = TimelineDiagramRenderModel::default();
+        let mut model = TimelineDiagramModel::default();
         model.sections = vec!["Known".into()];
         model.tasks = vec![
             task(0, "Missing", None, "Unknown"),
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn rejects_ambiguous_legacy_labels() {
-        let mut model = TimelineDiagramRenderModel::default();
+        let mut model = TimelineDiagramModel::default();
         model.sections = vec!["Repeated".into(), "Repeated".into()];
         model.tasks = vec![task(0, "Repeated", None, "Ambiguous")];
 
@@ -165,7 +165,7 @@ mod tests {
             ("Known", 1, "outside 1 declared sections"),
             ("Other", 0, "names `Known` but the task owns `Other`"),
         ] {
-            let mut model = TimelineDiagramRenderModel::default();
+            let mut model = TimelineDiagramModel::default();
             model.sections = vec!["Known".into()];
             model.tasks = vec![task(0, section, Some(section_index), "Invalid")];
 

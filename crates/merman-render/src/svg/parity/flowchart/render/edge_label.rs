@@ -826,8 +826,8 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 } else {
                     // Preserve the configured div/paragraph composite while making
                     // the filtered paragraph glyph-only.
-                    let color = merman_core::theme_color::ThemeColor::parse(fill)?;
-                    let alpha = color.channel(merman_core::theme_color::ColorChannel::Alpha);
+                    let color = merman_markup::theme_color::ThemeColor::parse(fill)?;
+                    let alpha = color.channel(merman_markup::theme_color::ColorChannel::Alpha);
                     crate::svg::parity::util::css_rgba_fade(fill, 0.5 + 0.5 * alpha)?
                 };
                 let reference = effect.html_reference(out, id);
@@ -1258,7 +1258,8 @@ mod tests {
             FlowchartEdgeKey, FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner,
             FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
         };
-        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions};
+        use merman_model::presentation::RenderSemanticModel;
 
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
@@ -1266,12 +1267,13 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart semantic edges");
         };
         let builder = FlowchartSvgLabelSidecarBuilder::default();
-        let config = merman_core::presentation::PresentationConfig::default();
+        let config = merman_model::presentation::PresentationConfig::default();
         let style = crate::text::TextStyle::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         builder.measure_for_layout(
@@ -1409,7 +1411,7 @@ mod tests {
             );
             let plan = FlowchartTextPaintPlan::resolve(
                 Some(&theme),
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
                 false,
                 &work,
             )

@@ -1,4 +1,4 @@
-use merman_core::diagrams::gantt::GanttRenderTask;
+use merman_model::families::gantt::GanttRenderTask;
 
 use crate::diagram_theme::ThemeVariant;
 

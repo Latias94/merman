@@ -1,7 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
 use merman_analysis::{ByteSpan, FenceTextIndexSource, SourceMap};
-use merman_core::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
+use merman_core::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticSymbol};
+use merman_model::SourceSpan;
 use std::collections::HashMap;
 use std::fmt;
 

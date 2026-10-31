@@ -25,23 +25,19 @@ pub(crate) struct FlowchartTypographyConfigOwnership {
 }
 
 pub(crate) fn flowchart_typography_config_ownership(
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
 ) -> FlowchartTypographyConfigOwnership {
-    let raw_weight = merman_core::__private::explicit_config_owns_path(config, "fontWeight")
+    let raw_weight = config
+        .explicit_config_owns_path("fontWeight")
         .then(|| config.get_str("fontWeight"))
         .flatten();
     let font_weight = raw_weight.and_then(|raw| crate::text::resolve_css_font_weight(raw, 400));
     FlowchartTypographyConfigOwnership {
         font_weight,
         invalid_font_weight: raw_weight.is_some() && font_weight.is_none(),
-        font_stack: merman_core::__private::explicit_config_owns_path(
-            config,
-            "themeVariables.fontFamily",
-        ) || merman_core::__private::explicit_config_owns_path(config, "fontFamily"),
-        font_size: merman_core::__private::explicit_config_owns_path(
-            config,
-            "themeVariables.fontSize",
-        ),
+        font_stack: config.explicit_config_owns_path("themeVariables.fontFamily")
+            || config.explicit_config_owns_path("fontFamily"),
+        font_size: config.explicit_config_owns_path("themeVariables.fontSize"),
     }
 }
 

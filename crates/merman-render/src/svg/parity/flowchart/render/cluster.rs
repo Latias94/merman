@@ -18,7 +18,7 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     origin_y: f64,
 ) -> crate::Result<()> {
     ctx.work_meter
-        .checkpoint(merman_core::OperationPhase::Layout)
+        .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)?;
     if ctx.compatibility.look.as_str() != "handDrawn"
         || ctx
@@ -67,7 +67,7 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
         );
     }
     ctx.work_meter
-        .checkpoint(merman_core::OperationPhase::Layout)
+        .checkpoint(merman_model::OperationPhase::Layout)
         .map_err(crate::Error::from)
 }
 

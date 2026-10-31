@@ -637,7 +637,7 @@ fn runtime_resource_contract_for(
             .profiles
             .into_iter()
             .map(|profile| {
-                let profile_id = merman::resources::ResourceProfile::from_id(profile.id)
+                let profile_id = merman::model::resources::ResourceProfile::from_id(profile.id)
                     .expect("compiled resource profile id");
                 RuntimeResourceProfile {
                     id: profile.id,
@@ -718,7 +718,7 @@ fn theme_catalog_for_with_compiler(
 
     let default_compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
         merman::svg::ThemeResourcePolicy::for_profile(
-            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+            merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
         ),
     );
     let compiler = compiler.unwrap_or(&default_compiler);
@@ -1245,7 +1245,7 @@ mod tests {
     #[test]
     fn native_contract_exposes_the_exact_transport_owned_runtime_adapters() {
         let transport = full_native_contract().runtime_capabilities();
-        let compiled_system_adapter_ids = merman::runtime::compiled_system_adapter_ids();
+        let compiled_system_adapter_ids = merman::model::runtime::compiled_system_adapter_ids();
         let expected_system_adapter_ids = expected_native_system_adapter_ids();
 
         assert_eq!(transport.system_adapter_ids, expected_system_adapter_ids);
@@ -1703,7 +1703,10 @@ mod tests {
             .find(|capability| capability.diagram_type == "flowchart")
             .expect("flowchart capability should be present");
         assert_eq!(flowchart.metadata_id, Some("flowchart"));
-        assert_eq!(flowchart.family_id, merman::DiagramFamilyId::FLOWCHART);
+        assert_eq!(
+            flowchart.family_id,
+            merman::model::family::DiagramFamilyId::FLOWCHART
+        );
         assert_eq!(flowchart.logical_family_kind, "flowchart");
         assert_eq!(flowchart.render_model_kind, Some("flowchart"));
         assert!(!flowchart.has_detector);
@@ -1749,7 +1752,10 @@ mod tests {
             .find(|capability| capability.diagram_type == "swimlane")
             .expect("11.16 swimlane capability should be present");
         assert_eq!(swimlane.metadata_id, Some("swimlane"));
-        assert_eq!(swimlane.family_id, merman::DiagramFamilyId::SWIMLANE);
+        assert_eq!(
+            swimlane.family_id,
+            merman::model::family::DiagramFamilyId::SWIMLANE
+        );
         assert!(swimlane.has_detector);
         assert!(swimlane.has_semantic_parser);
         assert!(swimlane.has_editor_parser);
@@ -1860,7 +1866,7 @@ mod tests {
             assert_eq!(catalog["supported_output_ids"], serde_json::json!(["svg"]));
             let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
                 merman::svg::ThemeResourcePolicy::for_profile(
-                    merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+                    merman::model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
                 ),
             );
             assert_eq!(

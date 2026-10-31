@@ -29,7 +29,7 @@ use base64::Engine as _;
     )
 )]
 use indexmap::IndexMap;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 use std::fmt::Write as _;
 
 pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
@@ -339,6 +339,8 @@ use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_pat
     )
 )]
 use style::is_text_style_key;
+#[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+use util::decode_mermaid_entities_for_render_text;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -347,11 +349,10 @@ use style::is_text_style_key;
     )
 )]
 use util::{
-    config_bool, config_f64, config_string, css_rgba_fade, decode_mermaid_entities_for_render_text,
-    escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into, fmt, fmt_display,
-    fmt_into, fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
-    json_stringify_points_into, normalize_css_font_family, scoped_drop_shadow, scoped_svg_id,
-    scoped_svg_url, theme_token,
+    config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_attr_into,
+    escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
+    fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
+    normalize_css_font_family, scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
 };
 pub(crate) use util::{escape_attr, escape_xml};
 
@@ -1054,7 +1055,7 @@ impl<'a> SvgExecution<'a> {
         self.family.session().unix_millis()
     }
 
-    pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
+    pub(crate) fn local_time_zone(&self) -> &merman_model::time::LocalTimeZone {
         self.family.session().local_time_zone()
     }
 
@@ -1129,7 +1130,7 @@ pub(crate) fn with_test_svg_execution<T>(
 
 pub(crate) fn edge_geometry_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
-    metadata: &merman_core::PresentationMetadata,
+    metadata: &merman_model::presentation::PresentationMetadata,
     family_execution: FamilyExecutionView<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     let request = SvgRenderOptions::default();
@@ -1154,7 +1155,7 @@ pub(crate) fn edge_geometry_family_artifact(
 
 pub(crate) fn render_builtin_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
-    metadata: &merman_core::PresentationMetadata,
+    metadata: &merman_model::presentation::PresentationMetadata,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
@@ -1206,7 +1207,7 @@ pub(crate) fn render_builtin_family_artifact(
 #[inline(never)]
 pub(crate) fn render_architecture_family_artifact(
     artifact: &crate::family::ArchitectureFamilyArtifact,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
@@ -1255,7 +1256,7 @@ pub(crate) fn render_architecture_family_artifact(
 )]
 fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
-    metadata: &merman_core::PresentationMetadata,
+    metadata: &merman_model::presentation::PresentationMetadata,
     options: &SvgExecution<'_>,
     family_theme_evidence: &mut Option<crate::family::FamilyThemeOutcomes>,
     #[cfg(feature = "diagram-packet")] packet_theme_outcome: &mut Option<
@@ -1656,7 +1657,7 @@ mod operation_time_tests {
     fn svg_execution_uses_the_operation_session_time() {
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_runtime_policy(
-                merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1_000),
+                merman_model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1_000),
             )
             .begin_session()
             .expect("begin render session");
@@ -1833,7 +1834,7 @@ mod diagram_id_projection_tests {
 
     #[test]
     fn controlled_diagram_id_session_rejects_preexisting_cancellation() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel();
         let error = match crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_control(control)

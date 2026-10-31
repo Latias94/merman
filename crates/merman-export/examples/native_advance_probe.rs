@@ -7,8 +7,8 @@
 
 #[cfg(feature = "native-fonts")]
 mod probe {
-    use merman_core::OperationControl;
     use merman_export::{NativeFontContext, NativeFontLimits, NativeFontOptions};
+    use merman_model::OperationControl;
     use merman_render::environment::{
         HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
         TextMeasurementOperation, TextMeasurementPhase,

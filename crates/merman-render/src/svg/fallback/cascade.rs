@@ -1374,9 +1374,10 @@ impl CascadeIndex {
                 background_color_specified = true;
                 match background_style.background_color.as_ref() {
                     Some(color)
-                        if !merman_core::theme_color::ThemeColor::parse(color).is_ok_and(
+                        if !merman_markup::theme_color::ThemeColor::parse(color).is_ok_and(
                             |value| {
-                                value.channel(merman_core::theme_color::ColorChannel::Alpha) == 0.0
+                                value.channel(merman_markup::theme_color::ColorChannel::Alpha)
+                                    == 0.0
                             },
                         ) =>
                     {

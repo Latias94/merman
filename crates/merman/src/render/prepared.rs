@@ -1,10 +1,12 @@
+#[cfg(feature = "presentation")]
+use merman_model::presentation::{PresentationDiagram, PresentationMetadata};
 use std::sync::Arc;
 
 use super::{OperationControl, RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer};
 use crate::operation_runner::{Operation, PresentationArtifact};
-use merman_core::resources::{InputResourcePolicy, ModelComplexity};
-use merman_core::runtime::OperationContext;
-use merman_core::{ParseOptions, ParsedDiagramRender, PresentationMetadata};
+use merman_core::{ParseOptions, ParsedDiagramRender};
+use merman_model::resources::{InputResourcePolicy, ModelComplexity};
+use merman_model::runtime::OperationContext;
 #[cfg(feature = "svg")]
 use merman_render::diagram_theme::DiagramTheme;
 
@@ -60,7 +62,7 @@ impl PreparedSource {
     pub fn semantic_kind(&self) -> &'static str {
         self.state.parsed.model().kind()
     }
-    pub fn family_id(&self) -> Option<merman_core::DiagramFamilyId> {
+    pub fn family_id(&self) -> Option<merman_model::family::DiagramFamilyId> {
         self.state.parsed.family_id()
     }
     /// Returns the real operation context used to produce the frozen semantic facts.
@@ -80,8 +82,8 @@ impl PreparedSource {
     pub(crate) fn theme(&self) -> Option<&DiagramTheme> {
         self.state.theme.as_ref()
     }
-    pub(crate) fn parsed(&self) -> &ParsedDiagramRender {
-        &self.state.parsed
+    pub(crate) fn parsed(&self) -> &PresentationDiagram {
+        self.state.parsed.presentation()
     }
 }
 

@@ -3,7 +3,6 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
@@ -44,7 +43,8 @@ fn parse_layout_and_render_with_environment(
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse cynefin")
-        .expect("detect cynefin");
+        .expect("detect cynefin")
+        .into_presentation();
     let artifact = family::prepare(&parsed, layout_options, session).expect("prepare cynefin");
     let projection = artifact.layout_json().expect("serialize Cynefin layout");
     let layout: CynefinDiagramLayout =
@@ -76,7 +76,8 @@ fn try_render_cynefin_svg_with_resource_policy(
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse Cynefin resource-bound fixture")
-        .expect("detect Cynefin resource-bound fixture");
+        .expect("detect Cynefin resource-bound fixture")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
@@ -159,10 +160,11 @@ fn try_render_cynefin_with_theme(
     environment: &RenderEnvironment,
     diagram_id: &str,
 ) -> merman_render::Result<(CynefinDiagramLayout, family::RenderedFamilySvg)> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Cynefin")
-        .expect("detect themed Cynefin");
+        .expect("detect themed Cynefin")
+        .into_presentation();
     let session = environment.begin_session_with_theme(theme).unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let projection = artifact.layout_json()?;
@@ -339,11 +341,13 @@ fn cynefin_text_palette_only_remains_residual_when_its_fallback_is_needed() {
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile text palette theme");
         let engine = if case == "config" {
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "cynefin": { "textColor": "#123456" } }
-                }),
-            ))
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "cynefin": { "textColor": "#123456" } }
+                    }),
+                ),
+            )
         } else {
             MermaidEngine::new()
         };
@@ -403,12 +407,13 @@ fn cynefin_explicit_text_color_outranks_typed_text_fill() {
     let theme = cynefin_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Cynefin typed text fill"),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "cynefin": { "textColor": "#fedcba" }
             }
-        })));
+        })),
+    );
     let (_, rendered) = try_render_cynefin_with_theme(
         CYNEFIN_TEXT_FILL_SOURCE,
         &theme,
@@ -689,21 +694,25 @@ fn cynefin_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
     let cases = [
         (
             "site-font",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "fontFamily": "SiteCynefinFont,serif" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontFamily": "SiteCynefinFont,serif" }
+                    }),
+                ),
+            ),
             "cynefin-beta\ncomplex\n\"A\"\n".to_string(),
             "SiteCynefinFont,serif",
         ),
         (
             "source-font",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "secure": []
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                ),
+            ),
             concat!(
                 "%%{init: {\"fontFamily\": \"SourceCynefinFont,monospace\"}}%%\n",
                 "cynefin-beta\ncomplex\n\"A\"\n"

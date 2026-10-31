@@ -1,8 +1,9 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
-use merman_core::{MAX_DIAGRAM_NESTING_DEPTH, MermaidEngine, ParseOptions, ParsedDiagramRender};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::MAX_DIAGRAM_NESTING_DEPTH;
+use merman_model::presentation::PresentationDiagram;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
     OrdinalSelector, Specified, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
@@ -129,10 +130,11 @@ fn try_render_tree_view_with_theme_and_environment(
     environment: &RenderEnvironment,
     diagram_id: &str,
 ) -> merman_render::Result<(TreeViewDiagramLayout, family::RenderedFamilySvg)> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Tree View")
-        .expect("detect themed Tree View");
+        .expect("detect themed Tree View")
+        .into_presentation();
     let session = environment
         .clone()
         .with_theme_portability_requirement(portability)
@@ -226,12 +228,13 @@ fn render_tree_view_svg_with_engine_and_environment(
     let parsed = engine
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .expect("TreeView diagram");
+        .expect("TreeView diagram")
+        .into_presentation();
     render_parsed_tree_view_svg(parsed, options, session)
 }
 
 fn render_parsed_tree_view_svg(
-    parsed: ParsedDiagramRender,
+    parsed: PresentationDiagram,
     options: SvgRenderOptions,
     session: RenderSession,
 ) -> String {
@@ -255,7 +258,8 @@ fn try_render_tree_view_svg_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse TreeView resource-bound fixture")
-        .expect("detect TreeView resource-bound fixture");
+        .expect("detect TreeView resource-bound fixture")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
@@ -318,7 +322,8 @@ fn layout_tree_view(input: &str, environment: &RenderEnvironment) -> TreeViewDia
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .expect("TreeView diagram");
+        .expect("TreeView diagram")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     let projection = artifact.layout_json().unwrap();
     serde_json::from_value(projection["layout"]["TreeViewDiagram"].clone()).unwrap()
@@ -376,7 +381,8 @@ treeView-beta
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let svg = render_parsed_tree_view_svg(
@@ -810,10 +816,11 @@ fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
             ThemeStylePatch::default().with_stroke(marker),
         ),
     ]);
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
-        })));
+        })),
+    );
     let (_, svg) = try_render_tree_view_svg_with_theme_requirement_and_engine(
         "treeView-beta\nRoot icon(folder)\n",
         &theme,
@@ -1127,7 +1134,8 @@ accDescr: Accessible TreeView Description
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let svg = render_parsed_tree_view_svg(
@@ -1167,7 +1175,8 @@ src/ :::highlight icon(folder) ## source directory
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let svg = render_parsed_tree_view_svg(
         parsed,
         SvgRenderOptions {
@@ -1208,9 +1217,11 @@ fn tree_view_security_levels_keep_inline_icon_dom() {
         ..Default::default()
     };
     let strict_svg = render_tree_view_svg_with_options(input, options.clone());
-    let loose_engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-        serde_json::json!({ "securityLevel": "loose" }),
-    ));
+    let loose_engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({ "securityLevel": "loose" }),
+        ),
+    );
     let loose_svg = render_tree_view_svg_with_engine_and_environment(
         input,
         options,
@@ -1272,9 +1283,11 @@ App.tsx icon(logos:react)
     }"#;
     let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
     let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
-    let loose_engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-        serde_json::json!({ "securityLevel": "loose" }),
-    ));
+    let loose_engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({ "securityLevel": "loose" }),
+        ),
+    );
     let svg = render_tree_view_svg_with_engine_and_environment(
         input,
         SvgRenderOptions {
@@ -1426,7 +1439,8 @@ root/ :::highlight
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let tree_view = layout_tree_view(input, &RenderEnvironment::deterministic());
     let content_width = tree_view
         .nodes
@@ -1459,7 +1473,8 @@ root/ :::highlight
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let tree_view = layout_tree_view(input, &RenderEnvironment::deterministic());
     let content_width = tree_view
         .nodes
@@ -1551,7 +1566,8 @@ src/ :::directory-probe
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let svg = render_parsed_tree_view_svg(
         parsed,
         SvgRenderOptions {
@@ -1661,7 +1677,8 @@ treeView-beta
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let svg = render_parsed_tree_view_svg(
@@ -1694,7 +1711,8 @@ fn tree_view_public_layout_accepts_max_allowed_chain() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "treeView");
 
     let trusted_environment = RenderEnvironment::deterministic()

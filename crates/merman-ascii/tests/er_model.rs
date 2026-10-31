@@ -4,9 +4,12 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
     AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile,
 };
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::er::{ErAttribute, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship};
-use merman_core::{MermaidEngine, OperationControl, ParseOptions};
+use merman_core::{ParseOptions, presentation::MermaidEngine};
+use merman_model::OperationControl;
+use merman_model::families::er::{
+    ErAttribute, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship,
+};
+use merman_model::presentation::RenderSemanticModel;
 use std::path::Path;
 use support::{render_controlled_model, render_model, render_model_with_resources};
 

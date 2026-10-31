@@ -17,6 +17,7 @@ categories = ["api-bindings", "visualization"]
 artifact-profile-required = true
 
 [features]
+fixes = ["analysis", "merman-analysis/fixes"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",

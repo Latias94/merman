@@ -904,7 +904,7 @@ mod tests {
     }
 
     fn resources() -> ResolvedResourcePolicy {
-        ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
+        ResolvedResourcePolicy::for_profile(merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE)
     }
 
     fn stderr() -> SharedWriter {

@@ -31,6 +31,7 @@ features = [
     "all-diagrams",
     "analysis",
     "ascii",
+    "fixes",
     "icons",
     "jpeg",
     "layout-cytoscape",
@@ -66,6 +67,7 @@ bin-dir = "{ bin }{ binary-ext }"
 artifact-profile-required = true
 
 [features]
+fixes = ["analysis", "dep:atomic-write-file", "dep:same-file", "dep:sha2", "dep:similar", "merman-analysis/fixes"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",
@@ -311,6 +313,7 @@ default = [
     "all-diagrams",
     "analysis",
     "ascii",
+    "fixes",
     "icons",
     "jpeg",
     "layout-cytoscape",
@@ -333,13 +336,7 @@ default = [
 
 # Public leaves describe observable CLI capabilities. Keep them additive: exact
 # absence claims belong to a `default-features = false` artifact profile.
-analysis = [
-    "dep:atomic-write-file",
-    "dep:merman-analysis",
-    "dep:same-file",
-    "dep:sha2",
-    "dep:similar",
-]
+analysis = ["dep:merman-analysis"]
 svg = [
     "dep:atomic-write-file",
     "dep:ctrlc",
@@ -366,6 +363,7 @@ system-timing = ["merman/system-timing", "merman-analysis?/system-timing"]
 # Tool leaves own both their user-visible surface and their direct dependency.
 icons = ["svg", "dep:url"]
 markdown = [
+    "dep:sha2",
     "svg",
     "dep:atomic-write-file",
     "dep:rustix",
@@ -421,6 +419,7 @@ merman-render.workspace = true
 png.workspace = true
 roxmltree.workspace = true
 tempfile = "3.27.0"
+toml = { workspace = true, features = ["display"] }
 usvg = { workspace = true, features = ["text"] }
 
 [target.'cfg(unix)'.dev-dependencies]
@@ -501,6 +500,7 @@ required-features = [
 name = "cli_contract"
 required-features = [
     "analysis",
+    "fixes",
     "svg",
     "ascii",
     "png",
@@ -549,6 +549,7 @@ required-features = [
 name = "output_integrity"
 required-features = [
     "analysis",
+    "fixes",
     "svg",
     "icons",
     "markdown",
@@ -566,7 +567,7 @@ required-features = ["svg"]
 
 [[test]]
 name = "fix_cli"
-required-features = ["analysis"]
+required-features = ["fixes"]
 
 [[test]]
 name = "markdown_scanner"

@@ -131,7 +131,10 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
     )
     .await;
 
-    assert!(response.capabilities.code_action_provider.is_some());
+    assert_eq!(
+        response.capabilities.code_action_provider.is_some(),
+        cfg!(feature = "fixes")
+    );
     let semantic_tokens = response
         .capabilities
         .semantic_tokens_provider

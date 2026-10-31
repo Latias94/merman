@@ -47,7 +47,7 @@ impl TextMeasurer for LiteralProbe {
 #[test]
 fn xychart_direct_text_and_dimension_probes_keep_literal_break_markers() {
     let source = "xychart\ntitle \"AAAAAA<br/>BBBBBB\"\nx-axis [A, B]\ny-axis 0 --> 2\nbar [1, 2]";
-    let parsed = MermaidEngine::new().with_site_config(merman_core::presentation::PresentationConfig::from_value(serde_json::json!({"fontFamily":"RootChart, serif","themeVariables":{"fontFamily":"ThemeChart, serif"}}))).parse_diagram_for_render_model_sync(source, ParseOptions::strict()).unwrap().unwrap();
+    let parsed = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({"fontFamily":"RootChart, serif","themeVariables":{"fontFamily":"ThemeChart, serif"}}))).parse_diagram_for_render_model_sync(source, ParseOptions::strict()).unwrap().unwrap().into_presentation();
     let probe = Arc::new(LiteralProbe::default());
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("xychart-literal-text").unwrap(),
@@ -103,3 +103,6 @@ fn xychart_direct_text_and_dimension_probes_keep_literal_break_markers() {
         "direct SVG text must not enter label normalization: {calls:?}"
     );
 }
+
+#[allow(dead_code)]
+mod common;

@@ -199,7 +199,7 @@ fn font_spec(id: &str, format: &str, data_base64: &str) -> DiagramThemeSpecWireV
 
 #[test]
 fn every_core_family_id_round_trips_distinct_rule_and_typography_scopes() {
-    use merman_core::DiagramFamilyId;
+    use merman_model::family::DiagramFamilyId;
     use merman_render::diagram_theme::{ThemeTextStyle, TypographySpec};
     use merman_theme_contract::{ThemeTextStyleWireV1, ThemeTypographySpecWireV1};
 
@@ -283,8 +283,8 @@ fn every_core_family_id_round_trips_distinct_rule_and_typography_scopes() {
 
 #[test]
 fn parser_aliases_and_unknown_ids_cannot_be_used_as_logical_theme_scopes() {
-    use merman_core::{DiagramFamilyId, diagram_family_capabilities};
-    for id in diagram_family_capabilities()
+    use merman_model::family::{DiagramFamilyId, model_family_capabilities};
+    for id in model_family_capabilities()
         .iter()
         .map(|fact| fact.diagram_type)
         .filter(|id| DiagramFamilyId::from_id(id).is_none())

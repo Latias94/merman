@@ -6,7 +6,7 @@ use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::DeferredTextRegistry;
 use crate::text::StyledLine;
 use crate::{AsciiError, Result};
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 #[cfg(test)]
 use std::rc::Rc;
 mod direction;

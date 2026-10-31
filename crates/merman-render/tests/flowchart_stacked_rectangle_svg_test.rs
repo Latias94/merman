@@ -1,5 +1,6 @@
 use futures::executor::block_on;
-use merman_core::{MermaidEngine, ParseOptions, ParsedDiagramRender};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationDiagram;
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
@@ -7,7 +8,7 @@ use merman_render::model::FlowchartLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn layout_flowchart_render_model(
-    parsed: ParsedDiagramRender,
+    parsed: PresentationDiagram,
     options: &LayoutOptions,
     session: RenderSession,
 ) -> merman_render::Result<FlowchartLayout> {
@@ -18,7 +19,7 @@ fn layout_flowchart_render_model(
 }
 
 fn render_flowchart_artifact(
-    parsed: ParsedDiagramRender,
+    parsed: PresentationDiagram,
     layout_options: &LayoutOptions,
     session: RenderSession,
 ) -> merman_render::Result<String> {
@@ -111,7 +112,8 @@ flowchart
     let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout_options = LayoutOptions::default();
     let layout = layout_flowchart_render_model(
@@ -179,7 +181,8 @@ flowchart
     let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout_options = LayoutOptions::default();
     let layout = layout_flowchart_render_model(
@@ -249,7 +252,8 @@ fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
     let engine = MermaidEngine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");

@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX, PieTextRole};
-use merman_core::diagrams::pie::PieDiagramRenderModel;
+use merman_model::families::pie::PieDiagramModel;
 const EMPTY_PIE_WIDTH: f64 = 225.0;
 const EMPTY_PIE_HEIGHT: f64 = 450.0;
 
@@ -60,7 +60,7 @@ fn emitted_text_matches(output: &str, element_start: usize, text: Option<&str>) 
 }
 
 fn empty_pie_root_viewport_fallback(
-    model: &PieDiagramRenderModel,
+    model: &PieDiagramModel,
     min_x: f64,
     min_y: f64,
     width: f64,
@@ -191,7 +191,7 @@ fn render_pie_slices(
 #[cfg(test)]
 pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
-    model: &PieDiagramRenderModel,
+    model: &PieDiagramModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -207,7 +207,7 @@ pub(crate) fn render_pie_diagram_svg_model(
 
 pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     layout: &PieDiagramLayout,
-    model: &PieDiagramRenderModel,
+    model: &PieDiagramModel,
     paint_plan: &crate::pie::PieThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
@@ -521,7 +521,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
 mod tests {
     use super::*;
     use crate::DiagramFamilyId;
-    use merman_core::diagrams::pie::PieDiagramRenderModel;
+    use merman_model::families::pie::PieDiagramModel;
     use std::fmt;
     use std::ops::Range;
 
@@ -599,10 +599,10 @@ mod tests {
                 fill: "#ECECFF".to_string(),
             })
             .collect::<Vec<_>>();
-        let mut model = PieDiagramRenderModel::default();
+        let mut model = PieDiagramModel::default();
         model.sections = slices
             .iter()
-            .map(|slice| merman_core::diagrams::pie::PieSection {
+            .map(|slice| merman_model::families::pie::PieSection {
                 label: slice.label.clone(),
                 value: slice.value,
             })
@@ -651,7 +651,7 @@ mod tests {
 
     #[test]
     fn empty_pie_root_viewport_fallback_only_repairs_non_finite_roots() {
-        let model = PieDiagramRenderModel::default();
+        let model = PieDiagramModel::default();
         let (bounds, max_width) =
             empty_pie_root_viewport_fallback(&model, 0.0, 0.0, f64::INFINITY, 450.0)
                 .expect("non-finite empty pie should use fallback");
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn empty_pie_root_viewport_fallback_preserves_finite_title_bounds() {
-        let model = PieDiagramRenderModel::default();
+        let model = PieDiagramModel::default();
         assert_eq!(
             empty_pie_root_viewport_fallback(&model, 0.0, 0.0, 292.400390625, 450.0),
             None
@@ -709,7 +709,7 @@ mod tests {
 
         let svg = render_pie_diagram_svg_model(
             &layout,
-            &PieDiagramRenderModel::default(),
+            &PieDiagramModel::default(),
             &serde_json::json!({"pie": {"useMaxWidth": false}}),
             &execution,
         )

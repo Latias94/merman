@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:9bc6f8c58dd8e104bd1e61e059a3472f33a5fac947382efcce7f4a6c7c12b2ec" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -19,6 +19,13 @@ export const WEB_CAPABILITIES = [
     "id": "editor",
     "kind": "api",
     "implications": []
+  },
+  {
+    "id": "fixes",
+    "kind": "api",
+    "implications": [
+      "analysis"
+    ]
   },
   {
     "id": "layout-cytoscape",
@@ -206,6 +213,7 @@ export const WEB_CAPABILITY_IDS = [
   "analysis",
   "ascii",
   "editor",
+  "fixes",
   "layout-cytoscape",
   "layout-elk",
   "math",

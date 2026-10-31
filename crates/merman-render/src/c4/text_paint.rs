@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -116,10 +116,7 @@ impl C4TextPaintPlan {
             theme: theme.cloned(),
         };
         let Some(theme) = theme else { return Ok(plan) };
-        let config_owned = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.textColor",
-        );
+        let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
         let style =
             theme.style_with_work_meter(ThemeTarget::Text, ThemeVariant::Default, None, work)?;
         let winners = style
@@ -224,7 +221,7 @@ impl C4TextPaintPlan {
 
     pub(crate) fn bind_source_terminal_paint(
         &self,
-        model: &merman_core::diagrams::c4::C4DiagramModel,
+        model: &merman_model::families::c4::C4DiagramModel,
         layout: &crate::model::C4DiagramLayout,
         typography: &mut super::C4TypographyThemePlan,
         config: &PresentationConfig,
@@ -259,15 +256,15 @@ impl C4TextPaintPlan {
                 .as_deref()
                 .or_else(|| config.get_str(&format!("c4.{}_font_color", shape.type_c4_shape)));
             let fill_owned = source.bg_color.is_some()
-                || merman_core::__private::config_paint_overrides_typed_default(
-                    config,
-                    &format!("c4.{}_bg_color", shape.type_c4_shape),
-                );
+                || config.config_paint_overrides_typed_default(&format!(
+                    "c4.{}_bg_color",
+                    shape.type_c4_shape
+                ));
             let stroke_owned = source.border_color.is_some()
-                || merman_core::__private::config_paint_overrides_typed_default(
-                    config,
-                    &format!("c4.{}_border_color", shape.type_c4_shape),
-                );
+                || config.config_paint_overrides_typed_default(&format!(
+                    "c4.{}_border_color",
+                    shape.type_c4_shape
+                ));
             let (background_paint, border_paint) = self.role_paints(
                 ThemeTarget::Node,
                 element_fill_owned.len() + 1,
@@ -841,7 +838,7 @@ mod tests {
             "container_width": 100.0, "container_height": 100.0, "c4_type": "C4Context", "title": null,
             "boundaries": [], "shapes": [shape, external_shape], "rels": [relation, relation]
         })).expect("C4 actual layout fixture");
-        let config = PresentationConfig::from_value(serde_json::json!({"c4": {
+        let config = crate::test_support::presentation_config(serde_json::json!({"c4": {
             "person_border_color": "var(--actual-border)", "custom_border_color": "red"
         }}));
         let mut typography =

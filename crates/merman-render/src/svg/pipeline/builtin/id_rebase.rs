@@ -1173,7 +1173,7 @@ mod tests {
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
     use crate::svg::pipeline::{SvgPipeline, SvgPipelinePreset, SvgPostprocessMetadata};
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn rebase(svg: &str) -> String {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();

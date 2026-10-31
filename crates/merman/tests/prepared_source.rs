@@ -45,21 +45,21 @@ fn prepared_source_survives_independent_cancellation_and_owns_completed_outputs(
     assert!(output.svg().contains("<svg"));
     assert_eq!(
         output.evidence().family_id(),
-        merman::DiagramFamilyId::FLOWCHART
+        merman::model::family::DiagramFamilyId::FLOWCHART
     );
 }
 
 #[test]
 fn prepared_source_freezes_parse_context_but_refreshes_output_context() {
     let parse_renderer = Renderer::new().with_runtime_policy(
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(0),
+        merman::model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(0),
     );
     let prepared = prepare(
         &parse_renderer,
         "gantt\ndateFormat x\nsection Delivery\nTask: id,-1,2ms\n",
     );
     let output_renderer = Renderer::new().with_runtime_policy(
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1),
+        merman::model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1),
     );
     let first = svg(&parse_renderer, &prepared);
     let second = svg(&output_renderer, &prepared);
@@ -69,7 +69,7 @@ fn prepared_source_freezes_parse_context_but_refreshes_output_context() {
     assert_ne!(first.svg(), second.svg());
 }
 
-fn semantic(renderer: &Renderer, prepared: &PreparedSource) -> merman_core::ManagedSemanticJson {
+fn semantic(renderer: &Renderer, prepared: &PreparedSource) -> merman::model::ManagedJson {
     let RenderOutput::Presentation(Some(artifact)) = renderer
         .render_prepared(
             prepared,
@@ -85,8 +85,8 @@ fn semantic(renderer: &Renderer, prepared: &PreparedSource) -> merman_core::Mana
 
 #[test]
 fn implicit_gantt_dates_and_generated_git_ids_change_only_on_new_preparation() {
-    use merman_core::runtime::RuntimePolicy;
-    use merman_core::time::CivilDate;
+    use merman::model::runtime::RuntimePolicy;
+    use merman::model::time::CivilDate;
     let first = Renderer::new().with_runtime_policy(
         RuntimePolicy::deterministic()
             .with_fixed_today(Some(CivilDate::new(2026, 2, 15).unwrap()))
@@ -119,7 +119,7 @@ fn implicit_gantt_dates_and_generated_git_ids_change_only_on_new_preparation() {
 
 #[test]
 fn snapshot_input_readmission_uses_current_renderer_and_explicit_override() {
-    use merman::resources::{InputResourceLimitId, InputResourcePolicy};
+    use merman::model::resources::{InputResourceLimitId, InputResourcePolicy};
     let renderer = Renderer::new();
     let prepared = prepare(&renderer, "flowchart LR\nA --> B");
     for (limit, maximum) in [
@@ -242,7 +242,7 @@ fn preparation_keeps_parse_options_and_existing_theme_binding() {
                         merman::svg::ThemeStylePatch::default()
                             .with_fill(merman::svg::CanvasPaint::solid("#1d4ed8").unwrap()),
                     )
-                    .for_family(merman::DiagramFamilyId::FLOWCHART),
+                    .for_family(merman::model::family::DiagramFamilyId::FLOWCHART),
                 ),
             ),
         )
@@ -320,13 +320,14 @@ fn custom_overlay_is_parsed_once_and_keeps_its_closed_capability_boundary() {
     static PARSES: AtomicUsize = AtomicUsize::new(0);
     fn parse(
         _source: &str,
-        _meta: &merman::PresentationMetadata,
+        _meta: &merman::SourcePresentationMetadata,
         control: &OperationControl,
-    ) -> merman_core::OperationControlResult<merman_core::Result<merman_core::CustomJsonRenderModel>>
-    {
+    ) -> merman::model::OperationControlResult<
+        merman_core::Result<merman::model::presentation::CustomJsonRenderModel>,
+    > {
         control.checkpoint()?;
         PARSES.fetch_add(1, Ordering::SeqCst);
-        Ok(Ok(merman_core::CustomJsonRenderModel::new(
+        Ok(Ok(merman::model::presentation::CustomJsonRenderModel::new(
             "overlay",
             serde_json::json!({"meaning":42}),
         )))

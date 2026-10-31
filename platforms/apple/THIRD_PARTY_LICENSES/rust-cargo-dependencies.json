@@ -51,6 +51,7 @@
             "all-diagrams",
             "analysis",
             "ascii",
+            "fixes",
             "layout-cytoscape",
             "layout-elk",
             "svg"
@@ -110,45 +111,45 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "02fff76dcb073c5e6c72acaff20a4783745c4e77ab0e6cfb1d0ea245f6e23a62",
+    "cargo_lock_sha256": "c19255d0822a0373fe1ccf76cb25c8e476c6ff5b483864c2c52482c94f576e68",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "e33e3024a69778d55ee2b06937172f0a0c7ac1e830a685ab31e12609fd9aabe5"
+    "artifact_bundle_sha256": "2c370165aaed8d0fcc7953be4fa5a1da3e8e716a153b6fdf7655a6081a748383"
   },
   "target_dependency_closures": [
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-darwin",
       "package_count": 136,
-      "packages_sha256": "c1c7f7c29e561af1a13e690c17de3e52f0f4798009db409fd64ce04b6f698203"
+      "packages_sha256": "ce3210d6e39a135f226fcd9c27a46f563df2a588d395d10d49721c15e0c84ed8"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios",
       "package_count": 136,
-      "packages_sha256": "c1c7f7c29e561af1a13e690c17de3e52f0f4798009db409fd64ce04b6f698203"
+      "packages_sha256": "ce3210d6e39a135f226fcd9c27a46f563df2a588d395d10d49721c15e0c84ed8"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios-sim",
       "package_count": 136,
-      "packages_sha256": "c1c7f7c29e561af1a13e690c17de3e52f0f4798009db409fd64ce04b6f698203"
+      "packages_sha256": "ce3210d6e39a135f226fcd9c27a46f563df2a588d395d10d49721c15e0c84ed8"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-darwin",
       "package_count": 136,
-      "packages_sha256": "c1c7f7c29e561af1a13e690c17de3e52f0f4798009db409fd64ce04b6f698203"
+      "packages_sha256": "ce3210d6e39a135f226fcd9c27a46f563df2a588d395d10d49721c15e0c84ed8"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-ios",
       "package_count": 136,
-      "packages_sha256": "c1c7f7c29e561af1a13e690c17de3e52f0f4798009db409fd64ce04b6f698203"
+      "packages_sha256": "ce3210d6e39a135f226fcd9c27a46f563df2a588d395d10d49721c15e0c84ed8"
     }
   ],
   "dependency_closure": {
     "package_count": 136,
-    "packages_sha256": "c1c7f7c29e561af1a13e690c17de3e52f0f4798009db409fd64ce04b6f698203"
+    "packages_sha256": "ce3210d6e39a135f226fcd9c27a46f563df2a588d395d10d49721c15e0c84ed8"
   },
   "licenses": [
     {
@@ -428,7 +429,7 @@
       "packages": [
         {
           "name": "rustix",
-          "version": "1.1.5",
+          "version": "1.1.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
           "authors": [
@@ -787,7 +788,7 @@
         },
         {
           "name": "rustix",
-          "version": "1.1.5",
+          "version": "1.1.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
           "authors": [
@@ -1361,7 +1362,7 @@
       "packages": [
         {
           "name": "json5",
-          "version": "1.3.4",
+          "version": "1.3.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [

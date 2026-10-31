@@ -2,7 +2,7 @@ use criterion::{Criterion, SamplingMode, Throughput, criterion_group, criterion_
 use merman::svg::{DiagramThemeCompiler, SvgPipeline, ThemePreset};
 use merman::{
     MermaidEngine, OperationControl, ParseOptions, PdfRequest, PngRequest, RenderOutput,
-    RenderRequest, RenderTarget, Renderer, SvgRequest, presentation::PresentationConfig,
+    RenderRequest, RenderTarget, Renderer, SourcePresentationConfig, SvgRequest,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -58,7 +58,7 @@ fn bench_native_export(criterion: &mut Criterion) {
     let renderer = Renderer::new()
         .with_parse_options(ParseOptions::strict())
         .with_presentation_engine(MermaidEngine::new().with_site_config(
-            PresentationConfig::from_value(json!({
+            SourcePresentationConfig::from_value(json!({
                 "htmlLabels": false,
             })),
         ));

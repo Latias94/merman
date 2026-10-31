@@ -596,7 +596,7 @@ mod tests {
         SequenceDocumentExtent, SequenceDocumentPlan, SequenceExtentLedger, SequenceRetainedRowRun,
         SequenceRetainedRows,
     };
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
 
     fn build_prepared_row_document<'diagram>(
         diagram: &'diagram AsciiSequenceDiagram,
@@ -1574,7 +1574,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
         assert_eq!(resources.layout_work_used(), 0);
     }
@@ -1618,7 +1618,7 @@ mod tests {
             error,
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.reason == merman_model::CancelReason::Requested
         ));
     }
 

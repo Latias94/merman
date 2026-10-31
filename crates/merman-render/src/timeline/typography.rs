@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_theme_or_root_font_size_px;
 use crate::diagram_theme::{
@@ -55,10 +55,7 @@ impl TimelineTypographyThemePlan {
         // Root `fontSize` remains Timeline's independent layout-offset owner. Only an explicit
         // theme-variable value shadows the typed base-size route itself.
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let (font_size_px, font_size_css) = match theme {
             Some(theme) if typed_font_size_active => {
@@ -197,7 +194,7 @@ mod tests {
 
     #[test]
     fn prepared_layout_preserves_independent_root_font_offset() {
-        let config = PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "theme": "redux", "fontSize": "18px",
             "themeVariables": {"fontSize": "24px", "fontWeight": 900}
         }));

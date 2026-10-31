@@ -253,7 +253,8 @@ fn swimlane_issue_200_export_keeps_lane_titles_rotated_and_centered() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -356,7 +357,8 @@ A -->|{html}| B
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let artifact = family::prepare(
             &parsed,
             &LayoutOptions::default(),

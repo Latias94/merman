@@ -8,11 +8,11 @@ use crate::{
 use futures::executor::block_on;
 use serde_json::json;
 
-fn meta() -> PresentationMetadata {
-    PresentationMetadata {
+fn meta() -> SourcePresentationMetadata {
+    SourcePresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::empty_object(),
-        effective_config: crate::presentation::PresentationConfig::empty_object(),
+        effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
         title: None,
     }
 }
@@ -37,7 +37,7 @@ fn parse(text: &str) -> crate::ManagedSemanticJson {
 
 fn parse_with_site_config(
     text: &str,
-    site_config: Option<crate::presentation::PresentationConfig>,
+    site_config: Option<crate::presentation::SourcePresentationConfig>,
 ) -> crate::ManagedSemanticJson {
     let engine = match site_config {
         Some(site_config) => MermaidEngine::new().with_site_config(site_config),
@@ -50,7 +50,7 @@ fn parse_with_site_config(
 }
 
 fn with_test_local_time_zone<R>(time_zone: crate::time::LocalTimeZone, f: impl FnOnce() -> R) -> R {
-    let context = crate::runtime::RuntimePolicy::deterministic()
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .with_local_time_zone(time_zone)
         .begin_operation()
         .expect("test operation context");
@@ -122,10 +122,10 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
         "Build: build,2026-01-01,2d\n",
         "Ship: ship,after build,1d\n",
     );
-    let meta = PresentationMetadata {
+    let meta = SourcePresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::default(),
-        effective_config: crate::presentation::PresentationConfig::default(),
+        effective_config: crate::presentation::SourcePresentationConfig::default(),
         title: None,
     };
     let standalone_json = parse_gantt(text, &meta).unwrap();
@@ -163,13 +163,14 @@ fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
 
 #[test]
 fn gantt_json_projection_observes_cancellation_inside_large_task_sets() {
-    let model = GanttDiagramRenderModel {
-        model: GanttDiagramModel {
+    let model = GanttDiagramRenderModel::from_output_data(
+        GanttDiagramModel {
             tasks: vec![GanttRenderTask::default(); 512],
             ..GanttDiagramModel::default()
         },
-        ..GanttDiagramRenderModel::default()
-    };
+        String::new(),
+        GanttOutputData::Model,
+    );
     let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
@@ -193,9 +194,10 @@ fn gantt_typed_projection_matches_compatibility_semantics() {
         "Build: crit,build,2026-01-01,2d\n",
         "click build href \"https://example.com/\" onBuild\n",
     );
-    let effective_config =
-        crate::presentation::PresentationConfig::from_value(json!({ "securityLevel": "loose" }));
-    let meta = PresentationMetadata {
+    let effective_config = crate::presentation::SourcePresentationConfig::from_value(
+        json!({ "securityLevel": "loose" }),
+    );
+    let meta = SourcePresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::default(),
         effective_config,
@@ -285,39 +287,6 @@ fn gantt_typed_constraints_preserve_roles_dependencies_and_source_precision() {
 }
 
 #[test]
-fn gantt_direct_task_constraints_have_explicit_json_and_reject_ambiguous_legacy_data() {
-    let task = GanttRenderTask {
-        semantic: GanttTask {
-            start_constraint: GanttTaskStartConstraint::After {
-                dependency_ids: vec!["design".to_string(), "review".to_string()],
-            },
-            end_constraint: GanttTaskEndConstraint::Until {
-                dependency_ids: vec!["release".to_string()],
-            },
-            ..GanttTask::default()
-        },
-        ..GanttRenderTask::default()
-    };
-    let mut value = serde_json::to_value(&task).unwrap();
-
-    assert_eq!(value["startConstraint"]["kind"], "after");
-    assert_eq!(
-        value["startConstraint"]["dependencyIds"],
-        json!(["design", "review"])
-    );
-    assert_eq!(value["endConstraint"]["kind"], "until");
-    assert_eq!(value["endConstraint"]["dependencyIds"], json!(["release"]));
-
-    let object = value.as_object_mut().unwrap();
-    object.remove("startConstraint");
-    object.remove("endConstraint");
-    assert!(
-        serde_json::from_value::<GanttRenderTask>(value).is_err(),
-        "legacy task JSON must not silently discard constraints stored only in raw fields"
-    );
-}
-
-#[test]
 fn gantt_typed_constraints_round_trip_without_changing_compatibility_json() {
     let text = concat!(
         "gantt\n",
@@ -363,10 +332,10 @@ fn gantt_typed_constraints_round_trip_without_changing_compatibility_json() {
 
 #[test]
 fn gantt_typed_projection_preserves_empty_and_header_only_output_states() {
-    let meta = PresentationMetadata {
+    let meta = SourcePresentationMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::empty_object(),
-        effective_config: crate::presentation::PresentationConfig::empty_object(),
+        effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
         title: None,
     };
     for source in ["", "gantt"] {
@@ -1610,9 +1579,11 @@ task2: id2, 2013-01-02, 1d
 click id2 call myFn("a,b", c)
 click id1 call myFn2()
 "#,
-        Some(crate::presentation::PresentationConfig::from_value(json!({
-            "securityLevel": "loose"
-        }))),
+        Some(crate::presentation::SourcePresentationConfig::from_value(
+            json!({
+                "securityLevel": "loose"
+            }),
+        )),
     );
     let ev1 = &model["clickEvents"]["id1"];
     assert_eq!(ev1["function_name"].as_str().unwrap(), "myFn2");
@@ -1638,9 +1609,11 @@ task2: id2, 2013-01-02, 1d
 click id1 myFn
 click id2 href "https://example.com/" myOtherFn
 "#,
-        Some(crate::presentation::PresentationConfig::from_value(json!({
-            "securityLevel": "loose"
-        }))),
+        Some(crate::presentation::SourcePresentationConfig::from_value(
+            json!({
+                "securityLevel": "loose"
+            }),
+        )),
     );
 
     let ev1 = &model["clickEvents"]["id1"];
@@ -1668,9 +1641,11 @@ task2: id2, 2013-01-02, 1d
 click id1 hrefHandler
 click id2 callHandler
 "#,
-        Some(crate::presentation::PresentationConfig::from_value(json!({
-            "securityLevel": "loose"
-        }))),
+        Some(crate::presentation::SourcePresentationConfig::from_value(
+            json!({
+                "securityLevel": "loose"
+            }),
+        )),
     );
 
     let ev1 = &model["clickEvents"]["id1"];
@@ -1692,9 +1667,11 @@ section A
 task: id1, 2013-01-01, 1d
 click id1 href "javascript:alert(1)" myFn
 "#,
-        Some(crate::presentation::PresentationConfig::from_value(json!({
-            "securityLevel": "strict"
-        }))),
+        Some(crate::presentation::SourcePresentationConfig::from_value(
+            json!({
+                "securityLevel": "strict"
+            }),
+        )),
     );
 
     assert_eq!(model["links"]["id1"].as_str().unwrap(), "about:blank");
@@ -1711,9 +1688,11 @@ section A
 task: id1, 2013-01-01, 1d
 click id1 href "https://example.com/" "open details"
 "#,
-        Some(crate::presentation::PresentationConfig::from_value(json!({
-            "securityLevel": "loose"
-        }))),
+        Some(crate::presentation::SourcePresentationConfig::from_value(
+            json!({
+                "securityLevel": "loose"
+            }),
+        )),
     );
 
     assert_eq!(

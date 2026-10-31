@@ -45,7 +45,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
-pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
+pub use merman_model::config::{MermaidThemeId, MermaidThemeIdParseError};
 pub use merman_theme_contract::{
     DiagramThemeSpecWireV1, MaterializedThemeWireV1, THEME_SUPPORT_SCHEMA_VERSION_V1,
     ThemeCapabilityDescriptorV1, ThemeDesignV1, ThemeMaterializationDiagnosticV1,
@@ -274,8 +274,9 @@ impl DiagramTheme {
         self.0.family_programs.get_or_compile(family)
     }
 
-    pub(crate) fn parse_compatibility(&self) -> &merman_core::__private::ThemeCompatibilityPlan {
-        &self.0.parse_compatibility
+    /// Borrows the complete normalized Mermaid compatibility recipe for source installation.
+    pub fn compatibility_recipe(&self) -> &merman_model::presentation::ThemeCompatibilityRecipe {
+        &self.0.compatibility_recipe
     }
 
     #[cfg(test)]
@@ -283,7 +284,7 @@ impl DiagramTheme {
         &self,
         engine: merman_core::MermaidEngine,
     ) -> merman_core::MermaidEngine {
-        crate::__private::install_parse_compatibility(self, engine)
+        crate::test_support::install_parse_compatibility(self, engine)
     }
 
     pub(crate) fn requirements(&self) -> &ThemeRequirements {
@@ -313,7 +314,7 @@ pub(crate) struct CompiledDiagramTheme {
     catalog: FontCatalog,
     resource_restriction: ThemeResourcePolicy,
     requirements: ThemeRequirements,
-    parse_compatibility: merman_core::__private::ThemeCompatibilityPlan,
+    compatibility_recipe: merman_model::presentation::ThemeCompatibilityRecipe,
     family_programs: Arc<family_program::FamilyThemeProgramCache>,
     root_plan: Arc<application::RootThemePlan>,
     recipe_fingerprint: ThemeRecipeFingerprint,

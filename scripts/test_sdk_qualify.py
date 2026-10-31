@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import replace
 import hashlib
 import io
 import json
@@ -243,6 +244,9 @@ class SdkQualificationTests(unittest.TestCase):
 
     def test_native_build_uses_descriptor_and_installed_consumer_before_publishing(self):
         self.configure(target="x86_64-pc-windows-msvc", flavor="math")
+        limits = replace(sdk_archive.SDK_LIMITS, max_archive_size=256 * 1024,
+                         max_member_size=256 * 1024, max_total_size=256 * 1024)
+        self.enterContext(mock.patch.object(sdk_archive, "SDK_LIMITS", limits))
         parity = self.root / "wasi-comparison"
         report = self.qualify(wasi_dir=parity)
         self.assertEqual(self.events, [
@@ -268,7 +272,8 @@ class SdkQualificationTests(unittest.TestCase):
         self.assertTrue((prefix / "lib/merman_ffi.dll.lib").is_file())
         self.extract.assert_called_once_with(
             self.output / "sdk.tar.xz", self.output / "sdk.tar.xz.sha256",
-            package_name="merman-" + self.profile, target=self.target, version=self.version)
+            package_name="merman-" + self.profile, target=self.target, version=self.version,
+            limits=limits)
         self.assert_qualified(report, "native-smoke")
 
     def test_wasi_build_uses_wasi_harness_and_skips_native_consumer(self):
@@ -428,6 +433,9 @@ class SdkQualificationTests(unittest.TestCase):
         self.assert_unqualified()
 
     def test_extracted_wasi_examples_run_both_languages_and_reject_output_disagreement(self):
+        limits = replace(sdk_archive.SDK_LIMITS, max_archive_size=256 * 1024,
+                         max_member_size=256 * 1024, max_total_size=256 * 1024)
+        self.enterContext(mock.patch.object(sdk_archive, "SDK_LIMITS", limits))
         module = self.installed / "lib/merman_wasi.wasm"
         module.parent.mkdir()
         module.write_bytes(b"fixture module")
@@ -454,6 +462,10 @@ class SdkQualificationTests(unittest.TestCase):
             self.real_wasi_examples(archive=self.output / "sdk.tar.xz", profile="sdk-wasi-standard",
                                     version=self.version, repo_root=self.repo,
                                     output_dir=self.root / "examples")
+            self.extract.assert_called_once_with(
+                self.output / "sdk.tar.xz", self.output / "sdk.tar.xz.sha256",
+                package_name="merman-sdk-wasi-standard", target=sdk_archive.WASI_TARGET,
+                version=self.version, limits=limits)
             self.assertEqual(len(calls), 6)
             self.assertEqual(calls[0][0], "go")
             self.assertIn("-count=1", calls[0])

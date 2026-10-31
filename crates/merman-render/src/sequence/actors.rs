@@ -11,9 +11,9 @@ use super::wrap_sequence_label_like_mermaid_lines;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use merman_core::diagrams::sequence::SequenceActor;
-use merman_core::diagrams::sequence::SequenceDiagramModel;
-use merman_core::presentation::PresentationConfig;
+use merman_model::families::sequence::SequenceActor;
+use merman_model::families::sequence::SequenceDiagramModel;
+use merman_model::presentation::PresentationConfig;
 use std::collections::{BTreeMap, HashMap};
 
 use super::metrics::measure_svg_like_with_html_br;

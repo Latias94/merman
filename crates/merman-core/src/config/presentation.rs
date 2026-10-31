@@ -1,10 +1,17 @@
 use super::{
-    MermaidConfig, clone_value_nonrecursive, config_values_equal, drop_value_nonrecursive,
+    MermaidConfig, config_values_equal, drop_value_nonrecursive,
     mirror_legacy_font_family_into_theme_variables_value, replace_value_nonrecursive,
 };
 #[cfg(test)]
 use super::{measure_config_work, record_config_work};
 use crate::{OperationControl, OperationControlResult};
+use merman_model::json::clone_value_nonrecursive;
+use merman_model::presentation::{
+    ErPaintInputs, FamilyPaintInputs, FrozenPresentationConfigParts, GitGraphPaintInputs,
+    PalettePaintAuthority, PresentationConfig, PresentationConfigError, ThemeCompatibilityField,
+    ThemeCompatibilityFieldKind, ThemeCompatibilityRecipe,
+};
+use merman_model::resources::{InputResourcePolicy, ModelComplexity, ResourceProfile};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -13,9 +20,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod paint_inputs;
 
-/// Full configuration state with presentation ownership and detector mutation history.
+/// Source-owned configuration construction with presentation ownership and detector history.
+///
+/// Completed presentation data is exported through [`Self::into_presentation_config_controlled`].
+/// The shared immutable configuration never retains this builder's mutation journal.
 #[derive(Clone)]
-pub struct PresentationConfig {
+pub struct SourcePresentationConfig {
     inputs: MermaidConfig,
     theme_compatibility: Option<ThemeCompatibilityState>,
     source_theme_palette: bool,
@@ -35,28 +45,28 @@ struct MutationStamp {
     revision: u64,
 }
 
-impl fmt::Debug for PresentationConfig {
+impl fmt::Debug for SourcePresentationConfig {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_tuple("PresentationConfig")
+            .debug_tuple("SourcePresentationConfig")
             .field(self.as_value())
             .finish()
     }
 }
 
-impl PartialEq for PresentationConfig {
+impl PartialEq for SourcePresentationConfig {
     fn eq(&self, other: &Self) -> bool {
         self.inputs == other.inputs
     }
 }
 
-impl Default for PresentationConfig {
+impl Default for SourcePresentationConfig {
     fn default() -> Self {
         Self::empty_object()
     }
 }
 
-impl PresentationConfig {
+impl SourcePresentationConfig {
     pub fn empty_object() -> Self {
         Self::from_config(MermaidConfig::empty_object())
     }
@@ -144,50 +154,163 @@ impl PresentationConfig {
         )
     }
 
-    pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeParseBinding> {
+    #[cfg(test)]
+    pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeCompatibilityRecipe> {
         match self.theme_compatibility.as_ref() {
-            Some(ThemeCompatibilityState::Frozen { binding, .. }) => Some(binding),
+            Some(ThemeCompatibilityState::Frozen(ownership)) => Some(&ownership.binding),
             Some(ThemeCompatibilityState::Tracking(_)) | None => None,
         }
     }
 
     /// Returns explicit Mermaid compatibility fields still owned by the parsed theme.
+    #[cfg(test)]
     pub(crate) fn mermaid_compatibility_residual_count(&self) -> usize {
         match self.theme_compatibility.as_ref() {
-            Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.len(),
+            Some(ThemeCompatibilityState::Frozen(ownership)) => ownership
+                .fields
+                .iter()
+                .filter(|field| field.paths.iter().any(|path| path.owned))
+                .count(),
             Some(ThemeCompatibilityState::Tracking(_)) | None => 0,
         }
     }
 
-    pub(crate) fn mermaid_compatibility_fields(
-        &self,
-    ) -> Option<Arc<[FrozenThemeCompatibilityField]>> {
+    #[cfg(test)]
+    pub(crate) fn mermaid_compatibility_fields(&self) -> Option<Arc<[ThemeCompatibilityField]>> {
         match self.theme_compatibility.as_ref() {
-            Some(ThemeCompatibilityState::Frozen { fields, .. }) => Some(Arc::clone(fields)),
+            Some(ThemeCompatibilityState::Frozen(ownership)) => Some(
+                ownership
+                    .freeze_fields_controlled(
+                        &source_config_construction_policy(),
+                        &OperationControl::new(),
+                    )
+                    .unwrap()
+                    .unwrap(),
+            ),
             Some(ThemeCompatibilityState::Tracking(_)) | None => None,
         }
     }
 
-    pub(crate) fn from_theme_parse_binding(binding: ThemeParseBinding) -> Self {
-        binding.into_tracking_config()
+    pub(crate) fn from_theme_compatibility_recipe(binding: ThemeCompatibilityRecipe) -> Self {
+        let ownership = ThemeCompatibilityOwnership::from_config(
+            binding.clone(),
+            binding.compatibility_config().as_value(),
+        );
+        Self {
+            inputs: binding.compatibility_config().clone(),
+            theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
+            source_theme_palette: false,
+            explicit_config_paths: Arc::new(BTreeSet::new()),
+            mutation_paths: Arc::new(BTreeMap::new()),
+            mutation_revision: 0,
+        }
     }
 
+    /// Imports exact frozen declarations as sealed source construction state.
+    ///
+    /// Only surviving fields and paths are imported. Replaying the complete recipe here would
+    /// resurrect shadowed assignments and reinterpret historical setters as detector events.
+    pub fn from_frozen_controlled(
+        config: PresentationConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<Self> {
+        control.checkpoint()?;
+        let theme_compatibility = if let Some(binding) = config.theme_compatibility().recipe() {
+            let mut fields = Vec::new();
+            for field in config.theme_compatibility().mermaid_fields() {
+                control.checkpoint()?;
+                let mut paths = Vec::new();
+                for path in field.shared_assignment_paths().iter() {
+                    control.checkpoint()?;
+                    paths.push(ThemeCompatibilityPathOwnership {
+                        path: Arc::clone(path),
+                        owned: true,
+                    });
+                }
+                fields.push(ThemeCompatibilityFieldOwnership {
+                    opaque_id: Arc::from(field.opaque_id()),
+                    kind: field.kind(),
+                    paths,
+                });
+            }
+            Some(ThemeCompatibilityState::Frozen(Arc::new(
+                ThemeCompatibilityOwnership {
+                    binding: binding.clone(),
+                    fields,
+                    family_paint_inputs: config.family_paint_inputs(),
+                },
+            )))
+        } else {
+            None
+        };
+        control.checkpoint()?;
+        Ok(Self {
+            inputs: config.as_config().clone(),
+            theme_compatibility,
+            source_theme_palette: config.palette_paint_authority()
+                == PalettePaintAuthority::SelectedPalette,
+            explicit_config_paths: Arc::clone(config.shared_explicit_config_paths()),
+            mutation_paths: Arc::new(BTreeMap::new()),
+            mutation_revision: 0,
+        })
+    }
+
+    /// Freezes checked immutable presentation data and discards all source mutation state.
+    pub fn into_presentation_config_controlled(
+        mut self,
+        policy: &InputResourcePolicy,
+        control: &OperationControl,
+    ) -> OperationControlResult<std::result::Result<PresentationConfig, PresentationConfigError>>
+    {
+        control.checkpoint()?;
+        self.freeze_theme_compatibility();
+        let (recipe, fields, family_paint_inputs) = match &self.theme_compatibility {
+            Some(ThemeCompatibilityState::Frozen(ownership)) => {
+                let fields = match ownership.freeze_fields_controlled(policy, control)? {
+                    Ok(fields) => fields,
+                    Err(error) => return Ok(Err(error)),
+                };
+                (
+                    Some(ownership.binding.clone()),
+                    fields,
+                    ownership.family_paint_inputs,
+                )
+            }
+            Some(ThemeCompatibilityState::Tracking(_)) | None => (None, Arc::from([]), None),
+        };
+        let palette = if self.source_theme_palette {
+            PalettePaintAuthority::SelectedPalette
+        } else {
+            PalettePaintAuthority::PropertyInputs
+        };
+        let parts = FrozenPresentationConfigParts::new(self.inputs)
+            .with_explicit_config_paths(self.explicit_config_paths)
+            .with_theme_compatibility(recipe, fields)
+            .with_palette_paint_authority(palette)
+            .with_family_paint_inputs(family_paint_inputs);
+        PresentationConfig::try_from_frozen_parts_controlled(parts, policy, control)
+    }
+
+    #[cfg(test)]
     pub(crate) fn gitgraph_paint_inputs(&self) -> Option<GitGraphPaintInputs> {
         match &self.theme_compatibility {
-            Some(ThemeCompatibilityState::Frozen {
-                family_paint_inputs: Some(FamilyPaintInputs::GitGraph(inputs)),
-                ..
-            }) => Some(*inputs),
+            Some(ThemeCompatibilityState::Frozen(ownership)) => match ownership.family_paint_inputs
+            {
+                Some(FamilyPaintInputs::GitGraph(inputs)) => Some(inputs),
+                _ => None,
+            },
             _ => None,
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn er_paint_inputs(&self) -> Option<ErPaintInputs> {
         match &self.theme_compatibility {
-            Some(ThemeCompatibilityState::Frozen {
-                family_paint_inputs: Some(FamilyPaintInputs::Er(inputs)),
-                ..
-            }) => Some(*inputs),
+            Some(ThemeCompatibilityState::Frozen(ownership)) => match ownership.family_paint_inputs
+            {
+                Some(FamilyPaintInputs::Er(inputs)) => Some(inputs),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -243,26 +366,24 @@ impl PresentationConfig {
         else {
             return;
         };
-        self.theme_compatibility = Some(ThemeCompatibilityState::Frozen {
-            binding: ownership.binding.clone(),
-            fields: ownership.freeze_fields(),
-            family_paint_inputs: ownership.family_paint_inputs,
-        });
+        self.theme_compatibility = Some(ThemeCompatibilityState::Frozen(Arc::clone(ownership)));
     }
+    #[cfg(test)]
     pub(crate) fn config_path_overrides_typed_default(&self, dotted_path: &str) -> bool {
         self.explicit_config_owns_path(dotted_path)
             || matches!(
                 self.theme_compatibility.as_ref(),
-                Some(ThemeCompatibilityState::Frozen { fields, .. })
-                    if fields
+                Some(ThemeCompatibilityState::Frozen(ownership))
+                    if ownership.fields
                         .iter()
-                        .flat_map(|field| field.surviving_paths.iter())
-                        .any(|candidate| dotted_paths_overlap(candidate, dotted_path))
+                        .flat_map(|field| field.paths.iter())
+                        .any(|candidate| candidate.owned && dotted_paths_overlap(&candidate.path, dotted_path))
             )
     }
 
     /// Paint from an authored theme includes its derived palette, not just raw variables.
     /// Typography and geometry continue to use their property-specific input ownership.
+    #[cfg(test)]
     pub(crate) fn config_paint_overrides_typed_default(&self, dotted_path: &str) -> bool {
         self.config_path_overrides_typed_default(dotted_path)
             || (self.source_theme_palette
@@ -282,19 +403,14 @@ impl PresentationConfig {
         // Theme calculation precedes freezing. Read the same surviving physical inputs that
         // propagation can extend, without changing the renderer's frozen-admission predicate.
         match self.theme_compatibility.as_ref() {
-            Some(ThemeCompatibilityState::Tracking(ownership)) => {
-                ownership.fields.iter().any(|field| {
-                    field
-                        .paths
-                        .iter()
-                        .any(|path| path.owned && path.path.as_ref() == source_path)
-                })
-            }
-            Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.iter().any(|field| {
+            Some(
+                ThemeCompatibilityState::Tracking(ownership)
+                | ThemeCompatibilityState::Frozen(ownership),
+            ) => ownership.fields.iter().any(|field| {
                 field
-                    .surviving_paths
+                    .paths
                     .iter()
-                    .any(|path| path.as_ref() == source_path)
+                    .any(|path| path.owned && path.path.as_ref() == source_path)
             }),
             None => false,
         }
@@ -315,19 +431,14 @@ impl PresentationConfig {
             return true;
         }
         match self.theme_compatibility.as_ref() {
-            Some(ThemeCompatibilityState::Tracking(ownership)) => {
-                ownership.fields.iter().any(|field| {
-                    field
-                        .paths
-                        .iter()
-                        .any(|path| path.owned && path.path.starts_with("themeVariables."))
-                })
-            }
-            Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.iter().any(|field| {
+            Some(
+                ThemeCompatibilityState::Tracking(ownership)
+                | ThemeCompatibilityState::Frozen(ownership),
+            ) => ownership.fields.iter().any(|field| {
                 field
-                    .surviving_paths
+                    .paths
                     .iter()
-                    .any(|path| path.starts_with("themeVariables."))
+                    .any(|path| path.owned && path.path.starts_with("themeVariables."))
             }),
             None => false,
         }
@@ -363,22 +474,25 @@ impl PresentationConfig {
                     }
                 }
             }
-            Some(ThemeCompatibilityState::Frozen { fields, .. }) => {
-                for field in Arc::make_mut(fields) {
-                    if field
-                        .surviving_paths
+            Some(ThemeCompatibilityState::Frozen(ownership)) => {
+                for field in &mut Arc::make_mut(ownership).fields {
+                    if !field
+                        .paths
                         .iter()
-                        .any(|path| path.as_ref() == source_path.as_str())
-                        && !field
-                            .surviving_paths
-                            .iter()
-                            .any(|path| path.as_ref() == target_path.as_ref())
+                        .any(|path| path.owned && path.path.as_ref() == source_path.as_str())
                     {
-                        let mut surviving_paths = field.surviving_paths.to_vec();
-                        surviving_paths.push(Arc::clone(&target_path));
-                        surviving_paths.sort_unstable();
-                        surviving_paths.dedup();
-                        field.surviving_paths = surviving_paths.into();
+                        continue;
+                    }
+                    // The old frozen representation had already removed shadowed paths. An
+                    // actual later calculation could therefore restore this derived target.
+                    if let Some(path) = field.paths.iter_mut().find(|path| path.path == target_path)
+                    {
+                        path.owned = true;
+                    } else {
+                        field.paths.push(ThemeCompatibilityPathOwnership {
+                            path: Arc::clone(&target_path),
+                            owned: true,
+                        });
                     }
                 }
             }
@@ -443,14 +557,14 @@ impl PresentationConfig {
         let Some((key, parents)) = path.split_last() else {
             if let Some(value) = value {
                 replace_value_nonrecursive(
-                    self.inputs.value_mut(),
+                    self.inputs.as_value_mut(),
                     clone_value_nonrecursive(value),
                 );
             }
             return;
         };
         if let Some(value) = value {
-            let mut parent = self.inputs.value_mut();
+            let mut parent = self.inputs.as_value_mut();
             for segment in parents {
                 if !parent.is_object() {
                     replace_value_nonrecursive(parent, Value::Object(Map::new()));
@@ -474,7 +588,7 @@ impl PresentationConfig {
         } else {
             let parent = parents
                 .iter()
-                .try_fold(self.inputs.value_mut(), |value, segment| {
+                .try_fold(self.inputs.as_value_mut(), |value, segment| {
                     value.as_object_mut()?.get_mut(*segment)
                 });
             if let Some(parent) = parent.and_then(Value::as_object_mut)
@@ -492,19 +606,19 @@ impl PresentationConfig {
     pub fn as_value_mut(&mut self) -> &mut Value {
         self.shadow_theme_compatibility_path("");
         self.record_mutation("", true);
-        self.inputs.value_mut()
+        self.inputs.as_value_mut()
     }
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
         self.shadow_theme_compatibility_path(dotted_path);
         self.record_mutation(dotted_path, true);
-        self.inputs.set_value_raw(dotted_path, value);
+        self.inputs.set_value(dotted_path, value);
     }
 
     pub(crate) fn set_value_explicit(&mut self, dotted_path: &str, value: Value) {
         self.shadow_theme_compatibility_path(dotted_path);
         self.record_mutation(dotted_path, false);
-        self.inputs.set_value_raw(dotted_path, value);
+        self.inputs.set_value(dotted_path, value);
         self.mark_explicit_config_path(dotted_path);
     }
 
@@ -514,7 +628,7 @@ impl PresentationConfig {
         value: Value,
     ) {
         self.record_mutation(dotted_path, false);
-        self.inputs.set_value_raw(dotted_path, value);
+        self.inputs.set_value(dotted_path, value);
     }
 
     pub(crate) fn commit_legacy_theme_variables(&mut self, variables: Map<String, Value>) {
@@ -535,9 +649,10 @@ impl PresentationConfig {
 
     fn deep_merge_with_explicit_ownership(&mut self, other: &Value, explicit: bool) {
         let mut mutation_paths = BTreeSet::new();
-        self.inputs.merge_recording(other, &mut |segments| {
-            mutation_paths.insert(segments.join("."));
-        });
+        self.inputs
+            .merge_with_mutation_observer(other, &mut |segments| {
+                mutation_paths.insert(segments.join("."));
+            });
         for path in mutation_paths {
             self.shadow_theme_compatibility_path(&path);
             self.record_mutation(&path, !explicit);
@@ -548,7 +663,7 @@ impl PresentationConfig {
     }
 
     pub(crate) fn mirror_legacy_font_family(&mut self) {
-        mirror_legacy_font_family_into_theme_variables_value(self.inputs.value_mut());
+        mirror_legacy_font_family_into_theme_variables_value(self.inputs.as_value_mut());
     }
 
     pub(crate) fn seal_detector_mutations(&mut self) {
@@ -588,7 +703,7 @@ impl PresentationConfig {
             Some(ThemeCompatibilityState::Tracking(ownership)) => {
                 Arc::make_mut(ownership).shadow_path(dotted_path);
             }
-            Some(ThemeCompatibilityState::Frozen { .. }) => {
+            Some(ThemeCompatibilityState::Frozen(_)) => {
                 self.theme_compatibility = None;
             }
             None => {}
@@ -596,26 +711,7 @@ impl PresentationConfig {
     }
 }
 
-impl ThemeParseBinding {
-    fn into_tracking_config(self) -> PresentationConfig {
-        let ownership = ThemeCompatibilityOwnership::from_config(
-            self.clone(),
-            self.compatibility_config.as_ref(),
-        );
-        PresentationConfig {
-            inputs: MermaidConfig {
-                value: self.compatibility_config,
-            },
-            theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
-            source_theme_palette: false,
-            explicit_config_paths: Arc::new(BTreeSet::new()),
-            mutation_paths: Arc::new(BTreeMap::new()),
-            mutation_revision: 0,
-        }
-    }
-}
-
-pub(crate) fn apply_hardened_site_policy(config: &mut PresentationConfig) {
+pub(crate) fn apply_hardened_site_policy(config: &mut SourcePresentationConfig) {
     config.set_value(
         "secure",
         Value::Array(
@@ -628,20 +724,20 @@ pub(crate) fn apply_hardened_site_policy(config: &mut PresentationConfig) {
 }
 
 pub(crate) struct DetectorConfigCheckpoint {
-    before: PresentationConfig,
+    before: SourcePresentationConfig,
     epoch: u64,
 }
 
 #[derive(Debug)]
 pub(crate) struct DetectorConfigChanges {
-    before: Option<PresentationConfig>,
-    after: PresentationConfig,
+    before: Option<SourcePresentationConfig>,
+    after: SourcePresentationConfig,
     explicit_paths: Vec<Arc<str>>,
     transferred_explicit_ownership: bool,
 }
 
 impl DetectorConfigCheckpoint {
-    pub(crate) fn new(config: &PresentationConfig) -> Self {
+    pub(crate) fn new(config: &SourcePresentationConfig) -> Self {
         let epoch = DETECTOR_EPOCH
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| {
                 epoch.checked_add(1)
@@ -656,7 +752,7 @@ impl DetectorConfigCheckpoint {
 
     pub(crate) fn finish(
         self,
-        after: &mut PresentationConfig,
+        after: &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Option<DetectorConfigChanges>> {
         let transferred_explicit_ownership =
@@ -670,7 +766,7 @@ impl DetectorConfigCheckpoint {
         if !explicit_paths.is_empty() {
             Arc::make_mut(&mut after.explicit_config_paths).extend(explicit_paths.iter().cloned());
         }
-        let values_changed = !Arc::ptr_eq(&self.before.inputs.value, &after.inputs.value)
+        let values_changed = !std::ptr::eq(self.before.inputs.as_value(), after.inputs.as_value())
             && !config_values_equal(self.before.as_value(), after.as_value(), Some(control))?;
         if !values_changed && !transferred_explicit_ownership && explicit_paths.is_empty() {
             return Ok(None);
@@ -721,7 +817,7 @@ impl DetectorConfigChanges {
 
     pub(crate) fn replay(
         &self,
-        target: &mut PresentationConfig,
+        target: &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
         // Whole-config replacement transfers its explicit metadata. Materialization must not
@@ -834,278 +930,17 @@ fn config_value_at<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
         .try_fold(root, |value, segment| value.as_object()?.get(segment))
 }
 
-const MAX_THEME_COMPATIBILITY_VARIABLES: usize = 512;
-const MAX_THEME_COMPATIBILITY_IDENTIFIER_BYTES: usize = 128;
-const MAX_THEME_COMPATIBILITY_STRING_BYTES: usize = 1024;
-const MAX_THEME_COMPATIBILITY_NUMBER_ABS: f64 = 1_000_000_000.0;
-
-/// Validation failure while constructing a [`ThemeParseBinding`].
-///
-/// The binding boundary deliberately accepts only Mermaid's bounded compatibility subset. Rich
-/// renderer behavior belongs to the typed theme recipe instead of this upstream-config lane.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum ThemeParseBindingError {
-    #[error("theme compatibility config must be an object")]
-    InvalidRoot,
-    #[error("unsupported theme compatibility field `{field}`")]
-    UnsupportedField { field: String },
-    #[error("invalid theme compatibility value for `{field}`")]
-    InvalidValue { field: &'static str },
-    #[error("theme compatibility limit exceeded for `{field}`")]
-    LimitExceeded { field: &'static str },
-}
-
-/// Opaque, normalized pairing of a compiled recipe identity and its Mermaid compatibility input.
-///
-/// This is metadata only; it is never serialized into Mermaid's configuration value. Its
-/// constructor owns both pieces so an engine cannot install a recipe assertion with arbitrary
-/// compatibility JSON, and a render session can compare the full parse contract.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ThemeParseBinding {
-    recipe_identity: [u8; 32],
-    compatibility_config: Arc<Value>,
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub enum GitGraphPaintInput {
-    PrimaryColor,
-    MainBackground,
-    TagBackground,
-    PrimaryBorder,
-    NodeBorder,
-    TagBorder,
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct GitGraphPaintInputs(pub(crate) u8);
-
-impl GitGraphPaintInputs {
-    pub const fn is_owned(self, input: GitGraphPaintInput) -> bool {
-        self.0 & (1 << input as u8) != 0
-    }
-
-    pub const fn available_sources(self) -> u8 {
-        !self.0 & 0b11_1111
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub enum ErPaintInput {
-    Text,
-    NodeText,
-    Line,
-    OddRow,
-    EvenRow,
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct ErPaintInputs(pub(crate) u8);
-
-impl ErPaintInputs {
-    pub const fn is_owned(self, input: ErPaintInput) -> bool {
-        self.0 & (1 << input as u8) != 0
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum FamilyPaintInputs {
-    GitGraph(GitGraphPaintInputs),
-    Er(ErPaintInputs),
-}
-
-impl ThemeParseBinding {
-    /// Validates and canonicalizes the restricted Mermaid compatibility input for one recipe.
-    pub(crate) fn try_new(
-        recipe_identity: [u8; 32],
-        compatibility_config: MermaidConfig,
-    ) -> Result<Self, ThemeParseBindingError> {
-        Ok(Self {
-            recipe_identity,
-            compatibility_config: Arc::new(normalize_theme_compatibility_config(
-                compatibility_config.as_value(),
-            )?),
-        })
-    }
-
-    pub(crate) const fn recipe_identity(&self) -> &[u8; 32] {
-        &self.recipe_identity
-    }
-}
-
-fn normalize_theme_compatibility_config(config: &Value) -> Result<Value, ThemeParseBindingError> {
-    let root = config
-        .as_object()
-        .ok_or(ThemeParseBindingError::InvalidRoot)?;
-    for key in root.keys() {
-        if !matches!(key.as_str(), "theme" | "darkMode" | "themeVariables") {
-            return Err(ThemeParseBindingError::UnsupportedField { field: key.clone() });
-        }
-    }
-
-    let mut normalized = Map::new();
-    if let Some(theme) = root.get("theme") {
-        let Value::String(theme) = theme else {
-            return Err(ThemeParseBindingError::InvalidValue { field: "theme" });
-        };
-        normalized.insert(
-            "theme".to_string(),
-            Value::String(normalize_theme_compatibility_identifier(theme, "theme")?),
-        );
-    }
-
-    let root_dark_mode = root
-        .get("darkMode")
-        .map(|value| match value {
-            Value::Bool(value) => Ok(*value),
-            _ => Err(ThemeParseBindingError::InvalidValue { field: "darkMode" }),
-        })
-        .transpose()?;
-    let mut variables = BTreeMap::new();
-    let mut variable_dark_mode = None;
-    if let Some(raw_variables) = root.get("themeVariables") {
-        let Value::Object(raw_variables) = raw_variables else {
-            return Err(ThemeParseBindingError::InvalidValue {
-                field: "themeVariables",
-            });
-        };
-        let mut variable_count = 0usize;
-        for (raw_key, raw_value) in raw_variables {
-            let key = normalize_theme_compatibility_identifier(raw_key, "themeVariables.key")?;
-            if key == "darkMode" {
-                let Value::Bool(value) = raw_value else {
-                    return Err(ThemeParseBindingError::InvalidValue {
-                        field: "themeVariables.darkMode",
-                    });
-                };
-                variable_dark_mode = Some(*value);
-                continue;
-            }
-            variable_count = variable_count.saturating_add(1);
-            if variable_count > MAX_THEME_COMPATIBILITY_VARIABLES {
-                return Err(ThemeParseBindingError::LimitExceeded {
-                    field: "themeVariables",
-                });
-            }
-            let value = normalize_theme_compatibility_scalar(raw_value)?;
-            if variables.insert(key, value).is_some() {
-                return Err(ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.key",
-                });
-            }
-        }
-    }
-
-    let dark_mode = match (root_dark_mode, variable_dark_mode) {
-        (Some(root), Some(variable)) if root != variable => {
-            return Err(ThemeParseBindingError::InvalidValue { field: "darkMode" });
-        }
-        (Some(value), _) | (_, Some(value)) => Some(value),
-        (None, None) => None,
-    };
-    if let Some(dark_mode) = dark_mode {
-        normalized.insert("darkMode".to_string(), Value::Bool(dark_mode));
-        variables.insert("darkMode".to_string(), Value::Bool(dark_mode));
-    }
-    if !variables.is_empty() {
-        normalized.insert(
-            "themeVariables".to_string(),
-            Value::Object(variables.into_iter().collect()),
-        );
-    }
-    Ok(Value::Object(normalized))
-}
-
-fn normalize_theme_compatibility_identifier(
-    value: &str,
-    field: &'static str,
-) -> Result<String, ThemeParseBindingError> {
-    let normalized = value.trim();
-    if normalized.is_empty()
-        || normalized.len() > MAX_THEME_COMPATIBILITY_IDENTIFIER_BYTES
-        || normalized.chars().any(|character| {
-            character.is_control()
-                || !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
-        })
-    {
-        return Err(ThemeParseBindingError::InvalidValue { field });
-    }
-    Ok(normalized.to_string())
-}
-
-fn normalize_theme_compatibility_scalar(value: &Value) -> Result<Value, ThemeParseBindingError> {
-    match value {
-        Value::String(value) => {
-            let normalized = value.trim();
-            if normalized.is_empty() || normalized.len() > MAX_THEME_COMPATIBILITY_STRING_BYTES {
-                return Err(ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                });
-            }
-            Ok(Value::String(normalized.to_string()))
-        }
-        Value::Number(value) => {
-            let value = value.as_f64().ok_or(ThemeParseBindingError::InvalidValue {
-                field: "themeVariables.value",
-            })?;
-            if !value.is_finite() || value.abs() > MAX_THEME_COMPATIBILITY_NUMBER_ABS {
-                return Err(ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                });
-            }
-            let value = if value == 0.0 { 0.0 } else { value };
-            Ok(Value::Number(
-                serde_json::Number::from_f64(value).expect("finite number checked above"),
-            ))
-        }
-        Value::Bool(value) => Ok(Value::Bool(*value)),
-        Value::Null | Value::Array(_) | Value::Object(_) => {
-            Err(ThemeParseBindingError::InvalidValue {
-                field: "themeVariables.value",
-            })
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 enum ThemeCompatibilityState {
     Tracking(Arc<ThemeCompatibilityOwnership>),
-    Frozen {
-        binding: ThemeParseBinding,
-        fields: Arc<[FrozenThemeCompatibilityField]>,
-        family_paint_inputs: Option<FamilyPaintInputs>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FrozenThemeCompatibilityField {
-    opaque_id: Arc<str>,
-    kind: ThemeCompatibilityFieldKind,
-    surviving_paths: Arc<[Arc<str>]>,
-}
-
-impl FrozenThemeCompatibilityField {
-    pub(crate) fn opaque_id(&self) -> &str {
-        &self.opaque_id
-    }
-
-    pub(crate) const fn kind(&self) -> ThemeCompatibilityFieldKind {
-        self.kind
-    }
-
-    pub(crate) fn surviving_paths(&self) -> &[Arc<str>] {
-        &self.surviving_paths
-    }
+    // This source phase flag retains the exact source ownership graph. The canonical immutable
+    // field representation is built once at the controlled data-export boundary.
+    Frozen(Arc<ThemeCompatibilityOwnership>),
 }
 
 #[derive(Debug, Clone)]
 struct ThemeCompatibilityOwnership {
-    binding: ThemeParseBinding,
+    binding: ThemeCompatibilityRecipe,
     fields: Vec<ThemeCompatibilityFieldOwnership>,
     family_paint_inputs: Option<FamilyPaintInputs>,
 }
@@ -1117,13 +952,6 @@ struct ThemeCompatibilityFieldOwnership {
     paths: Vec<ThemeCompatibilityPathOwnership>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ThemeCompatibilityFieldKind {
-    Theme,
-    DarkMode,
-    Variable,
-}
-
 #[derive(Debug, Clone)]
 struct ThemeCompatibilityPathOwnership {
     path: Arc<str>,
@@ -1131,7 +959,7 @@ struct ThemeCompatibilityPathOwnership {
 }
 
 impl ThemeCompatibilityOwnership {
-    fn from_config(binding: ThemeParseBinding, config: &Value) -> Self {
+    fn from_config(binding: ThemeCompatibilityRecipe, config: &Value) -> Self {
         let mut fields = Vec::new();
         let Some(root) = config.as_object() else {
             return Self {
@@ -1189,26 +1017,81 @@ impl ThemeCompatibilityOwnership {
         }
     }
 
-    fn freeze_fields(&self) -> Arc<[FrozenThemeCompatibilityField]> {
-        self.fields
-            .iter()
-            .filter_map(|field| {
-                let surviving_paths = field
-                    .paths
-                    .iter()
-                    .filter(|path| path.owned)
-                    .map(|path| Arc::clone(&path.path))
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                (!surviving_paths.is_empty()).then(|| FrozenThemeCompatibilityField {
-                    opaque_id: Arc::clone(&field.opaque_id),
-                    kind: field.kind,
-                    surviving_paths: surviving_paths.into(),
-                })
-            })
-            .collect::<Vec<_>>()
-            .into()
+    fn freeze_fields_controlled(
+        &self,
+        policy: &InputResourcePolicy,
+        control: &OperationControl,
+    ) -> OperationControlResult<
+        std::result::Result<Arc<[ThemeCompatibilityField]>, PresentationConfigError>,
+    > {
+        // Bound the complete source ownership walk before creating per-field sorting indexes or
+        // cloning path handles. Shadowed paths still cost work even though they are not exported.
+        let mut work = ModelComplexity::default();
+        for field in &self.fields {
+            control.checkpoint()?;
+            let Some(items) = work.items.checked_add(1) else {
+                return Ok(Err(PresentationConfigError::SizeOverflow));
+            };
+            let Some(text_bytes) = work.text_bytes.checked_add(field.opaque_id.len()) else {
+                return Ok(Err(PresentationConfigError::SizeOverflow));
+            };
+            work = ModelComplexity::new(items, text_bytes, 0);
+            if let Err(error) = policy.check_model_complexity(work) {
+                return Ok(Err(error.into()));
+            }
+            for path in &field.paths {
+                control.checkpoint()?;
+                let Some(items) = work.items.checked_add(1) else {
+                    return Ok(Err(PresentationConfigError::SizeOverflow));
+                };
+                let Some(text_bytes) = work.text_bytes.checked_add(path.path.len()) else {
+                    return Ok(Err(PresentationConfigError::SizeOverflow));
+                };
+                work = ModelComplexity::new(items, text_bytes, 0);
+                if let Err(error) = policy.check_model_complexity(work) {
+                    return Ok(Err(error.into()));
+                }
+            }
+        }
+
+        let mut fields = Vec::new();
+        for field in &self.fields {
+            control.checkpoint()?;
+            let mut surviving_paths = BTreeSet::new();
+            for path in &field.paths {
+                control.checkpoint()?;
+                if path.owned {
+                    surviving_paths.insert(Arc::clone(&path.path));
+                }
+            }
+            if surviving_paths.is_empty() {
+                continue;
+            }
+            let paths = surviving_paths.into_iter().collect::<Vec<_>>().into();
+            let field = match ThemeCompatibilityField::try_new_controlled(
+                Arc::clone(&field.opaque_id),
+                field.kind,
+                paths,
+                policy,
+                control,
+            )? {
+                Ok(field) => field,
+                Err(error) => return Ok(Err(error)),
+            };
+            fields.push(field);
+        }
+        control.checkpoint()?;
+        Ok(Ok(fields.into()))
+    }
+
+    #[cfg(test)]
+    fn freeze_fields(&self) -> Arc<[ThemeCompatibilityField]> {
+        self.freeze_fields_controlled(
+            &source_config_construction_policy(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap()
     }
 }
 
@@ -1250,178 +1133,161 @@ fn dotted_paths_overlap(left: &str, right: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('.'))
 }
 
+/// Source parse entrypoints do not accept a model admission policy. Keep their existing lack of
+/// an implicit config ceiling; construction remains iterative, checked, and cancellable. Hosts
+/// supplying frozen data use the explicit policy accepted by the model constructor.
+pub(crate) fn source_config_construction_policy() -> InputResourcePolicy {
+    InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+}
+
+pub(crate) fn presentation_config_error(error: PresentationConfigError) -> crate::Error {
+    crate::InternalFailure::new(format!(
+        "invalid frozen presentation configuration: {error}"
+    ))
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
-    fn binding_error(config: Value) -> ThemeParseBindingError {
-        ThemeParseBinding::try_new([0; 32], MermaidConfig::from_value(config)).unwrap_err()
+    fn freeze(config: SourcePresentationConfig) -> PresentationConfig {
+        config
+            .into_presentation_config_controlled(
+                &source_config_construction_policy(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap()
     }
 
     #[test]
-    fn theme_compatibility_binding_rejects_invalid_roots_and_unknown_fields() {
-        for config in [Value::Null, json!(3), json!([])] {
-            assert_eq!(binding_error(config), ThemeParseBindingError::InvalidRoot);
-        }
-        assert_eq!(
-            binding_error(json!({"theme": "dark", "look": "neo"})),
-            ThemeParseBindingError::UnsupportedField {
-                field: "look".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn theme_compatibility_binding_rejects_invalid_values_and_conflicting_ownership() {
-        for (config, expected) in [
-            (
-                json!({"theme": true}),
-                ThemeParseBindingError::InvalidValue { field: "theme" },
-            ),
-            (
-                json!({"darkMode": "true"}),
-                ThemeParseBindingError::InvalidValue { field: "darkMode" },
-            ),
-            (
-                json!({"themeVariables": []}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables",
-                },
-            ),
-            (
-                json!({"themeVariables": {"darkMode": "true"}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.darkMode",
-                },
-            ),
-            (
-                json!({"darkMode": true, "themeVariables": {"darkMode": false}}),
-                ThemeParseBindingError::InvalidValue { field: "darkMode" },
-            ),
-            (
-                json!({"themeVariables": {"bad key": "value"}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.key",
-                },
-            ),
-            (
-                json!({"themeVariables": {"primaryColor": "red", " primaryColor ": "blue"}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.key",
-                },
-            ),
-            (
-                json!({"themeVariables": {"value": null}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                },
-            ),
-            (
-                json!({"themeVariables": {"value": []}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                },
-            ),
-            (
-                json!({"themeVariables": {"value": {}}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                },
-            ),
-            (
-                json!({"themeVariables": {"value": "  "}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                },
-            ),
-            (
-                json!({"themeVariables": {"value": "x".repeat(MAX_THEME_COMPATIBILITY_STRING_BYTES + 1)}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                },
-            ),
-            (
-                json!({"themeVariables": {"value": MAX_THEME_COMPATIBILITY_NUMBER_ABS + 1.0}}),
-                ThemeParseBindingError::InvalidValue {
-                    field: "themeVariables.value",
-                },
-            ),
-            (
-                json!({"theme": "theme.name"}),
-                ThemeParseBindingError::InvalidValue { field: "theme" },
-            ),
-            (
-                json!({"theme": "x".repeat(MAX_THEME_COMPATIBILITY_IDENTIFIER_BYTES + 1)}),
-                ThemeParseBindingError::InvalidValue { field: "theme" },
-            ),
-        ] {
-            assert_eq!(binding_error(config), expected);
-        }
-    }
-
-    #[test]
-    fn theme_compatibility_binding_enforces_the_variable_limit() {
-        let mut variables = Map::new();
-        for index in 0..=MAX_THEME_COMPATIBILITY_VARIABLES {
-            variables.insert(format!("variable{index}"), json!(index));
-        }
-        assert_eq!(
-            binding_error(json!({"themeVariables": variables})),
-            ThemeParseBindingError::LimitExceeded {
-                field: "themeVariables",
-            }
-        );
-    }
-
-    #[test]
-    fn theme_compatibility_binding_normalizes_valid_boundary_values() {
-        let mut variables = Map::new();
-        for index in 0..508 {
-            variables.insert(format!("variable{index}"), json!(index));
-        }
-        variables.insert(" primaryColor ".to_string(), json!(" value "));
-        variables.insert("darkMode".to_string(), json!(true));
-        variables.insert("zero".to_string(), json!(-0.0));
-        variables.insert("max".to_string(), json!(MAX_THEME_COMPATIBILITY_NUMBER_ABS));
-        variables.insert(
-            "long".to_string(),
-            json!("x".repeat(MAX_THEME_COMPATIBILITY_STRING_BYTES)),
-        );
-        let theme = "t".repeat(MAX_THEME_COMPATIBILITY_IDENTIFIER_BYTES);
-        let binding = ThemeParseBinding::try_new(
-            [0x5a; 32],
-            MermaidConfig::from_value(json!({
-                "theme": format!(" {theme} "),
-                "darkMode": true,
-                "themeVariables": variables,
-            })),
+    fn frozen_export_and_import_preserve_derived_residuals_without_replaying_recipe_history() {
+        let recipe = ThemeCompatibilityRecipe::try_new(
+            [0x73; 32],
+            MermaidConfig::from_value(json!({"themeVariables": {"primaryColor": "#123456"}})),
         )
         .unwrap();
-        let normalized = binding.compatibility_config.as_ref();
-        assert_eq!(normalized["theme"], json!(theme));
-        assert_eq!(normalized["darkMode"], json!(true));
-        let normalized_variables = normalized["themeVariables"].as_object().unwrap();
-        assert_eq!(
-            normalized_variables.len(),
-            MAX_THEME_COMPATIBILITY_VARIABLES + 1
+        let mut source = SourcePresentationConfig::from_theme_compatibility_recipe(recipe.clone());
+        source.set_value_preserving_theme_compatibility("themeVariables.mainBkg", json!("#123456"));
+        source.propagate_theme_variable_ownership("primaryColor", "mainBkg");
+        let checkpoint = DetectorConfigCheckpoint::new(&source);
+        source.set_value("themeVariables.primaryColor", json!("#123456"));
+        checkpoint
+            .finish(&mut source, &OperationControl::new())
+            .unwrap();
+        source.set_source_theme_palette(true);
+        let (frozen, work) = measure_config_work(|| freeze(source));
+        assert_eq!(work.json_cow_copies, 0, "{work:?}");
+        assert_eq!(frozen.theme_compatibility().recipe(), Some(&recipe));
+        assert_eq!(frozen.theme_compatibility().mermaid_residual_count(), 1);
+        assert!(frozen.explicit_config_owns_path("themeVariables.primaryColor"));
+        assert!(
+            !frozen
+                .theme_compatibility()
+                .mermaid_residual_path_survives("themeVariables.primaryColor")
         );
-        assert_eq!(normalized_variables["primaryColor"], json!("value"));
-        assert_eq!(normalized_variables["darkMode"], json!(true));
-        assert_eq!(normalized_variables["zero"], json!(0.0));
-        assert_eq!(
-            normalized_variables["max"],
-            json!(MAX_THEME_COMPATIBILITY_NUMBER_ABS)
+        assert!(
+            frozen
+                .theme_compatibility()
+                .mermaid_residual_path_survives("themeVariables.mainBkg")
         );
+
+        let mut imported = SourcePresentationConfig::from_frozen_controlled(
+            frozen.clone(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(imported.mutation_paths.is_empty());
+        assert_eq!(imported.mutation_revision, 0);
+        assert!(!imported.has_tracking_theme_compatibility());
+        let checkpoint = DetectorConfigCheckpoint::new(&imported);
+        assert!(
+            checkpoint
+                .finish(&mut imported, &OperationControl::new())
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(freeze(imported), frozen);
+    }
+
+    #[test]
+    fn frozen_recalculation_can_restore_a_previously_shadowed_derived_target() {
+        let recipe = ThemeCompatibilityRecipe::try_new(
+            [0x74; 32],
+            MermaidConfig::from_value(json!({"themeVariables": {"primaryColor": "#123456"}})),
+        )
+        .unwrap();
+        let mut source = SourcePresentationConfig::from_theme_compatibility_recipe(recipe);
+        source.set_value_preserving_theme_compatibility("themeVariables.mainBkg", json!("#123456"));
+        source.propagate_theme_variable_ownership("primaryColor", "mainBkg");
+        source.set_value("themeVariables.mainBkg", json!("#abcdef"));
+        source.freeze_theme_compatibility();
+        source.set_value_preserving_theme_compatibility("themeVariables.mainBkg", json!("#123456"));
+        source.propagate_theme_variable_ownership("primaryColor", "mainBkg");
+        let frozen = freeze(source);
+        assert!(
+            frozen
+                .theme_compatibility()
+                .mermaid_residual_path_survives("themeVariables.mainBkg")
+        );
+    }
+
+    #[test]
+    fn frozen_import_transfers_explicit_owners_without_inventing_detector_setters() {
+        let mut source = SourcePresentationConfig::from_value(json!({"same": 7}));
+        source.set_value_explicit("same", json!(7));
+        let frozen = freeze(source);
+        let original = SourcePresentationConfig::from_value(json!({"same": 7}));
+        let checkpoint = DetectorConfigCheckpoint::new(&original);
+        let mut replacement =
+            SourcePresentationConfig::from_frozen_controlled(frozen, &OperationControl::new())
+                .unwrap();
+        let changes = checkpoint
+            .finish(&mut replacement, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert!(changes.explicit_paths().is_empty());
+        assert!(!changes.value_changed_at("same"));
         assert_eq!(
-            normalized_variables["long"].as_str().unwrap().len(),
-            MAX_THEME_COMPATIBILITY_STRING_BYTES
+            changes
+                .claimed_paths()
+                .map(AsRef::as_ref)
+                .collect::<Vec<&str>>(),
+            ["same"]
+        );
+    }
+
+    #[test]
+    fn cancelled_source_freeze_never_publishes_a_shared_config() {
+        let recipe = ThemeCompatibilityRecipe::try_new(
+            [0x75; 32],
+            MermaidConfig::from_value(json!({"themeVariables": {"primaryColor": "#123456"}})),
+        )
+        .unwrap();
+        let source = SourcePresentationConfig::from_theme_compatibility_recipe(recipe);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        assert!(
+            source
+                .into_presentation_config_controlled(&source_config_construction_policy(), &control)
+                .is_err()
+        );
+        let control = OperationControl::new();
+        control.cancel();
+        assert!(
+            SourcePresentationConfig::from_frozen_controlled(
+                PresentationConfig::empty_object(),
+                &control
+            )
+            .is_err()
         );
     }
 
     #[test]
     fn same_value_public_setter_keeps_detector_claims_and_shadows_without_json_copy() {
-        let binding = ThemeParseBinding::try_new(
+        let binding = ThemeCompatibilityRecipe::try_new(
             [0x71; 32],
             MermaidConfig::from_value(json!({
                 "theme": "base",
@@ -1429,7 +1295,7 @@ mod tests {
             })),
         )
         .unwrap();
-        let original = PresentationConfig::from_theme_parse_binding(binding);
+        let original = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
         let mut working = original.clone();
         let checkpoint = DetectorConfigCheckpoint::new(&working);
         let (_, work) = measure_config_work(|| {
@@ -1463,32 +1329,37 @@ mod tests {
         let surviving = working.mermaid_compatibility_fields().unwrap();
         assert!(!surviving.iter().any(|field| {
             field
-                .surviving_paths()
+                .shared_assignment_paths()
+                .as_ref()
                 .iter()
                 .any(|path| path.as_ref() == "themeVariables.primaryColor")
         }));
         assert!(surviving.iter().any(|field| {
             field
-                .surviving_paths()
+                .shared_assignment_paths()
+                .as_ref()
                 .iter()
                 .any(|path| path.as_ref() == "themeVariables.secondaryColor")
         }));
         assert_eq!(working.as_value(), original.as_value());
         assert!(original.has_tracking_theme_compatibility());
-        assert!(Arc::ptr_eq(&working.inputs.value, &original.inputs.value));
+        assert!(std::ptr::eq(
+            working.inputs.as_value(),
+            original.inputs.as_value()
+        ));
         assert_eq!(work.json_cow_copies, 0, "{work:?}");
     }
 
     #[test]
     fn same_value_explicit_and_framework_setters_preserve_their_distinct_authority() {
-        let binding = ThemeParseBinding::try_new(
+        let binding = ThemeCompatibilityRecipe::try_new(
             [0x72; 32],
             MermaidConfig::from_value(json!({
                 "theme": "base", "themeVariables": {"primaryColor": "#123456"},
             })),
         )
         .unwrap();
-        let original = PresentationConfig::from_theme_parse_binding(binding);
+        let original = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
         let mut explicit = original.clone();
         let mut framework = original.clone();
         let (_, work) = measure_config_work(|| {
@@ -1507,14 +1378,20 @@ mod tests {
         assert!(framework.config_path_overrides_typed_default("themeVariables.primaryColor"));
         assert_eq!(explicit.mermaid_compatibility_residual_count(), 1);
         assert_eq!(framework.mermaid_compatibility_residual_count(), 2);
-        assert!(Arc::ptr_eq(&explicit.inputs.value, &original.inputs.value));
-        assert!(Arc::ptr_eq(&framework.inputs.value, &original.inputs.value));
+        assert!(std::ptr::eq(
+            explicit.inputs.as_value(),
+            original.inputs.as_value()
+        ));
+        assert!(std::ptr::eq(
+            framework.inputs.as_value(),
+            original.inputs.as_value()
+        ));
         assert_eq!(work.json_cow_copies, 0, "{work:?}");
     }
 
     #[test]
     fn same_value_setter_keeps_literal_empty_keys_and_empty_path_segments() {
-        let original = PresentationConfig::from_value(json!({
+        let original = SourcePresentationConfig::from_value(json!({
             "": 3, "a": {"": {"b": [1, 2]}}, "dot.key": 7, "dot": {"key": 8},
         }));
         let mut working = original.clone();
@@ -1527,11 +1404,14 @@ mod tests {
         assert_eq!(working.as_value()["dot.key"], json!(7));
         assert!(working.path_was_mutated_after(&original, ""));
         assert!(working.path_was_mutated_after(&original, "a..b"));
-        assert!(Arc::ptr_eq(&working.inputs.value, &original.inputs.value));
+        assert!(std::ptr::eq(
+            working.inputs.as_value(),
+            original.inputs.as_value()
+        ));
         assert_eq!(work.json_cow_copies, 0, "{work:?}");
 
         for root in [json!(3), json!({"a": null}), json!({"a": [1]})] {
-            let original = PresentationConfig::from_value(root);
+            let original = SourcePresentationConfig::from_value(root);
             let mut coerced = original.clone();
             let path = if original.as_value().is_object() {
                 "a.b"
@@ -1552,7 +1432,7 @@ mod tests {
 
     #[test]
     fn detector_checkpoint_distinguishes_old_clone_setters_from_historical_journal() {
-        let mut old = PresentationConfig::from_value(json!({"custom": 7}));
+        let mut old = SourcePresentationConfig::from_value(json!({"custom": 7}));
         old.set_value("custom", json!(7));
         let mut before = old.clone();
         before.set_value("custom", json!(7));
@@ -1582,7 +1462,7 @@ mod tests {
                 .is_none()
         );
 
-        let same_without_journal = PresentationConfig::from_value(json!({"custom": 7}));
+        let same_without_journal = SourcePresentationConfig::from_value(json!({"custom": 7}));
         let checkpoint = DetectorConfigCheckpoint::new(&same_without_journal);
         assert!(
             checkpoint
@@ -1594,7 +1474,7 @@ mod tests {
 
     #[test]
     fn detector_epoch_survives_nested_detection_and_thread_handoff() {
-        let mut config = PresentationConfig::from_value(json!({"custom": 7}));
+        let mut config = SourcePresentationConfig::from_value(json!({"custom": 7}));
         let outer = DetectorConfigCheckpoint::new(&config);
         let inner = DetectorConfigCheckpoint::new(&config);
         config.set_value("custom", json!(7));
@@ -1631,7 +1511,7 @@ mod tests {
 
     #[test]
     fn detector_checkpoint_does_not_promote_framework_or_completed_operation_events() {
-        let mut config = PresentationConfig::from_value(json!({"custom": 7}));
+        let mut config = SourcePresentationConfig::from_value(json!({"custom": 7}));
         let checkpoint = DetectorConfigCheckpoint::new(&config);
         config.set_value_preserving_theme_compatibility("custom", json!(7));
         assert!(
@@ -1662,7 +1542,7 @@ mod tests {
 
     #[test]
     fn legacy_theme_commit_preserves_framework_mutation_order_and_detector_replay() {
-        let raw = PresentationConfig::from_value(json!({
+        let raw = SourcePresentationConfig::from_value(json!({
             "themeVariables": {"nodeBkg": null, "primaryColor": "#123456"},
             "custom": 7,
         }));
@@ -1721,11 +1601,11 @@ mod tests {
 
     #[test]
     fn replacement_replay_handles_literal_keys_deletions_and_only_actual_value_changes() {
-        let before = PresentationConfig::from_value(json!({
+        let before = SourcePresentationConfig::from_value(json!({
             "nested": {"deleted": 1}, "same": 2, "literal.key": 3,
         }));
         let checkpoint = DetectorConfigCheckpoint::new(&before);
-        let mut after = PresentationConfig::from_value(json!({"same": 2, "literal.key": 4}));
+        let mut after = SourcePresentationConfig::from_value(json!({"same": 2, "literal.key": 4}));
         let changes = checkpoint
             .finish(&mut after, &OperationControl::new())
             .unwrap()
@@ -1733,7 +1613,7 @@ mod tests {
         assert!(changes.value_changed_at("nested.deleted"));
         assert!(!changes.value_changed_at("nested.previouslyMissing"));
         assert!(!changes.value_changed_at("same"));
-        let mut target = PresentationConfig::from_value(json!({
+        let mut target = SourcePresentationConfig::from_value(json!({
             "nested": {"deleted": 1}, "same": 99, "literal.key": 3,
         }));
         changes
@@ -1765,9 +1645,9 @@ mod tests {
 
         for comb in [false, true] {
             let depth = 20_000;
-            let before = PresentationConfig::from_value(nested(depth, comb, 1));
-            let mut target = PresentationConfig::from_value(nested(depth, comb, 1));
-            let mut after = PresentationConfig::from_value(nested(depth, comb, 2));
+            let before = SourcePresentationConfig::from_value(nested(depth, comb, 1));
+            let mut target = SourcePresentationConfig::from_value(nested(depth, comb, 1));
+            let mut after = SourcePresentationConfig::from_value(nested(depth, comb, 2));
             let checkpoint = DetectorConfigCheckpoint::new(&before);
             let changes = checkpoint
                 .finish(&mut after, &OperationControl::new())
@@ -1816,7 +1696,7 @@ mod tests {
                 "darkMode": true
             }
         });
-        let binding = ThemeParseBinding::try_new(
+        let binding = ThemeCompatibilityRecipe::try_new(
             [0; 32],
             MermaidConfig::from_value(clone_value_nonrecursive(&compatibility)),
         )
@@ -1829,14 +1709,14 @@ mod tests {
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].kind(), ThemeCompatibilityFieldKind::DarkMode);
         assert_eq!(
-            fields[0].surviving_paths(),
+            fields[0].shared_assignment_paths().as_ref(),
             &[Arc::<str>::from("themeVariables.darkMode")]
         );
     }
 
     #[test]
     fn explicit_ownership_uses_effective_assign_with_depth_paths() {
-        let mut config = PresentationConfig::from_value(json!({
+        let mut config = SourcePresentationConfig::from_value(json!({
             "flowchart": {
                 "nodeSpacing": 50
             },
@@ -1865,7 +1745,7 @@ mod tests {
             "", "a", "a.", "a.b", "a..b", "a-b", "a/b", "a.b.c", "ab", "é.葉", "é",
         ];
         for owner in paths {
-            let mut config = PresentationConfig::empty_object();
+            let mut config = SourcePresentationConfig::empty_object();
             Arc::make_mut(&mut config.explicit_config_paths).insert(Arc::from(owner));
             for query in paths {
                 assert_eq!(
@@ -1875,9 +1755,9 @@ mod tests {
                 );
             }
         }
-        let empty = PresentationConfig::empty_object();
+        let empty = SourcePresentationConfig::empty_object();
         assert!(!empty.explicit_config_owns_path(""));
-        let mut config = PresentationConfig::empty_object();
+        let mut config = SourcePresentationConfig::empty_object();
         Arc::make_mut(&mut config.explicit_config_paths)
             .extend([Arc::from("a-ignored"), Arc::from("a.child")]);
         assert!(config.explicit_config_owns_path("a"));
@@ -1886,7 +1766,7 @@ mod tests {
     #[test]
     fn explicit_ownership_lookup_does_not_scan_unrelated_paths() {
         for count in [100, 1_000, 10_000] {
-            let mut config = PresentationConfig::empty_object();
+            let mut config = SourcePresentationConfig::empty_object();
             Arc::make_mut(&mut config.explicit_config_paths)
                 .extend((0..count).map(|index| Arc::from(format!("junk{index}"))));
             let (_, work) = measure_config_work(|| {

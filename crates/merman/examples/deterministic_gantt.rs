@@ -1,4 +1,5 @@
-use merman::{MermaidEngine, ParseOptions, runtime::RuntimePolicy, time::CivilDate};
+use merman::model::{runtime::RuntimePolicy, time::CivilDate};
+use merman::{MermaidEngine, ParseOptions};
 use serde_json::json;
 
 const SOURCE: &str = r#"gantt

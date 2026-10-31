@@ -7,7 +7,7 @@ use merman_ascii::{
     AsciiError, AsciiPrimaryProjection, AsciiRenderOptions, AsciiSupportLevel, ascii_capabilities,
     ascii_diagrammatic_diagram_types, ascii_supported_diagram_types,
 };
-use merman_core::{MermaidEngine, ParseOptions};
+use merman_core::{ParseOptions, presentation::MermaidEngine};
 use support::render_model;
 
 struct RejectedCandidate {

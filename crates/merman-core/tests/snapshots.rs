@@ -1,10 +1,10 @@
 #![cfg(feature = "all-diagrams")]
 #![cfg(feature = "compat-json")]
 
-use merman_core::presentation::PresentationConfig;
-use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
+use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_fixture_render_context::RenderContextCatalog;
+use merman_model::time::{CivilDate, OffsetDateTime, UtcOffset};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -37,7 +37,7 @@ fn fixture_render_contexts() -> &'static RenderContextCatalog {
     })
 }
 
-fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
+fn fixture_site_config_for_path(path: &Path) -> Option<SourcePresentationConfig> {
     fixture_render_contexts()
         .context_for_fixture(path)
         .unwrap_or_else(|error| {
@@ -46,7 +46,7 @@ fn fixture_site_config_for_path(path: &Path) -> Option<PresentationConfig> {
                 path.display()
             )
         })
-        .map(|context| PresentationConfig::from_value(context.site_config_value()))
+        .map(|context| SourcePresentationConfig::from_value(context.site_config_value()))
 }
 
 fn engine_for_fixture(base: &MermaidEngine, path: &Path) -> MermaidEngine {

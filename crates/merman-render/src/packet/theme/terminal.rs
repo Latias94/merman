@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedStyleProperty, ThemeTarget, ThemeVariant,
@@ -301,7 +301,9 @@ mod tests {
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             );
             let metadata = merman_core::MermaidEngine::new()
-                .with_site_config(PresentationConfig::from_value(config))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                )
                 .parse_metadata_sync("packet\n0-7: Header")
                 .expect("parse Packet terminal ownership");
             let plan = super::super::PacketTypographyThemePlan::resolve(

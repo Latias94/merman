@@ -29,7 +29,7 @@ use crate::graph::routing::plan::select::{
     EdgeBoundaryContext, UnsupportedEdgeRouteReason, edge_boundary_context,
 };
 use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-use merman_core::resources::ResourceProfile;
+use merman_model::resources::ResourceProfile;
 use std::cell::Cell;
 
 #[test]
@@ -1994,13 +1994,13 @@ fn terminal_coordinate_index_admits_exact_work_before_allocation_and_preserves_f
             && details.cause == crate::AsciiResourceLimitCause::Ceiling));
     assert_eq!(below.layout_work_used(), 1);
 
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let cancelled = ResourceContext::new(policy)
-        .controlled(control.clone(), merman_core::OperationPhase::Layout);
+        .controlled(control.clone(), merman_model::OperationPhase::Layout);
     cancelled.charge_layout_work(1).unwrap();
     control.cancel();
     let error = plan.terminal_coordinate_index(&cancelled).unwrap_err();
     assert!(matches!(error, AsciiError::Cancelled(details)
-        if details.phase == merman_core::OperationPhase::Layout && details.reason == merman_core::CancelReason::Requested));
+        if details.phase == merman_model::OperationPhase::Layout && details.reason == merman_model::CancelReason::Requested));
     assert_eq!(cancelled.layout_work_used(), 1);
 }

@@ -24,13 +24,14 @@ include = [
     "../../THIRD_PARTY_LICENSES/",
     "README.md",
 ]
-features = ["all-diagrams", "stdio"]
+features = ["all-diagrams", "fixes", "stdio"]
 
 [package.metadata.merman]
 artifact-profile-required = true
 fixed-capabilities = ["analysis", "editor"]
 
 [features]
+fixes = ["merman-analysis/fixes", "merman-editor-core/fixes"]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
     "diagram-agentflow",

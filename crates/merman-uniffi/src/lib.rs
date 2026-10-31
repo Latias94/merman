@@ -2412,6 +2412,7 @@ mod tests {
                     result.length = width;
                 }
                 MermanTextMeasurementOperation::TspanBBoxHeight
+                | MermanTextMeasurementOperation::HtmlLineHeight
                 | MermanTextMeasurementOperation::SimpleBBoxHeight
                 | MermanTextMeasurementOperation::RawBBoxHeight => {
                     result.result_kind = MermanTextMeasurementResultKind::Length;

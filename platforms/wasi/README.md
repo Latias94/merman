@@ -6,8 +6,9 @@ filesystem access. The parent build lane supplies the **same reactor bytes** to
 both hosts. Neither host installs a preopened directory, inherited environment,
 network service, ambient random source, or thread service. Rust libc may import
 filesystem/stat functions, `random_get`, `clock_time_get`, and `sched_yield`.
-Imports are enumerated from the actual module and checked against the explicit
-allowlist in `protocol.json`; imports are not confused with granted authority.
+Imports are enumerated from the actual module and checked against the ordinary
+`allowed_imports` or the separate, exactly typed `denied_dependency_imports` in
+`protocol.json`; a dependency denial is not a filesystem grant.
 Both hosts override random bytes with zeroes, time with zero nanoseconds, and
 yield with a no-op. These deterministic shims are smoke policies, **not** secure
 randomness and not a production cryptographic host. Actual shim calls are
@@ -23,12 +24,26 @@ RaTeX font-loading feature split, not a local fake JavaScript host or a second m
 implementation. The formula SVG/PNG smokes prove the supported path in both real
 non-JavaScript runtimes.
 
-The same pinned RaTeX font-loader dependency enables `fontdb`'s file/mapping
-features transitively in math/full. They are not granted a filesystem: Merman's
-WASI font acquisition rejects paths, math selects its embedded KaTeX payload,
-`usvg/system-fonts` remains forbidden, and both hosts run without preopens.
-Standard additionally rejects those `fontdb` features in its dependency closure.
-Do not confuse compiled third-party helpers with ambient discovery permission.
+The same pinned RaTeX 0.1.15 font-loader dependency enables `fontdb`'s file/mapping
+features transitively in math/full. Embedded fonts cover KaTeX; they do not disable
+Unicode fallback. Missing glyphs and CJK can reach `ratex-unicode-font`'s environment
+and built-in system-path probes, including `canonicalize` / `realpath` / `readlink`.
+This is a reachable dependency path, not merely an unused libc symbol or a proven
+Rust-toolchain-only change. Merman's WASI font constructor still admits bytes only,
+`usvg/system-fonts` remains forbidden, and both hosts run without preopens or
+inherited environment. No system font can be acquired through those probes.
+
+The reviewed residual `path_readlink` is declared only in
+`denied_dependency_imports`, with six `i32` arguments
+(`fd, path, path_len, buf, buf_len, bufused`) and one `i32` result. Math/full may
+link that exact import. Standard rejects it before instantiation, and unknown
+imports or changed residual signatures remain errors. Both hosts always override
+this import with a counter-only shim returning preview1 `NOTCAPABLE` (76). The
+shim receives neither a caller nor a memory/module handle, ignores every argument,
+and touches no guest memory or filesystem, including `bufused`. The ordinary
+allowlist is unchanged. Standard also rejects the transitive `fontdb` file/mapping
+features in its dependency closure. Removing the fallback code itself requires
+an upstream font-loading split; this host policy preserves the pinned dependency.
 
 ## Workflow interface
 
@@ -94,6 +109,25 @@ decoded, unpremultiplied RGBA8 pixel hashes; compare dimensions and RGBA bytes,
 not compressed PNG bytes. A successful local adapter unit test is not a
 qualification claim for a production reactor. The parent owns final real
 artifact qualification and native pixel equivalence.
+
+Math/full additionally submit `math_missing` (a Cyrillic glyph absent from KaTeX)
+and `math_cjk` formulas as both SVG and PNG requests. Their source bytes and each
+actual output/metadata pair or ordinary structured error are retained. The report's
+`dependency_font_probes` distinguishes `rendered` from `owned-error`; successful
+SVG evidence records native/unavailable markers without claiming complete glyph
+coverage. A successful PNG records whether a successful SVG supplied its viewport
+comparison; a declined SVG does not manufacture that evidence. Only
+render/unsupported-operation errors are admitted for these probes;
+parse errors, host failures and unrelated resource errors fail the scenario.
+Both hosts must agree on outcomes, error payloads and decoded successful PNGs.
+These dependency probes do not replace the separate visible red-formula oracle.
+
+`denied_dependency_import_calls` records actual shim calls, with per-request deltas
+in the probe records. A zero count is valid: libc may fail before `readlink` when
+there are no preopens, and RaTeX caches failed discovery. The synthetic regression
+calls the real denial directly with valid and invalid pointers, asserting return
+76 and unchanged whole guest memory. Production counters are never incremented
+artificially. Standard reports these math probes as not applicable.
 
 ## Assertions and authority
 
@@ -168,8 +202,9 @@ python -m unittest discover -s platforms/wasi -p 'test_*.py' -v
 python -m py_compile platforms/wasi/common.py platforms/wasi/smoke.py platforms/wasi/wasmtime_smoke.py platforms/wasi/native_smoke.py
 ```
 
-The small WAT modules in Python tests exercise import/export rejection and
-actual no-preopen/no-environment/fixed-entropy host policy, not Mermaid behavior.
+The small synthetic modules in Python/Go tests exercise import/export rejection,
+flavor and signature restrictions, fixed-failure/no-write dependency denial, and
+the actual no-preopen/no-environment/fixed-entropy host policy, not Mermaid behavior.
 They are never passed off as production-reactor qualification.
 
 ## Dependency provenance

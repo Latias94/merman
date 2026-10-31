@@ -49,7 +49,8 @@ fn geometry_contains_every_painted_edge_occurrence_for_each_flowchart_adapter() 
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("{case}: {error}"))
-            .expect("diagram");
+            .expect("diagram")
+            .into_presentation();
         let prepare = || {
             family::prepare(
                 &parsed,

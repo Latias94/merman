@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::OperationPhase;
-use merman_core::presentation::PresentationConfig;
+use merman_model::OperationPhase;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -265,20 +265,11 @@ impl TreemapTypographyThemePlan {
             }
         }
         let theme_text_color_is_source_owned =
-            merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "themeVariables.textColor",
-            );
+            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let label_config_owns_text_fill = theme_text_color_is_source_owned
-            || merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "treemap.labelColor",
-            );
+            || effective_config.config_paint_overrides_typed_default("treemap.labelColor");
         let value_config_owns_text_fill = theme_text_color_is_source_owned
-            || merman_core::__private::config_paint_overrides_typed_default(
-                effective_config,
-                "treemap.valueColor",
-            );
+            || effective_config.config_paint_overrides_typed_default("treemap.valueColor");
         let root_font_size_px = crate::config::config_theme_font_size_css_or_root_number_px(
             effective_config.as_value(),
             16.0,
@@ -1147,13 +1138,9 @@ impl TreemapTitleThemePlan {
             });
         };
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "treemap.titleColor",
-        ) || merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.titleColor",
-        );
+        let config_owns_fill = effective_config
+            .config_paint_overrides_typed_default("treemap.titleColor")
+            || effective_config.config_paint_overrides_typed_default("themeVariables.titleColor");
         let fill = SingleTitleFillPlan::resolve(
             theme,
             title_present,
@@ -1252,7 +1239,6 @@ mod tests {
     };
     use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use merman_core::presentation::PresentationConfig;
     use serde_json::json;
 
     #[test]
@@ -1292,7 +1278,7 @@ mod tests {
             }],
         };
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = PresentationConfig::from_value(json!({}));
+        let config = crate::test_support::presentation_config(json!({}));
         let plan = TreemapTypographyThemePlan::resolve(None, &config, &layout, meter.into())
             .expect("resolve unthemed Treemap typography plan");
 
@@ -1366,7 +1352,7 @@ mod tests {
             .expect("compile Treemap title fill and palette theme")
             .resolve(DiagramFamilyId::TREEMAP);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = PresentationConfig::from_value(json!({}));
+        let config = crate::test_support::presentation_config(json!({}));
         let plan = TreemapTitleThemePlan::resolve(Some(&resolved), &config, Some("Title"), &meter)
             .expect("resolve Treemap title theme");
         let mut receipt = plan.begin_terminal_receipt().expect("typed title receipt");

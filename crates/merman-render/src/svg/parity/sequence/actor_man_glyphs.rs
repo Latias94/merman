@@ -2,7 +2,7 @@ use super::super::*;
 use super::actor_shapes::ActorLabelContext;
 use super::geometry::node_left_top;
 use crate::sequence::SEQUENCE_GLYPH_BAND_HEIGHT;
-use merman_core::diagrams::sequence::SequenceActor;
+use merman_model::families::sequence::SequenceActor;
 
 pub(super) struct ActorManGlyphPlacement<'a> {
     pub(super) footer: bool,

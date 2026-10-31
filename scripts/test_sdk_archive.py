@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import io
 import json
@@ -15,7 +16,18 @@ import unittest
 from unittest import mock
 import zipfile
 
-from scripts import sdk_archive
+from scripts import sdk_archive, sdk_qualify
+
+
+TINY_GENERIC_LIMITS = replace(
+    sdk_archive.DEFAULT_LIMITS,
+    max_archive_size=256 * 1024,
+    max_member_size=128 * 1024,
+    max_total_size=256 * 1024,
+)
+TINY_SDK_LIMITS = replace(
+    TINY_GENERIC_LIMITS, max_member_size=TINY_GENERIC_LIMITS.max_total_size,
+)
 
 
 class SdkArchiveTests(unittest.TestCase):
@@ -157,6 +169,13 @@ class SdkArchiveTests(unittest.TestCase):
         args.update(changes)
         return sdk_archive.package_sdk(**args)
 
+    def replace_library(self, kind, data):
+        name = sdk_archive.library_names(self.target)[kind]
+        library = self.artifacts / name
+        library.write_bytes(data)
+        self.catalog["artifacts"][name] = sdk_archive.sha256_file(library)
+        self.save_catalog()
+
     def members(self, path):
         if path.suffix == ".zip":
             with zipfile.ZipFile(path) as archive:
@@ -269,6 +288,8 @@ class SdkArchiveTests(unittest.TestCase):
                         self.assertNotIn(b"-lmerman_ffi.dll", members["lib/pkgconfig/merman-static.pc"])
                     if flavor == "full":
                         self.assertIn(self.commit.encode(), members["SOURCE_AVAILABILITY.md"])
+                        self.assertIn(b"crates/merman-model", members["SOURCE_AVAILABILITY.md"])
+                        self.assertIn(b"crates/merman-markup", members["SOURCE_AVAILABILITY.md"])
                         self.assertIn(b"crates/merman-layout-elk", members["SOURCE_AVAILABILITY.md"])
 
     def test_archives_follow_shared_safe_extraction_conventions(self):
@@ -436,6 +457,119 @@ class SdkArchiveTests(unittest.TestCase):
         self.assertEqual(destination.read_bytes(), archive.read_bytes())
         self.assertEqual(sdk_archive.read_checksum(Path(str(destination) + ".sha256"), destination.name),
                          sdk_archive.sha256_file(destination))
+
+    def test_sdk_limits_only_raise_the_member_budget(self):
+        self.assertEqual(sdk_archive.DEFAULT_LIMITS.max_member_size, 256 * 1024 * 1024)
+        self.assertEqual(sdk_archive.DEFAULT_LIMITS.max_total_size, 512 * 1024 * 1024)
+        self.assertEqual(sdk_archive.DEFAULT_LIMITS.max_archive_size, 512 * 1024 * 1024)
+        self.assertEqual(sdk_archive.SDK_LIMITS, replace(
+            sdk_archive.DEFAULT_LIMITS,
+            max_member_size=sdk_archive.DEFAULT_LIMITS.max_total_size,
+        ))
+
+    def test_sdk_member_above_generic_budget_survives_verified_install(self):
+        self.configure(target="x86_64-pc-windows-msvc", flavor="math")
+        payload = b"x" * (192 * 1024)
+        self.replace_library("static", payload)
+        self.enterContext(mock.patch.object(sdk_archive, "SDK_LIMITS", TINY_SDK_LIMITS))
+        archive = self.package()
+        checksum = Path(str(archive) + ".sha256")
+        with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "member .* exceeds budget"):
+            with sdk_archive.verified_archive_contents(
+                archive, checksum, package_name="merman-" + self.profile,
+                target=self.target, version=self.version, limits=TINY_GENERIC_LIMITS,
+            ):
+                self.fail("generic extraction accepted an oversized member")
+        verified = self.root / "verified"
+        verified.mkdir()
+        with mock.patch.object(
+            sdk_archive, "verified_archive_contents", wraps=sdk_archive.verified_archive_contents,
+        ) as extract, mock.patch.object(
+            sdk_archive, "persist_verified_archive", wraps=sdk_archive.persist_verified_archive,
+        ) as persist:
+            destination = sdk_archive.verify_sdk_archive(
+                repo_root=self.repo, profile=self.profile, target=self.target,
+                archive=archive, checksum=checksum, source_commit=self.commit,
+                version=self.version, descriptor=self.descriptor, verified_output_dir=verified,
+            )
+        extract.assert_called_once()
+        persist.assert_called_once()
+        self.assertIs(extract.call_args.kwargs["limits"], TINY_SDK_LIMITS)
+        self.assertIs(persist.call_args.kwargs["limits"], TINY_SDK_LIMITS)
+        self.assertEqual(destination, verified / archive.name)
+        self.assertEqual(destination.read_bytes(), archive.read_bytes())
+        self.assertEqual(sdk_archive.read_checksum(Path(str(destination) + ".sha256"), destination.name),
+                         sdk_archive.sha256_file(destination))
+
+        def inspect_consumer(prefix, build, *, repo_root):
+            self.assertEqual(repo_root, self.repo)
+            self.assertEqual((prefix / "lib/merman_ffi.lib").read_bytes(), payload)
+            return build
+
+        with mock.patch.object(
+            sdk_qualify, "verified_archive_contents", wraps=sdk_qualify.verified_archive_contents,
+        ) as installed_extract, mock.patch.object(
+            sdk_qualify, "build_consumer", side_effect=inspect_consumer,
+        ) as consumer, mock.patch.object(sdk_qualify, "run") as run:
+            sdk_qualify.verify_installed_consumer(
+                destination, self.profile, self.target, self.version, repo_root=self.repo,
+            )
+        installed_extract.assert_called_once_with(
+            destination, Path(str(destination) + ".sha256"), package_name="merman-" + self.profile,
+            target=self.target, version=self.version, limits=TINY_SDK_LIMITS,
+        )
+        consumer.assert_called_once()
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0][0], "ctest")
+
+    def test_sdk_member_budget_rejects_packaging_and_verification(self):
+        self.configure(target="x86_64-pc-windows-msvc")
+        self.replace_library("static", b"x" * (TINY_SDK_LIMITS.max_member_size + 1))
+        archive = self.package()
+        rejected = self.root / "rejected"
+        with mock.patch.object(sdk_archive, "SDK_LIMITS", TINY_SDK_LIMITS):
+            with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "exceeds archive member budget"):
+                self.package(output_dir=rejected)
+            with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "member .* exceeds budget"):
+                sdk_archive.verify_sdk_archive(
+                    repo_root=self.repo, profile=self.profile, target=self.target,
+                    archive=archive, checksum=Path(str(archive) + ".sha256"),
+                    source_commit=self.commit, version=self.version, descriptor=self.descriptor,
+                )
+        self.assertFalse(rejected.exists())
+
+    def test_sdk_aggregate_budget_rejects_packaging_and_verification(self):
+        self.configure(target="x86_64-pc-windows-msvc")
+        for kind in ("static", "dynamic"):
+            self.replace_library(kind, b"x" * (192 * 1024))
+        archive = self.package()
+        rejected = self.root / "rejected"
+        with mock.patch.object(sdk_archive, "SDK_LIMITS", TINY_SDK_LIMITS):
+            with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "uncompressed size exceeds budget"):
+                self.package(output_dir=rejected)
+            with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "uncompressed size exceeds budget"):
+                sdk_archive.verify_sdk_archive(
+                    repo_root=self.repo, profile=self.profile, target=self.target,
+                    archive=archive, checksum=Path(str(archive) + ".sha256"),
+                    source_commit=self.commit, version=self.version, descriptor=self.descriptor,
+                )
+        self.assertFalse(rejected.exists())
+
+    def test_sdk_compressed_budget_rejects_packaging_and_verification(self):
+        self.configure(target="x86_64-pc-windows-msvc")
+        archive = self.package()
+        limits = replace(TINY_SDK_LIMITS, max_archive_size=archive.stat().st_size - 1)
+        rejected = self.root / "rejected"
+        with mock.patch.object(sdk_archive, "SDK_LIMITS", limits):
+            with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "exceeds compressed size budget"):
+                self.package(output_dir=rejected)
+            with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "archive size .* exceeds budget"):
+                sdk_archive.verify_sdk_archive(
+                    repo_root=self.repo, profile=self.profile, target=self.target,
+                    archive=archive, checksum=Path(str(archive) + ".sha256"),
+                    source_commit=self.commit, version=self.version, descriptor=self.descriptor,
+                )
+        self.assertEqual(list(rejected.iterdir()), [])
 
     def test_verifier_rejects_tag_version_and_source_mismatch(self):
         archive = self.package()

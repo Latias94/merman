@@ -22,6 +22,7 @@
 //! | Inspect canonical Mermaid meaning | `diagram-*` selectors, without defaults | [`SemanticParser`] or [`Renderer::parse_semantic`] |
 //! | Produce Mermaid compatibility JSON | `compat-json` and family selectors | `MermaidEngine` and [`ParseOptions`] |
 //! | Analyze diagnostics or Markdown fences | `analysis` | `analysis::Analyzer` |
+//! | Generate requested diagnostic fixes | `fixes` | `analysis::AnalysisOptions::with_fix_generation` |
 //! | Build parser-backed editor snapshots | `editor` | `editor::analyze_document_snapshot_with_shared_text` |
 //! | Render Mermaid-like SVG | `svg` | [`Renderer`] and `RenderRequest::svg` |
 //! | Render terminal-friendly text | `ascii` | [`Renderer`] and `RenderRequest::ascii` |
@@ -41,6 +42,8 @@
 //!
 //! - `analysis`: render-free diagnostics, source mapping, and Markdown analysis through
 //!   `merman::analysis`.
+//! - `fixes`: compile replacement generation for analysis; each projection must explicitly select
+//!   `analysis::FixGeneration::Generate`. Diagnostics default to `Omit`.
 //! - `presentation`: full Mermaid configuration and paired presentation artifacts.
 //! - `compat-json`: Mermaid-compatible JSON projections; implies `presentation`.
 //! - `editor-facts`: optional parser-backed source facts without presentation.
@@ -96,7 +99,40 @@
     "../docs/generated/merman-rustdoc/crate-overview.md"
 )]
 
-pub use merman_core::*;
+/// Canonical family data and shared configuration, runtime, and resource contracts.
+pub use merman_model as model;
+
+pub use merman_core::generated::default_site_config;
+#[cfg(feature = "presentation")]
+pub use merman_core::presentation::{SourcePresentationConfig, ThemeCompatibilityPlan};
+#[cfg(feature = "presentation")]
+pub use merman_core::{
+    CustomJsonRenderParser, Detector, DetectorRegistry, MermaidEngine, ParsedDiagramRender,
+    RenderDiagramRegistry, SourcePresentationMetadata, built_in_typed_render_families,
+};
+pub use merman_core::{
+    DiagramFamilyCapability, Error, InternalFailure, ParseDiagnostic, ParseDiagnosticSpanKind,
+    ParseOptions, Result, SemanticParser, diagram_family_capabilities, diagram_header_facts,
+    supported_diagrams, supported_theme_ids, supported_themes,
+};
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+pub use merman_core::{DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture};
+#[cfg(feature = "compat-json")]
+pub use merman_core::{DiagramRegistry, DiagramSemanticParser, ParsedDiagram};
+#[cfg(feature = "editor-facts")]
+pub use merman_core::{
+    ParsedEditorFacts, SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture,
+};
+pub use merman_model::baseline;
+pub use merman_model::config::{MermaidThemeId, MermaidThemeIdParseError};
+pub use merman_model::family::diagram_family_selectors;
+#[cfg(feature = "presentation")]
+pub use merman_model::presentation::ThemeEvaluationLimitExceeded;
+pub use merman_model::{
+    CancelReason, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult,
+    OperationPhase, OperationResourceDomain, OperationResourceLimitExceeded,
+    OperationResourceOverride, OperationResourceProvenance,
+};
 
 pub mod diagnostic;
 #[path = "operation.rs"]

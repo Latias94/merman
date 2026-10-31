@@ -23,9 +23,7 @@ impl<'a> KanbanConfigView<'a> {
 
     #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> KanbanLayoutSettings {
-        let config = merman_core::presentation::PresentationConfig::from_value(
-            self.effective_config.clone(),
-        );
+        let config = crate::test_support::presentation_config(self.effective_config.clone());
         let typography = super::KanbanTypographyPlan::resolve(None, &config);
         self.layout_settings_with_resolved_typography(
             typography.font_family_css(),

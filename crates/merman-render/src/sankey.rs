@@ -4,7 +4,7 @@ use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayo
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
-use merman_core::diagrams::sankey::SankeyDiagramModel;
+use merman_model::families::sankey::SankeyDiagramModel;
 use serde_json::Value;
 
 const SANKEY_RELAXATION_ITERATIONS: usize = 6;
@@ -718,7 +718,7 @@ mod tests {
     };
     use crate::text::DeterministicTextMeasurer;
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
-    use merman_core::diagrams::sankey::{SankeyDiagramModel, SankeyGraph, SankeyLink, SankeyNode};
+    use merman_model::families::sankey::{SankeyDiagramModel, SankeyGraph, SankeyLink, SankeyNode};
     use serde_json::json;
 
     fn model() -> SankeyDiagramModel {

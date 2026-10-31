@@ -2,7 +2,7 @@ use super::SequenceOperationCheckpoints;
 use super::block_geometry::SequenceBlockGeometry;
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
-use merman_core::diagrams::sequence::{
+use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
     SequenceMessageKind,
 };
@@ -470,7 +470,7 @@ mod tests {
     use super::{SequenceBlock, collect_sequence_blocks_with};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::sequence::block_geometry::SequenceBlockGeometry;
-    use merman_core::diagrams::sequence::{
+    use merman_model::families::sequence::{
         SequenceDiagramModel, SequenceMessage, SequenceMessagePayload,
     };
     use rustc_hash::FxHashMap;

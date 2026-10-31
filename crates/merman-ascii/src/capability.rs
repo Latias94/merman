@@ -798,7 +798,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
     },
 ];
 
-/// Reports local terminal adapters for every compiled logical parser family.
+/// Reports local terminal adapters for the selected canonical model families.
 ///
 /// Shared model types do not merge language availability: Flowchart and Swimlane
 /// have separate rows even though they use the same terminal projection.
@@ -807,12 +807,12 @@ pub fn ascii_capabilities() -> &'static [AsciiCapability] {
     CAPABILITIES
         .get_or_init(|| {
             let mut capabilities = Vec::new();
-            for family in merman_core::diagram_family_capabilities() {
+            for family in merman_model::family::model_family_capabilities() {
                 let diagram_type = capability_diagram_type(
-                    merman_core::diagram_type_metadata_id(family.logical_family_kind)
+                    merman_model::family::diagram_type_metadata_id(family.logical_family_kind)
                         .unwrap_or(family.logical_family_kind),
                 );
-                if !family.has_semantic_parser
+                if !family.has_model
                     || diagram_type == "error"
                     || capabilities
                         .iter()
@@ -825,7 +825,7 @@ pub fn ascii_capabilities() -> &'static [AsciiCapability] {
                     .find(|definition| {
                         family
                             .render_model_kind
-                            .and_then(merman_core::diagram_type_metadata_id)
+                            .and_then(merman_model::family::diagram_type_metadata_id)
                             .map(capability_diagram_type)
                             == Some(definition.diagram_type)
                     })
@@ -849,7 +849,8 @@ pub fn ascii_capabilities() -> &'static [AsciiCapability] {
 }
 
 pub(crate) fn capability_for_diagram_type(diagram_type: &str) -> Option<AsciiCapability> {
-    let metadata_id = merman_core::diagram_type_metadata_id(diagram_type).unwrap_or(diagram_type);
+    let metadata_id =
+        merman_model::family::diagram_type_metadata_id(diagram_type).unwrap_or(diagram_type);
     let metadata_id = if metadata_id == "gitGraph" {
         "gitgraph"
     } else {
@@ -875,7 +876,7 @@ fn capability_diagram_type(logical_family: &'static str) -> &'static str {
 pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
     let family = match diagram_type {
         "gitgraph" => "gitGraph",
-        other => merman_core::diagram_type_family_kind(other).unwrap_or(other),
+        other => merman_model::family::diagram_type_family_kind(other).unwrap_or(other),
     };
     match family {
         "class" => cfg!(feature = "diagram-class"),
@@ -974,22 +975,22 @@ mod tests {
     #[test]
     fn capabilities_cover_each_concrete_built_in_typed_family_once() {
         let capabilities = ascii_capabilities();
-        let core_families = merman_core::diagram_family_capabilities();
+        let model_families = merman_model::family::model_family_capabilities();
         let capability_types = capabilities
             .iter()
             .map(|capability| capability.diagram_type)
             .collect::<BTreeSet<_>>();
-        let core_types = core_families
+        let model_types = model_families
             .iter()
-            .filter(|family| family.has_semantic_parser && family.logical_family_kind != "error")
+            .filter(|family| family.has_model && family.logical_family_kind != "error")
             .map(|family| {
-                merman_core::diagram_type_metadata_id(family.logical_family_kind).unwrap()
+                merman_model::family::diagram_type_metadata_id(family.logical_family_kind).unwrap()
             })
             .collect::<BTreeSet<_>>();
 
         assert_eq!(capabilities.len(), 34);
         assert_eq!(capability_types.len(), capabilities.len());
-        assert_eq!(capability_types, core_types);
+        assert_eq!(capability_types, model_types);
         assert!(!capability_types.contains("error"));
         assert!(!capability_types.contains("custom-json"));
     }

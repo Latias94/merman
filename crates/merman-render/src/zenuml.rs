@@ -5,7 +5,7 @@ mod theme;
 use crate::Result;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::zenuml::{
+use merman_model::families::zenuml::{
     ZenumlDiagramModel, ZenumlFragmentKind, ZenumlMessageStyle, ZenumlStatement,
     ZenumlStatementKind,
 };
@@ -2402,7 +2402,8 @@ pub(crate) fn zenuml_emoji_unicode(shortcode: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
 
     #[test]
     fn presentation_typography_measures_selected_fonts_and_preserves_vertical_clearance() {
@@ -2422,7 +2423,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(
                 "zenuml\n@Actor <<Client>> Alice\nBob\n// First line\n// (bold, italic) Second line\nAlice->Bob: A message wide enough to separate participants\nif(ready) {\n Alice->Bob: Continue\n}\n== Divider ==\n",
                 ParseOptions::strict(),
-            ).unwrap().unwrap();
+            ).unwrap().unwrap().into_presentation();
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML");
         };
@@ -2521,7 +2522,8 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML");
         };
@@ -2542,7 +2544,7 @@ mod tests {
         ] {
             let style = ZenumlSourceStyle::resolve(
                 Some(&resolved),
-                &merman_core::presentation::PresentationConfig::from_value(config),
+                &crate::test_support::presentation_config(config),
                 &meter,
                 false,
             )
@@ -2575,7 +2577,8 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML");
         };
@@ -2595,7 +2598,8 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML model");
         };

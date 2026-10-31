@@ -5,7 +5,7 @@ pub(crate) use css_binding::BlockCssThemeBinding;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
-use merman_core::diagrams::block::BlockClassDef;
+use merman_model::families::block::BlockClassDef;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -29,7 +29,7 @@ pub(crate) struct BlockLabelBackgroundPlan(crate::family::EdgeLabelBackgroundPla
 impl BlockLabelBackgroundPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         configured: &str,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -74,8 +74,8 @@ pub(crate) struct BlockNodeLabelPaintPlan {
 impl BlockNodeLabelPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -102,7 +102,7 @@ impl BlockNodeLabelPaintPlan {
             "themeVariables.textColor",
         ]
         .into_iter()
-        .any(|path| merman_core::__private::config_paint_overrides_typed_default(config, path));
+        .any(|path| config.config_paint_overrides_typed_default(path));
         let has_ordinal = theme.family_rules().any(|(_, rule)| {
             matches!(rule.target(), ThemeTarget::NodeLabel | ThemeTarget::Text)
                 && rule.ordinal().is_some()
@@ -322,7 +322,7 @@ pub(crate) struct BlockTypographyThemePlan {
 impl BlockTypographyThemePlan {
     pub(crate) fn prepare_class_definitions(
         &mut self,
-        definitions: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDef>,
+        definitions: &indexmap::IndexMap<String, merman_model::families::block::BlockClassDef>,
     ) {
         self.css_binding.prepare_class_definitions(definitions);
     }
@@ -332,7 +332,7 @@ impl BlockTypographyThemePlan {
     }
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
     ) -> crate::Result<Self> {
         let settings =
             super::config::BlockConfigView::new(effective_config.as_value()).layout_settings();
@@ -382,24 +382,12 @@ impl BlockTypographyThemePlan {
             }
         }
 
-        let config_owns_font_stack =
-            ["themeVariables.fontFamily", "fontFamily"]
-                .into_iter()
-                .any(|path| {
-                    merman_core::__private::config_path_overrides_typed_default(
-                        effective_config,
-                        path,
-                    )
-                });
-        let config_owns_font_size =
-            ["themeVariables.fontSize", "fontSize"]
-                .into_iter()
-                .any(|path| {
-                    merman_core::__private::config_path_overrides_typed_default(
-                        effective_config,
-                        path,
-                    )
-                });
+        let config_owns_font_stack = ["themeVariables.fontFamily", "fontFamily"]
+            .into_iter()
+            .any(|path| effective_config.config_path_overrides_typed_default(path));
+        let config_owns_font_size = ["themeVariables.fontSize", "fontSize"]
+            .into_iter()
+            .any(|path| effective_config.config_path_overrides_typed_default(path));
         let typed_font_stack_applied = typed_font_stack && !config_owns_font_stack;
         let typed_font_size_applied = typed_font_size && !config_owns_font_size;
         if typed_font_stack_applied {
@@ -528,8 +516,8 @@ pub(crate) struct BlockNodePaintThemePlan {
 impl BlockNodePaintThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        effective_config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         labels: &BlockNodeLabelPaintPlan,
         work_meter: &OperationWorkMeter,
@@ -558,14 +546,10 @@ impl BlockNodePaintThemePlan {
         let ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
         let node_config_fill = mermaid_owns_node_fill(effective_config);
         let node_config_stroke = mermaid_owns_node_stroke(effective_config);
-        let cluster_config_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.clusterBkg",
-        );
-        let cluster_config_stroke = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.clusterBorder",
-        );
+        let cluster_config_fill =
+            effective_config.config_paint_overrides_typed_default("themeVariables.clusterBkg");
+        let cluster_config_stroke =
+            effective_config.config_paint_overrides_typed_default("themeVariables.clusterBorder");
         let has_ordinals = |target| {
             theme
                 .family_rules()
@@ -773,7 +757,7 @@ impl BlockNodePaintThemePlan {
 
     fn bind_terminals(
         &self,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         labels: &BlockNodeLabelPaintPlan,
         work: &OperationWorkMeter,
@@ -889,15 +873,12 @@ fn observe_shell_style(
     }
 }
 
-fn mermaid_owns_node_stroke(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_paint_overrides_typed_default(
-        config,
-        "themeVariables.nodeBorder",
-    )
+fn mermaid_owns_node_stroke(config: &merman_model::presentation::PresentationConfig) -> bool {
+    config.config_paint_overrides_typed_default("themeVariables.nodeBorder")
 }
 
-fn mermaid_owns_node_fill(config: &merman_core::presentation::PresentationConfig) -> bool {
-    merman_core::__private::config_paint_overrides_typed_default(config, "themeVariables.mainBkg")
+fn mermaid_owns_node_fill(config: &merman_model::presentation::PresentationConfig) -> bool {
+    config.config_paint_overrides_typed_default("themeVariables.mainBkg")
 }
 
 #[derive(Debug, Default)]
@@ -991,8 +972,8 @@ mod tests {
 
     fn resolve_node_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<BlockNodePaintThemePlan, OperationWorkError> {
@@ -1018,7 +999,7 @@ mod tests {
         let resolved = theme.resolve(crate::DiagramFamilyId::BLOCK);
         let plan = BlockTypographyThemePlan::resolve(
             Some(&resolved),
-            &merman_core::presentation::PresentationConfig::empty_object(),
+            &merman_model::presentation::PresentationConfig::empty_object(),
         )
         .unwrap();
         assert!(plan.typed_font_size_requested);
@@ -1027,7 +1008,7 @@ mod tests {
 
     #[test]
     fn unthemed_typography_keeps_config_style_without_terminal_evidence() {
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
             "themeVariables": {"fontSize": "24px"},
             "block": {"padding": 12}
@@ -1058,7 +1039,7 @@ mod tests {
         for (label, not_applicable) in [(" \n", true), ("Visible", false)] {
             let plan = BlockTypographyThemePlan::resolve(
                 Some(&resolved),
-                &merman_core::presentation::PresentationConfig::empty_object(),
+                &merman_model::presentation::PresentationConfig::empty_object(),
             )
             .unwrap();
             assert!(plan.observes_visible_labels());
@@ -1086,7 +1067,7 @@ mod tests {
             ))
             .unwrap();
         let theme = theme.resolve(crate::DiagramFamilyId::BLOCK);
-        let config = merman_core::presentation::PresentationConfig::empty_object();
+        let config = merman_model::presentation::PresentationConfig::empty_object();
         let work_meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -1102,9 +1083,10 @@ mod tests {
             let parsed = merman_core::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .expect("parse Block source ownership fixture")
-                .expect("detect Block source ownership fixture");
+                .expect("detect Block source ownership fixture")
+                .into_presentation();
             let mut model = match parsed.model() {
-                merman_core::RenderSemanticModel::Block(model) => model.clone(),
+                merman_model::presentation::RenderSemanticModel::Block(model) => model.clone(),
                 _ => panic!("expected Block render model"),
             };
             let layout = crate::block::layout_block_diagram_typed(
@@ -1121,7 +1103,7 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // Empty fragments preserve the earlier source, just as the terminal writer does.
-            let fragment = merman_core::diagrams::block::BlockNode {
+            let fragment = merman_model::families::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
                 ..Default::default()
@@ -1134,7 +1116,7 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // A later non-empty list replaces the corresponding source list.
-            let fragment = merman_core::diagrams::block::BlockNode {
+            let fragment = merman_model::families::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
                 styles: vec!["stroke:#00bb00".to_string()],

@@ -81,7 +81,7 @@ fn write_scoped_sequence_base_defs(
 pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared: &crate::sequence::SequencePreparedArtifact,
     model: &SequenceSvgModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {

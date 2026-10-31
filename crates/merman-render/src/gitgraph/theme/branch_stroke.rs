@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -63,10 +63,8 @@ impl GitGraphBranchStrokePlan {
         let config_owns_stroke = mermaid_owns_branch_stroke(effective_config);
         // A fill fallback formerly created commitLineColor. An explicit lineColor alone
         // cannot own this new source, unlike the existing direct Stroke route.
-        let config_owns_fill = merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            COMMIT_LINE_COLOR_PATH,
-        );
+        let config_owns_fill =
+            effective_config.config_paint_overrides_typed_default(COMMIT_LINE_COLOR_PATH);
         let has_ordinal_edge_rules = theme.family_rules().any(|(_, rule)| {
             rule.target() == ThemeTarget::Edge
                 && matches!(rule.variant(), None | Some(ThemeVariant::Default))
@@ -403,9 +401,9 @@ fn typed_static_branch_paint(
 
 fn mermaid_owns_branch_stroke(config: &PresentationConfig) -> bool {
     if config.get_str(COMMIT_LINE_COLOR_PATH).is_some() {
-        merman_core::__private::config_paint_overrides_typed_default(config, COMMIT_LINE_COLOR_PATH)
+        config.config_paint_overrides_typed_default(COMMIT_LINE_COLOR_PATH)
     } else {
-        merman_core::__private::config_paint_overrides_typed_default(config, LINE_COLOR_PATH)
+        config.config_paint_overrides_typed_default(LINE_COLOR_PATH)
     }
 }
 

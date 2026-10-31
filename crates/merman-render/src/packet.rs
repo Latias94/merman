@@ -1,7 +1,7 @@
 use crate::Result;
 use crate::model::{Bounds, PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
 use crate::text::TextMeasurer;
-use merman_core::diagrams::packet::PacketDiagramRenderModel;
+use merman_model::families::packet::PacketDiagramModel;
 
 mod config;
 mod theme;
@@ -13,7 +13,7 @@ pub(crate) use theme::{
 };
 
 pub(crate) fn layout_packet_diagram_typed(
-    model: &PacketDiagramRenderModel,
+    model: &PacketDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,

@@ -12,10 +12,10 @@ use crate::math::MathRenderer;
 use crate::model::SwimlaneDirection;
 use crate::text::{TextMeasurer, WrapMode};
 use indexmap::IndexMap;
-use merman_core::diagrams::flowchart::{
+use merman_model::families::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 use std::collections::{HashMap, HashSet};
 
 fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {

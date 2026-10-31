@@ -305,7 +305,7 @@ fn write_band_domain_disclosure_line(
     let crate::xychart::plot::AxisPlan::Band { .. } = &plan.x_axis else {
         return Ok(());
     };
-    let merman_core::diagrams::xychart::XyChartAxisModel::Band { categories, .. } = &model.x_axis
+    let merman_model::families::xy_chart::XyChartAxisModel::Band { categories, .. } = &model.x_axis
     else {
         return Err(invalid_disclosure_plan());
     };

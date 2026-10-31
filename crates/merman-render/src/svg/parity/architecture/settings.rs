@@ -62,7 +62,7 @@ mod tests {
     use super::*;
 
     fn prepared_settings(id: &str, config: &serde_json::Value) -> ArchitectureRenderSettings {
-        let config = merman_core::presentation::PresentationConfig::from_value(config.clone());
+        let config = crate::test_support::presentation_config(config.clone());
         let typography =
             crate::architecture::ArchitectureTypographyThemePlan::resolve(None, &config);
         let request = crate::svg::SvgRenderOptions {

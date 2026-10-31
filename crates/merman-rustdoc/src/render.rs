@@ -3,8 +3,7 @@ use std::path::PathBuf;
 
 use merman::{
     OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, ResourceLimitCause,
-    SvgEnvironment, SvgRequest,
-    presentation::PresentationConfig,
+    SourcePresentationConfig, SvgEnvironment, SvgRequest,
     svg::{RenderCapability, ResourceLimitId, SvgOutputPolicy, SvgPipelinePreset},
 };
 use serde_json::Value;
@@ -86,7 +85,7 @@ fn render_mermaid_svg(
     let resources = options.resource_policy()?;
     let mut engine = merman::MermaidEngine::new();
     if let Some(theme) = site_theme {
-        let mut config = PresentationConfig::empty_object();
+        let mut config = SourcePresentationConfig::empty_object();
         config.set_value("theme", Value::String(theme.to_string()));
         engine = engine.with_site_config(config);
     }

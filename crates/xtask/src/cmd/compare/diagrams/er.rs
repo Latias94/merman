@@ -185,7 +185,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                     }
                 };
 
-            let family_id = merman_core::diagram_type_family_id(semantic.diagram_type())
+            let family_id = merman::model::family::diagram_type_family_id(semantic.diagram_type())
                 .ok_or_else(|| {
                     format!(
                         "unknown render family for {}: {}",
@@ -193,7 +193,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                         semantic.diagram_type()
                     )
                 })?;
-            if family_id != merman_core::DiagramFamilyId::ER {
+            if family_id != merman::model::family::DiagramFamilyId::ER {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),

@@ -1,7 +1,7 @@
 use crate::model::Bounds;
 use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
 use crate::text::TextMeasurer;
-use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureNodeKind};
+use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureNodeKind};
 
 use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
 use super::ArchitectureEmitCheckpoints;
@@ -22,7 +22,7 @@ pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) text_measurer: &'a dyn TextMeasurer,
-    pub(super) sanitize_config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(super) icon_scope_root: Option<IconIdScopePrefix>,
@@ -205,10 +205,10 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                             .unwrap_or(usize::MAX),
                         work_meter,
                         &parse_work,
-                        merman_core::OperationPhase::Emit,
+                        merman_model::OperationPhase::Emit,
                     );
                     let sanitized = crate::html::resolve_svg_fragment(
-                        merman_core::sanitize::sanitize_xhtml_in_svg_context_with_sink(
+                        merman_markup::sanitize::sanitize_xhtml_in_svg_context_with_sink(
                             icon_text.trim(),
                             sanitize_config.as_config(),
                             &sink,

@@ -4,7 +4,8 @@ use crate::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use crate::text::DeterministicTextMeasurer;
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::RenderSemanticModel;
 use std::cell::Cell;
 use std::fmt;
 use std::ops::Range;
@@ -78,7 +79,8 @@ fn render_block_direct_with_edge_theme(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
         .expect("parse Block resource-bound fixture")
-        .expect("detect Block resource-bound fixture");
+        .expect("detect Block resource-bound fixture")
+        .into_presentation();
     let RenderSemanticModel::Block(model) = parsed.model() else {
         panic!("expected a typed Block render model");
     };
@@ -360,8 +362,9 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
     let parsed = merman_core::MermaidEngine::new()
         .parse_diagram_for_render_model_sync("block\nnode\n", merman_core::ParseOptions::strict())
         .expect("parse Block render model")
-        .expect("Block input is detected");
-    let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+        .expect("Block input is detected")
+        .into_presentation();
+    let merman_model::presentation::RenderSemanticModel::Block(model) = parsed.model() else {
         panic!("expected Block render model");
     };
 

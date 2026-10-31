@@ -13,6 +13,14 @@ use crate::diagrams::langium_common::{
     parse_langium_common, parse_langium_string,
 };
 
+fn parse_layout_direction(value: &str) -> Option<ArchitectureLayoutDirection> {
+    match value {
+        "row" => Some(ArchitectureLayoutDirection::Row),
+        "column" => Some(ArchitectureLayoutDirection::Column),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ArchitectureSpannedValue {
     value: String,
@@ -336,7 +344,7 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_alignment(&mut self) -> Result<ArchitectureStatement> {
         self.expect_keyword("align");
         let direction = self.parse_raw_id("invalid align direction")?;
-        if ArchitectureLayoutDirection::parse(&direction.value).is_none() {
+        if parse_layout_direction(&direction.value).is_none() {
             return Err(Error::diagram_parse_exact(
                 "architecture",
                 "invalid align direction",
@@ -885,7 +893,7 @@ fn convert_architecture_title(raw: &str) -> String {
 #[cfg(all(test, feature = "compat-json"))]
 pub(super) fn parse_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<ArchitectureSemanticSource> {
     let trace = parse_trace_controlled(
         code,
@@ -950,7 +958,7 @@ pub(super) fn parse_semantic_model_controlled(
 #[cfg(feature = "editor-facts")]
 pub(super) fn parse_combined_semantic_source_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<
     std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure>,
@@ -1520,7 +1528,7 @@ impl ArchitectureTrace {
             if let Some(ArchitectureStatement::Alignment { direction, members }) =
                 entry.statement.as_ref()
                 && let Err(error) = db.add_layout_hint_controlled(
-                    ArchitectureLayoutDirection::parse(&direction.value)
+                    parse_layout_direction(&direction.value)
                         .expect("validated alignment direction"),
                     members.clone(),
                     control,
@@ -1668,7 +1676,7 @@ impl ArchitectureTrace {
 #[cfg(all(feature = "compat-json", any(test, feature = "editor-facts")))]
 impl ArchitectureSemanticSource {
     #[cfg(test)]
-    pub(super) fn compat_json(&self, meta: &PresentationMetadata) -> Value {
+    pub(super) fn compat_json(&self, meta: &SourcePresentationMetadata) -> Value {
         super::render_model_to_compat_json(&self.db.semantic_model(), meta)
             .expect("Architecture typed model must remain JSON-serializable")
     }
@@ -1686,7 +1694,7 @@ impl ArchitectureSemanticSource {
     #[cfg(feature = "editor-facts")]
     pub(super) fn into_combined_parts_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         control.checkpoint()?;

@@ -1,4 +1,4 @@
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 use crate::Result;
 use crate::diagram_theme::ThemePortabilityRequirement;
@@ -206,7 +206,8 @@ mod tests {
             let parsed = merman_core::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let session = crate::environment::RenderEnvironment::deterministic()
                 .begin_session()
                 .unwrap();
@@ -280,7 +281,7 @@ mod tests {
                 StandaloneSvgTerminalStatus::ValidationFailed,
             ),
         ] {
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::OperationControl::new();
             let session = crate::environment::RenderEnvironment::deterministic()
                 .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
                 .with_theme_portability_requirement(portability)

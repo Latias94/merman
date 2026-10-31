@@ -458,7 +458,7 @@
         "path": "."
       },
       "relationships": ["generated", "translated"],
-      "local_paths": ["crates/merman-core/src/generated/dompurify_defaults.rs"],
+      "local_paths": ["crates/merman-markup/src/generated/dompurify_defaults.rs"],
       "license_expression": "(Apache-2.0 OR MPL-2.0)",
       "selected_license": "Apache-2.0",
       "license_files": [
@@ -689,6 +689,8 @@
       "relationships": ["behavior-reference", "copied", "fixtures", "generated", "modified", "translated"],
       "local_paths": [
         "crates/merman-core/src",
+        "crates/merman-model/src",
+        "crates/merman-markup/src",
         "crates/merman-render/src",
         "crates/merman-render/src/svg/parity/architecture/icons.rs",
         "fixtures"
@@ -928,7 +930,7 @@
         "path": "src"
       },
       "relationships": ["modified", "translated"],
-      "local_paths": ["crates/merman-core/src/utils.rs"],
+      "local_paths": ["crates/merman-markup/src/url.rs"],
       "license_expression": "MIT",
       "license_files": [
         {

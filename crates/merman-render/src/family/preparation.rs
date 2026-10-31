@@ -23,7 +23,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
     render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
@@ -301,7 +301,7 @@ fn prepare_railroad_family<'parsed>(
 
 #[inline(never)]
 fn prepare_error_family<'parsed>(
-    model: &'parsed diagrams::error_diagram::ErrorDiagramModel,
+    model: &'parsed diagrams::error::ErrorDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -323,7 +323,7 @@ fn prepare_error_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-info")]
 fn prepare_info_family<'parsed>(
-    model: &'parsed diagrams::info::InfoDiagramRenderModel,
+    model: &'parsed diagrams::info::InfoDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -616,7 +616,7 @@ fn prepare_gantt_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-pie")]
 fn prepare_pie_family<'parsed>(
-    model: &'parsed diagrams::pie::PieDiagramRenderModel,
+    model: &'parsed diagrams::pie::PieDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -644,7 +644,7 @@ fn prepare_pie_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-timeline")]
 fn prepare_timeline_family<'parsed>(
-    model: &'parsed diagrams::timeline::TimelineDiagramRenderModel,
+    model: &'parsed diagrams::timeline::TimelineDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -683,7 +683,7 @@ fn prepare_timeline_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-journey")]
 fn prepare_journey_family<'parsed>(
-    model: &'parsed diagrams::journey::JourneyDiagramRenderModel,
+    model: &'parsed diagrams::journey::JourneyDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -727,7 +727,7 @@ fn prepare_journey_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-radar")]
 fn prepare_radar_family<'parsed>(
-    model: &'parsed diagrams::radar::RadarDiagramRenderModel,
+    model: &'parsed diagrams::radar::RadarDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -897,7 +897,7 @@ fn prepare_quadrant_chart_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-xychart")]
 fn prepare_xy_chart_family<'parsed>(
-    model: &'parsed diagrams::xychart::XyChartDiagramRenderModel,
+    model: &'parsed diagrams::xy_chart::XyChartDiagramRenderModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1028,7 +1028,7 @@ fn prepare_tree_view_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-packet")]
 fn prepare_packet_family<'parsed>(
-    model: &'parsed diagrams::packet::PacketDiagramRenderModel,
+    model: &'parsed diagrams::packet::PacketDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1269,7 +1269,7 @@ fn prepare_zenuml_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-event-modeling")]
 fn prepare_eventmodeling_family<'parsed>(
-    model: &'parsed diagrams::eventmodeling::EventModelingDiagramModel,
+    model: &'parsed diagrams::event_modeling::EventModelingDiagramModel,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
@@ -1334,7 +1334,7 @@ fn prepare_ishikawa_family<'parsed>(
 #[inline(never)]
 #[cfg(feature = "diagram-class")]
 pub(super) fn prepare_class_render<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     mut context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
@@ -1347,13 +1347,13 @@ pub(super) fn prepare_class_render<'parsed>(
     context.ensure_portable_before_svg()?;
     let execution = LayoutExecution::new(options, context.execution());
     let family = prepare_class_family(model, meta, &execution)?;
-    FamilyRenderArtifact::new(meta, family, context)
+    FamilyRenderArtifact::new(parsed, family, context)
 }
 
 #[inline(never)]
 #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
 pub(super) fn prepare_architecture_render<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     mut context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
@@ -1366,12 +1366,12 @@ pub(super) fn prepare_architecture_render<'parsed>(
     context.ensure_portable_before_svg()?;
     let execution = LayoutExecution::new(options, context.execution());
     let family = prepare_architecture_family(model, meta, &execution)?;
-    FamilyRenderArtifact::new(meta, family, context)
+    FamilyRenderArtifact::new(parsed, family, context)
 }
 
 #[inline(never)]
 pub(super) fn prepare_non_class_render<'parsed>(
-    parsed: &'parsed ParsedDiagramRender,
+    parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     mut context: FamilyRenderContext,
     svg_label_preparation: FlowchartSvgLabelPreparation,
@@ -1380,9 +1380,17 @@ pub(super) fn prepare_non_class_render<'parsed>(
     let model = parsed.model();
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     let flowchart_render_context = parsed
+        .render_context()
         .flowchart_render_context()
         .map(std::borrow::Cow::Borrowed)
-        .unwrap_or_else(|| std::borrow::Cow::Owned(Default::default()));
+        .unwrap_or_else(|| {
+            std::borrow::Cow::Owned(match model {
+                RenderSemanticModel::Flowchart(model) => {
+                    diagrams::flowchart::FlowchartRenderContext::from_model(model)
+                }
+                _ => Default::default(),
+            })
+        });
     let diagram_type = meta.diagram_type.as_str();
     let title = meta.title.as_deref();
     context.observe_compatibility(meta);
@@ -1524,7 +1532,10 @@ pub(super) fn prepare_non_class_render<'parsed>(
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
             let (flowchart, render_context) = model.to_flowchart_model();
-            let config = project_agentflow_flowchart_config(&meta.effective_config);
+            let config = project_agentflow_flowchart_config(
+                &meta.effective_config,
+                execution.work_meter_ref().control(),
+            )?;
             let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
                 &flowchart,
                 &config,
@@ -1561,7 +1572,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
         }
-        // Core features can be widened independently of this renderer's handlers.
+        // Shared model features can be widened independently of this renderer's handlers.
         #[allow(unreachable_patterns)]
         _ => {
             return Err(Error::UnsupportedDiagram {
@@ -1569,5 +1580,5 @@ pub(super) fn prepare_non_class_render<'parsed>(
             });
         }
     };
-    FamilyRenderArtifact::new(meta, family, context)
+    FamilyRenderArtifact::new(parsed, family, context)
 }

@@ -77,7 +77,7 @@ pub(super) fn edge_boundary_context<'a>(
     edge: &AsciiGraphEdge,
 ) -> EdgeBoundaryContext<'a> {
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
     let topology = if graph.groups.is_empty() {
         None

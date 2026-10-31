@@ -282,9 +282,11 @@ fn every_catalog_family_and_alias_has_paired_lossless_projection_or_unavailable_
 
 #[test]
 fn every_catalog_family_and_alias_admits_configuration_with_the_same_precedence() {
-    use merman_core::presentation::PresentationConfig;
-    use merman_core::{OperationControl, PresentationMetadata};
+    use merman_core::presentation::SourcePresentationConfig;
     use serde_json::json;
+    use {
+        merman_model::operation::OperationControl, merman_model::presentation::PresentationMetadata,
+    };
 
     let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
     for fact in diagram_family_capabilities() {
@@ -313,7 +315,8 @@ fn every_catalog_family_and_alias_admits_configuration_with_the_same_precedence(
             ));
         }
         let source = format!("{frontmatter}---\n%%{{init: {init}}}%%\n{body}");
-        let engine = deterministic_engine().with_site_config(PresentationConfig::from_value(site));
+        let engine =
+            deterministic_engine().with_site_config(SourcePresentationConfig::from_value(site));
         let assert_config = |meta: &PresentationMetadata| {
             let authored = meta.config.as_value();
             let effective = meta.effective_config.as_value();

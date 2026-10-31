@@ -574,7 +574,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         diagram_id: SvgDiagramId<'_>,
         node_count: &mut usize,
         task: &TimelineTaskLayout,
-        direction: merman_core::diagrams::timeline::TimelineDirection,
+        direction: merman_model::families::timeline::TimelineDirection,
         is_redux_theme: bool,
         is_neo: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
@@ -609,7 +609,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         out.checkpoint()?;
 
         match direction {
-            merman_core::diagrams::timeline::TimelineDirection::LeftToRight => {
+            merman_model::families::timeline::TimelineDirection::LeftToRight => {
                 for connector in &task.connectors {
                     options.checkpoint_emit()?;
                     write_timeline_connector(out, connector, Some(diagram_id))?;
@@ -630,7 +630,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                     )?;
                 }
             }
-            merman_core::diagrams::timeline::TimelineDirection::TopDown => {
+            merman_model::families::timeline::TimelineDirection::TopDown => {
                 for (index, event) in task.events.iter().enumerate() {
                     render_event(
                         out,
@@ -688,7 +688,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             )?;
     out.checkpoint()?;
     let arrowhead_id =
-        if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
+        if layout.direction == merman_model::families::timeline::TimelineDirection::TopDown {
             "undefined-arrowhead".to_string()
         } else {
             scoped_svg_id(diagram_id, "arrowhead").to_string()
@@ -699,7 +699,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
 
     // Mermaid's vertical renderer lowers the activity axis to the first root child and invokes
     // marker initialization without a diagram id. Preserve both observable source behaviors.
-    if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
+    if layout.direction == merman_model::families::timeline::TimelineDirection::TopDown {
         let _ = write!(
             &mut out,
             r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="url(#arrowhead)"/></g>"#,
@@ -865,7 +865,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         }
     }
 
-    if layout.direction == merman_core::diagrams::timeline::TimelineDirection::LeftToRight {
+    if layout.direction == merman_model::families::timeline::TimelineDirection::LeftToRight {
         options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
@@ -985,7 +985,7 @@ mod tests {
         let mut out = RejectAfterFirstWrite::default();
         let typography = crate::timeline::TimelineTypographyThemePlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::default(),
+            &merman_model::presentation::PresentationConfig::default(),
         );
         let event_theme = crate::timeline::TimelineEventTheme::baseline();
         let mut event_emission = TimelineEventEmissionState::new(&event_theme);
@@ -1005,7 +1005,7 @@ mod tests {
 
     fn test_axis_layout() -> TimelineDiagramLayout {
         TimelineDiagramLayout {
-            direction: merman_core::diagrams::timeline::TimelineDirection::LeftToRight,
+            direction: merman_model::families::timeline::TimelineDirection::LeftToRight,
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: 0.0,
@@ -1052,11 +1052,11 @@ mod tests {
             &crate::timeline::TimelineEventTheme::baseline(),
             &crate::timeline::TimelineTypographyThemePlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
             ),
             &crate::timeline::TimelineTextPaintPlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::default(),
+                &merman_model::presentation::PresentationConfig::default(),
                 execution.work_meter(),
             )
             .expect("text paint"),
@@ -1103,8 +1103,7 @@ mod tests {
             let effective_config = serde_json::json!({
                 "theme": "redux", "look": "neo", "themeVariables": variables,
             });
-            let config =
-                merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
+            let config = crate::test_support::presentation_config(effective_config.clone());
             let options = SvgRenderOptions::default();
             let debug = SvgDebugOptions::default();
             let session = crate::environment::RenderEnvironment::deterministic()

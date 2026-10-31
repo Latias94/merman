@@ -26,9 +26,9 @@ use crate::resources::OperationWorkMeter;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::text::TextMeasurer;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
+use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 use std::cmp::Ordering;
 use std::sync::Arc;
 

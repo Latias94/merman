@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use super::theme::{XyChartTextRole, XyChartTypographyThemePlan, logical_axis, resolve_text_style};
 use crate::diagram_theme::{
@@ -1012,10 +1012,7 @@ pub(crate) fn text_is_visible(text: &str, font_size: f64) -> bool {
 }
 
 fn source_owns(config: &PresentationConfig, channel: &str) -> bool {
-    merman_core::__private::config_paint_overrides_typed_default(
-        config,
-        &format!("themeVariables.xyChart.{channel}"),
-    )
+    config.config_paint_overrides_typed_default(&format!("themeVariables.xyChart.{channel}"))
 }
 
 fn text_channel(groups: &[String], orientation: &str) -> Option<(ThemeTarget, &'static str)> {
@@ -1196,9 +1193,13 @@ mod tests {
         )
         .unwrap();
         let source_config = merman_core::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {"xyChart": {"titleColor": "black"}}
-            })))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": {"xyChart": {"titleColor": "black"}}
+                    }),
+                ),
+            )
             .parse_metadata_sync("xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\n")
             .unwrap()
             .effective_config;

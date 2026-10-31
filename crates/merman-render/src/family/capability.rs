@@ -1,8 +1,9 @@
 use crate::environment::RenderSession;
 use crate::{Error, LayoutAdaptation, LayoutOptions, RenderCapability, Result};
-use merman_core::OperationPhase;
-use merman_core::diagrams;
-use merman_core::{DiagramFamilyId, ParsedDiagramRender, RenderSemanticModel};
+use merman_model::OperationPhase;
+use merman_model::families as diagrams;
+use merman_model::family::DiagramFamilyId;
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
 
 /// Capabilities required by one parsed typed render operation before layout starts.
 ///
@@ -105,7 +106,7 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
         .any(crate::math::contains_delimited_math)
 }
 
-fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
+fn parsed_render_requires_math(parsed: &PresentationDiagram) -> bool {
     match parsed.model() {
         #[cfg(feature = "diagram-usecase")]
         RenderSemanticModel::Usecase(model) => {
@@ -133,13 +134,16 @@ fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
         #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        RenderSemanticModel::Flowchart(model) => parsed.flowchart_render_context().map_or_else(
-            || semantic_flowchart_requires_math(model),
-            |render_context| {
-                crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
-                    .requires_math()
-            },
-        ),
+        RenderSemanticModel::Flowchart(model) => parsed
+            .render_context()
+            .flowchart_render_context()
+            .map_or_else(
+                || semantic_flowchart_requires_math(model),
+                |render_context| {
+                    crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
+                        .requires_math()
+                },
+            ),
         #[cfg(feature = "diagram-mindmap")]
         RenderSemanticModel::Mindmap(model) => {
             crate::config::config_effective_html_labels(
@@ -160,7 +164,7 @@ fn capability_is_available(capability: RenderCapability, session: &RenderSession
     unused_variables,
     reason = "Dispatch inputs depend on the selected diagram families."
 )]
-fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> {
+fn required_capabilities(parsed: &PresentationDiagram) -> Vec<RenderCapability> {
     let mut required = Vec::with_capacity(2);
     let meta = parsed.metadata();
     let model = parsed.model();
@@ -241,7 +245,7 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
     reason = "Each arm has a distinct feature condition that only coincides in all-family builds."
 )]
 pub fn supports_diagram_type(diagram_type: &str) -> bool {
-    match merman_core::diagram_type_family_kind(diagram_type) {
+    match merman_model::family::diagram_type_family_kind(diagram_type) {
         Some("error") => true,
         Some("agentflow") => cfg!(feature = "diagram-agentflow"),
         Some("usecase") => cfg!(feature = "diagram-usecase"),
@@ -281,7 +285,7 @@ pub fn supports_diagram_type(diagram_type: &str) -> bool {
     }
 }
 
-fn validate_paired_render_model(parsed: &ParsedDiagramRender) -> Result<DiagramFamilyId> {
+fn validate_paired_render_model(parsed: &PresentationDiagram) -> Result<DiagramFamilyId> {
     let meta = parsed.metadata();
     let model = parsed.model();
     let diagram_type = meta.diagram_type.as_str();
@@ -293,7 +297,7 @@ fn validate_paired_render_model(parsed: &ParsedDiagramRender) -> Result<DiagramF
         });
     }
 
-    if !model.supports_diagram_type(diagram_type) {
+    if !model.matches_diagram_type(diagram_type) {
         return Err(Error::InvalidModel {
             message: format!(
                 "unexpected render model variant {} for diagram type: {diagram_type}",
@@ -326,7 +330,7 @@ fn supported_layout_adaptations(family: DiagramFamilyId) -> &'static [LayoutAdap
 /// Admits explicit placement requests without starting layout or installing render services.
 #[doc(hidden)]
 pub fn validate_layout_options(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     options: &LayoutOptions,
 ) -> Result<()> {
     if options.adaptation == LayoutAdaptation::None {
@@ -347,7 +351,7 @@ pub fn validate_layout_options(
 
 /// Identifies the existing edge-geometry projection after closed typed model admission.
 #[doc(hidden)]
-pub fn has_edge_geometry(parsed: &ParsedDiagramRender) -> Result<bool> {
+pub fn has_edge_geometry(parsed: &PresentationDiagram) -> Result<bool> {
     let family = validate_paired_render_model(parsed)?;
     Ok(matches!(
         family,
@@ -356,15 +360,16 @@ pub fn has_edge_geometry(parsed: &ParsedDiagramRender) -> Result<bool> {
 }
 
 fn validate_render_input(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     session: &RenderSession,
 ) -> Result<DiagramFamilyId> {
     let family = validate_paired_render_model(parsed)?;
     let meta = parsed.metadata();
-    if !merman_core::__private::theme_parse_matches_recipe(
-        meta,
-        session.theme_compatibility_recipe(),
-    ) {
+    if !meta
+        .effective_config
+        .theme_compatibility()
+        .matches_recipe(session.theme_compatibility_recipe())
+    {
         return Err(Error::ThemeParseBindingMismatch);
     }
     session
@@ -375,7 +380,7 @@ fn validate_render_input(
 
 /// Plans capability admission for a canonically paired typed render model without running layout.
 pub fn plan_render(
-    parsed: &ParsedDiagramRender,
+    parsed: &PresentationDiagram,
     session: &RenderSession,
 ) -> Result<RenderCapabilityPlan> {
     session.checkpoint(OperationPhase::Layout)?;

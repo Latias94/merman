@@ -28,7 +28,8 @@ fn layout_architecture_with_engine(
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let projection = artifact.layout_json().expect("serialize layout");
     serde_json::from_value(projection["layout"]["ArchitectureDiagram"].clone())
@@ -144,7 +145,8 @@ fn architecture_default_layout_options_execute_fcose_layout() {
     let parsed = engine
         .parse_diagram_for_render_model_sync(chain_diagram(), ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
 
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
     let json = artifact.layout_json().expect("serialize layout");
@@ -183,7 +185,8 @@ architecture-beta
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let exact_session = RenderEnvironment::deterministic()
         .with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
@@ -199,7 +202,8 @@ architecture-beta
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let below_session = RenderEnvironment::deterministic()
         .with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
@@ -235,7 +239,8 @@ fn architecture_conflicting_row_hints_fail_before_svg_projection() {
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let error = match family::prepare(&parsed, &LayoutOptions::default(), session) {
         Ok(_) => panic!("contradictory row constraints must fail at layout"),
         Err(error) => error,
@@ -261,7 +266,8 @@ fn architecture_parse_for_render_model_handles_deep_group_chain() {
             engine
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .expect("parse ok")
-                .expect("diagram detected");
+                .expect("diagram detected")
+                .into_presentation();
         })
         .expect("spawn architecture deep group parse test");
     handle

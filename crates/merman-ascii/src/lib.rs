@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 //! Terminal-friendly ASCII and Unicode rendering for Mermaid typed models.
 //!
-//! `merman-ascii` is deliberately model-driven: callers parse Mermaid text with `merman-core`, then
-//! pass the resulting canonical model into this crate. The renderer does not own Mermaid syntax
-//! parsing. Rendering requires the caller's operation control, runtime context, and resource
+//! `merman-ascii` consumes canonical or full data from `merman-model`. Callers can construct that
+//! data directly or use a source parser. Rendering requires the caller's operation control, runtime
+//! context, and resource
 //! policy so this backend cannot create a second source-to-output operation.
 
 #[cfg(test)]
@@ -154,36 +154,36 @@ pub use resource::{
 };
 pub use safe_text::{normalize_terminal_diagnostic, normalize_terminal_text};
 
-#[cfg(feature = "diagram-er")]
-use merman_core::diagrams::er::ErDiagramModel;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use merman_core::diagrams::flowchart::FlowchartModel;
-#[cfg(feature = "diagram-gantt")]
-use merman_core::diagrams::gantt::GanttTerminalView;
-#[cfg(feature = "diagram-git-graph")]
-use merman_core::diagrams::git_graph::GitGraphDiagramModel;
-#[cfg(feature = "diagram-journey")]
-use merman_core::diagrams::journey::JourneyDiagramModel;
-#[cfg(feature = "diagram-kanban")]
-use merman_core::diagrams::kanban::KanbanTerminalView;
-#[cfg(feature = "diagram-mindmap")]
-use merman_core::diagrams::mindmap::MindmapTerminalView;
-#[cfg(feature = "diagram-packet")]
-use merman_core::diagrams::packet::PacketDiagramModel;
-#[cfg(feature = "diagram-sequence")]
-use merman_core::diagrams::sequence::SequenceDiagramModel;
-#[cfg(feature = "diagram-state")]
-use merman_core::diagrams::state::StateTerminalView;
-#[cfg(feature = "diagram-timeline")]
-use merman_core::diagrams::timeline::TimelineDiagramModel;
-#[cfg(feature = "diagram-tree-view")]
-use merman_core::diagrams::tree_view::TreeViewDiagramModel;
-#[cfg(feature = "diagram-xychart")]
-use merman_core::diagrams::xychart::{XyChartDiagramModel, XyChartDisplayPolicy};
 #[cfg(feature = "diagram-class")]
-use merman_core::models::class_diagram::ClassTopologyView;
-use merman_core::runtime::OperationContext;
-use merman_core::{ParsedSemanticDiagram, SemanticDiagramModel};
+use merman_model::families::class::ClassTopologyView;
+#[cfg(feature = "diagram-er")]
+use merman_model::families::er::ErDiagramModel;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use merman_model::families::flowchart::FlowchartModel;
+#[cfg(feature = "diagram-gantt")]
+use merman_model::families::gantt::GanttTerminalView;
+#[cfg(feature = "diagram-git-graph")]
+use merman_model::families::git_graph::GitGraphDiagramModel;
+#[cfg(feature = "diagram-journey")]
+use merman_model::families::journey::JourneyDiagramModel;
+#[cfg(feature = "diagram-kanban")]
+use merman_model::families::kanban::KanbanTerminalView;
+#[cfg(feature = "diagram-mindmap")]
+use merman_model::families::mindmap::MindmapTerminalView;
+#[cfg(feature = "diagram-packet")]
+use merman_model::families::packet::PacketDiagramModel;
+#[cfg(feature = "diagram-sequence")]
+use merman_model::families::sequence::SequenceDiagramModel;
+#[cfg(feature = "diagram-state")]
+use merman_model::families::state::StateTerminalView;
+#[cfg(feature = "diagram-timeline")]
+use merman_model::families::timeline::TimelineDiagramModel;
+#[cfg(feature = "diagram-tree-view")]
+use merman_model::families::tree_view::TreeViewDiagramModel;
+#[cfg(feature = "diagram-xychart")]
+use merman_model::families::xy_chart::{XyChartDiagramModel, XyChartDisplayPolicy};
+use merman_model::runtime::OperationContext;
+use merman_model::{ParsedSemanticDiagram, SemanticDiagramModel};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use options::FlowchartLayoutPolicy;
 #[cfg(feature = "diagram-state")]
@@ -201,7 +201,7 @@ pub struct AsciiRenderer {
 
 struct AsciiRenderRequest<'a> {
     viewport: AsciiViewportPolicy,
-    control: &'a merman_core::OperationControl,
+    control: &'a merman_model::OperationControl,
     context: &'a OperationContext,
     resources: AsciiResourcePolicy,
 }
@@ -214,7 +214,7 @@ enum AsciiInput<'a> {
 impl<'a> AsciiRenderRequest<'a> {
     const fn new(
         viewport: AsciiViewportPolicy,
-        control: &'a merman_core::OperationControl,
+        control: &'a merman_model::OperationControl,
         context: &'a OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Self {
@@ -248,12 +248,12 @@ impl AsciiRenderer {
     pub fn render_model(
         &self,
         model: &AsciiDiagram<'_>,
-        control: &merman_core::OperationControl,
+        control: &merman_model::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
-        execution.checkpoint(merman_core::OperationPhase::Admission)?;
+        execution.checkpoint(merman_model::OperationPhase::Admission)?;
         layout_selection::validate_viewport(
             self.options.layout_profile,
             AsciiViewportPolicy::unrestricted(),
@@ -275,7 +275,7 @@ impl AsciiRenderer {
         model: &AsciiDiagram<'_>,
         source: AsciiSourceContext<'_>,
         viewport: AsciiViewportPolicy,
-        control: &merman_core::OperationControl,
+        control: &merman_model::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<AsciiOutput> {
@@ -305,7 +305,7 @@ impl AsciiRenderer {
             .with_render_ledger(&render_ledger);
         let requested_policies = self.options.resolve_policies();
         let capability = capability::capability_for_diagram_type(metadata.diagram_type);
-        execution.checkpoint(merman_core::OperationPhase::Admission)?;
+        execution.checkpoint(merman_model::OperationPhase::Admission)?;
         validate_local_handler(metadata.diagram_type)?;
         layout_selection::validate_viewport(self.options.layout_profile, viewport)?;
         validate_primary_request(capability, &requested_policies)?;
@@ -438,14 +438,14 @@ impl AsciiRenderer {
     pub fn render_parsed(
         &self,
         parsed: &ParsedSemanticDiagram,
-        control: &merman_core::OperationControl,
+        control: &merman_model::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let render_ledger = resource::ResourceContext::new(resources);
         let execution =
             operation::AsciiExecution::new(control, &resources).with_render_ledger(&render_ledger);
-        execution.checkpoint(merman_core::OperationPhase::Admission)?;
+        execution.checkpoint(merman_model::OperationPhase::Admission)?;
         layout_selection::validate_viewport(
             self.options.layout_profile,
             AsciiViewportPolicy::unrestricted(),
@@ -464,12 +464,12 @@ impl AsciiRenderer {
         )
     }
 
-    /// Renders a parser-owned model and returns logical extent/projection/overflow metadata.
+    /// Renders canonical data with declared metadata and reports extent, projection, and overflow.
     pub fn render_parsed_report(
         &self,
         parsed: &ParsedSemanticDiagram,
         viewport: AsciiViewportPolicy,
-        control: &merman_core::OperationControl,
+        control: &merman_model::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<AsciiOutput> {
@@ -487,9 +487,9 @@ fn render_model_with_execution(
     options: &AsciiRenderOptions,
     policies: &ResolvedAsciiPolicies,
     execution: operation::AsciiExecution<'_>,
-    _local_time_zone: &merman_core::time::LocalTimeZone,
+    _local_time_zone: &merman_model::time::LocalTimeZone,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Admission)?;
+    execution.checkpoint(merman_model::OperationPhase::Admission)?;
     options.validate()?;
     validate_local_handler(diagram_type)?;
     if !matches!(model, AsciiDiagram::Unsupported(_)) {
@@ -547,7 +547,7 @@ fn render_model_with_execution(
             diagram_type: model.kind().to_string(),
         }),
     }?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     Ok(rendered)
 }
 
@@ -648,8 +648,8 @@ fn render_flowchart_model(
     layout: FlowchartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    execution.checkpoint(merman_model::OperationPhase::Semantic)?;
+    let transaction = execution.new_resource_context(merman_model::OperationPhase::Semantic);
     transaction.transaction(|_| {
         let result = transaction.transaction_preserving_layout_work(|_| {
             render_flowchart_model_inner(model, options, layout, *execution)
@@ -677,16 +677,16 @@ fn render_flowchart_model_inner(
     execution: operation::AsciiExecution<'_>,
 ) -> Result<String> {
     let mut semantic_resources =
-        execution.new_resource_context(merman_core::OperationPhase::Semantic);
+        execution.new_resource_context(merman_model::OperationPhase::Semantic);
     let graph = graph::from_flowchart_model_with_execution(
         model,
         layout,
         &mut semantic_resources,
         execution,
     )?;
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let mut layout_resources =
-        execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
+        execution.resource_context(&semantic_resources, merman_model::OperationPhase::Layout);
     graph::render_graph_with_resolved_policy_and_execution(
         &graph,
         options,
@@ -700,10 +700,10 @@ fn render_flowchart_model_inner(
 fn render_gantt_model(
     model: GanttTerminalView<'_>,
     options: &AsciiRenderOptions,
-    local_time_zone: &merman_core::time::LocalTimeZone,
+    local_time_zone: &merman_model::time::LocalTimeZone,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     gantt::render_gantt_diagram(model, options, local_time_zone, *execution)
 }
 
@@ -713,7 +713,7 @@ fn render_git_graph_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     git_graph::render_git_graph_diagram(model, options, *execution)
 }
 
@@ -723,7 +723,7 @@ fn render_journey_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     journey::render_journey_diagram(model, options, *execution)
 }
 
@@ -733,7 +733,7 @@ fn render_kanban_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     kanban::render_kanban_diagram(model, options, *execution)
 }
 
@@ -743,7 +743,7 @@ fn render_mindmap_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     mindmap::render_mindmap_diagram(model, options, *execution)
 }
 
@@ -753,7 +753,7 @@ fn render_packet_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     packet::render_packet_diagram(model, options, *execution)
 }
 
@@ -764,8 +764,8 @@ fn render_sequence_model(
     layout: SequenceLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    execution.checkpoint(merman_model::OperationPhase::Semantic)?;
+    let mut resources = execution.new_resource_context(merman_model::OperationPhase::Semantic);
     let diagram = sequence::from_sequence_model(model, layout, &mut resources, *execution)?;
     sequence::render_sequence_diagram_with_resolved_policy(
         &diagram,
@@ -784,8 +784,8 @@ fn render_state_model(
     layout: GraphLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    execution.checkpoint(merman_model::OperationPhase::Semantic)?;
+    let transaction = execution.new_resource_context(merman_model::OperationPhase::Semantic);
     transaction.transaction(|_| {
         let result = transaction.transaction_preserving_layout_work(|_| {
             render_state_model_inner(model, options, layout, *execution)
@@ -812,16 +812,16 @@ fn render_state_model_inner(
     execution: operation::AsciiExecution<'_>,
 ) -> Result<String> {
     let mut semantic_resources =
-        execution.new_resource_context(merman_core::OperationPhase::Semantic);
+        execution.new_resource_context(merman_model::OperationPhase::Semantic);
     let graph = state::from_state_view_with_context_and_execution(
         model,
         options.terminal_width_profile,
         &mut semantic_resources,
         execution,
     )?;
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let mut layout_resources =
-        execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
+        execution.resource_context(&semantic_resources, merman_model::OperationPhase::Layout);
     graph::render_graph_with_resolved_policy_and_execution(
         &graph,
         options,
@@ -837,7 +837,7 @@ fn render_timeline_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     timeline::render_timeline_diagram(model, options, *execution)
 }
 
@@ -849,7 +849,7 @@ fn render_xychart_model(
     layout: XyChartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    execution.checkpoint(merman_model::OperationPhase::Semantic)?;
     xychart::render_xychart_diagram_with_resolved_policy(
         &xychart::XyChartView::new(model, display),
         options,
@@ -864,23 +864,23 @@ fn render_tree_view_model(
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     tree_view::render_tree_view_diagram(model, options, *execution)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::RenderSemanticModel;
     #[cfg(feature = "diagram-flowchart")]
-    use merman_core::diagrams::flowchart::{
+    use merman_model::families::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
         FlowchartModel,
     };
     #[cfg(feature = "diagram-mindmap")]
-    use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
+    use merman_model::families::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     #[cfg(feature = "diagram-tree-view")]
-    use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
+    use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
+    use merman_model::presentation::RenderSemanticModel;
 
     #[cfg(any(
         feature = "diagram-flowchart",
@@ -901,12 +901,12 @@ mod tests {
         options: &AsciiRenderOptions,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
-        let context = merman_core::runtime::RuntimePolicy::deterministic()
+        let context = merman_model::runtime::RuntimePolicy::deterministic()
             .begin_operation()
             .expect("deterministic test operation context");
         AsciiRenderer::new(*options)?.render_model(
             &full_test_support::view(model),
-            &merman_core::OperationControl::new(),
+            &merman_model::OperationControl::new(),
             &context,
             resources,
         )

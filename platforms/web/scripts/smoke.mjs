@@ -1013,11 +1013,17 @@ if (hasCapability("analysis")) {
   );
   const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
     (diagnostic) =>
-      diagnostic.category === "config" &&
-      (diagnostic.fixes ?? []).some((fix) => fix.edits.length > 0)
+      diagnostic.id === "merman.authoring.config.prefer_frontmatter_config"
   );
   assert.ok(configFixDiagnostic);
-  assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);
+  if (hasCapability("fixes")) {
+    assert.ok((configFixDiagnostic.fixes ?? []).some((fix) => fix.edits.length > 0));
+    assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);
+  } else {
+    assert.ok(markdownFixAnalysis.diagnostics.every(
+      (diagnostic) => (diagnostic.fixes ?? []).length === 0
+    ));
+  }
 } else {
   assert.equal(typeof api.analyze, "undefined");
   assert.equal(typeof api.analyzeJson, "undefined");

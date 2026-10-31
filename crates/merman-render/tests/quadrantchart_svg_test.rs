@@ -1,5 +1,5 @@
 type FamilyFixture = (
-    merman_core::ParsedDiagramRender,
+    merman_model::presentation::PresentationDiagram,
     merman_render::LayoutOptions,
     merman_render::environment::RenderSession,
 );
@@ -7,7 +7,6 @@ type FamilyFixture = (
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -117,10 +116,11 @@ fn prepare_quadrantchart_family_with_theme_requirement_and_engine(
     engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> FamilyFixture {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Quadrant Chart")
-        .expect("detect themed Quadrant Chart");
+        .expect("detect themed Quadrant Chart")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -206,7 +206,8 @@ fn render_quadrantchart_svg_from_text(text: &str) -> String {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
 
@@ -224,7 +225,8 @@ fn try_render_quadrantchart_svg_with_resource_policy(
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse QuadrantChart resource-bound fixture")
-        .expect("detect QuadrantChart resource-bound fixture");
+        .expect("detect QuadrantChart resource-bound fixture")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -387,10 +389,11 @@ fn quadrantchart_site_font_family_outranks_typed_font_stack() {
     let theme = quadrantchart_typography_theme(
         FontStack::single("Quadrant Typed").expect("valid typed Quadrant font stack"),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "fontFamily": "Site Quadrant Font" }
-        })));
+        })),
+    );
     let rendered = render_quadrantchart_with_theme_and_engine(
         "quadrantChart\nFeature: [0.5, 0.5]\n",
         &theme,
@@ -770,9 +773,11 @@ fn quadrantchart_point_fill_resolves_each_source_and_config_owner_before_typed_t
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 
-    let config_engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-        serde_json::json!({ "themeVariables": { "quadrantPointFill": "#abcdef" } }),
-    ));
+    let config_engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({ "themeVariables": { "quadrantPointFill": "#abcdef" } }),
+        ),
+    );
     let rendered = render_quadrantchart_with_theme_and_engine(
         "quadrantChart\nConfigured: [0.3, 0.7]\nInline: [0.7, 0.3] color: #fedcba\n",
         &theme,
@@ -1100,7 +1105,9 @@ fn quadrantchart_text_fill_respects_each_config_channel() {
         let rendered = render_quadrantchart_with_theme_and_engine(
             TEXT_PAINT_SOURCE,
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
         );
         let fills = quadrant_text_fills(rendered.svg());
         for text in ["Alpha", "Beta", "Low", "High", "Bottom", "Top", "Title"] {
@@ -1122,12 +1129,14 @@ fn quadrantchart_text_fill_respects_each_config_channel() {
     let rendered = render_quadrantchart_with_theme_and_engine(
         TEXT_PAINT_SOURCE,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            serde_json::json!({"themeVariables": {
-                "quadrantPointTextFill": "#abcdef", "quadrantXAxisTextFill": "#abcdef",
-                "quadrantYAxisTextFill": "#abcdef", "quadrantTitleFill": "#abcdef"
-            }}),
-        )),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"themeVariables": {
+                    "quadrantPointTextFill": "#abcdef", "quadrantXAxisTextFill": "#abcdef",
+                    "quadrantYAxisTextFill": "#abcdef", "quadrantTitleFill": "#abcdef"
+                }}),
+            ),
+        ),
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 0);
@@ -1339,9 +1348,11 @@ fn quadrantchart_specific_role_ordinals_do_not_use_the_global_text_index() {
     let rendered = render_quadrantchart_with_theme_requirement_and_engine(
         source,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": {"quadrantXAxisTextFill": "#fedcba"}
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"quadrantXAxisTextFill": "#fedcba"}
+            })),
+        ),
         ThemePortabilityRequirement::BestEffort,
     )
     .unwrap();
@@ -1414,9 +1425,11 @@ fn quadrantchart_title_fill_preserves_source_ownership_absence_and_author_order(
         ("quadrantChart\nx-axis Low --> High\n", MermaidEngine::new()),
         (
             TEXT_PAINT_SOURCE,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"themeVariables": {"quadrantTitleFill": "#fedcba"}}),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables": {"quadrantTitleFill": "#fedcba"}}),
+                ),
+            ),
         ),
     ] {
         let rendered = render_quadrantchart_with_theme_and_engine(source, &theme, engine);
@@ -1516,14 +1529,16 @@ fn quadrantchart_axis_fill_preserves_legacy_border_fallback_and_stroke_ownership
             let theme = quadrantchart_series_rule_theme(rule);
             for source_owned in [false, true] {
                 let engine = if source_owned {
-                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                        serde_json::json!({
-                            "themeVariables": {
-                                "quadrantExternalBorderStrokeFill": "#fedcba",
-                                "quadrantInternalBorderStrokeFill": "#fedcba"
-                            }
-                        }),
-                    ))
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({
+                                "themeVariables": {
+                                    "quadrantExternalBorderStrokeFill": "#fedcba",
+                                    "quadrantInternalBorderStrokeFill": "#fedcba"
+                                }
+                            }),
+                        ),
+                    )
                 } else {
                     MermaidEngine::new()
                 };
@@ -1663,7 +1678,7 @@ fn quadrantchart_axis_border_and_label_owners_are_independent() {
     );
     let theme = quadrantchart_series_rule_theme(rule);
     for source in [TEXT_PAINT_SOURCE, "quadrantChart\n"] {
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "quadrantXAxisTextFill": "#fedcba", "quadrantYAxisTextFill": "#fedcba", "quadrantExternalBorderStrokeFill": "#fedcba" }
         })));
         let rendered = render_quadrantchart_with_theme_and_engine(source, &theme, engine);
@@ -1684,7 +1699,7 @@ fn quadrantchart_axis_border_and_label_owners_are_independent() {
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 1);
     }
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
         "themeVariables": { "quadrantXAxisTextFill": "#fedcba", "quadrantYAxisTextFill": "#fedcba", "quadrantExternalBorderStrokeFill": "#fedcba", "quadrantInternalBorderStrokeFill": "#fedcba" }
     })));
     let rendered = render_quadrantchart_with_theme_and_engine(TEXT_PAINT_SOURCE, &theme, engine);
@@ -1701,7 +1716,7 @@ fn quadrantchart_axis_paint_is_not_applicable_without_visible_borders_or_labels(
             .with_fill(CanvasPaint::solid("#2468ac").unwrap())
             .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
     ));
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
         "quadrantChart": { "quadrantExternalBorderStrokeWidth": 0, "quadrantInternalBorderStrokeWidth": 0 }
     })));
     let rendered = render_quadrantchart_with_theme_and_engine("quadrantChart\n", &theme, engine);

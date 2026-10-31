@@ -569,7 +569,10 @@ fn capabilities_report_the_full_server_envelope() {
             ])
     ));
     assert!(capabilities.semantic_tokens_provider.is_some());
-    assert!(capabilities.code_action_provider.is_some());
+    assert_eq!(
+        capabilities.code_action_provider.is_some(),
+        cfg!(feature = "fixes")
+    );
     assert_eq!(
         capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["ruleCatalog"],
         RULE_CATALOG_METHOD
@@ -1135,6 +1138,7 @@ async fn diagnostics_include_rich_editor_projection_warnings() {
     }));
 }
 
+#[cfg(feature = "fixes")]
 #[tokio::test(flavor = "current_thread")]
 async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuration_change() {
     let (_service, _socket, server) = test_service();
@@ -2133,6 +2137,7 @@ async fn diagnostic_pull_reuses_cached_previous_result() {
     ));
 }
 
+#[cfg(feature = "fixes")]
 #[tokio::test(flavor = "current_thread")]
 async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
     let (_service, _socket, server) = test_service();
@@ -2215,6 +2220,7 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
     assert!(actions.is_none());
 }
 
+#[cfg(feature = "fixes")]
 #[tokio::test(flavor = "current_thread")]
 async fn code_action_rejects_close_reopen_aba_with_reused_uri_and_version() {
     let (_service, _socket, server) = test_service();
@@ -2550,51 +2556,54 @@ async fn lsp_handlers_return_hover_and_symbols() {
         Some(SemanticTokensRangeResult::Tokens(tokens)) if !tokens.data.is_empty()
     ));
 
-    let context = server
-        .session
-        .diagnostic_context(&uri)
-        .await
-        .expect("expected snapshot-backed diagnostics");
-    let diagnostic = server
-        .client_effects
-        .diagnostics_for_context(&context)
-        .await
-        .expect("diagnostic analysis should succeed")
-        .expect("expected current diagnostics")
-        .into_iter()
-        .find(|diagnostic| {
-            diagnostic.code
-                == Some(NumberOrString::String(
-                    "merman.authoring.flowchart.explicit_direction".to_string(),
-                ))
-        })
-        .expect("expected flowchart direction diagnostic");
-    let code_actions = server
-        .code_action(CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 3),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![diagnostic],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        })
-        .await
-        .unwrap()
-        .expect("expected code action response");
-    assert_eq!(code_actions.len(), 1);
-    assert!(matches!(
-        &code_actions[0],
-        CodeActionOrCommand::CodeAction(action)
-            if action.title == "Insert `TB` into the flowchart header"
-                && action.kind == Some(CodeActionKind::QUICKFIX)
-                && action.is_preferred == Some(true)
-    ));
+    #[cfg(feature = "fixes")]
+    {
+        let context = server
+            .session
+            .diagnostic_context(&uri)
+            .await
+            .expect("expected snapshot-backed diagnostics");
+        let diagnostic = server
+            .client_effects
+            .diagnostics_for_context(&context)
+            .await
+            .expect("diagnostic analysis should succeed")
+            .expect("expected current diagnostics")
+            .into_iter()
+            .find(|diagnostic| {
+                diagnostic.code
+                    == Some(NumberOrString::String(
+                        "merman.authoring.flowchart.explicit_direction".to_string(),
+                    ))
+            })
+            .expect("expected flowchart direction diagnostic");
+        let code_actions = server
+            .code_action(CodeActionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 3),
+                },
+                context: CodeActionContext {
+                    diagnostics: vec![diagnostic],
+                    only: Some(vec![CodeActionKind::QUICKFIX]),
+                    trigger_kind: None,
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .await
+            .unwrap()
+            .expect("expected code action response");
+        assert_eq!(code_actions.len(), 1);
+        assert!(matches!(
+            &code_actions[0],
+            CodeActionOrCommand::CodeAction(action)
+                if action.title == "Insert `TB` into the flowchart header"
+                    && action.kind == Some(CodeActionKind::QUICKFIX)
+                    && action.is_preferred == Some(true)
+        ));
+    }
 
     let document_symbols = server
         .document_symbol(tower_lsp_server::ls_types::DocumentSymbolParams {

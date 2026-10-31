@@ -6,7 +6,7 @@
 //! orchestration path.
 
 pub use crate::SvgEnvironment;
-pub use merman_core::DiagramFamilyId;
+pub use merman_model::family::DiagramFamilyId;
 pub use merman_render::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
     DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectColorSpace, EffectComposition,

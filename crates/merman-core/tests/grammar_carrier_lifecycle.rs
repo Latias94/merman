@@ -1,12 +1,15 @@
 #![cfg(all(feature = "diagram-class", feature = "diagram-sequence"))]
 #![cfg(feature = "presentation")]
 
-use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use {
+    merman_core::{MermaidEngine, ParseOptions},
+    merman_model::presentation::RenderSemanticModel,
+};
 
 const CASE_ENV: &str = "MERMAN_CORE_GRAMMAR_CARRIER_CASE";
 const SIZE_ENV: &str = "MERMAN_CORE_GRAMMAR_CARRIER_SIZE";

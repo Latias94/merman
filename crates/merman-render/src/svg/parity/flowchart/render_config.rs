@@ -41,7 +41,7 @@ pub(crate) struct FlowchartRenderConfig {
 
 pub(crate) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
     is_elk_layout: bool,
     base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
@@ -104,39 +104,22 @@ pub(crate) fn prepare_flowchart_render_config(
         crate::flowchart::flowchart_typography_config_ownership(effective_config);
     let node_label_fill_config_override =
         flowchart_node_label_fill_config_override(effective_config);
-    let node_border_config_override = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.nodeBorder",
-    );
-    let node_fill_config_override = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.mainBkg",
-    );
+    let node_border_config_override =
+        effective_config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
+    let node_fill_config_override =
+        effective_config.config_paint_overrides_typed_default("themeVariables.mainBkg");
     let node_stroke_width_config_override =
-        merman_core::__private::config_path_overrides_typed_default(
-            effective_config,
-            "themeVariables.strokeWidth",
-        );
-    let edge_stroke_config_override = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.lineColor",
-    );
+        effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
+    let edge_stroke_config_override =
+        effective_config.config_paint_overrides_typed_default("themeVariables.lineColor");
     let cluster_fill_color = compatibility.cluster_bkg.clone();
     let cluster_stroke_color = compatibility.cluster_border.clone();
-    let cluster_fill_config_override = merman_core::__private::config_paint_overrides_typed_default(
-        effective_config,
-        "themeVariables.clusterBkg",
-    );
+    let cluster_fill_config_override =
+        effective_config.config_paint_overrides_typed_default("themeVariables.clusterBkg");
     let cluster_stroke_config_override =
-        merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.clusterBorder",
-        );
+        effective_config.config_paint_overrides_typed_default("themeVariables.clusterBorder");
     let node_corner_radius_config_override =
-        merman_core::__private::config_path_overrides_typed_default(
-            effective_config,
-            "themeVariables.radius",
-        );
+        effective_config.config_path_overrides_typed_default("themeVariables.radius");
     let edge_corner_radius = 5.0;
     let compact_edge_corners = false;
 
@@ -177,7 +160,7 @@ pub(crate) fn prepare_flowchart_render_config(
 }
 
 pub(crate) fn flowchart_node_label_fill_config_override(
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
 ) -> bool {
     const NODE_TEXT_COLOR: &str = "themeVariables.nodeTextColor";
     const PRIMARY_TEXT_COLOR: &str = "themeVariables.primaryTextColor";
@@ -195,8 +178,7 @@ pub(crate) fn flowchart_node_label_fill_config_override(
         .and_then(serde_json::Value::as_str)
         .filter(|color| !color.is_empty());
 
-    let owns =
-        |path| merman_core::__private::config_paint_overrides_typed_default(effective_config, path);
+    let owns = |path| effective_config.config_paint_overrides_typed_default(path);
     let Some(node_text_color) = node_text_color else {
         return owns(TEXT_COLOR);
     };
@@ -206,11 +188,11 @@ pub(crate) fn flowchart_node_label_fill_config_override(
 
     let theme = effective_config
         .get_str("theme")
-        .and_then(|name| merman_core::MermaidThemeId::parse(name).ok())
+        .and_then(|name| merman_model::config::MermaidThemeId::parse(name).ok())
         .unwrap_or_default();
     if !matches!(
         theme,
-        merman_core::MermaidThemeId::Default | merman_core::MermaidThemeId::Base
+        merman_model::config::MermaidThemeId::Default | merman_model::config::MermaidThemeId::Base
     ) {
         return false;
     }

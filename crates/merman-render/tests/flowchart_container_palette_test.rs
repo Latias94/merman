@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -7,20 +6,23 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
 
 fn render(source: &str, theme: &str, look: &str) -> String {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "theme": theme,
-        "look": look,
-        "layout": "dagre",
-        "themeVariables": {
-            "THEME_COLOR_LIMIT": 1,
-            "borderColorArray": ["#112233", "#223344", "#334455"],
-            "bkgColorArray": ["#ddeeff", "#ccddee"]
-        }
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "theme": theme,
+            "look": look,
+            "layout": "dagre",
+            "themeVariables": {
+                "THEME_COLOR_LIMIT": 1,
+                "borderColorArray": ["#112233", "#223344", "#334455"],
+                "bkgColorArray": ["#ddeeff", "#ccddee"]
+            }
+        })),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
-        .expect("Flowchart model");
+        .expect("Flowchart model")
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -147,3 +149,6 @@ fn flowchart_palette_styles_cover_collapsed_rough_shapes_without_overriding_auth
         "custom palette arrays alone do not opt a plain theme into categorical colors"
     );
 }
+
+#[allow(dead_code)]
+mod common;

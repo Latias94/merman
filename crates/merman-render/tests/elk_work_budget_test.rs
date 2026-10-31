@@ -1,6 +1,5 @@
 #![cfg(feature = "layout-elk")]
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::{LayoutOptions, environment::RenderEnvironment, family};
 
@@ -8,13 +7,19 @@ use merman_render::{LayoutOptions, environment::RenderEnvironment, family};
 fn public_flowchart_documentation_fixture_fits_interactive_elk_budget() {
     let source =
         include_str!("../../../fixtures/flowchart/upstream_docs_diagrams_flowchart_code_flow.mmd");
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-        serde_json::json!({"layout":"elk"}),
-    ));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({"layout":"elk"}),
+        ),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
 }
+
+#[allow(dead_code)]
+mod common;

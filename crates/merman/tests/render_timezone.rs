@@ -9,15 +9,15 @@
 
 use std::process::Command;
 
+use merman::model::presentation::RenderSemanticModel;
 use merman::{
-    MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest,
-    RenderSemanticModel, Renderer, SvgEnvironment, SvgRequest, runtime::RuntimePolicy,
-    time::CivilDate,
+    MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer,
+    SvgEnvironment, SvgRequest, model::runtime::RuntimePolicy, model::time::CivilDate,
 };
 #[cfg(feature = "ascii")]
 use merman::{
     ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy},
-    diagrams::gantt::{GanttDiagramModel, GanttTask, GanttTerminalView},
+    model::families::gantt::{GanttDiagramModel, GanttTask, GanttTerminalView},
 };
 #[cfg(feature = "ascii")]
 use merman_ascii::AsciiDiagram;

@@ -4,7 +4,7 @@ use crate::wardley::{
     WardleyDominantBaseline, WardleyFontWeight, WardleyLineLayout, WardleyNodeShapeLayout,
     WardleySourceOverlayLayout, WardleyTextAnchor, WardleyTextLayout,
 };
-use merman_core::diagrams::wardley::WardleyDiagramModel;
+use merman_model::families::wardley::WardleyDiagramModel;
 
 fn text_anchor(anchor: WardleyTextAnchor) -> &'static str {
     match anchor {
@@ -870,7 +870,7 @@ mod tests {
         let work_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let config = merman_core::presentation::PresentationConfig::from_value(serde_json::json!({
+        let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": { "wardley": { "evolutionStroke": "#ab1234" } }
         }));
         let typography =
@@ -909,7 +909,7 @@ mod tests {
         let model = WardleyDiagramModel::default();
         let effective_config = serde_json::json!({});
         let effective_mermaid_config =
-            merman_core::presentation::PresentationConfig::from_value(effective_config.clone());
+            crate::test_support::presentation_config(effective_config.clone());
         let typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
             None,
             &effective_mermaid_config,

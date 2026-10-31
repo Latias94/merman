@@ -1,5 +1,5 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationConfig;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
@@ -103,13 +103,18 @@ fn try_render(
     site_config: PresentationConfig,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(
+    let parsed = common::install_parse_compatibility(
         theme,
-        MermaidEngine::new().with_site_config(site_config),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_config(
+                site_config.as_config().clone(),
+            ),
+        ),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .expect("parse Flowchart source")
-    .expect("detect Flowchart source");
+    .expect("detect Flowchart source")
+    .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
@@ -211,7 +216,7 @@ fn flowchart_cluster_typed_paint_reaches_classic_and_hand_drawn_writers() {
         let svg = render_strict(
             CLUSTER_SOURCE,
             &theme,
-            PresentationConfig::from_value(json!({
+            common::presentation_config(json!({
                 "look": look,
                 "handDrawnSeed": 7
             })),
@@ -251,7 +256,7 @@ fn flowchart_cluster_transparent_paint_is_terminal_and_portable() {
         let svg = render_strict(
             CLUSTER_SOURCE,
             &theme,
-            PresentationConfig::from_value(json!({
+            common::presentation_config(json!({
                 "look": look,
                 "handDrawnSeed": 7
             })),
@@ -300,7 +305,7 @@ fn flowchart_cluster_explicit_default_paint_reaches_terminal_writers_and_evidenc
             let rendered = try_render(
                 CLUSTER_SOURCE,
                 &theme,
-                PresentationConfig::from_value(json!({
+                common::presentation_config(json!({
                     "look": look,
                     "handDrawnSeed": 7
                 })),
@@ -378,7 +383,7 @@ fn flowchart_cluster_source_and_config_paint_override_typed_values_per_facet() {
     let config_svg = render_strict(
         CLUSTER_SOURCE,
         &theme,
-        PresentationConfig::from_value(json!({
+        common::presentation_config(json!({
             "themeVariables": {
                 "clusterBkg": "#f59e0b",
                 "clusterBorder": "#334155"
@@ -399,7 +404,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let class_svg = render_strict(
         "flowchart TD\nsubgraph Group[Group]\nA\nend\nclassDef source fill:#22c55e\nclass Group source\n",
         &theme,
-        PresentationConfig::from_value(json!({
+        common::presentation_config(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7
         })),
@@ -411,7 +416,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let style_svg = render_strict(
         "flowchart TD\nsubgraph Group[Group]\nA\nend\nstyle Group stroke:#0f766e\n",
         &theme,
-        PresentationConfig::from_value(json!({
+        common::presentation_config(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7
         })),
@@ -423,7 +428,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let fill_config_svg = render_strict(
         CLUSTER_SOURCE,
         &theme,
-        PresentationConfig::from_value(json!({
+        common::presentation_config(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7,
             "themeVariables": {
@@ -438,7 +443,7 @@ fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let stroke_config_svg = render_strict(
         CLUSTER_SOURCE,
         &theme,
-        PresentationConfig::from_value(json!({
+        common::presentation_config(json!({
             "look": "handDrawn",
             "handDrawnSeed": 7,
             "themeVariables": {
@@ -463,7 +468,7 @@ fn swimlane_shared_renderer_does_not_consume_flowchart_only_cluster_paint() {
         let svg = render_strict(
             source,
             &theme,
-            PresentationConfig::from_value(json!({
+            common::presentation_config(json!({
                 "layout": "swimlane",
                 "look": look,
                 "handDrawnSeed": 7
@@ -511,7 +516,7 @@ fn cluster_stroke_width_reaches_rect_and_rough_outline_with_source_precedence() 
                 let rendered = try_render(
                     &format!("{CLUSTER_SOURCE}{source_style}"),
                     &theme,
-                    PresentationConfig::from_value(json!({
+                    common::presentation_config(json!({
                         "layout": layout,
                         "look": look,
                         "flowchart": {"look": look},
@@ -585,7 +590,7 @@ fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals(
         let rendered = try_render(
             CLUSTER_SOURCE,
             &theme,
-            PresentationConfig::from_value(json!({"look": look, "flowchart": {"look": look}})),
+            common::presentation_config(json!({"look": look, "flowchart": {"look": look}})),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -607,7 +612,7 @@ fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals(
     assert_eq!(evidence.not_applicable_count(), 1);
 
     let source = "agentflow-beta LR\nflow group[Group]\na[Alpha] --> b[Beta]\nend\n";
-    let config = PresentationConfig::from_value(json!({"look": "classic"}));
+    let config = common::presentation_config(json!({"look": "classic"}));
     let unrelated = try_render(
         source,
         &theme,
@@ -622,3 +627,6 @@ fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals(
     assert_eq!(evidence.required_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
+
+#[allow(dead_code)]
+mod common;

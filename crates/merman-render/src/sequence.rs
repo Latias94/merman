@@ -4,9 +4,11 @@ use crate::resources::OperationWorkMeter;
 #[cfg(all(test, feature = "diagram-sequence"))]
 use crate::resources::RenderResourcePolicy;
 use crate::text::TextMeasurer;
-use merman_core::OperationPhase;
-use merman_core::diagrams::sequence::{SequenceControlKind, SequenceDiagramModel, SequenceMessage};
-use merman_core::presentation::PresentationConfig;
+use merman_model::OperationPhase;
+use merman_model::families::sequence::{
+    SequenceControlKind, SequenceDiagramModel, SequenceMessage,
+};
+use merman_model::presentation::PresentationConfig;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -774,14 +776,9 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         resolved_theme,
         crate::diagram_theme::ThemeTarget::Activation,
         activation_geometry.rect_count() != 0,
-        merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.activationBkgColor",
-        ),
-        merman_core::__private::config_paint_overrides_typed_default(
-            effective_config,
-            "themeVariables.activationBorderColor",
-        ),
+        effective_config.config_paint_overrides_typed_default("themeVariables.activationBkgColor"),
+        effective_config
+            .config_paint_overrides_typed_default("themeVariables.activationBorderColor"),
         work_meter.as_ref(),
     )?;
 
@@ -878,10 +875,9 @@ mod resource_tests {
         OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
     };
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_core::presentation::PresentationConfig;
-    use merman_core::{
-        MermaidEngine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
-    };
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
+    use merman_model::{OperationControl, OperationPhase};
     use rustc_hash::FxHashMap;
     use serde_json::json;
     use std::cell::{Cell, RefCell};
@@ -929,11 +925,12 @@ mod resource_tests {
         }
     }
 
-    fn sequence_model(source: &str) -> merman_core::diagrams::sequence::SequenceDiagramModel {
+    fn sequence_model(source: &str) -> merman_model::families::sequence::SequenceDiagramModel {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Sequence(model) = parsed.model() else {
             panic!("expected Sequence model");
         };
@@ -1038,7 +1035,7 @@ mod resource_tests {
         let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             None,
             &measurer,
             None,
@@ -1060,7 +1057,7 @@ mod resource_tests {
         prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             None,
             &measurer,
             None,
@@ -1080,7 +1077,7 @@ mod resource_tests {
         let expected_work = sequence_layout_work_units(&model).unwrap();
 
         let measurer = CountingTextMeasurer::default();
-        let effective_config = PresentationConfig::from_value(json!({}));
+        let effective_config = crate::test_support::presentation_config(json!({}));
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
             .unwrap();
@@ -1154,7 +1151,7 @@ mod resource_tests {
         }
         source.push_str("end\n");
         let model = sequence_model(&source);
-        let effective_config = PresentationConfig::from_value(json!({}));
+        let effective_config = crate::test_support::presentation_config(json!({}));
         let preparation_meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
@@ -1193,7 +1190,7 @@ mod resource_tests {
             &model,
             &prepared,
             &nodes_by_id,
-            &PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             &measurer,
             &work_meter,
         )

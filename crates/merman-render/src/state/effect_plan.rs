@@ -324,7 +324,7 @@ mod tests {
         assert_eq!(error.max, 2);
         assert_eq!(
             error.profile,
-            Some(merman_core::resources::ResourceProfile::Interactive)
+            Some(merman_model::resources::ResourceProfile::Interactive)
         );
     }
 
@@ -378,7 +378,7 @@ mod tests {
         assert_eq!(error.max, hard_cap);
         assert_eq!(
             error.profile,
-            Some(merman_core::resources::ResourceProfile::UnboundedForTrustedInput)
+            Some(merman_model::resources::ResourceProfile::UnboundedForTrustedInput)
         );
     }
 }

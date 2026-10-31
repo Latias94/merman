@@ -11,7 +11,7 @@ const DEFAULT_FONT_SIZE: f64 = 16.0;
 pub(crate) const DEFAULT_THEME_COLOR_LIMIT: usize = 12;
 pub(crate) const MAX_THEME_COLOR_LIMIT: usize = 64;
 
-/// Resolve Mermaid's bounded Timeline color-scale count through the core theme evaluator so CSS,
+/// Resolve Mermaid's bounded Timeline color-scale count through the shared value-coercion helper so CSS,
 /// layout, and the typed terminal plan share JavaScript-compatible coercion and ceilings.
 pub(crate) fn timeline_theme_color_limit(effective_config: &Value) -> usize {
     let raw = effective_config
@@ -21,7 +21,7 @@ pub(crate) fn timeline_theme_color_limit(effective_config: &Value) -> usize {
         // Render paths receive core-materialized configuration, where an over-limit value has
         // already failed admission. Keep direct adapter tests deterministic if they bypass that
         // boundary instead of inventing a second unbounded policy.
-        merman_core::__private::theme_color_iterations(Some(value))
+        merman_model::presentation::theme_color_iterations(Some(value))
             .unwrap_or(DEFAULT_THEME_COLOR_LIMIT)
     })
 }

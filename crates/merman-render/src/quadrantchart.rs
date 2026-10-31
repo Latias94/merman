@@ -4,7 +4,7 @@ use crate::model::{
     QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::text::TextMeasurer;
-use merman_core::diagrams::quadrant_chart::{
+use merman_model::families::quadrant_chart::{
     QuadrantChartDiagramModel, QuadrantChartPointModel, QuadrantChartStyles,
 };
 use serde_json::Value;

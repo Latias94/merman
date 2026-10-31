@@ -1,27 +1,28 @@
+#[cfg(feature = "diagram-class")]
+use merman_model::families::class::ClassDiagram;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_model::families::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-mindmap")]
-use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
+use merman_model::families::mindmap::MindmapDiagramRenderModel;
 #[cfg(feature = "diagram-zenuml")]
-use merman_core::diagrams::zenuml::ZenumlDiagramModel;
-#[cfg(feature = "diagram-class")]
-use merman_core::models::class_diagram::ClassDiagram;
-use merman_core::resources::{
+use merman_model::families::zenuml::ZenumlDiagramModel;
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+use merman_model::resources::{
     InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitPhase, InputResourcePolicy,
     InputResourcePolicyRestrictionError,
 };
-pub use merman_core::resources::{
+pub use merman_model::resources::{
     ModelComplexity, RESOURCE_PROFILE_DESCRIPTORS, ResourceProfile as RenderResourceProfile,
     ResourceProfileDescriptor as RenderResourceProfileDescriptor,
 };
-use merman_core::{
+use merman_model::{
     OperationCancelled, OperationControl, OperationLedgerError, OperationPhase,
     OperationResourceDomain, OperationResourceLimitExceeded, OperationResourceOverride,
-    OperationResourceProvenance, ParsedDiagramRender, RenderSemanticModel,
+    OperationResourceProvenance,
 };
 
 const KIB: usize = 1024;
@@ -55,10 +56,10 @@ pub(crate) const SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID: &str =
 #[cfg(target_arch = "wasm32")]
 pub const MAX_RESVG_TREE_DEPTH: usize = WASM_RESVG_TREE_DEPTH_HARD_CAP;
 
-pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
+pub const RESOURCE_PROFILE_COUNT: usize = merman_model::resources::RESOURCE_PROFILE_COUNT;
 const RENDER_RESOURCE_LIMIT_COUNT: usize = 7;
 pub const RESOURCE_LIMIT_COUNT: usize =
-    merman_core::resources::INPUT_RESOURCE_LIMIT_COUNT + RENDER_RESOURCE_LIMIT_COUNT;
+    merman_model::resources::INPUT_RESOURCE_LIMIT_COUNT + RENDER_RESOURCE_LIMIT_COUNT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceLimitPhase {
@@ -340,12 +341,12 @@ const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
 ];
 
 pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
-    merman_core::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE;
+    merman_model::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE;
 pub const CLI_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
-    merman_core::resources::CLI_DEFAULT_RESOURCE_PROFILE;
+    merman_model::resources::CLI_DEFAULT_RESOURCE_PROFILE;
 
 pub const fn resource_profile_descriptors() -> &'static [RenderResourceProfileDescriptor] {
-    &merman_core::resources::RESOURCE_PROFILE_DESCRIPTORS
+    &merman_model::resources::RESOURCE_PROFILE_DESCRIPTORS
 }
 
 pub const fn resource_limit_descriptors() -> &'static [ResourceLimitDescriptor] {
@@ -476,10 +477,10 @@ impl RenderResourcePolicy {
                 self.input
                     .apply_limit(id, value)
                     .map_err(|error| match error {
-                        merman_core::resources::InputResourceLimitOverrideError::UnknownLimit(
+                        merman_model::resources::InputResourceLimitOverrideError::UnknownLimit(
                             id,
                         ) => ResourceLimitOverrideError::UnknownLimit(id),
-                        merman_core::resources::InputResourceLimitOverrideError::NonPositive(
+                        merman_model::resources::InputResourceLimitOverrideError::NonPositive(
                             id,
                         ) => ResourceLimitOverrideError::NonPositive(id),
                     })
@@ -617,15 +618,16 @@ impl RenderResourcePolicy {
         &self,
         model: &RenderSemanticModel,
     ) -> Result<(), ResourceLimitExceeded> {
-        let complexity = ModelComplexity::from_render_model(model);
+        let complexity = merman_model::resources::model_complexity_from_render_model(model);
         self.check_model_complexity(complexity)
     }
 
     pub fn check_parsed_render(
         &self,
-        parsed: &ParsedDiagramRender,
+        parsed: &PresentationDiagram,
     ) -> Result<(), ResourceLimitExceeded> {
-        let mut complexity = ModelComplexity::from_render_model(parsed.model());
+        let mut complexity =
+            merman_model::resources::model_complexity_from_render_model(parsed.model());
         complexity.text_bytes = complexity
             .text_bytes
             .saturating_add(parsed.retained_render_context_bytes());
@@ -741,9 +743,9 @@ impl RenderResourcePolicy {
         &self,
         model: &MindmapDiagramRenderModel,
     ) -> Result<MindmapComplexity, ResourceLimitExceeded> {
-        self.input
-            .check_mindmap_complexity(model)
-            .map_err(|error| ResourceLimitExceeded::from_input(self, error))
+        let complexity = MindmapComplexity::from_model(model);
+        self.check_model_complexity(complexity.as_model_complexity())?;
+        Ok(complexity)
     }
 
     #[cfg(feature = "diagram-zenuml")]
@@ -759,7 +761,7 @@ impl RenderResourcePolicy {
     #[cfg(feature = "diagram-sequence")]
     pub fn check_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
+        model: &merman_model::families::sequence::SequenceDiagramModel,
     ) -> Result<SequenceComplexity, ResourceLimitExceeded> {
         self.input
             .check_sequence_complexity(model)
@@ -1295,7 +1297,7 @@ impl OperationWorkMeter {
 
     pub(crate) fn preflight_parsed_render(
         &self,
-        parsed: &ParsedDiagramRender,
+        parsed: &PresentationDiagram,
         operation_phase: OperationPhase,
     ) -> Result<(), OperationWorkError> {
         self.resource_checkpoint(operation_phase)?;
@@ -1319,7 +1321,7 @@ impl OperationWorkMeter {
     #[cfg(feature = "diagram-sequence")]
     pub(crate) fn preflight_sequence_complexity(
         &self,
-        model: &merman_core::diagrams::sequence::SequenceDiagramModel,
+        model: &merman_model::families::sequence::SequenceDiagramModel,
         operation_phase: OperationPhase,
     ) -> Result<SequenceComplexity, OperationWorkError> {
         self.resource_checkpoint(operation_phase)?;
@@ -1731,10 +1733,11 @@ pub struct ResourceLimitOverride {
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
-    use merman_core::diagrams::flowchart::{
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::families::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
     };
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_model::presentation::RenderSemanticModel;
     use std::collections::HashSet;
 
     #[test]
@@ -2006,7 +2009,7 @@ mod tests {
             panic!("expected deadline cancellation before resource accounting");
         };
         assert_eq!(error.phase, OperationPhase::Layout);
-        assert_eq!(error.reason, merman_core::CancelReason::DeadlineExceeded);
+        assert_eq!(error.reason, merman_model::CancelReason::DeadlineExceeded);
         assert_eq!(meter.used(), 0);
     }
 
@@ -2015,7 +2018,8 @@ mod tests {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
             .expect("the controlled fixture should parse")
-            .expect("the controlled fixture should produce a render model");
+            .expect("the controlled fixture should produce a render model")
+            .into_presentation();
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxModelItems, 1)
             .expect("the model limit should be valid");
@@ -2030,7 +2034,7 @@ mod tests {
             first,
             OperationWorkError::Cancelled(error)
                 if error.phase == OperationPhase::Layout
-                    && error.reason == merman_core::CancelReason::Requested
+                    && error.reason == merman_model::CancelReason::Requested
         ));
         assert_eq!(
             meter
@@ -2408,7 +2412,8 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML model");
         };
@@ -2431,7 +2436,8 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Zenuml(model) = parsed.model() else {
             panic!("expected ZenUML model");
         };
@@ -2520,20 +2526,20 @@ mod tests {
 }
 
 #[cfg(feature = "diagram-class")]
-pub use merman_core::resources::ClassComplexity;
+pub use merman_model::resources::ClassComplexity;
 
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub use merman_core::resources::FlowchartComplexity;
+pub use merman_model::resources::FlowchartComplexity;
 
 #[cfg(feature = "diagram-mindmap")]
-pub use merman_core::resources::MindmapComplexity;
+pub use merman_model::resources::MindmapComplexity;
 
 #[cfg(feature = "diagram-sequence")]
-pub use merman_core::resources::SequenceComplexity;
+pub use merman_model::resources::SequenceComplexity;
 
 #[cfg(feature = "diagram-zenuml")]
-pub use merman_core::resources::ZenumlComplexity;
+pub use merman_model::resources::ZenumlComplexity;

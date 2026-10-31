@@ -8,7 +8,7 @@ use crate::safe_text::{
     try_concat_layout_text, try_repeat_layout_char,
 };
 use crate::text::display_width_with_profile;
-use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
+use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
 use std::collections::HashSet;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
@@ -45,20 +45,20 @@ pub(super) fn render_tree_view_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     validate_tree_view_model(&model.root, document.resources_mut())?;
     let chars = TreeViewChars::from_options(options);
-    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
+    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
     push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     push_wrapped_node(&mut document, "", &model.root, options)?;
 
     let mut stack = Vec::new();
     for (index, child) in model.root.children.iter().enumerate().rev() {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         push_frame(
             &mut stack,
             TreeFrame {
@@ -72,7 +72,7 @@ pub(super) fn render_tree_view_diagram(
     }
 
     while let Some(frame) = stack.pop() {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         let TreeFrame {
             node,
             prefix,
@@ -111,7 +111,7 @@ pub(super) fn render_tree_view_diagram(
         )?;
 
         for (index, child) in node.children.iter().enumerate().rev() {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             push_frame(
                 &mut stack,
                 TreeFrame {
@@ -261,8 +261,8 @@ fn push_wrapped_node(
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::OperationControl;
-    use merman_core::resources::ResourceProfile;
+    use merman_model::OperationControl;
+    use merman_model::resources::ResourceProfile;
 
     const DEEP_NESTING: usize = 256;
 

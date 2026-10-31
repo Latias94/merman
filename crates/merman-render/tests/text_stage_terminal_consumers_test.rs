@@ -14,7 +14,8 @@ fn render(source: &str, environment: RenderEnvironment) -> (serde_json::Value, S
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),

@@ -4,7 +4,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::text::{
     WrapMode, measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
 };
-use merman_core::diagrams::usecase::{
+use merman_model::families::usecase::{
     UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
     UsecaseRelationshipType,
 };
@@ -156,7 +156,7 @@ fn styled(
 }
 
 struct LabelContext<'a> {
-    config: &'a merman_core::presentation::PresentationConfig,
+    config: &'a merman_model::presentation::PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
@@ -453,14 +453,15 @@ fn escaped_markdown(text: &str) -> String {
 
 pub(super) fn measure(
     model: &UsecaseDiagramModel,
-    full_config: &merman_core::presentation::PresentationConfig,
+    full_config: &merman_model::presentation::PresentationConfig,
     css_binding: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
     let config = full_config.as_value();
-    let sanitize = |text: &str| merman_core::sanitize::sanitize_text(text, full_config.as_config());
+    let sanitize =
+        |text: &str| merman_markup::sanitize::sanitize_text(text, full_config.as_config());
     let min_width = number(config, "minNodeWidth", 120.0);
     let wrapping_width = Some(number(config, "wrappingWidth", 120.0));
     let html = config
@@ -912,7 +913,7 @@ mod tests {
     use super::*;
     use crate::resources::RenderResourcePolicy;
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::usecase::{
+    use merman_model::families::usecase::{
         UsecaseActorType, UsecaseBoundary, UsecaseClassDef, UsecaseNode, UsecaseNote,
         UsecaseRelationship,
     };
@@ -1027,7 +1028,7 @@ mod tests {
             let config = json!({"htmlLabels": html});
             let (nodes, edges) = measure(
                 &model,
-                &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+                &crate::test_support::presentation_config(config.clone()),
                 &UsecaseCssBinding::new(&config),
                 &DeterministicTextMeasurer::default(),
                 None,
@@ -1084,7 +1085,7 @@ mod tests {
         let mut work = work();
         let (mut nodes, mut edges) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
             &css_binding,
             &DeterministicTextMeasurer::default(),
             None,
@@ -1157,9 +1158,7 @@ mod tests {
         let measurer = DeterministicTextMeasurer::default();
         let (small, _) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(
-                json!({"usecase": {"minNodeWidth": 900}}),
-            ),
+            &crate::test_support::presentation_config(json!({"usecase": {"minNodeWidth": 900}})),
             &UsecaseCssBinding::new(&json!({"usecase": {"minNodeWidth": 900}})),
             &measurer,
             None,
@@ -1168,9 +1167,7 @@ mod tests {
         .unwrap();
         let (large, _) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(
-                json!({"usecase": {"actorFontSize": 40}}),
-            ),
+            &crate::test_support::presentation_config(json!({"usecase": {"actorFontSize": 40}})),
             &UsecaseCssBinding::new(&json!({"usecase": {"actorFontSize": 40}})),
             &measurer,
             None,
@@ -1198,7 +1195,7 @@ mod tests {
         });
         let (nodes, _) = measure(
             &model,
-            &merman_core::presentation::PresentationConfig::from_value(json!({})),
+            &crate::test_support::presentation_config(json!({})),
             &UsecaseCssBinding::new(&json!({})),
             &DeterministicTextMeasurer::default(),
             None,

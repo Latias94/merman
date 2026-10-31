@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -81,18 +80,21 @@ fn class_svg_abstract_method_measurement_matches_the_terminal_tspan_reset() {
         let environment = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
         let parsed = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
-                "layout": layout,
-                "htmlLabels": false,
-                "fontSize": 16,
-                "themeVariables": { "fontSize": "16px" }
-            })))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "layout": layout,
+                    "htmlLabels": false,
+                    "fontSize": 16,
+                    "themeVariables": { "fontSize": "16px" }
+                })),
+            )
             .parse_diagram_for_render_model_sync(
                 "classDiagram\nclass Vehicle {\n+drive()*\n+stop()\n}",
                 ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let artifact = family::prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -154,13 +156,18 @@ fn class_svg_note_measures_visible_markdown_instead_of_source_delimiters() {
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(json!({"htmlLabels": false})))
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                json!({"htmlLabels": false}),
+            ),
+        )
         .parse_diagram_for_render_model_sync(
             "classDiagram\nnote \"**MMMM**\"\n",
             ParseOptions::default(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -205,13 +212,18 @@ fn class_svg_note_preserves_terminal_entity_depth_and_visible_baseline() {
         let environment = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
         let parsed = MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({"htmlLabels": false})))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    json!({"htmlLabels": false}),
+                ),
+            )
             .parse_diagram_for_render_model_sync(
                 &format!("classDiagram\nnote \"{source}\"\n"),
                 ParseOptions::default(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let artifact = family::prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -241,3 +253,6 @@ fn class_svg_note_preserves_terminal_entity_depth_and_visible_baseline() {
         assert_eq!(terminal, visible);
     }
 }
+
+#[allow(dead_code)]
+mod common;

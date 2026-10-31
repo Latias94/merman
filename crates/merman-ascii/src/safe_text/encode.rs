@@ -209,7 +209,7 @@ mod tests {
     use super::*;
     use crate::AsciiError;
     use crate::resource::{AsciiResourcePolicy, ResourceContext};
-    use merman_core::{OperationControl, OperationPhase};
+    use merman_model::{OperationControl, OperationPhase};
 
     #[test]
     fn structured_text_counting_cancellation_rolls_back_the_ledger() {

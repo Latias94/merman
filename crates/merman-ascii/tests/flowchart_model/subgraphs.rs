@@ -79,7 +79,7 @@ fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
     second_node.label = Some("B".to_string());
     model.nodes.push(second_node);
     model.subgraphs = vec![
-        merman_core::diagrams::flowchart::FlowSubgraph {
+        merman_model::families::flowchart::FlowSubgraph {
             metadata: None,
             id: "X".to_string(),
             title: "First".to_string(),
@@ -90,7 +90,7 @@ fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
             styles: Vec::new(),
             nodes: vec!["A".to_string()],
         },
-        merman_core::diagrams::flowchart::FlowSubgraph {
+        merman_model::families::flowchart::FlowSubgraph {
             metadata: None,
             id: "X".to_string(),
             title: "Second".to_string(),
@@ -125,7 +125,7 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
     second_node.label = Some("B".to_string());
     model.nodes.push(second_node);
     model.subgraphs = vec![
-        merman_core::diagrams::flowchart::FlowSubgraph {
+        merman_model::families::flowchart::FlowSubgraph {
             metadata: None,
             id: "X".to_string(),
             title: "First X".to_string(),
@@ -136,7 +136,7 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
             styles: Vec::new(),
             nodes: vec!["A".to_string()],
         },
-        merman_core::diagrams::flowchart::FlowSubgraph {
+        merman_model::families::flowchart::FlowSubgraph {
             metadata: None,
             id: "Y".to_string(),
             title: "Inner Y".to_string(),
@@ -147,7 +147,7 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
             styles: Vec::new(),
             nodes: vec!["B".to_string()],
         },
-        merman_core::diagrams::flowchart::FlowSubgraph {
+        merman_model::families::flowchart::FlowSubgraph {
             metadata: None,
             id: "X".to_string(),
             title: "Later X".to_string(),
@@ -329,7 +329,7 @@ fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
 #[test]
 fn render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges()
  {
-    let model = merman_core::diagrams::flowchart::FlowchartModel {
+    let model = merman_model::families::flowchart::FlowchartModel {
         keyword: "graph".to_string(),
         acc_descr: None,
         acc_title: None,
@@ -338,7 +338,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
         edge_defaults: None,
         vertex_calls: Vec::new(),
         nodes: vec![
-            merman_core::diagrams::flowchart::FlowNode {
+            merman_model::families::flowchart::FlowNode {
                 id: "A".to_string(),
                 provenance: Default::default(),
                 label: Some("A".to_string()),
@@ -358,7 +358,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
                 link_target: None,
                 have_callback: false,
             },
-            merman_core::diagrams::flowchart::FlowNode {
+            merman_model::families::flowchart::FlowNode {
                 id: "B".to_string(),
                 provenance: Default::default(),
                 label: Some("B".to_string()),
@@ -379,7 +379,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
                 have_callback: false,
             },
         ],
-        edges: vec![merman_core::diagrams::flowchart::FlowEdge {
+        edges: vec![merman_model::families::flowchart::FlowEdge {
             id: "L-A-B".to_string(),
             from: "A".to_string(),
             to: "B".to_string(),
@@ -400,7 +400,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             animation: None,
             length: 1,
         }],
-        subgraphs: vec![merman_core::diagrams::flowchart::FlowSubgraph {
+        subgraphs: vec![merman_model::families::flowchart::FlowSubgraph {
             metadata: None,
             id: "one".to_string(),
             title: "LR Group".to_string(),
@@ -416,7 +416,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
         warning_facts: Vec::new(),
     };
     let rendered = render_model(
-        &merman_core::RenderSemanticModel::Flowchart(model),
+        &merman_model::presentation::RenderSemanticModel::Flowchart(model),
         &AsciiRenderOptions::ascii(),
     )
     .expect("subgraph direction override should render a local LR layout inside a TD graph");

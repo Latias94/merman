@@ -470,7 +470,7 @@ mod tests {
         SequenceArrowHead, SequenceCentralDecoration, SequenceLineStyle, SequenceMessageDirection,
     };
     use crate::sequence::text::blank_line;
-    use merman_core::OperationPhase;
+    use merman_model::OperationPhase;
 
     fn narrow_self_layout() -> SequenceLayout {
         let mut policy = AsciiRenderOptions::unicode().sequence_layout();

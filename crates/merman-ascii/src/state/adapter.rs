@@ -13,7 +13,7 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceCon
 use crate::safe_text::{
     NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_trimmed_text,
 };
-use merman_core::diagrams::state::{StateTerminalEdge, StateTerminalNode, StateTerminalView};
+use merman_model::families::state::{StateTerminalEdge, StateTerminalNode, StateTerminalView};
 use std::collections::HashMap;
 
 const STATE_DIAGRAM_TYPE: &str = "state";
@@ -123,7 +123,7 @@ fn from_state_view_with_resources(
 
 #[cfg(test)]
 fn from_state_model_with_context_and_execution(
-    model: &merman_core::diagrams::state::StateDiagramRenderModel,
+    model: &merman_model::families::state::StateDiagramRenderModel,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -142,7 +142,7 @@ pub(crate) fn from_state_view_with_context_and_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
-    execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
+    execution.rebind_resource_context(resources, merman_model::OperationPhase::Semantic);
     resources.transaction(|resources| {
         from_state_view_transactional(model, width_profile, resources, execution)
     })
@@ -296,7 +296,7 @@ fn from_state_view_transactional(
 }
 
 fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
-    execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)
+    execution.checkpoint_loop(merman_model::OperationPhase::Semantic, iteration)
 }
 
 fn preflight_state_projection_text(
@@ -1140,7 +1140,7 @@ fn state_direction_projection(
 }
 
 fn checkpoint_projection_before_charge(execution: AsciiExecution<'_>) -> Result<()> {
-    execution.checkpoint(merman_core::OperationPhase::Semantic)
+    execution.checkpoint(merman_model::OperationPhase::Semantic)
 }
 
 fn is_group_container(node: StateTerminalNode<'_>, group_members: &StateGroupMembers<'_>) -> bool {
@@ -1241,11 +1241,11 @@ fn parse_state_direction(direction: &str) -> Result<GraphDirection> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::state::{
+    use merman_model::families::state::{
         StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
     };
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn canonical_state_projection_matches_full_graph_output_and_work() {
@@ -1262,14 +1262,14 @@ mod tests {
             let semantic = merman_core::SemanticParser::new()
                 .parse_diagram_sync(source)
                 .expect("canonical state source should parse");
-            let merman_core::SemanticDiagramModel::State(semantic) = &semantic.model else {
+            let merman_model::SemanticDiagramModel::State(semantic) = &semantic.model else {
                 panic!("expected canonical State");
             };
-            let full = merman_core::MermaidEngine::new()
+            let full = merman_core::presentation::MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
                 .expect("full state source should parse")
                 .expect("state source should be detected");
-            let merman_core::RenderSemanticModel::State(full) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::State(full) = full.model() else {
                 panic!("expected full State");
             };
             let mut canonical_resources = ResourceContext::new(policy);
@@ -1325,7 +1325,7 @@ mod tests {
         let parsed = merman_core::SemanticParser::new()
             .parse_diagram_sync("stateDiagram-v2\nA --> B\n")
             .expect("canonical state source should parse");
-        let merman_core::SemanticDiagramModel::State(model) = &parsed.model else {
+        let merman_model::SemanticDiagramModel::State(model) = &parsed.model else {
             panic!("expected canonical State");
         };
         let policy = AsciiResourcePolicy::default()

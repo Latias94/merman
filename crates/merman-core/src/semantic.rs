@@ -8,149 +8,42 @@ mod snapshot;
 #[cfg(feature = "editor-facts")]
 pub use snapshot::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapshotCapture};
 
-/// Configuration and source metadata needed to interpret a diagram's meaning.
-#[derive(Debug, Clone)]
-pub struct SemanticMetadata {
-    pub diagram_type: String,
-    /// Source-authored config projection used by Mermaid's public parse metadata. It follows
-    /// upstream secure keys unless the host explicitly supplies its own `secure` policy.
-    pub config: MermaidConfig,
-    /// Effective semantic config after the site's secure-key and CSS-value admission, before
-    /// theme materialization.
-    pub semantic_config: MermaidConfig,
-    pub title: Option<String>,
-}
+use merman_model::semantic::{ParsedSemanticDiagram, SemanticDiagramModel, SemanticMetadata};
 
-/// A typed semantic result for the selected built-in diagram families.
-#[non_exhaustive]
-#[derive(Debug)]
-pub enum SemanticDiagramModel {
-    /// Canonical infrastructure model for an explicit or suppressed parser error.
-    Error(crate::diagrams::error_diagram::ErrorDiagramModel),
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    Flowchart(crate::diagrams::flowchart::FlowchartModel),
-    #[cfg(feature = "diagram-sequence")]
-    Sequence(crate::diagrams::sequence::SequenceDiagramModel),
-    #[cfg(feature = "diagram-state")]
-    State(crate::diagrams::state::StateDiagramModel),
-    #[cfg(feature = "diagram-timeline")]
-    Timeline(crate::diagrams::timeline::TimelineDiagramModel),
-    #[cfg(feature = "diagram-cynefin")]
-    Cynefin(crate::diagrams::cynefin::CynefinDiagramModel),
-    #[cfg(feature = "diagram-info")]
-    Info(crate::diagrams::info::InfoDiagramModel),
-    #[cfg(feature = "diagram-journey")]
-    Journey(crate::diagrams::journey::JourneyDiagramModel),
-    #[cfg(feature = "diagram-pie")]
-    Pie(crate::diagrams::pie::PieDiagramModel),
-    #[cfg(feature = "diagram-packet")]
-    Packet(crate::diagrams::packet::PacketDiagramModel),
-    #[cfg(feature = "diagram-tree-view")]
-    TreeView(crate::diagrams::tree_view::TreeViewDiagramModel),
-    #[cfg(feature = "diagram-quadrant-chart")]
-    QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartDiagramModel),
-    #[cfg(feature = "diagram-radar")]
-    Radar(crate::diagrams::radar::RadarDiagramModel),
-    #[cfg(feature = "diagram-sankey")]
-    Sankey(crate::diagrams::sankey::SankeyDiagramModel),
-    #[cfg(feature = "diagram-venn")]
-    Venn(crate::diagrams::venn::VennDiagramModel),
-    #[cfg(feature = "diagram-requirement")]
-    Requirement(crate::diagrams::requirement::RequirementDiagramModel),
-    #[cfg(feature = "diagram-usecase")]
-    Usecase(crate::diagrams::usecase::UsecaseDiagramModel),
-    #[cfg(feature = "diagram-event-modeling")]
-    EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramModel),
-    #[cfg(feature = "diagram-wardley")]
-    Wardley(crate::diagrams::wardley::WardleyDiagramModel),
-    #[cfg(feature = "diagram-railroad")]
-    Railroad(crate::diagrams::railroad::RailroadDiagramModel),
-    #[cfg(feature = "diagram-zenuml")]
-    Zenuml(crate::diagrams::zenuml::ZenumlDiagramModel),
-    #[cfg(feature = "diagram-er")]
-    Er(crate::diagrams::er::ErDiagramModel),
-    #[cfg(feature = "diagram-architecture")]
-    Architecture(crate::diagrams::architecture::ArchitectureDiagramModel),
-    #[cfg(feature = "diagram-gantt")]
-    Gantt(crate::diagrams::gantt::GanttDiagramModel),
-    #[cfg(feature = "diagram-c4")]
-    C4(crate::diagrams::c4::C4DiagramModel),
-    #[cfg(feature = "diagram-ishikawa")]
-    Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramModel),
-    #[cfg(feature = "diagram-treemap")]
-    Treemap(crate::diagrams::treemap::TreemapDiagramModel),
-    #[cfg(feature = "diagram-block")]
-    Block(crate::diagrams::block::BlockDiagramModel),
-    #[cfg(feature = "diagram-kanban")]
-    Kanban(crate::diagrams::kanban::KanbanDiagramModel),
-    #[cfg(feature = "diagram-mindmap")]
-    Mindmap(crate::diagrams::mindmap::MindmapDiagramModel),
-    #[cfg(feature = "diagram-xychart")]
-    XyChart(crate::diagrams::xychart::XyChartDiagramModel),
-    #[cfg(feature = "diagram-agentflow")]
-    Agentflow(crate::diagrams::agentflow::AgentflowDiagramModel),
-    #[cfg(feature = "diagram-git-graph")]
-    GitGraph(crate::diagrams::git_graph::GitGraphDiagramModel),
-    #[cfg(feature = "diagram-class")]
-    Class(crate::diagrams::class::ClassDiagramModel),
-}
-
-impl SemanticDiagramModel {
-    /// Consumes the model and returns its source-mapped semantic warning facts.
-    pub fn into_warning_facts(self) -> Vec<crate::DiagramWarningFact> {
-        #[allow(unreachable_patterns)]
-        match self {
-            #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow(model) => model.warning_facts,
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(model) => model.warning_facts,
-            #[cfg(feature = "diagram-block")]
-            Self::Block(model) => model.warning_facts,
-            #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(model) => model.warning_facts,
-            _ => Vec::new(),
+fn remap_semantic_source_positions(
+    model: &mut SemanticDiagramModel,
+    source: &crate::PreprocessedSource,
+    control: &OperationControl,
+) -> OperationControlResult<()> {
+    control.checkpoint()?;
+    #[allow(unreachable_patterns)]
+    let facts: &mut [crate::DiagramWarningFact] = match model {
+        #[cfg(feature = "diagram-agentflow")]
+        SemanticDiagramModel::Agentflow(model) => {
+            let (line_offset, column_offset) = source.parser_position_offset();
+            crate::diagrams::agentflow::offset_diagnostic_positions(
+                model,
+                line_offset,
+                column_offset,
+            );
+            &mut model.warning_facts
         }
-    }
-
-    fn remap_source_positions(
-        &mut self,
-        source: &crate::PreprocessedSource,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        control.checkpoint()?;
-        #[allow(unreachable_patterns)]
-        let facts: &mut [crate::DiagramWarningFact] = match self {
-            #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow(model) => {
-                let (line_offset, column_offset) = source.parser_position_offset();
-                model.offset_diagnostic_positions(line_offset, column_offset);
-                &mut model.warning_facts
-            }
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(model) => &mut model.warning_facts,
-            #[cfg(feature = "diagram-block")]
-            Self::Block(model) => &mut model.warning_facts,
-            #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(model) => &mut model.warning_facts,
-            _ => &mut [],
-        };
-        for (index, fact) in facts.iter_mut().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            source.remap_warning_fact_spans(fact);
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        SemanticDiagramModel::Flowchart(model) => &mut model.warning_facts,
+        #[cfg(feature = "diagram-block")]
+        SemanticDiagramModel::Block(model) => &mut model.warning_facts,
+        #[cfg(feature = "diagram-git-graph")]
+        SemanticDiagramModel::GitGraph(model) => &mut model.warning_facts,
+        _ => &mut [],
+    };
+    for (index, fact) in facts.iter_mut().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
         }
-        control.checkpoint()
+        source.remap_warning_fact_spans(fact);
     }
+    control.checkpoint()
 }
-
-/// Metadata and canonical family model returned by [`SemanticParser`].
-#[derive(Debug)]
-pub struct ParsedSemanticDiagram {
-    pub metadata: SemanticMetadata,
-    pub model: SemanticDiagramModel,
-}
-
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///
 /// Enabled families publish their canonical parser through the family catalog.
@@ -159,18 +52,20 @@ pub struct ParsedSemanticDiagram {
 pub struct SemanticParser {
     site_config: MermaidConfig,
     site_config_overrides: MermaidConfig,
-    runtime_policy: crate::runtime::RuntimePolicy,
+    runtime_policy: merman_model::runtime::RuntimePolicy,
 }
 
 struct SemanticTiming {
-    total: Option<crate::runtime::OperationTimer>,
+    total: Option<merman_model::runtime::OperationTimer>,
     input_bytes: usize,
 }
 
 impl SemanticTiming {
-    fn new(context: &crate::runtime::OperationContext, input: &str) -> Self {
+    fn new(context: &merman_model::runtime::OperationContext, input: &str) -> Self {
         Self {
-            total: context.timing().map(crate::runtime::OperationTiming::start),
+            total: context
+                .timing()
+                .map(merman_model::runtime::OperationTiming::start),
             input_bytes: input.len(),
         }
     }
@@ -191,7 +86,7 @@ impl Default for SemanticParser {
         Self {
             site_config: crate::generated::default_site_config(),
             site_config_overrides: MermaidConfig::empty_object(),
-            runtime_policy: crate::runtime::RuntimePolicy::deterministic(),
+            runtime_policy: merman_model::runtime::RuntimePolicy::deterministic(),
         }
     }
 }
@@ -203,19 +98,19 @@ impl SemanticParser {
     }
 
     /// Replaces the runtime policy used to begin future parse operations.
-    pub fn with_runtime_policy(mut self, policy: crate::runtime::RuntimePolicy) -> Self {
+    pub fn with_runtime_policy(mut self, policy: merman_model::runtime::RuntimePolicy) -> Self {
         self.runtime_policy = policy;
         self
     }
 
     /// Replays a frozen runtime context without consulting system state.
-    pub fn with_operation_context(self, context: crate::runtime::OperationContext) -> Self {
-        self.with_runtime_policy(crate::runtime::RuntimePolicy::from_operation_context(
-            context,
-        ))
+    pub fn with_operation_context(self, context: merman_model::runtime::OperationContext) -> Self {
+        self.with_runtime_policy(
+            merman_model::runtime::RuntimePolicy::from_operation_context(context),
+        )
     }
 
-    pub fn runtime_policy(&self) -> &crate::runtime::RuntimePolicy {
+    pub fn runtime_policy(&self) -> &merman_model::runtime::RuntimePolicy {
         &self.runtime_policy
     }
 
@@ -226,8 +121,10 @@ impl SemanticParser {
 
     pub fn begin_operation(
         &self,
-    ) -> std::result::Result<crate::runtime::OperationContext, crate::runtime::RuntimePolicyError>
-    {
+    ) -> std::result::Result<
+        merman_model::runtime::OperationContext,
+        merman_model::runtime::RuntimePolicyError,
+    > {
         self.runtime_policy.begin_operation()
     }
 
@@ -424,7 +321,7 @@ impl SemanticParser {
                     };
                     let outcome = match construction.model {
                         Ok(mut model) => {
-                            model.remap_source_positions(&source, control)?;
+                            remap_semantic_source_positions(&mut model, &source, control)?;
                             SemanticParseOutcome::Parsed(model)
                         }
                         Err(error) => SemanticParseOutcome::Failed(source.remap_parse_error(error)),
@@ -498,7 +395,7 @@ impl SemanticParser {
         input: &str,
         options: crate::ParseOptions,
         control: &OperationControl,
-        context: &crate::runtime::OperationContext,
+        context: &merman_model::runtime::OperationContext,
     ) -> OperationControlResult<Result<Option<ParsedSemanticDiagram>>> {
         use crate::preprocess::{
             DirectiveRecoveryMode, preprocess_builtin_semantic_with_directive_recovery_controlled,
@@ -637,12 +534,12 @@ impl SemanticParser {
                 return Ok(Ok(ParsedSemanticDiagram {
                     metadata,
                     model: SemanticDiagramModel::Error(
-                        crate::diagrams::error_diagram::ErrorDiagramModel::suppressed(&error),
+                        crate::diagrams::error_diagram::suppressed_error_model(&error),
                     ),
                 }));
             }
         };
-        model.remap_source_positions(&source, control)?;
+        remap_semantic_source_positions(&mut model, &source, control)?;
         control.checkpoint()?;
         Ok(Ok(ParsedSemanticDiagram { metadata, model }))
     }
@@ -662,8 +559,7 @@ impl SemanticParser {
         let admitted_source = if pre.config.is_empty_object() {
             pre.config.clone()
         } else {
-            self.site_config
-                .source_filtered_overrides(&pre.config, control)?
+            crate::config::source_filtered_overrides(&self.site_config, &pre.config, control)?
         };
         let mut semantic_config = self.site_config.clone();
         if !admitted_source.is_empty_object() {
@@ -688,7 +584,8 @@ impl SemanticParser {
         } else {
             &upstream_defaults
         };
-        let config = source_authority.authored_source_overrides(pre.config, control)?;
+        let config =
+            crate::config::authored_source_overrides(source_authority, pre.config, control)?;
         let title = pre
             .title
             .as_deref()
@@ -1022,7 +919,7 @@ mod tests {
     fn semantic_parser_owns_its_runtime_inside_an_ambient_operation() {
         let parser = SemanticParser::new();
         let expected = semantic_gitgraph_ids(&parser, false);
-        let outer = crate::runtime::RuntimePolicy::deterministic()
+        let outer = merman_model::runtime::RuntimePolicy::deterministic()
             .with_fixed_seed(1)
             .with_fixed_unix_millis(1_771_113_600_000)
             .begin_operation()
@@ -1037,10 +934,11 @@ mod tests {
     #[cfg(feature = "diagram-git-graph")]
     #[test]
     fn semantic_runtime_seed_and_captured_context_control_commit_ids() {
-        let policy = crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(1);
+        let policy = merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(1);
         let first = SemanticParser::new().with_runtime_policy(policy.clone());
-        let second = SemanticParser::new()
-            .with_runtime_policy(crate::runtime::RuntimePolicy::deterministic().with_fixed_seed(2));
+        let second = SemanticParser::new().with_runtime_policy(
+            merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(2),
+        );
         let replay = SemanticParser::new().with_operation_context(first.begin_operation().unwrap());
         let expected = semantic_gitgraph_ids(&first, false);
         assert_eq!(first.runtime_policy(), &policy);
@@ -1074,7 +972,7 @@ mod tests {
     fn semantic_runtime_clock_and_timezone_resolve_gantt_dates() {
         let source = "gantt\ndateFormat MM-DD\nMissing year: id1,03-01,1d\nMissing ref: id2,after missing,1d\n";
         for (offset, adjustment) in [(0, 0), (480, -28_800_000)] {
-            let policy = crate::runtime::RuntimePolicy::deterministic()
+            let policy = merman_model::runtime::RuntimePolicy::deterministic()
                 .with_fixed_unix_millis(1_771_113_600_000)
                 .try_with_fixed_local_offset_minutes(offset)
                 .unwrap();
@@ -1100,10 +998,10 @@ mod tests {
     #[cfg(feature = "diagram-gantt")]
     #[test]
     fn semantic_runtime_restores_ambient_context_after_errors_and_cancellation() {
-        let policy = crate::runtime::RuntimePolicy::deterministic()
+        let policy = merman_model::runtime::RuntimePolicy::deterministic()
             .with_fixed_unix_millis(1_771_113_600_000);
         let parser = SemanticParser::new().with_runtime_policy(policy);
-        let outer = crate::runtime::RuntimePolicy::deterministic()
+        let outer = merman_model::runtime::RuntimePolicy::deterministic()
             .with_fixed_today(Some(crate::time::CivilDate::new(2030, 1, 2).unwrap()))
             .begin_operation()
             .unwrap();
@@ -1281,7 +1179,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Cynefin result");
-            let crate::diagram::RenderSemanticModel::Cynefin(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Cynefin(full_model) = full.model()
+            else {
                 panic!("expected full Cynefin model");
             };
             assert_eq!(
@@ -1364,7 +1263,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Info result");
-            let crate::diagram::RenderSemanticModel::Info(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Info(full_model) = full.model()
+            else {
                 panic!("expected full Info model");
             };
             assert_eq!(semantic_model.show_info, full_model.show_info);
@@ -1428,7 +1328,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Pie result");
-            let crate::diagram::RenderSemanticModel::Pie(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Pie(full_model) = full.model()
+            else {
                 panic!("expected full Pie model");
             };
             assert_eq!(
@@ -1495,7 +1396,8 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("Journey result");
-            let crate::diagram::RenderSemanticModel::Journey(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Journey(full_model) = full.model()
+            else {
                 panic!("expected full Journey model");
             };
             assert_eq!(
@@ -1556,7 +1458,9 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("sequence result");
-            let crate::diagram::RenderSemanticModel::Sequence(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Sequence(full_model) =
+                full.model()
+            else {
                 panic!("expected full Sequence model");
             };
             assert_eq!(
@@ -1724,7 +1628,9 @@ mod tests {
                 )
                 .expect("full parser")
                 .expect("flowchart result");
-            let crate::diagram::RenderSemanticModel::Flowchart(full_model) = full.model() else {
+            let merman_model::presentation::RenderSemanticModel::Flowchart(full_model) =
+                full.model()
+            else {
                 panic!("expected full Flowchart model");
             };
             assert_eq!(
@@ -1815,9 +1721,9 @@ mod tests {
                 #[cfg(feature = "presentation")]
                 {
                     let full = crate::MermaidEngine::new()
-                        .with_site_config(crate::presentation::PresentationConfig::from_value(
-                            site.clone(),
-                        ))
+                        .with_site_config(
+                            crate::presentation::SourcePresentationConfig::from_value(site.clone()),
+                        )
                         .parse_diagram_for_render_model_with_type_sync(
                             "swimlane",
                             source,

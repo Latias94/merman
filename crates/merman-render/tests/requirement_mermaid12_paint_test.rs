@@ -11,7 +11,8 @@ fn render_requirement(layout: &str, look: &str) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .unwrap()

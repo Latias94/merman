@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet, ResolvedDiagramTheme,
@@ -60,10 +60,7 @@ impl XyChartTypographyThemePlan {
             })
         }) {
             XyChartTextRole::ALL.map(|role| {
-                merman_core::__private::config_path_overrides_typed_default(
-                    effective_config,
-                    role.size_config_path(),
-                )
+                effective_config.config_path_overrides_typed_default(role.size_config_path())
             })
         } else {
             [false; 6]

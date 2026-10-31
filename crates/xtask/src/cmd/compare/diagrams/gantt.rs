@@ -145,7 +145,7 @@ pub(super) fn compare_gantt_request(
                 }
             };
 
-            let family_id = merman_core::diagram_type_family_id(semantic.diagram_type())
+            let family_id = merman::model::family::diagram_type_family_id(semantic.diagram_type())
                 .ok_or_else(|| {
                     format!(
                         "unknown render family for {}: {}",
@@ -153,7 +153,7 @@ pub(super) fn compare_gantt_request(
                         semantic.diagram_type()
                     )
                 })?;
-            if family_id != merman_core::DiagramFamilyId::GANTT {
+            if family_id != merman::model::family::DiagramFamilyId::GANTT {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
@@ -206,9 +206,9 @@ pub(crate) fn gantt_baseline_local_offset_minutes() -> i32 {
 
 pub(crate) fn gantt_baseline_runtime_policy(
     baseline_local_offset_minutes: i32,
-) -> Result<merman::runtime::RuntimePolicy, merman::runtime::RuntimePolicyError> {
+) -> Result<merman::model::runtime::RuntimePolicy, merman::model::runtime::RuntimePolicyError> {
     let unix_ms = crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS;
-    merman::runtime::RuntimePolicy::deterministic()
+    merman::model::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(baseline_local_offset_minutes)
         .map(|policy| policy.with_fixed_unix_millis(unix_ms))
 }
@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
         assert_eq!(
             context.today_local(),
-            merman_core::time::CivilDate::new(2024, 1, 1).unwrap()
+            merman::model::time::CivilDate::new(2024, 1, 1).unwrap()
         );
         assert_eq!(
             context.unix_millis(),

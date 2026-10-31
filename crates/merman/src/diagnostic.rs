@@ -6,7 +6,7 @@
 //! [`TerminalDiagnosticClass`] to distinguish parse, resource, internal, cancellation, and
 //! runtime-policy failures.
 
-pub use merman_core::terminal_text::{normalize_terminal_diagnostic, normalize_terminal_text};
+pub use merman_model::text::terminal::{normalize_terminal_diagnostic, normalize_terminal_text};
 
 /// Machine-readable context for a terminal-safe core diagnostic.
 ///
@@ -16,7 +16,7 @@ pub use merman_core::terminal_text::{normalize_terminal_diagnostic, normalize_te
 #[non_exhaustive]
 pub struct TerminalDiagnosticDetails {
     pub code: String,
-    pub span: Option<merman_core::SourceSpan>,
+    pub span: Option<merman_model::SourceSpan>,
     pub span_kind: Option<merman_core::ParseDiagnosticSpanKind>,
     pub field: Option<String>,
     pub diagram_type: Option<String>,
@@ -52,7 +52,7 @@ pub struct TerminalDiagnostic {
 /// [`std::fmt::Display`], [`std::fmt::Debug`], or [`std::error::Error::source`].
 #[derive(Clone, PartialEq, Eq)]
 pub struct TerminalRuntimePolicyError {
-    error: merman_core::runtime::RuntimePolicyError,
+    error: merman_model::runtime::RuntimePolicyError,
 }
 
 impl TerminalDiagnostic {
@@ -142,8 +142,8 @@ impl From<merman_core::Error> for TerminalDiagnostic {
     }
 }
 
-impl From<merman_core::runtime::RuntimePolicyError> for TerminalDiagnostic {
-    fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
+impl From<merman_model::runtime::RuntimePolicyError> for TerminalDiagnostic {
+    fn from(error: merman_model::runtime::RuntimePolicyError) -> Self {
         Self::from(merman_core::Error::RuntimePolicy(error))
     }
 }
@@ -160,7 +160,7 @@ impl TerminalRuntimePolicyError {
     }
 
     #[must_use]
-    pub const fn missing_capability(&self) -> Option<merman_core::runtime::RuntimeCapability> {
+    pub const fn missing_capability(&self) -> Option<merman_model::runtime::RuntimeCapability> {
         self.error.missing_capability()
     }
 }
@@ -183,8 +183,8 @@ impl std::fmt::Display for TerminalRuntimePolicyError {
 
 impl std::error::Error for TerminalRuntimePolicyError {}
 
-impl From<merman_core::runtime::RuntimePolicyError> for TerminalRuntimePolicyError {
-    fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
+impl From<merman_model::runtime::RuntimePolicyError> for TerminalRuntimePolicyError {
+    fn from(error: merman_model::runtime::RuntimePolicyError) -> Self {
         Self { error }
     }
 }
@@ -195,10 +195,10 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
         merman_core::Error::Internal(error) => normalize_terminal_diagnostic(error.message()),
         #[cfg(feature = "presentation")]
         merman_core::Error::ThemeColor(error) => match error {
-            merman_core::theme_color::ColorError::UnsupportedFormat { input } => {
+            merman_markup::theme_color::ColorError::UnsupportedFormat { input } => {
                 bounded_message("Unsupported color format: \"", input, "\"")
             }
-            merman_core::theme_color::ColorError::MixedColorSpaces => {
+            merman_markup::theme_color::ColorError::MixedColorSpaces => {
                 "Cannot change both RGB and HSL channels at the same time".to_string()
             }
         },
@@ -219,7 +219,7 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
                         && !family.has_render_parser
                 })
                 .and_then(|family| {
-                    merman_core::diagram_family_selectors()
+                    merman_model::family::diagram_family_selectors()
                         .iter()
                         .find(|selector| {
                             selector.logical_family_kind == family.logical_family_kind
@@ -338,12 +338,12 @@ fn runtime_policy_details() -> TerminalDiagnosticDetails {
     }
 }
 
-fn safe_runtime_policy_error(error: &merman_core::runtime::RuntimePolicyError) -> String {
+fn safe_runtime_policy_error(error: &merman_model::runtime::RuntimePolicyError) -> String {
     match error {
-        merman_core::runtime::RuntimePolicyError::SystemTimeZone(message) => {
+        merman_model::runtime::RuntimePolicyError::SystemTimeZone(message) => {
             bounded_message("system time-zone adapter failed: ", message, "")
         }
-        merman_core::runtime::RuntimePolicyError::SystemRandom(message) => {
+        merman_model::runtime::RuntimePolicyError::SystemRandom(message) => {
             bounded_message("system random adapter failed: ", message, "")
         }
         _ => normalize_terminal_diagnostic(&error.to_string()),
@@ -369,7 +369,7 @@ mod tests {
     fn parser_projection_is_safe_and_preserves_structured_context() {
         const MAX_INPUT_BYTES: usize = 16 * 1024;
         const MAX_OUTPUT_BYTES: usize = 4 * 1024;
-        let span = merman_core::SourceSpan::new(4, 9);
+        let span = merman_model::SourceSpan::new(4, 9);
         let diagnostic = merman_core::ParseDiagnostic::new(format!(
             "bad\u{7}{}",
             "\u{301}".repeat(MAX_INPUT_BYTES)
@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn unsupported_builtin_hint_follows_compiled_parser_availability() {
         for family in merman_core::diagram_family_capabilities() {
-            let Some(selector) = merman_core::diagram_family_selectors()
+            let Some(selector) = merman_model::family::diagram_family_selectors()
                 .iter()
                 .find(|selector| selector.logical_family_kind == family.logical_family_kind)
             else {
@@ -462,7 +462,7 @@ mod tests {
     #[test]
     fn runtime_policy_projection_is_safe_and_preserves_capability_classification() {
         let diagnostic = TerminalRuntimePolicyError::from(
-            merman_core::runtime::RuntimePolicyError::SystemTimeZone(
+            merman_model::runtime::RuntimePolicyError::SystemTimeZone(
                 "adapter\u{1b}\u{7}".to_string(),
             ),
         );
@@ -476,7 +476,7 @@ mod tests {
         assert_eq!(diagnostic.missing_capability(), None);
 
         let render_error =
-            crate::RenderError::from(merman_core::runtime::RuntimePolicyError::SystemRandom(
+            crate::RenderError::from(merman_model::runtime::RuntimePolicyError::SystemRandom(
                 "adapter\u{1b}\u{7}".to_string(),
             ));
         assert!(!render_error.to_string().contains('\u{1b}'));
@@ -484,19 +484,19 @@ mod tests {
         assert!(!format!("{render_error:?}").contains('\u{1b}'));
 
         let missing = TerminalRuntimePolicyError::from(
-            merman_core::runtime::RuntimePolicyError::MissingCapability(
-                merman_core::runtime::RuntimeCapability::SystemRandom,
+            merman_model::runtime::RuntimePolicyError::MissingCapability(
+                merman_model::runtime::RuntimeCapability::SystemRandom,
             ),
         );
         assert_eq!(
             missing.missing_capability(),
-            Some(merman_core::runtime::RuntimeCapability::SystemRandom)
+            Some(merman_model::runtime::RuntimeCapability::SystemRandom)
         );
         assert!(std::error::Error::source(&missing).is_none());
 
         let nested = crate::RenderError::from(merman_core::Error::RuntimePolicy(
-            merman_core::runtime::RuntimePolicyError::MissingCapability(
-                merman_core::runtime::RuntimeCapability::SystemRandom,
+            merman_model::runtime::RuntimePolicyError::MissingCapability(
+                merman_model::runtime::RuntimeCapability::SystemRandom,
             ),
         ));
         let crate::RenderError::RuntimePolicy(nested) = nested else {
@@ -504,7 +504,7 @@ mod tests {
         };
         assert_eq!(
             nested.missing_capability(),
-            Some(merman_core::runtime::RuntimeCapability::SystemRandom)
+            Some(merman_model::runtime::RuntimeCapability::SystemRandom)
         );
     }
 

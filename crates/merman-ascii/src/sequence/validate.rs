@@ -1,8 +1,8 @@
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
-use merman_core::OperationPhase;
-use merman_core::diagrams::sequence::{
+use merman_model::OperationPhase;
+use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceDiagramModel, SequenceMessage, SequenceMessageKind,
     SequenceMessagePayload, SequenceNote,
 };

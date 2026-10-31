@@ -280,7 +280,7 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 - License expression: `(Apache-2.0 OR MPL-2.0)`
 - Selected license path: `Apache-2.0`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src/generated/dompurify_defaults.rs`
+- Local evidence: `crates/merman-markup/src/generated/dompurify_defaults.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/dompurify/LICENSE`](THIRD_PARTY_LICENSES/dompurify/LICENSE) (license, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)
 
@@ -409,7 +409,7 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `ascii-render`, `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
+- Local evidence: `crates/merman-core/src`, `crates/merman-markup/src`, `crates/merman-model/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
 
@@ -572,7 +572,7 @@ Merman's URL sanitization behavior is a source-backed Rust translation of saniti
 - Relationship: `modified`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src/utils.rs`
+- Local evidence: `crates/merman-markup/src/url.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/sanitize-url/LICENSE`](THIRD_PARTY_LICENSES/sanitize-url/LICENSE) (license, SHA-256 `0984740e0c3d725c8044dec7edcefe1dbce180ef5a7bc710c251e19607000158`)
 

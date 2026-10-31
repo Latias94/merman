@@ -16,204 +16,29 @@ use crate::{
     Error, OperationControl, OperationControlResult, SourceSpan, family::CombinedSemanticFailure,
 };
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+pub(crate) use merman_model::families::wardley::{
+    WardleyAccelerator, WardleyAnnotation, WardleyAxes, WardleyDeaccelerator, WardleyDiagramModel,
+    WardleyFlowDirection, WardleyLink, WardleyNode, WardleyNote, WardleyPipeline, WardleyPoint,
+    WardleySize, WardleySourceStrategy, WardleyTrend,
+};
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 
 const HEADER: &str = "wardley-beta";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WardleySourceStrategy {
-    Build,
-    Buy,
-    Outsource,
-    Market,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WardleyFlowDirection {
-    Forward,
-    Backward,
-    Bidirectional,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct WardleyPoint {
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WardleyNode {
-    pub id: String,
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    #[serde(default, rename = "className", skip_serializing_if = "Option::is_none")]
-    pub class_name: Option<String>,
-    #[serde(
-        default,
-        rename = "labelOffsetX",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub label_offset_x: Option<i64>,
-    #[serde(
-        default,
-        rename = "labelOffsetY",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub label_offset_y: Option<i64>,
-    #[serde(default, rename = "inPipeline", skip_serializing_if = "is_false")]
-    pub in_pipeline: bool,
-    #[serde(default, rename = "isPipelineParent", skip_serializing_if = "is_false")]
-    pub is_pipeline_parent: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub inertia: Option<bool>,
-    #[serde(
-        default,
-        rename = "sourceStrategy",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub source_strategy: Option<WardleySourceStrategy>,
-}
-
-fn is_false(value: &bool) -> bool {
-    !*value
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WardleyLink {
-    pub source: String,
-    pub target: String,
-    #[serde(default)]
-    pub dashed: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub flow: Option<WardleyFlowDirection>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WardleyTrend {
-    #[serde(rename = "nodeId")]
-    pub node_id: String,
-    #[serde(rename = "targetX")]
-    pub target_x: f64,
-    #[serde(rename = "targetY")]
-    pub target_y: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WardleyPipeline {
-    #[serde(rename = "nodeId")]
-    pub node_id: String,
-    #[serde(default, rename = "componentIds")]
-    pub component_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WardleyAnnotation {
-    pub number: u64,
-    #[serde(default)]
-    pub coordinates: Vec<WardleyPoint>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WardleyNote {
-    pub text: String,
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WardleyAccelerator {
-    pub name: String,
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WardleyDeaccelerator {
-    pub name: String,
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct WardleyAxes {
-    #[serde(default, rename = "xLabel", skip_serializing_if = "Option::is_none")]
-    pub x_label: Option<String>,
-    #[serde(default, rename = "yLabel", skip_serializing_if = "Option::is_none")]
-    pub y_label: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub stages: Vec<String>,
-    #[serde(
-        default,
-        rename = "stageBoundaries",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub stage_boundaries: Vec<f64>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct WardleySize {
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-/// Authored map meaning; node and annotation positions retain visibility/evolution percentages.
-pub struct WardleyDiagramModel {
-    #[serde(default, rename = "accTitle", skip_serializing_if = "Option::is_none")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr", skip_serializing_if = "Option::is_none")]
-    pub acc_descr: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub nodes: Vec<WardleyNode>,
-    #[serde(default)]
-    pub links: Vec<WardleyLink>,
-    #[serde(default)]
-    pub trends: Vec<WardleyTrend>,
-    #[serde(default)]
-    pub pipelines: Vec<WardleyPipeline>,
-    #[serde(default)]
-    pub annotations: Vec<WardleyAnnotation>,
-    #[serde(default)]
-    pub notes: Vec<WardleyNote>,
-    #[serde(default)]
-    pub accelerators: Vec<WardleyAccelerator>,
-    #[serde(default)]
-    pub deaccelerators: Vec<WardleyDeaccelerator>,
-    #[serde(
-        default,
-        rename = "annotationsBox",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub annotations_box: Option<WardleyPoint>,
-    #[serde(default)]
-    pub axes: WardleyAxes,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub size: Option<WardleySize>,
-}
-
-impl WardleyDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut WardleyDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_wardley(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_wardley(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     construct_wardley_semantic_source(code, meta)
         .map_err(CombinedSemanticFailure::into_error)?
         .into_compat_json(meta)
@@ -223,7 +48,7 @@ pub(crate) fn parse_wardley(code: &str, meta: &PresentationMetadata) -> Result<V
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_wardley_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -248,7 +73,7 @@ pub(crate) fn parse_wardley_json_and_editor_facts(
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_wardley_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<WardleyDiagramModel> {
     Ok(construct_wardley_semantic_source(code, meta)
         .map_err(CombinedSemanticFailure::into_error)?
@@ -258,7 +83,7 @@ pub(crate) fn parse_wardley_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_wardley_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<WardleyDiagramModel>> {
     let construction = construct_wardley_semantic_source_controlled(
@@ -276,120 +101,17 @@ pub(crate) fn parse_wardley_model_for_render_controlled(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn render_model_to_compat_json(
-    model: &WardleyDiagramModel,
-    meta: &PresentationMetadata,
-) -> Result<Value> {
-    let control = OperationControl::new();
-    render_model_to_compat_json_controlled(model, meta, &control)
-        .expect("a private parse control cannot be cancelled")
-}
-
-#[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &WardleyDiagramModel,
-    meta: &PresentationMetadata,
-    control: &OperationControl,
-) -> OperationControlResult<Result<Value>> {
-    control.checkpoint()?;
-    let nodes = serialize_wardley_items_controlled(&model.nodes, control)?;
-    let links = serialize_wardley_items_controlled(&model.links, control)?;
-    let trends = serialize_wardley_items_controlled(&model.trends, control)?;
-    let annotations = serialize_wardley_items_controlled(&model.annotations, control)?;
-    let notes = serialize_wardley_items_controlled(&model.notes, control)?;
-    let accelerators = serialize_wardley_items_controlled(&model.accelerators, control)?;
-    let deaccelerators = serialize_wardley_items_controlled(&model.deaccelerators, control)?;
-
-    let mut pipelines = Vec::with_capacity(model.pipelines.len());
-    for (pipeline_index, pipeline) in model.pipelines.iter().enumerate() {
-        if pipeline_index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let mut component_ids = Vec::with_capacity(pipeline.component_ids.len());
-        for (component_index, component_id) in pipeline.component_ids.iter().enumerate() {
-            if component_index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            component_ids.push(Value::String(component_id.clone()));
-        }
-        pipelines.push(json!({
-            "nodeId": pipeline.node_id,
-            "componentIds": component_ids,
-        }));
-    }
-
-    let mut axes = Map::new();
-    if let Some(x_label) = &model.axes.x_label {
-        axes.insert("xLabel".to_string(), Value::String(x_label.clone()));
-    }
-    if let Some(y_label) = &model.axes.y_label {
-        axes.insert("yLabel".to_string(), Value::String(y_label.clone()));
-    }
-    if !model.axes.stages.is_empty() {
-        axes.insert(
-            "stages".to_string(),
-            Value::Array(strings_to_json_controlled(&model.axes.stages, control)?),
-        );
-    }
-    if !model.axes.stage_boundaries.is_empty() {
-        let mut boundaries = Vec::with_capacity(model.axes.stage_boundaries.len());
-        for (index, boundary) in model.axes.stage_boundaries.iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            boundaries.push(json!(boundary));
-        }
-        axes.insert("stageBoundaries".to_string(), Value::Array(boundaries));
-    }
-
-    let mut out = Map::with_capacity(14);
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("title".to_string(), json!(&model.title));
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("nodes".to_string(), Value::Array(nodes));
-    out.insert("links".to_string(), Value::Array(links));
-    out.insert("trends".to_string(), Value::Array(trends));
-    out.insert("pipelines".to_string(), Value::Array(pipelines));
-    out.insert("annotations".to_string(), Value::Array(annotations));
-    out.insert("notes".to_string(), Value::Array(notes));
-    out.insert("accelerators".to_string(), Value::Array(accelerators));
-    out.insert("deaccelerators".to_string(), Value::Array(deaccelerators));
-    out.insert("annotationsBox".to_string(), json!(&model.annotations_box));
-    out.insert("axes".to_string(), Value::Object(axes));
-    out.insert("size".to_string(), json!(&model.size));
-    control.checkpoint()?;
-    Ok(Ok(Value::Object(out)))
-}
-
-#[cfg(feature = "compat-json")]
-fn serialize_wardley_items_controlled<T: Serialize>(
-    items: &[T],
-    control: &OperationControl,
-) -> OperationControlResult<Vec<Value>> {
-    let mut values = Vec::with_capacity(items.len());
-    for (index, item) in items.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        values.push(json!(item));
-    }
-    Ok(values)
-}
-
-#[cfg(feature = "compat-json")]
-fn strings_to_json_controlled(
-    strings: &[String],
-    control: &OperationControl,
-) -> OperationControlResult<Vec<Value>> {
-    let mut values = Vec::with_capacity(strings.len());
-    for (index, value) in strings.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        values.push(Value::String(value.clone()));
-    }
-    Ok(values)
+    meta: &SourcePresentationMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value>> {
+    Ok(merman_model::families::wardley::compat::project_controlled(
+        model,
+        &meta.compat_json_metadata(),
+        control,
+    )?
+    .map_err(Into::into))
 }
 
 pub(crate) fn parse_wardley_semantic_model_controlled(
@@ -456,9 +178,8 @@ struct WardleySemanticSource {
 
 impl WardleySemanticSource {
     #[cfg(all(test, feature = "presentation"))]
-    fn into_render_model(mut self, meta: &PresentationMetadata) -> WardleyDiagramModel {
-        self.model
-            .sanitize_common_db_fields(meta.effective_config.as_config());
+    fn into_render_model(mut self, meta: &SourcePresentationMetadata) -> WardleyDiagramModel {
+        sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
         self.model
     }
 
@@ -468,7 +189,7 @@ impl WardleySemanticSource {
         control: &OperationControl,
     ) -> OperationControlResult<WardleyDiagramModel> {
         control.checkpoint()?;
-        self.model.sanitize_common_db_fields(config);
+        sanitize_common_db_fields(&mut self.model, config);
         control.checkpoint()?;
         Ok(self.model)
     }
@@ -476,14 +197,14 @@ impl WardleySemanticSource {
     #[cfg(feature = "presentation")]
     fn into_render_model_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<WardleyDiagramModel> {
         self.into_model_controlled(meta.effective_config.as_config(), control)
     }
 
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(self, meta: &PresentationMetadata) -> Result<Value> {
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
         let control = OperationControl::new();
         self.into_compat_json_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
@@ -492,7 +213,7 @@ impl WardleySemanticSource {
     #[cfg(feature = "compat-json")]
     fn into_compat_json_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Value>> {
         let model = self.into_render_model_controlled(meta, control)?;
@@ -503,7 +224,7 @@ impl WardleySemanticSource {
     #[cfg(feature = "editor-facts")]
     fn into_combined_parts_controlled(
         self,
-        meta: &PresentationMetadata,
+        meta: &SourcePresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self {
@@ -511,7 +232,7 @@ impl WardleySemanticSource {
             editor_facts,
         } = self;
         control.checkpoint()?;
-        model.sanitize_common_db_fields(meta.effective_config.as_config());
+        sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
         let json = render_model_to_compat_json_controlled(&model, meta, control)?;
         control.checkpoint()?;
         Ok((json, editor_facts))
@@ -828,7 +549,7 @@ impl WardleyParseProblem {
 #[cfg(any(feature = "compat-json", all(test, feature = "presentation")))]
 fn construct_wardley_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> std::result::Result<WardleySemanticSource, CombinedSemanticFailure> {
     construct_wardley_semantic_source_controlled(
         code,
@@ -2997,11 +2718,11 @@ mod tests {
     use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind};
     use crate::{MermaidConfig, MermaidEngine, ParseOptions, RenderSemanticModel};
 
-    fn meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "wardley".to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -3458,7 +3179,8 @@ pipeline Platform {
         assert_eq!(model.nodes.len(), 2);
         #[cfg(feature = "editor-facts")]
         assert_eq!(
-            &render_model_to_compat_json(model, typed.metadata()).unwrap(),
+            &merman_model::families::wardley::compat::project(model, &typed.metadata().into(),)
+                .unwrap(),
             combined
                 .outcome()
                 .parsed_model()
@@ -3630,10 +3352,10 @@ mod semantic_tests {
         assert_eq!(crate::editor::test_work::read(), Default::default());
         #[cfg(feature = "presentation")]
         {
-            let full_metadata = crate::PresentationMetadata {
+            let full_metadata = crate::SourcePresentationMetadata {
                 diagram_type: metadata.diagram_type.clone(),
                 config: metadata.config.clone(),
-                effective_config: crate::presentation::PresentationConfig::from_config(
+                effective_config: crate::presentation::SourcePresentationConfig::from_config(
                     metadata.semantic_config.clone(),
                 ),
                 title: metadata.title.clone(),

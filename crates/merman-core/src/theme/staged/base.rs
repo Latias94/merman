@@ -461,12 +461,12 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::presentation::PresentationConfig;
+    use crate::presentation::SourcePresentationConfig;
     use crate::theme::{apply_theme_defaults, theme_variables_map};
     use serde_json::json;
 
     fn resolve(overrides: Value) -> Map<String, Value> {
-        let mut config = PresentationConfig::from_value(json!({
+        let mut config = SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": overrides
         }));
@@ -616,7 +616,7 @@ mod tests {
             "git7",
             "cScale11",
         ] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": "base", "themeVariables": { (key): "not-a-color" }
             }));
             assert!(apply_theme_defaults(&mut config).is_err(), "{key}");
@@ -625,7 +625,7 @@ mod tests {
 
     #[test]
     fn base_falsy_intermediates_do_not_claim_default_dependents_after_replay() {
-        let mut config = PresentationConfig::from_value(json!({"theme": "base"}));
+        let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
         config.deep_merge_explicit(&json!({"themeVariables": {"actorBkg": "", "stateBkg": false}}));
         apply_theme_defaults(&mut config).unwrap();
         assert_eq!(config.get_str("themeVariables.actorBkg"), Some(""));
@@ -651,7 +651,7 @@ mod tests {
 
     #[test]
     fn base_owned_fallbacks_and_nested_fields_keep_their_actual_source() {
-        let mut config = PresentationConfig::from_value(json!({"theme": "base"}));
+        let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
         config.deep_merge_explicit(&json!({"themeVariables": {
             "primaryColor": "#181818", "actorBkg": "", "stateBkg": false,
             "lineColor": "#a0a0a0", "background": "#112233"
@@ -693,7 +693,7 @@ mod tests {
 
     #[test]
     fn base_color_limit_failure_keeps_config_transactional() {
-        let mut config = PresentationConfig::from_value(json!({"theme": "base"}));
+        let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
         config.deep_merge_explicit(&json!({"themeVariables": {"THEME_COLOR_LIMIT": 65}}));
         let before = config.as_value().clone();
         assert!(matches!(

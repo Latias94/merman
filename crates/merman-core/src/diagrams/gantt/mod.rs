@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::{
     Error, Result,
     time::{CivilDate, CivilDateTime, OffsetDateTime, UtcOffset},
@@ -13,22 +13,20 @@ mod date;
 mod datetime;
 mod model;
 mod parse;
-mod terminal;
-
-pub use terminal::{
-    GanttTerminalMetadata, GanttTerminalTaskIter, GanttTerminalTaskView, GanttTerminalView,
-};
 
 use date::*;
 use datetime::*;
+pub(crate) use model::sanitize_common_db_fields;
 use model::*;
 
-pub use model::{
+pub(crate) use merman_model::families::gantt::{
     GanttClickEvent, GanttDiagramModel, GanttTask, GanttTaskEnd, GanttTaskEndConstraint,
     GanttTaskRaw, GanttTaskStart, GanttTaskStartConstraint,
 };
 #[cfg(feature = "presentation")]
-pub use model::{GanttDiagramRenderModel, GanttRenderTask};
+pub(crate) use merman_model::families::gantt::{
+    GanttDiagramRenderModel, GanttOutputData, GanttRenderTask,
+};
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use parse::parse_gantt_model_for_render;
 #[cfg(feature = "presentation")]
@@ -37,9 +35,7 @@ pub(crate) use parse::parse_gantt_semantic_model_controlled;
 #[cfg(test)]
 pub(crate) use parse::{gantt_syntax_construction_count, reset_gantt_syntax_construction_count};
 #[cfg(feature = "compat-json")]
-pub(crate) use parse::{
-    parse_gantt, render_model_to_compat_json, render_model_to_compat_json_controlled,
-};
+pub(crate) use parse::{parse_gantt, render_model_to_compat_json};
 
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) use parse::parse_gantt_json_and_editor_facts;
@@ -233,7 +229,7 @@ mod semantic_tests {
 
     #[test]
     fn gantt_canonical_dates_use_runtime_authority_without_editor_work() {
-        let context = crate::runtime::RuntimePolicy::deterministic()
+        let context = merman_model::runtime::RuntimePolicy::deterministic()
             .with_fixed_today(Some(CivilDate::new(2026, 2, 15).unwrap()))
             .with_local_time_zone(crate::time::LocalTimeZone::utc())
             .begin_operation()
@@ -271,7 +267,7 @@ mod semantic_tests {
 
     #[test]
     fn gantt_canonical_tasks_retain_excludes_visible_end_in_same_construction() {
-        let context = crate::runtime::RuntimePolicy::deterministic()
+        let context = merman_model::runtime::RuntimePolicy::deterministic()
             .with_local_time_zone(crate::time::LocalTimeZone::utc())
             .begin_operation()
             .unwrap();
@@ -383,12 +379,36 @@ mod semantic_tests {
 
     #[cfg(feature = "presentation")]
     #[test]
-    fn gantt_typed_projection_builds_visual_sidecar_without_editor_work() {
-        let source = "gantt\ndateFormat YYYY-MM-DD\nexcludes weekends\nTask: task,2019-02-01,1d\n";
-        let metadata = PresentationMetadata {
+    fn gantt_full_producer_retains_output_data_independently_of_json_projection() {
+        let metadata = SourcePresentationMetadata {
             diagram_type: "gantt".to_string(),
             config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::from_value(
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
+            title: None,
+        };
+        for (source, expected) in [
+            ("", GanttOutputData::Empty),
+            ("gantt", GanttOutputData::Model),
+        ] {
+            let model = parse_gantt_model_for_render_controlled(
+                source,
+                &metadata,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(model.output_data(), expected);
+        }
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn gantt_typed_projection_builds_visual_sidecar_without_editor_work() {
+        let source = "gantt\ndateFormat YYYY-MM-DD\nexcludes weekends\nTask: task,2019-02-01,1d\n";
+        let metadata = SourcePresentationMetadata {
+            diagram_type: "gantt".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::from_value(
                 serde_json::json!({"gantt": {"displayMode": "compact"}}),
             ),
             title: None,

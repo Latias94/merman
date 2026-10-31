@@ -24,7 +24,7 @@ use crate::safe_text::{
     LabelBreakPolicy, NormalizedLabelPlan, charge_text_layout,
     try_plan_normalized_label_lines_with_policy_and_checkpoint,
 };
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 pub(crate) use model::from_sequence_model;
 pub(crate) use render::render_sequence_diagram_with_resolved_policy;
@@ -184,7 +184,7 @@ mod tests {
     use super::*;
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::{CancelReason, OperationControl};
+    use merman_model::{CancelReason, OperationControl};
 
     #[test]
     fn projection_text_cancellation_precedes_an_inner_resource_ceiling() {

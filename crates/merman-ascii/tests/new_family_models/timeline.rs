@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn timeline_render_model_renders_sections_tasks_and_events() {
-    let mut model = TimelineDiagramRenderModel::default();
+    let mut model = TimelineDiagramModel::default();
     model.title = Some("Timeline".to_string());
     model.acc_title = Some("Timeline title".to_string());
     model.acc_descr = Some("Timeline description".to_string());
@@ -49,7 +49,7 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
 }
 #[test]
 fn timeline_render_model_wraps_long_task_and_event_text() {
-    let mut model = TimelineDiagramRenderModel::default();
+    let mut model = TimelineDiagramModel::default();
     model.sections = vec!["Planning".to_string()];
     model.tasks = vec![TimelineTask {
             id: 0,
@@ -80,7 +80,7 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
 
 #[test]
 fn timeline_structured_text_framing_distinguishes_task_text_from_events() {
-    let mut embedded_event = TimelineDiagramRenderModel::default();
+    let mut embedded_event = TimelineDiagramModel::default();
     embedded_event.tasks = vec![TimelineTask {
         id: 1,
         section: String::new(),

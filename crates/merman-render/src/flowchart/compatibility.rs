@@ -212,7 +212,7 @@ impl FlowchartEffectEligibility {
 impl FlowchartPreparedTheme {
     pub(crate) fn resolve(
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         node_owned: bool,
         work: &crate::resources::OperationWorkMeter,
     ) -> Result<Self, crate::resources::OperationWorkError> {

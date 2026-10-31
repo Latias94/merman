@@ -34,7 +34,7 @@ fn prepared_gantt_binding_resolves_gantt_roles() {
     );
     let task_theme = crate::gantt::GanttTaskTheme::resolve(
         None,
-        &merman_core::presentation::PresentationConfig::from_value(cfg),
+        &crate::test_support::presentation_config(cfg),
         &[],
         &meter,
     )
@@ -84,7 +84,7 @@ fn prepared_gantt_binding_uses_text_color_for_empty_title_color() {
     );
     let task_theme = crate::gantt::GanttTaskTheme::resolve(
         None,
-        &merman_core::presentation::PresentationConfig::from_value(cfg),
+        &crate::test_support::presentation_config(cfg),
         &[],
         &meter,
     )
@@ -225,7 +225,7 @@ fn radar_binding_resolves_style_roles() {
     assert_eq!(radar.curve_stroke_width, 6.0);
     let series = crate::radar::RadarSeriesPaintPlan::baseline(
         &cfg,
-        &merman_core::diagrams::radar::RadarDiagramRenderModel::default(),
+        &merman_model::families::radar::RadarDiagramModel::default(),
     );
     let series_colors = series.colors();
     assert_eq!(series_colors[0], "#303030");
@@ -254,7 +254,7 @@ fn radar_binding_uses_default_style_roles() {
     assert_eq!(radar.curve_stroke_width, 2.0);
     let series = crate::radar::RadarSeriesPaintPlan::baseline(
         &cfg,
-        &merman_core::diagrams::radar::RadarDiagramRenderModel::default(),
+        &merman_model::families::radar::RadarDiagramModel::default(),
     );
     let series_colors = series.colors();
     assert_eq!(series_colors[0], "hsl(240, 100%, 76.2745098039%)");

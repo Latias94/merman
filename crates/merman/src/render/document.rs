@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use merman_core::OperationControl;
+use merman_model::OperationControl;
 
 use super::RenderError;
 use super::evidence::RenderEvidence;
@@ -319,7 +319,7 @@ impl RenderedDocument {
         painting: Option<&merman_export::NativeFontContext>,
         control: &OperationControl,
     ) -> Result<Option<merman_export::NativeFontContext>, RenderError> {
-        crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Export)?;
+        crate::operation_runner::checkpoint(control, merman_model::OperationPhase::Export)?;
         if let (Some(selected), Some(painting)) = (&self.selected_native_fonts, painting)
             && selected != painting
         {
@@ -514,13 +514,13 @@ pub(super) fn finish_standalone_svg_target(
     svg: merman_render::svg::StandaloneSvgArtifact,
     family: merman_render::family::FamilyRenderReport,
     required_capabilities: Vec<merman_render::RenderCapability>,
-    control: &merman_core::OperationControl,
+    control: &merman_model::OperationControl,
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
 ) -> Result<SvgOutput, RenderError> {
-    crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
+    crate::operation_runner::checkpoint(control, merman_model::OperationPhase::Postprocess)?;
     let evidence = RenderEvidence::from_family(family, required_capabilities);
     let admission = standalone_svg_admission(&svg, &evidence);
-    crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
+    crate::operation_runner::checkpoint(control, merman_model::OperationPhase::Postprocess)?;
     enforce_portability_requirement(&evidence, &admission)?;
     Ok(SvgOutput {
         layout_adaptation,

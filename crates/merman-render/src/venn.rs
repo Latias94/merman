@@ -15,7 +15,7 @@ use crate::resources::OperationWorkMeter;
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 use crate::{Error, Result};
 use indexmap::IndexMap;
-use merman_core::diagrams::venn::VennDiagramModel;
+use merman_model::families::venn::VennDiagramModel;
 use ryu_js::Buffer;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::{PI, TAU};
@@ -165,7 +165,7 @@ fn layout_text_nodes(
     scale: f64,
     use_debug_layout: bool,
 ) -> (Vec<VennTextAreaLayout>, Vec<VennTextNodeLayout>) {
-    let mut nodes_by_area: IndexMap<String, Vec<&merman_core::diagrams::venn::VennTextNodeModel>> =
+    let mut nodes_by_area: IndexMap<String, Vec<&merman_model::families::venn::VennTextNodeModel>> =
         IndexMap::new();
     for node in &model.text_nodes {
         nodes_by_area
@@ -2167,7 +2167,7 @@ fn weighted_sum(ret: &mut [f64], w1: f64, v1: &[f64], w2: f64, v2: &[f64]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::venn::{VennDiagramModel, VennSubsetModel};
+    use merman_model::families::venn::{VennDiagramModel, VennSubsetModel};
 
     fn c(set: &str, x: f64, y: f64, radius: f64) -> VennCircle {
         VennCircle {

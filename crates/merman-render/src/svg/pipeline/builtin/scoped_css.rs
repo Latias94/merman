@@ -282,7 +282,7 @@ mod tests {
     use crate::environment::RenderEnvironment;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase};
     use crate::svg::pipeline::{SvgPipeline, SvgPipelinePreset, SvgPostprocessMetadata};
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn render_session() -> crate::environment::RenderSession {
         crate::environment::RenderEnvironment::deterministic()

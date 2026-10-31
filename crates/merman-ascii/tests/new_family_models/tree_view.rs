@@ -218,7 +218,7 @@ fn tree_view_recursive_emit_observes_operation_cancellation() {
         matches!(
             error,
             AsciiError::Cancelled(cancelled)
-                if cancelled.phase == merman_core::OperationPhase::Emit
+                if cancelled.phase == merman_model::OperationPhase::Emit
         ),
         "expected Emit cancellation, got {error:?}"
     );

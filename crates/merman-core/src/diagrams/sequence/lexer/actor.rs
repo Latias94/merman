@@ -1,3 +1,5 @@
+pub(super) use merman_model::text::is_ecmascript_whitespace;
+
 use super::super::{
     LINETYPE_BIDIRECTIONAL_DOTTED, LINETYPE_BIDIRECTIONAL_SOLID, LINETYPE_DOTTED,
     LINETYPE_DOTTED_CROSS, LINETYPE_DOTTED_OPEN, LINETYPE_DOTTED_POINT, LINETYPE_SOLID,
@@ -167,28 +169,6 @@ pub(super) fn config_followed_by_alias(input: &str, position: usize) -> bool {
     saw_whitespace
         && starts_with_ci_at(input, alias_start, "as")
         && char_at_is_ecmascript_whitespace(input, alias_start + "as".len())
-}
-
-pub(super) fn is_ecmascript_whitespace(ch: char) -> bool {
-    matches!(
-        ch,
-        '\u{0009}'
-            | '\u{000A}'
-            | '\u{000B}'
-            | '\u{000C}'
-            | '\u{000D}'
-            | '\u{0020}'
-            | '\u{00A0}'
-            | '\u{1680}'
-            | '\u{2000}'
-            ..='\u{200A}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202F}'
-                | '\u{205F}'
-                | '\u{3000}'
-                | '\u{FEFF}'
-    )
 }
 
 pub(super) fn trim_start_ecmascript(value: &str) -> &str {

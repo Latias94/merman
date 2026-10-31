@@ -33,15 +33,16 @@ import (
 type object = map[string]any
 
 type protocol struct {
-	MemoryLimit       uint32            `json:"memory_limit_bytes"`
-	Timeout           int               `json:"timeout_seconds"`
-	ImportModule      string            `json:"import_module"`
-	Imports           []string          `json:"allowed_imports"`
-	Exports           map[string]int    `json:"function_exports"`
-	DependencyExports map[string][2]int `json:"optional_dependency_exports"`
-	Capabilities      []string          `json:"required_capabilities"`
-	Operations        []string          `json:"required_operations"`
-	Checks            []string          `json:"checks"`
+	MemoryLimit             uint32            `json:"memory_limit_bytes"`
+	Timeout                 int               `json:"timeout_seconds"`
+	ImportModule            string            `json:"import_module"`
+	Imports                 []string          `json:"allowed_imports"`
+	DeniedDependencyImports map[string][2]int `json:"denied_dependency_imports"`
+	Exports                 map[string]int    `json:"function_exports"`
+	DependencyExports       map[string][2]int `json:"optional_dependency_exports"`
+	Capabilities            []string          `json:"required_capabilities"`
+	Operations              []string          `json:"required_operations"`
+	Checks                  []string          `json:"checks"`
 }
 
 type fixtures struct {
@@ -125,19 +126,37 @@ func descriptor(data []byte) [10]uint32 {
 }
 
 type host struct {
-	ctx     context.Context
-	runtime wazero.Runtime
-	module  api.Module
-	audit   object
-	shims   map[string]int
+	ctx                   context.Context
+	runtime               wazero.Runtime
+	module                api.Module
+	audit                 object
+	shims                 map[string]int
+	deniedDependencyCalls map[string]int
 }
 
-func auditModule(compiled wazero.CompiledModule, policy protocol) object {
+// WASI snapshot preview1 errno; the pinned runtime also names entry 76 ENOTCAPABLE.
+const wasiErrnoNotcapable uint32 = 76
+
+func auditModule(compiled wazero.CompiledModule, policy protocol, flavor string) object {
 	imports, exports := []string{}, []string{}
+	deniedImports := []string{}
 	require(len(compiled.ImportedMemories()) == 0, "imported memory is forbidden")
 	for _, fn := range compiled.ImportedFunctions() {
 		module, name, _ := fn.Import()
-		require(module == policy.ImportModule && contains(policy.Imports, name), "forbidden actual import: %s.%s", module, name)
+		require(module == policy.ImportModule, "forbidden actual import: %s.%s", module, name)
+		if shape, denied := policy.DeniedDependencyImports[name]; denied {
+			require(flavor == "math" || flavor == "full", "dependency import forbidden for flavor %s: %s", flavor, name)
+			require(len(fn.ParamTypes()) == shape[0] && len(fn.ResultTypes()) == shape[1], "wrong denied dependency import signature: %s", name)
+			for _, kind := range fn.ParamTypes() {
+				require(kind == api.ValueTypeI32, "wrong denied dependency import signature: %s", name)
+			}
+			for _, kind := range fn.ResultTypes() {
+				require(kind == api.ValueTypeI32, "wrong denied dependency import signature: %s", name)
+			}
+			deniedImports = append(deniedImports, module+"."+name)
+		} else {
+			require(contains(policy.Imports, name), "forbidden actual import: %s.%s", module, name)
+		}
 		imports = append(imports, module+"."+name)
 	}
 	functions := compiled.ExportedFunctions()
@@ -177,15 +196,18 @@ func auditModule(compiled wazero.CompiledModule, policy protocol) object {
 	sort.Strings(exports)
 	sort.Strings(imports)
 	sort.Strings(dependencyExports)
+	sort.Strings(deniedImports)
 	return object{"imports": imports, "exports": exports, "preopened_directories": []string{},
-		"dependency_exports": dependencyExports,
-		"memory_limit_bytes": policy.MemoryLimit, "timeout_seconds": policy.Timeout}
+		"denied_dependency_imports": deniedImports,
+		"dependency_exports":        dependencyExports,
+		"memory_limit_bytes":        policy.MemoryLimit, "timeout_seconds": policy.Timeout}
 }
 
-func newHost(ctx context.Context, data []byte, policy protocol) *host {
+func newHost(ctx context.Context, data []byte, policy protocol, flavor string) *host {
 	r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().
 		WithMemoryLimitPages(policy.MemoryLimit/65536).WithCloseOnContextDone(true))
 	h := &host{ctx: ctx, runtime: r, shims: map[string]int{"random_get": 0, "clock_time_get": 0, "sched_yield": 0}}
+	h.deniedDependencyCalls = map[string]int{"path_readlink": 0}
 	ready := false
 	defer func() {
 		if !ready {
@@ -194,7 +216,7 @@ func newHost(ctx context.Context, data []byte, policy protocol) *host {
 	}()
 	compiled, err := r.CompileModule(ctx, data)
 	must(err)
-	h.audit = auditModule(compiled, policy)
+	h.audit = auditModule(compiled, policy, flavor)
 	builder := r.NewHostModuleBuilder(policy.ImportModule)
 	wasi_snapshot_preview1.NewFunctionExporter().ExportFunctions(builder)
 	builder.NewFunctionBuilder().WithFunc(func(_ context.Context, m api.Module, ptr, length uint32) uint32 {
@@ -214,6 +236,8 @@ func newHost(ctx context.Context, data []byte, policy protocol) *host {
 		return 0
 	}).Export("clock_time_get")
 	builder.NewFunctionBuilder().WithFunc(func() uint32 { h.shims["sched_yield"]++; return 0 }).Export("sched_yield")
+	// No context or module is passed: this denial cannot inspect memory or resolve paths.
+	builder.NewFunctionBuilder().WithFunc(h.denyPathReadlink).Export("path_readlink")
 	_, err = builder.Instantiate(ctx)
 	must(err)
 	// No WithFSConfig, WithEnv, WithRandSource, or inherited stdio is installed.
@@ -223,6 +247,11 @@ func newHost(ctx context.Context, data []byte, policy protocol) *host {
 	require(h.call("abi_version") == 1, "ABI version is not 1")
 	ready = true
 	return h
+}
+
+func (h *host) denyPathReadlink(fd, path, pathLen, buf, bufLen, bufused uint32) uint32 {
+	h.deniedDependencyCalls["path_readlink"]++
+	return wasiErrnoNotcapable
 }
 
 func (h *host) call(name string, args ...uint32) uint32 {
@@ -349,7 +378,7 @@ func validateCatalog(catalog object, flavor string, policy protocol) {
 	require(contains(providers, "native-fonts") && !contains(providers, "host-callback"), "unexpected measurement providers")
 }
 
-func validateSVG(data []byte, metadata object, mathematical bool) object {
+func validateSVG(data []byte, metadata object, mathematical, dependencyProbe bool) object {
 	require(metadata["version"] == float64(1) && metadata["operation_id"] == "svg" && metadata["media_type"] == "image/svg+xml" && num(metadata["byte_length"]) == float64(len(data)), "SVG metadata mismatch")
 	require(metadata["runtime_policy"] == "deterministic", "non-deterministic SVG")
 	decoder := xml.NewDecoder(bytes.NewReader(data))
@@ -386,7 +415,7 @@ func validateSVG(data []byte, metadata object, mathematical bool) object {
 	if mathematical {
 		require(bytes.Contains(data, []byte("merman-prepared-math-native")) && bytes.Contains(data, []byte("<path")), "math SVG has no native formula projection")
 		require(!bytes.Contains(data, []byte(`data-merman-math-native="unavailable"`)), "math SVG reports unavailable rendering")
-	} else {
+	} else if !dependencyProbe {
 		require(bytes.Contains(data, []byte("Memory fonts")) && bytes.Contains(data, []byte("Retained bytes")), "missing fixture labels")
 	}
 	return viewport
@@ -416,18 +445,37 @@ func validatePNG(data []byte, metadata, viewport object) object {
 	plan := obj(metadata["output_plan"])
 	require(plan["kind"] == "raster" && plan["limited"] == false && num(plan["requested_scale"]) == 2 && num(plan["effective_scale"]) == 2, "PNG is limited or not 2x")
 	require(num(plan["width_px"]) == float64(width) && num(plan["height_px"]) == float64(height), "PNG dimension metadata mismatch")
-	require(float64(width) == math.Ceil(num(viewport["width"]))*2 && float64(height) == math.Ceil(num(viewport["height"]))*2, "PNG/SVG scale mismatch")
+	if viewport != nil {
+		require(float64(width) == math.Ceil(num(viewport["width"]))*2 && float64(height) == math.Ceil(num(viewport["height"]))*2, "PNG/SVG scale mismatch")
+	}
 	return object{"width": width, "height": height, "rgba8_sha256": digest(pixels), "sha256": digest(data), "byte_length": len(data)}
 }
+func dependencyFontProbe(name string) bool {
+	return name == "math_missing" || name == "math_cjk"
+}
+
 func saveRender(output, name, operation string, value result, viewport object) object {
 	metadata := decode(value.JSON)
 	write(filepath.Join(output, name+"."+operation), value.Data)
 	writeJSON(filepath.Join(output, name+"."+operation+".metadata.json"), metadata)
 	if operation == "svg" {
-		view := validateSVG(value.Data, metadata, name == "math")
-		return object{"sha256": digest(value.Data), "byte_length": len(value.Data), "svg_viewport": view}
+		probe := dependencyFontProbe(name)
+		view := validateSVG(value.Data, metadata, name == "math", probe)
+		evidence := object{"sha256": digest(value.Data), "byte_length": len(value.Data), "svg_viewport": view}
+		if probe {
+			// Markers report the actual output, without claiming missing glyphs were painted.
+			evidence["native_math_marker"] = bytes.Contains(value.Data, []byte("merman-prepared-math-native"))
+			evidence["unavailable_math_marker"] = bytes.Contains(value.Data, []byte(`data-merman-math-native="unavailable"`))
+		}
+		return evidence
 	}
-	return validatePNG(value.Data, metadata, viewport)
+	probe := dependencyFontProbe(name)
+	require(probe || viewport != nil, "PNG requires its SVG viewport")
+	evidence := validatePNG(value.Data, metadata, viewport)
+	if probe {
+		evidence["svg_viewport_checked"] = viewport != nil
+	}
+	return evidence
 }
 
 func run(module, flavor, catalogOut, output, directory string) object {
@@ -448,12 +496,12 @@ func run(module, flavor, catalogOut, output, directory string) object {
 	moduleBytes := read(module)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(policy.Timeout)*time.Second)
 	defer cancel()
-	h := newHost(ctx, moduleBytes, policy)
+	h := newHost(ctx, moduleBytes, policy, flavor)
 	defer h.runtime.Close(context.Background())
-	artifacts, errors := object{}, object{}
+	artifacts, errors, fontProbes := object{}, object{}, object{}
 	report := object{"schema_version": 1, "abi_version": 1, "descriptor_bytes": 40, "ok": true, "runtime": "wazero", "runtime_version": wazeroVersion(), "flavor": flavor,
 		"module_sha256": digest(moduleBytes), "fixtures_sha256": digest(fixtureBytes), "fonts": fontEvidence,
-		"audit": h.audit, "artifacts": artifacts, "errors": errors}
+		"audit": h.audit, "artifacts": artifacts, "errors": errors, "dependency_font_probes": fontProbes}
 	catalogResult := h.result(h.call("runtime_catalog"))
 	success(catalogResult, 0, "application/json")
 	require(catalogResult.Engine == 0 && len(catalogResult.JSON) == 0, "catalog engine/metadata must be empty")
@@ -524,6 +572,41 @@ func run(module, flavor, catalogOut, output, directory string) object {
 		}
 	}
 	if flavor != "standard" {
+		for _, name := range []string{"math_missing", "math_cjk"} {
+			source := fixture.Sources[name]
+			write(filepath.Join(output, name+".source.mmd"), []byte(source))
+			for _, operation := range []string{"svg", "png"} {
+				opts := fixture.Options
+				if operation == "png" {
+					opts = overlay(opts, fixture.PNGOptions)
+				}
+				before := h.deniedDependencyCalls["path_readlink"]
+				value := h.execute(mathEngine, operation, source, opts)
+				key := name + "." + operation
+				probe := object{"path_readlink_calls": h.deniedDependencyCalls["path_readlink"] - before}
+				if value.Status == 1 {
+					err := ownedError(h, value, "", "")
+					require(err["code_name"] == "MERMAN_RENDER_ERROR" || err["code_name"] == "MERMAN_UNSUPPORTED_OPERATION", "unrelated dependency font probe error: %s", encode(err))
+					errors[key] = err
+					writeJSON(filepath.Join(output, key+".error.json"), err)
+					probe["status"] = "owned-error"
+				} else {
+					media := "image/svg+xml"
+					var viewport object
+					if operation == "png" {
+						media = "image/png"
+						if previous, exists := artifacts[name+".svg"]; exists {
+							viewport = obj(obj(previous)["svg_viewport"])
+						}
+					}
+					success(value, mathEngine, media)
+					artifacts[key] = saveRender(output, name, operation, value, viewport)
+					h.release("result_free", value.Handle)
+					probe["status"] = "rendered"
+				}
+				fontProbes[key] = probe
+			}
+		}
 		for _, operation := range []string{"svg", "png"} {
 			opts := overlay(fixture.Options, fixture.Constrained)
 			if operation == "png" {
@@ -558,6 +641,11 @@ func run(module, flavor, catalogOut, output, directory string) object {
 		report["constrained_math_status"] = "not-applicable-without-math"
 	}
 	report["deterministic_import_calls"] = h.shims
+	report["denied_dependency_import_calls"] = h.deniedDependencyCalls
+	report["dependency_font_probe_status"] = "recorded"
+	if flavor == "standard" {
+		report["dependency_font_probe_status"] = "not-applicable-without-math"
+	}
 	writeJSON(filepath.Join(output, "smoke.json"), report)
 	return report
 }

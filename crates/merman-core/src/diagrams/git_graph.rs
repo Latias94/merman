@@ -1,9 +1,6 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
-#[cfg(feature = "compat-json")]
-use crate::diagram::legacy_warning_messages;
-use crate::diagram::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
 use crate::diagrams::langium_common::{
@@ -18,8 +15,14 @@ use crate::sanitize::sanitize_text;
 #[cfg(feature = "editor-facts")]
 use crate::{EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol};
 use crate::{Error, MermaidConfig, Result, SemanticMetadata, SourceSpan};
+pub(crate) use merman_model::families::git_graph::{
+    GitGraphBranch, GitGraphCommit, GitGraphDiagramModel,
+};
+use merman_model::warnings::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 #[cfg(feature = "compat-json")]
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+#[cfg(all(test, feature = "compat-json"))]
+use serde_json::json;
 use std::collections::HashMap;
 
 #[cfg(test)]
@@ -51,56 +54,10 @@ struct Commit {
     custom_id: Option<bool>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GitGraphBranch {
-    pub name: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GitGraphCommit {
-    pub id: String,
-    pub message: String,
-    pub seq: i64,
-    #[serde(rename = "type")]
-    pub commit_type: i64,
-    pub tags: Vec<String>,
-    pub parents: Vec<String>,
-    pub branch: String,
-    #[serde(rename = "customType", skip_serializing_if = "Option::is_none")]
-    pub custom_type: Option<i64>,
-    #[serde(rename = "customId", skip_serializing_if = "Option::is_none")]
-    pub custom_id: Option<bool>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-/// Canonical commits and branches of a GitGraph diagram.
-pub struct GitGraphDiagramModel {
-    #[serde(rename = "type")]
-    pub diagram_type: String,
-    pub commits: Vec<GitGraphCommit>,
-    pub branches: Vec<GitGraphBranch>,
-    #[serde(rename = "currentBranch")]
-    pub current_branch: String,
-    pub direction: String,
-    pub title: Option<String>,
-    #[serde(rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(
-        default,
-        rename = "warningFacts",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub warning_facts: Vec<DiagramWarningFact>,
-}
-
-impl GitGraphDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(model: &mut GitGraphDiagramModel, config: &MermaidConfig) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -1558,14 +1515,14 @@ fn parse_git_graph_command(
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_git_graph(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_git_graph(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_git_graph_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
 }
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_git_graph_with_warning_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<family::WarningSemanticParse> {
     let model = parse_git_graph_semantic_source(code, meta)?.model;
     let compatibility = render_model_to_compat_json(&model, meta)?;
@@ -1578,7 +1535,7 @@ pub(crate) fn parse_git_graph_with_warning_facts(
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) fn parse_git_graph_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
@@ -1612,44 +1569,25 @@ pub(crate) fn parse_git_graph_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &GitGraphDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    let warnings = legacy_warning_messages(&model.warning_facts);
-    let mut out = Map::with_capacity(11);
-    out.insert(
-        "type".to_string(),
-        Value::String(model.diagram_type.clone()),
-    );
-    out.insert("commits".to_string(), json!(&model.commits));
-    out.insert("branches".to_string(), json!(&model.branches));
-    out.insert("currentBranch".to_string(), json!(&model.current_branch));
-    out.insert("direction".to_string(), json!(&model.direction));
-    if let Some(title) = &model.title {
-        out.insert("title".to_string(), Value::String(title.clone()));
-    }
-    out.insert("accTitle".to_string(), json!(&model.acc_title));
-    out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("warningFacts".to_string(), json!(&model.warning_facts));
-    out.insert("warnings".to_string(), json!(warnings));
-    out.insert(
-        "config".to_string(),
-        crate::json_value::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    merman_model::families::git_graph::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
-#[cfg(all(test, feature = "compat-json"))]
+#[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_git_graph_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<GitGraphDiagramModel> {
-    Ok(parse_git_graph_semantic_source(code, meta)?.model)
+    parse_git_graph_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_git_graph_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<GitGraphDiagramModel>> {
     let source = construct_git_graph_semantic_source_controlled(
@@ -1746,9 +1684,7 @@ pub(crate) fn parse_git_graph_semantic_model_controlled(
     control.checkpoint()?;
     Ok(match construction {
         Ok(mut source) => {
-            source
-                .model
-                .sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut source.model, &metadata.semantic_config);
             SemanticConstruction {
                 model: Ok(source.model),
                 #[cfg(feature = "editor-facts")]
@@ -1766,7 +1702,7 @@ pub(crate) fn parse_git_graph_semantic_model_controlled(
 #[cfg(feature = "compat-json")]
 fn parse_git_graph_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<GitGraphSemanticSource> {
     construct_git_graph_semantic_source_controlled(
         code,
@@ -2123,11 +2059,11 @@ mod tests {
             .model
     }
 
-    fn test_meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn test_meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "gitGraph".to_string(),
             config: MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
     }
@@ -2142,7 +2078,7 @@ mod tests {
 
     fn parse_with_seed(text: &str, seed: i64) -> crate::ManagedSemanticJson {
         let engine = MermaidEngine::new().with_site_config(
-            crate::presentation::PresentationConfig::from_value(
+            crate::presentation::SourcePresentationConfig::from_value(
                 json!({ "gitGraph": { "seed": seed } }),
             ),
         );
@@ -2197,7 +2133,7 @@ mod tests {
     #[test]
     fn parse_gitgraph_render_model_uses_typed_variant_without_changing_json_parse() {
         let engine = MermaidEngine::new().with_site_config(
-            crate::presentation::PresentationConfig::from_value(json!({
+            crate::presentation::SourcePresentationConfig::from_value(json!({
                 "gitGraph": { "seed": 1 }
             })),
         );
@@ -2598,10 +2534,10 @@ merge feature id:"M1"
         let facts = crate::family::test_support::editor_facts(
             parse_git_graph_json_and_editor_facts,
             text,
-            &PresentationMetadata {
+            &SourcePresentationMetadata {
                 diagram_type: "gitGraph".to_string(),
                 config: MermaidConfig::default(),
-                effective_config: crate::presentation::PresentationConfig::default(),
+                effective_config: crate::presentation::SourcePresentationConfig::default(),
                 title: None,
             },
         );
@@ -2918,10 +2854,16 @@ merge feature id:"M1"
             .parse_diagram_sync(text, ParseOptions::strict())
             .expect("gitGraph compatibility parse succeeds")
             .expect("gitGraph compatibility parse returns a diagram");
-        let typed = parse_git_graph_model_for_render(text, &parsed.meta)
-            .expect("gitGraph typed parse succeeds");
-        let projection = render_model_to_compat_json(&typed, &parsed.meta)
-            .expect("gitGraph compatibility projection succeeds");
+        let typed = parse_git_graph_model_for_render(
+            text,
+            &crate::diagrams::source_metadata_for_test(&parsed.meta),
+        )
+        .expect("gitGraph typed parse succeeds");
+        let projection = merman_model::families::git_graph::compat::project(
+            &typed,
+            &merman_model::presentation::compat::CompatJsonMetadata::from(&parsed.meta),
+        )
+        .expect("gitGraph compatibility projection succeeds");
         let model = parsed.model;
 
         assert_eq!(projection, model);
@@ -3259,10 +3201,10 @@ mod semantic_tests {
     fn combined_gitgraph_capture_uses_one_seeded_construction_and_keeps_parser_spans() {
         reset_construction_counts();
         let source = "gitGraph\r\ncommit id:\"ROOT\"\r\nbranch feature\r\ncommit id:\"F1\"\r\ncheckout main\r\nmerge feature id:\"M1\"\r\n";
-        let meta = PresentationMetadata {
+        let meta = SourcePresentationMetadata {
             diagram_type: "gitGraph".to_string(),
             config: MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::from_value(
+            effective_config: crate::presentation::SourcePresentationConfig::from_value(
                 json!({ "gitGraph": { "seed": 1 } }),
             ),
             title: None,

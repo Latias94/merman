@@ -74,7 +74,8 @@ fn render_service_title(title: &str, responsive: bool) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Architecture service title")
-        .expect("detect Architecture");
+        .expect("detect Architecture")
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.architecture-service-title-faces").unwrap(),
         "1",

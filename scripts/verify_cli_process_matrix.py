@@ -57,7 +57,7 @@ PROFILE_CASES = (
         "analysis",
         "Analysis",
         ("all-diagrams", "analysis"),
-        "Lint and fix stdin without render dependencies.",
+        "Lint stdin without fix generation or render dependencies.",
     ),
     ProfileCase(
         "svg",

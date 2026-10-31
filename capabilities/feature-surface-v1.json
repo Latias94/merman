@@ -246,6 +246,22 @@
         "error_id": "command-not-compiled",
         "contract": "Shell completion commands are absent from the compiled CLI when this leaf is disabled."
       }
+    },
+    {
+      "id": "fixes",
+      "kind": "api",
+      "description": "Generate diagnostic replacement edits when explicitly requested.",
+      "targets": [
+        "native",
+        "web"
+      ],
+      "implications": [
+        "analysis"
+      ],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Fix and code-action generation requests return a typed missing-capability error when fixes are not compiled or not declared by the host."
+      }
     }
   ],
   "outputs": [

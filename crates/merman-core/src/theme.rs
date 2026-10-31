@@ -1,20 +1,14 @@
 use crate::MermaidConfig;
-use crate::ThemeEvaluationLimitExceeded;
-use crate::presentation::PresentationConfig;
+use crate::presentation::SourcePresentationConfig;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
-use crate::theme_id::MermaidThemeId;
+use merman_model::config::MermaidThemeId;
+use merman_model::presentation::ThemeEvaluationLimitExceeded;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 mod staged;
-
-pub(crate) fn theme_color_iterations(
-    raw: Option<&Value>,
-) -> Result<usize, ThemeEvaluationLimitExceeded> {
-    staged::theme_color_iteration_count_for_value(raw)
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ThemeResolutionError {
@@ -716,7 +710,7 @@ impl ThemeProgram {
     fn propagate_derived_ownership(
         self,
         explicit_dependency_variables: &[(&str, bool)],
-        config: &mut PresentationConfig,
+        config: &mut SourcePresentationConfig,
     ) {
         match self.dependencies {
             ThemeDependencyGraph::DarkenedScale | ThemeDependencyGraph::DarkenedScaleAndGit => {
@@ -869,7 +863,7 @@ fn apply_theme_variable_dependencies(
 }
 
 fn propagate_theme_variable_to_scales(
-    config: &mut PresentationConfig,
+    config: &mut SourcePresentationConfig,
     source: &str,
     indices: impl IntoIterator<Item = usize>,
 ) {
@@ -878,7 +872,7 @@ fn propagate_theme_variable_to_scales(
     }
 }
 
-fn propagate_standard_color_scale_ownership(config: &mut PresentationConfig) {
+fn propagate_standard_color_scale_ownership(config: &mut SourcePresentationConfig) {
     propagate_theme_variable_to_scales(config, "primaryColor", [0]);
     propagate_theme_variable_to_scales(config, "secondaryColor", [1]);
     propagate_theme_variable_to_scales(config, "tertiaryColor", [2]);
@@ -1824,7 +1818,7 @@ fn replay_extended_theme_khroma_operations(
 }
 
 pub(crate) fn apply_theme_defaults(
-    config: &mut PresentationConfig,
+    config: &mut SourcePresentationConfig,
 ) -> Result<(), ThemeResolutionError> {
     let requested = config.get_str("theme").unwrap_or("default");
     // Mermaid's raw configuration runtime falls back to `default` for unknown strings. Typed
@@ -1880,9 +1874,9 @@ pub(crate) fn apply_theme_defaults(
 }
 
 pub(crate) fn materialize_selected_theme(
-    mut effective_config: PresentationConfig,
+    mut effective_config: SourcePresentationConfig,
     selected_theme: MermaidThemeId,
-) -> Result<PresentationConfig, ThemeResolutionError> {
+) -> Result<SourcePresentationConfig, ThemeResolutionError> {
     #[cfg(test)]
     crate::config::record_config_work(|work| work.selected_theme_materializations += 1);
     effective_config.set_value_preserving_theme_compatibility(
@@ -2706,7 +2700,7 @@ mod tests {
 
     #[test]
     fn owned_staged_theme_materialization_needs_no_json_cow_copy() {
-        let raw = PresentationConfig::from_value(json!({
+        let raw = SourcePresentationConfig::from_value(json!({
             "theme": "base", "themeVariables": { "primaryColor": "#123456" },
         }));
         let (materialized, work) = crate::config::measure_config_work(|| {
@@ -2728,7 +2722,7 @@ mod tests {
             .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
         {
             let unrelated = "retained host data ".repeat(8_192);
-            let raw = PresentationConfig::from_value(json!({
+            let raw = SourcePresentationConfig::from_value(json!({
                 "theme": theme.as_str(),
                 "themeVariables": { "primaryColor": "#123456" },
                 "unrelatedHostData": unrelated,
@@ -2757,7 +2751,7 @@ mod tests {
             .copied()
             .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
         {
-            let original = PresentationConfig::from_value(json!({
+            let original = SourcePresentationConfig::from_value(json!({
                 "theme": theme.as_str(),
                 "themeVariables": { "primaryColor": "#123456" },
                 "unrelatedHostData": "retained host data ".repeat(8_192),
@@ -2795,7 +2789,7 @@ mod tests {
             .copied()
             .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
         {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme.as_str(),
                 "themeVariables": { "primaryColor": "#123456" },
             }));
@@ -2818,12 +2812,12 @@ mod tests {
                 "theme-only" => json!({"theme": "redux-color"}),
                 _ => json!({"theme": "redux-color", "themeVariables": {"primaryColor": "#123456"}}),
             };
-            let binding = crate::config::presentation::ThemeParseBinding::try_new(
+            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
                 [0x78; 32],
                 MermaidConfig::from_value(input),
             )
             .unwrap();
-            let mut config = PresentationConfig::from_theme_parse_binding(binding);
+            let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
             match authority {
                 "shadowed-variable" => {
                     config.set_value("themeVariables.primaryColor", json!("#123456"))
@@ -2834,7 +2828,7 @@ mod tests {
                 ),
                 _ => {}
             }
-            let mut expected = PresentationConfig::from_value(config.as_value().clone());
+            let mut expected = SourcePresentationConfig::from_value(config.as_value().clone());
             apply_theme_defaults(&mut expected).unwrap();
             let (_, work) =
                 crate::config::measure_config_work(|| apply_theme_defaults(&mut config).unwrap());
@@ -2858,18 +2852,18 @@ mod tests {
         for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
             let input =
                 json!({"theme": theme.as_str(), "themeVariables": {"textColor": "#123456"}});
-            let mut expected = PresentationConfig::from_value(input.clone());
+            let mut expected = SourcePresentationConfig::from_value(input.clone());
             apply_theme_defaults(&mut expected).unwrap();
             for authority in ["tracking", "frozen", "same-value", "parent"] {
                 let mut config = if matches!(authority, "tracking" | "frozen") {
-                    let binding = crate::config::presentation::ThemeParseBinding::try_new(
+                    let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
                         [0x75; 32],
                         MermaidConfig::from_value(input.clone()),
                     )
                     .unwrap();
-                    PresentationConfig::from_theme_parse_binding(binding)
+                    SourcePresentationConfig::from_theme_compatibility_recipe(binding)
                 } else {
-                    PresentationConfig::from_value(input.clone())
+                    SourcePresentationConfig::from_value(input.clone())
                 };
                 match authority {
                     "frozen" => config.freeze_theme_compatibility(),
@@ -2904,12 +2898,12 @@ mod tests {
                 }
             }
 
-            let binding = crate::config::presentation::ThemeParseBinding::try_new(
+            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
                 [0x76; 32],
                 MermaidConfig::from_value(input),
             )
             .unwrap();
-            let mut shadowed = PresentationConfig::from_theme_parse_binding(binding);
+            let mut shadowed = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
             shadowed.set_value("themeVariables.textColor", json!("#123456"));
             apply_theme_defaults(&mut shadowed).unwrap();
             assert_eq!(shadowed.as_value(), expected.as_value());
@@ -2922,7 +2916,7 @@ mod tests {
     #[test]
     fn legacy_compatibility_derived_owners_survive_public_engine_initialization() {
         for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
-            let binding = crate::config::presentation::ThemeParseBinding::try_new(
+            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
                 [0x77; 32],
                 MermaidConfig::from_value(json!({
                     "theme": theme.as_str(), "themeVariables": {"textColor": "#123456"},
@@ -2947,11 +2941,11 @@ mod tests {
             );
             let fields = parsed
                 .effective_config
-                .mermaid_compatibility_fields()
-                .unwrap();
+                .theme_compatibility()
+                .shared_fields();
             assert!(
                 fields.iter().any(|field| field
-                    .surviving_paths()
+                    .shared_assignment_paths()
                     .iter()
                     .any(|path| path.as_ref() == "themeVariables.signalTextColor")),
                 "{theme} must freeze the derived physical path into its conceptual input field"
@@ -2965,12 +2959,12 @@ mod tests {
             let value = json!({
                 "theme": "neo-dark", "themeVariables": {"primaryColor": "#123456"},
             });
-            let binding = crate::config::presentation::ThemeParseBinding::try_new(
+            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
                 [0x7c; 32],
                 MermaidConfig::from_value(value.clone()),
             )
             .expect("valid Neo Dark compatibility binding");
-            let mut bound = PresentationConfig::from_theme_parse_binding(binding);
+            let mut bound = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
             if frozen {
                 bound.freeze_theme_compatibility();
             }
@@ -2980,14 +2974,14 @@ mod tests {
             assert!(
                 fields.iter().any(|field| {
                     field
-                        .surviving_paths()
+                        .shared_assignment_paths()
                         .iter()
                         .any(|path| path.as_ref() == "themeVariables.cScale0")
                 }),
                 "frozen={frozen}"
             );
 
-            let mut raw = PresentationConfig::from_value(value);
+            let mut raw = SourcePresentationConfig::from_value(value);
             let (_, unowned_work) = crate::config::measure_config_work(|| {
                 apply_theme_defaults(&mut raw).unwrap();
             });
@@ -2995,7 +2989,7 @@ mod tests {
             assert_eq!(unowned_work.explicit_path_candidates, 0, "{unowned_work:?}");
         }
 
-        let mut explicit = PresentationConfig::from_value(json!({"theme": "neo-dark"}));
+        let mut explicit = SourcePresentationConfig::from_value(json!({"theme": "neo-dark"}));
         explicit.set_value_explicit("themeVariables.primaryColor", json!("#123456"));
         let (_, work) = crate::config::measure_config_work(|| {
             apply_theme_defaults(&mut explicit).unwrap();
@@ -3011,7 +3005,7 @@ mod tests {
     #[test]
     fn legacy_late_failure_keeps_config_and_compatibility_ownership() {
         for theme in [MermaidThemeId::NeoDark, MermaidThemeId::ReduxDark] {
-            let binding = crate::config::presentation::ThemeParseBinding::try_new(
+            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
                 [0x6a; 32],
                 MermaidConfig::from_value(json!({
                     "theme": theme.as_str(),
@@ -3019,7 +3013,7 @@ mod tests {
                 })),
             )
             .expect("valid extended theme compatibility binding");
-            let mut config = PresentationConfig::from_theme_parse_binding(binding);
+            let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
             config.set_value_preserving_theme_compatibility(
                 "unrelated",
                 json!({"nested": [1, 2, 3]}),
@@ -3086,7 +3080,7 @@ mod tests {
     fn all_themes_preserve_generated_object_keys_after_partial_overrides() {
         let mut covered = std::collections::BTreeSet::new();
         for theme in crate::supported_themes() {
-            let mut baseline = PresentationConfig::from_value(json!({"theme": theme}));
+            let mut baseline = SourcePresentationConfig::from_value(json!({"theme": theme}));
             apply_theme_defaults(&mut baseline).unwrap();
             let generated = theme_variables_map(baseline.as_config());
             for (variable, value) in &generated {
@@ -3094,7 +3088,7 @@ mod tests {
                     continue;
                 };
                 let first = nested.keys().next().unwrap();
-                let mut config = PresentationConfig::from_value(json!({
+                let mut config = SourcePresentationConfig::from_value(json!({
                     "theme": theme,
                     "themeVariables": { (variable): { (first): "#123456" } }
                 }));
@@ -3178,7 +3172,7 @@ mod tests {
     #[test]
     fn supported_theme_defaults_match_upstream_snapshot() {
         for &theme in MermaidThemeId::NAMES {
-            let mut cfg = PresentationConfig::from_value(json!({
+            let mut cfg = SourcePresentationConfig::from_value(json!({
                 "theme": theme
             }));
             apply_theme_defaults(&mut cfg).unwrap();
@@ -3210,7 +3204,8 @@ mod tests {
             (MermaidThemeId::ReduxColor, false, false),
             (MermaidThemeId::ReduxDarkColor, false, false),
         ] {
-            let mut config = PresentationConfig::from_value(json!({ "theme": theme.as_str() }));
+            let mut config =
+                SourcePresentationConfig::from_value(json!({ "theme": theme.as_str() }));
             config.deep_merge_explicit(&json!({
                 "themeVariables": { "primaryColor": "#fff4dd" }
             }));
@@ -3244,7 +3239,7 @@ mod tests {
         ] {
             for explicit in [false, true] {
                 let values = json!({ "themeVariables": { source: "#123456" } });
-                let mut config = PresentationConfig::from_value(json!({"theme": "base"}));
+                let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
                 if explicit {
                     config.deep_merge_explicit(&values);
                 } else {
@@ -3271,7 +3266,7 @@ mod tests {
                 );
             }
         }
-        let mut config = PresentationConfig::from_value(json!({"theme": "base"}));
+        let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
         config.deep_merge_explicit(&json!({"themeVariables": {
             "tertiaryColor": "#123456", "clusterBkg": "#abcdef", "clusterBorder": "#fedcba"
         }}));
@@ -3285,7 +3280,7 @@ mod tests {
 
     #[test]
     fn theme_variable_derived_ownership_requires_owned_primary_color() {
-        let mut config = PresentationConfig::from_value(json!({
+        let mut config = SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": { "primaryColor": "#fff4dd" }
         }));
@@ -3317,7 +3312,7 @@ mod tests {
             ),
             ("neutral", "primaryColor", &[][..]),
         ] {
-            let mut config = PresentationConfig::from_value(json!({ "theme": theme }));
+            let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             config.deep_merge_explicit(&json!({
                 "themeVariables": { (source): "#336699" }
             }));
@@ -3351,7 +3346,8 @@ mod tests {
             (MermaidThemeId::ReduxColor, "#28253D", true),
             (MermaidThemeId::ReduxDarkColor, "#FFFFFF", false),
         ] {
-            let mut config = PresentationConfig::from_value(json!({ "theme": theme.as_str() }));
+            let mut config =
+                SourcePresentationConfig::from_value(json!({ "theme": theme.as_str() }));
             config.deep_merge_explicit(&json!({
                 "themeVariables": { "textColor": text_color }
             }));
@@ -3465,7 +3461,7 @@ mod tests {
         ];
 
         for &(theme, source, value, targets) in cases {
-            let mut config = PresentationConfig::from_value(json!({ "theme": theme }));
+            let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             config.deep_merge_explicit(&json!({
                 "themeVariables": { (source): value }
             }));
@@ -3502,7 +3498,7 @@ mod tests {
         ] {
             for background in [json!(false), json!(0)] {
                 for owned_primary in [false, true] {
-                    let mut config = PresentationConfig::from_value(json!({
+                    let mut config = SourcePresentationConfig::from_value(json!({
                         "theme": theme,
                         "themeVariables": { "primaryTextColor": "#123456" }
                     }));
@@ -3545,7 +3541,7 @@ mod tests {
             "redux-color",
             "redux-dark-color",
         ] {
-            let mut background = PresentationConfig::from_value(json!({ "theme": theme }));
+            let mut background = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             background.deep_merge_explicit(&json!({
                 "themeVariables": { "background": "#ffffff" }
             }));
@@ -3567,7 +3563,7 @@ mod tests {
                 );
             }
 
-            let mut secondary = PresentationConfig::from_value(json!({ "theme": theme }));
+            let mut secondary = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             secondary.deep_merge_explicit(&json!({
                 "themeVariables": { "secondaryColor": "#22c55e" }
             }));
@@ -3590,7 +3586,7 @@ mod tests {
 
     #[test]
     fn variable_dependency_ownership_requires_an_owned_source_and_yields_to_explicit_targets() {
-        let mut unowned = PresentationConfig::from_value(json!({
+        let mut unowned = SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": { "mainBkg": "#0f172a" }
         }));
@@ -3601,7 +3597,7 @@ mod tests {
         );
         assert!(!unowned.config_path_overrides_typed_default("themeVariables.labelBoxBkgColor"));
 
-        let mut explicit_target = PresentationConfig::from_value(json!({ "theme": "base" }));
+        let mut explicit_target = SourcePresentationConfig::from_value(json!({ "theme": "base" }));
         explicit_target.deep_merge_explicit(&json!({
             "themeVariables": {
                 "mainBkg": "#0f172a",
@@ -3627,7 +3623,7 @@ mod tests {
             "redux-color",
             "redux-dark-color",
         ] {
-            let mut unowned_route = PresentationConfig::from_value(json!({ "theme": theme }));
+            let mut unowned_route = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             unowned_route.deep_merge_explicit(&json!({
                 "themeVariables": { "nodeBkg": "#0ea5e9" }
             }));
@@ -3646,7 +3642,7 @@ mod tests {
             ("default", "#9370DB", "#ECECFF"),
             ("dark", "#ccc", "#1f2020"),
         ] {
-            let mut config = PresentationConfig::from_value(json!({ "theme": theme }));
+            let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             config.deep_merge_explicit(&json!({
                 "themeVariables": {
                     "actorBorder": "#ec4899",
@@ -3683,7 +3679,7 @@ mod tests {
             }
         }
 
-        let mut forest = PresentationConfig::from_value(json!({ "theme": "forest" }));
+        let mut forest = SourcePresentationConfig::from_value(json!({ "theme": "forest" }));
         forest.deep_merge_explicit(&json!({
             "themeVariables": { "primaryColor": "#ec4899" }
         }));
@@ -3710,8 +3706,8 @@ mod tests {
             if let Some(theme) = theme {
                 site["theme"] = json!(theme);
             }
-            let engine =
-                crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(site));
+            let engine = crate::MermaidEngine::new()
+                .with_site_config(SourcePresentationConfig::from_value(site));
             let initialized = engine
                 .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello\n")
                 .expect("parse initialized Sequence theme");
@@ -3776,13 +3772,13 @@ Alice->>Bob: Hello
                 let (engine, source) = if origin == "site" {
                     (
                         crate::MermaidEngine::new()
-                            .with_site_config(PresentationConfig::from_value(config)),
+                            .with_site_config(SourcePresentationConfig::from_value(config)),
                         SOURCE.to_string(),
                     )
                 } else {
                     (
                         crate::MermaidEngine::new().with_site_config(
-                            PresentationConfig::from_value(json!({
+                            SourcePresentationConfig::from_value(json!({
                                 "secure": []
                             })),
                         ),
@@ -3831,7 +3827,7 @@ Alice->>Bob: Hello
             theme: &str,
             theme_variables: Value,
             origin: &str,
-        ) -> PresentationConfig {
+        ) -> merman_model::presentation::PresentationConfig {
             let config = json!({
                 "theme": theme,
                 "themeVariables": theme_variables
@@ -3839,16 +3835,16 @@ Alice->>Bob: Hello
             let (engine, source) = if origin == "site" {
                 (
                     crate::MermaidEngine::new()
-                        .with_site_config(PresentationConfig::from_value(config)),
+                        .with_site_config(SourcePresentationConfig::from_value(config)),
                     SOURCE.to_string(),
                 )
             } else {
                 (
-                    crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                        json!({
+                    crate::MermaidEngine::new().with_site_config(
+                        SourcePresentationConfig::from_value(json!({
                             "secure": []
-                        }),
-                    )),
+                        })),
+                    ),
                     format!("%%{{init: {config}}}%%\n{SOURCE}"),
                 )
             };
@@ -4137,13 +4133,13 @@ Alice->>Bob: Hello
                 let (engine, source) = if origin == "site" {
                     (
                         crate::MermaidEngine::new()
-                            .with_site_config(PresentationConfig::from_value(config)),
+                            .with_site_config(SourcePresentationConfig::from_value(config)),
                         SOURCE.to_string(),
                     )
                 } else {
                     (
                         crate::MermaidEngine::new().with_site_config(
-                            PresentationConfig::from_value(json!({
+                            SourcePresentationConfig::from_value(json!({
                                 "secure": []
                             })),
                         ),
@@ -4195,13 +4191,13 @@ Alice->>Bob: Hello
         fn config_with_explicit_theme_variables(
             theme: &str,
             theme_variables: Value,
-        ) -> PresentationConfig {
-            let mut config = PresentationConfig::from_value(json!({ "theme": theme }));
+        ) -> SourcePresentationConfig {
+            let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             config.deep_merge_explicit(&json!({ "themeVariables": theme_variables }));
             config
         }
 
-        fn assert_owned(config: &PresentationConfig, target: &str, expected: &str) {
+        fn assert_owned(config: &SourcePresentationConfig, target: &str, expected: &str) {
             let path = format!("themeVariables.{target}");
             assert_eq!(
                 config.get_str(&path),
@@ -4214,7 +4210,7 @@ Alice->>Bob: Hello
             );
         }
 
-        fn assert_unowned(config: &PresentationConfig, target: &str, expected: &str) {
+        fn assert_unowned(config: &SourcePresentationConfig, target: &str, expected: &str) {
             let path = format!("themeVariables.{target}");
             assert_eq!(
                 config.get_str(&path),
@@ -4508,13 +4504,13 @@ Alice->>Bob: Hello
         fn config_with_explicit_theme_variables(
             theme: &str,
             theme_variables: Value,
-        ) -> PresentationConfig {
-            let mut config = PresentationConfig::from_value(json!({ "theme": theme }));
+        ) -> SourcePresentationConfig {
+            let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
             config.deep_merge_explicit(&json!({ "themeVariables": theme_variables }));
             config
         }
 
-        fn assert_owned(config: &PresentationConfig, target: &str, expected: &str) {
+        fn assert_owned(config: &SourcePresentationConfig, target: &str, expected: &str) {
             let path = format!("themeVariables.{target}");
             assert_eq!(
                 config.get_str(&path),
@@ -4527,7 +4523,7 @@ Alice->>Bob: Hello
             );
         }
 
-        fn assert_unowned(config: &PresentationConfig, target: &str, expected: &str) {
+        fn assert_unowned(config: &SourcePresentationConfig, target: &str, expected: &str) {
             let path = format!("themeVariables.{target}");
             assert_eq!(
                 config.get_str(&path),
@@ -4630,7 +4626,7 @@ Alice->>Bob: Hello
     #[test]
     fn neutral_site_text_owns_unconditional_sequence_derivations() {
         let metadata = crate::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
+            .with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "neutral",
                 "themeVariables": { "text": "#56789a" }
             })))
@@ -4666,7 +4662,7 @@ Alice->>Bob: Hello
     #[test]
     fn dark_site_main_contrast_owns_unconditional_state_and_sequence_derivations() {
         let metadata = crate::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
+            .with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "dark",
                 "themeVariables": { "mainContrastColor": "#456789" }
             })))
@@ -4700,7 +4696,7 @@ Alice->>Bob: Hello
     #[test]
     fn dark_mode_branch_matches_generated_mermaid_oracle_for_every_theme() {
         for &theme in MermaidThemeId::NAMES {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "darkMode": true }
             }));
@@ -4724,7 +4720,7 @@ Alice->>Bob: Hello
             let theme = case.get("theme").and_then(Value::as_str).unwrap();
             let overrides = case.get("overrides").cloned().unwrap();
             let expected_status = case.get("status").and_then(Value::as_str).unwrap();
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": overrides
             }));
@@ -4775,7 +4771,7 @@ Alice->>Bob: Hello
     #[test]
     fn font_only_override_preserves_upstream_derived_palette_for_public_themes() {
         for &theme in MermaidThemeId::NAMES {
-            let mut cfg = PresentationConfig::from_value(json!({
+            let mut cfg = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": {
                     "fontFamily": "Inter, sans-serif"
@@ -4845,7 +4841,7 @@ Alice->>Bob: Hello
             (json!({"darkMode": []}), true),
             (json!({"darkMode": {}}), true),
         ] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": "default", "themeVariables": overrides.clone(),
             }));
             apply_theme_defaults(&mut config).unwrap();
@@ -4878,7 +4874,7 @@ Alice->>Bob: Hello
             ("git7", json!("not-a-color"), "not-a-color"),
             ("quadrant1Fill", json!(17), "17"),
         ] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": "default", "themeVariables": {(variable): value},
             }));
             let before = config.clone();
@@ -4905,7 +4901,7 @@ Alice->>Bob: Hello
             (json!({ "mainBkg": "#ffe1ef" }), true),
             (json!({ "useGradient": false }), false),
         ] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": "base", "themeVariables": overrides
             }));
             apply_theme_defaults(&mut config).unwrap();
@@ -4935,7 +4931,7 @@ Alice->>Bob: Hello
                     .depends_on("useGradient", "nodeBorder")
             );
         }
-        let mut config = PresentationConfig::from_value(json!({"theme": "base"}));
+        let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
         config.deep_merge_explicit(&json!({"themeVariables": {"nodeBorder": "#123456"}}));
         apply_theme_defaults(&mut config).unwrap();
         assert!(config.config_path_overrides_typed_default("themeVariables.useGradient"));
@@ -4944,7 +4940,7 @@ Alice->>Bob: Hello
     #[test]
     fn agentflow_stroke_follows_upstream_constructor_order() {
         for &theme in MermaidThemeId::NAMES {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "secondaryBorderColor": "#123456" }
             }));
@@ -4969,7 +4965,7 @@ Alice->>Bob: Hello
                 ("#000000", "hsl(0, 0%, 4%)"),
                 ("#ffffff", "hsl(0, 0%, 96%)"),
             ] {
-                let mut config = PresentationConfig::from_value(json!({
+                let mut config = SourcePresentationConfig::from_value(json!({
                     "theme": theme, "themeVariables": { "background": background }
                 }));
                 apply_theme_defaults(&mut config).unwrap();
@@ -4981,7 +4977,7 @@ Alice->>Bob: Hello
             }
         }
         for theme in ["neo-dark", "redux-dark", "redux-dark-color"] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme, "themeVariables": { "mainBkg": "#101112" }
             }));
             apply_theme_defaults(&mut config).unwrap();
@@ -5000,7 +4996,7 @@ Alice->>Bob: Hello
     #[test]
     fn redux_color_categorical_overrides_feed_pie_gantt_and_journey() {
         for theme in ["redux-color", "redux-dark-color"] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": {
                     "primaryColor": "#123456", "cScale0": "#234567", "cScale1": "#345678",
@@ -5028,7 +5024,7 @@ Alice->>Bob: Hello
     #[test]
     fn mermaid_12_dependency_updates_propagate_authored_ownership() {
         for theme in MermaidThemeId::NAMES {
-            let mut config = PresentationConfig::from_value(json!({"theme": theme}));
+            let mut config = SourcePresentationConfig::from_value(json!({"theme": theme}));
             config.deep_merge_explicit(
                 &json!({"themeVariables": {"secondaryBorderColor": "#123456"}}),
             );
@@ -5040,7 +5036,7 @@ Alice->>Bob: Hello
             );
         }
         for theme in ["redux-color", "redux-dark-color"] {
-            let mut config = PresentationConfig::from_value(json!({"theme": theme}));
+            let mut config = SourcePresentationConfig::from_value(json!({"theme": theme}));
             config.deep_merge_explicit(
                 &json!({"themeVariables": {"cScale0": "#123456", "cScale1": "#abcdef"}}),
             );
@@ -5058,7 +5054,7 @@ Alice->>Bob: Hello
     fn redux_categorical_falsy_override_replays_after_pie_derivation() {
         for theme in ["redux-color", "redux-dark-color"] {
             for explicit_scale in [json!(false), json!(0)] {
-                let mut config = PresentationConfig::from_value(json!({
+                let mut config = SourcePresentationConfig::from_value(json!({
                     "theme": theme,
                     "themeVariables": { "cScale2": explicit_scale }
                 }));
@@ -5077,7 +5073,7 @@ Alice->>Bob: Hello
             ("redux-dark-color", "hsl(180, 0%, 18.3529411765%)"),
         ] {
             for explicit_border in [json!(false), json!(0)] {
-                let mut config = PresentationConfig::from_value(json!({
+                let mut config = SourcePresentationConfig::from_value(json!({
                     "theme": theme,
                     "themeVariables": { "secondaryBorderColor": explicit_border }
                 }));
@@ -5116,7 +5112,7 @@ Alice->>Bob: Hello
         ];
 
         for (theme, expected_peer, expected_inverse) in cases {
-            let mut cfg = PresentationConfig::from_value(json!({
+            let mut cfg = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": {
                     "primaryColor": "#123456",
@@ -5192,7 +5188,7 @@ Alice->>Bob: Hello
         ];
 
         for (theme, expected_peer, expected_inverse, expected_label) in cases {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "cScale0": "#abcdef" }
             }));
@@ -5250,7 +5246,7 @@ Alice->>Bob: Hello
         ];
 
         for (theme, expected_scale, expected_peer, expected_inverse) in cases {
-            let mut cfg = PresentationConfig::from_value(json!({
+            let mut cfg = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": {
                     "primaryColor": "#123456"
@@ -5330,7 +5326,7 @@ Alice->>Bob: Hello
         ];
 
         for (theme, expected_q1, expected_q2, expected_point) in cases {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "primaryColor": "#123456" }
             }));
@@ -5357,7 +5353,7 @@ Alice->>Bob: Hello
 
     #[test]
     fn quadrant_partial_and_text_overrides_match_mermaid_11_16_replay_order() {
-        let mut config = PresentationConfig::from_value(json!({
+        let mut config = SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": {
                 "primaryTextColor": "#123456",
@@ -5383,7 +5379,7 @@ Alice->>Bob: Hello
             assert_eq!(variables.get(key).and_then(Value::as_str), Some(expected));
         }
 
-        let mut default_config = PresentationConfig::from_value(json!({
+        let mut default_config = SourcePresentationConfig::from_value(json!({
             "theme": "default",
             "themeVariables": { "primaryTextColor": "#123456" }
         }));
@@ -5419,7 +5415,7 @@ Alice->>Bob: Hello
         ];
 
         for (primary, expected_q2, expected_point, expected_border) in cases {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": "base",
                 "themeVariables": { "primaryColor": primary }
             }));
@@ -5616,7 +5612,7 @@ Alice->>Bob: Hello
         let mut mismatches = Vec::new();
         for (theme, error_keys) in cases {
             for key in keys {
-                let mut config = PresentationConfig::from_value(json!({
+                let mut config = SourcePresentationConfig::from_value(json!({
                     "theme": theme,
                     "themeVariables": { (key): "not-a-color" }
                 }));
@@ -5638,7 +5634,7 @@ Alice->>Bob: Hello
 
     #[test]
     fn invalid_theme_colors_fail_at_direct_and_site_config_operation_boundaries() {
-        let mut config = PresentationConfig::from_value(json!({
+        let mut config = SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": { "primaryColor": "not-a-color" }
         }));
@@ -5649,11 +5645,12 @@ Alice->>Bob: Hello
             ))
         ));
 
-        let engine =
-            crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+        let engine = crate::MermaidEngine::new().with_site_config(
+            SourcePresentationConfig::from_value(json!({
                 "theme": "base",
                 "themeVariables": { "primaryColor": "not-a-color" }
-            })));
+            })),
+        );
         assert!(matches!(
             engine.parse_metadata_sync("flowchart TD\n  A"),
             Err(crate::Error::ThemeColor(
@@ -5664,8 +5661,8 @@ Alice->>Bob: Hello
 
     #[test]
     fn invalid_frontmatter_theme_color_fails_at_parse_operation_boundary() {
-        let engine =
-            crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+        let engine = crate::MermaidEngine::new().with_site_config(
+            SourcePresentationConfig::from_value(json!({
                 "secure": [
                     "secure",
                     "securityLevel",
@@ -5674,7 +5671,8 @@ Alice->>Bob: Hello
                     "suppressErrorRendering",
                     "maxEdges"
                 ]
-            })));
+            })),
+        );
         let source = r#"---
 config:
   theme: base
@@ -5695,7 +5693,7 @@ flowchart TD
 
     #[test]
     fn staged_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
-        let binding = crate::config::presentation::ThemeParseBinding::try_new(
+        let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
             [0x5a; 32],
             MermaidConfig::from_value(json!({
                 "theme": "dark",
@@ -5706,7 +5704,7 @@ flowchart TD
             })),
         )
         .expect("valid dark compatibility binding");
-        let mut config = PresentationConfig::from_theme_parse_binding(binding);
+        let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
         // Keep compatibility ownership attached while presenting the staged executor with one
         // invalid color and one null override that normalization would otherwise retire.
         config.set_value_preserving_theme_compatibility(
@@ -5732,7 +5730,7 @@ flowchart TD
 
     #[test]
     fn base_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
-        let binding = crate::config::presentation::ThemeParseBinding::try_new(
+        let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
             [0x6a; 32],
             MermaidConfig::from_value(json!({
                 "theme": "base",
@@ -5743,7 +5741,7 @@ flowchart TD
             })),
         )
         .expect("valid Base compatibility binding");
-        let mut config = PresentationConfig::from_theme_parse_binding(binding);
+        let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
         config.set_value_preserving_theme_compatibility(
             "themeVariables.cScale2",
             Value::String("not-a-color".to_string()),
@@ -5772,7 +5770,7 @@ flowchart TD
             .copied()
             .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
         {
-            let binding = crate::config::presentation::ThemeParseBinding::try_new(
+            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
                 [0x6b; 32],
                 MermaidConfig::from_value(json!({
                     "theme": theme.as_str(),
@@ -5783,7 +5781,7 @@ flowchart TD
                 })),
             )
             .expect("valid legacy-theme compatibility binding");
-            let mut config = PresentationConfig::from_theme_parse_binding(binding);
+            let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
             config.set_value_preserving_theme_compatibility(
                 "themeVariables.primaryColor",
                 json!("not-a-color"),
@@ -5820,7 +5818,7 @@ flowchart TD
     #[test]
     fn staged_theme_color_limit_fails_closed_before_mutation() {
         for value in [json!(65), json!("0x41"), json!("Infinity")] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": "dark",
                 "themeVariables": {
                     "THEME_COLOR_LIMIT": value,
@@ -5834,21 +5832,25 @@ flowchart TD
                 panic!("expected a theme evaluation limit error");
             };
             assert_eq!(error.limit, "THEME_COLOR_LIMIT");
-            assert_eq!(error.max, staged::MAX_THEME_COLOR_ITERATIONS);
+            assert_eq!(
+                error.max,
+                merman_model::presentation::MAX_THEME_COLOR_ITERATIONS
+            );
             assert_eq!(config.as_value(), &before);
         }
 
-        let engine =
-            crate::MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
+        let engine = crate::MermaidEngine::new().with_site_config(
+            SourcePresentationConfig::from_value(json!({
                 "theme": "dark",
                 "themeVariables": { "THEME_COLOR_LIMIT": 65 }
-            })));
+            })),
+        );
         assert!(matches!(
             engine.parse_metadata_sync("flowchart TD\n  A"),
             Err(crate::Error::ThemeEvaluationLimit(
-                crate::ThemeEvaluationLimitExceeded {
+                merman_model::presentation::ThemeEvaluationLimitExceeded {
                     limit: "THEME_COLOR_LIMIT",
-                    max: staged::MAX_THEME_COLOR_ITERATIONS,
+                    max: merman_model::presentation::MAX_THEME_COLOR_ITERATIONS,
                     ..
                 }
             ))
@@ -5858,7 +5860,7 @@ flowchart TD
     #[test]
     fn staged_object_dependencies_remain_field_local() {
         let metadata = crate::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
+            .with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "dark",
                 "themeVariables": { "background": "#123456" }
             })))
@@ -6150,7 +6152,7 @@ flowchart TD
 
     #[test]
     fn default_theme_populates_mermaid_theme_variables() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "default"
         }));
         apply_theme_defaults(&mut cfg).unwrap();
@@ -6208,7 +6210,7 @@ flowchart TD
 
     #[test]
     fn default_theme_preserves_user_overrides_after_derivation() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "default",
             "themeVariables": {
                 "primaryColor": "#111111",
@@ -6253,7 +6255,7 @@ flowchart TD
 
     #[test]
     fn default_theme_merges_unrelated_theme_variable_overrides_without_hsl_rewriting_pie_base() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "default",
             "themeVariables": {
                 "pieOuterStrokeWidth": "5px"
@@ -6278,7 +6280,7 @@ flowchart TD
     #[test]
     fn raw_mermaid_config_preserves_upstream_unsupported_theme_fallback() {
         for requested in ["unknown", "null"] {
-            let mut config = PresentationConfig::from_value(json!({
+            let mut config = SourcePresentationConfig::from_value(json!({
                 "theme": requested
             }));
             assert!(MermaidThemeId::parse(requested).is_err());
@@ -6310,7 +6312,7 @@ flowchart TD
         ];
 
         for (theme, primary, node_border) in cases {
-            let mut cfg = PresentationConfig::from_value(json!({
+            let mut cfg = SourcePresentationConfig::from_value(json!({
                 "theme": theme
             }));
             apply_theme_defaults(&mut cfg).unwrap();
@@ -6336,7 +6338,7 @@ flowchart TD
 
     #[test]
     fn extended_theme_preserves_explicit_theme_variable_overrides() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "redux",
             "themeVariables": {
                 "primaryColor": "#123456",
@@ -6367,7 +6369,7 @@ flowchart TD
 
     #[test]
     fn extended_theme_recomputes_visible_derivations_from_base_overrides() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "redux",
             "themeVariables": {
                 "primaryColor": "#123456"
@@ -6410,7 +6412,7 @@ flowchart TD
 
     #[test]
     fn extended_theme_explicit_derived_overrides_still_win() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "redux",
             "themeVariables": {
                 "primaryColor": "#123456",
@@ -6439,7 +6441,7 @@ flowchart TD
 
     #[test]
     fn extended_theme_recomputes_background_and_main_background_derivations() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "redux",
             "themeVariables": {
                 "background": "#010203",
@@ -6489,7 +6491,7 @@ flowchart TD
 
     #[test]
     fn dark_extended_theme_recomputes_primary_visible_derivations() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "redux-dark",
             "themeVariables": {
                 "primaryColor": "#123456"
@@ -6531,7 +6533,7 @@ flowchart TD
 
     #[test]
     fn extended_theme_explicit_git_color_derives_git_inverse_unless_explicit() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "redux",
             "themeVariables": {
                 "git0": "#000000",
@@ -6555,7 +6557,7 @@ flowchart TD
 
     #[test]
     fn base_theme_derivation_matches_upstream_fixture_values() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": {
                 "primaryColor": "#411d4e",
@@ -6619,7 +6621,7 @@ flowchart TD
 
     #[test]
     fn forest_theme_derives_cscale_palette_like_upstream() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "forest"
         }));
         apply_theme_defaults(&mut cfg).unwrap();
@@ -6659,7 +6661,7 @@ flowchart TD
 
     #[test]
     fn dark_theme_derives_peer_and_inverted_scales_like_upstream() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "dark"
         }));
         apply_theme_defaults(&mut cfg).unwrap();
@@ -6718,7 +6720,7 @@ flowchart TD
 
     #[test]
     fn neutral_theme_derives_peer_and_label_scales_like_upstream() {
-        let mut cfg = PresentationConfig::from_value(json!({
+        let mut cfg = SourcePresentationConfig::from_value(json!({
             "theme": "neutral"
         }));
         apply_theme_defaults(&mut cfg).unwrap();

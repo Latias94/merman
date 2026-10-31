@@ -51,7 +51,8 @@ fn treemap_literal_title_uses_raw_bbox_and_expands_the_root() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let probe = Arc::new(TitleProbe::default());
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("treemap-literal-title").unwrap(),

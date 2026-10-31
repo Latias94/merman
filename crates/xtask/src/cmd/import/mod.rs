@@ -30,7 +30,7 @@ pub(crate) use fixture_files::{
 pub(crate) use html::import_upstream_html;
 
 fn normalize_imported_diagram_dir(detected: &str) -> Option<&'static str> {
-    merman_core::diagram_type_metadata_id(detected)
+    merman::model::family::diagram_type_metadata_id(detected)
 }
 
 pub(crate) fn imported_fixture_content_id(body: &str) -> String {

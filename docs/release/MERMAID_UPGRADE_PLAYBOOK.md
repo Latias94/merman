@@ -110,7 +110,7 @@ Then generate the owned projections:
 cargo run -p xtask -- gen-mermaid-reference
 ```
 
-This command owns `crates/merman-core/src/generated/mermaid_reference.rs`,
+This command owns `crates/merman-model/src/baseline.rs`,
 `crates/xtask/src/generated/mermaid_reference.rs`, and
 `playground/src/generated/mermaid-reference.ts`. `crates/merman-core/src/baseline.rs` intentionally
 re-exports the generated constants; verify that its public baseline still resolves to the new tag,

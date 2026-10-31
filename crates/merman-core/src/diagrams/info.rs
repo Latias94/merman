@@ -12,66 +12,48 @@ use crate::{
 };
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
-use crate::{PresentationMetadata, Result};
+use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
 
-/// Canonical meaning of an Info diagram, without compatibility-output state.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct InfoDiagramModel {
-    #[serde(rename = "showInfo")]
-    pub show_info: bool,
-}
-
+use merman_model::families::info::InfoDiagramModel;
 #[cfg(feature = "presentation")]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct InfoDiagramRenderModel {
-    #[serde(rename = "showInfo")]
-    pub show_info: bool,
-    #[cfg(feature = "compat-json")]
-    #[serde(skip)]
-    compat_output: InfoCompatOutput,
-}
-
-#[cfg(feature = "compat-json")]
-#[derive(Debug, Clone, Default)]
-enum InfoCompatOutput {
-    Empty,
-    #[default]
-    Model,
-}
+use merman_model::families::info::InfoOutputData;
 
 struct InfoSemanticSource {
     model: InfoDiagramModel,
-    #[cfg(feature = "compat-json")]
-    compat_output: InfoCompatOutput,
+    #[cfg(feature = "presentation")]
+    output_data: InfoOutputData,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
 
 #[cfg(feature = "presentation")]
 impl InfoSemanticSource {
-    fn into_render_model(self) -> InfoDiagramRenderModel {
-        InfoDiagramRenderModel {
-            show_info: self.model.show_info,
-            #[cfg(feature = "compat-json")]
-            compat_output: self.compat_output,
-        }
+    fn into_render_parts(self) -> (InfoDiagramModel, InfoOutputData) {
+        (self.model, self.output_data)
+    }
+
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
+        let (model, output_data) = self.into_render_parts();
+        render_model_to_compat_json(&model, output_data, meta)
     }
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_info(code: &str, meta: &PresentationMetadata) -> Result<Value> {
-    let model = parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
-        .expect("a private parse control cannot be cancelled")?;
-    render_model_to_compat_json(&model, meta)
+pub(crate) fn parse_info(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
+    let (model, output_data) =
+        parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
+            .expect("a private parse control cannot be cancelled")?;
+    render_model_to_compat_json(&model, output_data, meta)
 }
 
 #[cfg(feature = "compat-json")]
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_info_semantic_source_controlled(
@@ -84,10 +66,7 @@ pub(crate) fn parse_info_json_and_editor_facts(
         construction,
         |mut source| {
             let editor_facts = source.editor_facts.take().unwrap_or_default();
-            (
-                render_model_to_compat_json(&source.into_render_model(), meta),
-                editor_facts,
-            )
+            (source.into_compat_json(meta), editor_facts)
         },
         family::CombinedSemanticFailure::into_parts,
     );
@@ -97,23 +76,22 @@ pub(crate) fn parse_info_json_and_editor_facts(
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
-    model: &InfoDiagramRenderModel,
-    meta: &PresentationMetadata,
+    model: &InfoDiagramModel,
+    output_data: InfoOutputData,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(match &model.compat_output {
-        InfoCompatOutput::Empty => json!({}),
-        InfoCompatOutput::Model => json!({
-            "type": meta.diagram_type,
-            "showInfo": model.show_info,
-        }),
-    })
+    Ok(merman_model::families::info::compat::project(
+        model,
+        output_data,
+        &meta.diagram_type,
+    ))
 }
 
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) fn parse_info_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
-) -> Result<InfoDiagramRenderModel> {
+    meta: &SourcePresentationMetadata,
+) -> Result<(InfoDiagramModel, InfoOutputData)> {
     parse_info_model_for_render_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
@@ -121,9 +99,9 @@ pub(crate) fn parse_info_model_for_render(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_info_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<InfoDiagramRenderModel>> {
+) -> crate::OperationControlResult<Result<(InfoDiagramModel, InfoOutputData)>> {
     let construction = construct_info_semantic_source_controlled(
         code,
         &meta.diagram_type,
@@ -132,7 +110,7 @@ pub(crate) fn parse_info_model_for_render_controlled(
         control,
     )?;
     match construction {
-        Ok(source) => Ok(Ok(source.into_render_model())),
+        Ok(source) => Ok(Ok(source.into_render_parts())),
         Err(failure) => Ok(Err(failure.into_error())),
     }
 }
@@ -204,8 +182,8 @@ fn construct_info_semantic_source_controlled(
         InfoHeader::Empty => {
             return Ok(Ok(InfoSemanticSource {
                 model: InfoDiagramModel::default(),
-                #[cfg(feature = "compat-json")]
-                compat_output: InfoCompatOutput::Empty,
+                #[cfg(feature = "presentation")]
+                output_data: InfoOutputData::Empty,
                 #[cfg(feature = "editor-facts")]
                 editor_facts: editor_demand
                     .needs_recovery()
@@ -319,8 +297,8 @@ fn construct_info_semantic_source_controlled(
     control.checkpoint()?;
     Ok(Ok(InfoSemanticSource {
         model: InfoDiagramModel { show_info },
-        #[cfg(feature = "compat-json")]
-        compat_output: InfoCompatOutput::Model,
+        #[cfg(feature = "presentation")]
+        output_data: InfoOutputData::Model,
         #[cfg(feature = "editor-facts")]
         editor_facts,
     }))
@@ -474,13 +452,15 @@ mod tests {
     use crate::{EditorSemanticCompleteness, EditorSemanticDiagnosticKind};
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use crate::{MermaidEngine, ParseDiagnosticSpanKind, ParseOptions};
+    #[cfg(feature = "compat-json")]
+    use serde_json::json;
 
     #[cfg(feature = "presentation")]
-    fn test_meta() -> PresentationMetadata {
-        PresentationMetadata {
+    fn test_meta() -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: "info".to_string(),
             config: crate::MermaidConfig::default(),
-            effective_config: crate::presentation::PresentationConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
     }
@@ -753,9 +733,9 @@ mod tests {
             "info showInfo\n",
         ] {
             let compat = parse_info(source, &meta).unwrap();
-            let typed = parse_info_model_for_render(source, &meta).unwrap();
+            let (typed, _output_data) = parse_info_model_for_render(source, &meta).unwrap();
             assert_eq!(
-                render_model_to_compat_json(&typed, &meta).unwrap(),
+                render_model_to_compat_json(&typed, _output_data, &meta).unwrap(),
                 compat,
                 "Info projection drifted for {source:?}"
             );
@@ -768,7 +748,12 @@ mod tests {
             json!({ "type": "info", "showInfo": false })
         );
         assert_eq!(
-            render_model_to_compat_json(&InfoDiagramRenderModel::default(), &meta).unwrap(),
+            render_model_to_compat_json(
+                &InfoDiagramModel::default(),
+                InfoOutputData::default(),
+                &meta
+            )
+            .unwrap(),
             json!({ "type": "info", "showInfo": false })
         );
     }
@@ -808,6 +793,52 @@ mod tests {
                 .unwrap()
                 .model
                 .is_err()
+            );
+        }
+    }
+}
+
+#[cfg(all(test, feature = "presentation"))]
+mod output_data_tests {
+    use super::*;
+
+    #[test]
+    fn full_producer_preserves_empty_output_independently_of_json_projection() {
+        let meta = crate::SourcePresentationMetadata {
+            diagram_type: "info".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
+            title: None,
+        };
+        let parse = |source| {
+            parse_info_model_for_render_controlled(source, &meta, &crate::OperationControl::new())
+                .unwrap()
+                .unwrap()
+        };
+        let (empty, empty_output) = parse("");
+        let (header, header_output) = parse("info");
+        assert_eq!(empty_output, InfoOutputData::Empty);
+        assert_eq!(header_output, InfoOutputData::Model);
+        assert_eq!(InfoOutputData::default(), InfoOutputData::Model);
+        // Identical canonical values must not erase the source producer's distinct output shape.
+        assert_eq!(
+            serde_json::to_value(&empty).unwrap(),
+            serde_json::to_value(&header).unwrap()
+        );
+        #[cfg(feature = "compat-json")]
+        {
+            assert_eq!(
+                render_model_to_compat_json(&empty, empty_output, &meta).unwrap(),
+                serde_json::json!({})
+            );
+            assert_eq!(
+                render_model_to_compat_json(
+                    &InfoDiagramModel::default(),
+                    InfoOutputData::default(),
+                    &meta
+                )
+                .unwrap()["type"],
+                "info"
             );
         }
     }

@@ -23,7 +23,8 @@ fn assert_plain_actor_visible_projection(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Usecase actor")
-        .expect("detect Usecase");
+        .expect("detect Usecase")
+        .into_presentation();
     let requests = Arc::new(Mutex::new(Vec::new()));
     let recorded = requests.clone();
     let measurer = DeterministicTextMeasurer::default().with_width_callback(move |text, _| {

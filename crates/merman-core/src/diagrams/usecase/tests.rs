@@ -1,10 +1,10 @@
 use super::*;
 
-fn meta() -> PresentationMetadata {
-    PresentationMetadata {
+fn meta() -> SourcePresentationMetadata {
+    SourcePresentationMetadata {
         diagram_type: "usecase".to_string(),
         config: crate::MermaidConfig::empty_object(),
-        effective_config: crate::presentation::PresentationConfig::empty_object(),
+        effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
         title: None,
     }
 }

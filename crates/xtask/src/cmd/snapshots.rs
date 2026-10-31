@@ -38,7 +38,7 @@ fn fixture_render_context_catalog() -> &'static RenderContextCatalog {
 
 pub(crate) fn fixture_site_config_for_path(
     path: &Path,
-) -> Option<merman::presentation::PresentationConfig> {
+) -> Option<merman::SourcePresentationConfig> {
     let fixtures_root = crate::cmd::fixtures_root();
     let is_committed_fixture = path.starts_with(&fixtures_root)
         || fs::canonicalize(path)
@@ -57,15 +57,13 @@ pub(crate) fn fixture_site_config_for_path(
                 path.display()
             )
         })
-        .map(|context| {
-            merman::presentation::PresentationConfig::from_value(context.site_config_value())
-        })
+        .map(|context| merman::SourcePresentationConfig::from_value(context.site_config_value()))
 }
 
-fn layout_snapshot_site_config() -> merman::presentation::PresentationConfig {
+fn layout_snapshot_site_config() -> merman::SourcePresentationConfig {
     // Keep this aligned with `crates/merman-render/tests/common/mod.rs` so
     // regenerated layout goldens match the test harness exactly.
-    merman::presentation::PresentationConfig::from_value(serde_json::json!({
+    merman::SourcePresentationConfig::from_value(serde_json::json!({
         "secure": [
             "secure",
             "securityLevel",
@@ -217,11 +215,11 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         )));
     }
 
-    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+    let runtime_policy = merman::model::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
         .with_fixed_today(Some(
-            merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
+            merman::model::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let environment = layout_snapshot_environment().with_runtime_policy(runtime_policy.clone());
     let engine = merman::MermaidEngine::new()
@@ -273,18 +271,19 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 continue;
             }
         };
-        let artifact = match merman_render::family::prepare(&parsed, &layout_opts, session) {
-            Ok(v) => v,
-            Err(merman_render::Error::UnsupportedDiagram { .. }) => {
-                // Layout snapshots are only defined for renderable built-in families. Skip
-                // unsupported diagrams so `--diagram all` remains useful for the full corpus.
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
+        let artifact =
+            match merman_render::family::prepare(parsed.presentation(), &layout_opts, session) {
+                Ok(v) => v,
+                Err(merman_render::Error::UnsupportedDiagram { .. }) => {
+                    // Layout snapshots are only defined for renderable built-in families. Skip
+                    // unsupported diagrams so `--diagram all` remains useful for the full corpus.
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
         let artifact_json = match artifact.layout_json() {
             Ok(value) => value,
@@ -298,7 +297,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         };
         let Some(mut layout_json) = artifact_json
             .get("layout")
-            .map(|value| merman_core::ManagedSemanticJson::from(value).into_unmanaged_value())
+            .map(|value| merman::model::ManagedJson::from(value).into_unmanaged_value())
         else {
             failures.push(format!(
                 "layout artifact for {} omitted its layout projection",
@@ -596,7 +595,7 @@ fn verify_default_config_artifact(tmp_dir: &Path) -> Result<Option<String>, Xtas
 }
 
 fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected_purify = PathBuf::from("crates/merman-core/src/generated/dompurify_defaults.rs");
+    let expected_purify = PathBuf::from("crates/merman-markup/src/generated/dompurify_defaults.rs");
     let actual_purify = tmp_dir.join("dompurify_defaults.actual.rs");
     super::gen_dompurify_defaults(vec![
         "--out".to_string(),
@@ -740,14 +739,14 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     //
     // Also pin "today" so time-dependent diagrams (notably Gantt) remain deterministic and the
     // generated snapshots match the test harness (`crates/merman-core/tests/snapshots.rs`).
-    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+    let runtime_policy = merman::model::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
         .with_fixed_today(Some(
-            merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
+            merman::model::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let engine = merman::MermaidEngine::new()
-        .with_site_config(merman::presentation::PresentationConfig::from_value(
+        .with_site_config(merman::SourcePresentationConfig::from_value(
             serde_json::json!({ "handDrawnSeed": 1 }),
         ))
         .with_runtime_policy(runtime_policy);

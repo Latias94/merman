@@ -232,7 +232,7 @@ pub(super) fn elk(
 pub(super) fn swimlane(
     model: &MindmapModel,
     nodes: Vec<LayoutNode>,
-    config: &merman_core::presentation::PresentationConfig,
+    config: &merman_model::presentation::PresentationConfig,
     work_meter: std::sync::Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<MindmapDiagramLayout> {
     use crate::model::{LayoutCluster, LayoutLabel};

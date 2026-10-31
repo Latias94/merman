@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use merman_core::diagrams::radar::RadarDiagramRenderModel;
-use merman_core::presentation::PresentationConfig;
+use merman_model::families::radar::RadarDiagramModel;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -44,7 +44,7 @@ impl RadarTextPaintPlan {
     pub(crate) fn baseline_with_binding(
         binding: &super::RadarCssBinding,
         layout: &RadarDiagramLayout,
-        model: &RadarDiagramRenderModel,
+        model: &RadarDiagramModel,
         title: Option<&str>,
     ) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl RadarTextPaintPlan {
         config: &PresentationConfig,
         binding: &super::RadarCssBinding,
         layout: &RadarDiagramLayout,
-        model: &RadarDiagramRenderModel,
+        model: &RadarDiagramModel,
         title: Option<&str>,
         title_plan: &super::RadarTitleThemePlan,
         work_meter: &OperationWorkMeter,
@@ -92,20 +92,15 @@ impl RadarTextPaintPlan {
         let mut plan = Self::baseline_with_binding(binding, layout, model, title);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeOutcomes::default();
-        let owns_text = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.textColor",
-        );
+        let owns_text = config.config_paint_overrides_typed_default("themeVariables.textColor");
         let title_style = theme.style_with_work_meter(
             ThemeTarget::Title,
             ThemeVariant::Default,
             Some(1),
             work_meter,
         )?;
-        let owns_title = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.titleColor",
-        ) || title_style.fill_resolution().winner().is_some();
+        let owns_title = config.config_paint_overrides_typed_default("themeVariables.titleColor")
+            || title_style.fill_resolution().winner().is_some();
         let static_style = theme.style_with_work_meter(
             ThemeTarget::Text,
             ThemeVariant::Default,

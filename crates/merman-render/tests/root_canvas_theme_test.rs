@@ -57,11 +57,11 @@ fn render_root_canvas() -> String {
         );
     }
 
-    let parsed =
-        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
-            .expect("parse Flowchart source")
-            .expect("detect Flowchart source");
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+        .expect("parse Flowchart source")
+        .expect("detect Flowchart source")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -140,3 +140,6 @@ fn repeating_and_tiled_root_canvas_is_portable_and_deterministic() {
         "{first}"
     );
 }
+
+#[allow(dead_code)]
+mod common;

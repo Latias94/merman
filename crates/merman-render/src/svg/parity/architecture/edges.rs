@@ -4,7 +4,7 @@ use crate::architecture_metrics::{
 };
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
-use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
 
 use super::super::{
     SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt, fmt_into, fmt_string,
@@ -726,7 +726,7 @@ mod tests {
     use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+    use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
     use std::fmt;
     use std::ops::Range;
 
@@ -831,7 +831,7 @@ mod tests {
             let diagram_id = options.diagram_id_or("architecture");
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::empty_object(),
+                &merman_model::presentation::PresentationConfig::empty_object(),
             );
             let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             settings.icon_size_px = 20.0;
@@ -924,7 +924,7 @@ mod tests {
             let diagram_id = options.diagram_id_or("architecture");
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
                 None,
-                &merman_core::presentation::PresentationConfig::empty_object(),
+                &merman_model::presentation::PresentationConfig::empty_object(),
             );
             let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             let mut node_xy = rustc_hash::FxHashMap::default();

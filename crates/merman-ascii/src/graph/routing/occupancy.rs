@@ -13,7 +13,7 @@ use super::{PreparedRoute, RouteOwner, layout_allocation_failed};
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use merman_core::{OperationControl, OperationPhase};
+use merman_model::{OperationControl, OperationPhase};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::hash_map::Entry;
 

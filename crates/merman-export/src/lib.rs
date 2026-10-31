@@ -66,7 +66,7 @@ pub use font_environment::{ExportFontMode, ExportFontPlan};
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use cssparser::{Delimiter, Parser, Token};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use merman_core::{
+use merman_model::{
     OperationCancelled, OperationControl, OperationLedgerError, OperationPhase,
     OperationResourceDomain, OperationResourceLimitExceeded, OperationResourceProvenance,
 };
@@ -4480,8 +4480,8 @@ mod tests {
         let control = OperationControl::new();
         let provenance = OperationResourceProvenance::new(
             OperationResourceDomain::Render,
-            Some(merman_core::resources::ResourceProfile::Constrained),
-            [merman_core::OperationResourceOverride {
+            Some(merman_model::resources::ResourceProfile::Constrained),
+            [merman_model::OperationResourceOverride {
                 id: "max_svg_bytes",
                 value: 17,
             }],
@@ -5820,7 +5820,7 @@ mod tests {
     fn svg_to_png_keeps_text_visible_when_requested_font_is_missing() {
         let svg = format!(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 400px; background-color: white;"><text x="100" y="40" fill="#333333" font-size="32" style="font-family: '__merman_missing_font__'; text-anchor: middle;">v{}</text></svg>"##,
-            merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+            merman_model::baseline::PINNED_MERMAID_BASELINE_VERSION
         );
         let bytes = svg_to_png(&svg, &fixture_raster_options()).unwrap();
         assert_png_has_visible_non_background_ink(&bytes);

@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn css_walk_preserves_cancellation_provenance() {
-        use merman_core::{OperationControl, OperationPhase};
+        use merman_model::{OperationControl, OperationPhase};
         let control = OperationControl::new();
         let session = RenderEnvironment::deterministic()
             .begin_session_with_control(control.clone())

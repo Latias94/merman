@@ -10,7 +10,7 @@ use super::*;
 
 pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
-    metadata: &merman_core::PresentationMetadata,
+    metadata: &merman_model::presentation::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(flowchart_request(artifact, metadata), options)
@@ -18,7 +18,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
 
 pub(super) fn flowchart_request<'a>(
     artifact: &'a crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
-    metadata: &'a merman_core::PresentationMetadata,
+    metadata: &'a merman_model::presentation::PresentationMetadata,
 ) -> FlowchartSvgModelRequest<'a> {
     FlowchartSvgModelRequest {
         layout: artifact.pair().layout(),
@@ -42,7 +42,7 @@ pub(super) fn flowchart_request<'a>(
 
 pub(in crate::svg::parity) fn flowchart_edge_geometry(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
-    metadata: &merman_core::PresentationMetadata,
+    metadata: &merman_model::presentation::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     super::paint::edge_geometry(flowchart_request(artifact, metadata), options)
@@ -57,7 +57,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(super) model: &'a crate::flowchart::FlowchartModel,
     pub(super) render_context: &'a crate::flowchart::FlowchartRenderContext,
-    pub(super) effective_config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) effective_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
@@ -347,7 +347,7 @@ pub(super) fn render_flowchart_svg_model(
 
             drop(_g_render_svg);
             timings.total = total_timer
-                .map(merman_core::runtime::OperationTimer::elapsed)
+                .map(merman_model::runtime::OperationTimer::elapsed)
                 .unwrap_or_default();
             if render_timing.is_enabled() {
                 eprintln!(
@@ -537,7 +537,8 @@ mod integration_tests {
     use crate::model::{FlowchartLayout, LayoutNode};
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
-    use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+    use merman_core::{MermaidEngine, ParseOptions};
+    use merman_model::presentation::RenderSemanticModel;
 
     #[test]
     fn unmerged_self_loop_occurrences_keep_source_owner_label_and_first_slot() {
@@ -547,9 +548,14 @@ mod integration_tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let render_context = parsed.flowchart_render_context().unwrap().clone();
-        let (_, semantic) = parsed.into_parts();
+            .unwrap()
+            .into_presentation();
+        let render_context = parsed
+            .render_context()
+            .flowchart_render_context()
+            .unwrap()
+            .clone();
+        let (_, semantic, _) = parsed.into_parts();
         let RenderSemanticModel::Flowchart(mut model) = semantic else {
             panic!("expected Flowchart model");
         };
@@ -594,12 +600,14 @@ mod integration_tests {
                 ParseOptions::strict(),
             )
             .expect("parse succeeds")
-            .expect("detects Flowchart");
+            .expect("detects Flowchart")
+            .into_presentation();
         let render_context = parsed
+            .render_context()
             .flowchart_render_context()
             .expect("Flowchart render context")
             .clone();
-        let (metadata, semantic) = parsed.into_parts();
+        let (metadata, semantic, _) = parsed.into_parts();
         let RenderSemanticModel::Flowchart(mut model) = semantic else {
             panic!("expected Flowchart model");
         };
@@ -738,9 +746,13 @@ mod integration_tests {
                 .parse_diagram_for_render_model_sync(
                     &format!("---\nconfig:\n  elk:\n    straightenEdges: {enabled}\n---\nflowchart LR\nA --> B"),
                     ParseOptions::strict(),
-                ).unwrap().unwrap();
-            let render_context = parsed.flowchart_render_context().unwrap().clone();
-            let (metadata, semantic) = parsed.into_parts();
+                ).unwrap().unwrap().into_presentation();
+            let render_context = parsed
+                .render_context()
+                .flowchart_render_context()
+                .unwrap()
+                .clone();
+            let (metadata, semantic, _) = parsed.into_parts();
             let RenderSemanticModel::Flowchart(model) = semantic else {
                 panic!("Flowchart");
             };

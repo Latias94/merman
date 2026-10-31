@@ -1,5 +1,5 @@
 use super::*;
-use merman_core::diagrams::gantt::GanttTask;
+use merman_model::families::gantt::GanttTask;
 
 #[test]
 fn gantt_render_model_renders_sections_tasks_and_flags() {

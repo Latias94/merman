@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
@@ -17,52 +17,22 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, Result, SourceSpan};
+pub(crate) use merman_model::families::cynefin::{
+    CynefinDiagramModel, CynefinDomainModel, CynefinItemModel, CynefinTransitionModel,
+};
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
 
 const HEADER: &str = "cynefin-beta";
 const DOMAINS: &[&str] = &["complex", "complicated", "clear", "chaotic", "confusion"];
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinItemModel {
-    pub label: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinDomainModel {
-    pub name: String,
-    #[serde(default)]
-    pub items: Vec<CynefinItemModel>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinTransitionModel {
-    pub from: String,
-    pub to: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CynefinDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub domains: Vec<CynefinDomainModel>,
-    #[serde(default)]
-    pub transitions: Vec<CynefinTransitionModel>,
-}
-
-impl CynefinDiagramModel {
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-    }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut CynefinDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
 }
 
 #[derive(Debug, Clone)]
@@ -114,9 +84,9 @@ impl CynefinParseOutcome {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_cynefin(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_cynefin(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    model.sanitize_common_db_fields(meta.effective_config.as_config());
+    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
 
     render_model_to_compat_json(&model, meta)
 }
@@ -125,7 +95,7 @@ pub(crate) fn parse_cynefin(code: &str, meta: &PresentationMetadata) -> Result<V
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_cynefin_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let CynefinParseOutcome {
@@ -140,7 +110,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
         EditorFactsDemand::Capture,
         control,
     )?;
-    model.sanitize_common_db_fields(meta.effective_config.as_config());
+    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
@@ -168,32 +138,26 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &CynefinDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": &model.title,
-        "accTitle": &model.acc_title,
-        "accDescr": &model.acc_descr,
-        "domains": &model.domains,
-        "transitions": &model.transitions,
-    }))
+    merman_model::families::cynefin::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(all(test, feature = "all-diagrams", feature = "presentation"))]
 pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<CynefinDiagramModel> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    model.sanitize_common_db_fields(meta.effective_config.as_config());
+    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
     Ok(model)
 }
 
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_cynefin_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<CynefinDiagramModel>> {
     parse_cynefin_model_controlled(
@@ -226,7 +190,7 @@ pub(crate) fn parse_cynefin_semantic_model_controlled(
         Some(error) => Err(error),
         None => {
             let mut model = source.model;
-            model.sanitize_common_db_fields(&meta.semantic_config);
+            sanitize_common_db_fields(&mut model, &meta.semantic_config);
             Ok(model)
         }
     };
@@ -256,7 +220,7 @@ fn parse_cynefin_model_controlled(
         Err(error) => return Ok(Err(error)),
     };
     let mut model = source.model;
-    model.sanitize_common_db_fields(config);
+    sanitize_common_db_fields(&mut model, config);
     Ok(Ok(model))
 }
 
@@ -272,7 +236,7 @@ fn trimmed_source_span(source: &str, source_start: usize) -> SourceSpan {
 ))]
 fn parse_cynefin_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<CynefinSemanticSource> {
     construct_cynefin_parse_outcome(code, &meta.diagram_type).into_strict_source()
 }
@@ -952,10 +916,10 @@ mod tests {
         let facts = crate::family::test_support::editor_facts(
             parse_cynefin_json_and_editor_facts,
             source,
-            &crate::PresentationMetadata {
+            &crate::SourcePresentationMetadata {
                 diagram_type: "cynefin".to_string(),
                 config: crate::MermaidConfig::empty_object(),
-                effective_config: crate::presentation::PresentationConfig::empty_object(),
+                effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
                 title: None,
             },
         );
@@ -995,7 +959,11 @@ mod tests {
         };
 
         assert_eq!(
-            render_model_to_compat_json(model, typed.metadata()).unwrap(),
+            merman_model::families::cynefin::compat::project(
+                model,
+                &merman_model::presentation::compat::CompatJsonMetadata::from(typed.metadata())
+            )
+            .unwrap(),
             compat.model
         );
     }

@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -30,11 +29,13 @@ fn render_labels_with_environment(
     let source = format!(
         "%%{{init: {{\"htmlLabels\": true}}}}%%\nblock\n columns 1\n A[\"{label}\"] -- \"{label}\" --> B[\"Target\"]\n"
     );
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
+    let engine = MermaidEngine::new()
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Block HTML labels")
-        .expect("detect Block");
+        .expect("detect Block")
+        .into_presentation();
     let session = environment.begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Block HTML labels");
@@ -423,3 +424,6 @@ fn block_styled_collapsed_line_tails_do_not_add_width() {
         assert!(nbsp.width > plain.width);
     }
 }
+
+#[allow(dead_code)]
+mod common;

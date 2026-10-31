@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -25,7 +24,7 @@ json Data@{"second":2,"first":{"z":0,"a":1}}
 Data -- Login
 "#;
 
-fn render(source: &str, layout: &str) -> (merman_core::ManagedSemanticJson, String) {
+fn render(source: &str, layout: &str) -> (merman_model::ManagedJson, String) {
     render_config(
         source,
         json!({
@@ -34,10 +33,7 @@ fn render(source: &str, layout: &str) -> (merman_core::ManagedSemanticJson, Stri
     )
 }
 
-fn render_config(
-    source: &str,
-    config: serde_json::Value,
-) -> (merman_core::ManagedSemanticJson, String) {
+fn render_config(source: &str, config: serde_json::Value) -> (merman_model::ManagedJson, String) {
     render_config_with_environment(source, config, RenderEnvironment::deterministic())
 }
 
@@ -45,12 +41,14 @@ fn render_config_with_environment(
     source: &str,
     config: serde_json::Value,
     environment: RenderEnvironment,
-) -> (merman_core::ManagedSemanticJson, String) {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
+) -> (merman_model::ManagedJson, String) {
+    let engine = MermaidEngine::new()
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Usecase")
-        .expect("detect Usecase");
+        .expect("detect Usecase")
+        .into_presentation();
     let session = environment.begin_session().expect("render session");
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Usecase");
@@ -1405,12 +1403,15 @@ fn usecase_math_capability_admission_matches_html_label_rendering() {
     for source in MATH_LABEL_SOURCES.iter().chain(MATH_LITERAL_BREAK_SOURCES) {
         for html_labels in [true, false] {
             let parsed = MermaidEngine::new()
-                .with_site_config(PresentationConfig::from_value(json!({
-                    "layout": "dagre", "htmlLabels": html_labels,
-                })))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "layout": "dagre", "htmlLabels": html_labels,
+                    })),
+                )
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let session = RenderEnvironment::deterministic()
                 .without_math_renderer()
                 .begin_session()
@@ -1541,7 +1542,8 @@ json Data@{"surrogate":"\ud800","values":["$$x^2$$"]}
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic()
             .without_math_renderer()
             .begin_session()
@@ -1818,3 +1820,6 @@ fn usecase_elk_hops_rewrite_explicit_masks_without_moving_markers() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -7,17 +7,17 @@ use crate::safe_text::{
     BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
     push_optional_document_field,
 };
-use merman_core::diagrams::git_graph::{GitGraphCommit, GitGraphDiagramModel};
+use merman_model::families::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 
 pub(super) fn render_git_graph_diagram(
     model: &GitGraphDiagramModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     validate_commit_types(&model.commits, &layout_resources)?;
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
-    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
+    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
 
     document.push_line_with(|line| {
         push_line_field(line, "gitGraph ", "direction", &model.direction)?;
@@ -28,7 +28,7 @@ pub(super) fn render_git_graph_diagram(
     push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
     if !model.branches.is_empty() {
         for _ in &model.branches {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
         }
         document.push_line_with(|line| {
             push_line_list(
@@ -41,7 +41,7 @@ pub(super) fn render_git_graph_diagram(
     }
 
     for commit in &model.commits {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         document.resources_mut().charge_layout_work(1)?;
         document.push_line_with(|line| {
             line.push_str("  - ")?;
@@ -52,7 +52,7 @@ pub(super) fn render_git_graph_diagram(
     if !model.warning_facts.is_empty() {
         document.push_line("warnings:")?;
         for warning in &model.warning_facts {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             document.resources_mut().charge_layout_work(1)?;
             document.push_line_with(|line| {
                 push_line_field(line, "  - ", "message", &warning.message)
@@ -128,9 +128,9 @@ mod tests {
     use super::*;
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
-    use merman_core::diagrams::git_graph::GitGraphBranch;
-    use merman_core::resources::ResourceProfile;
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::families::git_graph::GitGraphBranch;
+    use merman_model::resources::ResourceProfile;
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     fn commit(commit_type: i64) -> GitGraphCommit {
         GitGraphCommit {

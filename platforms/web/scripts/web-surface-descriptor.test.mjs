@@ -31,10 +31,17 @@ test("checked-in Web descriptor owns one math-free default package graph", () =>
   );
   assertPackageContract("full", {
     runtimeProfile: "full",
-    features: ["all-diagrams", "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"],
-    capabilities: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"],
-    runtimeIds: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "svg"],
+    features: ["all-diagrams", "analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "svg"],
+    capabilities: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "svg"],
+    runtimeIds: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "svg"],
     outputs: ["ascii", "svg"],
+  });
+  assertPackageContract("editor", {
+    runtimeProfile: "editor",
+    features: ["all-diagrams", "editor", "fixes"],
+    capabilities: ["analysis", "editor", "fixes"],
+    runtimeIds: ["analysis", "editor", "fixes"],
+    outputs: [],
   });
   assertPackageContract("render", {
     runtimeProfile: "render",

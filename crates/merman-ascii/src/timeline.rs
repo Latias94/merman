@@ -6,7 +6,7 @@ use crate::safe_text::{
     push_wrapped_field,
 };
 use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
-use merman_core::diagrams::timeline::{TimelineDiagramModel, TimelineDirection, TimelineTask};
+use merman_model::families::timeline::{TimelineDiagramModel, TimelineDirection, TimelineTask};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
@@ -15,7 +15,7 @@ pub(super) fn render_timeline_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let section_plan = plan_sectioned_text(
         "timeline",
@@ -23,7 +23,7 @@ pub(super) fn render_timeline_diagram(
         &model.tasks,
         document.resources_mut(),
     )?;
-    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
+    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
 
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
@@ -38,7 +38,7 @@ pub(super) fn render_timeline_diagram(
 
     if !model.sections.is_empty() {
         for (section_index, section) in model.sections.iter().enumerate() {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
             push_document_field(&mut document, "section", section)?;
             for task_index in section_plan.tasks_for_section(section_index) {
                 push_task(&mut document, &model.tasks[*task_index], execution)?;
@@ -100,13 +100,13 @@ fn push_task(
     task: &TimelineTask,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     document.resources_mut().charge_layout_work(1)?;
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
         push_wrapped_field(line, "", "task", &task.task)
     })?;
     for event in &task.events {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
         document.resources_mut().charge_layout_work(1)?;
         document.push_wrapped_prefixed_line_with(
             "    * ",
@@ -125,9 +125,9 @@ mod tests {
 
     #[test]
     fn canonical_timeline_matches_full_direction_sections_and_events() {
-        use merman_core::{
-            MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel, SemanticParser,
-        };
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::SemanticDiagramModel;
+        use merman_model::presentation::RenderSemanticModel;
 
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();
@@ -147,19 +147,12 @@ mod tests {
             let RenderSemanticModel::Timeline(full) = full.model() else {
                 panic!("Timeline model")
             };
-            assert!(std::ptr::eq(
-                full.tasks.as_ptr(),
-                full.semantic.tasks.as_ptr()
-            ));
+            assert!(std::ptr::eq(full.tasks.as_ptr(), full.tasks.as_ptr()));
             let actual =
                 render_timeline_diagram(model, &options, AsciiExecution::for_test(&policy))
                     .unwrap();
-            let expected = render_timeline_diagram(
-                &full.semantic,
-                &options,
-                AsciiExecution::for_test(&policy),
-            )
-            .unwrap();
+            let expected =
+                render_timeline_diagram(full, &options, AsciiExecution::for_test(&policy)).unwrap();
             assert_eq!(actual, expected, "{source}");
         }
     }

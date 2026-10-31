@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
-use merman_core::diagrams::venn::VennDiagramModel;
-use merman_core::theme_color::{darken, is_dark, lighten};
+use merman_markup::theme_color::{darken, is_dark, lighten};
+use merman_model::families::venn::VennDiagramModel;
 
 use crate::config::config_string;
 use crate::model::VennDiagramLayout;
@@ -28,7 +28,7 @@ pub(crate) enum VennAreaPaintBinding {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::venn::{VennStyleEntryModel, VennSubsetModel};
+    use merman_model::families::venn::{VennStyleEntryModel, VennSubsetModel};
     use serde_json::json;
 
     fn work_meter() -> crate::resources::OperationWorkMeter {

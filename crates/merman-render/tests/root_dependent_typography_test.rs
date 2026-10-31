@@ -1,6 +1,5 @@
 #![cfg(any(feature = "diagram-class", feature = "diagram-flowchart"))]
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{DiagramTheme, ThemePortabilityRequirement};
@@ -26,17 +25,20 @@ fn render_in_environment(
     environment: RenderEnvironment,
     theme: Option<&DiagramTheme>,
 ) -> merman_render::Result<String> {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-        "htmlLabels": true,
-    })));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "htmlLabels": true,
+        })),
+    );
     let engine = match theme {
-        Some(theme) => merman_render::__private::install_parse_compatibility(theme, engine),
+        Some(theme) => common::install_parse_compatibility(theme, engine),
         None => engine,
     };
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = match theme {
         Some(theme) => environment.begin_session_with_theme(theme),
         None => environment.begin_session(),
@@ -177,12 +179,12 @@ fn root_dependent_font_sizes_remain_residual_with_typed_typography() {
     let families = [
         #[cfg(feature = "diagram-class")]
         (
-            merman_core::DiagramFamilyId::CLASS,
+            merman_model::family::DiagramFamilyId::CLASS,
             "classDiagram\nclass A\n",
         ),
         #[cfg(feature = "diagram-flowchart")]
         (
-            merman_core::DiagramFamilyId::FLOWCHART,
+            merman_model::family::DiagramFamilyId::FLOWCHART,
             "flowchart LR\nA[Measured label]\n",
         ),
     ];
@@ -212,3 +214,6 @@ fn root_dependent_font_sizes_remain_residual_with_typed_typography() {
         );
     }
 }
+
+#[allow(dead_code)]
+mod common;

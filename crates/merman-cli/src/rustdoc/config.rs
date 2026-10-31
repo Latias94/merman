@@ -339,10 +339,10 @@ pub(super) fn fragment_source_limit(path: &Path, resources: &ResolvedResourcePol
         )
     } else {
         InputLimit::new(
-            merman::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+            merman::model::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
             resources
                 .input_policy()
-                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+                .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes),
         )
     }
 }
@@ -721,8 +721,9 @@ mod tests {
             ),
         )
         .unwrap();
-        let mut resources =
-            ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE);
+        let mut resources = ResolvedResourcePolicy::for_profile(
+            merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        );
         resources
             .apply_override("max_rustdoc_input_bytes", 7)
             .unwrap();
@@ -750,8 +751,9 @@ mod tests {
             ),
         )
         .unwrap();
-        let mut resources =
-            ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE);
+        let mut resources = ResolvedResourcePolicy::for_profile(
+            merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        );
         resources
             .apply_override("max_rustdoc_input_bytes", 4)
             .unwrap();

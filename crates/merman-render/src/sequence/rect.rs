@@ -3,7 +3,7 @@ use super::constants::{SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX};
 use crate::Result;
 use crate::geom::Box2;
 use crate::model::{LayoutEdge, LayoutNode};
-use merman_core::diagrams::sequence::{
+use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
     SequenceMessageKind,
 };

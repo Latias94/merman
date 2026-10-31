@@ -366,7 +366,7 @@ mod tests {
                 }
             }
 
-            let rgba = merman_core::theme_color::ThemeColor::parse(color)
+            let rgba = merman_markup::theme_color::ThemeColor::parse(color)
                 .unwrap_or_else(|_| panic!("expected a Mermaid-compatible color, got {color}"))
                 .rgba_channels();
             0.2126 * linear_channel(rgba.red)
@@ -428,11 +428,12 @@ mod tests {
                     )
                     .unwrap()
                     .unwrap()
+                    .into_presentation()
             };
             let themed =
                 parse(theme.install_parse_compatibility(merman_core::MermaidEngine::new()));
             let fallback = parse(merman_core::MermaidEngine::new().with_site_config(
-                merman_core::presentation::PresentationConfig::from_value(
+                merman_core::presentation::SourcePresentationConfig::from_value(
                     serde_json::json!({"theme": selected}),
                 ),
             ));
@@ -449,7 +450,7 @@ mod tests {
             }
             for path in ["themeVariables.nodeBorder", "themeVariables.git0"] {
                 assert!(
-                    !merman_core::__private::config_path_overrides_typed_default(config, path),
+                    !config.config_path_overrides_typed_default(path),
                     "{} must leave {path} available to typed paint",
                     preset.id()
                 );
@@ -1781,19 +1782,20 @@ mod tests {
             for &dark_mode in dark_modes {
                 let engine = match dark_mode {
                     Some(value) => merman_core::MermaidEngine::new().with_site_config(
-                        merman_core::presentation::PresentationConfig::from_value(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
                             serde_json::json!({"darkMode": value}),
                         ),
                     ),
                     None => merman_core::MermaidEngine::new(),
                 };
-                let parsed = crate::__private::install_parse_compatibility(&theme, engine)
+                let parsed = crate::test_support::install_parse_compatibility(&theme, engine)
                     .parse_diagram_for_render_model_sync(
                         &source,
                         merman_core::ParseOptions::strict(),
                     )
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .into_presentation();
                 let session = crate::environment::RenderEnvironment::deterministic()
                     .begin_session_with_theme(&theme)
                     .unwrap();

@@ -56,10 +56,39 @@ impl LanguageSession {
         &self,
         uri: &Uri,
     ) -> Result<Option<SnapshotContext>> {
-        interactive_result(
-            self.try_acquire_analysis(uri).await?,
-            code_actions_stale_error,
-        )
+        #[cfg(not(feature = "fixes"))]
+        {
+            let _ = uri;
+            let mut error = tower_lsp_server::jsonrpc::Error::invalid_params(
+                "fixes capability is not compiled",
+            );
+            error.data = Some(serde_json::json!({
+                "error_id": "missing-capability", "capability_id": "fixes",
+            }));
+            Err(error)
+        }
+        #[cfg(feature = "fixes")]
+        {
+            let Some(snapshot) = interactive_result(
+                self.try_acquire_snapshot(uri).await?,
+                code_actions_stale_error,
+            )?
+            else {
+                return Ok(None);
+            };
+            let (request, executor) = {
+                let state = self.inner.state.lock().await;
+                (
+                    state.code_action_reprojection_request(&snapshot),
+                    state.analysis_executor(),
+                )
+            };
+            let request = request.ok_or_else(code_actions_stale_error)?;
+            interactive_result(
+                self.execute_projection_once(&executor, request).await?,
+                code_actions_stale_error,
+            )
+        }
     }
 
     pub(super) async fn acquire_push_diagnostic_context(

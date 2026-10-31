@@ -12,7 +12,7 @@ fn semantic_artifact_exposes_canonical_meaning_without_presentation_features() {
     assert_eq!(artifact.diagram_type(), "info");
     assert!(matches!(
         artifact.model(),
-        merman::SemanticDiagramModel::Info(_)
+        merman::model::SemanticDiagramModel::Info(_)
     ));
 }
 

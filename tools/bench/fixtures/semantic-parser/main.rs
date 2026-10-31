@@ -1,4 +1,5 @@
-use merman_core::{SemanticDiagramModel, SemanticParser};
+use merman_core::SemanticParser;
+use merman_model::SemanticDiagramModel;
 use std::collections::BTreeSet;
 use std::io::{self, Write};
 

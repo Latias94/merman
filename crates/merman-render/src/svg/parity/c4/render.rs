@@ -5,7 +5,7 @@ use crate::svg::parity::roughjs_common::paths::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
     roughjs_paths_for_hand_drawn_svg_path,
 };
-use merman_core::diagrams::c4::{C4Boundary, C4DiagramModel, C4Shape};
+use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Shape};
 type C4SvgModelShape = C4Shape;
 type C4SvgModelBoundary = C4Boundary;
 
@@ -1570,7 +1570,7 @@ mod tests {
         let model = serde_json::from_value(json!({})).expect("empty C4 model");
         let mut plan = crate::c4::C4TypographyThemePlan::resolve(
             None,
-            &merman_core::presentation::PresentationConfig::from_value(config.clone()),
+            &crate::test_support::presentation_config(config.clone()),
             None,
             &model,
         );

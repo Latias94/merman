@@ -5,7 +5,7 @@ use crate::zenuml::{
     ZenumlParticipantLayout, ZenumlReturnLayout, ZenumlSelfCallLayout, ZenumlSourceStyle,
     ZenumlThemePlan, resolve_zenuml_emojis_in_text, resolve_zenuml_title, zenuml_emoji_unicode,
 };
-use merman_core::diagrams::zenuml::ZenumlDiagramModel;
+use merman_model::families::zenuml::ZenumlDiagramModel;
 
 const FRAME_HEADER_HEIGHT: f64 = 28.0;
 const CONTENT_PADDING: f64 = 10.0;

@@ -424,7 +424,7 @@ pub(super) fn prepare_edge_routes(
         )?;
     }
     ctx.work_meter
-        .checkpoint(merman_core::OperationPhase::Layout)?;
+        .checkpoint(merman_model::OperationPhase::Layout)?;
     Ok(cache)
 }
 
@@ -724,7 +724,7 @@ pub(super) fn edge_geometry(
                 })
                 .transpose()?;
             ctx.work_meter
-                .checkpoint(merman_core::OperationPhase::Emit)?;
+                .checkpoint(merman_model::OperationPhase::Emit)?;
             result.push(crate::model::EdgePaintGeometry {
                 id: edge.edge.id.clone(),
                 points,
@@ -747,12 +747,14 @@ mod tests {
         let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let environment = crate::environment::RenderEnvironment::deterministic();
-        let merman_core::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        let merman_model::presentation::RenderSemanticModel::Flowchart(model) = parsed.model()
+        else {
             panic!("Flowchart model")
         };
-        let context = parsed.flowchart_render_context().unwrap();
+        let context = parsed.render_context().flowchart_render_context().unwrap();
         let layout_session = environment.clone().begin_session().unwrap();
         let layout_style = FlowchartEdgeStylePlan::prepare_for_model(
             model,

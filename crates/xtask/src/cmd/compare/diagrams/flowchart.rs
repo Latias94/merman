@@ -291,7 +291,7 @@ fn run_flowchart_compare(
                 };
             // The admitted Mermaid 12 baseline owns all default and explicit ELK
             // fixtures. Historical Cypress collection membership is not a render gate.
-            if semantic.family_id() != Some(merman_core::DiagramFamilyId::FLOWCHART) {
+            if semantic.family_id() != Some(merman::model::family::DiagramFamilyId::FLOWCHART) {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),

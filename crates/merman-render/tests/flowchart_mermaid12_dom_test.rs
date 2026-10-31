@@ -8,7 +8,8 @@ fn render_flowchart(source: &str) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse Flowchart")
-        .expect("Flowchart diagram");
+        .expect("Flowchart diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout Flowchart")

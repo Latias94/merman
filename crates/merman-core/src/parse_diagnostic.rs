@@ -8,7 +8,7 @@
 ))]
 
 use crate::error::{ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
-use crate::source_span::SourceSpan;
+use merman_model::source::SourceSpan;
 
 #[cfg(feature = "editor-facts")]
 pub(crate) fn lalrpop_recovery_span<T, E>(

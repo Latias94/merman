@@ -7,10 +7,10 @@ use crate::text::{
     TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines_with_checkpoint,
 };
 use crate::{Error, Result};
-use merman_core::diagrams::eventmodeling::{
+use merman_model::families::event_modeling::{
     EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
 };
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -67,9 +67,9 @@ pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
     measurer: &dyn TextMeasurer,
     work_meter: &Arc<OperationWorkMeter>,
 ) -> Result<(EventModelingDiagramLayout, EventModelingPreparedLabels)> {
-    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+    work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let cfg = theme.layout_settings;
-    let mut label_config = effective_config.clone();
+    let mut label_config = effective_config.as_config().clone();
     if label_config.get_str("securityLevel").is_none() {
         label_config.set_value("securityLevel", serde_json::json!("strict"));
     }
@@ -102,7 +102,7 @@ pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
             work_meter,
         )?;
         let text_dimension = label.dimension;
-        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
         prepared_labels.boxes.push(label);
         let event_width = text_dimension.width + 2.0 * BOX_TEXT_PADDING;
         let event_height = text_dimension.height + 2.0 * BOX_TEXT_PADDING;
@@ -575,8 +575,8 @@ impl EventModelingPreparedHtmlLabel {
     fn prepare(
         frame: &EventModelingFrame,
         data_entities: &HashMap<&str, &EventModelingDataEntity>,
-        label_config: &PresentationConfig,
-        fragment_config: &PresentationConfig,
+        label_config: &merman_model::MermaidConfig,
+        fragment_config: &merman_model::MermaidConfig,
         measurer: &dyn TextMeasurer,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
@@ -596,7 +596,7 @@ impl EventModelingPreparedHtmlLabel {
             max,
             work_meter,
             &parse_work,
-            merman_core::OperationPhase::Layout,
+            merman_model::OperationPhase::Layout,
         );
         // Author sanitization is transient and may shrink during wrapLabel whitespace folding.
         // Its parser/storage work is metered separately from final retained XHTML bytes.
@@ -604,15 +604,11 @@ impl EventModelingPreparedHtmlLabel {
             usize::MAX,
             work_meter,
             &parse_work,
-            merman_core::OperationPhase::Layout,
+            merman_model::OperationPhase::Layout,
         );
         let sanitize_author = |raw: &str| {
             eventmodeling_sanitize_result(
-                merman_core::sanitize::sanitize_text_with_sink(
-                    raw,
-                    label_config.as_config(),
-                    &author_sink,
-                ),
+                merman_markup::sanitize::sanitize_text_with_sink(raw, label_config, &author_sink),
                 owner_bytes,
                 work_meter,
             )
@@ -624,7 +620,7 @@ impl EventModelingPreparedHtmlLabel {
                 measurer,
                 &style,
                 TEXT_MAX_WIDTH,
-                || Ok(work_meter.checkpoint(merman_core::OperationPhase::Layout)?),
+                || Ok(work_meter.checkpoint(merman_model::OperationPhase::Layout)?),
             )
             .map(|lines| lines.join("<br/>"))
         };
@@ -659,11 +655,7 @@ impl EventModelingPreparedHtmlLabel {
         // Keep entity-authored angle brackets encoded until this HTML parse consumes them.
         // Only this sanitized, XML-serialized terminal may be written beneath the XHTML span.
         let xhtml = eventmodeling_sanitize_result(
-            merman_core::sanitize::sanitize_xhtml_with_sink(
-                &html,
-                fragment_config.as_config(),
-                &sink,
-            ),
+            merman_markup::sanitize::sanitize_xhtml_with_sink(&html, fragment_config, &sink),
             owner_bytes,
             work_meter,
         )?;
@@ -682,13 +674,13 @@ impl EventModelingPreparedHtmlLabel {
 fn eventmodeling_sanitize_result(
     result: std::result::Result<
         String,
-        merman_core::sanitize::SanitizeFailure<crate::html::HtmlOutputError>,
+        merman_markup::sanitize::SanitizeFailure<crate::html::HtmlOutputError>,
     >,
     owner_bytes: usize,
     work_meter: &OperationWorkMeter,
 ) -> Result<String> {
     use crate::html::HtmlOutputError;
-    use merman_core::sanitize::SanitizeFailure;
+    use merman_markup::sanitize::SanitizeFailure;
 
     match result {
         Ok(text) => Ok(text),

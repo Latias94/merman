@@ -56,7 +56,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) mermaid_config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) mermaid_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) node_visual_plan: &'a crate::class::ClassNodeVisualPlan,
     pub(super) typography_theme: &'a crate::class::ClassTextThemePlan,

@@ -1,6 +1,5 @@
 #![cfg(feature = "layout-elk")]
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -66,10 +65,11 @@ fn render(source: &str, line_hops: Option<Value>) -> (Value, SvgGeometry) {
         config["elk"]["lineHops"] = value;
     }
     let parsed = MermaidEngine::new()
-        .with_site_config(PresentationConfig::from_value(config))
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse crossing fixture")
-        .expect("detect diagram");
+        .expect("detect diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare crossing fixture");
@@ -179,3 +179,6 @@ fn requirement_elk_line_hops_preserve_layout_and_labels() {
 fn usecase_elk_line_hops_preserve_layout_and_labels() {
     assert_line_hops_preserve_layout(include_str!("fixtures/elk/usecase_crossings.mmd"));
 }
+
+#[allow(dead_code)]
+mod common;

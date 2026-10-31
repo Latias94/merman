@@ -1,5 +1,5 @@
 type FamilyFixture = (
-    merman_core::ParsedDiagramRender,
+    merman_model::presentation::PresentationDiagram,
     LayoutOptions,
     RenderSession,
 );
@@ -25,16 +25,17 @@ use crate::environment::{
 };
 use crate::svg::SvgPipelinePreset;
 use crate::text::{TextMetrics, WrapMode};
-use merman_core::__private::{ThemeCompatibilityPlan, install_theme_compatibility};
-use merman_core::presentation::PresentationConfig;
-use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, MermaidEngine, ParseOptions};
+use merman_core::presentation::ThemeCompatibilityPlan;
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationConfig;
+use merman_model::presentation::{CustomJsonProvenance, CustomJsonRenderModel};
 use serde_json::{Value, json};
 
 fn custom_semantic_parser(
     _code: &str,
-    meta: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<Value>> {
+    meta: &merman_core::SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<Value>> {
     control.checkpoint()?;
     Ok(Ok(
         json!({ "type": meta.diagram_type, "owner": "semantic" }),
@@ -43,9 +44,9 @@ fn custom_semantic_parser(
 
 fn custom_render_parser(
     _code: &str,
-    _meta: &PresentationMetadata,
-    control: &merman_core::OperationControl,
-) -> merman_core::OperationControlResult<merman_core::Result<CustomJsonRenderModel>> {
+    _meta: &merman_core::SourcePresentationMetadata,
+    control: &merman_model::OperationControl,
+) -> merman_model::OperationControlResult<merman_core::Result<CustomJsonRenderModel>> {
     control.checkpoint()?;
     Ok(Ok(CustomJsonRenderModel::new(
         "custom-flowchart",
@@ -396,11 +397,77 @@ fn decode_edge_label_positions(svg: &str) -> std::collections::HashMap<String, (
     positions
 }
 
-fn parse_flowchart(source: &str) -> ParsedDiagramRender {
+fn parse_flowchart(source: &str) -> PresentationDiagram {
     MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
         .expect("detect flowchart")
+        .into_presentation()
+}
+
+#[test]
+fn independent_flowchart_without_context_renders_canonical_css() {
+    use merman_model::families::flowchart::{
+        FlowSubgraphVertexStyle, FlowchartModel, FlowchartRenderContext,
+    };
+    use merman_model::presentation::{AuthoredPresentationMetadata, PresentationContext};
+    use merman_model::resources::{InputResourcePolicy, ResourceProfile};
+
+    let mut model: FlowchartModel = serde_json::from_value(json!({
+        "keyword": "flowchart", "direction": "TB", "nodes": [], "edges": [],
+        "subgraphs": [{"id": "G", "title": "Group", "nodes": []}]
+    }))
+    .unwrap();
+    model.subgraph_vertex_styles.insert(
+        "G".to_string(),
+        0,
+        FlowSubgraphVertexStyle {
+            classes: Vec::new(),
+            styles: vec!["fill:#123456".to_string()],
+        },
+    );
+    let context = FlowchartRenderContext::from_model(&model);
+    let complexity =
+        merman_model::resources::FlowchartComplexity::from_model(&model).as_model_complexity();
+    let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+        .with_limit(
+            merman_model::resources::InputResourceLimitId::MaxModelTextBytes,
+            complexity.text_bytes,
+        )
+        .unwrap();
+    let render = |context| {
+        let parsed = PresentationDiagram::try_new(
+            AuthoredPresentationMetadata {
+                diagram_type: "flowchart-v2".to_string(),
+                config: merman_model::MermaidConfig::empty_object(),
+                effective_config: merman_model::MermaidConfig::empty_object(),
+                title: None,
+                theme_recipe: None,
+            },
+            RenderSemanticModel::Flowchart(model.clone()),
+            context,
+            &policy,
+            &merman_model::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        prepare(&parsed, &LayoutOptions::default(), session())
+            .unwrap()
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("canonical-css".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap()
+            .svg()
+            .to_owned()
+    };
+    let ordinary = render(PresentationContext::None);
+    let explicit = render(PresentationContext::Flowchart(context));
+    assert_eq!(ordinary, explicit);
+    assert!(ordinary.contains("fill:#123456"), "{ordinary}");
 }
 
 #[test]
@@ -958,7 +1025,8 @@ fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api(
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -982,7 +1050,9 @@ fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api(
 #[test]
 fn capability_plan_reports_the_authoritative_render_family() {
     let configured_swimlane = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            json!({ "layout": "swimlane" }),
+        ),
     );
     let cases = [
         (
@@ -1006,7 +1076,8 @@ fn capability_plan_reports_the_authoritative_render_family() {
         let parsed = engine
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("family fixture should produce a render model");
+            .expect("family fixture should produce a render model")
+            .into_presentation();
         let plan = plan_render(&parsed, &session()).unwrap();
 
         assert_eq!(plan.family_id(), expected_family, "{source}");
@@ -1019,7 +1090,9 @@ fn family_theme_plan_tracks_the_authoritative_family() {
         .compile(DiagramThemeSpec::new())
         .expect("compile test theme");
     let configured_swimlane = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            json!({ "layout": "swimlane" }),
+        ),
     );
     let cases = [
         (
@@ -1039,7 +1112,8 @@ fn family_theme_plan_tracks_the_authoritative_family() {
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("family fixture should produce a render model");
+            .expect("family fixture should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
             .expect("begin themed render session");
@@ -1067,13 +1141,16 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
         .compile(DiagramThemeSpec::new())
         .expect("compile test theme");
     let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::PresentationConfig::from_value(json!({ "layout": "swimlane" })),
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            json!({ "layout": "swimlane" }),
+        ),
     );
     let parsed = theme
         .install_parse_compatibility(engine)
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("flowchart source should produce a render model");
+        .expect("flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin themed render session");
@@ -1177,7 +1254,8 @@ fn solid_root_layer_is_applied_by_terminal_svg_completion() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin best-effort themed session");
@@ -1225,7 +1303,8 @@ fn solid_root_base_is_applied_by_terminal_svg_completion() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin themed session");
@@ -1261,7 +1340,8 @@ fn explicit_transparent_root_base_clears_the_mermaid_white_background() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin transparent themed session");
@@ -1296,7 +1376,8 @@ fn root_theme_evidence_is_invalidated_by_an_untrusted_svg_postprocessor() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin themed render session");
@@ -1346,7 +1427,8 @@ fn strict_root_theme_is_rechecked_after_svg_postprocessing() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1376,7 +1458,8 @@ fn family_theme_evidence_is_invalidated_by_untrusted_svg_postprocessing() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA[Alpha]\n", ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(portability)
             .begin_session_with_theme(&theme)
@@ -1479,7 +1562,8 @@ fn unsupported_root_pattern_residual_survives_terminal_svg_completion() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin best-effort themed session");
@@ -1516,7 +1600,8 @@ fn root_theme_evidence_preserves_distinct_layers_with_equal_capabilities() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin best-effort themed session");
@@ -1605,7 +1690,8 @@ fn require_portable_accepts_a_root_layer_proved_by_the_svg_consumer() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1641,7 +1727,8 @@ fn require_portable_rejects_an_unsupported_root_pattern_after_svg_consumption() 
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1684,7 +1771,8 @@ fn require_portable_accepts_flowchart_typed_node_paint_after_svg_emission() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1744,7 +1832,8 @@ fn require_portable_accepts_swimlane_typed_node_paint_after_svg_emission() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Swimlane source should produce a render model");
+        .expect("Swimlane source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1805,7 +1894,8 @@ fn require_portable_accepts_explicit_default_flowchart_family_node_paint() {
                 .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
-                .expect("Flowchart-family source should produce a render model");
+                .expect("Flowchart-family source should produce a render model")
+                .into_presentation();
             let rendered = prepare(
                 &parsed,
                 &LayoutOptions::default(),
@@ -1858,7 +1948,7 @@ fn flowchart_source_paint_override_does_not_claim_typed_application() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model").into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1911,7 +2001,8 @@ fn flowchart_single_source_paint_override_keeps_other_typed_channel_applied() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -1943,7 +2034,8 @@ fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -1978,6 +2070,7 @@ fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
             .parse_diagram_for_render_model_sync(dynamic_source, ParseOptions::strict())
             .unwrap()
             .expect("dynamic source paint should produce a render model")
+            .into_presentation()
     };
     let canonical_6 = parse_dynamic();
     let dynamic = prepare(
@@ -2033,14 +2126,15 @@ fn flowchart_explicit_mermaid_config_owns_typed_node_paint_precedence() {
 
     for explicit_fill in ["#22c55e", "#ef4444"] {
         let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
-            PresentationConfig::from_value(json!({
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
                 "themeVariables": {"mainBkg": explicit_fill}
             })),
         ));
         let parsed = engine
             .parse_diagram_for_render_model_sync("flowchart LR\nA[Alpha]\n", ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -2083,7 +2177,8 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_width_after_emiss
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -2124,7 +2219,8 @@ fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -2146,9 +2242,11 @@ fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
     assert!(!source.svg().contains("stroke-width:2.5px !important"));
 
     let configured = render(
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "themeVariables": {"strokeWidth": 4}
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "themeVariables": {"strokeWidth": 4}
+            })),
+        ),
         "flowchart LR\nA[Alpha]\n",
     );
     assert!(configured.svg().contains("stroke-width:4px;"));
@@ -2204,6 +2302,7 @@ A[Alpha]
                     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                     .unwrap()
                     .expect("Flowchart source should produce a render model")
+                    .into_presentation()
             };
             let canonical_8 = parse();
             let rendered = prepare(
@@ -2268,7 +2367,8 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_dasharray_after_e
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -2311,7 +2411,8 @@ fn flowchart_source_owns_node_stroke_dasharray_precedence() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -2357,7 +2458,8 @@ fn require_portable_accepts_flowchart_and_swimlane_node_radius_after_emission() 
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -2402,7 +2504,8 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -2433,10 +2536,12 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
     );
 
     let configured = render(
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-            "look": "neo",
-            "themeVariables": {"radius": 4}
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "look": "neo",
+                "themeVariables": {"radius": 4}
+            })),
+        ),
         "flowchart LR\nA[Alpha]\n",
     );
     assert_eq!(
@@ -2474,7 +2579,8 @@ fn classic_flowchart_without_diagram_theme_does_not_emit_radius_attributes() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare default Flowchart")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2517,7 +2623,8 @@ A["<span style='font-size:31px'>Alpha</span>"]
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -2575,19 +2682,24 @@ end
     for (origin, engine, source, expected_size) in [
         (
             "site",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "fontSize": 19,
-                "themeVariables": {
-                    "fontFamily": "Excalifont,Xiaolai SC"
-                }
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "fontSize": 19,
+                    "themeVariables": {
+                        "fontFamily": "Excalifont,Xiaolai SC"
+                    }
+                })),
+            ),
             SOURCE.to_string(),
             "19px",
         ),
         (
             "source",
-            MermaidEngine::new()
-                .with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    json!({"secure": []}),
+                ),
+            ),
             format!(
                 "%%{{init: {{\"fontSize\": 21, \"themeVariables\": {{\"fontFamily\": \"Excalifont,Xiaolai SC\"}}}}}}%%\n{SOURCE}"
             ),
@@ -2598,7 +2710,8 @@ end
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("parse {origin} Sequence base typography: {error}"))
-            .unwrap_or_else(|| panic!("detect {origin} Sequence base typography"));
+            .unwrap_or_else(|| panic!("detect {origin} Sequence base typography"))
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -2659,7 +2772,8 @@ fn sequence_oversized_base_font_stack_is_proved_by_terminal_svg() {
             ParseOptions::strict(),
         )
         .expect("parse oversized Sequence base typography source")
-        .expect("detect oversized Sequence base typography source");
+        .expect("detect oversized Sequence base typography source")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -2705,6 +2819,7 @@ A[Alpha]
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_10 = parse();
@@ -2766,7 +2881,7 @@ fn flowchart_explicit_primary_color_owns_derived_main_background() {
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
     );
     let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
-        PresentationConfig::from_value(json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": {"primaryColor": "#123456"}
         })),
@@ -2774,7 +2889,8 @@ fn flowchart_explicit_primary_color_owns_derived_main_background() {
     let parsed = engine
         .parse_diagram_for_render_model_sync("flowchart LR\nA[Alpha]\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -2828,7 +2944,8 @@ fn flowchart_theme_recipe_mermaid_config_owns_typed_node_paint_precedence() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA[Alpha]\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin render session");
@@ -2860,6 +2977,7 @@ fn flowchart_source_paint_residual_is_independent_from_theme_channel() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_12 = parse();
@@ -2934,6 +3052,7 @@ A[Alpha]
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .expect("Flowchart source should produce a render model")
+                .into_presentation()
         };
         let canonical_14 = parse();
         let rendered = prepare(
@@ -2992,7 +3111,8 @@ fn flowchart_start_node_proves_direct_typed_paint_emission() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart start source should produce a render model");
+        .expect("Flowchart start source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -3062,7 +3182,8 @@ note for A "note"
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
-            .expect("Class source should produce a render model");
+            .expect("Class source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -3152,7 +3273,8 @@ A o-- B
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Class precedence source should produce a render model");
+            .expect("Class precedence source should produce a render model")
+            .into_presentation();
         prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -3182,22 +3304,26 @@ A o-- B
 
     let configured = [
         render(
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "secure": [
-                    "secure",
-                    "securityLevel",
-                    "startOnLoad",
-                    "maxTextSize",
-                    "suppressErrorRendering",
-                    "maxEdges"
-                ]
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "secure": [
+                        "secure",
+                        "securityLevel",
+                        "startOnLoad",
+                        "maxTextSize",
+                        "suppressErrorRendering",
+                        "maxEdges"
+                    ]
+                })),
+            ),
             SOURCE_CONFIG,
         ),
         render(
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "themeVariables": {"strokeWidth": 160}
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": {"strokeWidth": 160}
+                })),
+            ),
             DIAGRAM,
         ),
     ];
@@ -3253,6 +3379,7 @@ fn class_relation_stroke_width_clear_and_mixed_facets_fail_closed() {
                 .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
                 .unwrap()
                 .expect("Class source should produce a render model")
+                .into_presentation()
         };
         let canonical_16 = parse();
         let rendered = prepare(
@@ -3323,7 +3450,8 @@ note for A "note"
         let parsed = engine
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
-            .expect("Class source should produce a render model");
+            .expect("Class source should produce a render model")
+            .into_presentation();
         prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Class byte-stability fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -3368,7 +3496,8 @@ G ..> H
         let parsed = engine
             .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
             .unwrap()
-            .expect("Class source should produce a render model");
+            .expect("Class source should produce a render model")
+            .into_presentation();
         prepare(&parsed, &LayoutOptions::default(), session)
             .expect("prepare Class paint-bounds fixture")
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -3423,7 +3552,8 @@ fn class_relation_theme_is_not_applicable_without_relations() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("classDiagram\nclass A\n", ParseOptions::strict())
         .unwrap()
-        .expect("Class source should produce a render model");
+        .expect("Class source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -3483,7 +3613,8 @@ fn class_ordinal_relation_rules_use_concrete_one_based_applicability() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Class ordinal source should produce a render model");
+            .expect("Class ordinal source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -3528,7 +3659,8 @@ fn class_ordinal_relation_rules_use_concrete_one_based_applicability() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(ONE_RELATION, ParseOptions::strict())
         .unwrap()
-        .expect("Class exact ordinal source should produce a render model");
+        .expect("Class exact ordinal source should produce a render model")
+        .into_presentation();
     let artifact = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -3569,6 +3701,7 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Class Node source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_18 = parse("classDiagram\nclass A\n");
@@ -3663,7 +3796,8 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("classDiagram\nclass A\n", ParseOptions::strict())
         .unwrap()
-        .expect("superseded Class Node source should produce a render model");
+        .expect("superseded Class Node source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -3711,7 +3845,8 @@ fn class_mixed_direct_width_and_scalar_paint_share_terminal_evidence() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync("classDiagram\nA --> B\n", ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -3740,7 +3875,8 @@ fn flowchart_common_style_node_preserves_best_effort_paint_and_source_precedence
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart choice source should produce a render model");
+            .expect("Flowchart choice source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(portability)
             .begin_session_with_theme(&theme)
@@ -3796,6 +3932,7 @@ fn flowchart_unemitted_source_paint_cannot_hide_theme_residual() {
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .expect("Flowchart source should produce a render model")
+                .into_presentation()
         };
 
         let canonical_21 = parse();
@@ -3860,7 +3997,8 @@ fn flowchart_generated_default_class_css_is_a_real_start_paint_surface() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -3895,7 +4033,7 @@ fn flowchart_start_uses_the_generated_css_winner_that_reaches_its_wrapper() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model").into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -3931,6 +4069,7 @@ fn flowchart_anchor_dynamic_generated_css_is_fail_closed() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_23 = parse();
@@ -3987,7 +4126,8 @@ fn flowchart_generated_css_emits_important_once() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare important fixture")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -4009,6 +4149,7 @@ fn flowchart_direct_class_style_outranks_generated_class_css() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_25 = parse();
@@ -4068,7 +4209,7 @@ fn flowchart_hand_drawn_keeps_dynamic_source_paint_in_the_render_transport() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model").into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
@@ -4105,7 +4246,7 @@ fn flowchart_raw_theme_css_invalidates_family_theme_evidence() {
     let parse = || {
         theme
             .install_parse_compatibility(MermaidEngine::new().with_site_config(
-                PresentationConfig::from_value(json!({
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
                     "secure": [
                         "secure",
                         "securityLevel",
@@ -4119,6 +4260,7 @@ fn flowchart_raw_theme_css_invalidates_family_theme_evidence() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_27 = parse();
@@ -4176,7 +4318,7 @@ fn raw_theme_css_rejects_strict_output_when_typed_rules_are_not_applicable() {
     let source =
         "%%{init: {\"themeCSS\": \".node rect { fill: #f97316; }\"}}%%\nflowchart LR\nA[Alpha]\n";
     let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
-        PresentationConfig::from_value(json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
             "secure": [
                 "secure",
                 "securityLevel",
@@ -4191,7 +4333,8 @@ fn raw_theme_css_rejects_strict_output_when_typed_rules_are_not_applicable() {
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_admission_policy(
             crate::diagram_theme::ThemeAdmissionPolicy::permissive().with_trusted_lanes(
@@ -4231,6 +4374,7 @@ fn flowchart_emitted_dynamic_shape_property_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_29 = parse();
@@ -4292,6 +4436,7 @@ fn flowchart_edge_dynamic_shape_style_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_31 = parse();
@@ -4358,6 +4503,7 @@ fn flowchart_assigned_class_marker_style_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_33 = parse();
@@ -4414,6 +4560,7 @@ fn flowchart_invalid_assigned_edge_class_declaration_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_35 = parse();
@@ -4482,6 +4629,7 @@ fn flowchart_edge_label_invalid_typography_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_37 = parse();
@@ -4546,7 +4694,8 @@ linkStyle 1 font-weight:banana
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &canonical_39,
         &LayoutOptions::default(),
@@ -4588,6 +4737,7 @@ fn flowchart_cluster_dynamic_shape_style_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_40 = parse();
@@ -4672,7 +4822,8 @@ style Lane fill:#f8fafc,stroke:#ef4444,stroke-width:2px,stroke-dasharray:4 2
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("hand-drawn cluster source should produce a render model");
+            .expect("hand-drawn cluster source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -4732,7 +4883,8 @@ style Empty font-weight:banana
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &canonical_42,
         &LayoutOptions::default(),
@@ -4781,6 +4933,7 @@ fn swimlane_cluster_dynamic_shape_style_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Swimlane source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_43 = parse();
@@ -4866,7 +5019,8 @@ style Empty font-weight:banana
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Swimlane source should produce a render model");
+        .expect("Swimlane source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &canonical_45,
         &LayoutOptions::default(),
@@ -4914,7 +5068,8 @@ fn swimlane_empty_edge_label_still_records_emitted_shape_style() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Swimlane source should produce a render model");
+        .expect("Swimlane source should produce a render model")
+        .into_presentation();
 
     let rendered = prepare(
         &parsed,
@@ -4947,6 +5102,7 @@ fn flowchart_dynamic_label_typography_is_a_source_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_46 = parse();
@@ -5003,6 +5159,7 @@ fn flowchart_icon_label_typography_is_emitted_and_residualized() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_48 = parse();
@@ -5060,7 +5217,8 @@ fn flowchart_empty_subgraph_consumes_typed_node_paint() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("empty subgraph source should produce a render model");
+        .expect("empty subgraph source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -5104,6 +5262,7 @@ fn flowchart_icon_without_asset_retains_unemitted_fill_as_residual() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart icon source should produce a render model")
+            .into_presentation()
     };
 
     let canonical_50 = parse();
@@ -5184,6 +5343,7 @@ fn require_portable_rejects_flowchart_unsupported_styles_after_svg_emission() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
     let canonical_52 = parse();
     let rendered = prepare(
@@ -5254,7 +5414,8 @@ fn require_portable_accepts_flowchart_and_swimlane_node_ordinal_palette_after_sv
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("source should produce a render model");
+            .expect("source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -5323,6 +5484,7 @@ fn require_portable_accepts_flowchart_ordinal_rule_when_a_node_matches() {
             )
             .unwrap()
             .expect("Flowchart source should produce a render model")
+            .into_presentation()
     };
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -5358,7 +5520,8 @@ fn require_portable_accepts_flowchart_typed_edge_stroke_after_svg_emission() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -5401,7 +5564,8 @@ fn require_portable_accepts_swimlane_transparent_edge_stroke_after_svg_emission(
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Swimlane source should produce a render model");
+        .expect("Swimlane source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -5454,7 +5618,8 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
                 .install_parse_compatibility(MermaidEngine::new())
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
-                .expect("Flowchart-family source should produce a render model");
+                .expect("Flowchart-family source should produce a render model")
+                .into_presentation();
             let rendered = prepare(
                 &parsed,
                 &LayoutOptions::default(),
@@ -5499,7 +5664,8 @@ fn require_portable_accepts_flowchart_and_swimlane_edge_dasharray_after_svg_emis
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -5541,7 +5707,8 @@ fn flowchart_edge_source_dasharray_owns_typed_precedence() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -5583,7 +5750,7 @@ fn flowchart_neo_edge_dasharray_is_the_terminal_style_winner() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("Neo Flowchart source should produce a render model");
+            .expect("Neo Flowchart source should produce a render model").into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -5644,6 +5811,7 @@ fn flowchart_hand_drawn_edge_dasharray_fails_closed() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("hand-drawn Flowchart source should produce a render model")
+            .into_presentation()
     };
     let canonical_55 = parse();
     let rendered = prepare(
@@ -5696,7 +5864,8 @@ fn elk_flowchart_reuses_the_typed_edge_dasharray_writer() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("ELK Flowchart source should produce a render model");
+        .expect("ELK Flowchart source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -5740,7 +5909,7 @@ fn flowchart_edge_source_and_explicit_line_color_own_typed_precedence() {
         ),
         (
             theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
-                PresentationConfig::from_value(json!({
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
                     "theme": "base",
                     "themeVariables": {"lineColor": "#16a34a"}
                 })),
@@ -5755,7 +5924,8 @@ fn flowchart_edge_source_and_explicit_line_color_own_typed_precedence() {
         let parsed = engine
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -5819,7 +5989,7 @@ fn flowchart_hand_drawn_class_stroke_does_not_shadow_typed_edge_stroke() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("hand-drawn Flowchart source should produce a render model");
+            .expect("hand-drawn Flowchart source should produce a render model").into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -5871,7 +6041,8 @@ fn require_portable_accepts_sequence_actor_fill_after_svg_emission() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -5925,7 +6096,8 @@ fn require_portable_accepts_sequence_actor_stroke_after_svg_emission() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -5998,7 +6170,8 @@ fn require_portable_accepts_sequence_lifeline_scalar_paint_after_actor_line_emis
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -6064,7 +6237,8 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_after_actor_line_emis
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -6116,7 +6290,8 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_clear_after_baseline_
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -6185,7 +6360,8 @@ fn sequence_lifeline_stroke_wins_over_fill_independent_of_rule_order() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -6243,23 +6419,27 @@ fn sequence_explicit_actor_line_color_owns_precedence_over_typed_lifeline_paint(
     let cases = [
         (
             "site config",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "themeVariables": {"actorLineColor": "#22c55e"}
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": {"actorLineColor": "#22c55e"}
+                })),
+            ),
             "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
         ),
         (
             "init directive",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "secure": [
-                    "secure",
-                    "securityLevel",
-                    "startOnLoad",
-                    "maxTextSize",
-                    "suppressErrorRendering",
-                    "maxEdges"
-                ]
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "secure": [
+                        "secure",
+                        "securityLevel",
+                        "startOnLoad",
+                        "maxTextSize",
+                        "suppressErrorRendering",
+                        "maxEdges"
+                    ]
+                })),
+            ),
             r##"%%{init: {"themeVariables": {"actorLineColor": "#22c55e"}}}%%
 sequenceDiagram
 actor Alice
@@ -6274,7 +6454,8 @@ Alice->>Bob: Hello
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("configured Sequence source should produce a render model");
+            .expect("configured Sequence source should produce a render model")
+            .into_presentation();
         assert_eq!(
             parsed
                 .metadata()
@@ -6292,10 +6473,10 @@ Alice->>Bob: Hello
             "{case} must retain explicit actorLineColor"
         );
         assert!(
-            merman_core::__private::config_path_overrides_typed_default(
-                &parsed.metadata().effective_config,
-                "themeVariables.actorLineColor",
-            ),
+            parsed
+                .metadata()
+                .effective_config
+                .config_path_overrides_typed_default("themeVariables.actorLineColor"),
             "{case} must retain actorLineColor ownership"
         );
         let rendered = prepare(
@@ -6368,6 +6549,7 @@ fn sequence_unsupported_lifeline_gradient_fails_closed_after_actor_line_emission
             )
             .unwrap()
             .expect("Sequence source should produce a render model")
+            .into_presentation()
     };
     let canonical_57 = parse();
     let rendered = prepare(
@@ -6450,7 +6632,7 @@ fn require_portable_accepts_sequence_message_scalar_paints_after_line_emission()
                     ParseOptions::strict(),
                 )
                 .unwrap()
-                .expect("Sequence source should produce a render model");
+                .expect("Sequence source should produce a render model").into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -6524,7 +6706,8 @@ fn sequence_message_stroke_winner_marks_shadowed_fill_not_applicable() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -6592,7 +6775,8 @@ fn sequence_message_stroke_rule_without_a_terminal_line_is_not_applicable() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -6641,23 +6825,27 @@ fn sequence_explicit_signal_color_owns_precedence_over_typed_message_stroke() {
     let cases = [
         (
             "site config",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "themeVariables": {"signalColor": "#22c55e"}
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": {"signalColor": "#22c55e"}
+                })),
+            ),
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
         ),
         (
             "init directive",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "secure": [
-                    "secure",
-                    "securityLevel",
-                    "startOnLoad",
-                    "maxTextSize",
-                    "suppressErrorRendering",
-                    "maxEdges"
-                ]
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "secure": [
+                        "secure",
+                        "securityLevel",
+                        "startOnLoad",
+                        "maxTextSize",
+                        "suppressErrorRendering",
+                        "maxEdges"
+                    ]
+                })),
+            ),
             r##"%%{init: {"themeVariables": {"signalColor": "#22c55e"}}}%%
 sequenceDiagram
 participant Alice
@@ -6672,7 +6860,8 @@ Alice->>Bob: Hello
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("configured Sequence source should produce a render model");
+            .expect("configured Sequence source should produce a render model")
+            .into_presentation();
         assert_eq!(
             parsed
                 .metadata()
@@ -6690,10 +6879,10 @@ Alice->>Bob: Hello
             "{case} must retain explicit signalColor"
         );
         assert!(
-            merman_core::__private::config_path_overrides_typed_default(
-                &parsed.metadata().effective_config,
-                "themeVariables.signalColor",
-            ),
+            parsed
+                .metadata()
+                .effective_config
+                .config_path_overrides_typed_default("themeVariables.signalColor"),
             "{case} must retain signalColor ownership"
         );
         let rendered = prepare(
@@ -6754,25 +6943,29 @@ fn sequence_text_color_source_ownership_controls_typed_message_stroke() {
     let cases = [
         (
             "site config",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "themeVariables": {"textColor": "#22c55e"}
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": {"textColor": "#22c55e"}
+                })),
+            ),
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
             "#22c55e",
             true,
         ),
         (
             "init directive",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "secure": [
-                    "secure",
-                    "securityLevel",
-                    "startOnLoad",
-                    "maxTextSize",
-                    "suppressErrorRendering",
-                    "maxEdges"
-                ]
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "secure": [
+                        "secure",
+                        "securityLevel",
+                        "startOnLoad",
+                        "maxTextSize",
+                        "suppressErrorRendering",
+                        "maxEdges"
+                    ]
+                })),
+            ),
             r##"%%{init: {"themeVariables": {"textColor": "#22c55e"}}}%%
 sequenceDiagram
 participant Alice
@@ -6789,7 +6982,8 @@ Alice->>Bob: Hello
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("configured Sequence source should produce a render model");
+            .expect("configured Sequence source should produce a render model")
+            .into_presentation();
         assert_eq!(
             parsed.metadata().config.get_str("themeVariables.textColor"),
             (case == "init directive").then_some("#22c55e"),
@@ -6812,10 +7006,11 @@ Alice->>Bob: Hello
             "{case} must retain Mermaid's source/config materialization semantics"
         );
         assert!(
-            merman_core::__private::config_path_overrides_typed_default(
-                &parsed.metadata().effective_config,
-                "themeVariables.signalColor",
-            ) == signal_is_source_owned,
+            parsed
+                .metadata()
+                .effective_config
+                .config_path_overrides_typed_default("themeVariables.signalColor")
+                == signal_is_source_owned,
             "{case} signalColor ownership must follow the selected source"
         );
         let rendered = prepare(
@@ -6911,6 +7106,7 @@ fn sequence_unsupported_message_gradient_fails_closed_after_line_emission() {
             )
             .unwrap()
             .expect("Sequence source should produce a render model")
+            .into_presentation()
     };
     let canonical_59 = parse();
     let rendered = prepare(
@@ -6991,7 +7187,7 @@ fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
                     ParseOptions::strict(),
                 )
                 .unwrap()
-                .expect("Sequence source should produce a render model");
+                .expect("Sequence source should produce a render model").into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -7063,7 +7259,8 @@ fn sequence_note_rule_without_a_terminal_note_rect_is_not_applicable() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -7131,7 +7328,7 @@ fn require_portable_accepts_sequence_activation_scalar_paints_after_rect_emissio
                     ParseOptions::strict(),
                 )
                 .unwrap()
-                .expect("Sequence source should produce a render model");
+                .expect("Sequence source should produce a render model").into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -7194,7 +7391,8 @@ fn sequence_activation_rule_without_a_terminal_rect_is_not_applicable() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -7263,11 +7461,14 @@ fn sequence_explicit_activation_and_note_paints_own_precedence_over_typed_paints
             .expect("compile Sequence paint theme");
         let parsed = theme
             .install_parse_compatibility(MermaidEngine::new().with_site_config(
-                PresentationConfig::from_value(json!({"themeVariables": variables})),
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    json!({"themeVariables": variables}),
+                ),
             ))
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -7337,7 +7538,7 @@ fn sequence_actor_stroke_explicit_mermaid_border_owns_precedence() {
         )
         .expect("compile Sequence actor stroke theme");
     let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
-        PresentationConfig::from_value(json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
             "themeVariables": {"actorBorder": "#22c55e"}
         })),
     ));
@@ -7347,7 +7548,8 @@ fn sequence_actor_stroke_explicit_mermaid_border_owns_precedence() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -7404,7 +7606,8 @@ fn sequence_actor_stroke_with_unhandled_shapes_fails_closed() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let strict = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -7448,7 +7651,8 @@ fn sequence_actor_stroke_tracks_every_css_covered_shape() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let rendered = prepare(
             &parsed,
             &LayoutOptions::default(),
@@ -7501,6 +7705,7 @@ fn sequence_actor_stroke_transparent_paint_is_signed_only_for_covered_shapes() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model")
+            .into_presentation()
     };
     let strict = || {
         crate::environment::RenderEnvironment::deterministic()
@@ -7565,7 +7770,8 @@ fn sequence_actor_stroke_does_not_recolor_autonumber_carrier_or_message_lines() 
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("autonumbered Sequence source should produce a render model");
+        .expect("autonumbered Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -7625,7 +7831,7 @@ fn sequence_explicit_actor_fill_owns_precedence_over_typed_actor_fill() {
         )
         .expect("compile Sequence actor theme");
     let engine = theme.install_parse_compatibility(MermaidEngine::new().with_site_config(
-        PresentationConfig::from_value(json!({
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
             "themeVariables": {"actorBkg": "#22c55e"}
         })),
     ));
@@ -7635,7 +7841,8 @@ fn sequence_explicit_actor_fill_owns_precedence_over_typed_actor_fill() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -7698,6 +7905,7 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
             )
             .unwrap()
             .expect("Sequence source should produce a render model")
+            .into_presentation()
     };
     let canonical_63 = parse();
     let rendered = prepare(
@@ -7741,7 +7949,7 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
     let configured_parse = || {
         theme
             .install_parse_compatibility(MermaidEngine::new().with_site_config(
-                PresentationConfig::from_value(json!({
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
                     "themeVariables": {"actorBkg": "#22c55e"}
                 })),
             ))
@@ -7751,6 +7959,7 @@ fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
             )
             .unwrap()
             .expect("configured Sequence source should produce a render model")
+            .into_presentation()
     };
     let canonical_65 = configured_parse();
     let configured = prepare(
@@ -7803,6 +8012,7 @@ Alice->>Bob: Hello
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model")
+            .into_presentation()
     };
     let canonical_66 = parse();
     let rendered = prepare(
@@ -7894,7 +8104,8 @@ fn sequence_actor_fill_tracks_actor_man_css_and_inline_precedence() {
             .install_parse_compatibility(MermaidEngine::new())
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .expect("Sequence source should produce a render model");
+            .expect("Sequence source should produce a render model")
+            .into_presentation();
         let strict = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -7951,7 +8162,8 @@ fn sequence_actor_fill_accounts_for_rules_without_matching_actors() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -8029,6 +8241,7 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model")
+            .into_presentation()
     };
     let environment_with_limit = |limit| {
         crate::environment::RenderEnvironment::deterministic()
@@ -8060,7 +8273,8 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("parse static Sequence control");
+        .expect("parse static Sequence control")
+        .into_presentation();
     let control = prepare(
         &canonical_69,
         &LayoutOptions::default(),
@@ -8163,7 +8377,8 @@ fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -8210,7 +8425,7 @@ fn state_style_residual_survives_terminal_svg_completion() {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("State source should produce a render model");
+            .expect("State source should produce a render model").into_presentation();
     let rendered = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("best-effort State preparation")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -8264,7 +8479,8 @@ fn state_ordinal_palette_is_applied_by_an_observed_state_binding() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -8319,7 +8535,8 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let node_debug = SvgDebugOptions {
         include_nodes: false,
         ..SvgDebugOptions::default()
@@ -8380,7 +8597,8 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let edge_debug = SvgDebugOptions {
         include_edges: false,
         ..SvgDebugOptions::default()
@@ -8433,7 +8651,8 @@ fn require_portable_rechecks_state_theme_after_debug_visibility_filter() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let artifact = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -8479,7 +8698,8 @@ fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -8536,9 +8756,11 @@ fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_eviden
     for (origin, engine, source) in [
         (
             "site",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "themeVariables": {"fontFamily": "serif", "fontSize": 30}
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": {"fontFamily": "serif", "fontSize": 30}
+                })),
+            ),
             source.to_string(),
         ),
         (
@@ -8550,15 +8772,20 @@ fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_eviden
         ),
         (
             "site-root",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(json!({
-                "fontFamily": "serif", "fontSize": 30
-            }))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "fontFamily": "serif", "fontSize": 30
+                })),
+            ),
             source.to_string(),
         ),
         (
             "source-root",
-            MermaidEngine::new()
-                .with_site_config(PresentationConfig::from_value(json!({"secure": []}))),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    json!({"secure": []}),
+                ),
+            ),
             format!("%%{{init: {{\"fontFamily\": \"serif\", \"fontSize\": 30}}}}%%\n{source}"),
         ),
     ] {
@@ -8566,7 +8793,8 @@ fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_eviden
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let host = Arc::new(SidecarRecordingHost::new(SidecarHostOutcome::Success));
         let identity = TextMeasurementProfileIdentity::new(
             MeasurementProfileId::new("test.state-config-typography").unwrap(),
@@ -8659,7 +8887,8 @@ fn state_spacing_without_prepared_text_is_suppressed_and_reported() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -8714,7 +8943,8 @@ fn state_rule_without_a_matching_document_target_is_not_applicable() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let rendered = prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -8784,6 +9014,7 @@ fn require_portable_rejects_state_semantic_residual_before_layout() {
             )
             .unwrap()
             .expect("State source should produce a render model")
+            .into_presentation()
     };
     let canonical_72 = parse();
     let rendered = prepare(
@@ -8844,7 +9075,7 @@ fn require_portable_rejects_state_style_residual_before_layout() {
                     ParseOptions::strict(),
                 )
                 .unwrap()
-                .expect("State source should produce a render model")
+                .expect("State source should produce a render model").into_presentation()
     };
     let canonical_74 = parse();
     let rendered = prepare(
@@ -8898,7 +9129,8 @@ fn parsed_theme_binding_must_match_render_session_theme() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("State source should produce a render model");
+        .expect("State source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&render_theme)
         .expect("render session should start");
@@ -8916,8 +9148,8 @@ fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
         .compile_preset(crate::diagram_theme::ThemePreset::EditorDark)
         .expect("theme should compile");
     for compatibility in [
-        merman_core::MermaidConfig::empty_object(),
-        merman_core::MermaidConfig::from_value(json!({
+        merman_model::MermaidConfig::empty_object(),
+        merman_model::MermaidConfig::from_value(json!({
             "theme": "base",
             "darkMode": false,
             "themeVariables": {"darkMode": false}
@@ -8926,13 +9158,15 @@ fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
         let plan =
             ThemeCompatibilityPlan::try_new(*theme.recipe_fingerprint().as_bytes(), compatibility)
                 .expect("bounded compatibility config");
-        let parsed = install_theme_compatibility(MermaidEngine::new(), &plan)
+        let parsed = MermaidEngine::new()
+            .with_theme_plan(&plan)
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\n",
                 ParseOptions::strict(),
             )
             .unwrap()
-            .expect("State source should produce a render model");
+            .expect("State source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_theme(&theme)
             .expect("render session should start");
@@ -8958,7 +9192,8 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("themed State source should produce a render model");
+        .expect("themed State source should produce a render model")
+        .into_presentation();
     let unthemed_session = crate::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("unthemed render session should start");
@@ -8973,7 +9208,8 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("unthemed State source should produce a render model");
+        .expect("unthemed State source should produce a render model")
+        .into_presentation();
     let themed_session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("themed render session should start");
@@ -8988,7 +9224,8 @@ fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("unthemed State source should produce a render model");
+        .expect("unthemed State source should produce a render model")
+        .into_presentation();
     let unthemed_session = crate::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("unthemed render session should start");
@@ -9024,7 +9261,8 @@ fn equivalent_theme_instances_retain_selected_family_typed_evidence() {
         .install_parse_compatibility(MermaidEngine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&render_theme)
@@ -9056,7 +9294,8 @@ fn planned_family_drives_flowchart_router_before_layout() {
     let flowchart = engine
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("flowchart source should produce a render model");
+        .expect("flowchart source should produce a render model")
+        .into_presentation();
     let swimlane = super::preparation::prepare_non_class_render(
         &flowchart,
         &options,
@@ -9072,7 +9311,8 @@ fn planned_family_drives_flowchart_router_before_layout() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("configured Swimlane source should produce a render model");
+        .expect("configured Swimlane source should produce a render model")
+        .into_presentation();
     let flowchart = super::preparation::prepare_non_class_render(
         &configured_swimlane,
         &options,
@@ -9088,7 +9328,8 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("flowchart source should produce a render model");
+        .expect("flowchart source should produce a render model")
+        .into_presentation();
 
     let error = match super::preparation::prepare_non_class_render(
         &parsed,
@@ -9111,14 +9352,13 @@ fn family_artifact_rejects_planned_family_drift() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("flowchart source should produce a render model");
+        .expect("flowchart source should produce a render model")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
-    let FamilyRenderArtifact {
-        metadata, family, ..
-    } = artifact;
+    let FamilyRenderArtifact { family, .. } = artifact;
 
     let error = match FamilyRenderArtifact::new(
-        metadata,
+        &parsed,
         family,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
     ) {
@@ -9137,7 +9377,8 @@ fn unthemed_family_completion_has_no_theme_identity() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
-        .expect("flowchart source should produce a render model");
+        .expect("flowchart source should produce a render model")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
     assert!(artifact.context.style_plan.resolved_theme().is_none());
 
@@ -9297,7 +9538,8 @@ style A font-size:10px
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Flowchart important typography")
-        .expect("detect Flowchart important typography");
+        .expect("detect Flowchart important typography")
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.flowchart-important-typography").expect("profile id"),
         "1",
@@ -9346,7 +9588,8 @@ fn prepare_mindmap_with_host_limit(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse mindmap")
-        .expect("detect mindmap");
+        .expect("detect mindmap")
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.mindmap-cose-budget").expect("profile id"),
         "1",
@@ -9381,7 +9624,8 @@ A -->|control label| B
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
-        .expect("detect flowchart");
+        .expect("detect flowchart")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare public flowchart artifact");
     let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
@@ -9412,7 +9656,8 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
-        .expect("detect flowchart");
+        .expect("detect flowchart")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare flowchart family artifact");
 
@@ -9545,7 +9790,8 @@ linkStyle 0 font-size:12px,font-style:italic
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Swimlane")
-        .expect("detect Swimlane");
+        .expect("detect Swimlane")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Swimlane family artifact");
 
@@ -9652,7 +9898,8 @@ fn prepare_with_model_item_limit(source: &str, max_model_items: usize) -> Family
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("flowchart source should produce a render model");
+        .expect("flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
@@ -9671,7 +9918,8 @@ fn prepare_with_layout_work_limit(source: &str, max_layout_work_units: usize) ->
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("flowchart source should produce a render model");
+        .expect("flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
@@ -9690,7 +9938,8 @@ fn prepare_with_unbounded_layout_work(source: &str) -> FamilyFixture {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("source should produce a render model");
+        .expect("source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(crate::resources::RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
@@ -9768,7 +10017,8 @@ fn session_report_accounts_for_every_metered_layout_family() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::default())
             .unwrap()
-            .expect("the layout-work fixture should produce a render model");
+            .expect("the layout-work fixture should produce a render model")
+            .into_presentation();
         let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
 
         assert_eq!(artifact.family_id(), expected_family);
@@ -9896,7 +10146,8 @@ system - satisfies -> req1
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Requirement source should produce a render model");
+        .expect("Requirement source should produce a render model")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
     let projection = artifact.layout_json().unwrap();
     let layout = &projection["layout"]["RequirementDiagram"];
@@ -9962,7 +10213,8 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Flowchart")
-        .expect("detect Flowchart");
+        .expect("detect Flowchart")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Flowchart family artifact");
 
@@ -10116,7 +10368,8 @@ end
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Swimlane")
-        .expect("detect Swimlane");
+        .expect("detect Swimlane")
+        .into_presentation();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_math_renderer(Arc::new(SwimlanePreparedMathRenderer {
@@ -10186,7 +10439,8 @@ D --> P
             ParseOptions::strict(),
         )
         .expect("parse Flowchart")
-        .expect("detect Flowchart");
+        .expect("detect Flowchart")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Flowchart family artifact");
     let operation_count =
@@ -10287,7 +10541,8 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
             ParseOptions::strict(),
         )
         .expect("parse Swimlane")
-        .expect("detect Swimlane");
+        .expect("detect Swimlane")
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session())
         .expect("prepare Swimlane family artifact");
 
@@ -10372,7 +10627,8 @@ fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse Flowchart family")
-            .expect("detect Flowchart family");
+            .expect("detect Flowchart family")
+            .into_presentation();
         let artifact = prepare(&parsed, &LayoutOptions::default(), session())
             .expect("prepare Flowchart family artifact");
         let projection = artifact.layout_json().expect("project public layout JSON");
@@ -10414,11 +10670,9 @@ fn layout_json_projects_its_paired_semantics_and_layout() {
             ParseOptions::strict(),
         )
         .expect("parse Treemap render model")
-        .expect("detect Treemap family");
-    let compatibility = parsed
-        .model()
-        .compatibility_json(parsed.metadata())
-        .unwrap();
+        .expect("detect Treemap family")
+        .into_presentation();
+    let compatibility = parsed.compatibility_json().unwrap();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
     let projected = artifact.layout_json().unwrap();
     assert_eq!(projected["semantic"], compatibility);
@@ -10428,8 +10682,45 @@ fn layout_json_projects_its_paired_semantics_and_layout() {
 }
 
 #[test]
+fn layout_json_keeps_empty_output_facts_after_preparing_canonical_payloads() {
+    let engine = MermaidEngine::new();
+    for (diagram_type, header) in [
+        ("info", "info"),
+        ("pie", "pie"),
+        ("journey", "journey"),
+        ("timeline", "timeline"),
+        ("packet", "packet-beta"),
+        ("radar", "radar-beta"),
+    ] {
+        for source in ["", header] {
+            let parsed = engine
+                .parse_diagram_for_render_model_with_type_sync(
+                    diagram_type,
+                    source,
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let expected = parsed.compatibility_json().unwrap();
+            let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
+            let projected = artifact.layout_json().unwrap();
+            assert_eq!(
+                projected["semantic"], expected,
+                "{diagram_type}: {source:?}"
+            );
+            if source.is_empty() {
+                assert_eq!(projected["semantic"], json!({}), "{diagram_type}");
+            } else {
+                assert_eq!(projected["semantic"]["type"], diagram_type);
+            }
+        }
+    }
+}
+
+#[test]
 fn layout_json_observes_cancellation_inside_the_owned_semantic_projection() {
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_control(control.clone())
         .unwrap();
@@ -10448,8 +10739,9 @@ fn layout_json_preserves_the_original_owned_projection_error() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("block-beta\nA\n", ParseOptions::strict())
         .unwrap()
-        .unwrap();
-    let (_, RenderSemanticModel::Block(mut invalid_model)) = parsed.clone().into_parts() else {
+        .unwrap()
+        .into_presentation();
+    let (_, RenderSemanticModel::Block(mut invalid_model), _) = parsed.clone().into_parts() else {
         panic!("Block model");
     };
     invalid_model.blocks_flat[0].children.push(usize::MAX);
@@ -10458,15 +10750,11 @@ fn layout_json_preserves_the_original_owned_projection_error() {
         panic!("Block artifact");
     };
     block.pair.semantic = &invalid_model;
-    let Error::SemanticProjection(merman_core::Error::DiagramParse {
-        diagram_type,
-        diagnostic,
-    }) = artifact.layout_json().unwrap_err()
-    else {
-        panic!("the core projection diagnostic must remain structured");
+    let Error::SemanticProjection(error) = artifact.layout_json().unwrap_err() else {
+        panic!("the family projection diagnostic must remain structured");
     };
-    assert_eq!(diagram_type, "block");
-    assert!(diagnostic.message().contains("invalid Block child index"));
+    assert_eq!(error.diagram_type(), "block");
+    assert!(error.message().contains("invalid Block child index"));
 }
 
 #[test]
@@ -10534,7 +10822,8 @@ fn mindmap_node_limit_is_checked_before_layout_allocation_or_backend_dispatch() 
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("mindmap source should produce a render model");
+        .expect("mindmap source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
@@ -10567,7 +10856,8 @@ fn flowchart_math_capability_uses_parser_owned_render_spelling() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .without_math_renderer()
             .begin_session()
@@ -10587,7 +10877,8 @@ fn flowchart_math_capability_uses_parser_owned_render_spelling() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA[\"$$x$$\"]\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .without_math_renderer()
         .begin_session()
@@ -10612,7 +10903,7 @@ impl crate::math::MathRenderer for CountingMathRenderer {
     fn render_html_label(
         &self,
         text: &str,
-        _config: &merman_core::presentation::PresentationConfig,
+        _config: &merman_model::presentation::PresentationConfig,
     ) -> Option<String> {
         self.calls
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -10626,7 +10917,8 @@ fn constrained_profile_rejects_math_before_invoking_an_opaque_backend() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA[\"$$x$$\"]\n", ParseOptions::strict())
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_math_renderer(std::sync::Arc::new(CountingMathRenderer {
@@ -10720,7 +11012,8 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -10777,7 +11070,8 @@ fn compiled_flowchart_math_survives_the_canonical_resvg_output_policy() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -10820,7 +11114,8 @@ fn compiled_flowchart_math_survives_user_native_class_collisions() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Flowchart source should produce a render model");
+            .expect("Flowchart source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_compiled_math_renderer()
             .begin_session()
@@ -10916,7 +11211,8 @@ fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -10977,7 +11273,8 @@ fn declining_math_backend_fails_closed_for_native_flowchart_and_sequence_outputs
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"));
+            .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"))
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_math_renderer(std::sync::Arc::new(crate::math::NoopMathRenderer))
             .begin_session()
@@ -11008,7 +11305,8 @@ fn compiled_flowchart_unmatched_math_delimiter_remains_plain_in_resvg() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Flowchart source should produce a render model");
+        .expect("Flowchart source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -11037,7 +11335,8 @@ fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -11082,7 +11381,8 @@ fn compiled_sequence_unmatched_math_delimiter_remains_plain_in_resvg() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence source should produce a render model");
+        .expect("Sequence source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -11111,7 +11411,8 @@ fn compiled_sequence_mixed_math_with_unmatched_delimiter_stays_native_unavailabl
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence mixed math source should produce a render model");
+        .expect("Sequence mixed math source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -11147,7 +11448,8 @@ fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissio
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence actor-man source should produce a render model");
+        .expect("Sequence actor-man source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -11218,7 +11520,8 @@ fn compiled_sequence_multiline_participant_math_expands_each_terminal_actor_box(
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("Sequence multiline participant source should produce a render model");
+        .expect("Sequence multiline participant source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_compiled_math_renderer()
         .begin_session()
@@ -11315,7 +11618,8 @@ fn compiled_class_and_mindmap_math_fail_closed_until_their_native_projection_is_
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"));
+            .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"))
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_compiled_math_renderer()
             .begin_session()
@@ -11359,7 +11663,8 @@ mindmap
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("mindmap source should produce a render model");
+        .expect("mindmap source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .without_math_renderer()
         .begin_session()
@@ -11396,7 +11701,8 @@ fn mindmap_svg_text_does_not_require_a_math_renderer() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .without_math_renderer()
         .begin_session()
@@ -11423,7 +11729,7 @@ impl crate::math::MathRenderer for MindmapMathRenderer {
     fn render_html_label(
         &self,
         text: &str,
-        _config: &merman_core::presentation::PresentationConfig,
+        _config: &merman_model::presentation::PresentationConfig,
     ) -> Option<String> {
         text.contains("$$")
             .then(|| "<strong>rendered-mindmap-math</strong>".to_string())
@@ -11432,7 +11738,7 @@ impl crate::math::MathRenderer for MindmapMathRenderer {
     fn measure_html_label(
         &self,
         text: &str,
-        _config: &merman_core::presentation::PresentationConfig,
+        _config: &merman_model::presentation::PresentationConfig,
         _style: &crate::text::TextStyle,
         _max_width_px: Option<f64>,
         _wrap_mode: crate::text::WrapMode,
@@ -11458,7 +11764,8 @@ mindmap
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("mindmap source should produce a render model");
+        .expect("mindmap source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_math_renderer(std::sync::Arc::new(MindmapMathRenderer))
         .begin_session()
@@ -11488,7 +11795,8 @@ class Formula["$$x^2$$"]
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Class source should produce a render model");
+        .expect("Class source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .without_math_renderer()
         .begin_session()
@@ -11525,7 +11833,7 @@ impl crate::math::MathRenderer for ClassMathRenderer {
     fn render_html_label(
         &self,
         text: &str,
-        _config: &merman_core::presentation::PresentationConfig,
+        _config: &merman_model::presentation::PresentationConfig,
     ) -> Option<String> {
         text.contains("$$")
             .then(|| "<div>rendered-class-math</div>".to_string())
@@ -11534,7 +11842,7 @@ impl crate::math::MathRenderer for ClassMathRenderer {
     fn measure_html_label(
         &self,
         text: &str,
-        _config: &merman_core::presentation::PresentationConfig,
+        _config: &merman_model::presentation::PresentationConfig,
         _style: &crate::text::TextStyle,
         _max_width_px: Option<f64>,
         _wrap_mode: crate::text::WrapMode,
@@ -11555,7 +11863,8 @@ class Formula["$$x^2$$"]
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Class source should produce a render model");
+        .expect("Class source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_math_renderer(std::sync::Arc::new(ClassMathRenderer))
         .begin_session()
@@ -11581,7 +11890,8 @@ fn render_class_math(source: &str) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .expect("Class source should produce a render model");
+        .expect("Class source should produce a render model")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_math_renderer(std::sync::Arc::new(ClassMathRenderer))
         .begin_session()
@@ -11640,7 +11950,8 @@ $$interface$$ ()-- Formula
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .expect("Class source should produce a render model");
+            .expect("Class source should produce a render model")
+            .into_presentation();
         let session = crate::environment::RenderEnvironment::deterministic()
             .without_math_renderer()
             .begin_session()
@@ -11694,7 +12005,8 @@ fn custom_semantic_json_is_explicitly_non_renderable() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
 
     let error = match prepare(&parsed, &LayoutOptions::default(), session()) {
         Err(error) => error,
@@ -11726,7 +12038,8 @@ fn custom_render_overlay_cannot_masquerade_as_a_builtin_family() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
 
     let error = match prepare(&parsed, &LayoutOptions::default(), session()) {
         Err(error) => error,
@@ -11765,7 +12078,8 @@ Second: second,after first,2ms
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
 
     assert_eq!(artifact.family_id(), DiagramFamilyId::GANTT);
@@ -11790,7 +12104,8 @@ fn suppressed_parse_failure_uses_the_typed_error_artifact_and_renderer() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("flowchart TD\nA -->", ParseOptions::lenient())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
 
     assert_eq!(artifact.family_id(), DiagramFamilyId::ERROR);
@@ -11825,7 +12140,8 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse flowchart")
-        .expect("detect flowchart");
+        .expect("detect flowchart")
+        .into_presentation();
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("test.flowchart-sidecar-control").expect("profile id"),
         "1",
@@ -11892,12 +12208,14 @@ fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
 
 #[test]
 fn agentflow_layout_config_prioritizes_family_measurement_keys() {
-    let config = merman_core::presentation::PresentationConfig::from_value(json!({
+    let config = crate::test_support::presentation_config(json!({
         "agentflow": { "minNodeWidth": 180, "wrappingWidth": 240 },
         "flowchart": { "minNodeWidth": 90 }
     }));
-    let projected = project_agentflow_flowchart_config(&config);
-    let number = |config: &merman_core::presentation::PresentationConfig, path: &str| {
+    let projected =
+        project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
+            .unwrap();
+    let number = |config: &merman_model::presentation::PresentationConfig, path: &str| {
         config
             .as_value()
             .pointer(path)
@@ -11910,13 +12228,130 @@ fn agentflow_layout_config_prioritizes_family_measurement_keys() {
 }
 
 #[test]
+fn agentflow_projection_preserves_frozen_declarations_without_authored_routing_paths() {
+    use merman_model::presentation::{
+        FamilyPaintInputs, GitGraphPaintInputs, PalettePaintAuthority, ThemeCompatibilityField,
+        ThemeCompatibilityFieldKind, ThemeCompatibilityRecipe,
+    };
+    use merman_model::resources::{InputResourcePolicy, ResourceProfile};
+    use merman_model::{MermaidConfig, OperationControl};
+
+    let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let control = OperationControl::new();
+    let recipe = ThemeCompatibilityRecipe::try_new(
+        [0x5a; 32],
+        MermaidConfig::from_value(json!({"darkMode": true})),
+    )
+    .unwrap();
+    let field = ThemeCompatibilityField::try_new_controlled(
+        Arc::from("mermaid.darkMode"),
+        ThemeCompatibilityFieldKind::DarkMode,
+        Arc::from([Arc::from("darkMode"), Arc::from("themeVariables.darkMode")]),
+        &policy,
+        &control,
+    )
+    .unwrap()
+    .unwrap();
+    for mask in [
+        None,
+        Some(FamilyPaintInputs::GitGraph(GitGraphPaintInputs::default())),
+    ] {
+        let config = crate::test_support::presentation_config(json!({
+            "agentflow": {"diagramPadding": 12, "nodeSpacing": 72},
+            "darkMode": true, "themeVariables": {"darkMode": true},
+        }));
+        let config = PresentationConfig::try_from_frozen_parts_controlled(
+            config
+                .frozen_parts()
+                .with_theme_compatibility(Some(recipe.clone()), Arc::from([field.clone()]))
+                .with_palette_paint_authority(PalettePaintAuthority::SelectedPalette)
+                .with_family_paint_inputs(mask),
+            &policy,
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+        let projected = project_agentflow_flowchart_config(&config, &control).unwrap();
+        assert!(Arc::ptr_eq(
+            config.shared_explicit_config_paths(),
+            projected.shared_explicit_config_paths()
+        ));
+        assert!(Arc::ptr_eq(
+            config.theme_compatibility().shared_fields(),
+            projected.theme_compatibility().shared_fields()
+        ));
+        assert_eq!(
+            projected.theme_compatibility(),
+            config.theme_compatibility()
+        );
+        assert_eq!(
+            projected.palette_paint_authority(),
+            config.palette_paint_authority()
+        );
+        assert_eq!(projected.family_paint_inputs(), mask);
+        for key in [
+            "diagramPadding",
+            "useMaxWidth",
+            "titleTopMargin",
+            "nodeSpacing",
+            "rankSpacing",
+        ] {
+            assert!(!projected.explicit_config_owns_path(&format!("flowchart.{key}")));
+        }
+        assert_eq!(projected.as_value()["flowchart"]["diagramPadding"], 12);
+        assert_eq!(projected.as_value()["flowchart"]["nodeSpacing"], 72);
+    }
+}
+
+#[test]
+fn agentflow_projection_clones_deep_routing_values_on_a_small_stack() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            use merman_model::presentation::FrozenPresentationConfigParts;
+            use merman_model::resources::{InputResourcePolicy, ResourceProfile};
+            use merman_model::{MermaidConfig, OperationControl};
+
+            let mut value = Value::String("leaf".to_string());
+            for _ in 0..2048 {
+                value = Value::Array(vec![value]);
+            }
+            let spacing = merman_model::json::clone_value_nonrecursive(&value);
+            let mut values = MermaidConfig::empty_object();
+            values.set_value("agentflow.diagramPadding", value);
+            values.set_value("nodeSpacing", spacing);
+            let control = OperationControl::new();
+            let config = PresentationConfig::try_from_frozen_parts_controlled(
+                FrozenPresentationConfigParts::new(values),
+                &InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput),
+                &control,
+            )
+            .unwrap()
+            .unwrap();
+            let projected = project_agentflow_flowchart_config(&config, &control).unwrap();
+            for key in ["diagramPadding", "nodeSpacing"] {
+                let mut value = &projected.as_value()["flowchart"][key];
+                for _ in 0..2048 {
+                    value = &value.as_array().expect("routing value retains its depth")[0];
+                }
+                assert_eq!(value.as_str(), Some("leaf"));
+            }
+        })
+        .expect("spawn the small-stack projection fixture")
+        .join()
+        .expect("deep routing values clone and drop iteratively");
+}
+
+#[test]
 fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
     for wrapping in [json!(0), json!(null), json!(false), json!("")] {
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "agentflow": { "minNodeWidth": 0, "wrappingWidth": wrapping },
             "flowchart": { "minNodeWidth": 90, "wrappingWidth": 240 }
         }));
-        let projected = project_agentflow_flowchart_config(&config);
+        let projected =
+            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
+                .unwrap();
         assert_eq!(projected.as_value()["flowchart"]["minNodeWidth"], 0);
         assert_eq!(projected.as_value()["flowchart"]["wrappingWidth"], 240);
     }
@@ -11925,7 +12360,7 @@ fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
 #[test]
 fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings() {
     for family in [json!({}), json!(null)] {
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "agentflow": family,
             "flowchart": {
                 "diagramPadding": 99, "titleTopMargin": 99, "useMaxWidth": false,
@@ -11934,7 +12369,9 @@ fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings(
                 "inheritDir": true, "subGraphTitleMargin": {"top": 7}
             }
         }));
-        let projected = project_agentflow_flowchart_config(&config);
+        let projected =
+            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
+                .unwrap();
         let flow = &projected.as_value()["flowchart"];
         assert_eq!(flow["diagramPadding"], 8);
         assert_eq!(flow["titleTopMargin"], 0);
@@ -11952,14 +12389,16 @@ fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings(
         }
     }
     for value in [json!(null), json!(0)] {
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "nodeSpacing": 90, "rankSpacing": 0,
             "agentflow": {
                 "diagramPadding": value, "titleTopMargin": value, "useMaxWidth": false,
                 "nodeSpacing": 200, "rankSpacing": value
             }
         }));
-        let projected = project_agentflow_flowchart_config(&config);
+        let projected =
+            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
+                .unwrap();
         let flow = &projected.as_value()["flowchart"];
         assert_eq!(flow["diagramPadding"], if value.is_null() { 8 } else { 0 });
         assert_eq!(flow["titleTopMargin"], 0);
@@ -11983,14 +12422,16 @@ fn agentflow_spacing_projection_follows_registered_backend_selection() {
         "elk.box",
         "elk.rectpacking",
     ] {
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "layout": layout,
             "nodeSpacing": 90, "rankSpacing": 110,
             "agentflow": {"nodeSpacing": 200, "rankSpacing": 210},
             "flowchart": {"nodeSpacing": 300, "rankSpacing": 310}
         }));
         let selected = crate::layout_backend::resolve_graph_layout(config.as_value());
-        let projected = project_agentflow_flowchart_config(&config);
+        let projected =
+            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
+                .unwrap();
         let flow = &projected.as_value()["flowchart"];
         let elk_registered = cfg!(feature = "layout-elk")
             && crate::layout_backend::ElkRootAlgorithm::from_name(layout).is_some();
@@ -12014,7 +12455,7 @@ fn agentflow_spacing_projection_follows_registered_backend_selection() {
 
 struct CancellingSuccessfulHost {
     calls: std::sync::atomic::AtomicUsize,
-    control: merman_core::OperationControl,
+    control: merman_model::OperationControl,
 }
 
 impl HostTextMeasurer for CancellingSuccessfulHost {
@@ -12034,8 +12475,8 @@ fn family_layout_stops_host_measurement_after_callback_cancellation() {
             ParseOptions::strict(),
         )
         .expect("parse mindmap")
-        .expect("detect mindmap");
-    let control = merman_core::OperationControl::new();
+        .expect("detect mindmap").into_presentation();
+    let control = merman_model::OperationControl::new();
     let host = Arc::new(CancellingSuccessfulHost {
         calls: std::sync::atomic::AtomicUsize::new(0),
         control: control.clone(),
@@ -12067,7 +12508,7 @@ fn final_svg_admission_prefers_emit_cancellation_to_byte_limit() {
     let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 1)
         .unwrap();
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(policy)
         .begin_session_with_control(control.clone())
@@ -12093,7 +12534,7 @@ fn final_svg_resource_terminal_replays_before_later_cancellation() {
     let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 1)
         .unwrap();
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(policy)
         .begin_session_with_control(control.clone())
@@ -12128,7 +12569,8 @@ fn requested_diagram_id_fanout_is_admitted_per_output_occurrence() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
         .expect("parse info diagram")
-        .expect("detect info diagram");
+        .expect("detect info diagram")
+        .into_presentation();
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_resource_policy(policy)
         .begin_session()
@@ -12163,8 +12605,9 @@ fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
         .expect("parse info diagram")
-        .expect("detect info diagram");
-    let control = merman_core::OperationControl::new();
+        .expect("detect info diagram")
+        .into_presentation();
+    let control = merman_model::OperationControl::new();
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_control(control.clone())
         .expect("begin render session");
@@ -12277,7 +12720,8 @@ fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         for _ in 0..2 {
             let artifact = prepare(&parsed, &LayoutOptions::default(), session()).unwrap();
             assert!(std::ptr::eq(artifact.metadata(), parsed.metadata()));
@@ -12286,7 +12730,7 @@ fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
                     assert!(std::ptr::eq(flow.pair().semantic(), model));
                     assert!(std::ptr::eq(
                         flow.render_context(),
-                        parsed.flowchart_render_context().unwrap()
+                        parsed.render_context().flowchart_render_context().unwrap()
                     ));
                 }
                 (BuiltinFamilyArtifact::State(value), RenderSemanticModel::State(model)) => {
@@ -12485,7 +12929,7 @@ fn edge_geometry_json_family_cases_match_actual_svg_coordinates() {
 fn edge_geometry_rejects_portability_after_observing_the_session_terminal() {
     let parsed = parse_flowchart("flowchart LR\nA --> B");
     for cancelled in [false, true] {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_control(control.clone())

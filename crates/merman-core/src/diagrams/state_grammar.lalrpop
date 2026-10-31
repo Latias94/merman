@@ -2,7 +2,7 @@
 
 grammar(document: &mut StateDocument);
 
-use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocument, StateDocumentId, Tok};
+use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocumentScratch as StateDocument, StateDocumentId, Tok};
 use crate::SourceSpan;
 
 extern {

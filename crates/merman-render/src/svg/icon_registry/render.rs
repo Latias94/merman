@@ -2,8 +2,8 @@ use super::ingest::ResolvedIcon;
 use super::xml::ValidatedIconBody;
 use super::{IconCurrentColorUse, IconRenderRequest, RenderedIcon};
 use crate::svg::pipeline::validate_well_formed_svg_with_controls;
-use merman_core::OperationPhase;
-use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use merman_markup::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use merman_model::OperationPhase;
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use std::cell::Cell;
@@ -218,7 +218,7 @@ fn render_resolved_icon_inner(
         .ok_or_else(|| crate::Error::icon_processing("sanitizer reservation overflowed"))?;
     let sanitize_sink =
         BoundedSanitizeSink::new(reserved_svg_bytes, sanitizer_ceiling, request.work_meter);
-    let sanitized = match merman_core::sanitize::sanitize_xhtml_with_sink(
+    let sanitized = match merman_markup::sanitize::sanitize_xhtml_with_sink(
         &raw_svg,
         request.effective_config.as_config(),
         &sanitize_sink,
@@ -608,7 +608,7 @@ fn classify_icon_paint_value(value: &str) -> IconPaintValue {
         IconPaintValue::NoPaint
     } else if value.eq_ignore_ascii_case("inherit") {
         IconPaintValue::Inherit
-    } else if let Ok(color) = merman_core::theme_color::ThemeColor::parse(value) {
+    } else if let Ok(color) = merman_markup::theme_color::ThemeColor::parse(value) {
         if color.rgba_channels().alpha == 0.0 {
             IconPaintValue::NoPaint
         } else {
@@ -854,7 +854,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<String>, usize) {
         let icon = resolved_icon(body);
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -882,7 +882,7 @@ mod tests {
         policy: RenderResourcePolicy,
     ) -> (crate::Result<Vec<String>>, usize, usize) {
         let icon = resolved_icon(body);
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": security_level,
             "htmlLabels": true
         }));
@@ -930,17 +930,17 @@ mod tests {
     #[test]
     fn bounded_sanitizer_accepts_exact_output_limit_and_rejects_one_less() {
         let input = r#"<a href="https://example.com" target="_blank">example</a>"#;
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
-        let expected = merman_core::sanitize::sanitize_xhtml(input, config.as_config());
+        let expected = merman_markup::sanitize::sanitize_xhtml(input, config.as_config());
         assert!(expected.contains(r#"target="_blank""#));
         assert!(expected.contains(r#"rel="noopener""#));
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
         assert_eq!(
-            merman_core::sanitize::sanitize_xhtml_with_sink(
+            merman_markup::sanitize::sanitize_xhtml_with_sink(
                 input,
                 config.as_config(),
                 &BoundedSanitizeSink::new(expected.len(), 4096, &meter),
@@ -949,7 +949,7 @@ mod tests {
             expected
         );
         assert_eq!(
-            merman_core::sanitize::sanitize_xhtml_with_sink(
+            merman_markup::sanitize::sanitize_xhtml_with_sink(
                 input,
                 config.as_config(),
                 &BoundedSanitizeSink::new(expected.len() - 1, 4096, &meter),
@@ -970,12 +970,12 @@ mod tests {
             Err(BoundedSanitizeError::AllocationFailed)
         );
 
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
         assert_eq!(
-            merman_core::sanitize::sanitize_xhtml_with_sink(
+            merman_markup::sanitize::sanitize_xhtml_with_sink(
                 "<b>ok</b>",
                 config.as_config(),
                 &InvalidUtf8Sink(BoundedSanitizeSink::new(4096, 4096, &meter)),
@@ -988,12 +988,12 @@ mod tests {
     fn bounded_sanitizer_admits_parser_input_independently_of_output() {
         let input = "<script>removed</script><b>ok</b>";
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
         assert_eq!(
-            merman_core::sanitize::sanitize_xhtml_with_sink(
+            merman_markup::sanitize::sanitize_xhtml_with_sink(
                 input,
                 config.as_config(),
                 &BoundedSanitizeSink::new(4096, input.len() - 1, &meter),
@@ -1009,7 +1009,7 @@ mod tests {
     #[test]
     fn bounded_sanitizer_charges_tree_storage_and_replays_cancellation() {
         let input = "<b>ok</b>";
-        let config = merman_core::presentation::PresentationConfig::from_value(json!({
+        let config = crate::test_support::presentation_config(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
@@ -1017,7 +1017,7 @@ mod tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
         let meter = OperationWorkMeter::new(policy);
-        let error = merman_core::sanitize::sanitize_xhtml_with_sink(
+        let error = merman_markup::sanitize::sanitize_xhtml_with_sink(
             input,
             config.as_config(),
             &BoundedSanitizeSink::new(4096, 4096, &meter),
@@ -1030,13 +1030,13 @@ mod tests {
             )),
         ));
 
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(8);
         let meter = OperationWorkMeter::new_with_control(
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         );
-        let error = merman_core::sanitize::sanitize_xhtml_with_sink(
+        let error = merman_markup::sanitize::sanitize_xhtml_with_sink(
             input,
             config.as_config(),
             &BoundedSanitizeSink::new(4096, 4096, &meter),

@@ -1,4 +1,4 @@
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedStyleProperty, ThemeTarget, ThemeVariant,
@@ -77,8 +77,7 @@ impl GanttTaskLabelPlan {
             .chain(outside_style.winner_rule_properties())
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect();
-        let owns =
-            |path| merman_core::__private::config_paint_overrides_typed_default(config, path);
+        let owns = |path| config.config_paint_overrides_typed_default(path);
         let source_owned = GanttTaskLabelSourceOwners {
             ordinary: owns("themeVariables.taskTextColor"),
             dark: owns("themeVariables.taskTextDarkColor"),

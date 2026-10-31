@@ -6,7 +6,7 @@ use crate::safe_text::{
     BudgetedTextDocument, charge_text_layout, push_document_field, push_document_list,
     push_optional_document_field, push_wrapped_field, push_wrapped_list,
 };
-use merman_core::diagrams::gantt::{
+use merman_model::families::gantt::{
     GanttTask, GanttTaskEndConstraint, GanttTaskStartConstraint, GanttTerminalTaskView,
     GanttTerminalView,
 };
@@ -18,18 +18,18 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 pub(super) fn render_gantt_diagram(
     model: GanttTerminalView<'_>,
     options: &AsciiRenderOptions,
-    local_time_zone: &merman_core::time::LocalTimeZone,
+    local_time_zone: &merman_model::time::LocalTimeZone,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let metadata = model.metadata();
-    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let task_index = admit_then_materialize_gantt_structure(
         model,
         document.resources_mut(),
         |admission, resources| GanttTaskIndex::materialize(model, admission, resources),
     )?;
-    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
+    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
 
     push_optional_document_field(&mut document, "title", metadata.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", metadata.acc_title.as_deref())?;
@@ -348,10 +348,10 @@ fn indexed_task<'a>(
 fn push_task(
     document: &mut BudgetedTextDocument,
     task: GanttTerminalTaskView<'_>,
-    local_time_zone: &merman_core::time::LocalTimeZone,
+    local_time_zone: &merman_model::time::LocalTimeZone,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_model::OperationPhase::Emit)?;
     document.resources_mut().charge_layout_work(1)?;
     let render_end = task
         .render_end_ms
@@ -464,7 +464,7 @@ fn push_dependency_constraint(
     push_wrapped_list(line, ", ", key, dependency_ids.iter().map(String::as_str))
 }
 
-fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> String {
+fn format_date(ms: i64, local_time_zone: &merman_model::time::LocalTimeZone) -> String {
     local_time_zone
         .at_instant(ms)
         .map(|local| {
@@ -479,8 +479,8 @@ fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> S
 
 fn format_resolved_date(
     ms: i64,
-    local: merman_core::time::OffsetDateTime,
-    compatible: Option<merman_core::time::OffsetDateTime>,
+    local: merman_model::time::OffsetDateTime,
+    compatible: Option<merman_model::time::OffsetDateTime>,
 ) -> String {
     let datetime = local.local_datetime();
     let mut formatted = if datetime.hour() == 0
@@ -509,10 +509,10 @@ mod tests {
     use super::*;
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
-    use merman_core::resources::ResourceProfile;
-    use merman_core::time::{OffsetDateTime, UtcOffset};
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+    use merman_model::resources::ResourceProfile;
+    use merman_model::time::{OffsetDateTime, UtcOffset};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
     fn direct_model() -> GanttDiagramRenderModel {
@@ -541,21 +541,20 @@ mod tests {
 
     #[test]
     fn canonical_gantt_tasks_match_full_terminal_dates_sections_and_constraints() {
-        use merman_core::presentation::PresentationConfig;
-        use merman_core::{
-            MermaidConfig, MermaidEngine, ParseOptions, RenderSemanticModel, SemanticDiagramModel,
-            SemanticParser,
-        };
+        use merman_core::presentation::SourcePresentationConfig;
+        use merman_core::{MermaidEngine, ParseOptions, SemanticParser};
+        use merman_model::presentation::RenderSemanticModel;
+        use merman_model::{MermaidConfig, SemanticDiagramModel};
 
-        let runtime = merman_core::runtime::RuntimePolicy::deterministic()
-            .with_local_time_zone(merman_core::time::LocalTimeZone::utc());
+        let runtime = merman_model::runtime::RuntimePolicy::deterministic()
+            .with_local_time_zone(merman_model::time::LocalTimeZone::utc());
         let config = serde_json::json!({"gantt": {"displayMode": "compact"}});
         let parser = SemanticParser::new()
             .with_runtime_policy(runtime.clone())
             .with_site_config(MermaidConfig::from_value(config.clone()));
         let engine = MermaidEngine::new()
             .with_runtime_policy(runtime)
-            .with_site_config(PresentationConfig::from_value(config));
+            .with_site_config(SourcePresentationConfig::from_value(config));
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();
         for source in [
@@ -583,14 +582,14 @@ mod tests {
             let actual = render_gantt_diagram(
                 GanttTerminalView::from_model(model, &canonical.metadata.semantic_config),
                 &options,
-                &merman_core::time::LocalTimeZone::utc(),
+                &merman_model::time::LocalTimeZone::utc(),
                 AsciiExecution::for_test(&policy),
             )
             .expect("canonical Gantt terminal output");
             let expected = render_gantt_diagram(
                 GanttTerminalView::from_render(full),
                 &options,
-                &merman_core::time::LocalTimeZone::utc(),
+                &merman_model::time::LocalTimeZone::utc(),
                 AsciiExecution::for_test(&policy),
             )
             .expect("full Gantt terminal output");

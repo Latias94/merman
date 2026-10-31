@@ -1,4 +1,4 @@
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 use crate::config::{config_bool, value_at};

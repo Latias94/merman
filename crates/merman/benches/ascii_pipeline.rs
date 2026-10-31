@@ -1,6 +1,6 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman::ascii::{AsciiRenderOptions, AsciiResourcePolicy};
-use merman::resources::{InputResourcePolicy, ResourceProfile};
+use merman::model::resources::{InputResourcePolicy, ResourceProfile};
 use merman::{AsciiRequest, OperationControl, RenderOutput, RenderRequest, Renderer};
 use serde_json::json;
 use sha2::{Digest, Sha256};

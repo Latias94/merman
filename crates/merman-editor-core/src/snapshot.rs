@@ -197,7 +197,7 @@ fn detection_for_generation(generation: &AnalysisGeneration) -> Option<EditorDia
     if syntax_id.is_empty() || effective_layout_id.is_empty() {
         return None;
     }
-    let diagram_type = merman_core::diagram_type_metadata_id(syntax_id)?;
+    let diagram_type = merman_model::family::diagram_type_metadata_id(syntax_id)?;
     let validity = match diagram.parse_disposition() {
         DiagramParseDisposition::Parsed => DiagramDetectionValidity::Valid,
         DiagramParseDisposition::Recovered => DiagramDetectionValidity::RecoverableInvalid,

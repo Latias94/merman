@@ -1,5 +1,5 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationConfig;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
@@ -35,7 +35,7 @@ fn config(swimlane: bool, base: &str, html: bool) -> PresentationConfig {
     if swimlane {
         config["layout"] = json!("swimlane");
     }
-    PresentationConfig::from_value(config)
+    common::presentation_config(config)
 }
 
 fn render_with_retained_recipe_baseline(
@@ -58,13 +58,16 @@ fn render_with_retained_recipe_baseline(
             .unwrap(),
     );
     let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(
+    let parsed = common::install_parse_compatibility(
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(value)),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(value),
+        ),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
     .unwrap()
-    .unwrap();
+    .unwrap()
+    .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
         .begin_session_with_theme(&theme)
@@ -320,7 +323,7 @@ fn cluster_label_fill_yields_to_explicit_config_and_emitted_source_color() {
             let rendered = render_with_retained_recipe_baseline(
                 ONE,
                 &theme,
-                PresentationConfig::from_value(value),
+                common::presentation_config(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -469,7 +472,7 @@ fn cluster_label_config_ownership_follows_the_actual_theme_dependency() {
             let rendered = render_with_retained_recipe_baseline(
                 ONE,
                 &theme,
-                PresentationConfig::from_value(value),
+                common::presentation_config(value),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -544,3 +547,6 @@ fn cluster_label_absent_or_stroke_only_preserves_the_existing_text_title_fill_or
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

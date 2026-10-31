@@ -6,8 +6,9 @@ use crate::retained_weight::{
     ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
 };
 use merman_core::{
-    EditorExpectedSyntax, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
+    EditorExpectedSyntax, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
 };
+use merman_model::SourceSpan;
 use serde::{Deserialize, Serialize};
 
 mod core_facts;

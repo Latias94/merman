@@ -15,7 +15,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use indexmap::IndexMap;
-use merman_core::diagrams::architecture::{ArchitectureDiagramModel, ArchitectureLayoutDirection};
+use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureLayoutDirection};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
@@ -942,10 +942,10 @@ impl<'a> ArchitectureModelView<'a> {
             .map(|n| ArchitectureNodeView {
                 id: n.id.as_str(),
                 node_type: match n.node_type {
-                    merman_core::diagrams::architecture::ArchitectureNodeKind::Service => {
+                    merman_model::families::architecture::ArchitectureNodeKind::Service => {
                         ArchitectureNodeType::Service
                     }
-                    merman_core::diagrams::architecture::ArchitectureNodeKind::Junction => {
+                    merman_model::families::architecture::ArchitectureNodeKind::Junction => {
                         ArchitectureNodeType::Junction
                     }
                 },
@@ -2801,17 +2801,17 @@ mod tests {
             layout_hints: vec![
                 super::ArchitectureLayoutHintView {
                     direction:
-                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                        merman_model::families::architecture::ArchitectureLayoutDirection::Row,
                     members: vec!["a", "b"],
                 },
                 super::ArchitectureLayoutHintView {
                     direction:
-                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Column,
+                        merman_model::families::architecture::ArchitectureLayoutDirection::Column,
                     members: vec!["c", "d", "e"],
                 },
                 super::ArchitectureLayoutHintView {
                     direction:
-                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                        merman_model::families::architecture::ArchitectureLayoutDirection::Row,
                     members: vec!["f", "g", "h", "i"],
                 },
             ],
@@ -2874,7 +2874,8 @@ mod tests {
         use crate::resources::{
             OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
         };
-        use merman_core::{MermaidEngine, ParseOptions, RenderSemanticModel};
+        use merman_core::{MermaidEngine, ParseOptions};
+        use merman_model::presentation::RenderSemanticModel;
 
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
@@ -2882,7 +2883,8 @@ mod tests {
                 ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let RenderSemanticModel::Architecture(model) = parsed.model() else {
             panic!("expected Architecture model");
         };
@@ -3175,7 +3177,7 @@ mod tests {
             layout_hints: (0..8)
                 .map(|_| super::ArchitectureLayoutHintView {
                     direction:
-                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                        merman_model::families::architecture::ArchitectureLayoutDirection::Row,
                     members: vec!["a", "b"],
                 })
                 .collect(),
@@ -3447,12 +3449,12 @@ mod tests {
             layout_hints: vec![
                 super::ArchitectureLayoutHintView {
                     direction:
-                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                        merman_model::families::architecture::ArchitectureLayoutDirection::Row,
                     members: vec!["db1", "db2", "db3"],
                 },
                 super::ArchitectureLayoutHintView {
                     direction:
-                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Column,
+                        merman_model::families::architecture::ArchitectureLayoutDirection::Column,
                     members: vec!["db2", "join"],
                 },
             ],

@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::Result;
 use crate::diagram_theme::{
@@ -15,7 +15,7 @@ use crate::family::{
 use crate::model::ErrorDiagramLayout;
 use crate::text::TextMeasurer;
 
-pub const UPSTREAM_MERMAID_VERSION: &str = merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
+pub const UPSTREAM_MERMAID_VERSION: &str = merman_model::baseline::PINNED_MERMAID_BASELINE_VERSION;
 
 const ERROR_BASELINE_VIEWBOX_WIDTH: f64 = 2412.0;
 const ERROR_BASELINE_VIEWBOX_HEIGHT: f64 = 512.0;
@@ -368,7 +368,7 @@ pub(crate) fn wrap_error_message(message: &str) -> Vec<String> {
 }
 
 pub(crate) fn layout_error_diagram_typed(
-    _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramModel,
+    _semantic: &merman_model::families::error::ErrorDiagramModel,
     typography_theme: &ErrorTypographyThemePlan,
 ) -> Result<ErrorDiagramLayout> {
     let viewbox_width = typography_theme.viewport_width_px();
@@ -434,7 +434,7 @@ mod tests {
         let config = PresentationConfig::default();
         let typography_theme = ErrorTypographyThemePlan::resolve(None, &config, &measurer);
         let layout = layout_error_diagram_typed(
-            &merman_core::diagrams::error_diagram::ErrorDiagramModel {
+            &merman_model::families::error::ErrorDiagramModel {
                 diagram_type: "error".to_string(),
                 error_message: None,
             },

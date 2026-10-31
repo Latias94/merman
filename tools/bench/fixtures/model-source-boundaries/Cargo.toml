@@ -1,0 +1,29 @@
+[package]
+name = "diagram-selection-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "diagram-selection-probe"
+path = "main.rs"
+
+# Exactly one of these six fixed consumer recipes is selected by the measurement owner.
+[features]
+default = []
+model = ["dep:merman-model", "merman-model/diagram-flowchart", "merman-model/diagram-class", "merman-model/diagram-state"]
+model-ascii = ["model", "dep:merman-ascii", "merman-ascii/diagram-flowchart", "merman-ascii/diagram-class", "merman-ascii/diagram-state"]
+source-ascii = ["model-ascii", "dep:merman-core", "merman-core/diagram-flowchart", "merman-core/diagram-class", "merman-core/diagram-state"]
+presentation-svg = ["dep:merman-core", "merman-core/diagram-flowchart", "merman-core/presentation", "dep:merman-render", "merman-render/diagram-flowchart"]
+analysis-diagnostics = ["dep:merman-analysis", "merman-analysis/diagram-flowchart"]
+analysis-fixes = ["analysis-diagnostics", "merman-analysis/fixes"]
+
+[dependencies]
+merman-model = { path = "../../../../crates/merman-model", default-features = false, optional = true }
+merman-core = { path = "../../../../crates/merman-core", default-features = false, optional = true }
+merman-ascii = { path = "../../../../crates/merman-ascii", default-features = false, optional = true }
+merman-render = { path = "../../../../crates/merman-render", default-features = false, optional = true }
+merman-analysis = { path = "../../../../crates/merman-analysis", default-features = false, optional = true }
+serde_json = "1"

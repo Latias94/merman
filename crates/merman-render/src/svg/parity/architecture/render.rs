@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::architecture_metrics::architecture_estimate_service_bounds;
 use crate::model::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
-use merman_core::diagrams::architecture::{
+use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
 };
 
@@ -47,7 +47,7 @@ fn architecture_cached_service_child_bounds<'a>(
 pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
     model: &ArchitectureDiagramModel,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     group_theme: &crate::architecture::ArchitectureGroupThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<(
@@ -395,7 +395,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     drop(_g_render_svg);
 
     timings.total = total_timer
-        .map(merman_core::runtime::OperationTimer::elapsed)
+        .map(merman_model::runtime::OperationTimer::elapsed)
         .unwrap_or_default();
     if timing.is_enabled() {
         eprintln!(

@@ -475,7 +475,7 @@ mod tests {
     use crate::AsciiRenderOptions;
     use crate::graph::model::GraphGroupStyle;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(

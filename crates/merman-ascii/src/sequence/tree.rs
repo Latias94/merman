@@ -4,7 +4,7 @@ use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
-use merman_core::OperationPhase;
+use merman_model::OperationPhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SequenceItemId(usize);

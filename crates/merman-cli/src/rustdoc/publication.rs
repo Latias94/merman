@@ -617,7 +617,7 @@ mod tests {
             .expect("second sparse target");
 
         let mut resources = ResolvedResourcePolicy::for_profile(
-            merman::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman::model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         resources
             .apply_override("max_staged_bytes", 10)
@@ -657,7 +657,7 @@ mod tests {
         std::fs::write(&receipt, b"approved receipt bytes").expect("write receipt");
         let generation = observed_generation(&receipt);
         let mut resources = ResolvedResourcePolicy::for_profile(
-            merman::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman::model::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         resources
             .apply_override("max_staged_bytes", 1024)

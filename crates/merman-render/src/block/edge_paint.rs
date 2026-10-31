@@ -34,8 +34,8 @@ struct RuleObservation {
 impl BlockEdgePaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -44,8 +44,8 @@ impl BlockEdgePaintPlan {
 
     fn resolve_paint(
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
-        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -73,10 +73,7 @@ impl BlockEdgePaintPlan {
         }) {
             return Ok(plan);
         }
-        let config_owned = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.lineColor",
-        );
+        let config_owned = config.config_paint_overrides_typed_default("themeVariables.lineColor");
         // The source class rule `.block > *` matches paths through their actual parent group.
         let source_owned = config_owned
             || model.class_defs.values().any(|class| {
@@ -266,8 +263,9 @@ mod tests {
                 merman_core::ParseOptions::strict(),
             )
             .unwrap()
-            .unwrap();
-        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Block(model) = parsed.model() else {
             panic!("Block model")
         };
         let layout = crate::block::layout_block_diagram_typed(

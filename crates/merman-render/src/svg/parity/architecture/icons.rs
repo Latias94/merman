@@ -73,7 +73,7 @@ pub(super) fn write_arch_icon_svg_with_registry(
     icon_size_px: f64,
     icon_registry: Option<&crate::svg::IconRegistry>,
     id_scope: IconIdScope,
-    effective_config: &merman_core::presentation::PresentationConfig,
+    effective_config: &merman_model::presentation::PresentationConfig,
     work_meter: &crate::resources::OperationWorkMeter,
 ) -> crate::Result<()> {
     let svg = match icon_registry {
@@ -145,7 +145,7 @@ mod tests {
             }
         }"##;
         let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
-        let effective_config = merman_core::presentation::PresentationConfig::from_value(
+        let effective_config = crate::test_support::presentation_config(
             serde_json::json!({ "securityLevel": "loose" }),
         );
         let work_meter =

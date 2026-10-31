@@ -1,11 +1,21 @@
 //! Shared assertions for stable parser contracts and the in-process parse fuzzer.
 
 #[cfg(feature = "editor-facts")]
-use super::parse_api::{DiagramParseOutcome, DiagramParseSnapshot, ParsedEditorFacts, SourceSpan};
-use super::parse_api::{
-    Error, ManagedSemanticJson, MermaidConfig, MermaidEngine, OperationControl, ParseOptions,
-    ParsedDiagram, ParsedDiagramRender, PresentationMetadata, Result, diagram_family_capabilities,
-    runtime::RuntimePolicy, time::CivilDate,
+use {
+    super::parse_api::{DiagramParseOutcome, DiagramParseSnapshot, ParsedEditorFacts},
+    merman_model::source::SourceSpan,
+};
+use {
+    super::parse_api::{
+        Error, MermaidEngine, ParseOptions, ParsedDiagram, ParsedDiagramRender, Result,
+        diagram_family_capabilities,
+    },
+    merman_model::config::MermaidConfig,
+    merman_model::json::ManagedJson as ManagedSemanticJson,
+    merman_model::operation::OperationControl,
+    merman_model::presentation::PresentationMetadata,
+    merman_model::runtime::RuntimePolicy,
+    merman_model::time::CivilDate,
 };
 
 pub fn deterministic_engine() -> MermaidEngine {
@@ -91,12 +101,9 @@ pub fn assert_pair(
                 capability.render_model_kind,
                 "catalog model kind: {source}"
             );
-            let projected = typed
-                .model()
-                .compatibility_json(typed.metadata())
-                .unwrap_or_else(|error| {
-                    panic!("accepted typed model has no lossless projection: {error}\n{source}")
-                });
+            let projected = typed.compatibility_json().unwrap_or_else(|error| {
+                panic!("accepted typed model has no lossless projection: {error}\n{source}")
+            });
             assert_eq!(
                 semantic.model, projected,
                 "complete semantic projection: {source}"

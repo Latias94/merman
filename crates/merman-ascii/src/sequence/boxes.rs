@@ -746,7 +746,7 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::OperationPhase;
+    use merman_model::OperationPhase;
 
     #[test]
     fn box_output_admits_extent_before_canvas_materialization() {

@@ -55,7 +55,7 @@ pub(crate) struct ClassRelationThemePlan {
 impl ClassRelationThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_core::presentation::PresentationConfig,
+        effective_config: &merman_model::presentation::PresentationConfig,
         relation_count: usize,
         node_count: usize,
         work_meter: &OperationWorkMeter,
@@ -98,12 +98,7 @@ impl ClassRelationThemePlan {
         let mermaid_owns_edge_label_background =
             ["themeVariables.mainBkg", "themeVariables.primaryColor"]
                 .into_iter()
-                .any(|path| {
-                    merman_core::__private::config_paint_overrides_typed_default(
-                        effective_config,
-                        path,
-                    )
-                });
+                .any(|path| effective_config.config_paint_overrides_typed_default(path));
         let edge_label_background = if mermaid_owns_edge_label_background {
             None
         } else {
@@ -249,7 +244,7 @@ impl ClassRelationThemePlan {
     pub(crate) fn with_cluster_domain(
         mut self,
         theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         cluster_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -392,7 +387,7 @@ mod tests {
                 OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
             let plan = ClassRelationThemePlan::resolve(
                 Some(&theme),
-                &merman_core::presentation::PresentationConfig::empty_object(),
+                &merman_model::presentation::PresentationConfig::empty_object(),
                 1,
                 0,
                 &meter,
@@ -434,9 +429,11 @@ mod tests {
         let meter = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
         for token in ["#333333", "#123456"] {
             let config = merman_core::MermaidEngine::new()
-                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-                    serde_json::json!({"themeVariables":{"lineColor":token}}),
-                ))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"themeVariables":{"lineColor":token}}),
+                    ),
+                )
                 .parse_metadata_sync("classDiagram\nA --> B\n")
                 .unwrap()
                 .effective_config;
@@ -452,9 +449,11 @@ mod tests {
         // therefore rejected here even though the renderer preserves already prepared tokens.
         assert!(
             merman_core::MermaidEngine::new()
-                .with_site_config(merman_core::presentation::PresentationConfig::from_value(
-                    serde_json::json!({"themeVariables":{"lineColor":"var(--edge)"}}),
-                ))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"themeVariables":{"lineColor":"var(--edge)"}}),
+                    )
+                )
                 .parse_metadata_sync("classDiagram\nA --> B\n")
                 .is_err()
         );

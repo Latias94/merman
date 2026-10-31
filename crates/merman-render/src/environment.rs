@@ -15,10 +15,10 @@ use crate::text::{
     append_text_width_em, estimate_text_width_em,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
-use merman_core::__private::ThemeCompatibilityRecipe;
-use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
-use merman_core::time::LocalTimeZoneProvenance;
-use merman_core::{OperationControl, OperationPhase};
+use merman_model::presentation::ThemeCompatibilityRecipe;
+use merman_model::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
+use merman_model::time::LocalTimeZoneProvenance;
+use merman_model::{OperationControl, OperationPhase};
 #[cfg(test)]
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -34,7 +34,7 @@ use unicode_segmentation::UnicodeSegmentation;
 #[non_exhaustive]
 pub enum RenderEnvironmentError {
     #[error(transparent)]
-    Cancelled(#[from] merman_core::OperationCancelled),
+    Cancelled(#[from] merman_model::OperationCancelled),
     #[error(transparent)]
     Runtime(#[from] RuntimePolicyError),
     #[error(transparent)]
@@ -1976,7 +1976,7 @@ impl RenderEnvironment {
         control.checkpoint_at(OperationPhase::Layout)?;
         let theme_compatibility_recipe = resolved_resources
             .theme()
-            .map(|theme| theme.parse_compatibility().recipe().clone());
+            .map(|theme| theme.compatibility_recipe().clone());
         let portability_requirement = resolved_resources
             .portability_requirement()
             .unwrap_or(self.theme_portability);
@@ -2189,11 +2189,11 @@ impl RenderSession {
         self.operation_context.unix_millis()
     }
 
-    pub const fn local_date(&self) -> merman_core::time::CivilDate {
+    pub const fn local_date(&self) -> merman_model::time::CivilDate {
         self.operation_context.today_local()
     }
 
-    pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
+    pub fn local_time_zone(&self) -> &merman_model::time::LocalTimeZone {
         self.operation_context.local_time_zone()
     }
 
@@ -2382,7 +2382,7 @@ impl RenderSessionReport {
         self.operation_context.unix_millis()
     }
 
-    pub const fn local_date(&self) -> merman_core::time::CivilDate {
+    pub const fn local_date(&self) -> merman_model::time::CivilDate {
         self.operation_context.today_local()
     }
 
@@ -2565,7 +2565,7 @@ mod tests {
             panic!("expected structured cancellation");
         };
         assert_eq!(cancelled.phase, OperationPhase::Layout);
-        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
+        assert_eq!(cancelled.reason, merman_model::CancelReason::Requested);
     }
 
     #[test]

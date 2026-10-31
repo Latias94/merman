@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -62,10 +62,7 @@ impl JourneyTextPaintPlan {
             terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
-        let config_owned = merman_core::__private::config_paint_overrides_typed_default(
-            config,
-            "themeVariables.textColor",
-        );
+        let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
         let style =
             theme.style_with_work_meter(ThemeTarget::Text, ThemeVariant::Default, None, work)?;
         let winners = style

@@ -11,7 +11,7 @@
 use merman::svg::SvgRenderOptions;
 use merman::{
     MermaidEngine, OperationControl, RenderOutput, RenderRequest, RenderedDocument, Renderer,
-    SvgRequest, presentation::PresentationConfig,
+    SourcePresentationConfig, SvgRequest,
 };
 use serde_json::{Value, json};
 
@@ -29,7 +29,7 @@ const FAMILIES: &[(&str, &str)] = &[
 fn renderer() -> Renderer {
     Renderer::new()
         .with_presentation_engine(MermaidEngine::new().with_site_config(
-            PresentationConfig::from_value(json!({
+            SourcePresentationConfig::from_value(json!({
                 "theme": "dark",
                 "look": "classic",
                 "layout": "dagre",
@@ -39,7 +39,7 @@ fn renderer() -> Renderer {
             })),
         ))
         .with_runtime_policy(
-            merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(0),
+            merman::model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(0),
         )
 }
 

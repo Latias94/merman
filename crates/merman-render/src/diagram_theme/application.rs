@@ -153,18 +153,12 @@ impl RootThemePlan {
     /// A family backdrop must not cover an explicit root canvas unless authored config owns it.
     pub(crate) fn replaces_default_family_background(
         &self,
-        config: &merman_core::presentation::PresentationConfig,
+        config: &merman_model::presentation::PresentationConfig,
         family_background_path: &str,
     ) -> bool {
         (self.canvas.has_explicit_base() || !self.canvas.layers().is_empty())
-            && !merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                "themeVariables.background",
-            )
-            && !merman_core::__private::config_paint_overrides_typed_default(
-                config,
-                family_background_path,
-            )
+            && !config.config_paint_overrides_typed_default("themeVariables.background")
+            && !config.config_paint_overrides_typed_default(family_background_path)
     }
 
     pub(crate) fn begin_svg_application(&self) -> RootThemeApplication {

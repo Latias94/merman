@@ -16,7 +16,7 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub use_html_labels: bool,
     pub wrapping_width: f64,
     pub look: &'a str,
-    pub mermaid_config: Option<&'a merman_core::presentation::PresentationConfig>,
+    pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub visual_binding: &'a crate::class::ClassInterfaceVisualBinding,
     pub emit: ClassEmitCheckpoint<'a>,

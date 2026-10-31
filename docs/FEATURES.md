@@ -1,22 +1,22 @@
 # Choosing Merman capabilities
 
-This page documents current-source capabilities; installation examples select the published `0.9.1`
-patch. Compiled-theme authoring, Mermaid `12.2.0` alignment, and the CLI encoded-output font
-defaults remain unreleased. Use the
+This page documents current-source capabilities; Rust and CLI installation examples select the published `0.9.3`
+patch, while other channels retain the versions in their package guides. Compiled-theme authoring and Mermaid `12.2.0` alignment remain unreleased. The CLI
+encoded-output font defaults shipped in `0.9.3`. Use the
 [release index](release/README.md) for installed-version contracts and the
 [0.9.0 upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for the preceding model and output
 changes. Workspace path snippets are for source development. See the
 [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
-`diagram-*` Cargo features select built-in parser, model, and output implementations. Selected
+`diagram-*` Cargo features select data, source parsers, or output handlers at the owning package. Selected
 families preserve the pinned Mermaid semantics; lightweight detection, configuration namespaces,
 and sanitization remain available independently. Output, layout, math, and host-adapter features
 are separate choices.
 
 There are four separate decisions:
 
-1. **Diagram families** decide which built-in languages can be parsed.
+1. **Diagram families** select the owning package's data, source parsers, or output handlers. Only source-parser selection admits a language.
 2. **Compiled capabilities** decide which APIs and output backends exist.
 3. **Runtime policy** decides whether an operation uses deterministic values or explicitly selected
    system adapters.
@@ -36,6 +36,7 @@ The public capability leaves are:
 | --- | --- | --- |
 | `svg` | SVG rendering | None |
 | `analysis` | Diagnostics, validation, and semantic analysis | None |
+| `fixes` | Requested replacement generation for analysis projections | Implies `analysis` |
 | `editor` | Parser-backed editor intelligence | None |
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
@@ -59,8 +60,7 @@ transport capability IDs. Defaults-off family selections and ASCII use canonical
 `compat-json`. Rich language tooling selects its required editor facts independently. See the
 [semantic/full migration](migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
 
-Core's `terminal-text` leaf owns shared terminal normalization and Unicode width helpers.
-ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not.
+`merman-model/terminal-text` owns shared terminal normalization and Unicode width helpers. ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not. `merman-model` has no source ingestion or rendering dependency. ASCII, Render, and Export consume shared models or SVG without a production core dependency; the [model/source migration](migrations/model-source-boundaries.md) covers package selection and breaking Rust imports.
 
 The current development branch retains `complete-svg = ["svg", "layout-cytoscape"]` and
 `complete-svg-elk = ["complete-svg", "layout-elk"]` on `merman` and `merman-rustdoc`.
@@ -69,9 +69,15 @@ behavior: add `math` explicitly, for example `features = ["complete-svg-elk", "m
 upgrading a mathematical-label consumer. Direct output/layout leaves remain available. The facade defaults to
 `all-diagrams + svg + layout-cytoscape + layout-elk`; generic SVG recipes and Web full/render
 packages omit math. Official CLI archives select math explicitly, while CLI source defaults and
-the `rustdoc` leaf omit it. Installed `0.9.1` artifacts retain their published recipes.
+the `rustdoc` leaf omit it. Installed `0.9.3` artifacts retain their published recipes.
 The ELK notices and source provenance still accompany artifacts that include it. To omit ELK,
 disable defaults and select required families plus `svg` and the required layout leaves.
+
+For measured consumer dependency graphs, optional-stack costs, and the remaining core floor, see
+the [2026-10-30 dependency review](research/2026-10-30-dependency-review.md). Its package counts
+include build inputs and are not executable-size or compilation-time measurements. Core syntax,
+configuration, HTML and URL normalization remain part of the precise parser contract even when
+output backends are disabled.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -218,7 +224,7 @@ operation or batch and never accumulate user fonts in a process-global cache.
 | SVG, Cytoscape, ELK, and math | `merman` | Add `math` to defaults, or select `all-diagrams,svg,layout-cytoscape,layout-elk,math` with defaults disabled |
 | Lint and diagnostics | `merman-analysis` | `all-diagrams`, or the required `diagram-*` selectors; defaults are empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `all-diagrams, analysis, editor` |
-| Standalone LSP server | `merman-lsp` | `--no-default-features --features all-diagrams,stdio` |
+| Standalone LSP server with code actions | `merman-lsp` | `--no-default-features --features all-diagrams,fixes,stdio` |
 | Complete diagram CLI | `merman-cli` | Source defaults: all families, ELK, exports, analysis, Markdown and `rustdoc`; `cli-release` additionally selects math explicitly |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features all-diagrams,analysis` |
 | Checked Rustdoc fragments | `merman-cli rustdoc` | Included in the default and release CLI; documented crates consume committed files through native `include_str!` |
@@ -261,7 +267,7 @@ or `math` only if an input requires it. Parser-only applications can instead use
 merman-core = { path = "../merman/crates/merman-core", default-features = false, features = ["diagram-gantt"] }
 ```
 
-The parser-owned `merman_core::diagram_family_selectors()` catalog maps logical family IDs to the
+The shared `merman_model::family::diagram_family_selectors()` catalog maps logical family IDs to the
 34 selectors. `all-diagrams` is their union. Aliases, such as Flowchart's `graph` header and
 `flowchart-v2` ID, belong to their logical family. `diagram-flowchart` and `diagram-swimlane` remain
 independent language selections despite sharing grammar, models, labels, and layout routes.
@@ -366,6 +372,8 @@ On the `merman` facade, enabling the `editor` Cargo feature also enables `analys
 `editor` capability has no global implication, so another package must declare the pair explicitly
 when its workflow exposes both. Select families separately; neither capability enables a built-in parser by itself.
 
+Fix generation is a separate positive `fixes` feature and defaults to `FixGeneration::Omit` even when compiled. Select `FixGeneration::Generate` on the requested analysis projection, or `AnalysisOptions::with_fix_generation` on a convenience analyzer. The full CLI, LSP, and editor/native SDK recipes select fixes; diagnostic-only analysis, CLI analysis, Web analysis, and Typst recipes omit it. LSP diagnostic publication remains Omit, while code actions request Generate from the same retained generation. Hosts must declare the capability independently of Cargo feature union. See the [migration example](migrations/model-source-boundaries.md#request-fixes-explicitly).
+
 ### Explicit system adapters
 
 Compile only the adapters required by the host:
@@ -435,7 +443,7 @@ EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install merman-cli --version 0.9.1 --locked
+cargo install merman-cli --version 0.9.3 --locked
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd
@@ -548,7 +556,7 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter `0.9.1` uses `flutter pub add 'merman:0.9.1'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
+Flutter `0.9.2` uses `flutter pub add 'merman:0.9.2'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 2 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`

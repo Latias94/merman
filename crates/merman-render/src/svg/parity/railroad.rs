@@ -1,6 +1,6 @@
 use super::*;
 use crate::model::RailroadElementLayout;
-use merman_core::diagrams::railroad::RailroadDiagramModel;
+use merman_model::families::railroad::RailroadDiagramModel;
 
 pub(crate) fn render_railroad_diagram_svg_model(
     layout: &RailroadDiagramLayout,
@@ -62,7 +62,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
         &mut || {
             options
                 .work_meter()
-                .checkpoint(merman_core::OperationPhase::Emit)
+                .checkpoint(merman_model::OperationPhase::Emit)
                 .map_err(crate::Error::from)
         },
     )?;

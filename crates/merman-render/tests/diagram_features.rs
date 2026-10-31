@@ -28,11 +28,12 @@ use merman_render::{Error, LayoutOptions};
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"
 ))]
-fn parse(source: &str) -> merman_core::ParsedDiagramRender {
+fn parse(source: &str) -> merman_model::presentation::PresentationDiagram {
     MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()
+        .into_presentation()
 }
 
 #[cfg(any(
@@ -90,6 +91,7 @@ fn widened_core_cannot_bypass_local_handlers_or_precedence() {
         else {
             continue;
         };
+        let parsed = parsed.into_presentation();
         if family::supports_diagram_type(&parsed.metadata().diagram_type) {
             continue;
         }
@@ -165,12 +167,13 @@ fn mindmap_uses_shared_label_measurement_without_flowchart_implementation() {
 fn custom_provenance_and_cancellation_precede_family_availability() {
     fn custom(
         _: &str,
-        _: &merman_core::PresentationMetadata,
-        control: &merman_core::OperationControl,
-    ) -> merman_core::OperationControlResult<merman_core::Result<merman_core::CustomJsonRenderModel>>
-    {
+        _: &merman_core::SourcePresentationMetadata,
+        control: &merman_model::OperationControl,
+    ) -> merman_model::OperationControlResult<
+        merman_core::Result<merman_model::presentation::CustomJsonRenderModel>,
+    > {
         control.checkpoint()?;
-        Ok(Ok(merman_core::CustomJsonRenderModel::new(
+        Ok(Ok(merman_model::presentation::CustomJsonRenderModel::new(
             "custom",
             serde_json::json!({}),
         )))
@@ -186,13 +189,14 @@ fn custom_provenance_and_cancellation_precede_family_availability() {
             ParseOptions::strict(),
         )
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     assert!(matches!(
         family::plan_render(&parsed, &session),
         Err(Error::NonRenderableCustomModel { .. })
     ));
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     let session = RenderEnvironment::deterministic()
         .begin_session_with_control(control.clone())
         .unwrap();

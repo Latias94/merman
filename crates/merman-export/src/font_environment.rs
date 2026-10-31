@@ -812,7 +812,7 @@ mod tests {
     #[cfg(feature = "native-fonts")]
     #[test]
     fn explicit_native_context_is_host_owned_without_claiming_a_system_face() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let context = crate::NativeFontContext::from_font_bytes(
             [include_bytes!("../tests/fonts/Cousine-Regular.ttf").to_vec()],
             crate::NativeFontLimits::default(),

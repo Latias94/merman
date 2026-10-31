@@ -331,7 +331,7 @@ mod tests {
                     source_path.display()
                 )
             });
-            let detected = merman_core::diagram_type_metadata_id(&metadata.diagram_type)
+            let detected = merman::model::family::diagram_type_metadata_id(&metadata.diagram_type)
                 .unwrap_or(metadata.diagram_type.as_str());
             assert_eq!(detected, declared);
         }

@@ -3,8 +3,8 @@
 //! Mermaid 12.2 circle.ts, doubleCircle.ts and labelHelper's ignoreMinWidth contract.
 //! Source: 1fb7869866dd619168d840291c9c54b4f129758b.
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::PresentationConfig;
 use merman_render::environment::RenderEnvironment;
 use merman_render::model::{FlowchartLayout, LayoutNode};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -26,7 +26,7 @@ fn render(
 ) -> (FlowchartLayout, String, TextStyle) {
     render_source(
         "flowchart LR\nA((a)) --> B(((a))) --> R[a]\n",
-        PresentationConfig::from_value(json!({
+        common::presentation_config(json!({
             "layout": layout,
             "look": look,
             "handDrawnSeed": 1,
@@ -38,10 +38,15 @@ fn render(
 
 fn render_source(input: &str, config: PresentationConfig) -> (FlowchartLayout, String, TextStyle) {
     let parsed = MermaidEngine::new()
-        .with_site_config(config)
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_config(
+                config.as_config().clone(),
+            ),
+        )
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse circle diagram")
-        .expect("detect flowchart");
+        .expect("detect flowchart")
+        .into_presentation();
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),
@@ -372,16 +377,19 @@ fn hand_drawn_circle_hachure_rejects_huge_finite_font_or_padding_with_default_re
     for source in ["flowchart LR\nA((a))\n", "flowchart LR\nA(((a)))\n"] {
         for (font_size, padding) in [(1e4, 16.0), (16.0, 1e4)] {
             let parsed = MermaidEngine::new()
-                .with_site_config(PresentationConfig::from_value(json!({
-                    "look": "handDrawn",
-                    "handDrawnSeed": 1,
-                    "htmlLabels": false,
-                    "themeVariables": { "fontSize": font_size },
-                    "flowchart": { "padding": padding },
-                })))
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "look": "handDrawn",
+                        "handDrawnSeed": 1,
+                        "htmlLabels": false,
+                        "themeVariables": { "fontSize": font_size },
+                        "flowchart": { "padding": padding },
+                    })),
+                )
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let artifact = family::prepare(
                 &parsed,
                 &LayoutOptions::headless_svg_defaults(),
@@ -408,7 +416,7 @@ fn hand_drawn_circle_hachure_rejects_huge_finite_font_or_padding_with_default_re
 
 #[test]
 fn hand_drawn_circles_with_no_stroke_omit_outline_without_changing_fill_seed_order() {
-    let config = PresentationConfig::from_value(json!({
+    let config = common::presentation_config(json!({
         "look": "handDrawn", "handDrawnSeed": 1, "htmlLabels": false,
     }));
     let source = "flowchart LR\nA((a))\nB(((a)))\n";
@@ -438,3 +446,6 @@ fn hand_drawn_circles_with_no_stroke_omit_outline_without_changing_fill_seed_ord
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

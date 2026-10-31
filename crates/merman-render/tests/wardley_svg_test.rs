@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
@@ -55,11 +54,14 @@ deaccelerator "Legacy Data" [0.45, 0.35]
 "#;
 
 fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("Wardley parse succeeds")
-        .expect("Wardley diagram is detected");
+        .expect("Wardley diagram is detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("Wardley render session starts");
@@ -85,11 +87,14 @@ fn try_render_wardley_with_resource_policy(
     diagram_id: &str,
     resource_policy: RenderResourcePolicy,
 ) -> merman_render::Result<String> {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+    );
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("Wardley parse succeeds")
-        .expect("Wardley diagram is detected");
+        .expect("Wardley diagram is detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -122,10 +127,11 @@ fn try_render_wardley_with_theme(
     environment: &RenderEnvironment,
     diagram_id: &str,
 ) -> merman_render::Result<(Value, family::RenderedFamilySvg)> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Wardley")
-        .expect("detect themed Wardley");
+        .expect("detect themed Wardley")
+        .into_presentation();
     let session = environment.begin_session_with_theme(theme).unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?;
     let projection = artifact.layout_json()?;
@@ -225,14 +231,15 @@ fn wardley_explicit_anchor_and_evolution_colors_outrank_host_text() {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(ThemePreset::EditorDark)
         .unwrap();
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "wardley": {
                 "anchorLabelColor": "#aabbcc",
                 "componentLabelColor": "#112233",
                 "evolutionStroke": "#445566"
             }}
-        })));
+        })),
+    );
     let (_, rendered) = try_render_wardley_with_theme(
         WARDLEY_ANCHOR_SOURCE,
         &theme,
@@ -362,8 +369,9 @@ fn wardley_site_palette_yields_to_host_anchor_paint_but_raw_colors_keep_ownershi
         ),
         ("source-palette", serde_json::json!({}), "#131300"),
     ] {
-        let engine =
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(site_config));
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+        );
         let source = if origin == "source-palette" {
             format!("%%{{init: {{\"theme\": \"default\"}}}}%%\n{WARDLEY_ANCHOR_SOURCE}")
         } else {
@@ -854,21 +862,25 @@ fn wardley_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
     let cases = [
         (
             "wardley-site-font",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "themeVariables": { "fontFamily": "SiteWardleyFont,serif" }
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontFamily": "SiteWardleyFont,serif" }
+                    }),
+                ),
+            ),
             "wardley-beta\ncomponent API [0.6, 0.7]\n".to_string(),
             "SiteWardleyFont,serif",
         ),
         (
             "wardley-source-font",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({
-                    "secure": []
-                }),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "secure": []
+                    }),
+                ),
+            ),
             concat!(
                 "%%{init: {\"fontFamily\": \"SourceWardleyFont,monospace\"}}%%\n",
                 "wardley-beta\ncomponent API [0.6, 0.7]\n"
@@ -1045,7 +1057,9 @@ fn wardley_non_paint_themes_preserve_authored_palette_paint() {
             let (_, rendered) = try_render_wardley_with_theme(
                 &source,
                 theme,
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
                 &RenderEnvironment::deterministic(),
                 diagram_id,
             )
@@ -1103,3 +1117,6 @@ fn wardley_host_text_preserves_arrow_foreground_background_pairs() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod common;

@@ -1,4 +1,4 @@
-use merman_core::baseline::{PINNED_MERMAID_BASELINE_TAG, PINNED_MERMAID_BASELINE_VERSION};
+use merman::model::baseline::{PINNED_MERMAID_BASELINE_TAG, PINNED_MERMAID_BASELINE_VERSION};
 use std::fs;
 use std::path::{Path, PathBuf};
 

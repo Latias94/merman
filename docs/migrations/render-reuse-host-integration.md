@@ -41,18 +41,17 @@ The remaining Rust source migrations are:
 
 | Former use | Current use |
 | --- | --- |
-| Full site configuration as `MermaidConfig` | `presentation::PresentationConfig::from_config(config)` for `MermaidEngine`; semantic parsers still accept `MermaidConfig` |
+| Full site configuration as `MermaidConfig` | `SourcePresentationConfig::from_config(config)` for `MermaidEngine`; semantic parsers still accept `MermaidConfig` |
 | `merman_core::geom` | `merman_render::geom`; geometry belongs to rendering |
-| `ErrorDiagramRenderModel` | Canonical `diagrams::error_diagram::ErrorDiagramModel`, shared by semantic and full parsing |
-| `SequenceDiagramRenderModel` | Canonical `diagrams::sequence::SequenceDiagramModel`, shared by semantic and full parsing |
-| Moving Journey, Timeline or Packet fields out of a full carrier | Move through the carrier's `semantic` field; borrowed field reads remain available |
+| `ErrorDiagramRenderModel` | Canonical `merman_model::families::error::ErrorDiagramModel`, shared by semantic and full parsing |
+| `SequenceDiagramRenderModel` | Canonical `merman_model::families::sequence::SequenceDiagramModel`, shared by semantic and full parsing |
+| Moving Journey, Timeline or Packet fields out of a full carrier | Use the canonical payload directly; the redundant full wrappers have been removed |
 | ASCII entrypoints taking `RenderSemanticModel` | `render_parsed` / `render_parsed_report` on a `ParsedSemanticDiagram`, or the explicit borrowed `AsciiDiagram` and `AsciiSourceContext` entrypoints |
 | Custom full analyzer construction | Enable analysis `compat-json` and use `Analyzer::with_mermaid_engine`; ordinary analyzers remain canonical |
 
 `editor-facts` does not enable presentation. Default analysis/editor captures retain syntax,
 recovery, warnings and source-config evidence but no longer validate visual theme programs.
-Request full presentation when the host needs preview/theme validation. Core's `terminal-text`
-leaf is selected by terminal and diagnostic owners, independently of diagram selection.
+Request full presentation when the host needs preview/theme validation. Terminal and diagnostic owners select `merman-model/terminal-text`, independently of diagram selection.
 
 The `complete-svg` and `complete-svg-elk` convenience features remain available on `merman`
 and `merman-rustdoc`. They now select `svg,layout-cytoscape` and
@@ -77,17 +76,14 @@ Completed SVG, layout, geometry and document results own their public data and r
 after dropping the snapshot. Existing `RenderedDocument` exports continue to reuse a completed
 SVG when no relayout is needed.
 
-Low-level `merman-render::family::prepare` now borrows `&ParsedDiagramRender`. Keep that parse
-owner alive for the lifetime of `FamilyRenderArtifact<'_>`; family preparation owns its new
-layout/session while borrowing canonical model and render context. Update by-value calls to
-`prepare(&parsed, ...)`, and add artifact lifetimes where a type is named explicitly.
+Low-level `merman-render::family::prepare` borrows `&merman_model::presentation::PresentationDiagram`. For source results, call `prepare(parsed.presentation(), ...)`, or transfer the complete input with `parsed.into_presentation()`. Keep that presentation owner alive for the lifetime of `FamilyRenderArtifact<'_>`; preparation owns its layout/session while borrowing canonical model and output context. See the [model/source migration](model-source-boundaries.md) for independent model construction and all import changes.
 `layout_json_with_compatibility_json` was removed: request `artifact.layout_json()` so semantics
 are projected from the exact artifact that owns the layout, under its active control.
 
 ## Use canonical family type names
 
 Pure public render aliases have been removed. Use the canonical types from
-`merman_core::diagrams::<family>` in semantic and full consumers, including imports,
+`merman_model::families::<family>` in semantic and full consumers, including imports,
 reexports, model construction, and explicit type annotations. The same canonical spelling
 now describes the shared family data on both paths; selecting `presentation` does not add
 an alternate name for that data. These types remain available with their diagram family

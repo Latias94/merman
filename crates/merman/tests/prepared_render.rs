@@ -28,7 +28,10 @@ fn render_svg(renderer: &Renderer, source: &str, request: SvgRequest) -> merman:
 #[test]
 fn completed_svg_evidence_records_coarse_render_identity() {
     let output = render_svg(&Renderer::new(), "info", svg_request("info-evidence"));
-    assert_eq!(output.evidence().family_id(), merman::DiagramFamilyId::INFO);
+    assert_eq!(
+        output.evidence().family_id(),
+        merman::model::family::DiagramFamilyId::INFO
+    );
     assert_eq!(output.evidence().measurement_routes().len(), 4);
 }
 
@@ -141,11 +144,11 @@ First: first,-1,1ms
 Second: second,after first,2ms
 "#;
     let renderer = Renderer::new().with_runtime_policy(
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(0),
+        merman::model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(0),
     );
     let first = render_svg(&renderer, source, svg_request("gantt-time"));
     let second_renderer = Renderer::new().with_runtime_policy(
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1),
+        merman::model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(1),
     );
     let second = render_svg(&second_renderer, source, svg_request("gantt-time"));
 
@@ -163,7 +166,7 @@ Second: second,after first,2ms
 #[test]
 fn renderer_is_the_only_runtime_policy_owner() {
     let renderer = Renderer::new().with_runtime_policy(
-        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42),
+        merman::model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42),
     );
     let output = render_svg(&renderer, "info", SvgRequest::default());
 
@@ -210,6 +213,6 @@ fn semantic_artifact_exposes_stable_identity_without_layout_types() {
     assert_eq!(artifact.metadata().diagram_type, "flowchart-v2");
     assert_eq!(
         artifact.family_id(),
-        Some(merman::DiagramFamilyId::FLOWCHART)
+        Some(merman::model::family::DiagramFamilyId::FLOWCHART)
     );
 }

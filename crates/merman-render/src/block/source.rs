@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use merman_core::diagrams::block::BlockDiagramRenderModel;
+use merman_model::families::block::BlockDiagramRenderModel;
 
 use super::BlockNode;
 

@@ -454,7 +454,7 @@ fn er_authored_redux_palettes_override_only_their_typed_paint_channel() {
                 merman::MermaidEngine::new()
             } else {
                 merman::MermaidEngine::new()
-                    .with_site_config(merman::presentation::PresentationConfig::from_value(config))
+                    .with_site_config(merman::SourcePresentationConfig::from_value(config))
             };
             let mut renderer = TypedSvgRenderer::new()
                 .with_theme(theme.clone())

@@ -1,6 +1,6 @@
 #![cfg(feature = "compat-json")]
 
-use merman_core::ManagedSemanticJson;
+use merman_model::json::ManagedJson as ManagedSemanticJson;
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
@@ -103,7 +103,9 @@ impl Write for FailingWriter {
 
 #[test]
 fn controlled_writer_preserves_observed_cancellation_when_io_also_fails() {
-    use merman_core::{CancelReason, OperationCancelled, OperationControl, OperationPhase};
+    use merman_model::operation::{
+        CancelReason, OperationCancelled, OperationControl, OperationPhase,
+    };
 
     struct CancelAndFailWriter<'a> {
         control: &'a OperationControl,
@@ -169,7 +171,7 @@ fn controlled_writer_preserves_observed_cancellation_when_io_also_fails() {
 
 #[cfg(feature = "operation-deadlines")]
 struct DeadlineWriter<'a> {
-    control: &'a merman_core::OperationControl,
+    control: &'a merman_model::operation::OperationControl,
     written: usize,
 }
 
@@ -216,7 +218,7 @@ fn managed_json_lifecycle_child() {
             );
             #[cfg(feature = "operation-deadlines")]
             {
-                let control = merman_core::OperationControl::new();
+                let control = merman_model::operation::OperationControl::new();
                 let mut writer = DeadlineWriter {
                     control: &control,
                     written: 0,
@@ -228,15 +230,18 @@ fn managed_json_lifecycle_child() {
                     writer.written >= 256,
                     "deadline expires after output begins"
                 );
-                assert_eq!(error.reason, merman_core::CancelReason::DeadlineExceeded);
+                assert_eq!(
+                    error.reason,
+                    merman_model::operation::CancelReason::DeadlineExceeded
+                );
                 assert_eq!(control.checkpoint().unwrap_err(), error);
             }
             #[cfg(feature = "test-support")]
             {
-                let control = merman_core::OperationControl::new();
+                let control = merman_model::operation::OperationControl::new();
                 control.cancel_after_checkpoints(120);
                 assert!(value.clone_controlled(&control).is_err());
-                let control = merman_core::OperationControl::new();
+                let control = merman_model::operation::OperationControl::new();
                 control.cancel_after_checkpoints(20);
                 assert!(value.write_json_controlled(io::sink(), &control).is_err());
             }
@@ -269,13 +274,15 @@ fn managed_json_lifecycle_child() {
                 .unwrap()
                 .unwrap();
             assert_eq!(
-                merman_core::resources::ModelComplexity::from_render_model(typed.model())
+                merman_model::resources::model_complexity_from_render_model(typed.model())
                     .nesting_depth,
                 4_999
             );
             assert!(
-                merman_core::resources::InputResourcePolicy::default()
-                    .check_render_model(typed.model())
+                merman_model::resources::InputResourcePolicy::default()
+                    .check_model_complexity(
+                        merman_model::resources::model_complexity_from_render_model(typed.model())
+                    )
                     .is_err()
             );
             drop(typed.clone());
@@ -287,7 +294,7 @@ fn managed_json_lifecycle_child() {
                     control.cancel();
                     Ok(Ok(value.into_unmanaged_value()))
                 });
-            let control = merman_core::OperationControl::new();
+            let control = merman_model::operation::OperationControl::new();
             let error = engine
                 .parse_diagram_for_render_model_controlled_sync(
                     source,
@@ -298,7 +305,7 @@ fn managed_json_lifecycle_child() {
             assert_eq!(error, control.checkpoint().unwrap_err());
             #[cfg(feature = "editor-facts")]
             {
-                let control = merman_core::OperationControl::new();
+                let control = merman_model::operation::OperationControl::new();
                 let error = engine
                     .parse_diagram_snapshot_controlled_sync(source, &control)
                     .unwrap_err();

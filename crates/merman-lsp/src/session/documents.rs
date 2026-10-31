@@ -49,7 +49,7 @@ pub(crate) fn analysis_options_with_lsp_resource_defaults(
     if options.max_document_diagrams().is_none() {
         options = options.with_max_document_diagrams(Some(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS));
     }
-    options
+    options.with_fix_generation(merman_analysis::FixGeneration::Omit)
 }
 
 fn document_source_descriptor(uri: &Uri, kind: DocumentKind) -> SourceDescriptor {

@@ -1,4 +1,3 @@
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
@@ -54,10 +53,11 @@ fn render_venn_with_theme_requirement(
     engine: MermaidEngine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Venn")
-        .expect("detect themed Venn");
+        .expect("detect themed Venn")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
@@ -84,7 +84,8 @@ fn render_typed_venn_with_engine(
     let parsed = engine
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
@@ -118,7 +119,8 @@ fn try_render_venn_svg_with_resource_policy(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse Venn resource-bound fixture")
-        .expect("detect Venn resource-bound fixture");
+        .expect("detect Venn resource-bound fixture")
+        .into_presentation();
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
@@ -212,11 +214,12 @@ fn venn_theme_font_family_outranks_root_and_typed_font_family() {
         ThemeTextStyle::default()
             .with_font_stack(FontStack::single("VennTyped").expect("valid Venn typed font")),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontFamily": "VennRootFont",
             "themeVariables": { "fontFamily": "VennThemeFont" }
-        })));
+        })),
+    );
     let rendered = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
@@ -371,9 +374,11 @@ fn venn_text_fill_is_not_applicable_when_config_or_source_owns_every_terminal() 
     let config_owned = render_venn_with_theme_requirement(
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "themeVariables": { "vennSetTextColor": "#654321" }
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "vennSetTextColor": "#654321" }
+            })),
+        ),
         ThemePortabilityRequirement::RequirePortable,
     )
     .expect("config-owned Venn text fill remains portable");
@@ -442,7 +447,9 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
             let engine = if origin == "source" {
                 MermaidEngine::new()
             } else {
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(config))
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                )
             };
             let rendered = render_venn_with_theme_requirement(
                 &source,
@@ -566,9 +573,11 @@ union A,B["Shared"]:3
 
     let (_, svg) = render_typed_venn_with_engine(
         input,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "secure": []
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "secure": []
+            })),
+        ),
     );
 
     assert!(
@@ -597,9 +606,11 @@ union A,B["Shared"]:3
 
     let (_, svg) = render_typed_venn_with_engine(
         input,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
-            "secure": []
-        }))),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "secure": []
+            })),
+        ),
     );
 
     assert!(
@@ -659,7 +670,8 @@ union A,B
             ParseOptions::strict(),
         )
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
     let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).expect("layout ok");
@@ -923,3 +935,6 @@ fn venn_font_ampersand_is_xml_text_encoded_without_changing_css() {
         1
     );
 }
+
+#[allow(dead_code)]
+mod common;

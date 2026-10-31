@@ -4,6 +4,8 @@ use crate::cli::BatchArgs;
 use crate::cli::CompletionArgs;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::cli::EmbeddedImageCliArgs;
+#[cfg(feature = "fixes")]
+use crate::cli::FixArgs;
 #[cfg(feature = "pdf")]
 use crate::cli::PdfCliArgs;
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -25,10 +27,10 @@ use crate::cli::{
     CapabilitiesArgs, Cli, DetectArgs, ParseArgs, ParseCliArgs, RawCommand, ResourceCliArgs,
     RuntimeCliArgs,
 };
-#[cfg(feature = "analysis")]
-use crate::cli::{FixArgs, LintArgs, LintRulesArgs};
 #[cfg(feature = "svg")]
 use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat, RenderCliArgs};
+#[cfg(feature = "analysis")]
+use crate::cli::{LintArgs, LintRulesArgs};
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
 #[cfg(feature = "rustdoc")]
@@ -40,8 +42,8 @@ use crate::cli::{
 };
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
-use merman::runtime::RuntimePolicy;
-#[cfg(feature = "analysis")]
+use merman::model::runtime::RuntimePolicy;
+#[cfg(feature = "fixes")]
 use std::collections::BTreeSet;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::ffi::OsStr;
@@ -80,7 +82,7 @@ pub(crate) enum ResolvedInvocation {
     Layout(ResolvedLayout),
     #[cfg(feature = "analysis")]
     Lint(ResolvedLint),
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "fixes")]
     Fix(ResolvedFix),
     #[cfg(feature = "analysis")]
     LintRules(LintRulesArgs),
@@ -199,7 +201,7 @@ pub(crate) struct ResolvedLint {
     pub(crate) resources: ResolvedResourcePolicy,
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 #[derive(Debug)]
 pub(crate) struct ResolvedFix {
     pub(crate) input: ResolvedInput,
@@ -211,7 +213,7 @@ pub(crate) struct ResolvedFix {
     pub(crate) resources: ResolvedResourcePolicy,
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 #[derive(Debug)]
 pub(crate) enum ResolvedFixMode {
     Stdout,
@@ -221,7 +223,7 @@ pub(crate) enum ResolvedFixMode {
     WriteInput(PathBuf),
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 #[derive(Debug)]
 pub(crate) struct FixSelectors {
     pub(crate) rules: BTreeSet<String>,
@@ -504,7 +506,7 @@ pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvoc
         RawCommand::Layout(args) => normalize_layout(args, facts).map(ResolvedInvocation::Layout),
         #[cfg(feature = "analysis")]
         RawCommand::Lint(args) => normalize_lint(args, facts).map(ResolvedInvocation::Lint),
-        #[cfg(feature = "analysis")]
+        #[cfg(feature = "fixes")]
         RawCommand::Fix(args) => normalize_fix(args, facts).map(ResolvedInvocation::Fix),
         #[cfg(feature = "analysis")]
         RawCommand::LintRules(args) => {
@@ -595,7 +597,7 @@ fn normalize_lint(args: LintArgs, facts: &InvocationFacts) -> Result<ResolvedLin
     })
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(feature = "fixes")]
 fn normalize_fix(args: FixArgs, facts: &InvocationFacts) -> Result<ResolvedFix, CliError> {
     let mut analysis = args.analysis;
     if analysis.lint_profile.is_none() {
@@ -2390,13 +2392,13 @@ mod tests {
 
         assert_eq!(
             resolved.resources.profile(),
-            merman::resources::ResourceProfile::Constrained
+            merman::model::resources::ResourceProfile::Constrained
         );
         assert_eq!(
             resolved
                 .resources
                 .input_policy()
-                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+                .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes),
             Some(17)
         );
         assert_eq!(resolved.resources.files().config_bytes, Some(29));
@@ -2424,14 +2426,14 @@ mod tests {
 
         assert_eq!(
             resolved.common.resources.profile(),
-            merman::resources::ResourceProfile::Interactive
+            merman::model::resources::ResourceProfile::Interactive
         );
         assert_eq!(
             resolved
                 .common
                 .resources
                 .input_policy()
-                .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
+                .value(merman::model::resources::InputResourceLimitId::MaxSourceBytes),
             Some(31)
         );
     }
@@ -2699,10 +2701,9 @@ mod tests {
         #[cfg(feature = "svg")]
         assert_missing("layout");
         #[cfg(feature = "analysis")]
-        {
-            assert_missing("lint");
-            assert_missing("fix");
-        }
+        assert_missing("lint");
+        #[cfg(feature = "fixes")]
+        assert_missing("fix");
     }
 
     #[test]

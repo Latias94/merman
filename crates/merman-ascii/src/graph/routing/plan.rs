@@ -893,7 +893,7 @@ impl RoutePlan {
     #[cfg(test)]
     pub(super) fn canvas_extent(&self) -> (usize, usize) {
         let resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
         self.canvas_extent_with_resources(&resources)
             .expect("test route geometry must remain representable")
@@ -1110,7 +1110,7 @@ impl PlannedRouteCells {
 #[cfg(test)]
 fn unbounded_route_resources() -> ResourceContext {
     ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        merman_model::resources::ResourceProfile::UnboundedForTrustedInput,
     ))
 }
 
@@ -1300,7 +1300,7 @@ fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &Graph
 mod u6_tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     #[test]
     fn marker_relocation_reports_checked_grid_overflow() {

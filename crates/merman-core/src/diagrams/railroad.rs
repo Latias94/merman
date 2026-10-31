@@ -1,5 +1,5 @@
 #[cfg(feature = "presentation")]
-use crate::PresentationMetadata;
+use crate::SourcePresentationMetadata;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
@@ -12,13 +12,15 @@ use crate::{
     Error, MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult, Result,
     SemanticMetadata, SourceSpan,
 };
-use serde::de::{self, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(test)]
+pub(crate) use merman_model::families::railroad::RailroadRepeatBoundError;
+pub(crate) use merman_model::families::railroad::{
+    RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRuleModel,
+};
 #[cfg(feature = "compat-json")]
-use serde_json::{Value, json};
+use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
-use std::fmt;
 
 #[cfg(test)]
 thread_local! {
@@ -124,320 +126,16 @@ fn is_valid_railroad_rule_identifier(candidate: &str, dialect: RailroadDialect) 
     })
 }
 
-/// A Mermaid Railroad repetition bound stored with JavaScript number semantics.
-///
-/// Values are non-negative integral binary64 numbers or positive infinity. Positive infinity
-/// represents an unbounded maximum or an oversized ABNF bound and serializes as JSON `null`,
-/// matching `JSON.stringify(Infinity)`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RailroadRepeatBound(f64);
-
-impl Eq for RailroadRepeatBound {}
-
-impl RailroadRepeatBound {
-    /// The finite bound zero.
-    pub const ZERO: Self = Self(0.0);
-    /// The finite bound one.
-    pub const ONE: Self = Self(1.0);
-    /// The positive-infinity bound.
-    pub const INFINITY: Self = Self(f64::INFINITY);
-
-    /// Returns whether this bound is zero.
-    pub const fn is_zero(self) -> bool {
-        self.0 == 0.0
-    }
-
-    /// Returns whether this bound is one.
-    pub const fn is_one(self) -> bool {
-        self.0 == 1.0
-    }
-
-    /// Returns whether this bound is positive infinity.
-    pub const fn is_infinite(self) -> bool {
-        self.0.is_infinite()
-    }
-
-    /// Returns the validated binary64 value.
-    pub const fn as_f64(self) -> f64 {
-        self.0
-    }
-}
-
-/// An invalid value supplied to [`RailroadRepeatBound`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum RailroadRepeatBoundError {
-    /// The supplied value was NaN.
-    #[error("railroad repetition bound cannot be NaN")]
-    NotANumber,
-    /// The supplied value was negative, including negative infinity.
-    #[error("railroad repetition bound must be non-negative")]
-    Negative,
-    /// The supplied finite value had a fractional component.
-    #[error("railroad repetition bound must be an integer")]
-    Fractional,
-}
-
-impl TryFrom<f64> for RailroadRepeatBound {
-    type Error = RailroadRepeatBoundError;
-
-    fn try_from(value: f64) -> std::result::Result<Self, Self::Error> {
-        if value.is_nan() {
-            return Err(RailroadRepeatBoundError::NotANumber);
-        }
-        if value.is_sign_negative() && value != 0.0 {
-            return Err(RailroadRepeatBoundError::Negative);
-        }
-        if value == 0.0 {
-            return Ok(Self::ZERO);
-        }
-        if value.is_infinite() {
-            return Ok(Self::INFINITY);
-        }
-        if value.fract() != 0.0 {
-            return Err(RailroadRepeatBoundError::Fractional);
-        }
-        Ok(Self(value))
-    }
-}
-
-impl From<u64> for RailroadRepeatBound {
-    fn from(value: u64) -> Self {
-        Self(value as f64)
-    }
-}
-
-impl Serialize for RailroadRepeatBound {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        if self.is_infinite() {
-            return serializer.serialize_none();
-        }
-
-        let integer = self.0 as u64;
-        if (integer as f64).to_bits() == self.0.to_bits() {
-            serializer.serialize_u64(integer)
-        } else {
-            serializer.serialize_f64(self.0)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for RailroadRepeatBound {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct RailroadRepeatBoundVisitor;
-
-        impl<'de> Visitor<'de> for RailroadRepeatBoundVisitor {
-            type Value = RailroadRepeatBound;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a non-negative integer or null")
-            }
-
-            fn visit_unit<E>(self) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(RailroadRepeatBound::INFINITY)
-            }
-
-            fn visit_none<E>(self) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(RailroadRepeatBound::INFINITY)
-            }
-
-            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(RailroadRepeatBound::from(value))
-            }
-
-            fn visit_u128<E>(self, value: u128) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                RailroadRepeatBound::try_from(value as f64).map_err(E::custom)
-            }
-
-            fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                RailroadRepeatBound::try_from(value as f64).map_err(E::custom)
-            }
-
-            fn visit_i128<E>(self, value: i128) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                RailroadRepeatBound::try_from(value as f64).map_err(E::custom)
-            }
-
-            fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                RailroadRepeatBound::try_from(value).map_err(E::custom)
-            }
-        }
-
-        deserializer.deserialize_any(RailroadRepeatBoundVisitor)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct RailroadDiagramModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub rules: Vec<RailroadRuleModel>,
-    #[serde(skip_serializing)]
-    #[cfg(feature = "editor-facts")]
-    title_span: Option<SourceSpan>,
-    #[serde(skip_serializing)]
-    #[cfg(feature = "editor-facts")]
-    acc_title_span: Option<SourceSpan>,
-    #[serde(skip_serializing)]
-    #[cfg(feature = "editor-facts")]
-    acc_descr_span: Option<SourceSpan>,
-}
-
-impl RailroadDiagramModel {
-    fn new() -> Self {
-        Self {
-            acc_title: None,
-            acc_descr: None,
-            title: None,
-            rules: Vec::new(),
-            #[cfg(feature = "editor-facts")]
-            title_span: None,
-            #[cfg(feature = "editor-facts")]
-            acc_title_span: None,
-            #[cfg(feature = "editor-facts")]
-            acc_descr_span: None,
-        }
-    }
-
-    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
-        crate::common_db::sanitize_optional_title(&mut self.title, config);
-        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
-        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
-        for rule in &mut self.rules {
-            rule.name = sanitize_text(&rule.name, config);
-            sanitize_ast_node(&mut rule.definition, config);
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct RailroadRuleModel {
-    pub name: String,
-    pub definition: RailroadAstNode,
-    #[serde(skip_serializing, default = "zero_span")]
-    #[cfg(feature = "editor-facts")]
-    name_span: SourceSpan,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type")]
-pub enum RailroadAstNode {
-    #[serde(rename = "terminal")]
-    Terminal {
-        value: String,
-        #[serde(skip_serializing, default = "zero_span")]
-        span: SourceSpan,
-        #[serde(skip_serializing, default = "zero_span")]
-        selection: SourceSpan,
-    },
-    #[serde(rename = "nonterminal")]
-    NonTerminal {
-        name: String,
-        #[serde(skip_serializing, default = "zero_span")]
-        span: SourceSpan,
-        #[serde(skip_serializing, default = "zero_span")]
-        selection: SourceSpan,
-    },
-    #[serde(rename = "sequence")]
-    Sequence {
-        elements: Vec<RailroadAstNode>,
-        #[serde(skip_serializing, default = "zero_span")]
-        span: SourceSpan,
-    },
-    #[serde(rename = "choice")]
-    Choice {
-        alternatives: Vec<RailroadAstNode>,
-        #[serde(skip_serializing, default = "zero_span")]
-        span: SourceSpan,
-    },
-    #[serde(rename = "optional")]
-    Optional {
-        element: Box<RailroadAstNode>,
-        #[serde(skip_serializing, default = "zero_span")]
-        span: SourceSpan,
-    },
-    #[serde(rename = "repetition")]
-    Repetition {
-        element: Box<RailroadAstNode>,
-        min: RailroadRepeatBound,
-        #[serde(default = "default_repeat_max")]
-        max: RailroadRepeatBound,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        separator: Option<Box<RailroadAstNode>>,
-        #[serde(skip_serializing, default = "zero_span")]
-        span: SourceSpan,
-    },
-    #[serde(rename = "special")]
-    Special {
-        text: String,
-        #[serde(skip_serializing, default = "zero_span")]
-        span: SourceSpan,
-        #[serde(skip_serializing, default = "zero_span")]
-        selection: SourceSpan,
-    },
-}
-
-fn default_repeat_max() -> RailroadRepeatBound {
-    RailroadRepeatBound::INFINITY
-}
-
-fn zero_span() -> SourceSpan {
-    SourceSpan::new(0, 0)
-}
-
-impl RailroadAstNode {
-    fn span(&self) -> SourceSpan {
-        match self {
-            Self::Terminal { span, .. }
-            | Self::NonTerminal { span, .. }
-            | Self::Sequence { span, .. }
-            | Self::Choice { span, .. }
-            | Self::Optional { span, .. }
-            | Self::Repetition { span, .. }
-            | Self::Special { span, .. } => *span,
-        }
-    }
-
-    fn selection(&self) -> SourceSpan {
-        match self {
-            Self::Terminal { selection, .. }
-            | Self::NonTerminal { selection, .. }
-            | Self::Special { selection, .. } => *selection,
-            Self::Sequence { span, .. }
-            | Self::Choice { span, .. }
-            | Self::Optional { span, .. }
-            | Self::Repetition { span, .. } => *span,
-        }
+pub(crate) fn sanitize_common_db_fields(
+    model: &mut RailroadDiagramModel,
+    config: &crate::MermaidConfig,
+) {
+    crate::common_db::sanitize_optional_title(&mut model.title, config);
+    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
+    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
+    for rule in &mut model.rules {
+        rule.name = sanitize_text(&rule.name, config);
+        sanitize_ast_node(&mut rule.definition, config);
     }
 }
 
@@ -470,29 +168,29 @@ struct Token {
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Ir)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad_ebnf(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_ebnf(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Ebnf)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad_abnf(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_abnf(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Abnf)
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_railroad_peg(code: &str, meta: &PresentationMetadata) -> Result<Value> {
+pub(crate) fn parse_railroad_peg(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Peg)
 }
 
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ir, control)
@@ -501,7 +199,7 @@ pub(crate) fn parse_railroad_model_for_render_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_ebnf_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ebnf, control)
@@ -510,7 +208,7 @@ pub(crate) fn parse_railroad_ebnf_model_for_render_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_abnf_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Abnf, control)
@@ -519,7 +217,7 @@ pub(crate) fn parse_railroad_abnf_model_for_render_controlled(
 #[cfg(feature = "presentation")]
 pub(crate) fn parse_railroad_peg_model_for_render_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
     parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Peg, control)
@@ -529,7 +227,7 @@ pub(crate) fn parse_railroad_peg_model_for_render_controlled(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ir, control)
@@ -539,7 +237,7 @@ pub(crate) fn parse_railroad_json_and_editor_facts(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf, control)
@@ -549,7 +247,7 @@ pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf, control)
@@ -559,7 +257,7 @@ pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
 #[cfg(feature = "editor-facts")]
 pub(crate) fn parse_railroad_peg_json_and_editor_facts(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Peg, control)
@@ -646,9 +344,7 @@ fn parse_railroad_semantic_model_for_dialect_controlled(
     )?;
     Ok(match construction {
         Ok(mut source) => {
-            source
-                .model
-                .sanitize_common_db_fields(&metadata.semantic_config);
+            sanitize_common_db_fields(&mut source.model, &metadata.semantic_config);
             crate::family::SemanticConstruction {
                 model: Ok(source.model),
                 #[cfg(feature = "editor-facts")]
@@ -671,16 +367,14 @@ struct RailroadSemanticSource {
 
 impl RailroadSemanticSource {
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(mut self, meta: &PresentationMetadata) -> Result<Value> {
-        self.model
-            .sanitize_common_db_fields(meta.effective_config.as_config());
+    fn into_compat_json(mut self, meta: &SourcePresentationMetadata) -> Result<Value> {
+        sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
         render_model_to_compat_json(&self.model, meta)
     }
 
     #[cfg(feature = "presentation")]
-    fn into_render_model(mut self, meta: &PresentationMetadata) -> RailroadDiagramModel {
-        self.model
-            .sanitize_common_db_fields(meta.effective_config.as_config());
+    fn into_render_model(mut self, meta: &SourcePresentationMetadata) -> RailroadDiagramModel {
+        sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
         self.model
     }
 }
@@ -706,6 +400,10 @@ struct RailroadParserOutcome {
 #[derive(Default)]
 #[cfg(feature = "editor-facts")]
 struct RailroadParserTrace {
+    title_span: Option<SourceSpan>,
+    acc_title_span: Option<SourceSpan>,
+    acc_descr_span: Option<SourceSpan>,
+    rule_name_spans: Vec<SourceSpan>,
     peg_predicates: Vec<RailroadPegPredicateTrace>,
 }
 
@@ -718,7 +416,7 @@ struct RailroadPegPredicateTrace {
 #[cfg(feature = "compat-json")]
 fn parse_railroad_for_dialect(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
 ) -> Result<Value> {
     parse_railroad_semantic_source(code, meta, dialect)?.into_compat_json(meta)
@@ -727,7 +425,7 @@ fn parse_railroad_for_dialect(
 #[cfg(feature = "presentation")]
 fn parse_railroad_model_for_render_dialect_controlled(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
     control: &OperationControl,
 ) -> OperationControlResult<Result<RailroadDiagramModel>> {
@@ -749,7 +447,7 @@ fn parse_railroad_model_for_render_dialect_controlled(
 #[cfg(feature = "editor-facts")]
 fn parse_railroad_json_and_editor_facts_for_dialect(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
@@ -780,21 +478,16 @@ fn parse_railroad_json_and_editor_facts_for_dialect(
 #[cfg(feature = "compat-json")]
 pub(crate) fn render_model_to_compat_json(
     model: &RailroadDiagramModel,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
 ) -> Result<Value> {
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": &model.title,
-        "accTitle": &model.acc_title,
-        "accDescr": &model.acc_descr,
-        "rules": &model.rules,
-    }))
+    merman_model::families::railroad::compat::project(model, &meta.compat_json_metadata())
+        .map_err(crate::Error::from)
 }
 
 #[cfg(feature = "compat-json")]
 fn parse_railroad_semantic_source(
     code: &str,
-    meta: &PresentationMetadata,
+    meta: &SourcePresentationMetadata,
     dialect: RailroadDialect,
 ) -> Result<RailroadSemanticSource> {
     construct_railroad_semantic_source(
@@ -1156,7 +849,12 @@ impl<'a> RailroadParser<'a> {
         control: &OperationControl,
     ) -> OperationControlResult<RailroadParserOutcome> {
         control.checkpoint()?;
-        let mut model = RailroadDiagramModel::new();
+        let mut model = RailroadDiagramModel {
+            acc_title: None,
+            acc_descr: None,
+            title: None,
+            rules: Vec::new(),
+        };
         let mut first_error = None;
         if let Err(error) = self.expect_header() {
             return Ok(RailroadParserOutcome {
@@ -1173,22 +871,22 @@ impl<'a> RailroadParser<'a> {
                 CommonFieldKind::Title => {
                     model.title = Some(field.value);
                     #[cfg(feature = "editor-facts")]
-                    {
-                        model.title_span = Some(field.span);
+                    if self.editor_demand == EditorFactsDemand::Capture {
+                        self.trace.title_span = Some(field.span);
                     }
                 }
                 CommonFieldKind::AccTitle => {
                     model.acc_title = Some(field.value);
                     #[cfg(feature = "editor-facts")]
-                    {
-                        model.acc_title_span = Some(field.span);
+                    if self.editor_demand == EditorFactsDemand::Capture {
+                        self.trace.acc_title_span = Some(field.span);
                     }
                 }
                 CommonFieldKind::AccDescr => {
                     model.acc_descr = Some(field.value);
                     #[cfg(feature = "editor-facts")]
-                    {
-                        model.acc_descr_span = Some(field.span);
+                    if self.editor_demand == EditorFactsDemand::Capture {
+                        self.trace.acc_descr_span = Some(field.span);
                     }
                 }
             }
@@ -1306,11 +1004,13 @@ impl<'a> RailroadParser<'a> {
         };
         self.expect_symbol(';', "expected ';' after railroad rule definition")?;
 
+        #[cfg(feature = "editor-facts")]
+        if self.editor_demand == EditorFactsDemand::Capture {
+            self.trace.rule_name_spans.push(name.selection);
+        }
         Ok(RailroadRuleModel {
             name: name.text,
             definition: definition.node,
-            #[cfg(feature = "editor-facts")]
-            name_span: name.selection,
         })
     }
 
@@ -3425,7 +3125,7 @@ fn editor_facts_from_model(
     let detail_prefix = dialect.common_detail_prefix();
     let rename_policy = dialect.editor_rename_policy();
 
-    if let (Some(title), Some(span)) = (&model.title, model.title_span) {
+    if let (Some(title), Some(span)) = (&model.title, trace.title_span) {
         facts.push_directive_prefix("title");
         push_payload_fact(
             &mut facts,
@@ -3434,7 +3134,7 @@ fn editor_facts_from_model(
             format!("{detail_prefix} title"),
         );
     }
-    if let (Some(acc_title), Some(span)) = (&model.acc_title, model.acc_title_span) {
+    if let (Some(acc_title), Some(span)) = (&model.acc_title, trace.acc_title_span) {
         facts.push_directive_prefix("accTitle");
         push_payload_fact(
             &mut facts,
@@ -3443,7 +3143,7 @@ fn editor_facts_from_model(
             format!("{detail_prefix} accessibility title"),
         );
     }
-    if let (Some(acc_descr), Some(span)) = (&model.acc_descr, model.acc_descr_span) {
+    if let (Some(acc_descr), Some(span)) = (&model.acc_descr, trace.acc_descr_span) {
         facts.push_directive_prefix("accDescr");
         push_payload_fact(
             &mut facts,
@@ -3453,18 +3153,18 @@ fn editor_facts_from_model(
         );
     }
 
-    for rule in &model.rules {
+    for (rule, &name_span) in model.rules.iter().zip(&trace.rule_name_spans) {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::NodeIdentifier,
-            rule.name_span,
+            name_span,
         ));
         facts.push_symbol(
             EditorSemanticSymbol::new(
                 rule.name.clone(),
                 Some(format!("{detail_prefix} rule")),
                 EditorSemanticKind::Function,
-                rule.name_span,
-                rule.name_span,
+                name_span,
+                name_span,
             )
             .with_rename_policy(rename_policy),
         );
@@ -3727,8 +3427,8 @@ mod semantic_tests {
         };
         assert_eq!(semantic.to_string(), failure.error.to_string());
         assert_eq!(
-            railroad_error_span(&semantic, zero_span()),
-            railroad_error_span(&failure.error, zero_span())
+            railroad_error_span(&semantic, SourceSpan::new(0, 0)),
+            railroad_error_span(&failure.error, SourceSpan::new(0, 0))
         );
         #[cfg(feature = "editor-facts")]
         assert!(
@@ -3786,13 +3486,13 @@ mod tests {
     use super::*;
     #[cfg(feature = "editor-facts")]
     use crate::{EditorSemanticCompleteness, EditorSemanticRole};
-    use crate::{MermaidConfig, PresentationMetadata};
+    use crate::{MermaidConfig, SourcePresentationMetadata};
 
-    fn meta(dialect: RailroadDialect) -> PresentationMetadata {
-        PresentationMetadata {
+    fn meta(dialect: RailroadDialect) -> SourcePresentationMetadata {
+        SourcePresentationMetadata {
             diagram_type: dialect.diagram_type().to_string(),
             config: MermaidConfig::empty_object(),
-            effective_config: crate::presentation::PresentationConfig::empty_object(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
             title: None,
         }
     }
@@ -4348,7 +4048,11 @@ mod tests {
 
             assert_eq!(typed.metadata().diagram_type, diagram_type);
             assert_eq!(
-                render_model_to_compat_json(model, typed.metadata()).unwrap(),
+                merman_model::families::railroad::compat::project(
+                    model,
+                    &merman_model::presentation::compat::CompatJsonMetadata::from(typed.metadata())
+                )
+                .unwrap(),
                 compat.model
             );
         }

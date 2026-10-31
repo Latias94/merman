@@ -2449,9 +2449,9 @@ mod tests {
                         let checkpoint = |count: &mut usize| {
                             *count += 1;
                             if fail_at == Some(*count) {
-                                Err(Error::Cancelled(merman_core::OperationCancelled {
-                                    phase: merman_core::OperationPhase::Postprocess,
-                                    reason: merman_core::CancelReason::Requested,
+                                Err(Error::Cancelled(merman_model::OperationCancelled {
+                                    phase: merman_model::OperationPhase::Postprocess,
+                                    reason: merman_model::CancelReason::Requested,
                                 }))
                             } else {
                                 Ok(())
@@ -3287,7 +3287,7 @@ mod tests {
 
     #[test]
     fn xml_character_bytes_observe_postprocess_cancellation_before_error_and_during_long_text() {
-        use merman_core::{CancelReason, OperationControl, OperationPhase};
+        use merman_model::{CancelReason, OperationControl, OperationPhase};
 
         for (text, cancel_at) in [
             ("\u{ffff}".to_owned(), 2),
@@ -3335,9 +3335,9 @@ mod tests {
                 if root_admitted.get() {
                     text_checkpoints += 1;
                     if text_checkpoints == 16 {
-                        return Err(Error::Cancelled(merman_core::OperationCancelled {
-                            phase: merman_core::OperationPhase::Postprocess,
-                            reason: merman_core::CancelReason::Requested,
+                        return Err(Error::Cancelled(merman_model::OperationCancelled {
+                            phase: merman_model::OperationPhase::Postprocess,
+                            reason: merman_model::CancelReason::Requested,
                         }));
                     }
                 }
@@ -3546,7 +3546,7 @@ mod tests {
     #[test]
     fn native_coordinate_limit_errors_remain_sticky_in_execution() {
         let beyond = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE + 1;
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
             .begin_session_with_control(control.clone())
@@ -3558,11 +3558,11 @@ mod tests {
         .unwrap_err();
         assert!(matches!(error, Error::ResourceLimitExceeded(_)));
         let terminal = control
-            .terminal_checkpoint_at(merman_core::OperationPhase::Export)
+            .terminal_checkpoint_at(merman_model::OperationPhase::Export)
             .unwrap_err();
         control.cancel();
         assert_eq!(
-            control.terminal_checkpoint_at(merman_core::OperationPhase::Emit),
+            control.terminal_checkpoint_at(merman_model::OperationPhase::Emit),
             Err(terminal)
         );
     }
@@ -3655,9 +3655,9 @@ mod tests {
             validate_well_formed_svg_with_checkpoint("<svg><g/></svg>", limits, &mut || {
                 checkpoints += 1;
                 if checkpoints == 2 {
-                    Err(Error::Cancelled(merman_core::OperationCancelled {
-                        phase: merman_core::OperationPhase::Postprocess,
-                        reason: merman_core::CancelReason::Requested,
+                    Err(Error::Cancelled(merman_model::OperationCancelled {
+                        phase: merman_model::OperationPhase::Postprocess,
+                        reason: merman_model::CancelReason::Requested,
                     }))
                 } else {
                     Ok(())
@@ -3668,8 +3668,8 @@ mod tests {
         let Error::Cancelled(error) = error else {
             panic!("expected structured cancellation before the SVG element limit");
         };
-        assert_eq!(error.phase, merman_core::OperationPhase::Postprocess);
-        assert_eq!(error.reason, merman_core::CancelReason::Requested);
+        assert_eq!(error.phase, merman_model::OperationPhase::Postprocess);
+        assert_eq!(error.reason, merman_model::CancelReason::Requested);
     }
 
     fn check_budget(svg: &str, limit: usize) -> Result<()> {
@@ -3821,7 +3821,7 @@ mod tests {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxSvgElements, 100)
             .unwrap();
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(policy)
             .begin_session_with_control(control.clone())
@@ -3832,18 +3832,18 @@ mod tests {
         );
         assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
         let terminal = control
-            .terminal_checkpoint_at(merman_core::OperationPhase::Export)
+            .terminal_checkpoint_at(merman_model::OperationPhase::Export)
             .unwrap_err();
         control.cancel();
         assert_eq!(
-            control.terminal_checkpoint_at(merman_core::OperationPhase::Emit),
+            control.terminal_checkpoint_at(merman_model::OperationPhase::Emit),
             Err(terminal)
         );
     }
 
     #[test]
     fn raw_svg_budget_observes_cancellation_before_xml_work() {
-        let control = merman_core::OperationControl::new();
+        let control = merman_model::OperationControl::new();
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_control(control.clone())
             .unwrap();
@@ -4252,9 +4252,9 @@ mod tests {
                 &mut || {
                     checkpoints += 1;
                     if checkpoints == cancel_at {
-                        Err(Error::Cancelled(merman_core::OperationCancelled {
-                            phase: merman_core::OperationPhase::Postprocess,
-                            reason: merman_core::CancelReason::Requested,
+                        Err(Error::Cancelled(merman_model::OperationCancelled {
+                            phase: merman_model::OperationPhase::Postprocess,
+                            reason: merman_model::CancelReason::Requested,
                         }))
                     } else {
                         Ok(())
@@ -4265,9 +4265,9 @@ mod tests {
             .unwrap_err();
             assert!(matches!(
                 error,
-                Error::Cancelled(merman_core::OperationCancelled {
-                    phase: merman_core::OperationPhase::Postprocess,
-                    reason: merman_core::CancelReason::Requested,
+                Error::Cancelled(merman_model::OperationCancelled {
+                    phase: merman_model::OperationPhase::Postprocess,
+                    reason: merman_model::CancelReason::Requested,
                 })
             ));
             assert_eq!(checkpoints, cancel_at);
@@ -4282,9 +4282,9 @@ mod tests {
             &mut || {
                 checkpoints += 1;
                 if checkpoints == 50 {
-                    Err(Error::Cancelled(merman_core::OperationCancelled {
-                        phase: merman_core::OperationPhase::Postprocess,
-                        reason: merman_core::CancelReason::Requested,
+                    Err(Error::Cancelled(merman_model::OperationCancelled {
+                        phase: merman_model::OperationPhase::Postprocess,
+                        reason: merman_model::CancelReason::Requested,
                     }))
                 } else {
                     Ok(())

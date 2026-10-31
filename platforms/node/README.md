@@ -108,6 +108,11 @@ npm run check:packages --prefix platforms/node
 benchmark contract with test transports. `check:packages` verifies the source manifests; native
 artifact assembly and installed-package smoke run in the target-specific release workflow.
 
+Building the Node-WASM candidate requires `wasm-pack 0.15.0` and Binaryen `version_133`.
+Put that release's `wasm-opt` on `PATH` before running the build owner, as CI, release preflight,
+and the Node release workflow do. The older optimizer downloaded by wasm-pack can fail in its
+precomputation pass on the current module. The build retains release optimization.
+
 The Linux GNU builder uses the full Node Bullseye image to preserve the declared glibc 2.31
 floor. Its inherited `buildpack-deps` tools and CA bundle are checked during image assembly;
 the Dockerfile does not reinstall them from Bullseye's retired package repositories. Slim

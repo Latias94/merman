@@ -1,23 +1,21 @@
 mod support;
 
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::gantt::{
+use merman_model::families::gantt::{
     GanttDiagramRenderModel, GanttRenderTask, GanttTaskEnd, GanttTaskEndConstraint, GanttTaskRaw,
     GanttTaskStart, GanttTaskStartConstraint,
 };
-use merman_core::diagrams::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyTask};
-use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
-use merman_core::diagrams::mindmap::{
+use merman_model::families::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
+use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
+use merman_model::families::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+use merman_model::families::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
-use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
-use merman_core::diagrams::timeline::{
-    TimelineDiagramRenderModel, TimelineDirection, TimelineTask,
-};
-use merman_core::diagrams::tree_view::{TreeViewDiagramModel, TreeViewNode};
-use merman_core::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
+use merman_model::families::packet::{PacketBlock, PacketDiagramModel};
+use merman_model::families::timeline::{TimelineDiagramModel, TimelineDirection, TimelineTask};
+use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
+use merman_model::presentation::RenderSemanticModel;
+use merman_model::warnings::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 use support::{render_controlled_model, render_model, render_source};
 
 fn render(model: RenderSemanticModel) -> String {
@@ -36,11 +34,10 @@ fn render_with_scheduled_cancellation(
     model: RenderSemanticModel,
     successful_checkpoints: usize,
 ) -> AsciiError {
-    let engine = merman_core::MermaidEngine::new();
-    let context = engine
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
         .begin_operation()
         .expect("deterministic operation context should be available");
-    let control = merman_core::OperationControl::new();
+    let control = merman_model::OperationControl::new();
     control.cancel_after_checkpoints(successful_checkpoints);
     render_controlled_model(
         &model,

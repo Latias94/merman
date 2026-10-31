@@ -1,6 +1,6 @@
 use crate::model::{C4TextRenderPlan, C4TextRowLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode, measure_mermaid_text_dimensions};
-use merman_core::diagrams::c4::{C4DiagramModel, C4Shape};
+use merman_model::families::c4::{C4DiagramModel, C4Shape};
 use serde_json::Value;
 use unicode_segmentation::UnicodeSegmentation;
 

@@ -106,10 +106,22 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quic
         .await
         .unwrap()
         .expect("code action response");
-    let result = response.result().expect("code action result");
-    assert!(result.is_null());
+    #[cfg(feature = "fixes")]
+    {
+        let result = response.result().expect("code action result");
+        assert!(result.is_null());
+    }
+    #[cfg(not(feature = "fixes"))]
+    {
+        let error = response.error().expect("missing fixes capability error");
+        assert_eq!(error.code, ErrorCode::InvalidParams);
+        let data = error.data.as_ref().expect("missing capability details");
+        assert_eq!(data["error_id"], "missing-capability");
+        assert_eq!(data["capability_id"], "fixes");
+    }
 }
 
+#[cfg(feature = "fixes")]
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_returns_negotiated_quickfix_with_versioned_edit() {
     let (mut service, socket) = MermanLanguageServer::service();

@@ -154,11 +154,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
         self.assertEqual(
             baseline["cargo"]["features"],
-            ["all-diagrams", "analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+            ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"],
         )
         self.assertEqual(
             baseline["expected"]["capabilities"],
-            ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+            ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"],
         )
         self.assertEqual(baseline["expected"]["outputs"], ["ascii", "svg"])
 
@@ -179,6 +179,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "all-diagrams",
                 "analysis",
                 "ascii",
+                "fixes",
                 "jpeg",
                 "layout-cytoscape",
                 "layout-elk",
@@ -190,6 +191,26 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "system-fonts",
             ),
         )
+
+    def test_fixes_recipes_are_explicit_and_diagnostic_products_omit_them(self) -> None:
+        descriptor = json.loads(artifact_profile_recipe.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8"))
+        enabled = {
+            "cli-release", "lsp-library", "lsp-stdio-release", "rust-editor-core",
+            "rust-editor-facade", "rust-all", "web-editor", "web-full", "android-native",
+            "apple-uniffi-native", "python-uniffi-native", "flutter-android-native",
+            "flutter-desktop-native", "flutter-ios-native", "c-abi-native",
+            "rust-bindings-core-native-sdk", "rust-native-sdk", "sdk-native-standard",
+            "sdk-native-math", "sdk-native-full",
+        }
+        actual = set()
+        for profile in descriptor["profiles"]:
+            selected = "fixes" in profile["cargo"]["features"]
+            if selected:
+                actual.add(profile["id"])
+            self.assertEqual("fixes" in profile["expected"]["capabilities"], selected, profile["id"])
+            self.assertEqual("fixes" in profile["expected"]["runtime_ids"], selected, profile["id"])
+        self.assertEqual(actual, enabled)
+        self.assertTrue({"rust-analysis", "cli-analysis", "web-analysis", "typst-wasm"}.isdisjoint(actual))
 
     def test_repository_native_commands_reject_profile_environment_overrides(self) -> None:
         cases = (

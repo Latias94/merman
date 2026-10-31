@@ -1,11 +1,11 @@
 mod support;
 
 use merman_ascii::{AsciiColorMode, AsciiError, AsciiLayoutProfile, AsciiRenderOptions};
-use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::state::{
+use merman_core::{ParseOptions, presentation::MermaidEngine};
+use merman_model::families::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
-use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::RenderSemanticModel;
 use std::path::Path;
 use support::render_model;
 

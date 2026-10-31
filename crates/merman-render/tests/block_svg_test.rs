@@ -2,7 +2,6 @@ mod common;
 
 use base64::Engine as _;
 use common::legacy_init_theme_compat_engine;
-use merman_core::presentation::PresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
@@ -51,7 +50,8 @@ fn try_render_block_svg_from_text_with_engine_and_policy(
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
-        .expect("diagram detected");
+        .expect("diagram detected")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(resource_policy)
         .begin_session()
@@ -104,11 +104,13 @@ fn root_view_box(document: &roxmltree::Document<'_>) -> (f64, f64, f64, f64) {
 }
 
 fn render_block_geometry(config: serde_json::Value, source: &str) -> (String, serde_json::Value) {
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(config));
+    let engine = MermaidEngine::new()
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse Block geometry")
-        .expect("detect Block geometry");
+        .expect("detect Block geometry")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Block geometry");
@@ -388,10 +390,11 @@ fn render_block_with_theme_requirement(
     engine: MermaidEngine,
     requirement: ThemePortabilityRequirement,
 ) -> family::RenderedFamilySvg {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Block")
-        .expect("detect themed Block");
+        .expect("detect themed Block")
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
@@ -469,11 +472,11 @@ fn block_generic_text_stroke_keeps_a_residual_with_or_without_fill() {
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 1);
-        let parsed =
-            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-                .unwrap()
-                .unwrap();
+        let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -503,9 +506,11 @@ fn block_node_label_paint_is_bound_to_node_terminals() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"] -- \"Edge\" --> B[\"Beta\"]\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"htmlLabels": html}),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": html}),
+                ),
+            ),
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let stylesheet = document
@@ -558,9 +563,11 @@ fn block_empty_node_label_paint_is_not_applicable() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\" \"]\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"htmlLabels": html}),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": html}),
+                ),
+            ),
         );
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -578,9 +585,11 @@ fn block_node_label_source_color_suppresses_theme_evidence() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"]\n style A color:#123456\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"htmlLabels": html}),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": html}),
+                ),
+            ),
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let node = document
@@ -665,11 +674,11 @@ fn block_node_label_mixed_rule_is_rejected_in_strict_mode() {
             .with_fill(CanvasPaint::solid("#123456").unwrap())
             .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
     );
-    let parsed =
-        merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-            .parse_diagram_for_render_model_sync("block\n A[\"Alpha\"]\n", ParseOptions::strict())
-            .unwrap()
-            .unwrap();
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync("block\n A[\"Alpha\"]\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
@@ -692,9 +701,11 @@ fn block_node_label_mixed_source_ownership_proves_only_theme_nodes() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"] B[\"Beta\"]\n style A color:#123456\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"htmlLabels": html}),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": html}),
+                ),
+            ),
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         for (id, color) in [("block-theme-A", "#123456"), ("block-theme-B", "#b316cd")] {
@@ -722,9 +733,11 @@ fn block_node_label_config_color_is_not_a_typed_application() {
         let rendered = render_block_with_theme_and_engine(
             "block\n A[\"Alpha\"]\n",
             &theme,
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"themeVariables": {path: "#123456"}}),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables": {path: "#123456"}}),
+                ),
+            ),
         );
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -806,9 +819,11 @@ fn block_node_label_class_color_owns_only_assigned_classes() {
             let rendered = render_block_with_theme_and_engine(
                 source,
                 &theme,
-                MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                    serde_json::json!({"htmlLabels": html}),
-                )),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels": html}),
+                    ),
+                ),
             );
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
             let node = document
@@ -957,11 +972,12 @@ fn block_mixed_base_typography_fails_closed() {
 #[test]
 fn block_explicit_typography_ownership_outranks_typed_values() {
     let theme = block_typography_theme("Typed Block Sans", 22.0);
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "fontFamily": "Site Block Sans",
             "themeVariables": { "fontSize": "30px" }
-        })));
+        })),
+    );
     let rendered = render_block_with_theme_and_engine(
         r#"block
   A["Alpha"] --> B["Beta"]
@@ -1299,10 +1315,11 @@ fn block_explicit_main_background_outranks_typed_node_fill() {
     let theme = block_node_fill_theme(
         CanvasPaint::solid("#654321").expect("valid config-suppressed Block node fill"),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "mainBkg": "#445566" }
-        })));
+        })),
+    );
     let rendered = render_block_with_theme_and_engine("block\n  A[\"Alpha\"]\n", &theme, engine);
     let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
 
@@ -1504,10 +1521,11 @@ fn block_explicit_node_border_outranks_typed_node_stroke() {
     let theme = block_node_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid config-suppressed Block node stroke"),
     );
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": { "nodeBorder": "#445566" }
-        })));
+        })),
+    );
     let rendered = render_block_with_theme_and_engine("block\n  A[\"Alpha\"]\n", &theme, engine);
     let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
 
@@ -1873,12 +1891,13 @@ fn block_svg_keeps_blank_placeholder_label_paragraph() {
 
 #[test]
 fn block_svg_honors_configured_node_text_color() {
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "nodeTextColor": "#123456"
             }
-        })));
+        })),
+    );
     let svg = render_block_svg_from_text_with_engine(
         &engine,
         r#"block
@@ -1915,12 +1934,13 @@ block
 
 #[test]
 fn block_svg_rejects_unsupported_cluster_theme_color() {
-    let engine =
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "themeVariables": {
                 "clusterBkg": "not-a-css-color"
             }
-        })));
+        })),
+    );
     let error = try_render_block_svg_from_text_with_engine(
         &engine,
         r#"block
@@ -2293,7 +2313,7 @@ fn block_svg_edge_background_uses_operation_text_bounds() {
         let parsed = MermaidEngine::new().parse_diagram_for_render_model_sync(
             "%%{init: {\"htmlLabels\": false}}%%\nblock\n A[\"Alpha<br/>line\"] -- \"First<br/>Second\" --> B[\"Beta\"]\n",
             ParseOptions::default(),
-        ).unwrap().unwrap();
+        ).unwrap().unwrap().into_presentation();
         let identity = TextMeasurementProfileIdentity::new(
             MeasurementProfileId::new("test.block-svg-label").unwrap(),
             "1",
@@ -2467,11 +2487,13 @@ fn block_absent_text_rules_have_no_terminal_even_with_frontmatter_and_composite_
                     let rendered = render_block_with_theme_and_engine(
                         source,
                         &theme,
-                        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                            serde_json::json!({
-                                "htmlLabels": html_labels
-                            }),
-                        )),
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(
+                                serde_json::json!({
+                                    "htmlLabels": html_labels
+                                }),
+                            ),
+                        ),
                     );
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
                     assert!(document.descendants().all(|node| {
@@ -2617,7 +2639,9 @@ fn block_background_reconciles_missing_labels_and_explicit_config() {
                 let rendered = render_block_with_theme_and_engine(
                     source,
                     &theme,
-                    MermaidEngine::new().with_site_config(PresentationConfig::from_value(config)),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
                 );
                 let expected = if config_owned { "#123456" } else { "#b316cd" };
                 assert!(rendered.svg().contains(&format!(
@@ -2667,11 +2691,11 @@ fn block_background_unsupported_winning_facet_stays_residual() {
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 1);
-        let parsed =
-            merman_render::__private::install_parse_compatibility(&theme, MermaidEngine::new())
-                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-                .unwrap()
-                .unwrap();
+        let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
         let session = RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -2778,9 +2802,11 @@ fn block_edge_source_config_and_absent_edges_are_not_applicable() {
     for (source, engine) in [
         (
             "block\n A --> B\n",
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"themeVariables":{"lineColor":"#2468ac"}}),
-            )),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables":{"lineColor":"#2468ac"}}),
+                ),
+            ),
         ),
         ("block\n A\n", MermaidEngine::new()),
     ] {
@@ -3128,7 +3154,7 @@ fn block_cluster_source_and_explicit_config_own_their_properties() {
         let engine = if source_style {
             MermaidEngine::new()
         } else {
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef","clusterBorder":"#123456"}})))
+            MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef","clusterBorder":"#123456"}})))
         };
         let rendered = render_block_with_theme_and_engine(&source, &theme, engine);
         assert!(!rendered.svg().contains("fill:#b316cd;"));
@@ -3198,11 +3224,13 @@ fn block_cluster_class_source_and_config_masks_are_property_local() {
             BLOCK_CLUSTER_SOURCE.to_string()
         };
         let engine = if case == "cluster-config" {
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-                serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef"}}),
-            ))
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef"}}),
+                ),
+            )
         } else if case == "node-config" {
-            MermaidEngine::new().with_site_config(PresentationConfig::from_value(
+            MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(
                 serde_json::json!({"themeVariables":{"mainBkg":"#abcdef", "nodeBorder":"#abcdef"}}),
             ))
         } else {
@@ -3552,9 +3580,11 @@ fn block_marker_explicit_fill_config_leaves_typed_stroke_available() {
             ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#167bc1").unwrap()),
         ),
     ]);
-    let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-        serde_json::json!({"themeVariables":{"arrowheadColor":"#315724"}}),
-    ));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({"themeVariables":{"arrowheadColor":"#315724"}}),
+        ),
+    );
     let rendered = render_block_with_theme_and_engine(BLOCK_MARKER_SOURCE, &theme, engine);
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     for shape in referenced_block_marker_shapes(&document) {
@@ -3614,8 +3644,8 @@ fn block_marker_unsupported_ordinal_does_not_repaint_other_references() {
 #[test]
 fn block_look_resources_precede_markers_and_follow_theme_configuration() {
     for (theme, gradient, flood) in [("redux", false, "#000000"), ("redux-dark", true, "#FFFFFF")] {
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
                 "theme": theme,
                 "look": "neo",
                 "themeVariables": {
@@ -3623,8 +3653,8 @@ fn block_look_resources_precede_markers_and_follow_theme_configuration() {
                     "gradientStart": "#123456",
                     "gradientStop": "#abcdef"
                 }
-            }),
-        ));
+            })),
+        );
         let svg = render_block_svg_from_text_with_engine(&engine, "block-beta\n  A[\"Alpha\"]\n");
         let document = roxmltree::Document::parse(&svg).expect("Block SVG");
         let root = document.root_element();
@@ -3691,7 +3721,7 @@ fn block_composite_palette_wraps_slots_and_preserves_author_styles() {
         ("redux-dark-color", false),
         ("redux", false),
     ] {
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(serde_json::json!({
+        let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": theme, "look": "classic",
             "themeVariables": {"borderColorArray": ["#aa0000", "#00aa00"],
                 "bkgColorArray": if tinted { vec!["#eeeeee"] } else { vec![] }, "THEME_COLOR_LIMIT": 1}
@@ -3779,9 +3809,11 @@ fn block_uppercase_source_color_reaches_svg_text_fill() {
     let rendered = render_block_with_theme_and_engine(
         "block\n A[\"Alpha\"]\n style A COLOR:#123456\n",
         &theme,
-        MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            serde_json::json!({"htmlLabels":false}),
-        )),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"htmlLabels":false}),
+            ),
+        ),
     );
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     let text = document
@@ -3898,13 +3930,16 @@ fn block_html_source_font_longhands_measure_the_emitted_terminal() {
         let source = format!(
             "block\n A[\"Alpha\"]\n style A font-size:{size},font-family:monospace,font-style:italic\n"
         );
-        let engine = MermaidEngine::new().with_site_config(PresentationConfig::from_value(
-            serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "16px"}}),
-        ));
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "16px"}}),
+            ),
+        );
         let parsed = engine
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .into_presentation();
         let identity = TextMeasurementProfileIdentity::new(
             MeasurementProfileId::new("test.block-source-terminal-font").unwrap(),
             "1",
@@ -4009,7 +4044,8 @@ fn block_source_font_weight_priority_reaches_labels_and_measurement() {
             let parsed = MermaidEngine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .unwrap()
-                .unwrap();
+                .unwrap()
+                .into_presentation();
             let weights = Arc::new(Mutex::new(Vec::new()));
             let identity = TextMeasurementProfileIdentity::new(
                 MeasurementProfileId::new("test.block-source-weight-priority").unwrap(),

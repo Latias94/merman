@@ -15,7 +15,7 @@ pub(super) struct LoopTextRenderContext<'a> {
     pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) style: &'a TextStyle,
-    pub(super) config: &'a merman_core::presentation::PresentationConfig,
+    pub(super) config: &'a merman_model::presentation::PresentationConfig,
     pub(super) margin: f64,
     pub(super) typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
@@ -359,7 +359,7 @@ mod tests {
                 let meter =
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
                 let style = TextStyle::default();
-                let config = merman_core::presentation::PresentationConfig::default();
+                let config = merman_model::presentation::PresentationConfig::default();
                 let typography =
                     crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
                         .unwrap();

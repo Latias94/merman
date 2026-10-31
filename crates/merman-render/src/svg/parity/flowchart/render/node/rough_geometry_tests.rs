@@ -27,15 +27,20 @@ fn with_context<T>(
         declaration(shape)
     );
     let parsed = merman_core::MermaidEngine::new()
-        .with_site_config(merman_core::presentation::PresentationConfig::from_value(
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(
             serde_json::json!({"look":look,"handDrawnSeed":seed,"flowchart":{"htmlLabels":false}}),
         ))
         .parse_diagram_for_render_model_sync(&source, merman_core::ParseOptions::strict())
         .unwrap()
-        .unwrap();
-    let render_context = parsed.flowchart_render_context().unwrap().clone();
-    let (metadata, semantic) = parsed.into_parts();
-    let merman_core::RenderSemanticModel::Flowchart(model) = semantic else {
+
+        .unwrap().into_presentation();
+    let render_context = parsed
+        .render_context()
+        .flowchart_render_context()
+        .unwrap()
+        .clone();
+    let (metadata, semantic, _) = parsed.into_parts();
+    let merman_model::presentation::RenderSemanticModel::Flowchart(model) = semantic else {
         panic!("Flowchart")
     };
     let layout = crate::model::FlowchartLayout {
@@ -85,7 +90,7 @@ fn with_context<T>(
     };
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_runtime_policy(
-            merman_core::runtime::RuntimePolicy::deterministic().with_fixed_seed(0),
+            merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(0),
         )
         .with_resource_policy(resources)
         .begin_session()

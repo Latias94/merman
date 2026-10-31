@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::config::{config_f64_css_px, config_string};
 use crate::diagram_theme::{
@@ -153,10 +153,7 @@ impl GitGraphTypographyThemePlan {
             })
         });
         let config_owns_font_size = typed_font_size_requested
-            && merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                "themeVariables.fontSize",
-            );
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_px = match theme {
             Some(theme) if typed_font_size_active => f64::from(theme.typography().font_size_px()),
@@ -866,12 +863,13 @@ mod tests {
 
     #[test]
     fn receipt_accounts_for_base_dependent_and_unmeasurable_role_sizes() {
-        let inherited = typography_plan_with_config(PresentationConfig::from_value(json!({
-            "themeVariables": {
-                "commitLabelFontSize": "inherit",
-                "tagLabelFontSize": "150%"
-            }
-        })));
+        let inherited =
+            typography_plan_with_config(crate::test_support::presentation_config(json!({
+                "themeVariables": {
+                    "commitLabelFontSize": "inherit",
+                    "tagLabelFontSize": "150%"
+                }
+            })));
         let mut inherited_layout = layout();
         inherited_layout.show_branches = false;
         let mut receipt = inherited
@@ -901,11 +899,12 @@ mod tests {
             ))
         );
 
-        let unmeasurable = typography_plan_with_config(PresentationConfig::from_value(json!({
-            "themeVariables": {
-                "commitLabelFontSize": "calc(10px + 1em)"
-            }
-        })));
+        let unmeasurable =
+            typography_plan_with_config(crate::test_support::presentation_config(json!({
+                "themeVariables": {
+                    "commitLabelFontSize": "calc(10px + 1em)"
+                }
+            })));
         let mut unmeasurable_layout = layout();
         unmeasurable_layout.show_branches = false;
         let mut receipt = unmeasurable

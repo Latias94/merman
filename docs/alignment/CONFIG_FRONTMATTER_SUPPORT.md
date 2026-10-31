@@ -27,8 +27,8 @@ semantic sanitization still apply.
 `MermaidEngine` and `PresentationMetadata` are the full API names; the old `Engine` and
 `ParseMetadata` aliases are removed. Enable `presentation` for full Mermaid configuration and
 `Renderer::prepare_presentation()` / `PresentationArtifact`. `MermaidEngine::with_site_config`
-requires `merman::presentation::PresentationConfig`; wrap existing `MermaidConfig` values with
-`PresentationConfig::from_config`. `Renderer::with_semantic_parser` configures semantic and
+requires `merman::SourcePresentationConfig`; wrap existing `MermaidConfig` values with
+`SourcePresentationConfig::from_config`. `Renderer::with_semantic_parser` configures semantic and
 ordinary ASCII requests, while `with_presentation_engine` installs independent full configuration
 and custom detectors/adapters. A lean artifact has no promotion to graphical output.
 
@@ -50,7 +50,7 @@ and [migration reference](../migrations/render-reuse-host-integration.md#reuse-p
 | Input source | Accepted | Merged | Evidence | Notes |
 | --- | --- | --- | --- | --- |
 | Semantic parser site config | Yes | Yes | `SemanticParser::with_site_config`, `crates/merman-core/src/semantic.rs`, `crates/merman-core/tests/semantic_request_contract.rs` | Accepts `MermaidConfig`; defaults and host overrides feed semantic config and source admission without visual theme evaluation. |
-| Full engine site config | Yes | Yes | `MermaidEngine::with_site_config`, `crates/merman-core/src/presentation/parse_pipeline.rs`, `site_config_deep_merge_handles_deep_public_config_with_small_stack` | Accepts `PresentationConfig`. The pure Mermaid value projection loads first, Merman's hardened secure policy is applied, and caller site config is deep-merged on top before full theme resolution. |
+| Full engine site config | Yes | Yes | `MermaidEngine::with_site_config`, `crates/merman-core/src/presentation/parse_pipeline.rs`, `site_config_deep_merge_handles_deep_public_config_with_small_stack` | Accepts `SourcePresentationConfig`. The pure Mermaid value projection loads first, Merman's hardened secure policy is applied, and caller site config is deep-merged on top before full theme resolution. |
 | Bindings `options_json.site_config` | Bounded | Yes | `crates/merman-bindings-core/src/common.rs`, `render_svg_accepts_external_site_config`, `explicit_site_config_overrides_compiled_theme_variables` | Non-object values are rejected. Bounded site config overrides compiled-theme compatibility values, but general bindings reject `themeCSS` and `secure` as host-owned trust controls. |
 | CLI `--configFile` / `--config-file` | Yes | Yes | `crates/merman-cli/src/cli.rs`, `crates/merman-cli/src/config.rs`, `config_file_theme_overrides_cli_theme`, `config_file_theme_variables_and_theme_css_affect_svg`, `non_object_config_file_fails_before_rendering` | CLI `--theme` is applied first; JSON object config file values are deep-merged after it. Non-object JSON is rejected like bindings `site_config`. |
 | CLI `--handDrawnSeed` | Yes | Yes | `crates/merman-cli/src/config.rs` | Stored as root `handDrawnSeed` in site config. SVG-family proof is field-specific below. |

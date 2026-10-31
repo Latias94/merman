@@ -9,7 +9,8 @@ fn render_state(config: &str, source: &str) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
         .expect("parse State")
-        .expect("State diagram");
+        .expect("State diagram")
+        .into_presentation();
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout State")

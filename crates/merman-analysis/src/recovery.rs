@@ -139,6 +139,7 @@ pub(crate) fn editor_recovery_diagnostics(
         &candidates,
         &crate::AnalysisDiagnosticPolicy {
             rule_config: rule_config.clone(),
+            ..Default::default()
         },
         &cancellation,
     )

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use merman_core::presentation::PresentationConfig;
+use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet,
@@ -75,9 +75,10 @@ impl SequenceBaseTypography {
             ),
             (ThemeTypographyProperty::FontSize, &["fontSize"][..]),
         ] {
-            if paths.iter().any(|path| {
-                merman_core::__private::config_path_overrides_typed_default(effective_config, path)
-            }) {
+            if paths
+                .iter()
+                .any(|path| effective_config.config_path_overrides_typed_default(path))
+            {
                 config_overrides.insert(property);
             }
         }
@@ -293,10 +294,8 @@ impl SequenceResolvedTypography {
             .into_iter()
             .filter(|surface| surface.role() == role)
             .filter(|surface| {
-                merman_core::__private::config_paint_overrides_typed_default(
-                    effective_config,
-                    surface.mermaid_fill_owner_path(),
-                )
+                effective_config
+                    .config_paint_overrides_typed_default(surface.mermaid_fill_owner_path())
             })
             .collect::<BTreeSet<_>>();
         let mut text_style = role_config.measurement_style().clone();
@@ -770,9 +769,11 @@ mod tests {
             .unwrap();
         let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
         let config = merman_core::MermaidEngine::new()
-            .with_site_config(PresentationConfig::from_value(json!({
-                "themeVariables": { "actorTextColor": "#123456" },
-            })))
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": { "actorTextColor": "#123456" },
+                })),
+            )
             .parse_metadata_sync("sequenceDiagram\nA->>B: Message\n")
             .unwrap()
             .effective_config;

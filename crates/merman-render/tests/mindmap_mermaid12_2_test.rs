@@ -39,7 +39,8 @@ fn measure_emitted_svg_text(
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let config = parsed.metadata().effective_config.as_value();
     let font_family = config
         .pointer("/themeVariables/fontFamily")
@@ -119,7 +120,8 @@ fn render(source: &str, diagram_id: &str) -> (String, MindmapDiagramLayout) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .into_presentation();
     let artifact =
         family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
     let projection = artifact.layout_json().unwrap();

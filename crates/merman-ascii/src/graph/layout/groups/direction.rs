@@ -189,7 +189,7 @@ mod tests {
     use super::*;
     use crate::graph::model::GraphGroupStyle;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::resources::ResourceProfile;
+    use merman_model::resources::ResourceProfile;
 
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
