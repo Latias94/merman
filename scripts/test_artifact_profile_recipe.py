@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import tomllib
 from types import SimpleNamespace
 import unittest
@@ -321,6 +322,100 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 )
+
+    def test_apple_native_build_ignores_external_target_directory(self) -> None:
+        bash = posix_recipe_shell()
+        if bash is None:
+            self.skipTest("Apple shell execution requires a POSIX host with Bash")
+        repo_root = Path(__file__).resolve().parents[1]
+        script = (repo_root / "scripts/build-apple-xcframework.sh").read_text(
+            encoding="utf-8"
+        )
+        functions = "build_staticlib() {" + script.split("build_staticlib() {", 1)[1].split(
+            "\ncleanup_binding_generator_target() {", 1
+        )[0]
+        recipe = load_artifact_profile("apple-uniffi-native")
+        with tempfile.TemporaryDirectory(prefix="merman apple target ") as temporary:
+            root = Path(temporary) / "repo"
+            root.mkdir()
+            external = Path(temporary) / "external target"
+            command_log = root / "commands.jsonl"
+            runner = root / "mock_commands.py"
+            runner.write_text(textwrap.dedent("""\
+                import json
+                import os
+                from pathlib import Path
+                import sys
+
+                command, arguments = sys.argv[1], sys.argv[2:]
+                entry = {"command": command, "target_dir": os.environ["CARGO_TARGET_DIR"]}
+                if command == "native":
+                    target = arguments[arguments.index("--target-triple") + 1]
+                    entry["target"] = target
+                    library = (Path(entry["target_dir"]) / target /
+                               os.environ["NATIVE_CARGO_PROFILE"] / "libmerman_uniffi.a")
+                    library.parent.mkdir(parents=True, exist_ok=True)
+                    library.write_text("fresh " + target, encoding="utf-8")
+                else:
+                    library = Path(arguments[arguments.index("--library") + 1])
+                    entry["metadata"] = library.read_text(encoding="utf-8")
+                    output = Path(arguments[arguments.index("--output-dir") + 1])
+                    output.mkdir(parents=True, exist_ok=True)
+                    for name in ("Merman.swift", "MermanFFI.h", "MermanFFI.modulemap"):
+                        (output / name).write_text("generated", encoding="utf-8")
+                with Path(os.environ["TEST_COMMAND_LOG"]).open("a", encoding="utf-8") as log:
+                    log.write(json.dumps(entry) + "\\n")
+                """), encoding="utf-8")
+            for target in recipe.build_targets:
+                library = root / "target" / target / recipe.cargo_profile / "libmerman_uniffi.a"
+                library.parent.mkdir(parents=True)
+                library.write_text("stale", encoding="utf-8")
+            binding_target = root / "target/apple-xcframework/binding-generator-target"
+            command = textwrap.dedent("""\
+                set -euo pipefail
+                ensure_rust_target_installed() { :; }
+                python3() { "$TEST_PYTHON" "$TEST_COMMAND" native "$@"; }
+                cargo() { "$TEST_PYTHON" "$TEST_COMMAND" bindings "$@"; }
+                """) + functions + textwrap.dedent("""\
+                for target in "$@"; do
+                    build_staticlib "$target"
+                    copy_staticlib "$target" "$REPO_ROOT/staged/$target.a"
+                done
+                generate_swift_bindings
+                printf '%s\\n' "$CARGO_TARGET_DIR"
+                """)
+            result = subprocess.run(
+                [bash, "-c", command, "apple-target-test", *recipe.build_targets],
+                env=dict(
+                    os.environ,
+                    REPO_ROOT=str(root), RECIPE_PROFILE=recipe.profile_id,
+                    NATIVE_CARGO_PROFILE=recipe.cargo_profile,
+                    NATIVE_LIBRARY_STEM=recipe.target_name.replace("-", "_"),
+                    METADATA_LIBRARY="", CARGO_TARGET_DIR=str(external),
+                    BINDING_GENERATOR_TARGET_DIR=str(binding_target),
+                    SWIFT_BINDINGS_DIR=str(root / "generated"),
+                    TEST_PYTHON=sys.executable, TEST_COMMAND=str(runner),
+                    TEST_COMMAND_LOG=str(command_log),
+                ),
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = [json.loads(line) for line in command_log.read_text().splitlines()]
+            self.assertEqual(len(calls), len(recipe.build_targets) + 1)
+            for target, call in zip(recipe.build_targets, calls[:-1], strict=True):
+                self.assertEqual(call, {
+                    "command": "native", "target": target,
+                    "target_dir": str(root / "target"),
+                })
+                self.assertEqual(
+                    (root / "staged" / f"{target}.a").read_text(), f"fresh {target}"
+                )
+            self.assertEqual(calls[-1], {
+                "command": "bindings", "target_dir": str(binding_target),
+                "metadata": f"fresh {recipe.build_targets[0]}",
+            })
+            self.assertFalse(external.exists())
+            self.assertEqual(result.stdout.splitlines()[-1], str(external))
 
     def test_apple_binding_generator_uses_a_fresh_isolated_target(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]

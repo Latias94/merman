@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -980,8 +981,196 @@ jobs:
             with self.subTest(workflow=path.name):
                 self.assertNotIn("--clobber", text)
                 self.assertIn("gh release upload", text)
-                self.assertNotIn("gh release download", text)
-                self.assertNotIn("cmp ", text)
+                if path.name != "release-apple.yml":
+                    self.assertNotIn("gh release download", text)
+                    self.assertNotIn("cmp ", text)
+
+    def test_apple_publication_serializes_the_tag_and_checks_ios_consumers(self) -> None:
+        owner = read(WORKFLOW_ROOT / "release-apple.yml")
+        self.assertIn("group: release-apple-${{ inputs.release_tag }}", owner)
+        self.assertIn("cancel-in-progress: false", owner)
+        for workflow in ("release-apple.yml", "release-preflight.yml"):
+            job = "build" if workflow == "release-apple.yml" else "apple-xcframework"
+            text = workflow_job(read(WORKFLOW_ROOT / workflow), job)
+            for triple, sdk in (
+                ("arm64-apple-ios14.0", "iphoneos"),
+                ("arm64-apple-ios14.0-simulator", "iphonesimulator"),
+            ):
+                self.assertIn(
+                    f'swift build --triple {triple} --sdk "$(xcrun --sdk {sdk} --show-sdk-path)"',
+                    text,
+                )
+
+    @unittest.skipUnless(BASH, "requires Bash")
+    def test_apple_upload_recovers_only_matching_original_artifacts(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "release-apple.yml")
+        step = workflow.split("        id: upload-release-assets\n", 1)[1]
+        step = step.split("\n      - name:", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        gh_stub = """
+        gh() {
+          if [ "$1" = 'api' ]; then
+            printf '%s\\n' "$SOURCE_SHA"
+          elif [ "$1 $2" = 'release view' ]; then
+            for file in "$TEST_PUBLIC/"*; do
+              if [ -f "$file" ]; then basename "$file"; fi
+            done
+          elif [ "$1 $2" = 'release download' ]; then
+            local destination='' pattern=''
+            shift 3
+            while [ "$#" -gt 0 ]; do
+              case "$1" in
+                --dir) destination="$2"; shift 2 ;;
+                --pattern) pattern="$2"; shift 2 ;;
+                *) return 1 ;;
+              esac
+            done
+            cp "$TEST_PUBLIC/$pattern" "$destination/"
+          elif [ "$1 $2" = 'release upload' ]; then
+            shift 3
+            for file in "$@"; do
+              local name="${file##*/}"
+              test ! -e "$TEST_PUBLIC/$name" || return 1
+              cp "$file" "$TEST_PUBLIC/$name"
+              printf '%s\\n' "$name" >> "$TEST_UPLOAD_LOG"
+              if [ "${TEST_FAIL_UPLOAD:-0}" = '1' ]; then return 1; fi
+            done
+          else
+            return 1
+          fi
+        }
+        """
+        archive = "Merman.xcframework-v0.9.3.zip"
+        files = {archive: b"producer archive", f"{archive}.checksum": b"producer checksum"}
+        scenarios = (
+            "empty", "zip-only", "checksum-only", "complete",
+            "different-zip", "different-checksum", "partial-upload",
+        )
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                producer = root / "platforms" / "apple"
+                producer.mkdir(parents=True)
+                public = root / "public"
+                public.mkdir()
+                for name, payload in files.items():
+                    (producer / name).write_bytes(payload)
+                    if (
+                        scenario in {"complete", "different-zip", "different-checksum"}
+                        or (scenario == "zip-only" and name == archive)
+                        or (scenario == "checksum-only" and name != archive)
+                    ):
+                        (public / name).write_bytes(payload)
+                if scenario.startswith("different-"):
+                    changed = archive if scenario == "different-zip" else f"{archive}.checksum"
+                    (public / changed).write_bytes(b"unrelated build")
+                log = root / "uploads.txt"
+                environment = dict(
+                    os.environ,
+                    SOURCE_SHA="a" * 40,
+                    RELEASE_TAG="v0.9.3",
+                    GITHUB_REPOSITORY="Latias94/merman",
+                    TEST_PUBLIC=str(public),
+                    TEST_UPLOAD_LOG=str(log),
+                    TEST_FAIL_UPLOAD="1" if scenario == "partial-upload" else "0",
+                )
+                def execute() -> subprocess.CompletedProcess[str]:
+                    return subprocess.run(
+                        [BASH, "-c", textwrap.dedent(gh_stub) + command],
+                        cwd=root, env=environment, capture_output=True, text=True, check=False,
+                    )
+                result = execute()
+                if scenario.startswith("different-"):
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(log.exists())
+                    continue
+                if scenario == "partial-upload":
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(len(log.read_text().splitlines()), 1)
+                    environment["TEST_FAIL_UPLOAD"] = "0"
+                    result = execute()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for name, payload in files.items():
+                    self.assertEqual((public / name).read_bytes(), payload)
+                expected = (
+                    0 if scenario == "complete"
+                    else 1 if scenario in {"zip-only", "checksum-only"}
+                    else 2
+                )
+                uploaded = log.read_text().splitlines() if log.exists() else []
+                self.assertEqual(len(uploaded), expected)
+                self.assertEqual(len(set(uploaded)), expected)
+
+    @unittest.skipUnless(BASH and shutil.which("sha256sum"), "requires Bash and sha256sum")
+    def test_apple_delivery_requires_both_exact_public_downloads(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "release-apple.yml")
+        step = workflow.split("        id: verify-published\n", 1)[1]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        gh_stub = """
+        gh() {
+          test "$1 $2" = 'release download' || return 1
+          local destination=''
+          while [ "$#" -gt 0 ]; do
+            if [ "$1" = '--dir' ]; then
+              destination="$2"
+              shift 2
+            else
+              shift
+            fi
+          done
+          cp "$TEST_PUBLIC/"* "$destination/"
+        }
+        """
+        archive = "Merman.xcframework-v0.9.3.zip"
+        payload = b"verified producer archive"
+        checksum = f"{hashlib.sha256(payload).hexdigest()}  {archive}\n".encode()
+        for scenario in (
+            "matching", "missing-archive", "corrupt-archive",
+            "changed-pair", "changed-checksum",
+        ):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                producer = root / "platforms" / "apple"
+                producer.mkdir(parents=True)
+                public = root / "public"
+                public.mkdir()
+                (producer / archive).write_bytes(payload)
+                (producer / f"{archive}.checksum").write_bytes(checksum)
+                if scenario != "missing-archive":
+                    (public / archive).write_bytes(payload)
+                (public / f"{archive}.checksum").write_bytes(checksum)
+                if scenario in {"corrupt-archive", "changed-pair"}:
+                    changed = b"different public archive"
+                    (public / archive).write_bytes(changed)
+                    if scenario == "changed-pair":
+                        (public / f"{archive}.checksum").write_text(
+                            f"{hashlib.sha256(changed).hexdigest()}  {archive}\n"
+                        )
+                elif scenario == "changed-checksum":
+                    (public / f"{archive}.checksum").write_bytes(checksum + b"\n")
+                summary = root / "summary.md"
+                result = subprocess.run(
+                    [BASH, "-c", textwrap.dedent(gh_stub) + command],
+                    cwd=root,
+                    env=dict(
+                        os.environ,
+                        RELEASE_TAG="v0.9.3",
+                        SOURCE_SHA="a" * 40,
+                        GH_REPO="Latias94/merman",
+                        TEST_PUBLIC=str(public),
+                        GITHUB_STEP_SUMMARY=str(summary),
+                    ),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if scenario == "matching":
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("Apple delivery verified", summary.read_text())
+                    self.assertIn(f"v0.9.3/{archive}", summary.read_text())
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(summary.exists())
 
     def test_pypi_skip_existing_is_guarded_by_checksum_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-python.yml")

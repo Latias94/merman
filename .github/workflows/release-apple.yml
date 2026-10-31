@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-apple-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
 jobs:
   validate-inputs:
     name: validate-inputs
@@ -135,6 +139,8 @@ jobs:
         run: |
           swift package describe
           swift build
+          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
+          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git ls-files --error-unmatch -- platforms/apple/Sources/Merman/Generated/Merman.swift platforms/apple/Sources/Merman/Generated/MermanFFI.h platforms/apple/Sources/Merman/Generated/MermanFFI.modulemap
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
@@ -165,6 +171,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: merman-apple-xcframework
+          if-no-files-found: error
           path: |
             platforms/apple/Merman.xcframework-*.zip
             platforms/apple/Merman.xcframework-*.zip.checksum
@@ -183,6 +190,7 @@ jobs:
           path: platforms/apple
 
       - name: Upload XCFramework to GitHub Release
+        id: upload-release-assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -199,9 +207,48 @@ jobs:
           shopt -s nullglob
           assets=(platforms/apple/Merman.xcframework-*.zip platforms/apple/Merman.xcframework-*.zip.checksum)
           test "${#assets[@]}" -eq 2
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}"
-          else
+          if ! existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"; then
             echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading XCFramework assets."
             exit 1
           fi
+          existing_dir="$(mktemp -d)"
+          missing_assets=()
+          for asset in "${assets[@]}"; do
+            name="$(basename "$asset")"
+            if grep --fixed-strings --line-regexp --quiet "$name" <<< "$existing_assets"; then
+              gh release download "$RELEASE_TAG" --pattern "$name" --dir "$existing_dir"
+              cmp "$asset" "$existing_dir/$name"
+            else
+              missing_assets+=("$asset")
+            fi
+          done
+          if test "${#missing_assets[@]}" -gt 0; then
+            gh release upload "$RELEASE_TAG" "${missing_assets[@]}"
+          fi
+
+      - name: Verify published XCFramework bytes
+        id: verify-published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          archive="Merman.xcframework-${RELEASE_TAG}.zip"
+          verify_dir="$(mktemp -d)"
+          gh release download "$RELEASE_TAG" \
+            --pattern "$archive" --pattern "$archive.checksum" --dir "$verify_dir"
+          (
+            cd "$verify_dir"
+            sha256sum --check --strict "$archive.checksum"
+          )
+          cmp "platforms/apple/$archive" "$verify_dir/$archive"
+          cmp "platforms/apple/$archive.checksum" "$verify_dir/$archive.checksum"
+          {
+            printf '## Apple delivery verified\n\n'
+            printf 'Release: %s\n\nSource: %s\n\n' "$RELEASE_TAG" "$SOURCE_SHA"
+            printf -- '- [XCFramework](https://github.com/%s/releases/download/%s/%s)\n' "$GH_REPO" "$RELEASE_TAG" "$archive"
+            printf -- '- [Checksum](https://github.com/%s/releases/download/%s/%s.checksum)\n\n' "$GH_REPO" "$RELEASE_TAG" "$archive"
+            printf 'Both public downloads match the verified build artifact byte for byte.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
