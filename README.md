@@ -29,6 +29,11 @@ Try the [Playground] for more examples; its hosted build follows its deployed pa
 
 ## Quick start
 
+For a prebuilt renderer, [choose by host and required output](docs/release/PREBUILT_PRODUCTS.md).
+The main-line Apple pilot includes a complete local SwiftPM package with mathematical SVG;
+native C and WASI recommend their existing full SDKs. These source-level choices do not change
+already published artifacts.
+
 With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml

@@ -1,5 +1,10 @@
 # Bounded Python / wasmtime serial consumer
 
+Use the **full** WASI SDK for general Mermaid documents, including formulas and
+ELK layouts. Standard and math remain deliberate reduced choices; inspect the loaded
+catalog before offering optional output. This example consumes the selected module
+and does not require compiling Rust.
+
 This is a small, unpublished consumer example, not a new SDK, pool, or service.
 It consumes the `merman-wasi` ABI **1** `wasm32-wasip1` reactor using
 `wasmtime==50.0.1`. Python 3.9+ is sufficient. The only third-party dependency

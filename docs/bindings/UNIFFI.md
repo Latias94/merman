@@ -101,9 +101,10 @@ reference cycle.
 
 ## Build Profiles
 
-`merman-uniffi` has no default features. The default Python and Apple prebuilt SKU selects
-analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PDF, RaTeX math, and
-the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
+`merman-uniffi` has no default features. Python retains its prebuilt analysis, ASCII, SVG,
+Cytoscape and ELK selection. Main's recommended Apple SVG product additionally selects math
+explicitly; published v0.9.x Apple artifacts retain their math-free selection. Both omit PNG,
+JPEG, PDF and the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 Exact features, diagram selectors, Cargo profiles, and target sets belong to the
@@ -133,6 +134,9 @@ The [Apple guide](APPLE_SWIFT.md) owns SwiftPM and XCFramework assembly through
 [Swift generator](../../crates/merman-uniffi/examples/generate_swift_bindings.rs) reads the matching
 static library and emits the checked-in Swift source, C header, and module map. Apple CI rebuilds
 the XCFramework, compiles its Swift consumer, and rejects projection drift.
+`scripts/apple_package.py` stages the complete local SwiftPM distribution; installed consumers
+resolve that package without a Rust checkout. See the
+[prebuilt product guide](../release/PREBUILT_PRODUCTS.md).
 
 ## Text Measurement
 
