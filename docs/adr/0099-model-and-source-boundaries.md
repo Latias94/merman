@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted as the development architecture direction on 2026-10-30, with explicit maintainer authorization for breaking Rust source changes. Implementation is in progress under the [execution plan](../plans/2026-10-30-model-and-source-boundaries.md); the [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) gives completed ownership moves and measurements. Acceptance of this decision alone does not establish dependency, package-size or runtime improvements.
+Accepted as the development architecture direction on 2026-10-30, with explicit maintainer authorization for breaking Rust source changes. Implementation was merged in [#258](https://github.com/Latias94/merman/pull/258) on 2026-10-31. The [execution plan](../plans/2026-10-30-model-and-source-boundaries.md) and [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) distinguish completed ownership changes and recorded measurements from the remaining Flutter Apple/macOS qualification. Acceptance of this decision alone does not establish dependency, package-size or runtime improvements.
 
 This decision amends the Rust package/API ownership clauses of [ADR-0010](0010-semantic-model-boundary.md), [ADR-0011](0011-semantic-model-versioning.md), [ADR-0073](0073-family-owned-diagram-architecture.md), [ADR-0091](0091-selectable-diagram-families.md) and [ADR-0098](0098-semantic-presentation-capabilities.md). Their single semantic construction, pinned Mermaid behavior, deep lifecycle, source admission, requested projections and operation contracts remain in force.
 
@@ -28,7 +28,7 @@ Move pure value/model operations with the types; keep source sanitization, detec
 
 Introduce `merman-markup` for the existing HTML/URL/sanitizer implementation, shared CSS structural predicates and Khroma-compatible color operations used by source ingestion and SVG output. This includes `style.rs` predicates used by Class construction and Packet rendering, and `theme_color.rs` operations/local errors used by core themes and SVG. It depends on model/config/control values and never on core or Render. The model package retains only the entity/text helpers its data/terminal consumers use. Output-only navigation/representation helpers and Render's stricter token-aware CSS policy remain Render-owned.
 
-Core and Render use the same markup implementation. This avoids putting expensive source/output sanitization into every model consumer, a core-to-renderer dependency, or duplicated security algorithms. Render and export must have no production path back to core when the planned graphical slice completes. They still use the required HTML/XML/CSS, math and font processing for their own outputs.
+Core and Render use the same markup implementation. This avoids putting expensive source/output sanitization into every model consumer, a core-to-renderer dependency, or duplicated security algorithms. Render and export have no production path back to core. They still use the required HTML/XML/CSS, math and font processing for their own outputs.
 
 ### Frozen presentation is distinct from engine initialization
 
@@ -75,10 +75,10 @@ Publish the resulting source breaks on an appropriate next pre-1.0 minor line wi
 
 ## Consequences and evidence
 
-Model/terminal and diagnostics consumers gain independently enforceable smaller production graphs. Graphical/export consumers can omit Mermaid source parsers after the explicit graphical slice, while retaining shared markup and their native output costs. Full source-to-SVG still needs those source semantics; this decision does not promise a large reduction there.
+Model/terminal and diagnostics consumers gain independently enforceable smaller production graphs. Graphical/export consumers can omit Mermaid source parsers while retaining shared markup and their native output costs. Full source-to-SVG still needs those source semantics; this decision does not promise a large reduction there.
 
 Two source packages join the coupled publish order and generated legal ownership. All in-repository Rust consumers, artifact profiles, host catalogs and examples migrate. Complete model/terminal/serde/compatibility and constructed presentation boundaries need review because former crate-private storage becomes a real package interface.
 
 Acceptance comes from independent compiled consumers, exact normal/build exclusions and the current semantic, lifecycle, terminal, feature, sanitizer, CSS/color, SVG/seal, measurement and installed-product owners. Include core presentation without its JSON serializer feeding Render projection, source-history authority controls and conservative authored construction. Artifact size and cold compilation are separate controlled measurements with honest inconclusive outcomes. Historical performance evidence is not rebound to the new implementation by editing its hashes.
 
-Use the [execution plan](../plans/2026-10-30-model-and-source-boundaries.md) and [family checklist](../plans/2026-10-30-family-data-inventory.md) for sequencing, retirement, consumer cases and completion. Do not describe this architecture as implemented until those owners have admitted the final source.
+Use the [execution plan](../plans/2026-10-30-model-and-source-boundaries.md) and [family checklist](../plans/2026-10-30-family-data-inventory.md) for sequencing, retirement, consumer cases and completion. Implementation is merged; full qualification remains open until the outstanding platform owner records its execution evidence.

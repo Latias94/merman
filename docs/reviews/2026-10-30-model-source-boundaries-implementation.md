@@ -1,6 +1,6 @@
 # Model/source boundaries implementation record
 
-Status: source ownership and API retirement implemented; final correctness, installed-consumer and measurement checkpoints recorded on 2026-10-31. Linux Node GNU/musl and Android device qualification passed in the platform continuation; M6/M8 remain open for Apple/Xcode execution. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
+Status: source ownership and API retirement merged in [#258](https://github.com/Latias94/merman/pull/258); final correctness, installed-consumer and measurement checkpoints recorded on 2026-10-31. Linux Node GNU/musl, Android devices and Apple Swift/UniFFI PR CI owners passed. M6/M8 remain open for complete Flutter Apple slices and macOS Dart consumer qualification. This records implementation of the [approved plan](../plans/2026-10-30-model-and-source-boundaries.md), [family inventory](../plans/2026-10-30-family-data-inventory.md) and [ADR-0099](../adr/0099-model-and-source-boundaries.md). Open plan checkboxes remain requirements, not completed claims.
 
 ## Frozen source and observations
 
@@ -20,7 +20,7 @@ Status: source ownership and API retirement implemented; final correctness, inst
 | M3 | Complete | ASCII uses model directly; fixed independent primary/fallback/report outputs match. Its external closure fell from 84 to 28 without source ingestion. |
 | M4 | Complete | Default-off requested fixes, immutable evidence and host declarations passed diagnostics-only, requested-fix, broad-union and exact product checks. |
 | M5 | Complete | Single markup owner and checked immutable presentation retained parser-free output closures. Full Render passed 5,574 tests, and all three blocking DOM policies passed. |
-| M6 | Implemented; Apple qualification open | All 46 profiles, strict feature/closure checks, legal/source-package owners and recorded installed consumers passed. Linux Node GNU/musl and Android API 29/34 instrumentation now pass; Apple/Xcode remains applicable. |
+| M6 | Implemented; Flutter Apple qualification open | All 46 profiles, strict feature/closure checks, legal/source-package owners and recorded installed consumers passed. Linux Node GNU/musl, Android API 29/34 instrumentation and Apple Swift/UniFFI PR CI owners passed; complete Flutter Apple slices and the macOS Dart consumer remain unqualified. |
 | M7 | Complete | Obsolete public model paths, wrappers and source-to-render bridges retired. The complete family inventory and dedicated theme acceptance cfg passed. |
 | M8 | In progress | Six final consumer measurements and four cold observations passed their fixed-output controls. Outstanding platform evidence is listed below; no publication has run. |
 
@@ -815,10 +815,26 @@ findings in the other lanes required follow-up:
   `77d2acc9-7515-4a1b-8857-033d47587865`). Package formatting, diff hygiene and the indexed-path
   budget also passed. The existing complete matrix and platform owners were not rerun locally.
 
-The PR CI owners `apple-swift-5-9-smoke` and `apple-uniffi-smoke` cover the remaining Swift,
-XCFramework and actual Swift-consumer execution. Complete Flutter Apple slices and the macOS Dart
-consumer have a separate existing owner, Release Preflight's `flutter-dry-run`; ordinary PR CI's
-Ubuntu platform-binding job is not evidence for that full Apple scope.
+## Merged PR verification, 2026-10-31
+
+The final [#258 CI run](https://github.com/Latias94/merman/actions/runs/41173324025) passed on
+`3edacea4a1af3f78268e56bf26960c190a11c82c`: 66 successful jobs and four intentional skips.
+All PR checks totaled 68 successes and seven skips, with `pr-gate` successful. The
+[performance workflow](https://github.com/Latias94/merman/actions/runs/41173324024) passed its
+eligibility and contract jobs; its timing/reference jobs were skipped. This adds contract evidence,
+not a new benchmark or cold-compilation observation.
+
+Both [Swift 5.9 smoke](https://github.com/Latias94/merman/actions/runs/41173324025/job/124455736141)
+and [Apple UniFFI smoke](https://github.com/Latias94/merman/actions/runs/41173324025/job/124455735933)
+passed, recording their Apple builds, generated Swift checks and actual Swift package consumption.
+Complete Flutter Apple slices and the macOS Dart consumer have a separate existing owner,
+Release Preflight's `flutter-dry-run`; these Swift owners and ordinary PR CI's Ubuntu
+platform-binding job do not qualify that full scope.
+
+The merge commit is `5fa86a0361419f0d3f23c578b11f0e77d59a4a8a`. Its Git tree equals the
+qualified PR head's tree. The [main-push CI run](https://github.com/Latias94/merman/actions/runs/41180710300)
+has a separate source identity; the PR result does not assert that this run completed successfully.
+Historical measurements above retain their actual candidate identities.
 
 ## Outstanding applicable qualification
 
@@ -827,7 +843,7 @@ replace platform-owned execution. M6/M8 and the overall goal remain open for the
 
 | Owner | Remaining evidence / environment |
 | --- | --- |
-| Apple bindings and Flutter Apple slices | XCFramework, generated Swift/typechecks and actual Swift consumers require macOS/Xcode. Windows UniFFI/Python is separate evidence. |
+| Flutter Apple slices and macOS Dart consumer | Complete Flutter iOS/macOS native slices and artifact-matrix checks, plus macOS Dart ABI3, example and theme consumers under Release Preflight's `flutter-dry-run`. Apple UniFFI/Swift PR smokes are completed evidence for their separate scope. |
 
 This gate is pending, not not-applicable. Run its existing CI/preflight commands against the
 final candidate when the matching environment is available; no new validation framework is
