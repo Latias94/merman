@@ -10,7 +10,12 @@ The October 2026 [runtime audit](../research/2026-10-13-ci-runtime-audit.md) fou
 Linux jobs taking 64–67 minutes. Native Node builds and SVG/browser parity were sequential
 inside the workspace test job. These now have separate same-run results in `pr-gate`:
 
-- `build-test` retains the Linux workspace suite and the three-host font/platform contracts;
+- `build-test` retains the Linux workspace suite, generated checks with their pinned
+  DOMPurify/Node inputs, and the three-host font/platform contracts;
+- `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
+  examples, Rustdoc subsets/math, feature unification, runtime adapters, FFI and ASCII contracts;
+- `theme-contracts` groups the workspace-only theme acceptance cfg, preset and family terminal
+  tests, optimized rejection tests, and SVG/PNG authoring contracts;
 - `svg-parity` owns the complete DOM comparison and Chromium containment oracle;
 - `node-contracts` runs Node-WASM and N-API as parallel matrix members on PRs and main;
 - Pages builds its Web package once while compiling the optimized budget tool independently;
@@ -31,6 +36,16 @@ on those hosts. Linux still runs the full suite on every selected event. The ref
 blocking assertions; it changes their placement and dependencies. Runner queue time and cold
 builds remain part of elapsed feedback time, so measured PR results are required before claiming
 a runtime target has been met.
+
+The [October 31 follow-up](../research/2026-10-31-ci-core-runtime.md) records the 85.6-minute
+Linux job that motivated the feature/theme split. Both jobs use the existing `core` selector and
+contribute required results to the same `pr-gate`. Their Cargo recipes retain separate feature
+sets and subprocess-scoped acceptance flags; no job-wide feature union or acceptance cfg is used.
+The offline all-feature public theme consumer remains in `build-test`, after experimental
+platform-font builds have fetched its dependencies. Rust caches retain registry data with
+`cache-targets: false`; these jobs do not transfer compiled targets or reuse results from a
+different source revision. The split adds cold compiler and runner costs that need actual CI
+measurement before a speedup can be reported.
 
 ## Windows Checkout Paths
 

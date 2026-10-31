@@ -19,6 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 CI_WORKFLOW = WORKFLOW_ROOT / "ci.yml"
+# Pass the resolved executable to subprocess: Windows may resolve an unqualified
+# `bash` to its System32 WSL launcher before consulting PATH.
+BASH = shutil.which("bash")
 PR_REACHABLE_WORKFLOWS = [
     CI_WORKFLOW,
     WORKFLOW_ROOT / "cli-distribution.yml",
@@ -557,7 +560,7 @@ jobs:
             self.assertNotIn("name: verified-release-assets", consumer)
             self.assertIn("--require-preset-catalog", consumer)
 
-    @unittest.skipUnless(shutil.which("bash"), "workflow command requires Bash")
+    @unittest.skipUnless(BASH, "workflow command requires Bash")
     def test_native_archive_command_routes_qualification_and_stops_on_failure(self) -> None:
         native = workflow_job(read(WORKFLOW_ROOT / "release.yml"), "verify-release-archives-native")
         step = native.split("      - name: Execute final product archive\n", 1)[1]
@@ -581,7 +584,7 @@ jobs:
                 with self.subTest(qualify=qualify, package=package, target=target, exit_code=exit_code):
                     log = root / f"{qualify}-{package}-{target}-{exit_code}.jsonl"
                     result = subprocess.run(
-                        ["bash", "-c", command], cwd=root, capture_output=True, text=True,
+                        [BASH, "-c", command], cwd=root, capture_output=True, text=True,
                         env={**os.environ, "PACKAGE": package, "TARGET": target,
                              "QUALIFY_PRESETS": qualify, "VERIFIER": str(verifier),
                              "GITHUB_WORKSPACE": str(root), "RELEASE_VERSION": "1.2.3",
@@ -640,7 +643,7 @@ jobs:
                 self.assertIn("scripts/verify_prerelease_compatibility.py", text)
                 self.assertIn("previous_tag=", text)
 
-    @unittest.skipUnless(shutil.which("bash"), "workflow execution requires Bash")
+    @unittest.skipUnless(BASH, "workflow execution requires Bash")
     def test_prerelease_workflows_scope_the_accepted_transition(self) -> None:
         for workflow in ("release-preflight.yml", "release-crates.yml"):
             step = read(WORKFLOW_ROOT / workflow).split(
@@ -658,7 +661,7 @@ jobs:
                 with self.subTest(workflow=workflow, version=version, previous=previous):
                     environment = dict(os.environ, VERSION=version, TEST_PREVIOUS=previous)
                     result = subprocess.run(
-                        ["bash", "-c", 'git() { printf "%s\\n" "$TEST_PREVIOUS"; }; '
+                        [BASH, "-c", 'git() { printf "%s\\n" "$TEST_PREVIOUS"; }; '
                          'python3() { printf "%s\\n" "$@"; };\n' + command],
                         env=environment, capture_output=True, text=True, check=True,
                     )
@@ -762,7 +765,7 @@ jobs:
         self.assertNotIn("dist host", native)
         self.assertNotIn("dist build", workflow_job(text, "versions-and-packages"))
 
-    @unittest.skipUnless(shutil.which("bash"), "workflow execution requires bash")
+    @unittest.skipUnless(BASH, "workflow execution requires bash")
     def test_preflight_native_qualification_replays_and_propagates_failures(self) -> None:
         native = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "cli-and-lsp-archives")
         step = native.split("      - name: Execute final native archives\n", 1)[1]
@@ -798,7 +801,7 @@ jobs:
                 with self.subTest(target=target, failure=failure):
                     log = root / f"calls-{target}-{Path(failure).name}.jsonl"
                     result = subprocess.run(
-                        ["bash", "-c", command], cwd=root, capture_output=True, text=True,
+                        [BASH, "-c", command], cwd=root, capture_output=True, text=True,
                         env={**os.environ, "TARGET": target, "VERSION": "1.2.3",
                              "RUNNER_TEMP": str(root), "ARGUMENT_LOG": str(log),
                              "FAIL_ARGUMENT": failure},
@@ -815,8 +818,8 @@ jobs:
                         if failure != "--preset-qualification-output":
                             expected.append(expected_call("cli", ["--preset-qualification-check", "target/preset-qualification.json"]))
                     else:
-                        resource_args = ["--resource-certificate", str(root / "merman-resource.crt"),
-                                         "--resource-key", str(root / "merman-resource.key")]
+                        resource_args = ["--resource-certificate", f"{root}/merman-resource.crt",
+                                         "--resource-key", f"{root}/merman-resource.key"]
                         expected = [expected_call("cli", resource_args)]
                     if not failure.startswith(("--preset-qualification-", "--resource-")):
                         expected.append(expected_call("lsp", []))
