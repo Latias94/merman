@@ -127,7 +127,7 @@ jobs:
             --scope user --dependency-source winget --silent --disable-interactivity `
             --accept-package-agreements --accept-source-agreements
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
       - name: Smoke-test the installed command alias
