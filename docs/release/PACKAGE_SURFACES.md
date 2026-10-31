@@ -9,6 +9,11 @@ Merman `0.9.3` targets Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
+The Rust crates, CLI/LSP, native C/WASI SDKs, and Apple XCFramework are published at `0.9.3`.
+Web, Node, Python, Flutter, and Android retain their separately published `0.9.2` packages.
+Use each channel's verified artifact version and the matching source tag; see the
+[publication record](PUBLISH_ORDER.md#093-publication).
+
 ## Choose A Surface
 
 | Need | Entry point | Delivery |

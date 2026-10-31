@@ -4,7 +4,11 @@ Use this index to choose an upgrade path by the version you have installed. The 
 
 ## 0.9 maintenance line
 
-`release/0.9.x` carries compatible patch releases and prepares 0.9.3 from the published 0.9.2 baseline. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2; the compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [0.9.3 changelog](../../CHANGELOG.md#093---2026-10-29) for the selected fixes and SDK profiles and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership. Published releases remain identified by their immutable version tags.
+`release/0.9.x` carries compatible patch releases, including published 0.9.3. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2; the compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [0.9.3 changelog](../../CHANGELOG.md#093---2026-10-30) for the selected fixes and SDK profiles and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership. Published releases remain identified by their immutable version tags.
+
+The Rust crates, CLI/LSP, native C/WASI SDKs, and Apple XCFramework are available at `0.9.3`;
+Web, Node, Python, Flutter, and Android remain at their separately published `0.9.2` versions.
+See the [publication snapshot](PUBLISH_ORDER.md#093-publication) for channel delivery.
 
 ## Merman 0.9.1
 
@@ -26,7 +30,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
-| `0.9.0`–`0.9.2` | `0.9.3` | [Changelog](../../CHANGELOG.md#093---2026-10-29): compatible patch fixes and additive SDK profiles; review output snapshots and host measurement limitations |
+| `0.9.0`–`0.9.2` | `0.9.3` | [Changelog](../../CHANGELOG.md#093---2026-10-30): compatible patch fixes and additive SDK profiles; review output snapshots and host measurement limitations |
 | `0.9.0` | `0.9.1` | [Changelog](../../CHANGELOG.md): patch fixes; no additional API migration |
 | `0.8.0` | `0.9.0` | [Stable upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md): managed JSON, canonical model records, transparent SVG, fonts, geometry, and binding callbacks |
 | `0.7.0` | `0.8.0` | [Stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](../rendering/RUST_EMBEDDING.md), and [comparison report](V070_TO_V080_RELEASE_REPORT.md) |
