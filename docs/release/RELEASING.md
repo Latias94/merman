@@ -95,6 +95,28 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
+Before publication, review the complete workflow table above, including channels outside the
+FFI/native static contract. In the existing dated release entry in [Publish Order](PUBLISH_ORDER.md),
+record each relevant workspace-coupled delivery channel as `selected` or `deferred`. For each
+`deferred` channel, record its current independently verified published version and delivery
+evidence; if no version can be verified, state that limitation explicitly. Preflight coverage and
+shared version metadata do not select a channel or establish its published version. Independently
+versioned packages and external channels retain their own release scope and contracts.
+
+Honor an explicitly selected subset and carry forward existing authorization for the same release,
+surfaces, and necessary recovery without asking again. Invoke each selected publishing owner through
+its documented tag trigger or manual dispatch. A release is complete for its selected scope only
+after every selected owner succeeds and an independent query of its registry or actual public
+GitHub Release assets confirms the exact version and matching artifacts. A successful upstream or
+preflight build, an existing Actions artifact, or an asset name alone does not prove delivery of
+the selected source and bytes.
+
+The public GitHub Release body must identify the channels actually delivered and the deferred
+channels still on their verified older versions. Keep selected channels awaiting delivery explicitly
+pending, and add download links only for confirmed public artifacts. Detailed source identities,
+receipts, and dated observations remain in Publish Order; this scope review adds no automatic
+publication of deferred channels.
+
 The SDK workflow is deliberately separate from the normal tag-triggered Release: preflight uploads
 qualified SDK archives as Actions artifacts, while `release-sdk-publish.yml` manually attaches them
 to an existing GitHub Release. To use a preflight run as the SDK producer, dispatch it from a ref
@@ -471,6 +493,8 @@ artifact already contains usable documentation.
 Track candidate status, pending channels, source identities, and verified registry availability in
 release records such as `PUBLISH_ORDER.md`. Preparing a target-version install example is source
 work, not publication evidence or authorization to publish. Historical reports retain dated context.
+Keep public binary download instructions for a deferred channel at its verified published version;
+a workspace version projection does not justify pointing users to an unavailable channel archive.
 
 A focused audit command is:
 
@@ -533,8 +557,10 @@ Actions use reviewed full version tags; source identity uses the commit and tree
 is used for downloaded release tools, staged release artifacts, and immutable registry reconciliation
 (crates.io, npm, and PyPI). Ordinary unit tests and in-workspace builds do not calculate or compare
 extra hashes. pub.dev uses a member-level content comparison because Dart rewrites tar metadata.
-Platform GitHub Release asset uploads fail closed on an existing name, and Tree-sitter native
-prebuild recovery stays within the same workflow run.
+Platform GitHub Release asset uploads other than Apple fail closed on an existing name. Apple
+compares existing assets with the original run artifact and uploads only missing items; differing
+bytes fail closed and no asset is overwritten. Tree-sitter native prebuild recovery stays within
+the same workflow run.
 
 The formal Release's final Linux CLI archive must also pass
 [scoped preset qualification](../rendering/preset-qualification.md) and fresh replay before the
@@ -734,25 +760,53 @@ Do not move or force-update release tags after publication. Release tags are the
 anchor for crates, CLI/LSP artifacts, and platform assets.
 
 `release.yml` creates the primary GitHub Release and uploads CLI and standalone LSP artifacts.
-Platform workflows
-upload additional assets to that existing release when it is present; otherwise they leave GitHub
-Actions artifacts for manual attachment.
-Asset uploads are intentionally non-destructive: an existing asset name is not overwritten. A rerun
-that encounters an existing platform asset fails closed and should be resolved by inspecting the
-release, rather than downloading and comparing every asset in CI.
+Apple, Android, and Python attach their additional assets to that existing release. Their upload
+jobs fail if the Release does not exist; retained Actions artifacts alone do not establish delivery.
 
-After the primary release exists, run platform publish workflows manually:
+Asset uploads are intentionally non-destructive: never use `--clobber`, delete an accepted asset,
+or replace its bytes. Platform owners other than Apple retain their existing rule: encountering an
+existing asset name fails closed and requires inspecting the release. Apple supports byte-verified
+recovery from its original run artifact as described below.
+
+After the primary release exists, dispatch the selected manual platform owners. Run only the
+commands for channels selected in the release scope; this list is a command reference:
 
 ```bash
 RELEASE_TAG="v<version>"
 gh workflow run release-python.yml -f release_tag="$RELEASE_TAG" -f publish_to_pypi=true
 gh workflow run release-android.yml -f release_tag="$RELEASE_TAG"
-gh workflow run release-apple.yml -f release_tag="$RELEASE_TAG"
 gh workflow run release-web.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_npm=true
 gh workflow run release-node.yml -f release_tag="$RELEASE_TAG" -f source_ref="$SOURCE_SHA" -f publish_to_npm=true
 gh workflow run vscode-extension.yml -f source_ref="$RELEASE_TAG"
 gh workflow run homebrew.yml
 ```
+
+For a selected Apple release, normally use the workflow definition from the immutable release tag:
+
+```bash
+RELEASE_TAG="v<version>"
+gh workflow run release-apple.yml \
+  --ref "$RELEASE_TAG" \
+  -f release_tag="$RELEASE_TAG"
+```
+
+Apple uses a tag-scoped concurrency group shared across workflow branches with
+`cancel-in-progress: false`. This serializes active runs for the same tag without cancelling an
+in-progress publisher; it does not make archives rebuilt by separate runs byte-identical.
+
+Before any upload, Apple downloads each existing same-named asset and uses `cmp` against this
+run's original artifact. Any difference fails before uploading; matching assets are kept and only
+missing items are uploaded. If the upload job fails, rerun that failed upload job within the same
+workflow run so it consumes the original build artifact. Do not rerun the build job or dispatch a
+new run to retry that upload: repackaging the same source can produce different archive bytes,
+which must not be mixed with assets from the original run. Existing assets are never clobbered.
+
+After uploading, the Apple owner downloads the public `Merman.xcframework-${RELEASE_TAG}.zip` and
+its checksum sidecar as a pair, verifies the ZIP's SHA-256 against the sidecar, and uses `cmp` to
+compare both files with the original upload candidates before reporting success. Independently
+confirm those assets on the selected Release before marking Apple complete. An existing upstream
+build artifact does not mean preflight published the XCFramework; existing public assets must
+still match the selected source and bytes.
 
 If the SDK surface is selected, publish its already-qualified artifacts separately:
 
@@ -794,7 +848,9 @@ verification succeeds. Do not replace this boundary with a direct `tar -x` step.
 
 For a workflow-only recovery after a release tag already exists, Python, Android, and Apple may use
 the updated workflow definition from `main`, but they still check out and verify the immutable
-release-tag commit and tree. Credentialed publication workflows that expose `source_ref` require
+release-tag commit and tree. For Apple, use `--ref main` only for that workflow-only recovery and
+keep `-f release_tag="$RELEASE_TAG"` unchanged; the artifact source always remains the fixed tag.
+Credentialed publication workflows that expose `source_ref` require
 the matching immutable tag/ref or a reviewed 40-character commit; a mutable `main` ref is valid only
 for an explicitly non-publishing build or validation run.
 

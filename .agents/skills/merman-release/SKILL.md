@@ -30,6 +30,13 @@ Workspace tags trigger Cargo and CLI/LSP owners; other registries, deployment, i
 versioned packages, and external repositories have their own owners. Include only requested
 surfaces. Before the first external write, verify its target, immutable source, and authorization.
 
+Review the complete [Release Workflows](../../../docs/release/RELEASING.md#release-workflows)
+table before publication, including channels outside the static FFI/native contract. In the existing
+dated Publish Order entry, record each relevant workspace-coupled channel as `selected` or
+`deferred`. For every deferred channel, record its current independently verified published version
+and evidence, or explicitly state that availability could not be verified. Honor a requested subset;
+preflight coverage and shared workspace versions do not expand its publication scope.
+
 Done: the requested result and each owner's authorized operations are explicit; unrelated work
 remains intact.
 
@@ -54,8 +61,10 @@ published ABI boundaries, historical evidence identities and unknown-version rej
   the package-local changelogs of in-scope SDKs.
 - Keep unselected development changes at `[Unreleased]`; date a selected release before freezing
   its artifact. Independently published wrappers use their own intended publication date.
-- Prepare normal install/import examples as documentation of the target package. Keep availability,
-  pending PRs, source identities, and receipts in operator records.
+- Prepare normal install/import examples as documentation of the target package. Keep public binary
+  download instructions for deferred channels at their verified published versions. Keep detailed
+  availability evidence, pending PRs, source identities, and receipts in operator records; summarize
+  actual channel delivery in the public Release body.
 - For a selected headless SDK release, describe the `standard`, `math`, and `full` choices and
   supported transports in user-facing notes; claim downloads are available only after the SDK
   publisher succeeds and the matching GitHub Release assets are verified.
@@ -99,10 +108,17 @@ Follow [Tag And Push](../../../docs/release/RELEASING.md#tag-and-push) and each 
 actual inputs. Keep workflow revision, artifact source, producing run/attempt, and receipts
 distinct. Workspace, Flutter and independent grammar tags retain their owning trigger contracts.
 
-After the primary GitHub Release exists, publish the full SDK matrix with the manual SDK publisher,
-using the successful source-matched qualification run. Do not treat preflight or Actions artifacts
-as public downloads. Follow the publisher's exact source/tag checks, verify all attached assets, and
-update the release body with download choices only after publication succeeds.
+Dispatch every selected manual owner; tag-triggered owners keep their documented trigger. For
+Apple, use the exact tag-based `--ref "$RELEASE_TAG"` dispatch in Tag And Push. Only workflow-only
+recovery may use the workflow definition from `main`; its artifact source remains the immutable
+release tag. A successful preflight, an existing upstream build artifact, or an asset name alone
+does not prove delivery of the selected source and bytes.
+
+If the SDK surface is selected, publish its full matrix after the primary GitHub Release exists,
+using the manual SDK publisher and successful source-matched qualification run. Do not treat
+preflight or Actions artifacts as public downloads. Follow the publisher's exact source/tag checks,
+verify all attached assets, and update the release body with download choices only after
+publication succeeds.
 
 For Typst, Homebrew, Scoop, WinGet, Conda-forge, Nixpkgs, or Pages, read
 [external channels](references/external-channels.md) before submission or deployment.
@@ -113,9 +129,10 @@ PR is reported as pending acceptance until its registry serves the version.
 
 ## 5. Reconcile delivery
 
-Query each owning registry or GitHub Release independently. Compare its exact versions, checksums,
-tags, provenance, assets and package contents with the frozen owner's evidence; use the existing
-verifiers and receipt schemas. Cargo requires both API and sparse-index checksums. npm groups
+Query each selected owner's registry or actual public GitHub Release assets independently.
+Compare its exact versions, checksums, tags, provenance, assets and package contents with the frozen
+owner's evidence; use the existing verifiers and receipt schemas. Cargo requires both API and
+sparse-index checksums. npm groups
 require every member's integrity and requested dist-tag. Verify registry provenance for OIDC
 uploads; explicitly record the missing attestation of a manual first-publication bootstrap and
 preserve its accepted version.
@@ -123,9 +140,17 @@ preserve its accepted version.
 Record observed results and outstanding upstream review in Publish Order. Mark checklist items
 complete only for the state actually proven: prepared, submitted, merged, or available. Inspect
 channel semantics: AAR/XCFramework release assets do not establish Maven Central/SwiftPM delivery.
+Apple owner success includes reading back the public ZIP and checksum sidecar as a pair, verifying
+the ZIP's SHA-256 against the sidecar, and using `cmp` to compare both files with the original upload
+candidates before reporting success; independently confirm those assets on the selected Release
+before marking Apple complete. Every selected channel requires a successful
+publishing owner and matching public delivery evidence before the selected scope is complete.
 For SDK publication, reconcile all 18 archives and their 18 SHA-256 sidecars against the verified
 producer run and the matching GitHub Release before marking the SDK available; the release body
 must link only to assets confirmed present on that release.
+The public Release body must list the channels actually delivered and the deferred channels still
+on their verified older versions. Keep selected channels awaiting delivery explicitly pending;
+retain detailed evidence in Publish Order without treating deferred channels as unfinished scope.
 Confirm the latest commit's relevant CI after workflow repairs; identify cancellations or external
 failures separately from source regressions.
 
@@ -136,9 +161,18 @@ and documentation reflects those observations.
 
 For a failed or partial publisher, read
 [recovery](references/recovery.md) before retrying. Reuse the original frozen artifact and producing
-attempt evidence; only proven-unattempted members may upload. Preserve uncertain acceptance across
+attempt evidence. Outside the Apple asset recovery below, only proven-unattempted members may
+upload. Preserve uncertain acceptance across
 retries and later batches. Observe accepted matching versions, stop on mismatches, and retain
 immutable release tags.
+
+For Apple, rerun the failed upload job in the same workflow run, consuming its original build
+artifact without rebuilding. Before uploading, the owner downloads every existing same-named asset
+and compares it with that artifact using `cmp`; any difference fails before upload, and only missing
+items may be uploaded. Never use `--clobber` or mix archives repackaged by a new run with the
+original run's assets. The tag-scoped concurrency group spans workflow branches and uses
+`cancel-in-progress: false` to serialize active publishers without cancelling an in-progress run;
+it does not establish byte identity between separate builds.
 
 Continue idempotent recovery covered by the existing shipping request. A new version, new surface,
 tag move, conflicting registry bytes, or incident yank needs the corresponding explicit decision.
