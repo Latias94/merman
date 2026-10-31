@@ -143,16 +143,45 @@ class PublishGraphTests(unittest.TestCase):
             (("core",), ("app",)),
         )
 
-    def test_dev_dependencies_do_not_constrain_publish_order(self) -> None:
+    def test_coupled_dev_dependencies_precede_consumer_package_preparation(self) -> None:
         metadata = workspace_metadata(
-            package("alpha", dependency("zeta", kind="dev")),
-            package("zeta"),
+            package("merman-model"),
+            package("merman-core", dependency("merman-model")),
+            package("merman-ascii", dependency("merman-core", kind="dev")),
+            package("merman-render", dependency("merman-core", kind="dev")),
+        )
+
+        plan = publish_tool.crates_io_publish_plan(metadata)
+
+        self.assertEqual(
+            plan.batches,
+            (("merman-model",), ("merman-core",), ("merman-ascii", "merman-render")),
+        )
+        self.assertEqual(plan.packages["merman-ascii"].internal_deps, ("merman-core",))
+        self.assertEqual(plan.packages["merman-render"].internal_deps, ("merman-core",))
+
+    def test_private_path_only_dev_fixtures_do_not_enter_the_release_graph(self) -> None:
+        metadata = workspace_metadata(
+            package("public", dependency("fixture", kind="dev")),
+            package("fixture", dependency("public"), publish=[]),
         )
 
         self.assertEqual(
             publish_tool.crates_io_publish_batches(metadata),
-            (("alpha", "zeta"),),
+            (("public",),),
         )
+
+    def test_coupled_dev_dependency_cycle_is_rejected_before_publication(self) -> None:
+        metadata = workspace_metadata(
+            package("alpha", dependency("beta", kind="dev")),
+            package("beta", dependency("alpha")),
+        )
+
+        with self.assertRaisesRegex(
+            publish_tool.PublishGraphError,
+            "dependency cycle.*alpha.*beta",
+        ):
+            publish_tool.crates_io_publish_batches(metadata)
 
     def test_publishable_package_cannot_depend_on_private_workspace_member(self) -> None:
         metadata = workspace_metadata(

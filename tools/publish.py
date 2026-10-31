@@ -172,8 +172,6 @@ def _crates_io_publish_graph(metadata: dict) -> _PublishGraph:
                 raise PublishGraphError(
                     f"workspace package {name} has a non-object dependency entry"
                 )
-            if dependency.get("kind") == "dev":
-                continue
             dependency_path = dependency.get("path")
             if not isinstance(dependency_path, str):
                 continue
@@ -186,10 +184,16 @@ def _crates_io_publish_graph(metadata: dict) -> _PublishGraph:
                 # the coupled crate, so it is an external graph input here.
                 continue
             if dependency_name not in publishable:
+                if dependency.get("kind") == "dev":
+                    # Private test fixtures are not coupled publications. Cargo
+                    # omits their path-only declarations from packaged manifests.
+                    continue
                 raise PublishGraphError(
                     f"publishable workspace package {name} depends on non-publishable "
                     f"workspace package {dependency_name}"
                 )
+            # Versioned development dependencies remain in Cargo packages and
+            # must be visible before preparing a dependent publication batch.
             dependencies[name].add(dependency_name)
 
     batches: list[tuple[str, ...]] = []
