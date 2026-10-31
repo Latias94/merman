@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read one exact Cargo artifact recipe from the capability descriptor."""
+"""Discover recommended products or execute an exact descriptor-owned Cargo recipe."""
 
 from __future__ import annotations
 
@@ -20,6 +20,12 @@ DEFAULT_DESCRIPTOR = REPO_ROOT / "capabilities" / "artifact-profiles-v2.json"
 CargoBuildTool = Literal["cargo", "cargo-zigbuild"]
 EXACT_NATIVE_CARGO_PROFILES = frozenset({"native-distribution", "native-sdk"})
 PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+# Product policy selects identity; the descriptor owns capabilities and targets.
+RECOMMENDED_PRODUCTS = {
+    "swift": "apple-uniffi-native",
+    "c": "sdk-native-full",
+    "wasi": "sdk-wasi-full",
+}
 
 
 class ArtifactProfileError(RuntimeError):
@@ -69,6 +75,19 @@ class ArtifactProfile:
     semantic_target: str
     cargo: CargoArtifactRecipe
     diagram_families: tuple[str, ...]
+    description: str
+    capabilities: tuple[str, ...]
+    runtime_ids: tuple[str, ...]
+    outputs: tuple[str, ...]
+
+    def discovery_projection(self) -> dict[str, Any]:
+        return {
+            **self.report_projection(),
+            "description": self.description,
+            "capabilities": list(self.capabilities),
+            "runtime_ids": list(self.runtime_ids),
+            "outputs": list(self.outputs),
+        }
 
     def report_projection(self) -> dict[str, Any]:
         build_target: dict[str, Any] = {"kind": self.cargo.build_target_kind}
@@ -323,9 +342,55 @@ def load_artifact_profiles(
                 semantic_target=semantic_target,
                 cargo=_parse_cargo_recipe(profile, profile_id),
                 diagram_families=_parse_diagram_families(profile, profile_id),
+                description=profile.get("description", ""),
+                capabilities=_required_string_list(
+                    profile["expected"], "capabilities", profile_id, allow_empty=True
+                ),
+                runtime_ids=_required_string_list(
+                    profile["expected"], "runtime_ids", profile_id, allow_empty=True
+                ),
+                outputs=_required_string_list(
+                    profile["expected"], "outputs", profile_id, allow_empty=True
+                ),
             )
         )
     return tuple(parsed)
+
+
+def recommend_artifact_profile(
+    host_interface: str,
+    *,
+    output: str = "svg",
+    target: str | None = None,
+    descriptor_path: Path = DEFAULT_DESCRIPTOR,
+) -> ArtifactProfile:
+    """Select a pilot product without guessing a host or requiring a Rust installation."""
+    if host_interface not in RECOMMENDED_PRODUCTS:
+        raise ArtifactProfileError(
+            "choose a host interface: " + ", ".join(RECOMMENDED_PRODUCTS)
+        )
+    profile_id = RECOMMENDED_PRODUCTS[host_interface]
+    profile = next(
+        (p for p in load_artifact_profiles(descriptor_path) if p.profile_id == profile_id),
+        None,
+    )
+    if profile is None:
+        raise ArtifactProfileError(f"recommended product {profile_id!r} is missing")
+    if target is not None and target not in profile.cargo.build_targets:
+        raise ArtifactProfileError(
+            f"{profile_id} does not support target {target!r}; choose one of: "
+            + ", ".join(profile.cargo.build_targets)
+        )
+    if output not in profile.outputs:
+        alternative = (
+            " For PDF/JPEG use the native C SDK on its declared desktop targets."
+            if output in {"pdf", "jpeg"} and host_interface != "c" else ""
+        )
+        raise ArtifactProfileError(
+            f"{profile_id} does not provide {output.upper()}; supported outputs: "
+            + ", ".join(profile.outputs) + "." + alternative
+        )
+    return profile
 
 
 def _parse_diagram_families(profile: dict[str, Any], profile_id: str) -> tuple[str, ...]:
@@ -560,7 +625,13 @@ def _required_string_list(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("profile_id")
+    parser.add_argument("profile_id", nargs="?")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--list", action="store_true", help="List descriptor products as JSON.")
+    mode.add_argument("--describe", metavar="PROFILE", help="Describe one exact product as JSON.")
+    mode.add_argument("--recommend", choices=tuple(RECOMMENDED_PRODUCTS),
+                      help="Choose a general rendering product for this host interface.")
+    parser.add_argument("--output", help="Requested output for --recommend (default: svg).")
     parser.add_argument(
         "--field",
         choices=(
@@ -575,15 +646,15 @@ def main() -> int:
             "build-target",
             "triples",
         ),
-        default="features",
+        default=None,
     )
     parser.add_argument("--descriptor", type=Path, default=DEFAULT_DESCRIPTOR)
-    parser.add_argument(
+    mode.add_argument(
         "--build",
         action="store_true",
         help="Execute the descriptor-owned Cargo build recipe.",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--build-host",
         action="store_true",
         help="Build a target-set recipe for the validated active Rust host.",
@@ -601,9 +672,37 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.list or args.describe or args.recommend:
+        if args.profile_id or args.field or args.locked or args.build_tool != "cargo":
+            parser.error("discovery modes cannot be combined with Cargo recipe selectors")
+        if not args.recommend and (args.output or args.target_triple):
+            parser.error("--output and discovery --target-triple require --recommend")
+        try:
+            if args.recommend:
+                profile = recommend_artifact_profile(
+                    args.recommend, output=args.output or "svg", target=args.target_triple,
+                    descriptor_path=args.descriptor,
+                )
+                result = {"host_interface": args.recommend,
+                          "profile": profile.discovery_projection()}
+            else:
+                profiles = load_artifact_profiles(args.descriptor)
+                if args.list:
+                    result = [p.discovery_projection() for p in profiles]
+                else:
+                    profile = next((p for p in profiles if p.profile_id == args.describe), None)
+                    if profile is None:
+                        raise ArtifactProfileError(f"unknown product {args.describe!r}; use --list")
+                    result = profile.discovery_projection()
+        except ArtifactProfileError as error:
+            parser.error(str(error))
+        print(json.dumps(result, indent=2))
+        return 0
+    if args.profile_id is None:
+        parser.error("choose --recommend, --list, --describe, or an exact profile_id")
+    if args.output:
+        parser.error("--output requires --recommend")
     recipe = load_artifact_profile(args.profile_id, args.descriptor)
-    if args.build and args.build_host:
-        parser.error("--build and --build-host are mutually exclusive")
     if args.build:
         subprocess.run(
             cargo_build_args(
@@ -646,7 +745,7 @@ def main() -> int:
         "build-target": recipe.build_target_kind,
         "triples": recipe.build_target_argument,
     }
-    print(values[args.field])
+    print(values[args.field or "features"])
     return 0
 
 

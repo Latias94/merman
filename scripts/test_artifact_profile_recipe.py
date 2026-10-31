@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import nullcontext
+from contextlib import redirect_stdout
 from dataclasses import replace
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -53,6 +55,59 @@ def posix_recipe_shell(
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
+    def query(self, *arguments: str) -> object:
+        output = io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", ["artifact_profile_recipe.py", *arguments]),
+            mock.patch.object(artifact_profile_recipe, "rustc_host_target") as rustc,
+            redirect_stdout(output),
+        ):
+            self.assertEqual(artifact_profile_recipe.main(), 0)
+        rustc.assert_not_called()
+        return json.loads(output.getvalue())
+
+    def test_discovery_reads_the_descriptor_without_a_rust_toolchain(self) -> None:
+        profiles = self.query("--list")
+        descriptor = json.loads(artifact_profile_recipe.DEFAULT_DESCRIPTOR.read_text())
+        self.assertEqual([p["id"] for p in profiles], [p["id"] for p in descriptor["profiles"]])
+        for profile in descriptor["profiles"]:
+            with self.subTest(profile=profile["id"]):
+                actual = self.query("--describe", profile["id"])
+                self.assertEqual(actual["description"], profile["description"])
+                self.assertEqual(actual["capabilities"], profile["expected"]["capabilities"])
+                self.assertEqual(actual["outputs"], profile["expected"]["outputs"])
+                self.assertEqual(actual["cargo"], profile["cargo"])
+
+    def test_recommendation_matches_interface_before_target_and_output(self) -> None:
+        requests = (
+            ("swift", "aarch64-apple-ios", "svg", "apple-uniffi-native"),
+            ("c", "x86_64-pc-windows-msvc", "pdf", "sdk-native-full"),
+            ("wasi", "wasm32-wasip1", "png", "sdk-wasi-full"),
+        )
+        for interface, target, output, expected in requests:
+            with self.subTest(interface=interface):
+                selected = self.query("--recommend", interface, "--target-triple", target,
+                                      "--output", output)
+                self.assertEqual(selected["host_interface"], interface)
+                self.assertEqual(selected["profile"]["id"], expected)
+                self.assertIn(output, selected["profile"]["outputs"])
+        with self.assertRaisesRegex(artifact_profile_recipe.ArtifactProfileError, "PDF.*native C"):
+            artifact_profile_recipe.recommend_artifact_profile("swift", output="pdf")
+        with self.assertRaisesRegex(artifact_profile_recipe.ArtifactProfileError, "does not support target"):
+            artifact_profile_recipe.recommend_artifact_profile("wasi", target="aarch64-apple-ios")
+
+    def test_discovery_tracks_changed_descriptor_capabilities(self) -> None:
+        descriptor = json.loads(artifact_profile_recipe.DEFAULT_DESCRIPTOR.read_text())
+        profile = next(p for p in descriptor["profiles"] if p["id"] == "apple-uniffi-native")
+        profile["expected"]["outputs"] = ["svg"]
+        profile["expected"]["capabilities"] = ["svg"]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "profiles.json"
+            path.write_text(json.dumps(descriptor))
+            selected = self.query("--recommend", "swift", "--descriptor", str(path))
+        self.assertEqual(selected["profile"]["outputs"], ["svg"])
+        self.assertEqual(selected["profile"]["capabilities"], ["svg"])
+
     def test_python_wheel_timestamp_uses_configured_non_negative_epoch(self) -> None:
         with mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "1700000000"}, clear=False):
             self.assertEqual(wheel_builder.source_date_epoch(), "1700000000")
