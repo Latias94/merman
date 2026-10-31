@@ -400,10 +400,17 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 import json
                 import os
                 from pathlib import Path
+                import shutil
                 import sys
 
                 command, arguments = sys.argv[1], sys.argv[2:]
                 entry = {"command": command, "target_dir": os.environ["CARGO_TARGET_DIR"]}
+                if Path(arguments[0]).name == "native_static_archive.py":
+                    source = Path(arguments[arguments.index("--source") + 1])
+                    output = Path(arguments[arguments.index("--output") + 1])
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, output)
+                    sys.exit(0)
                 if command == "native":
                     target = arguments[arguments.index("--target-triple") + 1]
                     entry["target"] = target

@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -50,6 +51,11 @@ class SdkQualificationTests(unittest.TestCase):
         self.enterContext(contextlib.redirect_stderr(io.StringIO()))
         self.process = self.enterContext(mock.patch.object(
             sdk_qualify.subprocess, "run", side_effect=self.run_process))
+        # Static transformation has its own real staging boundary tests.
+        self.enterContext(mock.patch.object(
+            sdk_qualify, "stage_static_library",
+            side_effect=lambda source, destination, target: shutil.copyfile(source, destination),
+        ))
         original_sidecar = sdk_archive.write_catalog_sidecar
 
         def sidecar(**options):
@@ -107,7 +113,7 @@ class SdkQualificationTests(unittest.TestCase):
                     },
                     "build_target": {"kind": "target-set", "triples": [target]},
                 },
-                "expected": {"runtime_ids": features, "outputs": ["png", "svg"],
+                "expected": {"capabilities": features, "runtime_ids": features, "outputs": ["png", "svg"],
                              "diagram_families": ["flowchart"]},
             }],
         }))

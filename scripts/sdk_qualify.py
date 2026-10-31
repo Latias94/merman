@@ -17,10 +17,12 @@ import tomllib
 if __package__:
     from . import sdk_archive
     from .artifact_profile_recipe import load_artifact_profile, rustc_host_target
+    from .native_static_archive import stage_static_library
     from .release_archive import require_regular_input, verified_archive_contents
 else:
     import sdk_archive
     from artifact_profile_recipe import load_artifact_profile, rustc_host_target
+    from native_static_archive import stage_static_library
     from release_archive import require_regular_input, verified_archive_contents
 
 
@@ -57,10 +59,13 @@ def executable(directory: Path, name: str, target: str) -> Path:
 
 
 def stage_libraries(built: Path, artifact: Path, target: str, *, repo_root: Path) -> None:
-    for name in sdk_archive.library_names(target).values():
+    for kind, name in sdk_archive.library_names(target).items():
         source = built / name
         require_regular_input(source, "just-built SDK library")
-        shutil.copyfile(source, artifact / name)
+        if kind == "static":
+            stage_static_library(source, artifact / name, target)
+        else:
+            shutil.copyfile(source, artifact / name)
     if "apple" in target:
         library = artifact / sdk_archive.library_names(target)["dynamic"]
         run(["install_name_tool", "-id", "@rpath/" + library.name, library], repo_root=repo_root)

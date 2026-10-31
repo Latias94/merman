@@ -138,6 +138,7 @@ jobs:
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           toolchain: 1.95.0
+          components: ${{ matrix.platform.kind == 'native' && 'llvm-tools-preview' || '' }}
           targets: ${{ matrix.platform.target }}
       - name: Install the existing license report tool
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
