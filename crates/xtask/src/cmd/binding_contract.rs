@@ -56,8 +56,11 @@ const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
     OperationKey::SvgPlanJson,
     OperationKey::ValidationJson,
 ];
-const DEFAULT_NATIVE_PREBUILT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] =
-    &[CapabilityKey::LayoutCytoscape, CapabilityKey::LayoutElk];
+const DEFAULT_NATIVE_PREBUILT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    CapabilityKey::Fixes,
+    CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutElk,
+];
 const DEFAULT_NATIVE_PREBUILT_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::HostTextMeasurement,
     ConstructorServiceKey::IconRegistry,
@@ -2059,6 +2062,25 @@ pub(crate) fn verify_binding_contract(args: Vec<String>) -> Result<(), XtaskErro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn android_artifact_projection_matches_the_declared_product_capabilities() {
+        let descriptor: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../capabilities/artifact-profiles-v2.json"
+        ))
+        .unwrap();
+        let android = descriptor["profiles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|profile| profile["id"] == "android-native")
+            .unwrap();
+        let projection = android_artifact_profile_projection();
+        assert_eq!(
+            serde_json::to_value(&projection.capability_ids).unwrap(),
+            android["expected"]["capabilities"]
+        );
+    }
 
     #[test]
     fn constructor_services_project_optional_capability_requirements() {

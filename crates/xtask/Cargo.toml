@@ -23,6 +23,7 @@ merman-bindings-core = { workspace = true, features = [
     "all-diagrams",
     "analysis",
     "ascii",
+    "fixes",
     "jpeg",
     "layout-cytoscape",
     "layout-elk",

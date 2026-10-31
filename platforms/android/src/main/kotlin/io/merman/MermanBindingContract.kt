@@ -205,7 +205,7 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
 )
 
 internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(
-    capabilityIds = listOf("analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"),
+    capabilityIds = listOf("analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"),
     outputIds = listOf("ascii", "svg"),
     systemAdapterIds = listOf(),
     operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "describe-theme-support-json", "document-analysis-facts-json", "document-analysis-json", "edge-geometry-json", "export-theme-preset-json", "layout-json", "materialize-theme-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
