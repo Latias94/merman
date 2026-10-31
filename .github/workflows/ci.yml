@@ -244,12 +244,12 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: nextest@0.9.148
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -284,7 +284,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.23.2
+        uses: DeterminateSystems/determinate-nix-action@v3.24.1
 
       - name: Build reusable Nix derivation
         run: |
@@ -389,7 +389,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: nextest@0.9.148
 
@@ -408,7 +408,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -554,7 +554,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: nextest@0.9.148
 
@@ -572,7 +572,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -702,7 +702,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: nextest@0.9.148
 
@@ -720,7 +720,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -774,7 +774,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           key: svg-parity
           cache-targets: false
@@ -900,7 +900,7 @@ jobs:
 
       - name: Rust cache for real Node candidates
         if: matrix.candidate == 'node-wasm'
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -997,12 +997,12 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: wasm-tools@1.261.0
 
@@ -1029,7 +1029,7 @@ jobs:
           "${typst_root}/typst" --version
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: nextest
 
@@ -1083,12 +1083,12 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: wasm-tools@1.261.0
 
@@ -1182,7 +1182,7 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -1222,7 +1222,7 @@ jobs:
           targets: aarch64-linux-android,x86_64-linux-android
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -1233,7 +1233,7 @@ jobs:
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6.4.0
+        uses: gradle/actions/setup-gradle@v6.4.1
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4.0.4
@@ -1288,7 +1288,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: "3.12"
 
@@ -1296,7 +1296,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Build and smoke Python UniFFI wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
@@ -1315,7 +1315,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Build merman C ABI library
         run: python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
@@ -1353,7 +1353,7 @@ jobs:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Build iOS XCFramework with Swift 5.9
         env:
@@ -1390,7 +1390,7 @@ jobs:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Build Apple XCFramework
         env:
