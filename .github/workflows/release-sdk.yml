@@ -137,14 +137,19 @@ jobs:
       - name: Install the pinned Rust toolchain
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
-          toolchain: 1.95.0
           # Install rust-toolchain.toml components up front, before Cargo activates the override.
           components: ${{ matrix.platform.kind == 'native' && !contains(matrix.platform.target, 'windows') && 'rustfmt, clippy, llvm-tools-preview' || 'rustfmt, clippy' }}
           targets: ${{ matrix.platform.target }}
       - name: Install the existing license report tool
+        if: matrix.platform.target != 'x86_64-apple-darwin'
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-about@0.9.2
+      - name: Build the license CLI where no matching binary is available
+        if: matrix.platform.target == 'x86_64-apple-darwin'
+        run: cargo install --locked cargo-about --version 0.9.2 --features cli
+      - name: Verify license tool installation before building the SDK
+        run: cargo about --version
       - name: Install pinned host qualification dependencies
         shell: bash
         run: python -m pip install --requirement platforms/wasi/requirements.txt
@@ -194,7 +199,6 @@ jobs:
       - name: Install the pinned Rust toolchain
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
-          toolchain: 1.95.0
           components: rustfmt, clippy
       - name: Build the descriptor-owned CLI release recipe once
         run: python scripts/artifact_profile_recipe.py cli-release --build-host --locked

@@ -151,6 +151,13 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             for component in required_components:
                 self.assertIn(component, components)
         self.assertIn("python scripts/sdk_qualify.py", package)
+        self.assertIn("if: matrix.platform.target != 'x86_64-apple-darwin'", package)
+        self.assertIn(
+            "if: matrix.platform.target == 'x86_64-apple-darwin'\n"
+            "        run: cargo install --locked cargo-about --version 0.9.2 --features cli",
+            package,
+        )
+        self.assertLess(package.index("run: cargo about --version"), package.index("python scripts/sdk_qualify.py"))
         self.assertNotIn("shell: python", package)
         qualifier = read(ROOT / "scripts/sdk_qualify.py")
         self.assertIn('repo_root / "platforms/wasi/native_smoke.py"', qualifier)
