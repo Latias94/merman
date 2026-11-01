@@ -19,7 +19,7 @@ __pycache__/
 # Repository-only release tooling.
 /build-native.py
 /ffigen.yaml
-/tool/theme_authoring_smoke.dart
+/tool/
+/native/
 
-# CI creates `native/` before publishing. It is intentionally included because
-# this file, rather than .gitignore, controls the pub package.
+# Release staging inserts hook/native-assets.json with version-pinned target hashes.

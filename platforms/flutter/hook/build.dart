@@ -1,47 +1,41 @@
-import 'dart:io';
-
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
+import 'native_assets.dart';
+
 const _assetName = 'src/generated/native_abi.dart';
 
-void main(List<String> args) async {
-  await build(args, (input, output) async {
-    if (!input.config.buildCodeAssets) {
-      return;
-    }
+Future<void> main(List<String> args) async {
+  await build(args, buildMerman);
+}
 
-    final config = input.config.code;
-    if (config.targetOS == OS.android && config.android.targetNdkApi < 24) {
-      throw UnsupportedError(
-        'Merman requires Android API 24 or newer; the application targets '
-        'API ${config.android.targetNdkApi}.',
-      );
-    }
-    final relativePath = _libraryPath(
-      config.targetOS,
-      config.targetArchitecture,
-      iosSdk: config.targetOS == OS.iOS ? config.iOS.targetSdk : null,
-    );
-    final library = input.packageRoot.resolve(relativePath);
-    if (!File.fromUri(library).existsSync()) {
-      throw StateError(
-        'Merman has no prebuilt native library for '
-        '${config.targetOS.name}/${config.targetArchitecture.name}: '
-        '${library.toFilePath()}',
-      );
-    }
+Future<void> buildMerman(BuildInput input, BuildOutputBuilder output) async {
+  if (!input.config.buildCodeAssets) {
+    return;
+  }
 
-    output.dependencies.add(library);
-    output.assets.code.add(
-      CodeAsset(
-        package: input.packageName,
-        name: _assetName,
-        linkMode: DynamicLoadingBundled(),
-        file: library,
-      ),
+  final config = input.config.code;
+  if (config.targetOS == OS.android && config.android.targetNdkApi < 24) {
+    throw UnsupportedError(
+      'Merman requires Android API 24 or newer; the application targets '
+      'API ${config.android.targetNdkApi}.',
     );
-  });
+  }
+  final relativePath = _libraryPath(
+    config.targetOS,
+    config.targetArchitecture,
+    iosSdk: config.targetOS == OS.iOS ? config.iOS.targetSdk : null,
+  );
+  final library = await acquireNativeLibrary(input, output, relativePath);
+
+  output.assets.code.add(
+    CodeAsset(
+      package: input.packageName,
+      name: _assetName,
+      linkMode: DynamicLoadingBundled(),
+      file: library,
+    ),
+  );
 }
 
 String _libraryPath(OS os, Architecture architecture, {IOSSdk? iosSdk}) {

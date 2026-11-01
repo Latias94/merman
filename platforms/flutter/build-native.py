@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import platform
 import shutil
 import subprocess
@@ -86,7 +87,12 @@ def build(recipe, target: str, *, zig: bool = False) -> Path:
     tool = "cargo-zigbuild" if zig else "cargo"
     run(cargo_build_args(recipe, locked=True, target=target, build_tool=tool))
     filename = native_filename(target)
-    artifact = REPO_ROOT / "target" / target / recipe.cargo_profile / filename
+    metadata = subprocess.check_output(
+        ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
+        cwd=REPO_ROOT,
+        text=True,
+    )
+    artifact = Path(json.loads(metadata)["target_directory"]) / target / recipe.cargo_profile / filename
     if not artifact.is_file():
         raise RuntimeError(f"native artifact was not produced: {artifact}")
     assert_symbol_contract(

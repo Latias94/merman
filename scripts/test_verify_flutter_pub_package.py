@@ -20,10 +20,37 @@ from verify_flutter_pub_package import (
     compressed_archive_megabytes,
     main,
     positive_float,
+    verify_thin_package,
 )
 
 
 class FlutterPubPackageSizeTests(unittest.TestCase):
+    def test_thin_package_checks_actual_files_and_pinned_manifest(self):
+        from flutter_native_assets import TARGET_LIBRARIES, stage
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            native = root / "native"
+            package = root / "package"
+            (package / "hook").mkdir(parents=True)
+            (package / "pubspec.yaml").write_text("name: merman\nversion: 0.9.3\n")
+            for target, library in TARGET_LIBRARIES.items():
+                path = native / target / library
+                path.parent.mkdir(parents=True)
+                path.write_bytes(b"tiny native fixture")
+            stage(native, root / "assets", version="0.9.3", source_sha="1" * 40,
+                  source_tree="2" * 40, base_url="https://example.org/flutter-v0.9.3/")
+            (package / "hook/native-assets.json").write_bytes((root / "assets/native-assets.json").read_bytes())
+            verify_thin_package(package)
+            (package / "native").mkdir()
+            (package / ".pubignore").write_text("/native/\n")
+            with self.assertRaisesRegex(FlutterPackageSizeError, "must not contain native"):
+                verify_thin_package(package)
+            (package / "native").rmdir()
+            (package / "hidden.so").write_bytes(b"binary outside native")
+            with self.assertRaisesRegex(FlutterPackageSizeError, "native archive/library"):
+                verify_thin_package(package)
+
     def test_reads_the_total_compressed_archive_size(self) -> None:
         self.assertEqual(
             compressed_archive_megabytes("Total compressed archive size: 94 MB.\n"),

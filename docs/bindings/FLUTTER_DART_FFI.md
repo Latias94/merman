@@ -68,7 +68,14 @@ Typed `MermanOperationMetadata` retains raw JSON for additive fields and unknown
 kinds. Runtime operation and resource-limit IDs remain open values; invoking an appended numeric C
 operation still requires an updated generated Dart SDK.
 
-The pub.dev package's prebuilt libraries select the default native SKU: SVG, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime` so one package can carry the Android, Apple, Linux, and Windows target matrix within the registry size limit. The generated Dart operation vocabulary remains unchanged for custom current-contract libraries; unavailable bundled operations use the existing typed `missing-capability` result.
+The published `0.9.2` package's prebuilt libraries select the historical default native SKU:
+SVG, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and
+document analysis. It omits `math`, `png`, `jpeg`, `pdf`, and `native-runtime`. The next
+main-line target assets include `math` while retaining the absent exporters and adapters, so one
+thin facade can carry the Android, Apple, Linux, and Windows target matrix without bundling all
+native bytes. The generated Dart operation vocabulary remains unchanged for custom
+current-contract libraries; unavailable bundled operations use the existing typed
+`missing-capability` result.
 
 Native failures use `MermanException` and machine-readable `MermanErrorKind`. Unknown operation codes throw `MermanUnknownOperationException`; valid operations whose artifact lacks a backend throw `MermanMissingCapabilityException` with the exact `capabilityId`. `MermanBusyException` and `MermanReentrantCallException` preserve the two nonblocking engine-admission failures. Resource failures expose `exactResourceDetails` with the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, canonical unsigned-decimal actual value, effective maximum, and selected profile. The compatibility `resourceDetails` view remains available only when both counts fit a signed 64-bit Dart `int`.
 
@@ -272,12 +279,47 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 | Linux | arm64 and x86_64 `libmerman_ffi.so` |
 | Windows | `merman_ffi.dll` |
 
-Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile and the shared default native feature set. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
+Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile, including math for ordinary SVG rendering. PNG, JPEG, PDF and native runtime adapters remain absent. This main-line delivery change is unreleased; published `0.9.2` retains its original package and capability contract. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
 
-`hook/build.dart` maps the requested OS, architecture, and iOS SDK to one file under `native/`, then emits a bundled dynamic `CodeAsset` with the same asset ID used by the generated `@Native` declaration. Flutter performs final copying, multi-architecture Apple framework assembly, install-name rewriting, and signing. The package therefore owns no Flutter plugin registrars, CocoaPods podspecs, Swift packages, Gradle plugin modules, or CMake plugin wrappers. Android applications must target API 24 or newer; the hook rejects a lower target before bundling.
+`hook/build.dart` maps the requested OS, architecture, and iOS SDK to one target, acquires its
+prebuilt library, then emits a bundled dynamic `CodeAsset` with the same asset ID used by the
+generated `@Native` declaration. Flutter performs final copying, multi-architecture Apple
+framework assembly, install-name rewriting, and signing. The package therefore owns no Flutter
+plugin registrars, CocoaPods podspecs, Swift packages, Gradle plugin modules, or CMake plugin
+wrappers. Android applications must target API 24 or newer; the hook rejects a lower target
+before acquisition.
+
+Release staging generates `hook/native-assets.json` from the frozen native output, containing
+one versioned `.gz` asset for each table entry above, its exact download URL, SHA-256 and size,
+and the uncompressed library digest and size. iOS device and simulator slices have distinct
+asset names. The manifest also binds the Dart version and immutable source commit/tree.
+`scripts/flutter_release_archive.py pack --native-manifest ...` inserts it into the frozen facade
+and physically excludes `native/` and repository-only `tool/`. The collector enforces this
+independently of `.pubignore`; `extract --require-thin` verifies the manifest identity again.
+The source checkout has no hand-maintained second manifest.
+
+The hook downloads during build only and verifies both compressed and materialized bytes on
+each invocation. It stores these files under hooks' `outputDirectoryShared` and registers the
+manifest, cached archive and selected library as dependencies so hooks invalidates stale outputs.
+The runner owns invocation caching and serialization. Failed downloads leave no partial
+accepted file. A corrupt cache fails explicitly, with the cache path to remove before retrying.
+The hook never invokes Cargo or downloads at runtime.
+
+Consumers configure `hooks.user_defines.merman` in their root/workspace `pubspec.yaml`:
+
+| Define | Behavior |
+| --- | --- |
+| `native_assets: vendor/merman-native` | Explicit native root resolved through `input.userDefines.path`; contains the selected subtree such as `ios/arm64-simulator/libmerman_ffi.dylib`. Tracked as a dependency and used without network or manifest digest checks. Runtime ABI/version admission still applies. |
+| `offline: true` | Require already verified hook cache bytes. First build online and preserve `.dart_tool` or supply `native_assets`; a cold cache explains the missing input. |
+| `mirror: https://artifacts.example.org/flutter-v0.9.3/` | Replace only the asset URL prefix; use the same immutable filenames and package-pinned hashes. |
+
+All downloads require HTTPS, with HTTP permitted only for loopback fixtures. Signed CDN
+redirect URLs are supported. A local runtime `Merman.openPath(...)` does not configure the build
+hook; use `native_assets` to override acquisition and bundling. During migration, a checkout
+without a manifest still accepts explicitly built self-contained `native/` files.
 
 ```sh
-cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk,math'
 ```
 
 The bundled artifacts are deterministic and contain no system adapters. Custom source builds may
@@ -287,6 +329,34 @@ and `system-random` IDs only when present; Flutter hosts should not treat the Ca
 runtime capability ID.
 
 Android slices are assembled by `platforms/android/build-android.py --artifact-profile flutter-android-native`; `platforms/flutter/build-native.py` builds Apple and desktop slices. Flutter Web is not supported because this package uses `dart:ffi`; use `@mermanjs/web` in browsers.
+
+### Publication And Consumer Qualification
+
+The release build job is read-only. It freezes native target assets, builds the thin facade,
+runs the existing Dart compressed-size budget against the extracted facade and qualifies a
+relocated app. `platforms/flutter/tool/qualify_packaged_app.py` creates a temporary Flutter macOS
+consumer of that exact package, downloads exactly the current host target from a local HTTP
+fixture and builds a release `.app`. Its generated Xcode config excludes the other CPU, so this
+lane qualifies the executed host slice. It removes temporary inputs/cache, stops HTTP, checks
+the bundled native framework, relocates the app and executes it. `example/smoke.dart` checks real math vector glyphs, SVG/services,
+ASCII/analysis, and typed absence of PNG/JPEG/PDF. Its uploaded JSON receipt records the source,
+host and selected-target compressed/library sizes. Hosted macOS release CI owns this real binary
+qualification; the small hook test covers target selection for other OS/CPU/Apple SDKs without
+claiming to execute their binaries.
+
+Only tag-push releases can publish. `publish-native-assets` is a separate job protected by the
+`github-release` environment and scoped `contents: write`. It verifies the thin package receipt,
+the exact expected GitHub URL prefix and frozen target hashes before uploading. The matching
+non-draft GitHub Release must already exist and the remote tag must still resolve to the selected
+source. An existing asset is reused only when its bytes match; accepted assets are never replaced.
+The job then anonymously downloads every package-pinned URL and checks exact size/digest.
+The pub.dev publisher depends on that successful readback and has only `contents: read` and
+OIDC `id-token: write` permissions. It retains the existing pub reconciler before publication and
+requires an exact public package reconciliation afterward. Manual candidate runs build and
+qualify artifacts without either publication step.
+
+Public tag/asset hosting and pub.dev resolution are release rollout proofs. A candidate archive
+or workflow definition alone does not establish that a new public version can be installed.
 
 ## Local Verification
 
@@ -300,6 +370,7 @@ dart format --set-exit-if-changed \
   example tool hook
 flutter analyze
 dart run tool/abi3_contract_test.dart
+dart run tool/native_assets_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart
 ```
@@ -309,7 +380,10 @@ The local contract test validates the current complete ABI
 package-version projection, BUSY/REENTRANT/CANCELLED decoding, and malformed native error payloads. The real-library smoke intentionally
 exercises service-backed SVG, ASCII, and analysis, verifies typed absence for the three binary
 exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive
-operation and lifecycle cases.
+operation and lifecycle cases. The small hook contract uses real loopback HTTP and supported
+hooks input/output to exercise all target/SDK mappings, bad downloads, compressed/materialized
+cache tampering, warm/cold offline behavior, mirror redirects and a local override; it needs no
+native compilation or large SDK download.
 
 The repository-wide gate checks generated declaration freshness and the current host Native Assets smoke. Complete release packaging has two direct entry points:
 
