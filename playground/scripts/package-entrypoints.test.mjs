@@ -52,7 +52,8 @@ test("dev, build, and test fail closed on the selected full browser artifact", (
       "@mermanjs/web": "file:../platforms/web/packages/full",
     },
   );
-  assert.deepEqual(Object.keys(webPackageJson.exports ?? {}), ["."]);
+  assert.deepEqual(Object.keys(webPackageJson.exports ?? {}).sort(), [".", "./wasm"]);
+  assert.equal(webPackageJson.exports["./wasm"], "./artifacts/wasm/merman_wasm_bg.wasm");
   assert.deepEqual(Object.keys(webPackageJson.exports["."]).sort(), [
     "import",
     "types",
