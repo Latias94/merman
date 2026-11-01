@@ -99,7 +99,7 @@ function buildNapi(stage, recipe) {
   const cli = path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js");
   assertFile(cli, "pinned @napi-rs/cli; run npm ci first");
   const invocation = candidateBuildInvocation(recipe, stage);
-  run(invocation.command, invocation.args);
+  run(invocation.command, invocation.args, invocation.env);
 }
 
 function buildNodeWasm(stage, recipe) {
@@ -107,7 +107,7 @@ function buildNodeWasm(stage, recipe) {
   run(invocation.command, invocation.args);
 }
 
-export function candidateBuildInvocation(recipe, stage) {
+export function candidateBuildInvocation(recipe, stage, environment = process.env) {
   const featureArgument = recipe.cargoFeatures.join(",");
   const cargoArguments = ["--locked", "-j1"];
   if (recipe.rustTarget === "x86_64-pc-windows-msvc") {
@@ -116,6 +116,13 @@ export function candidateBuildInvocation(recipe, stage) {
   if (recipe.candidate === "napi") {
     return {
       command: process.execPath,
+      // The CLI defaults to a cross-linker name even on a matching native Alpine host.
+      env: recipe.rustTarget === "aarch64-unknown-linux-musl"
+        ? {
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:
+            environment.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER ?? "cc",
+        }
+        : {},
       args: [
         path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js"),
         "build",
@@ -1052,13 +1059,14 @@ function localPackageSource(manifestPath) {
   return `path:${path.relative(repositoryRoot, directory).split(path.sep).join("/")}`;
 }
 
-function run(command, args) {
+function run(command, args, environment = {}) {
   const result = spawnSync(command, args, {
     cwd: nodeRoot,
     env: {
       ...process.env,
       CARGO_BUILD_JOBS: "1",
       CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
+      ...environment,
     },
     stdio: "inherit",
   });

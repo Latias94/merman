@@ -125,6 +125,21 @@ test("native candidate builds require their matching runtime host", () => {
   }
 });
 
+test("native ARM64 musl uses the host linker and preserves an explicit override", () => {
+  const recipe = resolveCandidateRecipe("napi", "linux-arm64-musl");
+  const key = "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER";
+  const native = candidateBuildInvocation(recipe, "/tmp/merman-node-candidate", {});
+  assert.equal(native.env?.[key], "cc");
+  const configured = candidateBuildInvocation(recipe, "/tmp/merman-node-candidate", {
+    [key]: "/opt/toolchain/bin/custom-linker",
+  });
+  assert.equal(configured.env?.[key], "/opt/toolchain/bin/custom-linker");
+  const darwin = candidateBuildInvocation(
+    resolveCandidateRecipe("napi", "darwin-arm64"), "/tmp/merman-node-candidate", {},
+  );
+  assert.equal(darwin.env?.[key], undefined);
+});
+
 test("candidate runtime outputs follow explicit binding operation ownership", () => {
   const contract = resolveCandidateRuntimeContract();
 
