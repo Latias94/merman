@@ -69,6 +69,20 @@ class ReleaseSurfaceContractTests(unittest.TestCase):
             ["android-native"],
         )
 
+    def test_android_handoff_requires_packaging_qualification_and_signing_owner(self) -> None:
+        original_read = contract._read
+        for operation in ("package", "qualify", "sign"):
+            def missing_operation(root: Path, path: Path) -> str:
+                text = original_read(root, path)
+                if path.name == "release-android.yml":
+                    return text.replace(f"scripts/android_package.py {operation}", "missing-owner")
+                return text
+
+            with self.subTest(operation=operation), mock.patch.object(
+                contract, "_read", side_effect=missing_operation,
+            ), self.assertRaisesRegex(contract.SurfaceContractError, "android-aar"):
+                contract.validate_repository(ROOT, metadata=self.metadata)
+
     def test_missing_workflow_marker_fails_closed(self) -> None:
         original_read = contract._read
 
@@ -80,6 +94,23 @@ class ReleaseSurfaceContractTests(unittest.TestCase):
 
         with mock.patch.object(contract, "_read", side_effect=read_without_android_upload):
             with self.assertRaisesRegex(contract.SurfaceContractError, "android-aar"):
+                contract.validate_repository(ROOT, metadata=self.metadata)
+
+    def test_python_owner_requires_shared_build_and_qualification_before_publication(self) -> None:
+        python = next(surface for surface in contract.SURFACES if surface.surface_id == "python-wheel")
+        self.assertEqual(python.workflow, Path(".github/workflows/release-python.yml"))
+        self.assertEqual(python.preflight_job, "python-wheel")
+        self.assertEqual(python.publication_mode, "manual-dispatch")
+        marker = "uses: ./.github/workflows/build-python.yml"
+        self.assertIn(marker, python.workflow_markers)
+        original_read = contract._read
+
+        def missing_python_builder(root: Path, path: Path) -> str:
+            text = original_read(root, path)
+            return text.replace(marker, "missing-python-builder") if path == python.workflow else text
+
+        with mock.patch.object(contract, "_read", side_effect=missing_python_builder):
+            with self.assertRaisesRegex(contract.SurfaceContractError, "python-wheel"):
                 contract.validate_repository(ROOT, metadata=self.metadata)
 
     def test_sdk_owner_governs_all_six_exact_profile_packages(self) -> None:

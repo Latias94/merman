@@ -7,6 +7,11 @@ on:
         description: "Release version without the leading v, for example 0.8.0-alpha.5"
         required: true
         type: string
+      android_maven_group:
+        description: "Maven group for the nonpublishing external consumer; no Central namespace claim"
+        required: true
+        default: io.merman.preflight
+        type: string
       source_ref:
         description: "Immutable 40-character commit SHA, protected branch (main), or matching release tag to validate"
         required: true
@@ -561,98 +566,37 @@ jobs:
 
   python-wheel:
     needs: validate-inputs
-    name: python-wheel (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-24.04
-          - macos-15
-          - windows-2025-vs2026
-    env:
-      SOURCE_DATE_EPOCH: ${{ needs.validate-inputs.outputs.source_date_epoch }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.validate-inputs.outputs.source_sha }}
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: Verify release versions
-        env:
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
-        run: python scripts/release-version.py check --version "$VERSION"
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-
-      - name: Build wheel
-        run: python scripts/build-python-uniffi-wheel.py
-
-      - name: Install Linux wheel repair tools
-        if: runner.os == 'Linux'
-        timeout-minutes: 10
-        run: |
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes patchelf
-          python -m pip install auditwheel==6.8.2
-
-      - name: Repair Linux wheel
-        id: repair-linux-wheel
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p target/python-wheels/repaired
-          python -m auditwheel repair target/python-wheels/merman-*.whl --wheel-dir target/python-wheels/repaired
-          rm target/python-wheels/merman-*.whl
-          mv target/python-wheels/repaired/merman-*.whl target/python-wheels/
-          rmdir target/python-wheels/repaired
-
-      - name: Run final wheel install smoke
-        id: smoke-final-wheel
-        run: |
-          VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
-          python -m venv "$VENV_DIR"
-          if [ -f "$VENV_DIR/Scripts/python.exe" ]; then
-            PYTHON="$VENV_DIR/Scripts/python.exe"
-          else
-            PYTHON="$VENV_DIR/bin/python"
-          fi
-          "$PYTHON" -m ensurepip --upgrade
-          "$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl
-          "$PYTHON" platforms/python/merman/examples/smoke.py
-
-      - name: Check wheel metadata
-        run: |
-          python -m pip install twine==7.0.0
-          python -m twine check target/python-wheels/merman-*.whl
-
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: preflight-python-wheel-${{ runner.os }}-${{ runner.arch }}
-          path: target/python-wheels/merman-*.whl
+    name: python-wheel
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-python.yml
+    with:
+      release_tag: ${{ needs.validate-inputs.outputs.release_tag }}
+      source_ref: ${{ needs.validate-inputs.outputs.source_sha }}
+      artifact_prefix: preflight-python
 
   android-aar:
     needs: validate-inputs
     name: android-aar
     runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
+
+      - name: Verify pinned release source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          EXPECTED_SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "HEAD^{commit}")" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse "HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
 
       - name: Read Android toolchain versions
         id: android-toolchain
@@ -660,9 +604,22 @@ jobs:
           echo "java=$(python3 platforms/android/build-android.py --print-version java)" >> "$GITHUB_OUTPUT"
           echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
-      - name: Verify release versions
+      - name: Use validated release metadata
+        id: version
         env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Verify release version projections match tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Setup JDK
@@ -693,20 +650,79 @@ jobs:
           ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
         run: |
           set -euo pipefail
-          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35" "build-tools;35.0.0"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build Android native libraries
         run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
       - name: Run Android JVM contract tests
         run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
 
       - name: Publish to the local Maven staging repository
-        run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+        env:
+          MAVEN_GROUP: ${{ inputs.android_maven_group }}
+        run: platforms/android/gradlew -p platforms/android "-PmermanMavenGroup=$MAVEN_GROUP" publishReleasePublicationToLocalStagingRepository --stacktrace --max-workers=2
 
       - name: Verify Maven publication contract
-        run: python3 scripts/verify-platform-bindings.py --verify-android-maven
+        env:
+          MAVEN_GROUP: ${{ inputs.android_maven_group }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/verify-platform-bindings.py --verify-android-maven --android-maven-group "$MAVEN_GROUP" --android-maven-version "$VERSION"
+
+      - name: Prepare selected-version Maven repository archive
+        env:
+          MAVEN_GROUP: ${{ inputs.android_maven_group }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/android_package.py package --repository platforms/android/build/repo --group-id "$MAVEN_GROUP" --version "$VERSION" --output-dir target/release-assets
+
+      - name: Enable KVM access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Qualify external Maven app on a 16 KB device
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        env:
+          MAVEN_GROUP: ${{ inputs.android_maven_group }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis_ps16k
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-linux-hw-accel: false
+          script: |
+            test "$(adb shell getconf PAGE_SIZE | tr -d '\r')" = "16384"
+            python3 scripts/android_package.py qualify --archive "target/release-assets/merman-android-${VERSION}-maven.zip" --group-id "$MAVEN_GROUP" --version "$VERSION" --work-dir "$RUNNER_TEMP/merman-maven-consumer" --android-ndk-home "$ANDROID_NDK_HOME" --zipalign "$ANDROID_HOME/build-tools/35.0.0/zipalign" --connected
+
+      - name: Prepare release asset
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MAVEN_GROUP: ${{ inputs.android_maven_group }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/release-assets
+          group_path="${MAVEN_GROUP//./\/}"
+          staged_aar="platforms/android/build/repo/${group_path}/merman-android/${VERSION}/merman-android-${VERSION}.aar"
+          test -f "$staged_aar"
+          cp "$staged_aar" "target/release-assets/merman-android-${RELEASE_TAG}.aar"
+
+      - name: Retain candidate Maven publication and AAR
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: preflight-android-maven
+          path: target/release-assets/*
+          if-no-files-found: error
 
   apple-xcframework:
     needs: validate-inputs
@@ -750,6 +766,29 @@ jobs:
           python3 scripts/apple_package.py --output-dir target/apple-package --version "$VERSION"
           python3 scripts/apple_qualify.py --package-archive "target/apple-package/Merman-swiftpm-v$VERSION.zip" \
             --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
+
+      - name: Qualify controlled HTTPS SwiftPM handoff and checksum rejection
+        timeout-minutes: 45
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          python3 platforms/apple/tests/qualify_remote.py \
+            --work-dir target/apple-https-qualification --version "$VERSION" --source-commit "$SOURCE_SHA" \
+            --xcframework platforms/apple/Merman.xcframework
+
+      - name: Retain controlled HTTPS resolution and consumer evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: preflight-apple-https-qualification
+          if-no-files-found: error
+          path: |
+            target/apple-https-qualification/qualification.json
+            target/apple-https-qualification/*.log
+            target/apple-https-qualification/proof/qualification.json
+            target/apple-https-qualification/proof/installed/*.json
+            target/apple-https-qualification/proof/installed/*/consumer/Package.resolved
 
   web-npm-dry-run:
     needs: validate-inputs
@@ -807,6 +846,18 @@ jobs:
 
       - name: Verify and smoke web package
         run: npm run smoke --prefix platforms/web
+
+      - name: Install isolated browser consumer tools
+        run: |
+          npm ci --include=dev --prefix playground
+          npm ci --include=dev --prefix playground/tests
+          npm run install:browser:chromium --prefix playground/tests
+
+      - name: Test installed browser consumer contracts
+        run: node --test platforms/web/scripts/installed-browser-consumer.test.mjs
+
+      - name: Qualify installed Web packages in Chromium and Worker
+        run: node platforms/web/scripts/installed-browser-consumer.mjs
 
       - name: Check final Web package WASM size budgets
         run: |
@@ -985,9 +1036,27 @@ jobs:
           - target: linux-x64-gnu
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
+            docker_platform: linux/amd64
+            libc: glibc
+            consumer_image: node:22.0.0-bullseye
           - target: linux-x64-musl
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-musl
+            docker_platform: linux/amd64
+            libc: musl
+            consumer_image: node:22.0.0-alpine3.19
+          - target: linux-arm64-gnu
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            docker_platform: linux/arm64
+            libc: glibc
+            consumer_image: node:22.0.0-bullseye
+          - target: linux-arm64-musl
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-musl
+            docker_platform: linux/arm64
+            libc: musl
+            consumer_image: node:22.0.0-alpine3.19
           - target: win32-x64-msvc
             runner: windows-2025-vs2026
             rust_target: x86_64-pc-windows-msvc
@@ -997,42 +1066,47 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
-      - name: Verify release versions
+      - name: Verify pinned release source and versions
         env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
-        run: python3 scripts/release-version.py check --version "$VERSION"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         uses: Swatinem/rust-cache@v2.9.2
         with:
           workspaces: crates/merman-node
 
-      - name: Build, package, and smoke musl target
-        if: matrix.target == 'linux-x64-musl'
+      - name: Build and package musl target on its matching CPU
+        if: matrix.libc == 'musl'
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          DOCKER_PLATFORM: ${{ matrix.docker_platform }}
         run: |
           set -euo pipefail
           docker build \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             --file platforms/node/Dockerfile.musl \
             --build-arg NODE_IMAGE=node:24.13.1-alpine3.22 \
             --build-arg RUST_IMAGE=rust:1.95-alpine3.22 \
             --tag merman-node-musl:ci \
             platforms/node
           docker run --rm \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             -e CARGO_INCREMENTAL=0 \
             -e TARGET="$TARGET" \
-            -e VERSION="$VERSION" \
             -v "$GITHUB_WORKSPACE:/work" \
             -v "$RUNNER_TEMP:/runner-temp" \
             -w /work \
@@ -1045,39 +1119,33 @@ jobs:
               package_root=/runner-temp/node-packages
               artifact_dir=/runner-temp/node-platform-artifact
               smoke_tarballs=/runner-temp/node-smoke-tarballs
-              smoke_root=/runner-temp/node-install-smoke
               node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
               node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
-              mkdir -p "$artifact_dir" "$smoke_tarballs" "$smoke_root"
+              mkdir -p "$artifact_dir" "$smoke_tarballs"
               npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" >/runner-temp/node-root-pack.json
               npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" >/runner-temp/node-target-pack.json
               cp "$artifact_dir"/*.tgz "$smoke_tarballs"/
               test "$(find "$artifact_dir" -maxdepth 1 -name "*.tgz" -type f | wc -l | tr -d " ")" = 1
-              cd "$smoke_root"
-              npm init -y >/dev/null
-              npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
-              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$VERSION" --target "$TARGET"
             '
 
-      - name: Build, package, and smoke GNU target
-        if: matrix.target == 'linux-x64-gnu'
+      - name: Build and package GNU target at glibc 2.31 on its matching CPU
+        if: matrix.libc == 'glibc'
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          DOCKER_PLATFORM: ${{ matrix.docker_platform }}
         run: |
           set -euo pipefail
           docker build \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             --file platforms/node/Dockerfile.gnu \
             --build-arg NODE_IMAGE=node:24.13.1-bullseye \
             --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
           docker run --rm \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             -e CARGO_INCREMENTAL=0 \
             -e TARGET="$TARGET" \
-            -e VERSION="$VERSION" \
             -v "$GITHUB_WORKSPACE:/work" \
             -v "$RUNNER_TEMP:/runner-temp" \
             -w /work \
@@ -1091,21 +1159,48 @@ jobs:
               package_root=/runner-temp/node-packages
               artifact_dir=/runner-temp/node-platform-artifact
               smoke_tarballs=/runner-temp/node-smoke-tarballs
-              smoke_root=/runner-temp/node-install-smoke
               node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
               node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
-              mkdir -p "$artifact_dir" "$smoke_tarballs" "$smoke_root"
+              mkdir -p "$artifact_dir" "$smoke_tarballs"
               npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" >/runner-temp/node-root-pack.json
               npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" >/runner-temp/node-target-pack.json
               cp "$artifact_dir"/*.tgz "$smoke_tarballs"/
-              cd "$smoke_root"
-              npm init -y >/dev/null
-              npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
-              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$VERSION" --target "$TARGET"
+            '
+
+      - name: Resolve only the root package and execute Linux consumer on Node 22.0.0
+        if: startsWith(matrix.target, 'linux-')
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          DOCKER_PLATFORM: ${{ matrix.docker_platform }}
+          CONSUMER_IMAGE: ${{ matrix.consumer_image }}
+          TARGET_LIBC: ${{ matrix.libc }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --platform "$DOCKER_PLATFORM" \
+            -e TARGET="$TARGET" -e VERSION="$VERSION" -e TARGET_LIBC="$TARGET_LIBC" \
+            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -v "$RUNNER_TEMP:/runner-temp" \
+            -w /runner-temp \
+            "$CONSUMER_IMAGE" \
+            sh -c '
+              set -eu
+              test "$(node --version)" = "v22.0.0"
+              if [ "$TARGET_LIBC" = musl ]; then
+                apk add --no-cache python3
+              else
+                test "$(node -p "process.report.getReport().header.glibcVersionRuntime")" = "2.31"
+              fi
+              python3 /source/platforms/node/scripts/install-root-package.py \
+                --tarball-dir /runner-temp/node-smoke-tarballs \
+                --project /runner-temp/node-install-smoke --version "$VERSION" --target "$TARGET"
+              node /source/platforms/node/scripts/smoke-installed-package.mjs \
+                --project /runner-temp/node-install-smoke --version "$VERSION" --target "$TARGET"
             '
 
       - name: Setup Node
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
@@ -1113,42 +1208,69 @@ jobs:
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install npm toolchain
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
-      - name: Install Node build dependencies
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+      - name: Install pinned Node build dependencies
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: npm ci --prefix platforms/node
 
-      - name: Build and probe Node native package
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+      - name: Build and probe native package
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: node platforms/node/scripts/build-candidate.mjs --candidate napi --target "${{ matrix.target }}"
 
-      - name: Pack and install-smoke Node native package
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+      - name: Assemble and verify target package
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-packages"
+          node platforms/node/scripts/assemble-packages.mjs \
+            --target "$TARGET" \
+            --output-root "$package_root"
+          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+
+      - name: Pack target package
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
           package_root="$RUNNER_TEMP/node-packages"
           artifact_dir="$RUNNER_TEMP/node-platform-artifact"
           smoke_tarballs="$RUNNER_TEMP/node-smoke-tarballs"
-          node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
-          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
           mkdir -p "$artifact_dir" "$smoke_tarballs"
           npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" > "$RUNNER_TEMP/node-root-pack.json"
           npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-target-pack.json"
           cp "$artifact_dir"/*.tgz "$smoke_tarballs/"
+          test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
 
+      - name: Setup Node minimum consumer runtime
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "22.0.0"
+          package-manager-cache: false
+
+      - name: Resolve only the root package and execute installed consumer on Node 22.0.0
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v22.0.0"
           smoke_root="$RUNNER_TEMP/node-install-smoke"
-          mkdir -p "$smoke_root"
-          cd "$smoke_root"
-          npm init -y >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
-          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" --project "$smoke_root" --version "$VERSION" --target "$TARGET"
+          python3 platforms/node/scripts/install-root-package.py \
+            --tarball-dir "$RUNNER_TEMP/node-smoke-tarballs" \
+            --project "$smoke_root" --version "$VERSION" --target "$TARGET"
+          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
+            --project "$smoke_root" \
+            --version "$VERSION" \
+            --target "$TARGET"
 
-      - name: Upload Node target package
+      - name: Upload target package
         uses: actions/upload-artifact@v7.0.2
         with:
           name: preflight-node-npm-${{ matrix.target }}
@@ -1433,11 +1555,67 @@ jobs:
             lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
             example tool hook
           dart run tool/abi3_contract_test.dart
+          dart run tool/native_assets_contract_test.dart
           dart run example/main.dart
           dart run tool/theme_authoring_smoke.dart
-          python3 ../../scripts/verify_flutter_pub_package.py \
-            --package-root . \
-            --max-compressed-mb 99
+
+      - name: Freeze target native assets
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          RELEASE_TAG: flutter-v${{ needs.validate-inputs.outputs.version }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/flutter_native_assets.py stage \
+            --native-root platforms/flutter/native \
+            --output "$RUNNER_TEMP/flutter-native-assets" \
+            --base-url "https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/" \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
+
+      - name: Package Flutter release artifact
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/flutter_release_archive.py pack \
+            --package-root platforms/flutter \
+            --native-manifest "$RUNNER_TEMP/flutter-native-assets/native-assets.json" \
+            --archive "$RUNNER_TEMP/merman-flutter-package.tar.gz" \
+            --receipt "$RUNNER_TEMP/merman-flutter-package.receipt.json" \
+            --source-sha "$SOURCE_SHA" \
+            --source-tree "$SOURCE_TREE" \
+            --version "$VERSION"
+
+      - name: Qualify the frozen thin package and relocated app
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/flutter_release_archive.py extract \
+            --archive "$RUNNER_TEMP/merman-flutter-package.tar.gz" \
+            --receipt "$RUNNER_TEMP/merman-flutter-package.receipt.json" \
+            --destination "$RUNNER_TEMP/flutter-thin-package" --require-thin \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
+          python3 scripts/verify_flutter_pub_package.py \
+            --package-root "$RUNNER_TEMP/flutter-thin-package" --require-thin --max-compressed-mb 99
+          python3 platforms/flutter/tool/qualify_packaged_app.py \
+            --package-root "$RUNNER_TEMP/flutter-thin-package" \
+            --assets-root "$RUNNER_TEMP/flutter-native-assets" \
+            --output "$RUNNER_TEMP/flutter-packaged-app.json"
+
+      - name: Retain Flutter candidate qualification
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: preflight-flutter-qualification
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/merman-flutter-package.receipt.json
+            ${{ runner.temp }}/flutter-packaged-app.json
 
   sdk-archives:
     needs:

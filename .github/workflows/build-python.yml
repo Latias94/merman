@@ -1,0 +1,379 @@
+name: Build Python Wheels
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Matching version tag for the nonpublishing candidate"
+        required: true
+        type: string
+      source_ref:
+        description: "Immutable candidate source commit"
+        required: true
+        type: string
+      artifact_prefix:
+        description: "Use python for release artifacts and preflight-python for preflight artifacts"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Each caller uses a distinct prefix; downloads stay within that wheel namespace.
+jobs:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_tree: ${{ steps.source.outputs.source_tree }}
+      source_date_epoch: ${{ steps.source.outputs.source_date_epoch }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          ARTIFACT_PREFIX: ${{ inputs.artifact_prefix }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          tag_re="^v${semver_re#^}"
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+
+          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$DISPATCH_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]] ||
+            fail "source_ref must be an immutable lowercase commit SHA."
+          [[ "$ARTIFACT_PREFIX" == python || "$ARTIFACT_PREFIX" == preflight-python ]] ||
+            fail "artifact_prefix must be python or preflight-python."
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+
+          VERSION="${RELEASE_TAG#v}"
+          [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
+
+          {
+            printf 'source_ref=%s\n' "$SOURCE_REF"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.source_ref }}
+          persist-credentials: false
+          fetch-depth: 1
+          fetch-tags: true
+
+      - name: Resolve immutable release source
+        id: source
+        shell: bash
+        env:
+          SOURCE_REF: ${{ steps.release.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse "HEAD^{commit}")"
+          source_tree="$(git rev-parse "HEAD^{tree}")"
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          test "$source_sha" = "$SOURCE_REF"
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
+            printf 'source_date_epoch=%s\n' "$source_date_epoch"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate-inputs
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-2025-vs2026
+            target: x86_64-pc-windows-msvc
+
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.validate-inputs.outputs.source_date_epoch }}
+      CARGO_BUILD_JOBS: "2"
+      WHEEL_TARGET: ${{ matrix.target }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned release source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          EXPECTED_SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "HEAD^{commit}")" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse "HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
+
+      - name: Use validated release metadata
+        id: version
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Setup Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Verify Python package version matches tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python scripts/release-version.py check --version "$VERSION"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+
+      - name: Build wheel
+        run: python scripts/build-python-uniffi-wheel.py --expected-target "$WHEEL_TARGET"
+
+      - name: Run final wheel install smoke
+        id: smoke-final-wheel
+        run: |
+          set -euo pipefail
+          mkdir -p target/python-wheel-proof
+          VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
+          python -m venv "$VENV_DIR"
+          if [ -f "$VENV_DIR/Scripts/python.exe" ]; then
+            PYTHON="$VENV_DIR/Scripts/python.exe"
+          else
+            PYTHON="$VENV_DIR/bin/python"
+          fi
+          "$PYTHON" -m pip install --no-index --no-deps target/python-wheels/merman-*.whl
+          cp platforms/python/merman/examples/wheel_smoke.py "$VENV_DIR/wheel_smoke.py"
+          (cd "$VENV_DIR" && "$PYTHON" -I wheel_smoke.py) | tee target/python-wheel-proof/python-current.json
+
+      - name: Setup minimum Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.9"
+
+      - name: Run minimum Python installed wheel smoke
+        run: |
+          set -euo pipefail
+          VENV_DIR="$RUNNER_TEMP/python-minimum-wheel-smoke"
+          python -m venv "$VENV_DIR"
+          if [ -f "$VENV_DIR/Scripts/python.exe" ]; then
+            PYTHON="$VENV_DIR/Scripts/python.exe"
+          else
+            PYTHON="$VENV_DIR/bin/python"
+          fi
+          "$PYTHON" -c 'import sys; assert sys.version_info[:2] == (3, 9)'
+          "$PYTHON" -m pip install --no-index --no-deps target/python-wheels/merman-*.whl
+          cp platforms/python/merman/examples/wheel_smoke.py "$VENV_DIR/wheel_smoke.py"
+          (cd "$VENV_DIR" && "$PYTHON" -I wheel_smoke.py) | tee target/python-wheel-proof/python-minimum.json
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ${{ inputs.artifact_prefix }}-wheel-${{ matrix.target }}
+          path: target/python-wheels/merman-*.whl
+          if-no-files-found: error
+
+      - name: Upload installed consumer proof
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ${{ inputs.artifact_prefix }}-qualification-${{ matrix.target }}
+          path: target/python-wheel-proof/
+          if-no-files-found: error
+
+  build-linux:
+    needs: validate-inputs
+    name: build (${{ matrix.target }}, glibc 2.28)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    container:
+      image: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            arch: x86_64
+            image: quay.io/pypa/manylinux_2_28_x86_64:2026.05.07-2@sha256:443eabd378e140996780a772e12c1a1ef10551da933fe76d74a1bab61f68a7b7
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch: aarch64
+            image: quay.io/pypa/manylinux_2_28_aarch64:2026.05.07-2@sha256:a435288af93def166dc59b5d052fa20ce59d76c6f38e8ad105767262d36843f0
+    defaults:
+      run:
+        shell: bash
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.validate-inputs.outputs.source_date_epoch }}
+      CARGO_BUILD_JOBS: "2"
+      WHEEL_TARGET: ${{ matrix.target }}
+      WHEEL_ARCH: ${{ matrix.arch }}
+      MANYLINUX_IMAGE: ${{ matrix.image }}
+      VERSION: ${{ needs.validate-inputs.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned release source and actual baseline
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          EXPECTED_SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "HEAD^{commit}")" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse "HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
+          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.28'
+          test "$(uname -m)" = "$WHEEL_ARCH"
+          printf '%s\n' /opt/python/cp314-cp314/bin >> "$GITHUB_PATH"
+          mkdir -p target/python-wheel-proof
+          printf '%s\n' "$MANYLINUX_IMAGE" "$EXPECTED_SOURCE_SHA" > target/python-wheel-proof/build-environment.txt
+
+      - name: Verify Python package version matches tag
+        run: python scripts/release-version.py check --version "$VERSION"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+
+      - name: Build wheel at the declared baseline
+        run: python scripts/build-python-uniffi-wheel.py --expected-target "$WHEEL_TARGET"
+
+      - name: Repair and audit Linux wheel
+        id: repair-linux-wheel
+        run: |
+          set -euo pipefail
+          python -m pip install auditwheel==6.8.2
+          python -m auditwheel show target/python-wheels/merman-*.whl | tee target/python-wheel-proof/audit-before.txt
+          mkdir -p target/python-wheels/repaired
+          python -m auditwheel repair --plat "manylinux_2_28_$WHEEL_ARCH" --only-plat \
+            target/python-wheels/merman-*.whl --wheel-dir target/python-wheels/repaired \
+            | tee target/python-wheel-proof/repair.txt
+          rm target/python-wheels/merman-*.whl
+          mv target/python-wheels/repaired/merman-*.whl target/python-wheels/
+          rmdir target/python-wheels/repaired
+          python -m auditwheel show target/python-wheels/merman-*.whl | tee target/python-wheel-proof/audit-final.txt
+
+      - name: Run final wheel install smoke at glibc 2.28
+        id: smoke-final-wheel
+        run: |
+          set -euo pipefail
+          VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
+          python -m venv "$VENV_DIR"
+          PYTHON="$VENV_DIR/bin/python"
+          "$PYTHON" -m pip install --no-index --no-deps target/python-wheels/merman-*.whl
+          cp platforms/python/merman/examples/wheel_smoke.py "$VENV_DIR/wheel_smoke.py"
+          (cd "$VENV_DIR" && "$PYTHON" -I wheel_smoke.py) | tee target/python-wheel-proof/python-current.json
+
+      - name: Run minimum Python installed wheel smoke at glibc 2.28
+        run: |
+          set -euo pipefail
+          VENV_DIR="$RUNNER_TEMP/python-minimum-wheel-smoke"
+          /opt/python/cp39-cp39/bin/python -m venv "$VENV_DIR"
+          PYTHON="$VENV_DIR/bin/python"
+          "$PYTHON" -c 'import sys; assert sys.version_info[:2] == (3, 9)'
+          "$PYTHON" -m pip install --no-index --no-deps target/python-wheels/merman-*.whl
+          cp platforms/python/merman/examples/wheel_smoke.py "$VENV_DIR/wheel_smoke.py"
+          (cd "$VENV_DIR" && "$PYTHON" -I wheel_smoke.py) | tee target/python-wheel-proof/python-minimum.json
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ${{ inputs.artifact_prefix }}-wheel-${{ matrix.target }}
+          path: target/python-wheels/merman-*.whl
+          if-no-files-found: error
+
+      - name: Upload audit and installed consumer proof
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ${{ inputs.artifact_prefix }}-qualification-${{ matrix.target }}
+          path: target/python-wheel-proof/
+          if-no-files-found: error
+
+  verify-wheel-metadata:
+    needs:
+      - validate-inputs
+      - build
+      - build-linux
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: ${{ inputs.artifact_prefix }}-wheel-*
+          path: wheels
+          merge-multiple: true
+
+      - name: Check wheel metadata
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          python -m pip install twine==7.0.0
+          wheels=(wheels/merman-*.whl)
+          python -m twine check "${wheels[@]}"
+          python scripts/python_wheel_licenses.py --require-release-set "${wheels[@]}"
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          for wheel in sorted(Path("wheels").glob("merman-*.whl")):
+              with ZipFile(wheel) as archive:
+                  names = archive.namelist()
+                  required_suffixes = (
+                      ".dist-info/licenses/LICENSE",
+                      ".dist-info/licenses/THIRD_PARTY_NOTICES.md",
+                  )
+                  for suffix in required_suffixes:
+                      if not any(name.endswith(suffix) for name in names):
+                          raise SystemExit(f"{wheel} is missing {suffix}")
+                  if not any(".dist-info/licenses/THIRD_PARTY_LICENSES/" in name for name in names):
+                      raise SystemExit(f"{wheel} is missing third-party license texts")
+          PY
