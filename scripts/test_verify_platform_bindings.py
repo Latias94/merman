@@ -73,7 +73,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
 
         self.assertIn('sdk: ">=3.10.0 <4.0.0"', pubspec)
         self.assertNotIn("flutter:", pubspec)
-        self.assertIn("Flutter 3.38 or newer", readme)
+        self.assertIn("Flutter 3.47.7 or newer", readme)
         for workflow in workflows:
             with self.subTest(workflow=workflow.name):
                 self.assertIn(
