@@ -1,15 +1,36 @@
-name: Release Android (AAR)
+name: Release Android (Maven and AAR)
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to upload the AAR to, for example v0.8.0-alpha.5"
+        description: "Selected version as vX.Y.Z; candidates need no existing tag"
         required: true
         type: string
+      source_ref:
+        description: "main, a full 40-character commit, or the matching release tag"
+        required: true
+        default: main
+        type: string
+      maven_group:
+        description: "Maven group; Central requires a namespace verified by its actual owner"
+        required: true
+        type: string
+      prepare_central_bundle:
+        description: "Sign the frozen publication in the protected maven-central environment; no Central upload"
+        default: false
+        type: boolean
+      publish:
+        description: "Upload qualified assets to an existing GitHub Release; never uploads to Central"
+        default: false
+        type: boolean
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-android-${{ inputs.release_tag }}-${{ inputs.maven_group }}
+  cancel-in-progress: false
 
 jobs:
   validate-inputs:
@@ -21,12 +42,17 @@ jobs:
       source_tree: ${{ steps.source.outputs.source_tree }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
+      maven_group: ${{ steps.release.outputs.maven_group }}
     steps:
       - name: Validate release inputs
         id: release
         shell: bash
         env:
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          PUBLISH: ${{ inputs.publish }}
+          PREPARE_CENTRAL_BUNDLE: ${{ inputs.prepare_central_bundle }}
+          MAVEN_GROUP: ${{ inputs.maven_group }}
         run: |
           set -euo pipefail
 
@@ -40,7 +66,22 @@ jobs:
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
 
           [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
-          SOURCE_REF="refs/tags/$RELEASE_TAG"
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+          if [ "$SOURCE_REF" = "main" ] || [ "$SOURCE_REF" = "refs/heads/main" ]; then
+            SOURCE_REF="refs/heads/main"
+          elif [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            :
+          elif [ "$SOURCE_REF" = "$RELEASE_TAG" ] || [ "$SOURCE_REF" = "refs/tags/$RELEASE_TAG" ]; then
+            SOURCE_REF="refs/tags/$RELEASE_TAG"
+          else
+            fail "source_ref must be main, a full commit, or the matching release tag."
+          fi
+          if [ "$PUBLISH" = "true" ]; then
+            [ "$SOURCE_REF" = "refs/tags/$RELEASE_TAG" ] || fail "publishing requires source_ref to be the matching immutable tag"
+            [ "$PREPARE_CENTRAL_BUNDLE" = "true" ] || fail "publishing requires the complete signed Maven handoff"
+          fi
+          group_re='^[A-Za-z_][A-Za-z_0-9]*(\.[A-Za-z_][A-Za-z_0-9]*)+$'
+          [[ "$MAVEN_GROUP" =~ $group_re ]] || fail "maven_group must be an explicit dotted Maven group ID."
 
           VERSION="${RELEASE_TAG#v}"
           [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
@@ -49,6 +90,7 @@ jobs:
             printf 'source_ref=%s\n' "$SOURCE_REF"
             printf 'release_tag=%s\n' "$RELEASE_TAG"
             printf 'version=%s\n' "$VERSION"
+            printf 'maven_group=%s\n' "$MAVEN_GROUP"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7.0.1
@@ -63,14 +105,19 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          SOURCE_REF: ${{ steps.release.outputs.source_ref }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse "HEAD^{commit}")"
           source_tree="$(git rev-parse "HEAD^{tree}")"
-          tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
-          tag_tree="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tree}")"
-          test "$source_sha" = "$tag_sha"
-          test "$source_tree" = "$tag_tree"
+          if [ "$SOURCE_REF" = "refs/tags/$RELEASE_TAG" ]; then
+            tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+            tag_tree="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tree}")"
+            test "$source_sha" = "$tag_sha"
+            test "$source_tree" = "$tag_tree"
+          elif [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            test "$source_sha" = "$SOURCE_REF"
+          fi
           {
             printf 'source_sha=%s\n' "$source_sha"
             printf 'source_tree=%s\n' "$source_tree"
@@ -149,7 +196,7 @@ jobs:
           ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
         run: |
           set -euo pipefail
-          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35" "build-tools;35.0.0"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build Android native libraries
@@ -162,30 +209,154 @@ jobs:
         run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
 
       - name: Publish to the local Maven staging repository
-        run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+        env:
+          MAVEN_GROUP: ${{ needs.validate-inputs.outputs.maven_group }}
+        run: platforms/android/gradlew -p platforms/android "-PmermanMavenGroup=$MAVEN_GROUP" publishReleasePublicationToLocalStagingRepository --stacktrace --max-workers=2
 
       - name: Verify Maven publication contract
-        run: python3 scripts/verify-platform-bindings.py --verify-android-maven
+        env:
+          MAVEN_GROUP: ${{ needs.validate-inputs.outputs.maven_group }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/verify-platform-bindings.py --verify-android-maven --android-maven-group "$MAVEN_GROUP" --android-maven-version "$VERSION"
+
+      - name: Prepare selected-version Maven repository archive
+        env:
+          MAVEN_GROUP: ${{ needs.validate-inputs.outputs.maven_group }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/android_package.py package --repository platforms/android/build/repo --group-id "$MAVEN_GROUP" --version "$VERSION" --output-dir target/release-assets
+
+      - name: Enable KVM access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Qualify external Maven app on a 16 KB device
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        env:
+          MAVEN_GROUP: ${{ needs.validate-inputs.outputs.maven_group }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis_ps16k
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-linux-hw-accel: false
+          script: |
+            test "$(adb shell getconf PAGE_SIZE | tr -d '\r')" = "16384"
+            python3 scripts/android_package.py qualify --archive "target/release-assets/merman-android-${VERSION}-maven.zip" --group-id "$MAVEN_GROUP" --version "$VERSION" --work-dir "$RUNNER_TEMP/merman-maven-consumer" --android-ndk-home "$ANDROID_NDK_HOME" --zipalign "$ANDROID_HOME/build-tools/35.0.0/zipalign" --connected
 
       - name: Prepare release asset
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
+          MAVEN_GROUP: ${{ needs.validate-inputs.outputs.maven_group }}
         run: |
           set -euo pipefail
           mkdir -p target/release-assets
-          staged_aar="platforms/android/build/repo/io/merman/merman-android/${VERSION}/merman-android-${VERSION}.aar"
+          group_path="${MAVEN_GROUP//./\/}"
+          staged_aar="platforms/android/build/repo/${group_path}/merman-android/${VERSION}/merman-android-${VERSION}.aar"
           test -f "$staged_aar"
           cp "$staged_aar" "target/release-assets/merman-android-${RELEASE_TAG}.aar"
 
-      - name: Upload AAR artifact
+      - name: Retain candidate Maven publication and AAR
         uses: actions/upload-artifact@v7.0.2
         with:
           name: merman-android-aar
-          path: target/release-assets/*.aar
+          path: target/release-assets/*
+          if-no-files-found: error
+
+  central-bundle:
+    if: ${{ inputs.prepare_central_bundle }}
+    needs: [validate-inputs, build]
+    runs-on: ubuntu-24.04
+    environment: maven-central
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted signing operator
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Checkout selected facade as data
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          path: selected-source
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: merman-android-aar
+          path: target/release-assets
+
+      - name: Verify immutable signing source and configured namespace
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          EXPECTED_SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          MAVEN_GROUP: ${{ needs.validate-inputs.outputs.maven_group }}
+          VERIFIED_GROUP: ${{ vars.ANDROID_MAVEN_VERIFIED_GROUP }}
+        run: |
+          set -euo pipefail
+          test "$(git -C selected-source rev-parse 'HEAD^{commit}')" = "$EXPECTED_SOURCE_SHA"
+          test "$(git -C selected-source rev-parse 'HEAD^{tree}')" = "$EXPECTED_SOURCE_TREE"
+          test -n "$VERIFIED_GROUP"
+          test "$MAVEN_GROUP" = "$VERIFIED_GROUP"
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+
+      - name: Install verification NDK
+        run: |
+          set -euo pipefail
+          ndk_version="$(python3 trusted/platforms/android/build-android.py --print-version ndk)"
+          sdkmanager --install "ndk;$ndk_version"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
+
+      - name: Sign frozen Maven publication and prepare standard Central bundle
+        env:
+          MAVEN_GROUP: ${{ needs.validate-inputs.outputs.maven_group }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SIGNING_KEY: ${{ secrets.ANDROID_MAVEN_SIGNING_KEY }}
+          SIGNING_KEY_ID: ${{ vars.ANDROID_MAVEN_SIGNING_KEY_ID }}
+          MERMAN_ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_MAVEN_SIGNING_PASSWORD }}
+          GNUPGHOME: ${{ runner.temp }}/merman-android-gnupg
+        run: |
+          set -euo pipefail
+          archive="target/release-assets/merman-android-${VERSION}-maven.zip"
+          test "$(sha256sum "$archive" | cut -d ' ' -f 1)" = "$(cat "$archive.sha256")"
+          python3 -m zipfile -e "$archive" target/signing/repository
+          mkdir -m 700 "$GNUPGHOME"
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          printf '%s' "$SIGNING_KEY" | gpg --batch --import
+          python3 trusted/scripts/android_package.py sign --repository target/signing/repository --android-root selected-source/platforms/android --group-id "$MAVEN_GROUP" --version "$VERSION" --signing-key-id "$SIGNING_KEY_ID" --android-ndk-home "$ANDROID_NDK_HOME"
+          python3 trusted/scripts/android_package.py package --repository target/signing/repository --android-root selected-source/platforms/android --group-id "$MAVEN_GROUP" --version "$VERSION" --output-dir target/signed-release-assets --android-ndk-home "$ANDROID_NDK_HOME" --central-bundle
+
+      - name: Retain signed Maven handoff
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-android-signed-maven
+          path: target/signed-release-assets/*
+          if-no-files-found: error
 
   upload-release:
-    needs: [validate-inputs, build]
+    if: ${{ inputs.publish }}
+    needs: [validate-inputs, build, central-bundle]
     runs-on: ubuntu-24.04
     environment: github-release
     permissions:
@@ -195,6 +366,12 @@ jobs:
         uses: actions/download-artifact@v8.0.2
         with:
           name: merman-android-aar
+          path: target/release-assets
+
+      - name: Download signed Maven handoff
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: merman-android-signed-maven
           path: target/release-assets
 
       - name: Upload AAR to GitHub Release
@@ -211,11 +388,29 @@ jobs:
             echo "::error::Release tag moved after artifact verification." >&2
             exit 1
           }
-          asset="$(find target/release-assets -maxdepth 1 -type f -name '*.aar' -print -quit)"
-          test -n "$asset"
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$asset"
-          else
-            echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading AAR assets."
-            exit 1
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/android-release.json"
+          jq -e '.draft == false' "$RUNNER_TEMP/android-release.json" >/dev/null
+          existing_dir="$(mktemp -d)"
+          trap 'rm -rf "$existing_dir"' EXIT
+          missing_assets=()
+          for asset in target/release-assets/*; do
+            name="${asset##*/}"
+            if jq -e --arg name "$name" '.assets[] | select(.name == $name)' "$RUNNER_TEMP/android-release.json" >/dev/null; then
+              curl --disable --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+                --connect-timeout 30 --max-time 180 \
+                "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name" --output "$existing_dir/$name"
+              cmp "$asset" "$existing_dir/$name"
+            else
+              missing_assets+=("$asset")
+            fi
+          done
+          if test "${#missing_assets[@]}" -gt 0; then
+            gh release upload "$RELEASE_TAG" "${missing_assets[@]}"
           fi
+          for asset in target/release-assets/*; do
+            name="${asset##*/}"
+            curl --disable --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+              --connect-timeout 30 --max-time 180 \
+              "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name" --output "$existing_dir/$name"
+            cmp "$asset" "$existing_dir/$name"
+          done

@@ -2,7 +2,10 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-> Use the repository module or an AAR from a matching GitHub release; Kotlin classes and `libmerman_android_jni.so` must come from the same release.
+> Published `0.9.2` uses the matching GitHub Release AAR. This checkout prepares the next
+> Maven delivery, including math, for qualification. No Maven Central namespace or published
+> coordinate is claimed here. Kotlin classes and `libmerman_android_jni.so` must come from
+> the same publication.
 
 ## Requirements
 
@@ -10,9 +13,11 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 - Java 17 toolchain
 - `arm64-v8a` or `x86_64`
 
-At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The default Android AAR carries the default native prebuilt SKU: SVG, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
+At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The next default Android AAR carries SVG with math, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
 
-This guide targets Merman `0.9.2` with Mermaid 12.1 and schema-3 ASCII output. See the [changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks); keep the Kotlin classes and native slices from one AAR together.
+The published installation example below targets Merman `0.9.2`. Maven candidate commands
+target this checkout's selected version, currently `0.9.3`. See the [changelog](CHANGELOG.md)
+and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
 
 Compiled-theme APIs in this checkout are unreleased. Published `0.9.2` retains Options JSON
 schema `2`; use its tagged guide and matching AAR. See the
@@ -47,7 +52,50 @@ include(":merman-android")
 project(":merman-android").projectDir = file("path/to/merman/platforms/android")
 ```
 
-Then add `implementation(project(":merman-android"))`. No Maven coordinates are currently supported for remote resolution.
+Then add `implementation(project(":merman-android"))`.
+
+## Resolve A Candidate Maven Publication
+
+Extract `merman-android-<version>-maven.zip` into a local directory. The ZIP is a complete
+Maven repository for exactly the selected version: AAR, POM, Gradle module metadata, sources,
+API documentation, available detached signatures, and checksum sidecars. Other staged versions
+are excluded, and repository metadata lists only the selected version. The POM and Gradle
+metadata retain transitive dependencies, so a Maven dependency also resolves the Kotlin runtime.
+
+Add the extracted repository in the application's `settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        exclusiveContent {
+            forRepository {
+                maven { url = uri(providers.gradleProperty("mermanRepository").get()) }
+            }
+            filter {
+                includeModule(providers.gradleProperty("mermanGroup").get(), "merman-android")
+            }
+        }
+    }
+}
+```
+
+Declare the exact selected version in `app/build.gradle.kts`:
+
+```kotlin
+dependencies {
+    val group = providers.gradleProperty("mermanGroup").get()
+    val version = providers.gradleProperty("mermanVersion").get()
+    implementation("$group:merman-android:$version")
+}
+```
+
+Pass `-PmermanRepository=/absolute/path/to/extracted/repository`,
+`-PmermanGroup=<selected-group>` and `-PmermanVersion=<selected-version>` to Gradle.
+After a separately authorized Central release is available, `mavenCentral()` resolves that same
+coordinate without the local repository. `io.merman` remains a local build default; it is not
+evidence of Central ownership.
 
 ## Render A Diagram
 
@@ -88,7 +136,7 @@ reports an explicit cancellation request, while deadline expiry is reported by e
 an operation that already cloned the control, but using the released object for a new operation is
 a typed invalid-argument failure.
 
-`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis. The default AAR supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF helpers remain available for source-built artifacts that enable those capabilities; the default AAR reports `MISSING_CAPABILITY` with the exact capability ID. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID.
+`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis. The next default AAR supports SVG with math, ASCII, semantic/layout operations, analysis, validation, and document analysis. PNG, JPEG and PDF remain source-build opt-ins; the default AAR reports `MISSING_CAPABILITY` with the exact codec capability ID. Published `0.9.2` also requires a source opt-in for math. The `constrained` resource profile continues to reject the native math backend even when the artifact includes math; use the default or `interactive` profile for formulas. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID.
 
 Resource failures always expose lossless `exactResourceDetails`; its `actual` and `max` fields are
 canonical unsigned decimal strings covering the complete native `u64` range. The existing
@@ -206,7 +254,9 @@ The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and 
 - [Diagram coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 - [GitHub Releases](https://github.com/Latias94/merman/releases)
 
-The Gradle module defines local Maven publication metadata for repository builds.
+The Android release owner and qualification commands are documented in
+[`RELEASING.md`](RELEASING.md). They prepare local and CI candidates without publishing by
+default. Central upload remains a separate, authorized operator action.
 
 ## License And Notices
 

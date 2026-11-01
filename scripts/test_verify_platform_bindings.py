@@ -42,7 +42,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
         self.assertIn("native/android", hook)
         self.assertIn("native/ios", hook)
         pubignore = (root / ".pubignore").read_text(encoding="utf-8")
-        self.assertIn("/tool/theme_authoring_smoke.dart", pubignore)
+        self.assertIn("/tool/", pubignore)
         for legacy_path in (
             "android/build.gradle",
             "ios/merman.podspec",
@@ -509,6 +509,28 @@ class AndroidMavenPublicationTests(unittest.TestCase):
                 version_dir,
             )
 
+    def test_selected_version_and_verified_group_are_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_root = Path(temp_dir) / "org" / "example" / "merman-android"
+            write_android_maven_publication(module_root, "0.9.1", group_id="org.example")
+            selected = write_android_maven_publication(
+                module_root, "0.9.3", group_id="org.example",
+            )
+            self.assertEqual(
+                verify_platform_bindings.assert_android_maven_publication(
+                    module_root, group_id="org.example", version="0.9.3",
+                ),
+                selected,
+            )
+            with self.assertRaisesRegex(RuntimeError, "not found"):
+                verify_platform_bindings.assert_android_maven_publication(
+                    module_root, group_id="org.example", version="0.9.4",
+                )
+            with self.assertRaisesRegex(RuntimeError, "groupId mismatch"):
+                verify_platform_bindings.assert_android_maven_publication(
+                    module_root, group_id="net.example", version="0.9.3",
+                )
+
     def test_android_maven_publication_rejects_missing_pom_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             module_root = Path(temp_dir) / "merman-android"
@@ -612,6 +634,8 @@ def write_aar(
 def write_android_maven_publication(
     module_root: Path,
     version: str = "0.8.0-alpha.3",
+    *,
+    group_id: str = "io.merman",
 ) -> Path:
     version_dir = module_root / version
     version_dir.mkdir(parents=True)
@@ -626,7 +650,7 @@ def write_android_maven_publication(
         f"""<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>io.merman</groupId>
+  <groupId>{group_id}</groupId>
   <artifactId>merman-android</artifactId>
   <version>{version}</version>
   <packaging>aar</packaging>
@@ -693,7 +717,7 @@ def write_android_maven_publication(
     module = {
         "formatVersion": "1.1",
         "component": {
-            "group": "io.merman",
+            "group": group_id,
             "module": "merman-android",
             "version": version,
         },

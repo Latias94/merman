@@ -110,6 +110,13 @@ class AndroidToolchainTests(unittest.TestCase):
         self.assertEqual(recipe.target_name, "merman_android_jni")
         self.assertEqual(recipe.crate_types, ("cdylib",))
 
+    def test_default_android_product_includes_math_without_codecs_or_native_runtime(self) -> None:
+        recipe = build_android.ANDROID_NATIVE_RECIPE
+        self.assertIn("math", recipe.features)
+        for feature in ("jpeg", "native-runtime", "pdf", "png"):
+            with self.subTest(feature=feature):
+                self.assertNotIn(feature, recipe.features)
+
     def test_flutter_android_recipe_is_a_jni_free_c_abi_build(self) -> None:
         recipe = build_android.FLUTTER_ANDROID_NATIVE_RECIPE
 
@@ -128,7 +135,7 @@ class AndroidToolchainTests(unittest.TestCase):
         self.assertIn("analysis", recipe.features)
         self.assertIn("ascii", recipe.features)
         self.assertNotIn("jpeg", recipe.features)
-        self.assertNotIn("math", recipe.features)
+        self.assertIn("math", recipe.features)
         self.assertNotIn("native-runtime", recipe.features)
         self.assertNotIn("pdf", recipe.features)
         self.assertNotIn("png", recipe.features)
