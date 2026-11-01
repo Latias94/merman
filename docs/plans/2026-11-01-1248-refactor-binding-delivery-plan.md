@@ -168,6 +168,12 @@ requires a controlled HTTPS endpoint trusted by SwiftPM; keep production HTTPS v
 Local HTTP is sufficient for the Dart acquisition fixture. Public registry resolution remains
 a later authorized rollout proof, distinct from candidate handoff qualification.
 
+Execution found that the full release preflight correctly rejects main's `Unreleased`
+changelogs. Its explicit `bindings` scope therefore qualifies these same host consumers
+without release-readiness metadata or unrelated CLI/VSIX/SDK release lanes. The default
+`release` scope retains every release gate, and only that complete scope can issue reusable
+release-preflight evidence. This work does not assign a release date or bump main's version.
+
 Final math size deltas, native loading behavior and toolchain floors require implementation
 measurements. The initial Python Linux candidate is glibc 2.28. If the pinned dependency
 graph cannot meet it, investigate the causal dependency before changing the advertised floor.

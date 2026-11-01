@@ -255,6 +255,7 @@ jobs:
           EXPECTED_SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           test "$(git rev-parse "HEAD^{commit}")" = "$EXPECTED_SOURCE_SHA"
           test "$(git rev-parse "HEAD^{tree}")" = "$EXPECTED_SOURCE_TREE"
           test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.28'

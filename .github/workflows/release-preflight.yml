@@ -3,6 +3,14 @@ name: Release Preflight
 on:
   workflow_dispatch:
     inputs:
+      scope:
+        description: "release requires release-ready metadata; bindings qualifies unreleased host products only"
+        type: choice
+        required: true
+        default: release
+        options:
+          - release
+          - bindings
       version:
         description: "Release version without the leading v, for example 0.8.0-alpha.5"
         required: true
@@ -48,6 +56,7 @@ jobs:
         env:
           DISPATCH_VERSION: ${{ inputs.version }}
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          DISPATCH_SCOPE: ${{ inputs.scope }}
         run: |
           set -euo pipefail
 
@@ -56,6 +65,8 @@ jobs:
             exit 1
           }
 
+          [[ "$DISPATCH_SCOPE" == release || "$DISPATCH_SCOPE" == bindings ]] ||
+            fail "scope must be release or bindings."
           if ! VERSION="$(python3 scripts/release-version.py canonical --version "$DISPATCH_VERSION")"; then
             fail "version must match X.Y.Z or X.Y.Z-alpha.N/beta.N/rc.N."
           fi
@@ -111,9 +122,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
+          QUALIFICATION_SCOPE: ${{ inputs.scope }}
         run: |
           {
             printf '## Preflight only: no packages published\n\n'
+            printf 'Selected scope: %s. The bindings scope qualifies unreleased host products and never issues a release-preflight receipt.\n\n' "$QUALIFICATION_SCOPE"
             printf 'This run validates %s. Successful builds and Actions artifacts do not make its platform packages available.\n\n' "$RELEASE_TAG"
             printf 'Publish each selected channel through its owner, verify public delivery, and record deferred channels at their existing published versions.\n\n'
             printf '[Publishing owners and channel checklist](https://github.com/%s/blob/%s/docs/release/RELEASING.md#release-workflows)\n' "$GITHUB_REPOSITORY" "$WORKFLOW_SHA"
@@ -121,6 +134,7 @@ jobs:
 
   versions-and-packages:
     needs: validate-inputs
+    if: ${{ inputs.scope == 'release' }}
     name: versions-and-packages
     runs-on: ubuntu-24.04
     steps:
@@ -308,6 +322,7 @@ jobs:
 
   mermaid-reference-materialized:
     needs: validate-inputs
+    if: ${{ inputs.scope == 'release' }}
     name: mermaid-reference-materialized
     runs-on: ubuntu-24.04
     steps:
@@ -401,6 +416,7 @@ jobs:
 
   cli-and-lsp-archives:
     needs: validate-inputs
+    if: ${{ inputs.scope == 'release' }}
     name: cli-and-lsp-archives (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -1326,6 +1342,7 @@ jobs:
 
   vscode-extension-dry-run:
     needs: validate-inputs
+    if: ${{ inputs.scope == 'release' }}
     name: vscode-extension-dry-run (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -1618,6 +1635,7 @@ jobs:
             ${{ runner.temp }}/flutter-packaged-app.json
 
   sdk-archives:
+    if: ${{ inputs.scope == 'release' }}
     needs:
       - validate-inputs
       - versions-and-packages
@@ -1630,6 +1648,7 @@ jobs:
       release_tag: ${{ needs.validate-inputs.outputs.release_tag }}
 
   release-preflight-evidence:
+    if: ${{ inputs.scope == 'release' }}
     needs:
       - validate-inputs
       - versions-and-packages

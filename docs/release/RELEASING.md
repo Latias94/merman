@@ -584,7 +584,7 @@ VERSION="<version>"
 SOURCE_SHA="$(git rev-parse HEAD)"
 PREFLIGHT_REF="<reviewed branch or tag at the intended workflow commit>"
 gh workflow run release-preflight.yml --ref "$PREFLIGHT_REF" \
-  -f version="$VERSION" -f source_ref="$SOURCE_SHA" \
+  -f scope=release -f version="$VERSION" -f source_ref="$SOURCE_SHA" \
   -f android_maven_group="io.merman.preflight"
 ```
 
@@ -604,6 +604,13 @@ separate manual workflow after the primary release exists; the selected prefligh
 `head_sha` equal to the tag commit.
 
 `android_maven_group` is a nonpublishing preflight coordinate, not a Central namespace claim.
+For an unreleased main-line binding change, dispatch the same workflow with `scope=bindings`.
+That scope runs the Python, Android, Apple, Web, Node and Flutter candidate consumers at the
+selected immutable source. It omits release-readiness metadata, CLI/LSP, VSIX and C/WASI release
+jobs and never issues a reusable `release-preflight-*` receipt. Keep the source's `Unreleased`
+changelog and current version projections intact. Use the default `scope=release` and complete
+all release gates before publishing; a successful binding candidate is not release authorization.
+
 Python's Linux lanes use digest-pinned manylinux_2_28 images on native ARM64/x86-64 runners, assert
 the actual glibc 2.28 baseline, repair/audit the final wheel and install it on Python 3.9 and the
 current owner runtime at that floor. macOS ARM64/x86-64 and Windows x86-64 MSVC execute the same

@@ -1350,6 +1350,10 @@ jobs:
         self.assertEqual(len(targets), len(set(targets)))
         self.assertIn("--expected-target \"$WHEEL_TARGET\"", owner_builds)
         self.assertIn("test \"$(getconf GNU_LIBC_VERSION)\" = 'glibc 2.28'", owner_builds)
+        linux = workflow_job(reusable, "build-linux")
+        trust_checkout = 'git config --global --add safe.directory "$GITHUB_WORKSPACE"'
+        self.assertLess(linux.index(trust_checkout), linux.index('git rev-parse "HEAD^{commit}"'))
+        self.assertNotIn('safe.directory "*"', linux)
         self.assertIn('--plat "manylinux_2_28_$WHEEL_ARCH" --only-plat', owner_builds)
         images = r"image: (quay\.io/pypa/manylinux_2_28_\S+@sha256:[0-9a-f]{64})"
         self.assertEqual(len(re.findall(images, owner_builds)), 2)
