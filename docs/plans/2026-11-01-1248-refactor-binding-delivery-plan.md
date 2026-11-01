@@ -333,3 +333,29 @@ checks and reviews pass, and remaining public rollout prerequisites are explicit
 artifact is replaced and no maintenance branch is changed. Generated projections follow
 their authority, and the diff contains no dead experiments or unrelated user work. The PR
 explains installation outcomes, compatibility changes, measurements and material limitations.
+
+---
+
+## Execution Record
+
+Implementation is on `refactor/binding-delivery-20261101`, reviewed in
+[PR #266](https://github.com/Latias94/merman/pull/266). U1–U6 are implemented in focused
+commits. The product decisions are recorded in ADR-0101, and the user entry is
+`docs/release/PREBUILT_PRODUCTS.md`.
+
+U7 combines local contract checks with the existing read-only hosted owners. Local
+verification covers the 57-cell feature matrix, native ABI/binding and dependency closures,
+generated legal material, cargo-deny, the complete required SVG structure comparison,
+installed Web/Node consumers, and the Apple five-architecture build and macOS consumer.
+Independent reviews cover correctness, maintainability, security, API contracts, workflow
+ownership and failure handling. Actual hosted qualification has also exercised all five
+Python targets on current/minimum Python with the final metadata/license aggregation,
+all seven Node native targets, Node-WASM, the five Web packages, Android's external Maven
+consumer on a 16 KB device, and Apple's iOS/Simulator and HTTPS consumers.
+
+Execution exposed issues in unattended Apple certificate cleanup, minimum-Node npm
+selection, the ARM64 musl linker invocation, and Linux ARM64 Flutter local-build paths;
+the fixes remain part of this branch. Final candidate identity, complete job results,
+Flutter's packaged-app proof and any unresolved qualification failures are maintained in
+the PR's verification section. An earlier successful consumer does not by itself qualify
+a later source revision. This record does not certify a public release or authorize one.
