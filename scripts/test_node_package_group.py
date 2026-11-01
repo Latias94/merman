@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -71,6 +73,53 @@ class NpmCliTests(unittest.TestCase):
 
 
 class NodePackageGroupTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node") and shutil.which(npm_executable()), "requires Node/npm")
+    def test_root_only_install_resolves_one_exact_optional_dependency_and_records_lock(self) -> None:
+        target = subprocess.check_output(
+            ["node", "--input-type=module", "--eval",
+             "import { resolveNodeTarget } from './platforms/node/src/native-loader.mjs';"
+             "process.stdout.write(resolveNodeTarget());"],
+            cwd=ROOT, text=True,
+        )
+        selected = next(item for item in self.descriptor["targets"] if item["target"] == target)
+        # A newer registry version must not replace the loader's exact optional dependency.
+        self.version = "99.0.0"
+        self._write_package(selected["name"], role="platform", target=selected)
+        self.version = self.descriptor["version"]
+        project = self.artifacts / "consumer"
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "platforms/node/scripts/install-root-package.py"),
+             "--tarball-dir", str(self.artifacts), "--project", str(project),
+             "--target", target, "--version", self.version],
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertTrue(evidence["root_only"])
+        self.assertEqual(evidence["installed_platform_packages"], [selected["name"]])
+        self.assertEqual(evidence["optional_dependency_version"], self.version)
+        lock = json.loads((project / "package-lock.json").read_text())
+        locked = lock["packages"][f"node_modules/{selected['name']}"]
+        self.assertEqual(locked["version"], self.version)
+        self.assertTrue(locked["optional"])
+        self.assertEqual(locked["os"], [selected["os"]])
+        self.assertEqual(locked["cpu"], [selected["cpu"]])
+        if "libc" in selected:
+            # npm versions differ in whether they copy libc into package-lock.json.
+            installed = json.loads((project / "node_modules" / selected["name"] / "package.json").read_text())
+            self.assertEqual(installed["libc"], [selected["libc"]])
+        self.assertEqual((project / "node_modules" / selected["name"] / "merman.node").read_bytes(),
+                         b"native")
+
+    def test_linux_arm64_packages_are_part_of_the_exact_version_group(self) -> None:
+        targets = {item["target"]: item for item in self.descriptor["targets"]}
+        for libc, suffix in [("glibc", "gnu"), ("musl", "musl")]:
+            with self.subTest(libc=libc):
+                target = targets[f"linux-arm64-{suffix}"]
+                self.assertEqual(target["name"], f"@mermanjs/node-linux-arm64-{suffix}")
+                self.assertEqual((target["os"], target["cpu"], target["libc"]),
+                                 ("linux", "arm64", libc))
+
     def test_npm_executable_uses_cmd_on_windows(self) -> None:
         self.assertEqual(npm_executable(os_name="nt"), "npm.cmd")
         self.assertEqual(npm_executable(os_name="posix"), "npm")

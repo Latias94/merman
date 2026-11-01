@@ -1151,11 +1151,26 @@ jobs:
       - name: Check Python platform scripts
         run: |
           python3 -m py_compile \
+            scripts/android_package.py \
+            scripts/apple_package.py \
+            scripts/apple_qualify.py \
+            scripts/flutter_native_assets.py \
             scripts/verify-platform-bindings.py \
             scripts/build-python-uniffi-wheel.py \
             scripts/python_wheel_licenses.py \
             platforms/android/build-android.py \
+            platforms/apple/tests/qualify_remote.py \
+            platforms/flutter/tool/qualify_packaged_app.py \
             platforms/flutter/build-native.py
+
+      - name: Test native delivery helpers
+        run: >-
+          python3 -m unittest
+          scripts.test_android_package scripts.test_android_packaging_qualification
+          scripts.test_apple_package scripts.test_apple_qualify
+          platforms.apple.tests.test_qualify_remote
+          scripts.test_flutter_native_builder scripts.test_flutter_native_assets scripts.test_flutter_release_archive
+          scripts.test_flutter_packaged_app
 
       - name: Check shell scripts
         run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh
@@ -1195,6 +1210,10 @@ jobs:
 
       - name: Verify platform bindings
         run: python3 scripts/verify-platform-bindings.py
+
+      - name: Test Flutter target acquisition hook
+        working-directory: platforms/flutter
+        run: dart run tool/native_assets_contract_test.dart
 
   android-instrumentation:
     name: android-instrumentation
@@ -1291,6 +1310,11 @@ jobs:
         uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Test Python wheel delivery helpers
+        run: |
+          python -m unittest scripts.test_build_python_uniffi_wheel scripts.test_python_wheel_licenses
+          python -m unittest discover -s platforms/python/merman/tests -p 'test_wheel_smoke.py'
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

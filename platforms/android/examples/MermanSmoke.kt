@@ -25,6 +25,7 @@ fun runMermanSmoke() {
     )
     var measureCalls = 0
     val engine = MermanEngine(
+        optionsJson = """{"resources":{"profile":"interactive"}}""",
         services = MermanEngineServices(
             iconPackSet = iconPackSet,
             textMeasurer = {
@@ -45,6 +46,43 @@ fun runMermanSmoke() {
     }
     check(engine.analyzeJson("flowchart TD\nA --> B").isNotEmpty()) {
         "analysis smoke failed"
+    }
+    val mathSource = "flowchart TD\nA[\"\$\$x^2\$\$\"] --> B"
+    listOf(
+        "one-shot" to Merman.renderSvg(mathSource),
+        "reusable" to engine.renderSvg(mathSource),
+    ).forEach { (consumer, svg) ->
+        val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+        factory.isNamespaceAware = true
+        val document = factory.newDocumentBuilder()
+            .parse(java.io.ByteArrayInputStream(svg.toByteArray(Charsets.UTF_8)))
+        val viewports = document.getElementsByTagNameNS("http://www.w3.org/2000/svg", "svg")
+        check(viewports.length > 1 && !svg.contains("\$\$")) {
+            "$consumer did not render a formula SVG viewport"
+        }
+        for (index in 1 until viewports.length) {
+            val viewport = viewports.item(index) as org.w3c.dom.Element
+            val viewBox = viewport.getAttribute("viewBox").trim().split(Regex("[,\\s]+"))
+                .map { it.toDouble() }
+            val paths = viewport.getElementsByTagNameNS("http://www.w3.org/2000/svg", "path")
+            check(viewBox.size == 4 && viewBox.all { it.isFinite() } &&
+                viewBox[2] > 0 && viewBox[3] > 0 && (0 until paths.length).any {
+                    (paths.item(it) as org.w3c.dom.Element).getAttribute("d").isNotBlank()
+                }) {
+                "$consumer formula lost its finite viewport or outlined glyphs"
+            }
+        }
+    }
+    MermanEngine(optionsJson = """{"resources":{"profile":"constrained"}}""").use { constrained ->
+        try {
+            constrained.renderSvg(mathSource)
+            error("constrained engine unexpectedly admitted native math")
+        } catch (error: io.merman.MermanException) {
+            check(error.kind == io.merman.MermanErrorKind.MISSING_CAPABILITY &&
+                error.capabilityId == "math") {
+                "constrained math rejection lost its capability identity"
+            }
+        }
     }
     val invalidThemeSource = """
         {"styles":{"node":{"typography":{"font_stack":[]}}}}
@@ -102,7 +140,6 @@ fun runMermanSmoke() {
         "png" to { engine.renderPng("flowchart TD\nA --> B") },
         "jpeg" to { engine.renderJpeg("flowchart TD\nA --> B") },
         "pdf" to { engine.renderPdf("flowchart TD\nA --> B") },
-        "math" to { engine.renderSvg("flowchart TD\nA[\"\$\$x^2\$\$\"] --> B") },
     ).forEach { (capabilityId, operation) ->
         try {
             operation()

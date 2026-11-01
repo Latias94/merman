@@ -110,13 +110,23 @@ test("target resolution distinguishes OS, CPU, and Linux libc", () => {
     resolveNodeTarget({ platform: "win32", arch: "x64" }),
     "win32-x64-msvc",
   );
-  assert.throws(
-    () => resolveNodeTarget({ platform: "linux", arch: "arm64", report: glibcReport }),
-    MermanUnsupportedTargetError,
+  assert.equal(
+    resolveNodeTarget({ platform: "linux", arch: "arm64", report: glibcReport }),
+    "linux-arm64-gnu",
+  );
+  assert.equal(
+    resolveNodeTarget({ platform: "linux", arch: "arm64", report: {
+      header: {}, sharedObjects: ["/lib/ld-musl-aarch64.so.1"],
+    } }),
+    "linux-arm64-musl",
   );
   assert.throws(
     () => resolveNodeTarget({ platform: "linux", arch: "x64", report: { header: {} } }),
     /cannot determine Linux libc/i,
+  );
+  assert.throws(
+    () => resolveNodeTarget({ platform: "linux", arch: "riscv64", report: glibcReport }),
+    (error) => error instanceof MermanUnsupportedTargetError && /node-wasm explicitly/.test(error.message),
   );
 });
 
@@ -135,6 +145,14 @@ test("the loader resolves one target-specific package and no browser package", (
   assert.equal(loaded, binding);
   assert.deepEqual(requested, ["@mermanjs/node-darwin-arm64"]);
   assert.equal(nativePackageName("linux-x64-musl"), "@mermanjs/node-linux-x64-musl");
+  for (const [report, target] of [[glibcReport, "linux-arm64-gnu"], [muslReport, "linux-arm64-musl"]]) {
+    requested.length = 0;
+    assert.equal(loadNativeBinding({
+      platform: "linux", arch: "arm64", report,
+      loadPackage(name) { requested.push(name); return binding; },
+    }), binding);
+    assert.deepEqual(requested, [`@mermanjs/node-${target}`]);
+  }
 });
 
 test("the native loader diagnoses installed packages that fail dynamic loading", () => {

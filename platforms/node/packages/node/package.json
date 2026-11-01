@@ -43,6 +43,8 @@
   "optionalDependencies": {
     "@mermanjs/node-darwin-arm64": "0.9.3",
     "@mermanjs/node-darwin-x64": "0.9.3",
+    "@mermanjs/node-linux-arm64-gnu": "0.9.3",
+    "@mermanjs/node-linux-arm64-musl": "0.9.3",
     "@mermanjs/node-linux-x64-gnu": "0.9.3",
     "@mermanjs/node-linux-x64-musl": "0.9.3",
     "@mermanjs/node-win32-x64-msvc": "0.9.3"

@@ -12,7 +12,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Need | Package | Includes |
 | --- | --- | --- |
 | A complete SDK or a starting point | [`@mermanjs/web`](packages/full/README.md) | SVG, analysis, ASCII, and editor APIs |
-| SVG rendering only | [`@mermanjs/web-render`](packages/render/README.md) | Cytoscape and ELK layouts |
+| SVG rendering only | [`@mermanjs/web-render`](packages/render/README.md) | Math, Cytoscape and ELK layouts |
 | Validation and semantic facts | [`@mermanjs/web-analysis`](packages/analysis/README.md) | Detection, validation, analysis, and lint facts |
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
@@ -20,9 +20,9 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 All public browser packages use one lockstep version. Version `0.9.2` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
 
 This checkout also documents unreleased compiled-theme, prepared-source and adaptive Kanban APIs with Web transport API `8`.
-Current-source full/render recipes omit math. Mathematical labels return typed `missing-capability`
-with capability `math`; custom source builds can select the existing WASM `math` leaf. Installed
-`0.9.2` packages retain their published capability sets; no new npm SKU is introduced.
+Full/render products include mathematical labels and both existing layout backends. Published
+`0.9.2` includes math too. Dedicated analysis/editor/ASCII products retain their task scope;
+source builds can omit the positive `math` leaf. No extra npm math tier is required.
 Published `0.9.2` uses Web transport API `5` and Options JSON schema `2`; use its tagged guide and
 matching artifacts. See the [release boundary](../../docs/release/README.md#merman-092).
 
@@ -59,6 +59,30 @@ renderSvgToElement(target, `flowchart TD
 
 Initialize Merman once per browser realm and reuse it. Call `renderSvg()` instead when the host
 needs the serialized SVG string rather than a mounted element.
+
+### Bundlers and Self-Hosted WASM
+
+Main adds a raw asset export for each browser package. With Vite, import its URL and pass it
+to initialization:
+
+```ts
+import { initMerman } from "@mermanjs/web";
+import wasmUrl from "@mermanjs/web/wasm?url";
+
+await initMerman({ wasm: wasmUrl });
+```
+
+Use the equivalent focused package in both imports when selecting one. The asset export is
+not a second runtime entry. For another bundler, emit that exported asset as a resource and
+pass its deployed URL. Alternatively, copy the exact package's WASM to a versioned public
+path and provide its same-origin URL. Keep package facade, generated glue and binary together.
+`MERMAN_WASM_URL` remains the default URL for hosts that preserve the package layout.
+
+A module Worker initializes its own runtime with the same pattern and uses non-DOM operations.
+Serve WASM with `application/wasm`; a same-origin deployment may need
+`script-src 'self' 'wasm-unsafe-eval'`, `connect-src 'self'`, and `worker-src 'self'`.
+These directives cover WASM loading, not the application's complete SVG/font/style policy.
+The package does not require a CDN, JavaScript `unsafe-eval` or a fake browser in SSR.
 
 ## Reuse a parsed source
 

@@ -4,9 +4,14 @@
 
 ### Breaking changes
 
+- Qualify Flutter apps with Flutter `3.47.7+` to match native-hooks dependencies and the
+  Flutter SDK's pinned `meta` version. Native Dart keeps its `3.10+` SDK requirement.
 - Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
 
 ### Added
+
+- Ship a thin Dart facade with package-pinned native asset hashes. The build hook acquires only the selected target, verifies compressed and library bytes, and supports explicit `native_assets`, `mirror` and `offline` options. Downloads happen during the build; the packaged application carries its library.
+- Include math in the ordinary SVG native product while keeping image encoders and ambient font services outside that product.
 
 - Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
 - Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.

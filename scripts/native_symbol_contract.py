@@ -92,7 +92,7 @@ def parse_coff_exports(output: str) -> set[str]:
         names = re.findall(r"^\s+Name: (\S+)\s*$", export, re.MULTILINE)
         if len(names) != 1:
             raise RuntimeError("llvm-readobj emitted a malformed COFF export name")
-        symbols.add(canonicalize_owned_symbol(names[0]))
+        symbols.add(names[0])
     return symbols
 
 
@@ -201,9 +201,11 @@ def assert_symbol_contract(
     contract: NativeSymbolContract,
     *,
     label: str,
+    exact_exports: bool = False,
 ) -> None:
     """Fail closed when a transport lacks its entry point or exposes the other transport."""
-    observed = {canonicalize_owned_symbol(symbol) for symbol in symbols}
+    raw_symbols = set(symbols)
+    observed = {canonicalize_owned_symbol(symbol) for symbol in raw_symbols}
     missing = sorted(contract.required - observed)
     forbidden = sorted(contract.forbidden & observed)
     unexpected_owned = sorted(
@@ -221,6 +223,10 @@ def assert_symbol_contract(
         failures.append(
             "unexpected Merman-owned symbols present: " + ", ".join(unexpected_owned)
         )
+    if exact_exports:
+        unexpected = sorted(raw_symbols - contract.required - contract.allowed_owned)
+        if unexpected:
+            failures.append("unexpected exported symbols: " + ", ".join(unexpected[:8]))
     if failures:
         raise RuntimeError(f"{label} symbol contract failed: {'; '.join(failures)}")
 
@@ -308,6 +314,7 @@ def main(argv: list[str] | None = None) -> int:
                 symbols,
                 SYMBOL_CONTRACTS[args.contract],
                 label=architecture_label,
+                exact_exports=args.artifact.suffix.lower() == ".dll",
             )
     except RuntimeError as error:
         print(error, file=sys.stderr)

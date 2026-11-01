@@ -56,6 +56,7 @@ void main(List<String> args) {
       'ascii',
       'layout-cytoscape',
       'layout-elk',
+      'math',
       'svg',
     ]) {
       _expect(
@@ -65,7 +66,6 @@ void main(List<String> args) {
     }
     for (final capability in const [
       'jpeg',
-      'math',
       'pdf',
       'png',
       'system-clock',
@@ -95,9 +95,11 @@ void main(List<String> args) {
       'pdf',
       () => engine.renderPdf('flowchart TD\nA --> B'),
     );
-    _expectMissingCapability(
-      'math',
-      () => engine.renderSvg('flowchart TD\nA["\$\$x^2\$\$"] --> B'),
+    final mathSvg = engine.renderSvg('flowchart TD\nA["\$\$x^2\$\$"] --> B');
+    _expect(
+      mathSvg.contains('merman-prepared-math-native') &&
+          mathSvg.contains('<path'),
+      'packaged math must render native vector glyphs',
     );
   } finally {
     engine.close();

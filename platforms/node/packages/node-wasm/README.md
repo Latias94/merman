@@ -46,6 +46,11 @@ The native package is the recommended choice when a supported platform binary is
 this package when a deployment target cannot load the native package or when a single portable
 Node artifact is more useful than native startup and throughput.
 
+This unreleased checkout includes math in the ordinary SVG recipe, matching the native package.
+With matching next-release artifacts, `engine.renderSvg('flowchart LR\nA["$$x^2$$"]')` renders
+outlined formula geometry and the runtime catalog advertises `math`. Published `0.9.2` predates
+this addition. Node.js 22.0.0 remains the minimum runtime.
+
 ## Compiled themes (unreleased)
 
 The current source interface uses Options JSON 3; published alpha.6 packages use Options 2.

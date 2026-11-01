@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable
+from email.parser import Parser
 import json
 import re
 import sys
@@ -19,9 +21,12 @@ PACKAGE_REPORT = Path("THIRD_PARTY_LICENSES/rust-cargo-dependencies.json")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 WHEEL_PLATFORM_BY_RUST_TARGET = {
     "aarch64-apple-darwin": "macosx-11.0-arm64",
+    "aarch64-unknown-linux-gnu": "linux-aarch64",
+    "x86_64-apple-darwin": "macosx-10.13-x86_64",
     "x86_64-pc-windows-msvc": "win-amd64",
     "x86_64-unknown-linux-gnu": "linux-x86_64",
 }
+MANYLINUX_POLICY = "manylinux_2_28"
 
 
 class PythonWheelLicenseError(RuntimeError):
@@ -145,23 +150,42 @@ def wheel_platform_for_target(target: str) -> str:
         ) from error
 
 
-def wheel_target(wheel: Path) -> str:
-    name = wheel.name.lower()
-    candidates: list[str] = []
-    if "-macosx_" in name and name.endswith("_arm64.whl"):
-        candidates.append("aarch64-apple-darwin")
-    if "-win_amd64.whl" in name:
-        candidates.append("x86_64-pc-windows-msvc")
+def wheel_identity(wheel: Path) -> tuple[str, tuple[str, ...]]:
+    parts = wheel.stem.rsplit("-", 3)
     if (
-        any(marker in name for marker in ("-linux_", "-manylinux", "-musllinux"))
-        and name.endswith("_x86_64.whl")
+        wheel.suffix != ".whl"
+        or len(parts) != 4
+        or not parts[0].startswith("merman-")
+        or parts[0].count("-") != 1
+        or parts[1:3] != ["py3", "none"]
     ):
-        candidates.append("x86_64-unknown-linux-gnu")
+        raise PythonWheelLicenseError(f"expected a merman py3-none platform wheel: {wheel.name}")
+    return parts[0].removeprefix("merman-"), tuple(parts[3].split("."))
+
+
+def wheel_target(wheel: Path) -> str:
+    _, platforms = wheel_identity(wheel)
+    candidates: set[str] = set()
+    for platform in platforms:
+        if re.fullmatch(r"macosx_\d+_\d+_arm64", platform):
+            candidates.add("aarch64-apple-darwin")
+        elif re.fullmatch(r"macosx_\d+_\d+_x86_64", platform):
+            candidates.add("x86_64-apple-darwin")
+        elif platform == "win_amd64":
+            candidates.add("x86_64-pc-windows-msvc")
+        elif match := re.fullmatch(
+            r"(?:linux|manylinux(?:1|2010|2014|_\d+_\d+))_(aarch64|x86_64)", platform
+        ):
+            candidates.add(f"{match[1]}-unknown-linux-gnu")
+        else:
+            raise PythonWheelLicenseError(
+                f"cannot map Python wheel platform tag to one supported Rust target: {wheel.name}"
+            )
     if len(candidates) != 1:
         raise PythonWheelLicenseError(
             f"cannot map Python wheel platform tag to one supported Rust target: {wheel.name}"
         )
-    return candidates[0]
+    return candidates.pop()
 
 
 def verify_wheel_license_report(
@@ -195,17 +219,80 @@ def verify_wheel_license_report(
     return target
 
 
+def verify_wheel_set(
+    wheels: Iterable[Path],
+    *,
+    expected_targets: Iterable[str],
+    root: Path = REPO_ROOT,
+) -> dict[str, Path]:
+    """Check exact target coverage, the declared Linux floor, and package identity."""
+    observed: dict[str, Path] = {}
+    versions: set[str] = set()
+    for wheel in wheels:
+        target = verify_wheel_license_report(wheel, root=root)
+        if target in observed:
+            raise PythonWheelLicenseError(f"duplicate Python wheel target {target}: {wheel}")
+        version, platforms = wheel_identity(wheel)
+        if target.endswith("-unknown-linux-gnu"):
+            expected_platform = f"{MANYLINUX_POLICY}_{target.split('-')[0]}"
+        else:
+            expected_platform = wheel_platform_for_target(target).replace("-", "_").replace(".", "_")
+        if platforms != (expected_platform,):
+            raise PythonWheelLicenseError(f"{wheel.name} must use the exact platform {expected_platform}")
+
+        dist_info = f"merman-{version}.dist-info"
+        try:
+            with zipfile.ZipFile(wheel) as archive:
+                wheel_metadata = Parser().parsestr(archive.read(f"{dist_info}/WHEEL").decode())
+                package_metadata = Parser().parsestr(archive.read(f"{dist_info}/METADATA").decode())
+        except (OSError, zipfile.BadZipFile, KeyError, UnicodeError) as error:
+            raise PythonWheelLicenseError(f"cannot read wheel identity for {wheel}: {error}") from error
+        if (
+            wheel_metadata.get("Root-Is-Purelib") != "false"
+            or wheel_metadata.get_all("Tag") != [f"py3-none-{expected_platform}"]
+            or package_metadata.get("Name") != "merman"
+            or package_metadata.get("Version") != version
+            or package_metadata.get("Requires-Python") != ">=3.9"
+        ):
+            raise PythonWheelLicenseError(f"{wheel.name} embedded metadata does not match its identity")
+        observed[target] = wheel
+        versions.add(version)
+
+    expected = set(expected_targets)
+    if set(observed) != expected:
+        raise PythonWheelLicenseError(
+            f"Python wheel target set mismatch: missing {sorted(expected - observed.keys())}; "
+            f"unexpected {sorted(observed.keys() - expected)}"
+        )
+    if len(versions) != 1:
+        raise PythonWheelLicenseError("Python wheel release set must contain exactly one package version")
+    return observed
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--require-release-set",
+        action="store_true",
+        help="Require exactly the descriptor's wheel targets and the executed manylinux_2_28 floor.",
+    )
     parser.add_argument("wheels", type=Path, nargs="+")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv or sys.argv[1:])
+    args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
+        if args.require_release_set:
+            from artifact_profile_recipe import load_artifact_profile
+
+            recipe = load_artifact_profile(PYTHON_ARTIFACT_PROFILE_ID)
+            verify_wheel_set(args.wheels, expected_targets=recipe.build_targets)
         for wheel in args.wheels:
-            target = verify_wheel_license_report(wheel)
+            target = (
+                wheel_target(wheel) if args.require_release_set
+                else verify_wheel_license_report(wheel)
+            )
             print(f"Python wheel Rust license report: ok ({wheel.name}, {target})")
     except PythonWheelLicenseError as error:
         print(f"Python wheel Rust license report failed: {error}", file=sys.stderr)

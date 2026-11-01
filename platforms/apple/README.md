@@ -33,7 +33,10 @@ manifest and legal material. No Rust checkout or compiler is needed to consume i
 This complete package is a **main-line, unreleased delivery change**. The separately
 named `Merman.xcframework-v<version>.zip` remains the binary-target input. Its checksum
 differs from the complete Swift package's checksum. An emitted remote manifest is a
-publisher handoff using that exact binary URL/digest; it is not an already hosted
+publisher handoff using that exact binary URL/digest. The corresponding
+`Merman-swiftpm-remote-v<version>.zip` contains the complete thin delivery repository
+tree, including that manifest, the same generated facade and legal material. It
+does not contain the XCFramework. These archives do not establish an already hosted
 SwiftPM repository. See [choose a prebuilt renderer](../../docs/release/PREBUILT_PRODUCTS.md).
 
 ## Install Published v0.9.3
@@ -67,6 +70,140 @@ python3 scripts/apple_package.py --output-dir target/apple-package --version <wo
 Partial `--ios` or `--macos` builds remain useful locally but cannot be packaged as
 the complete distribution. Source builds also require
 `rustup component add llvm-tools-preview` for distribution-copy cleanup.
+
+## Prepare The Remote SwiftPM Handoff
+
+From the clean, matching source revision and its complete staged XCFramework:
+
+```text
+python3 scripts/apple_package.py --output-dir target/apple-package --version <workspace-version> \
+  --source-commit <source-commit> \
+  --artifact-url https://github.com/Latias94/merman/releases/download/v<workspace-version>/Merman.xcframework-v<workspace-version>.zip
+```
+
+The producer freezes these seven release assets:
+
+| Asset | Use |
+| --- | --- |
+| `Merman.xcframework-v<version>.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
+| `Merman-swiftpm-v<version>.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
+| `Merman-swiftpm-remote-v<version>.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
+| `Merman-swiftpm-v<version>.Package.swift` | Identical copy of the thin tree's remote manifest |
+
+The extracted remote directory contains `Package.swift`, `Sources/Merman`, `README.md`,
+`SOURCE_AVAILABILITY.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`.
+Its facade, resource contract and legal files come from the same staging tree as the
+local package. Only the installation README and binary reference differ. The remote
+manifest binds the separate **XCFramework ZIP checksum**, never either Swift package
+archive checksum. There is no extra artifact identity or fingerprint format.
+
+After separate publication authorization, commit the **contents** of the extracted
+remote directory at a delivery repository's root. Publish the exact binary ZIP at the
+manifest's HTTPS URL, qualify the repository commit below, then tag that delivery
+commit for SwiftPM. Do not regenerate bindings, edit the manifest or rebuild native
+libraries in that repository. Its Git commit can differ from the Merman source commit
+recorded in `SOURCE_AVAILABILITY.txt`; that separation avoids a source/checksum cycle.
+Neither the packager nor the release workflow creates or pushes a delivery repository.
+
+## Qualify A Remote Dependency
+
+Use the final thin archive as the expected source tree, an existing HTTPS Git
+repository containing its unmodified contents, and an exact delivery commit:
+
+```text
+python3 scripts/apple_qualify.py \
+  --package-archive target/apple-package/Merman-swiftpm-remote-v<version>.zip \
+  --work-dir /absolute/fresh/apple-remote-proof --version <version> --simulator \
+  --remote-package-url https://your-controlled-host/Merman.git \
+  --remote-package-revision <40-character-delivery-commit>
+```
+
+Each consumer uses `.package(url:revision:)`, a fresh project and its own SwiftPM
+cache. SwiftPM's `dump-package` first confirms a version-matched HTTPS binary target.
+SwiftPM resolves the Git dependency and downloads/checksums that binary;
+the qualifier compares the resolved commit, tracked file inventory and file bytes
+with the thin archive before building. It never substitutes a local package on
+failure. macOS executes the catalog, ordinary SVG/ELK, math and policy/codec controls;
+iOS device is compile/link checked, and `--simulator` also executes those controls on
+the host architecture's simulator. The exact runtime version must match `--version`.
+`qualification.json` is written only after all requested checks pass. A local-package
+run or Python unit test is not remote transport evidence.
+
+The release owner's optional `remote_package_url` and `remote_package_revision`
+dispatch inputs run this same check against the build's thin archive on macOS. With
+`publish: true`, that job waits for the explicit seven-asset upload and public readback;
+with `publish: false`, the exact binary must already be reachable at its manifest URL.
+Omitting both inputs skips remote qualification and supplies no HTTPS proof. Local
+qualification and the existing bitcode-cleaned/original comparison remain separate.
+
+### Controlled HTTPS Acceptance Without A Public Repository
+
+Release preflight's `apple-xcframework` job and the Apple release owner's `build`
+job always run this controlled fixture after their existing build and local checks,
+even when the optional external-repository inputs above are empty. Those inputs
+control qualification of an independently hosted delivery repository; the controlled
+fixture supplies localhost HTTPS transport evidence on every successful candidate.
+
+From a clean, selected source revision with its complete, freshly built XCFramework,
+use the actual workspace version, exact source commit and a fresh work directory:
+
+```text
+python3 platforms/apple/tests/qualify_remote.py \
+  --work-dir target/apple-https-qualification --version <workspace-version> \
+  --source-commit <40-character-source-commit> \
+  --xcframework platforms/apple/Merman.xcframework
+```
+
+The bounded helper uses Python's standard library and the existing `package_apple`
+and `apple_qualify` operators. It packages the same staged XCFramework with an HTTPS
+binary URL using the port actually reserved by its localhost TLS server. It prefers
+8443 and falls back to an OS-assigned port when 8443 is occupied. The thin tree is
+committed unchanged into a temporary Git repository, cloned bare and served using
+`git update-server-info` and Git's standard dumb HTTP transport. No public repository
+is created or pushed, and Rust is never invoked by the helper. The existing clean
+source, matching facade, complete slice and production HTTPS validators still apply.
+
+Use a disposable macOS VM or CI runner with Xcode, an installed iOS simulator
+and noninteractive `sudo -n` access, as provided by the hosted macOS runner.
+The helper generates its own one-day localhost certificate and adds administrator-domain
+trust with `sudo -n security add-trusted-cert -d -r trustRoot` in
+`/Library/Keychains/System.keychain`. User-domain trust requires an authentication dialog
+and is unsuitable for this unattended fixture. Git uses the fixture certificate through
+`GIT_SSL_CAINFO`; SwiftPM's binary downloader uses the macOS trust entry.
+The `finally` cleanup replaces this certificate's administrator trust with explicit `deny`.
+It deletes only that certificate's Keychain entry, selected by its fingerprint. It then
+supplies the certificate itself to a fresh `security verify-cert` process, without a
+custom trust anchor, and requires `kSecTrustResultDeny`, and checks that the Keychain entry
+is absent.
+Removing the last administrator trust record can require an interactive authorization
+dialog on macOS 15; changing the authorization database is also denied there. The helper
+uses neither operation. Its explicit deny record persists until the disposable runner is
+destroyed, so do not run this fixture on a persistent development account. Each security
+command has a 30-second timeout; failed revocation or verification still attempts certificate
+deletion and prevents a successful receipt. The helper leaves other certificate settings,
+Keychain defaults and search lists unchanged. Its temporary TLS key, served ZIPs and Git
+repositories are removed.
+No HTTP dependency URLs, TLS verification bypasses, Git URL rewriting or SwiftPM
+mirrors are used.
+
+The positive run delegates exact `.package(url:revision:)` resolution, binary-target
+HTTPS download and checksum validation, strict source comparison, macOS execution,
+iOS compile/link checks and Simulator execution to `apple_qualify`. Only after that
+run succeeds does the helper corrupt its disposable served XCFramework ZIP. A second
+run uses fresh consumer/cache directories, the same manifest and exact Git revision.
+It must fail with SwiftPM's actual `MermanFFI` downloaded-artifact checksum mismatch
+diagnostic and must not write a successful qualification receipt. An unrelated TLS,
+Git or compiler error cannot satisfy the negative check. Release staging stays frozen.
+
+The work directory retains `proof/qualification.json`, `proof/installed/*.json`,
+resolved consumer `Package.resolved` files, `proof.log`, `https-requests.log` and
+`wrong-checksum.log`. Its top-level `qualification.json` is written only after both
+runs and certificate cleanup succeed. Both workflows retain these files as
+qualification artifacts, including available logs on failure. Keep this evidence in
+ignored `target/` or outside the source checkout. This localhost proof does not
+establish public GitHub download availability; the release owner separately compares
+every published asset byte for byte and checks all three archive checksums without
+authentication.
 
 ## Render A Diagram
 

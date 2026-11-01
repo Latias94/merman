@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+### Added
+
+- Produce a complete thin remote SwiftPM delivery tree with matching Swift sources, resources and a checksum-bound binary target. The self-contained local SwiftPM package remains available. Publishing a delivery repository and its version tag is a separate release step.
+
 ### Breaking changes
 
 - Regenerate the direct UniFFI bindings and native library together for the typed-theme authoring and diagnostic changes. Published alpha.7 already exposed API `7` through `bindingApiVersionV7()`; that historical number does not establish compatibility with this development interface. Schema-3 ASCII plans retain requested/effective layouts and Compact-attempt information.

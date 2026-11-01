@@ -75,6 +75,38 @@ class NameStatusParserTests(unittest.TestCase):
 
 
 class PlannerTests(unittest.TestCase):
+    def test_binding_delivery_helpers_select_their_actual_surface_owners(self) -> None:
+        fixtures = {
+            "scripts/android_package.py": {"hygiene", "platform"},
+            "scripts/test_android_package.py": {"hygiene", "platform"},
+            "scripts/test_android_packaging_qualification.py": {"hygiene", "platform"},
+            "scripts/test_build_python_uniffi_wheel.py": {"hygiene", "python"},
+            "platforms/python/merman/tests/test_wheel_smoke.py": {"hygiene", "python"},
+            "scripts/flutter_native_assets.py": {"hygiene", "platform"},
+            "scripts/test_flutter_native_assets.py": {"hygiene", "platform"},
+            "scripts/test_flutter_packaged_app.py": {"hygiene", "platform"},
+            "platforms/flutter/hook/native_assets.dart": {"hygiene", "platform"},
+            "platforms/flutter/tool/native_assets_contract_test.dart": {"hygiene", "platform"},
+            "platforms/flutter/tool/qualify_packaged_app.py": {"hygiene", "platform"},
+            "platforms/node/scripts/install-root-package.py": {"hygiene", "node", "npm"},
+            "scripts/test_release_workflow_security.py": {"hygiene", "workflow"},
+            "platforms/web/scripts/installed-browser-consumer.mjs": {"hygiene", "npm", "web"},
+            "platforms/web/scripts/installed-browser-consumer.test.mjs": {"hygiene", "npm", "web"},
+            "platforms/web/tests/installed-consumer/exercise.mjs": {"hygiene", "npm", "web"},
+        }
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"A\0{path}\0".encode()),
+                    base="a" * 40, head="b" * 40,
+                )
+                self.assertFalse(plan["fallback"])
+                self.assertFalse(plan["svg_parity"])
+                self.assertEqual(
+                    {name for name, enabled in plan["owners"].items() if enabled},
+                    expected,
+                )
+
     def test_sdk_paths_select_existing_native_security_and_workflow_owners(self) -> None:
         fixtures = {
             "crates/merman-wasi/src/lib.rs": {"core", "fuzz", "hygiene", "platform", "security"},

@@ -77,7 +77,10 @@ def package_manifest(
         "version": VERSION,
         "main": entrypoint + ".js",
         "types": entrypoint + ".d.ts",
-        "exports": {".": {"import": entrypoint + ".js", "types": entrypoint + ".d.ts"}},
+        "exports": {
+            ".": {"import": entrypoint + ".js", "types": entrypoint + ".d.ts"},
+            "./wasm": "./artifacts/wasm/merman_wasm_bg.wasm",
+        },
         "merman": {"artifact_profile": entry["artifact_profile"]},
         "files": ["artifacts", "dist", "README.md", "LICENSE", "THIRD_PARTY_LICENSES", "THIRD_PARTY_NOTICES.md"],
     }

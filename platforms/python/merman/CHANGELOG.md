@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+### Added
+
+- Include math in the ordinary SVG wheel product without adding image encoders or ambient font services. Wheel candidates cover macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64; Linux candidates are built, repaired and installed at manylinux 2.28. Normal wheel installation does not require Rust.
+
 ### Breaking changes
 
 - Regenerate the direct UniFFI bindings and native library together for typed-theme authoring and diagnostics. UniFFI API `7` is unchanged; that number does not make wrappers from different releases interchangeable.

@@ -12,6 +12,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Added
 
+- Include math in the ordinary SVG product. Retain the full selected-version Maven repository, qualify it from an external coordinate consumer with 16 KB native/APK checks, and prepare a signed standard Central upload bundle under an explicitly verified namespace. Preparing the bundle does not publish to Central.
+
 - Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
 - Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 

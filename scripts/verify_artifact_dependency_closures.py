@@ -65,7 +65,7 @@ TREE_SITTER_ALLOWED_PROFILE_IDS = frozenset(
 )
 MATH_FREE_SVG_PROFILE_IDS = frozenset({
     "rust-native-svg", "rust-render-native-svg", "rust-static-svg",
-    "rustdoc-static-svg", "web-full", "web-render",
+    "rustdoc-static-svg",
 })
 MATH_BACKEND_PACKAGES = (
     "ratex-font", "ratex-font-loader", "ratex-katex-fonts", "ratex-layout",

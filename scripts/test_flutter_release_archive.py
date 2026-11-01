@@ -138,6 +138,52 @@ class FlutterReleaseArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(FlutterReleaseArchiveError, "digest"):
             self.verify(archive, receipt, root / "publish-digest")
 
+    def test_thin_archive_contains_frozen_manifest_and_no_native_or_owner_tooling(self):
+        from flutter_native_assets import TARGET_LIBRARIES, stage
+
+        root = self.case("thin")
+        package = root / "package"
+        self.write_package(package)
+        for target, library in TARGET_LIBRARIES.items():
+            path = package / "native" / target / library
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"frozen native fixture")
+        (package / "tool").mkdir()
+        (package / "tool/owner.dart").write_text("repository only")
+        stage(
+            package / "native", root / "assets", version=VERSION,
+            source_sha=SOURCE_SHA, source_tree=SOURCE_TREE,
+            base_url=f"https://example.org/flutter-v{VERSION}/",
+        )
+        archive, receipt = root / ARCHIVE_NAME, root / RECEIPT_NAME
+        create_archive(
+            package, archive, receipt, source_sha=SOURCE_SHA,
+            source_tree=SOURCE_TREE, version=VERSION,
+            native_manifest=root / "assets/native-assets.json",
+        )
+        destination = root / "publish"
+        verify_and_extract(
+            archive, receipt, destination, expected_source_sha=SOURCE_SHA,
+            expected_source_tree=SOURCE_TREE, expected_version=VERSION, require_thin=True,
+        )
+        self.assertFalse((destination / "native").exists())
+        self.assertFalse((destination / "tool").exists())
+        self.assertEqual(
+            (destination / "hook/native-assets.json").read_bytes(),
+            (root / "assets/native-assets.json").read_bytes(),
+        )
+
+    def test_required_thin_extraction_rejects_legacy_package_before_writing(self):
+        root = self.case("require-thin")
+        archive, receipt = self.create_valid_artifact(root)
+        destination = root / "publish"
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, "thin archive"):
+            verify_and_extract(
+                archive, receipt, destination, expected_source_sha=SOURCE_SHA,
+                expected_source_tree=SOURCE_TREE, expected_version=VERSION, require_thin=True,
+            )
+        self.assertFalse(destination.exists())
+
     def test_receipt_read_is_bounded_and_duplicate_keys_are_rejected(self) -> None:
         root = self.case("large-receipt")
         archive, receipt = self.create_valid_artifact(root)

@@ -18,6 +18,8 @@ Version `0.9.2` includes Mermaid 12.1 and Agentflow/Usecase support; see the [pa
 
 The compiled-theme APIs documented in this checkout are unreleased. Published `0.9.2` retains
 Options JSON schema `2`; see the [release boundary](../../docs/release/README.md#merman-092).
+This checkout also adds ordinary SVG math to both Node transports and native Linux ARM64
+GNU/musl packages. Those additions require matching next-release artifacts.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";
@@ -58,8 +60,8 @@ labels. It does not
 provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for browser DOM
 mounting.
 
-The package supports macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its shipped
-recipe includes deterministic SVG plus Cytoscape and ELK layouts. Math, binary export, analysis,
+The next-release package supports macOS arm64/x64, Linux arm64/x64 glibc/musl, and Windows x64
+MSVC. Its recipe includes deterministic SVG with math plus Cytoscape and ELK layouts. Binary export, analysis,
 ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain outside this
 surface.
 
@@ -107,6 +109,10 @@ npm run check:packages --prefix platforms/node
 `npm test` exercises the JavaScript API, bounded executor, catalog validation, loader behavior, and
 benchmark contract with test transports. `check:packages` verifies the source manifests; native
 artifact assembly and installed-package smoke run in the target-specific release workflow.
+The native target lanes install only the loader tarball, resolve its exact optional dependency
+through a small local registry, inspect the resulting lockfile, and execute ordinary SVG and
+outlined formula rendering on the matching CPU. Both transports also execute on Node 22.0.0.
+The GNU lanes build and execute at glibc 2.31; ARM64 uses native ARM64 runners.
 
 Building the Node-WASM candidate requires `wasm-pack 0.15.0` and Binaryen `version_133`.
 Put that release's `wasm-opt` on `PATH` before running the build owner, as CI, release preflight,

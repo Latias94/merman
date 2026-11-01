@@ -15,6 +15,14 @@ on:
         description: "Upload qualified packages to an existing immutable tagged release"
         default: false
         type: boolean
+      remote_package_url:
+        description: "Optional HTTPS Git URL containing the exact thin delivery tree; never created by this workflow"
+        default: ""
+        type: string
+      remote_package_revision:
+        description: "Exact delivery-repository commit to resolve and render; required with remote_package_url"
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -194,15 +202,42 @@ jobs:
             --package-archive "target/apple-package/Merman-swiftpm-v$VERSION.zip" \
             --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
 
+      - name: Qualify controlled HTTPS SwiftPM handoff and checksum rejection
+        timeout-minutes: 45
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          python3 platforms/apple/tests/qualify_remote.py \
+            --work-dir target/apple-https-qualification --version "$VERSION" --source-commit "$SOURCE_SHA" \
+            --xcframework platforms/apple/Merman.xcframework
+
+      - name: Retain controlled HTTPS resolution and consumer evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-apple-https-qualification
+          if-no-files-found: error
+          path: |
+            target/apple-https-qualification/qualification.json
+            target/apple-https-qualification/*.log
+            target/apple-https-qualification/proof/qualification.json
+            target/apple-https-qualification/proof/installed/*.json
+            target/apple-https-qualification/proof/installed/*/consumer/Package.resolved
+
       - name: Upload XCFramework artifact
         uses: actions/upload-artifact@v7.0.2
         with:
           name: merman-apple-xcframework
           if-no-files-found: error
           path: |
-            target/apple-package/*.zip
-            target/apple-package/*.checksum
-            target/apple-package/*.Package.swift
+            target/apple-package/Merman.xcframework-${{ steps.version.outputs.tag }}.zip
+            target/apple-package/Merman.xcframework-${{ steps.version.outputs.tag }}.zip.checksum
+            target/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.zip
+            target/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.zip.checksum
+            target/apple-package/Merman-swiftpm-remote-${{ steps.version.outputs.tag }}.zip
+            target/apple-package/Merman-swiftpm-remote-${{ steps.version.outputs.tag }}.zip.checksum
+            target/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.Package.swift
 
       - name: Retain consumer and size evidence
         uses: actions/upload-artifact@v7.0.2
@@ -213,6 +248,45 @@ jobs:
             target/apple-qualification/qualification.json
             target/apple-qualification/installed/*.json
             target/apple-qualification/comparison/original.json
+
+  qualify-remote:
+    if: ${{ !cancelled() && needs.build.result == 'success' && (!inputs.publish || needs.upload-release.result == 'success') && (inputs.remote_package_url != '' || inputs.remote_package_revision != '') }}
+    needs: [validate-inputs, build, upload-release]
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: merman-apple-xcframework
+          path: target/apple-package
+
+      - name: Resolve the exact remote SwiftPM dependency and execute consumers
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          REMOTE_PACKAGE_URL: ${{ inputs.remote_package_url }}
+          REMOTE_PACKAGE_REVISION: ${{ inputs.remote_package_revision }}
+        run: |
+          python3 scripts/apple_qualify.py \
+            --package-archive "target/apple-package/Merman-swiftpm-remote-v$VERSION.zip" \
+            --work-dir target/apple-remote-qualification --version "$VERSION" --simulator \
+            --remote-package-url "$REMOTE_PACKAGE_URL" --remote-package-revision "$REMOTE_PACKAGE_REVISION"
+
+      - name: Retain remote resolution and consumer evidence
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-apple-remote-qualification
+          if-no-files-found: error
+          path: |
+            target/apple-remote-qualification/qualification.json
+            target/apple-remote-qualification/installed/*.json
+            target/apple-remote-qualification/installed/*/consumer/Package.resolved
 
   upload-release:
     if: ${{ inputs.publish }}
@@ -243,9 +317,16 @@ jobs:
             echo "::error::Release tag moved after artifact verification." >&2
             exit 1
           }
-          shopt -s nullglob
-          assets=(platforms/apple/*.zip platforms/apple/*.checksum platforms/apple/*.Package.swift)
-          test "${#assets[@]}" -eq 5
+          assets=(
+            "platforms/apple/Merman.xcframework-${RELEASE_TAG}.zip"
+            "platforms/apple/Merman.xcframework-${RELEASE_TAG}.zip.checksum"
+            "platforms/apple/Merman-swiftpm-${RELEASE_TAG}.zip"
+            "platforms/apple/Merman-swiftpm-${RELEASE_TAG}.zip.checksum"
+            "platforms/apple/Merman-swiftpm-remote-${RELEASE_TAG}.zip"
+            "platforms/apple/Merman-swiftpm-remote-${RELEASE_TAG}.zip.checksum"
+            "platforms/apple/Merman-swiftpm-${RELEASE_TAG}.Package.swift"
+          )
+          for asset in "${assets[@]}"; do test -f "$asset"; done
           is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
           if test "$is_draft" != false; then
             echo "::error::Publish GitHub Release $RELEASE_TAG before uploading XCFramework assets."
@@ -279,12 +360,20 @@ jobs:
         run: |
           set -euo pipefail
           verify_dir="$(mktemp -d)"
-          shopt -s nullglob
-          assets=(platforms/apple/*.zip platforms/apple/*.checksum platforms/apple/*.Package.swift)
-          test "${#assets[@]}" -eq 5
+          assets=(
+            "platforms/apple/Merman.xcframework-${RELEASE_TAG}.zip"
+            "platforms/apple/Merman.xcframework-${RELEASE_TAG}.zip.checksum"
+            "platforms/apple/Merman-swiftpm-${RELEASE_TAG}.zip"
+            "platforms/apple/Merman-swiftpm-${RELEASE_TAG}.zip.checksum"
+            "platforms/apple/Merman-swiftpm-remote-${RELEASE_TAG}.zip"
+            "platforms/apple/Merman-swiftpm-remote-${RELEASE_TAG}.zip.checksum"
+            "platforms/apple/Merman-swiftpm-${RELEASE_TAG}.Package.swift"
+          )
           for asset in "${assets[@]}"; do
+            test -f "$asset"
             name="$(basename "$asset")"
             curl --disable --fail --location --silent --show-error \
+              --proto '=https' --proto-redir '=https' \
               --output "$verify_dir/$name" \
               "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name"
             cmp "$asset" "$verify_dir/$name"

@@ -82,6 +82,19 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
             test_case.assertIsNone(re.search(pattern, text, re.IGNORECASE))
 
 
+def apple_release_files() -> dict[str, bytes]:
+    files = {}
+    for name, payload in (
+        ("Merman.xcframework-v0.9.3.zip", b"producer archive"),
+        ("Merman-swiftpm-v0.9.3.zip", b"complete local package"),
+        ("Merman-swiftpm-remote-v0.9.3.zip", b"complete remote package"),
+    ):
+        files[name] = payload
+        files[f"{name}.checksum"] = f"{hashlib.sha256(payload).hexdigest()}  {name}\n".encode()
+    files["Merman-swiftpm-v0.9.3.Package.swift"] = b"remote manifest"
+    return files
+
+
 class WorkflowSecurityBoundaries(unittest.TestCase):
     @unittest.skipUnless(BASH, "workflow execution requires Bash")
     def test_apple_source_selection_separates_candidates_from_publication(self) -> None:
@@ -118,6 +131,68 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("scripts/apple_package.py", build)
         self.assertIn("scripts/apple_qualify.py", build)
         self.assertIn("--simulator --compare-original", build)
+
+    def test_native_candidates_keep_write_and_oidc_access_in_explicit_publish_jobs(self) -> None:
+        owners = {
+            "release-android.yml": {"upload-release": "inputs.publish"},
+            "release-apple.yml": {"upload-release": "inputs.publish"},
+            "release-python.yml": {
+                "github-release": (
+                    "github.event_name == 'workflow_dispatch' && inputs.publish"
+                    " && github.workflow_ref == format('{0}/.github/workflows/release-python.yml@{1}', github.repository, github.ref)"
+                ),
+                "publish": (
+                    "github.event_name == 'workflow_dispatch' && inputs.publish && inputs.publish_to_pypi"
+                    " && github.workflow_ref == format('{0}/.github/workflows/release-python.yml@{1}', github.repository, github.ref)"
+                ),
+            },
+            "release-flutter.yml": {
+                "publish-native-assets": "github.event_name == 'push'",
+                "publish": (
+                    "github.event_name == 'push' && needs.pubdev_version.outputs.exists != 'true'"
+                    " && needs.publish-native-assets.outputs.public_verified == 'true'"
+                ),
+            },
+        }
+        for filename, expected in owners.items():
+            text = read(WORKFLOW_ROOT / filename)
+            jobs = re.findall(r"(?m)^  ([a-z][a-z0-9_-]*):$", text.split("\njobs:\n", 1)[1])
+            privileged = {
+                name for name in jobs
+                if any(capability in workflow_job(text, name) for capability in WRITE_CAPABILITIES)
+            }
+            with self.subTest(workflow=filename):
+                if filename != "release-flutter.yml":
+                    self.assertRegex(text, r"(?m)^      publish:\n(?:        .*\n)*        default: false$")
+                self.assertEqual(privileged, set(expected))
+                for name, condition in expected.items():
+                    job = workflow_job(text, name)
+                    self.assertIn(f"    if: ${{{{ {condition} }}}}\n", job)
+                    self.assertRegex(job, r"(?m)^    environment: \S+$")
+                build = workflow_job(text, "build")
+                for capability in WRITE_CAPABILITIES:
+                    self.assertNotIn(capability, text.split("\njobs:\n", 1)[0])
+                    self.assertNotIn(capability, build)
+                self.assertNotIn("    environment:", build)
+
+        preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
+        for capability in WRITE_CAPABILITIES:
+            self.assertNotIn(capability, preflight)
+        self.assertNotIn("secrets: inherit", preflight)
+        self.assertNotIn("gh release upload", preflight)
+
+    def test_flutter_pub_publication_waits_for_exact_public_native_assets(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-flutter.yml")
+        assets = workflow_job(text, "publish-native-assets")
+        publish = workflow_job(text, "publish")
+        self.assertIn("ref: ${{ github.workflow_sha }}", assets)
+        self.assertIn("trusted/scripts/flutter_native_assets.py verify-public", assets)
+        self.assertLess(assets.index("verify-public"), assets.index("echo 'verified=true'"))
+        self.assertIn("public_verified: ${{ steps.public.outputs.verified }}", assets)
+        self.assertIn("      - pubdev_version\n", assets)
+        self.assertIn("      - publish-native-assets\n", publish)
+        self.assertIn("needs.publish-native-assets.outputs.public_verified == 'true'", publish)
+        self.assertNotIn("--clobber", assets)
 
     def test_apple_floor_uses_real_swift_59_and_retains_apple_consumers(self) -> None:
         workflow = read(CI_WORKFLOW)
@@ -1053,7 +1128,7 @@ jobs:
             with self.subTest(workflow=path.name):
                 self.assertNotIn("--clobber", text)
                 self.assertIn("gh release upload", text)
-                if path.name != "release-apple.yml":
+                if path.name == "release-python.yml":
                     self.assertNotIn("gh release download", text)
                     self.assertNotIn("cmp ", text)
 
@@ -1111,13 +1186,10 @@ jobs:
         }
         """
         archive = "Merman.xcframework-v0.9.3.zip"
-        package = "Merman-swiftpm-v0.9.3.zip"
-        files = {archive: b"producer archive", f"{archive}.checksum": b"producer checksum",
-                 package: b"complete package", f"{package}.checksum": b"package checksum",
-                 "Merman-swiftpm-v0.9.3.Package.swift": b"remote manifest"}
+        files = apple_release_files()
         scenarios = (
             "empty", "zip-only", "checksum-only", "complete",
-            "different-zip", "different-checksum", "partial-upload", "draft",
+            "partial-upload", "draft", *(f"different:{name}" for name in files),
         )
         for scenario in scenarios:
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
@@ -1129,13 +1201,13 @@ jobs:
                 for name, payload in files.items():
                     (producer / name).write_bytes(payload)
                     if (
-                        scenario in {"complete", "different-zip", "different-checksum", "draft"}
+                        scenario in {"complete", "draft"} or scenario.startswith("different:")
                         or (scenario == "zip-only" and name == archive)
                         or (scenario == "checksum-only" and name != archive)
                     ):
                         (public / name).write_bytes(payload)
-                if scenario.startswith("different-"):
-                    changed = archive if scenario == "different-zip" else f"{archive}.checksum"
+                if scenario.startswith("different:"):
+                    changed = scenario.split(":", 1)[1]
                     (public / changed).write_bytes(b"unrelated build")
                 log = root / "uploads.txt"
                 environment = dict(
@@ -1154,7 +1226,7 @@ jobs:
                         cwd=root, env=environment, capture_output=True, text=True, check=False,
                     )
                 result = execute()
-                if scenario.startswith("different-") or scenario == "draft":
+                if scenario.startswith("different:") or scenario == "draft":
                     self.assertNotEqual(result.returncode, 0)
                     self.assertFalse(log.exists())
                     continue
@@ -1166,19 +1238,14 @@ jobs:
                 self.assertEqual(result.returncode, 0, result.stderr)
                 for name, payload in files.items():
                     self.assertEqual((public / name).read_bytes(), payload)
-                expected = (
-                    0 if scenario == "complete"
-                    else 1 if scenario in {"zip-only", "checksum-only"}
-                    else len(files)
-                )
-                if scenario == "zip-only":
-                    expected = len(files) - 1
+                expected = (0 if scenario == "complete" else len(files) - 1 if scenario == "zip-only"
+                            else 1 if scenario == "checksum-only" else len(files))
                 uploaded = log.read_text().splitlines() if log.exists() else []
                 self.assertEqual(len(uploaded), expected)
                 self.assertEqual(len(set(uploaded)), expected)
 
     @unittest.skipUnless(BASH and shutil.which("sha256sum"), "requires Bash and sha256sum")
-    def test_apple_delivery_requires_both_exact_public_downloads(self) -> None:
+    def test_apple_delivery_requires_all_seven_exact_public_downloads(self) -> None:
         workflow = read(WORKFLOW_ROOT / "release-apple.yml")
         step = workflow.split("        id: verify-published\n", 1)[1]
         command = textwrap.dedent(step.split("        run: |\n", 1)[1])
@@ -1201,44 +1268,30 @@ jobs:
           cp "$TEST_PUBLIC/$name" "$destination"
         }
         """
-        archive = "Merman.xcframework-v0.9.3.zip"
-        payload = b"verified producer archive"
-        checksum = f"{hashlib.sha256(payload).hexdigest()}  {archive}\n".encode()
-        package = "Merman-swiftpm-v0.9.3.zip"
-        package_payload = b"verified complete package"
-        extra_files = {package: package_payload,
-                       f"{package}.checksum": f"{hashlib.sha256(package_payload).hexdigest()}  {package}\n".encode(),
-                       "Merman-swiftpm-v0.9.3.Package.swift": b"remote manifest"}
-        for scenario in (
-            "matching", "missing-archive", "corrupt-archive",
-            "changed-pair", "changed-checksum", "changed-package", "changed-manifest", "public-404",
-        ):
+        files = apple_release_files()
+        scenarios = ("matching", "changed-pair", "public-404",
+                     *(f"{mutation}:{name}" for mutation in ("missing", "changed") for name in files))
+        for scenario in scenarios:
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 producer = root / "platforms" / "apple"
                 producer.mkdir(parents=True)
                 public = root / "public"
                 public.mkdir()
-                (producer / archive).write_bytes(payload)
-                (producer / f"{archive}.checksum").write_bytes(checksum)
-                for name, data in extra_files.items():
-                    (producer / name).write_bytes(data)
-                    (public / name).write_bytes(data)
-                if scenario != "missing-archive":
-                    (public / archive).write_bytes(payload)
-                (public / f"{archive}.checksum").write_bytes(checksum)
-                if scenario in {"corrupt-archive", "changed-pair"}:
+                for name, payload in files.items():
+                    (producer / name).write_bytes(payload)
+                    (public / name).write_bytes(payload)
+                if scenario.startswith("missing:"):
+                    (public / scenario.split(":", 1)[1]).unlink()
+                elif scenario.startswith("changed:"):
+                    (public / scenario.split(":", 1)[1]).write_bytes(b"different public payload")
+                elif scenario == "changed-pair":
+                    archive = "Merman.xcframework-v0.9.3.zip"
                     changed = b"different public archive"
                     (public / archive).write_bytes(changed)
-                    if scenario == "changed-pair":
-                        (public / f"{archive}.checksum").write_text(
-                            f"{hashlib.sha256(changed).hexdigest()}  {archive}\n"
-                        )
-                elif scenario == "changed-checksum":
-                    (public / f"{archive}.checksum").write_bytes(checksum + b"\n")
-                elif scenario in {"changed-package", "changed-manifest"}:
-                    name = package if scenario == "changed-package" else "Merman-swiftpm-v0.9.3.Package.swift"
-                    (public / name).write_bytes(b"different public payload")
+                    (public / f"{archive}.checksum").write_text(
+                        f"{hashlib.sha256(changed).hexdigest()}  {archive}\n"
+                    )
                 summary = root / "summary.md"
                 result = subprocess.run(
                     [BASH, "-c", textwrap.dedent(download_stub) + command],
@@ -1258,8 +1311,10 @@ jobs:
                 )
                 if scenario == "matching":
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("Apple delivery verified", summary.read_text())
-                    self.assertIn(f"v0.9.3/{archive}", summary.read_text())
+                    report = summary.read_text()
+                    self.assertIn("Apple delivery verified", report)
+                    for name in files:
+                        self.assertIn(f"v0.9.3/{name}", report)
                 else:
                     self.assertNotEqual(result.returncode, 0)
                     self.assertFalse(summary.exists())
@@ -1275,40 +1330,130 @@ jobs:
         self.assertIn("--require-exact", publish)
         self.assertIn("PyPI did not expose the exact wheel set", publish)
 
-    def test_python_release_pins_single_target_macos_wheel_tag(self) -> None:
-        build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
-        self.assertIn("Pin single-target macOS wheel platform", build)
-        self.assertIn("if: runner.os == 'macOS'", build)
-        self.assertIn('test "$(uname -m)" = "arm64"', build)
-        self.assertIn("macosx-11.0-arm64", build)
-        self.assertLess(
-            build.index("Pin single-target macOS wheel platform"),
-            build.index("- name: Build wheel"),
-        )
+    def test_python_preflight_matches_all_five_owner_targets_and_linux_baseline(self) -> None:
+        from scripts.artifact_profile_recipe import load_artifact_profile
 
-    def test_python_owners_smoke_the_final_wheel_after_repair(self) -> None:
+        owner = read(WORKFLOW_ROOT / "release-python.yml")
+        reusable = read(WORKFLOW_ROOT / "build-python.yml")
+        owner_builds = workflow_job(reusable, "build") + workflow_job(reusable, "build-linux")
+        preflight = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "python-wheel")
+        expected = sorted(load_artifact_profile("python-uniffi-native").build_targets)
+        self.assertIn("uses: ./.github/workflows/build-python.yml", workflow_job(owner, "build"))
+        self.assertIn("uses: ./.github/workflows/build-python.yml", preflight)
+        self.assertIn("source_ref: ${{ needs.validate-inputs.outputs.source_sha }}", preflight)
+        self.assertIn("release_tag: ${{ needs.validate-inputs.outputs.release_tag }}", preflight)
+        self.assertNotIn("strategy:", preflight)
+        self.assertNotIn("steps:", preflight)
+        targets = re.findall(r"(?m)^            target: (\S+)$", owner_builds)
+        self.assertEqual(len(targets), 5)
+        self.assertEqual(sorted(targets), expected)
+        self.assertEqual(len(targets), len(set(targets)))
+        self.assertIn("--expected-target \"$WHEEL_TARGET\"", owner_builds)
+        self.assertIn("test \"$(getconf GNU_LIBC_VERSION)\" = 'glibc 2.28'", owner_builds)
+        linux = workflow_job(reusable, "build-linux")
+        trust_checkout = 'git config --global --add safe.directory "$GITHUB_WORKSPACE"'
+        self.assertLess(linux.index(trust_checkout), linux.index('git rev-parse "HEAD^{commit}"'))
+        self.assertNotIn('safe.directory "*"', linux)
+        self.assertIn('--plat "manylinux_2_28_$WHEEL_ARCH" --only-plat', owner_builds)
+        images = r"image: (quay\.io/pypa/manylinux_2_28_\S+@sha256:[0-9a-f]{64})"
+        self.assertEqual(len(re.findall(images, owner_builds)), 2)
+
+    def test_python_owners_smoke_final_wheels_after_repair_in_isolated_consumers(self) -> None:
         for filename, job in [
-            ("release-python.yml", "build"),
-            ("release-preflight.yml", "python-wheel"),
+            ("build-python.yml", "build"),
+            ("build-python.yml", "build-linux"),
         ]:
-            with self.subTest(workflow=filename):
+            with self.subTest(workflow=filename, job=job):
                 build = workflow_job(read(WORKFLOW_ROOT / filename), job)
                 self.assertIn('VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"', build)
                 self.assertIn('python -m venv "$VENV_DIR"', build)
-                self.assertNotIn("target/python-final-wheel-smoke", build)
                 self.assertNotIn("build-python-uniffi-wheel.py --run-smoke", build)
                 commands = [
-                    "id: repair-linux-wheel",
-                    "python -m auditwheel repair",
-                    "mv target/python-wheels/repaired/merman-*.whl target/python-wheels/",
+                    "scripts/build-python-uniffi-wheel.py --expected-target",
                     "id: smoke-final-wheel",
-                    '"$PYTHON" -m ensurepip --upgrade',
-                    '"$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl',
-                    '"$PYTHON" platforms/python/merman/examples/smoke.py',
+                    '"$PYTHON" -m pip install --no-index --no-deps target/python-wheels/merman-*.whl',
+                    'cp platforms/python/merman/examples/wheel_smoke.py "$VENV_DIR/wheel_smoke.py"',
+                    '(cd "$VENV_DIR" && "$PYTHON" -I wheel_smoke.py)',
                     "path: target/python-wheels/merman-*.whl",
                 ]
                 positions = [build.index(command) for command in commands]
                 self.assertEqual(positions, sorted(positions))
+                if "id: repair-linux-wheel" in build:
+                    self.assertLess(build.index("python -m auditwheel repair"), positions[1])
+                    self.assertLess(build.index("mv target/python-wheels/repaired/merman-*.whl"), positions[1])
+                self.assertIn('VENV_DIR="$RUNNER_TEMP/python-minimum-wheel-smoke"', build)
+                self.assertIn("assert sys.version_info[:2] == (3, 9)", build)
+
+    def test_node_preflight_and_owner_cover_all_seven_native_targets_once(self) -> None:
+        descriptor = json.loads(read(ROOT / "platforms/node/package-surfaces.json"))
+        expected = sorted(target["target"] for target in descriptor["targets"])
+        for filename, job in (("release-node.yml", "platform"),
+                              ("release-preflight.yml", "node-platform-package")):
+            with self.subTest(workflow=filename):
+                build = workflow_job(read(WORKFLOW_ROOT / filename), job)
+                targets = re.findall(r"(?m)^          - target: (\S+)$", build)
+                self.assertEqual(sorted(targets), expected)
+                self.assertEqual(len(targets), len(set(targets)))
+                arm = re.findall(
+                    r"target: (linux-arm64-(?:gnu|musl))\n            runner: (\S+)", build,
+                )
+                self.assertEqual(sorted(arm), [
+                    ("linux-arm64-gnu", "ubuntu-24.04-arm"),
+                    ("linux-arm64-musl", "ubuntu-24.04-arm"),
+                ])
+                self.assertIn('--platform "$DOCKER_PLATFORM"', build)
+                self.assertIn("/source/platforms/node/scripts/install-root-package.py", build)
+                self.assertIn("python3 platforms/node/scripts/install-root-package.py", build)
+                self.assertIn('test "$(node --version)" = "v22.0.0"', build)
+                self.assertIn('dirname(process.execPath)', build)
+                self.assertIn('--npm-cli "$npm_cli"', build)
+
+    def test_android_preflight_qualifies_selected_maven_coordinate_on_16kb_device(self) -> None:
+        build = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "android-aar")
+        self.assertIn("MAVEN_GROUP: ${{ inputs.android_maven_group }}", build)
+        self.assertIn('"-PmermanMavenGroup=$MAVEN_GROUP"', build)
+        self.assertIn('scripts/android_package.py package --repository', build)
+        self.assertIn('--group-id "$MAVEN_GROUP" --version "$VERSION"', build)
+        self.assertIn('"build-tools;35.0.0"', build)
+        self.assertIn("target: google_apis_ps16k", build)
+        self.assertIn('test "$(adb shell getconf PAGE_SIZE | tr -d \'\\r\')" = "16384"', build)
+        self.assertIn('scripts/android_package.py qualify --archive', build)
+        self.assertIn('--zipalign "$ANDROID_HOME/build-tools/35.0.0/zipalign" --connected', build)
+        self.assertNotIn("--central-bundle", build)
+
+    def test_android_signing_executes_only_the_trusted_operator(self) -> None:
+        signing = workflow_job(read(WORKFLOW_ROOT / "release-android.yml"), "central-bundle")
+        self.assertIn("ref: ${{ github.workflow_sha }}\n          path: trusted", signing)
+        self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}\n          path: selected-source", signing)
+        self.assertIn("git -C selected-source rev-parse", signing)
+        self.assertIn("python3 trusted/platforms/android/build-android.py", signing)
+        self.assertIn("python3 trusted/scripts/android_package.py sign", signing)
+        self.assertIn("python3 trusted/scripts/android_package.py package", signing)
+        self.assertEqual(signing.count("--android-root selected-source/platforms/android"), 2)
+        self.assertNotIn("python3 scripts/", signing)
+
+    def test_android_public_assets_are_resumable_and_anonymously_verified(self) -> None:
+        upload = workflow_job(read(WORKFLOW_ROOT / "release-android.yml"), "upload-release")
+        self.assertIn("jq -e '.draft == false'", upload)
+        self.assertIn('gh release upload "$RELEASE_TAG" "${missing_assets[@]}"', upload)
+        self.assertIn("curl --disable --fail --location", upload)
+        self.assertIn('https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name', upload)
+        self.assertIn('cmp "$asset" "$existing_dir/$name"', upload)
+        self.assertNotIn("--clobber", upload)
+        self.assertNotIn("Authorization:", upload)
+
+    def test_preflight_qualifies_installed_web_packages_with_browser_tools(self) -> None:
+        job = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "web-npm-dry-run")
+        commands = [
+            "npm run build --prefix platforms/web",
+            "npm ci --include=dev --prefix playground\n",
+            "npm ci --include=dev --prefix playground/tests\n",
+            "npm run install:browser:chromium --prefix playground/tests",
+            "node platforms/web/scripts/installed-browser-consumer.mjs",
+            "scripts/web_package_group.py pack",
+        ]
+        positions = [job.index(command) for command in commands]
+        self.assertEqual(positions, sorted(positions))
 
     def test_web_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
         text = read(WORKFLOW_ROOT / "release-web.yml")

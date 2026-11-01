@@ -8,6 +8,25 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 Development changes beyond the [0.9.3 maintenance release](#093---2026-10-30).
 
+### Binding installation and delivery
+
+Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) to distinguish current
+public packages from these unreleased main-line products:
+
+- Android, Python, Flutter and both Node transports include math in their ordinary SVG
+  products. Web full/render retain complete SVG including math; analysis, editor and ASCII
+  stay separate. Image encoders, host font services and resource policies remain explicit.
+- SwiftPM gains a complete remote-package delivery tree alongside the self-contained local
+  package. Android retains a selected-version Maven repository and a signed Central upload
+  bundle. Public repository and registry rollout remain separate release steps.
+- Python wheel candidates cover macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows
+  x86-64, with Linux build, repair and installation at manylinux 2.28.
+- Flutter's thin facade downloads and verifies only its selected native target during the
+  build. Local assets, mirrors and offline cached builds have explicit hook options.
+  Flutter apps use the qualified `3.47.7+` SDK/dependency baseline; native Dart remains `3.10+`.
+- Node adds GNU and musl Linux ARM64 optional packages. Installing the root package selects
+  one exact-version native package; Node-WASM remains an explicit alternative.
+
 ### Diagram themes (alpha)
 
 Apply reusable visual designs through Rust, Web, native CLI, or the Playground. The current catalog includes 11 presets: Editor Light/Dark, One Dark, Gruvbox Light/Dark, Ayu Light/Dark, Brutalist, Spotless, Cyberpunk, and Ghibli. Export a preset as editable JSON to customize its tokens, typography, canvas, and supported family rules, then share the same recipe across integrations. Use a matching development runtime; this section does not announce package publication.

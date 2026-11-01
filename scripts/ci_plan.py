@@ -150,6 +150,9 @@ _CRATE_OWNER_RULES = (
     ("crates/xtask/", _CORE_OWNERS),
 )
 _SCRIPT_EXACT_OWNER_RULES = {
+    "platforms/node/scripts/install-root-package.py": frozenset({"hygiene", "node", "npm"}),
+    "scripts/test_build_python_uniffi_wheel.py": frozenset({"hygiene", "python"}),
+    "scripts/test_release_workflow_security.py": frozenset({"hygiene", "workflow"}),
     "scripts/release_preflight_evidence.py": frozenset({"hygiene", "workflow"}),
     "scripts/test_release_preflight_evidence.py": frozenset({"hygiene", "workflow"}),
     "scripts/run_theme_acceptance.py": frozenset({"core", "hygiene"}),
@@ -193,6 +196,8 @@ _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/verify_prerelease_compatibility.py": frozenset({"core", "hygiene"}),
 }
 _SCRIPT_PREFIX_OWNER_RULES = (
+    ("scripts/android_", {"hygiene", "platform"}),
+    ("scripts/test_android_", {"hygiene", "platform"}),
     ("scripts/apple_", {"hygiene", "platform"}),
     ("scripts/test_apple_", {"hygiene", "platform"}),
     ("scripts/native_static_", {"hygiene", "platform", "security"}),
@@ -711,11 +716,11 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"upstream runtime authority changed: {path}",
             False,
         )
+    if selected := _SCRIPT_EXACT_OWNER_RULES.get(path):
+        return selected, f"owner script changed: {path}", False
     if path.startswith("scripts/"):
         if path.endswith(_NONCANONICAL_SCRIPT_SUFFIXES):
             return _ALL_OWNERS, f"noncanonical repository script changed: {path}", True
-        if selected := _SCRIPT_EXACT_OWNER_RULES.get(path):
-            return selected, f"owner script changed: {path}", False
         for prefix, selected in _SCRIPT_PREFIX_OWNER_RULES:
             if path.startswith(prefix):
                 return frozenset(selected), f"owner script changed: {path}", False

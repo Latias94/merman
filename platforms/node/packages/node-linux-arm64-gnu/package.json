@@ -1,0 +1,35 @@
+{
+  "name": "@mermanjs/node-linux-arm64-gnu",
+  "version": "0.9.3",
+  "description": "Native Linux ARM64 glibc binary for @mermanjs/node.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "main": "./merman.node",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/node#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "merman.node",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "README.md",
+    "THIRD_PARTY_LICENSES",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "glibc"
+  ]
+}

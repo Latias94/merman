@@ -251,8 +251,6 @@ jobs:
         run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 
       - name: Assemble and verify Node WASM package
-        env:
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
           package_root="$RUNNER_TEMP/node-wasm-package"
@@ -262,6 +260,19 @@ jobs:
           mkdir -p "$artifact_dir"
           npm pack "$package_root/node-wasm" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-wasm-pack.json"
 
+      - name: Setup Node minimum consumer runtime
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "22.0.0"
+          package-manager-cache: false
+
+      - name: Install and execute Node WASM on Node 22.0.0
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v22.0.0"
+          artifact_dir="$RUNNER_TEMP/node-wasm-artifact"
           smoke_root="$RUNNER_TEMP/node-wasm-install-smoke"
           mkdir -p "$smoke_root"
           cd "$smoke_root"
@@ -300,9 +311,27 @@ jobs:
           - target: linux-x64-gnu
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
+            docker_platform: linux/amd64
+            libc: glibc
+            consumer_image: node:22.0.0-bullseye
           - target: linux-x64-musl
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-musl
+            docker_platform: linux/amd64
+            libc: musl
+            consumer_image: node:22.0.0-alpine3.19
+          - target: linux-arm64-gnu
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            docker_platform: linux/arm64
+            libc: glibc
+            consumer_image: node:22.0.0-bullseye
+          - target: linux-arm64-musl
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-musl
+            docker_platform: linux/arm64
+            libc: musl
+            consumer_image: node:22.0.0-alpine3.19
           - target: win32-x64-msvc
             runner: windows-2025-vs2026
             rust_target: x86_64-pc-windows-msvc
@@ -324,36 +353,35 @@ jobs:
           python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         uses: Swatinem/rust-cache@v2.9.2
         with:
           workspaces: crates/merman-node
 
-      - name: Build, package, and smoke musl target
-        if: matrix.target == 'linux-x64-musl'
+      - name: Build and package musl target on its matching CPU
+        if: matrix.libc == 'musl'
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          DOCKER_PLATFORM: ${{ matrix.docker_platform }}
         run: |
           set -euo pipefail
           docker build \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             --file platforms/node/Dockerfile.musl \
             --build-arg NODE_IMAGE=node:24.13.1-alpine3.22 \
             --build-arg RUST_IMAGE=rust:1.95-alpine3.22 \
             --tag merman-node-musl:ci \
             platforms/node
           docker run --rm \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             -e CARGO_INCREMENTAL=0 \
             -e TARGET="$TARGET" \
-            -e VERSION="$VERSION" \
             -v "$GITHUB_WORKSPACE:/work" \
             -v "$RUNNER_TEMP:/runner-temp" \
             -w /work \
@@ -366,39 +394,33 @@ jobs:
               package_root=/runner-temp/node-packages
               artifact_dir=/runner-temp/node-platform-artifact
               smoke_tarballs=/runner-temp/node-smoke-tarballs
-              smoke_root=/runner-temp/node-install-smoke
               node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
               node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
-              mkdir -p "$artifact_dir" "$smoke_tarballs" "$smoke_root"
+              mkdir -p "$artifact_dir" "$smoke_tarballs"
               npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" >/runner-temp/node-root-pack.json
               npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" >/runner-temp/node-target-pack.json
               cp "$artifact_dir"/*.tgz "$smoke_tarballs"/
               test "$(find "$artifact_dir" -maxdepth 1 -name "*.tgz" -type f | wc -l | tr -d " ")" = 1
-              cd "$smoke_root"
-              npm init -y >/dev/null
-              npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
-              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$VERSION" --target "$TARGET"
             '
 
-      - name: Build, package, and smoke GNU target
-        if: matrix.target == 'linux-x64-gnu'
+      - name: Build and package GNU target at glibc 2.31 on its matching CPU
+        if: matrix.libc == 'glibc'
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          DOCKER_PLATFORM: ${{ matrix.docker_platform }}
         run: |
           set -euo pipefail
           docker build \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             --file platforms/node/Dockerfile.gnu \
             --build-arg NODE_IMAGE=node:24.13.1-bullseye \
             --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
           docker run --rm \
-            --platform linux/amd64 \
+            --platform "$DOCKER_PLATFORM" \
             -e CARGO_INCREMENTAL=0 \
             -e TARGET="$TARGET" \
-            -e VERSION="$VERSION" \
             -v "$GITHUB_WORKSPACE:/work" \
             -v "$RUNNER_TEMP:/runner-temp" \
             -w /work \
@@ -412,21 +434,48 @@ jobs:
               package_root=/runner-temp/node-packages
               artifact_dir=/runner-temp/node-platform-artifact
               smoke_tarballs=/runner-temp/node-smoke-tarballs
-              smoke_root=/runner-temp/node-install-smoke
               node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
               node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
-              mkdir -p "$artifact_dir" "$smoke_tarballs" "$smoke_root"
+              mkdir -p "$artifact_dir" "$smoke_tarballs"
               npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" >/runner-temp/node-root-pack.json
               npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" >/runner-temp/node-target-pack.json
               cp "$artifact_dir"/*.tgz "$smoke_tarballs"/
-              cd "$smoke_root"
-              npm init -y >/dev/null
-              npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
-              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$VERSION" --target "$TARGET"
+            '
+
+      - name: Resolve only the root package and execute Linux consumer on Node 22.0.0
+        if: startsWith(matrix.target, 'linux-')
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          DOCKER_PLATFORM: ${{ matrix.docker_platform }}
+          CONSUMER_IMAGE: ${{ matrix.consumer_image }}
+          TARGET_LIBC: ${{ matrix.libc }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --platform "$DOCKER_PLATFORM" \
+            -e TARGET="$TARGET" -e VERSION="$VERSION" -e TARGET_LIBC="$TARGET_LIBC" \
+            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -v "$RUNNER_TEMP:/runner-temp" \
+            -w /runner-temp \
+            "$CONSUMER_IMAGE" \
+            sh -c '
+              set -eu
+              test "$(node --version)" = "v22.0.0"
+              if [ "$TARGET_LIBC" = musl ]; then
+                apk add --no-cache python3
+              else
+                test "$(node -p "process.report.getReport().header.glibcVersionRuntime")" = "2.31"
+              fi
+              python3 /source/platforms/node/scripts/install-root-package.py \
+                --tarball-dir /runner-temp/node-smoke-tarballs \
+                --project /runner-temp/node-install-smoke --version "$VERSION" --target "$TARGET"
+              node /source/platforms/node/scripts/smoke-installed-package.mjs \
+                --project /runner-temp/node-install-smoke --version "$VERSION" --target "$TARGET"
             '
 
       - name: Setup Node
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
@@ -434,19 +483,19 @@ jobs:
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install pinned npm
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
 
       - name: Install pinned Node build dependencies
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: npm ci --prefix platforms/node
 
       - name: Build and probe native package
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: node platforms/node/scripts/build-candidate.mjs --candidate napi --target "${{ matrix.target }}"
 
       - name: Assemble and verify target package
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -457,11 +506,10 @@ jobs:
             --output-root "$package_root"
           node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
 
-      - name: Pack and install-smoke target package
-        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+      - name: Pack target package
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
           package_root="$RUNNER_TEMP/node-packages"
@@ -473,11 +521,26 @@ jobs:
           cp "$artifact_dir"/*.tgz "$smoke_tarballs/"
           test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
 
+      - name: Setup Node minimum consumer runtime
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "22.0.0"
+          package-manager-cache: false
+
+      - name: Resolve only the root package and execute installed consumer on Node 22.0.0
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v22.0.0"
           smoke_root="$RUNNER_TEMP/node-install-smoke"
-          mkdir -p "$smoke_root"
-          cd "$smoke_root"
-          npm init -y >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
+          npm_cli="$(node -p 'require("node:path").join(require("node:path").dirname(process.execPath), process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "../lib/node_modules/npm/bin/npm-cli.js")')"
+          python3 platforms/node/scripts/install-root-package.py \
+            --tarball-dir "$RUNNER_TEMP/node-smoke-tarballs" \
+            --project "$smoke_root" --version "$VERSION" --target "$TARGET" --npm-cli "$npm_cli"
           node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
             --project "$smoke_root" \
             --version "$VERSION" \

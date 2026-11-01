@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import platform
 import shutil
 import subprocess
@@ -40,11 +41,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def run(args: list[str]) -> None:
-    print("+", " ".join(args))
+    print("+", " ".join(args), flush=True)
     subprocess.run(args, cwd=REPO_ROOT, check=True)
 
 
-def llvm_nm() -> Path:
+def llvm_nm(*, coff_exports: bool = False) -> Path:
     candidates = []
     if resolved := shutil.which("llvm-nm"):
         candidates.append(Path(resolved))
@@ -76,9 +77,10 @@ def llvm_nm() -> Path:
     filename = "llvm-nm.exe" if sys.platform == "win32" else "llvm-nm"
     candidates.append(sysroot / "lib" / "rustlib" / host / "bin" / filename)
     for candidate in candidates:
-        if candidate.is_file():
+        readobj = candidate.with_name(f"llvm-readobj{candidate.suffix}")
+        if candidate.is_file() and (not coff_exports or readobj.is_file()):
             return candidate
-    raise RuntimeError("llvm-nm not found; install the Rust llvm-tools-preview component")
+    raise RuntimeError("required LLVM tools not found; install the Rust llvm-tools-preview component")
 
 
 def build(recipe, target: str, *, zig: bool = False) -> Path:
@@ -86,16 +88,22 @@ def build(recipe, target: str, *, zig: bool = False) -> Path:
     tool = "cargo-zigbuild" if zig else "cargo"
     run(cargo_build_args(recipe, locked=True, target=target, build_tool=tool))
     filename = native_filename(target)
-    artifact = REPO_ROOT / "target" / target / recipe.cargo_profile / filename
+    metadata = subprocess.check_output(
+        ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
+        cwd=REPO_ROOT,
+        text=True,
+    )
+    artifact = Path(json.loads(metadata)["target_directory"]) / target / recipe.cargo_profile / filename
     if not artifact.is_file():
         raise RuntimeError(f"native artifact was not produced: {artifact}")
     assert_symbol_contract(
         read_defined_dynamic_symbols(
             artifact,
-            llvm_nm(),
+            llvm_nm(coff_exports=artifact.suffix.lower() == ".dll"),
         ),
         C_ABI_SYMBOL_CONTRACT,
         label=f"{recipe.profile_id} {target}",
+        exact_exports=artifact.suffix.lower() == ".dll",
     )
     return artifact
 
@@ -150,12 +158,18 @@ def build_windows() -> None:
 def build_host() -> None:
     system = platform.system()
     machine = platform.machine().lower()
-    arch = "arm64" if machine in {"arm64", "aarch64"} else "x86_64"
+    if machine in {"arm64", "aarch64"}:
+        arch = "arm64"
+    elif machine in {"x86_64", "amd64"}:
+        arch = "x86_64"
+    else:
+        raise RuntimeError(f"unsupported Flutter host: {system}/{machine}")
     if system == "Darwin":
         target = "aarch64-apple-darwin" if arch == "arm64" else "x86_64-apple-darwin"
         build_macos(target, arch)
     elif system == "Linux":
-        target = "aarch64-unknown-linux-gnu" if arch == "arm64" else "x86_64-unknown-linux-gnu"
+        arch = "aarch64" if arch == "arm64" else arch
+        target = f"{arch}-unknown-linux-gnu"
         package(build(DESKTOP_RECIPE, target), f"linux/{arch}/libmerman_ffi.so")
     elif system == "Windows" and arch == "x86_64":
         artifact = build(DESKTOP_RECIPE, "x86_64-pc-windows-gnu")

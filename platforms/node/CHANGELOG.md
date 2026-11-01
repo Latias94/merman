@@ -10,6 +10,8 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ### Added
 
+- Include math in both native and explicit Node-WASM SVG products. Add GNU and musl Linux ARM64 optional packages, bringing the lockstep group to nine packages; root-only installation selects one exact-version native target. The native glibc floor is 2.31.
+
 - Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
 - Added artifact-aware discovery for the alpha preset inventory, including Brutalist, Spotless, Cyberpunk and Ghibli. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
 

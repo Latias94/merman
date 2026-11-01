@@ -5,10 +5,18 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+
+try:
+    from .flutter_native_assets import MANIFEST_PATH, load_manifest
+    from .flutter_release_archive import _pubspec_scalar
+except ImportError:
+    from flutter_native_assets import MANIFEST_PATH, load_manifest
+    from flutter_release_archive import _pubspec_scalar
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +66,19 @@ def positive_float(value: str) -> float:
     return parsed
 
 
+def verify_thin_package(package_root: Path) -> None:
+    if (package_root / "native").exists():
+        raise FlutterPackageSizeError("thin Flutter package must not contain native/")
+    for directory, directories, files in os.walk(package_root):
+        directories[:] = [name for name in directories if name != ".dart_tool"]
+        for name in directories + files:
+            path = Path(directory) / name
+            if path.suffix in {".dll", ".dylib", ".so", ".gz"}:
+                raise FlutterPackageSizeError(f"thin Flutter package contains a native archive/library: {path}")
+    version = _pubspec_scalar((package_root / "pubspec.yaml").read_bytes(), "version")
+    load_manifest(package_root / MANIFEST_PATH, version=version)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -65,6 +86,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=DEFAULT_PACKAGE_ROOT,
         help="Flutter package directory passed to Dart pub.",
+    )
+    parser.add_argument(
+        "--require-thin", action="store_true",
+        help="Require the frozen native manifest and reject physically included native assets.",
     )
     parser.add_argument(
         "--max-compressed-mb",
@@ -81,6 +106,12 @@ def main(argv: list[str] | None = None) -> int:
     if not (package_root / "pubspec.yaml").is_file():
         print(f"Flutter package root has no pubspec.yaml: {package_root}", file=sys.stderr)
         return 2
+    if args.require_thin:
+        try:
+            verify_thin_package(package_root)
+        except RuntimeError as error:
+            print(f"Flutter thin package verification failed: {error}", file=sys.stderr)
+            return 1
 
     completed = subprocess.run(
         ["dart", "pub", "publish", "--dry-run"],

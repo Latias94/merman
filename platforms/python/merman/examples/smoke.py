@@ -2,6 +2,7 @@ import json
 
 import merman
 from theme_authoring import run_theme_authoring_smoke
+from wheel_smoke import assert_math_svg
 
 
 SOURCE = 'flowchart TD\nA@{ icon: "smoke:rocket", label: "Hello" } --> B[World]'
@@ -76,6 +77,7 @@ def main() -> None:
             "ascii",
             "layout-cytoscape",
             "layout-elk",
+            "math",
             "svg",
         }.issubset(capabilities),
         "default native capabilities are incomplete",
@@ -83,7 +85,6 @@ def main() -> None:
     require(
         not {
             "jpeg",
-            "math",
             "pdf",
             "png",
             "system-clock",
@@ -117,17 +118,23 @@ def main() -> None:
     require(selected.metadata.output_plan.ascii.layout_profile == "compact", "effective layout lost")
     require(selected.data == compact.data, "Auto did not preserve selected Compact output")
     require(engine.analyze_json(BASIC_SOURCE, None), "analysis smoke failed")
+    assert_math_svg(api.render_svg('flowchart TD\nA["$$x^2$$"] --> B', None))
+
+    try:
+        engine.render_svg('flowchart TD\nA["$$x^2$$"] --> B', None)
+    except merman.MermanError.Binding as error:
+        require(
+            error.kind == merman.MermanErrorKind.MISSING_CAPABILITY
+            and error.capability_id == "math",
+            "constrained math rejection lost its missing-capability contract",
+        )
+    else:
+        raise RuntimeError("constrained engine unexpectedly admitted native math")
 
     for capability_id, operation in (
         ("png", lambda: engine.render_png(SOURCE, None)),
         ("jpeg", lambda: engine.render_jpeg(SOURCE, None)),
         ("pdf", lambda: engine.render_pdf(SOURCE, None)),
-        (
-            "math",
-            lambda: engine.render_svg(
-                'flowchart TD\nA["$$x^2$$"] --> B', None
-            ),
-        ),
     ):
         try:
             operation()

@@ -325,6 +325,7 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertIn("-attempt-${{ github.run_attempt }}", issuer)
         self.assertNotIn("overwrite:", issuer)
         self.assertNotIn("always()", issuer)
+        self.assertIn("if: ${{ inputs.scope == 'release' }}", issuer)
         self.assertIn("timeout-minutes: 10", workflow)
         self.assertIn("Acquire::Retries=3", workflow)
         versions = self.job(workflow, "versions-and-packages")
@@ -341,8 +342,29 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertIn("actions: read", sdk)
         self.assertNotIn("secrets: inherit", sdk)
         self.assertNotIn("continue-on-error", sdk)
-        self.assertNotIn("\n    if:", sdk)
+        self.assertIn("if: ${{ inputs.scope == 'release' }}", sdk)
         self.assertIn("      - sdk-archives\n", self.job(workflow, "release-preflight-evidence"))
+
+    def test_binding_candidates_keep_all_host_consumers_without_release_receipts(self):
+        workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
+        inputs = workflow.split("permissions:\n", 1)[0]
+        self.assertIn("default: release", inputs)
+        self.assertIn("          - release\n          - bindings\n", inputs)
+        release_only = {
+            "versions-and-packages", "mermaid-reference-materialized", "cli-and-lsp-archives",
+            "vscode-extension-dry-run", "sdk-archives", "release-preflight-evidence",
+        }
+        for job_id in evidence.REQUIRED_JOBS | {"release-preflight-evidence"}:
+            job = self.job(workflow, job_id)
+            with self.subTest(job=job_id):
+                if job_id in release_only:
+                    self.assertIn("if: ${{ inputs.scope == 'release' }}", job)
+                else:
+                    self.assertNotIn("\n    if:", job)
+                    needs = job.split("\n    name:", 1)[0].split("\n    permissions:", 1)[0]
+                    for dependency in release_only:
+                        self.assertNotIn(f"      - {dependency}\n", needs)
+        self.assertIn("never issues a release-preflight receipt", workflow)
 
     def test_sdk_reusable_owner_has_no_publication_or_write_permissions(self):
         owner = (ROOT / ".github/workflows/release-sdk.yml").read_text()

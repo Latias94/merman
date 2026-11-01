@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-flutter-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   validate-inputs:
     name: validate-inputs
@@ -132,6 +136,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
+          components: llvm-tools-preview
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 
       - name: Install desktop cross tools
@@ -194,14 +199,27 @@ jobs:
             lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
             example tool hook
           dart run tool/abi3_contract_test.dart
+          dart run tool/native_assets_contract_test.dart
           dart run example/main.dart
+          dart run example/smoke.dart
           dart run tool/theme_authoring_smoke.dart
-          python3 ../../scripts/verify_flutter_pub_package.py \
-            --package-root . \
-            --max-compressed-mb 99
 
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check
+
+      - name: Freeze target native assets
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/flutter_native_assets.py stage \
+            --native-root platforms/flutter/native \
+            --output "$RUNNER_TEMP/flutter-native-assets" \
+            --base-url "https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/" \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
 
       - name: Package Flutter release artifact
         env:
@@ -212,11 +230,31 @@ jobs:
           set -euo pipefail
           python3 scripts/flutter_release_archive.py pack \
             --package-root platforms/flutter \
+            --native-manifest "$RUNNER_TEMP/flutter-native-assets/native-assets.json" \
             --archive "$RUNNER_TEMP/merman-flutter-package.tar.gz" \
             --receipt "$RUNNER_TEMP/merman-flutter-package.receipt.json" \
             --source-sha "$SOURCE_SHA" \
             --source-tree "$SOURCE_TREE" \
             --version "$VERSION"
+
+      - name: Qualify the frozen thin package and relocated app
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/flutter_release_archive.py extract \
+            --archive "$RUNNER_TEMP/merman-flutter-package.tar.gz" \
+            --receipt "$RUNNER_TEMP/merman-flutter-package.receipt.json" \
+            --destination "$RUNNER_TEMP/flutter-thin-package" --require-thin \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
+          python3 scripts/verify_flutter_pub_package.py \
+            --package-root "$RUNNER_TEMP/flutter-thin-package" --require-thin --max-compressed-mb 99
+          python3 platforms/flutter/tool/qualify_packaged_app.py \
+            --package-root "$RUNNER_TEMP/flutter-thin-package" \
+            --assets-root "$RUNNER_TEMP/flutter-native-assets" \
+            --output "$RUNNER_TEMP/flutter-packaged-app.json"
 
       - name: Upload Flutter package artifact
         uses: actions/upload-artifact@v7.0.2
@@ -225,6 +263,108 @@ jobs:
           path: |
             ${{ runner.temp }}/merman-flutter-package.tar.gz
             ${{ runner.temp }}/merman-flutter-package.receipt.json
+
+      - name: Upload frozen native target assets
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-flutter-native-assets
+          path: ${{ runner.temp }}/flutter-native-assets/
+
+      - name: Upload packaged app qualification
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-flutter-packaged-app
+          path: ${{ runner.temp }}/flutter-packaged-app.json
+
+  publish-native-assets:
+    needs:
+      - validate-inputs
+      - build
+      - pubdev_version
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-24.04
+    environment: github-release
+    permissions:
+      contents: write
+    outputs:
+      public_verified: ${{ steps.public.outputs.verified }}
+    steps:
+      - name: Checkout trusted native asset verifier
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: merman-flutter-package
+          path: target/flutter-package
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: merman-flutter-native-assets
+          path: target/flutter-native-assets
+
+      - name: Verify the frozen facade and native asset bytes
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 trusted/scripts/flutter_release_archive.py extract \
+            --archive target/flutter-package/merman-flutter-package.tar.gz \
+            --receipt target/flutter-package/merman-flutter-package.receipt.json \
+            --destination target/flutter-facade --require-thin \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
+          python3 trusted/scripts/flutter_native_assets.py verify \
+            --manifest target/flutter-facade/hook/native-assets.json \
+            --base-url "https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/" \
+            --assets-root target/flutter-native-assets
+
+      - name: Upload missing native assets without replacing accepted bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          observed="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
+          test "$observed" = "$SOURCE_SHA"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
+          existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          python3 trusted/scripts/flutter_native_assets.py list \
+            --manifest target/flutter-facade/hook/native-assets.json > "$RUNNER_TEMP/flutter-native-assets.list"
+          existing_dir="$(mktemp -d)"
+          missing_assets=()
+          while IFS= read -r name; do
+            asset="target/flutter-native-assets/$name"
+            if grep --fixed-strings --line-regexp --quiet "$name" <<< "$existing_assets"; then
+              gh release download "$RELEASE_TAG" --pattern "$name" --dir "$existing_dir"
+              cmp "$asset" "$existing_dir/$name"
+            else
+              missing_assets+=("$asset")
+            fi
+          done < "$RUNNER_TEMP/flutter-native-assets.list"
+          if test "${#missing_assets[@]}" -gt 0; then
+            gh release upload "$RELEASE_TAG" "${missing_assets[@]}"
+          fi
+
+      - name: Verify every exact public target download before pub.dev
+        id: public
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 trusted/scripts/flutter_native_assets.py verify-public \
+            --manifest target/flutter-facade/hook/native-assets.json \
+            --base-url "https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/"
+          echo 'verified=true' >> "$GITHUB_OUTPUT"
 
   pubdev_version:
     needs:
@@ -277,7 +417,8 @@ jobs:
       - validate-inputs
       - build
       - pubdev_version
-    if: ${{ github.event_name == 'push' && needs.pubdev_version.outputs.exists != 'true' }}
+      - publish-native-assets
+    if: ${{ github.event_name == 'push' && needs.pubdev_version.outputs.exists != 'true' && needs.publish-native-assets.outputs.public_verified == 'true' }}
     runs-on: macos-15
     environment: pub.dev
     permissions:
@@ -309,6 +450,7 @@ jobs:
             --archive target/flutter-package/merman-flutter-package.tar.gz \
             --receipt target/flutter-package/merman-flutter-package.receipt.json \
             --destination target/flutter-publish \
+            --require-thin \
             --source-sha "$SOURCE_SHA" \
             --source-tree "$SOURCE_TREE" \
             --version "$VERSION"
@@ -334,11 +476,23 @@ jobs:
         working-directory: target/flutter-publish
         run: dart pub publish --force --skip-validation
 
+      - name: Reconcile exact public package after publication
+        working-directory: trusted
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          state="$(python3 -m scripts.reconcile_pub_package \
+            --archive "$GITHUB_WORKSPACE/target/flutter-package/merman-flutter-package.tar.gz" \
+            --package merman --version "$VERSION")"
+          test "$state" = exact
+
   skip_existing:
     needs:
       - validate-inputs
       - build
       - pubdev_version
+      - publish-native-assets
     if: ${{ github.event_name == 'push' && needs.pubdev_version.outputs.exists == 'true' }}
     runs-on: ubuntu-24.04
     permissions:

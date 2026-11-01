@@ -127,15 +127,15 @@ Components: `dompurify`, `mermaid`, `sanitize-url`, `zenuml-core`.
 
 ### `web-full`
 
-Browser SDK including ASCII, Cytoscape and ELK without RaTeX math/font support.
+Browser SDK including ASCII, Cytoscape, ELK and RaTeX math/font support.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `web-render`
 
-Browser SVG renderer with Cytoscape and ELK, without math, analysis, ASCII, or editor APIs.
+Complete browser SVG renderer with math, Cytoscape and ELK, without analysis, ASCII, or editor APIs.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ## Components
 
@@ -359,7 +359,7 @@ The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are l
 - Source path: `crates/ratex-katex-fonts/fonts`
 - Relationship: `embedded`
 - License expression: `OFL-1.1`
-- Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`
+- Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `web-full`, `web-render`
 - Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt`](THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt) (notice, SHA-256 `752ba9eff7a281f5ad789528ea078b46149b10e72296625108c26a94695ad03e`)
@@ -504,7 +504,7 @@ Optional math rendering links the RaTeX 0.1.15 crate family; its separately lice
 - Source path: `crates`
 - Relationship: `linked`
 - License expression: `MIT`
-- Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`
+- Artifact scopes: `cli-release`, `ratex-render`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `web-full`, `web-render`
 - Local evidence: `Cargo.lock`, `crates/merman-render/src/math.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/ratex/LICENSE`](THIRD_PARTY_LICENSES/ratex/LICENSE) (license, SHA-256 `f65e10eaa978c50a58c5e792110b4be5014b865edcb2ade49076bfcc98fa92b0`)

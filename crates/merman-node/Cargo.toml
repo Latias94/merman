@@ -97,6 +97,7 @@ diagram-xychart = ["merman-bindings-core/diagram-xychart", "merman-core/diagram-
 diagram-zenuml = ["merman-bindings-core/diagram-zenuml", "merman-core/diagram-zenuml"]
 default = []
 svg = ["merman-bindings-core/svg"]
+math = ["svg", "merman-bindings-core/math"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 transport-napi = ["dep:napi", "dep:napi-build", "dep:napi-derive"]

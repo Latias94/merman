@@ -496,7 +496,7 @@ class SdkArchiveTests(unittest.TestCase):
         persist.assert_called_once()
         self.assertIs(extract.call_args.kwargs["limits"], TINY_SDK_LIMITS)
         self.assertIs(persist.call_args.kwargs["limits"], TINY_SDK_LIMITS)
-        self.assertEqual(destination, verified / archive.name)
+        self.assertEqual(destination, verified.resolve() / archive.name)
         self.assertEqual(destination.read_bytes(), archive.read_bytes())
         self.assertEqual(sdk_archive.read_checksum(Path(str(destination) + ".sha256"), destination.name),
                          sdk_archive.sha256_file(destination))

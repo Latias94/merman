@@ -5,9 +5,12 @@ Accepted for the development branch on 2026-10-20, after published `0.9.1`.
 Amended on 2026-10-25 by maintainer decision: retain the convenience aggregate names with
 math-free membership, replacing this ADR's original aggregate-retirement decision.
 
-Main-line Apple prebuilt selection is amended by
-[ADR-0100](0100-prebuilt-product-entry-points.md), which selects `math` explicitly for that
-binary product. Source defaults and published v0.9.x recipes retain this ADR's policy.
+Main-line prebuilt products are amended by
+[ADR-0100](0100-prebuilt-product-entry-points.md) and
+[ADR-0101](0101-binding-product-delivery.md). They select `math` explicitly in the recommended
+Apple, Android, Python, Flutter, Web full/render and Node products. Source defaults and
+aggregates remain math opt-in. Published artifacts retain their original recipes; in
+particular, published Web 0.9.2 full/render already includes math.
 
 Math is a positive capability selected by a consumer or exact artifact recipe. Diagram family,
 SVG and layout selection must not pull in its backend or font payload indirectly.
@@ -18,10 +21,11 @@ the changelog and migration guide require explicit `math` for mathematical label
 
 The facade defaults to `all-diagrams,svg,layout-cytoscape,layout-elk`. Rustdoc retains its existing
 direct non-math defaults. CLI source defaults and its `rustdoc` leaf omit math; the official
-`cli-release`/cargo-dist recipe includes it explicitly. Generic native/static SVG and Web
-full/render recipes omit math. Explicit C reference/native SDK/exhaustive recipes retain their
-audited selection; existing math-free native bindings, Node and Typst products keep theirs.
-Custom WASM source builds may opt into the existing leaf without adding a published package.
+`cli-release`/cargo-dist recipe includes it explicitly. Generic native/static SVG source
+recipes omit math. Recommended prebuilt rendering products select the leaf explicitly per
+ADR-0101; explicit C reference/native SDK/exhaustive recipes retain their audited selection.
+Typst and dedicated Web analysis/editor/ASCII products retain their own scope. Custom WASM
+source builds may opt into the existing leaf without adding a published package.
 
 This does not narrow formula parsing or replace a backend. Required mathematical labels return
 the existing missing-capability error when math is unavailable, preserving family-specific literal

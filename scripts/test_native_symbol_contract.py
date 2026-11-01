@@ -204,6 +204,16 @@ Export {
             with self.subTest(output=output), self.assertRaises(RuntimeError):
                 parse_coff_exports(output)
 
+    def test_coff_export_names_preserve_real_aliases_for_exact_checks(self) -> None:
+        aliases = {"merman_get_native_api", "__imp_merman_get_native_api"}
+        output = "".join(f"Export {{\n  Name: {name}\n}}\n" for name in aliases)
+        self.assertEqual(parse_coff_exports(output), aliases)
+        with self.assertRaisesRegex(RuntimeError, "unexpected exported symbols: __imp_merman_get_native_api"):
+            assert_symbol_contract(
+                parse_coff_exports(output), C_ABI_SYMBOL_CONTRACT,
+                label="C ABI DLL", exact_exports=True,
+            )
+
     def test_reader_can_select_one_macho_architecture(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -309,6 +319,17 @@ class NativeSymbolContractCliTests(unittest.TestCase):
 
 
 class NativeSymbolContractTests(unittest.TestCase):
+    def test_exact_dll_contract_rejects_accidental_rust_exports(self) -> None:
+        assert_symbol_contract(
+            {"merman_get_native_api"}, C_ABI_SYMBOL_CONTRACT,
+            label="C ABI DLL", exact_exports=True,
+        )
+        with self.assertRaisesRegex(RuntimeError, "unexpected exported symbols: _RNvRustHelper"):
+            assert_symbol_contract(
+                {"merman_get_native_api", "_RNvRustHelper"}, C_ABI_SYMBOL_CONTRACT,
+                label="C ABI DLL", exact_exports=True,
+            )
+
     def test_c_abi_contract_canonicalizes_windows_import_aliases(self) -> None:
         assert_symbol_contract(
             {"merman_get_native_api", "__imp_merman_get_native_api"},

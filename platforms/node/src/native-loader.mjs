@@ -11,6 +11,8 @@ import {
 const TARGET_PACKAGES = Object.freeze({
   "darwin-arm64": "@mermanjs/node-darwin-arm64",
   "darwin-x64": "@mermanjs/node-darwin-x64",
+  "linux-arm64-gnu": "@mermanjs/node-linux-arm64-gnu",
+  "linux-arm64-musl": "@mermanjs/node-linux-arm64-musl",
   "linux-x64-gnu": "@mermanjs/node-linux-x64-gnu",
   "linux-x64-musl": "@mermanjs/node-linux-x64-musl",
   "win32-x64-msvc": "@mermanjs/node-win32-x64-msvc",
@@ -59,9 +61,9 @@ export function resolveNodeTarget({
     return `darwin-${arch}`;
   }
   if (platform === "win32" && arch === "x64") return "win32-x64-msvc";
-  if (platform === "linux" && arch === "x64") {
-    const libc = linuxLibc(report);
-    return `linux-x64-${libc}`;
+  if (platform === "linux" && (arch === "arm64" || arch === "x64")) {
+    const libc = linuxLibc(report, arch);
+    return `linux-${arch}-${libc}`;
   }
   throw new MermanUnsupportedTargetError({ platform, arch });
 }
@@ -87,7 +89,7 @@ export function loadNativeBinding({
   }
 }
 
-function linuxLibc(report) {
+function linuxLibc(report, arch) {
   if (report?.header?.glibcVersionRuntime) return "gnu";
   if (
     Array.isArray(report?.sharedObjects) &&
@@ -97,7 +99,7 @@ function linuxLibc(report) {
   }
   throw new MermanUnsupportedTargetError({
     platform: "linux",
-    arch: "x64",
+    arch,
     reason:
       "Cannot determine Linux libc from process.report; refusing to guess a platform package.",
   });

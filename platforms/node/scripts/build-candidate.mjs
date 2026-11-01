@@ -24,6 +24,7 @@ import { NODE_WIRE_CONTRACT } from "../src/transport-contract.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 import { svgTransportEvidence } from "./benchmark/svg-signature.mjs";
 import { digestJson, stableJson } from "./stable-json.mjs";
+import { assertMathSvg } from "./theme-authoring-smoke.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
@@ -98,7 +99,7 @@ function buildNapi(stage, recipe) {
   const cli = path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js");
   assertFile(cli, "pinned @napi-rs/cli; run npm ci first");
   const invocation = candidateBuildInvocation(recipe, stage);
-  run(invocation.command, invocation.args);
+  run(invocation.command, invocation.args, invocation.env);
 }
 
 function buildNodeWasm(stage, recipe) {
@@ -106,7 +107,7 @@ function buildNodeWasm(stage, recipe) {
   run(invocation.command, invocation.args);
 }
 
-export function candidateBuildInvocation(recipe, stage) {
+export function candidateBuildInvocation(recipe, stage, environment = process.env) {
   const featureArgument = recipe.cargoFeatures.join(",");
   const cargoArguments = ["--locked", "-j1"];
   if (recipe.rustTarget === "x86_64-pc-windows-msvc") {
@@ -115,6 +116,13 @@ export function candidateBuildInvocation(recipe, stage) {
   if (recipe.candidate === "napi") {
     return {
       command: process.execPath,
+      // The CLI defaults to a cross-linker name even on a matching native Alpine host.
+      env: recipe.rustTarget === "aarch64-unknown-linux-musl"
+        ? {
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:
+            environment.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER ?? "cc",
+        }
+        : {},
       args: [
         path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js"),
         "build",
@@ -417,6 +425,15 @@ export function probeCandidateRuntime(stage, recipe) {
       throw new Error(`${recipe.candidate} runtime SVG probe failed.`);
     }
     const svgEvidence = svgTransportEvidence(success.result.data);
+    const math = parseWireResponse(engine.executeSync(JSON.stringify({
+      operation_id: "svg",
+      source: 'flowchart LR\nA["$$x^2$$"]',
+      options_json: JSON.stringify({ site_config: { htmlLabels: true } }),
+    })));
+    if (math.ok !== true || math.result?.media_type !== "image/svg+xml") {
+      throw new Error(`${recipe.candidate} runtime formula probe failed.`);
+    }
+    const formulaViewports = assertMathSvg(math.result.data);
     const limited = parseWireResponse(engine.executeSync(JSON.stringify({
       operation_id: "svg",
       source,
@@ -458,6 +475,8 @@ export function probeCandidateRuntime(stage, recipe) {
         semantic_json_bytes: Buffer.byteLength(semantic.result.data),
         svg_plan_json_bytes: Buffer.byteLength(svgPlan.result.data),
         svg_bytes: Buffer.byteLength(success.result.data),
+        math_svg_bytes: Buffer.byteLength(math.result.data),
+        math_formula_viewports: formulaViewports,
         svg_structure_sha256: svgEvidence.structure_sha256,
         svg_geometry_sha256: svgEvidence.geometry_sha256,
         unknown_operation_kind: unknown.error.kind,
@@ -616,6 +635,7 @@ export function collectLocalInputEntries(metadata) {
     path.join(nodeRoot, "scripts", "build-candidate.mjs"),
     path.join(nodeRoot, "scripts", "replace-directory.mjs"),
     path.join(nodeRoot, "scripts", "stable-json.mjs"),
+    path.join(nodeRoot, "scripts", "theme-authoring-smoke.mjs"),
     path.join(nodeRoot, "src", "bounded-executor.mjs"),
     path.join(nodeRoot, "src", "engine.mjs"),
     path.join(nodeRoot, "src", "errors.mjs"),
@@ -1039,13 +1059,14 @@ function localPackageSource(manifestPath) {
   return `path:${path.relative(repositoryRoot, directory).split(path.sep).join("/")}`;
 }
 
-function run(command, args) {
+function run(command, args, environment = {}) {
   const result = spawnSync(command, args, {
     cwd: nodeRoot,
     env: {
       ...process.env,
       CARGO_BUILD_JOBS: "1",
       CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
+      ...environment,
     },
     stdio: "inherit",
   });

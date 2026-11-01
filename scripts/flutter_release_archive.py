@@ -17,6 +17,11 @@ import tarfile
 from typing import BinaryIO
 import unicodedata
 
+try:
+    from .flutter_native_assets import MANIFEST_PATH, NativeAssetsError, load_manifest
+except ImportError:
+    from flutter_native_assets import MANIFEST_PATH, NativeAssetsError, load_manifest
+
 
 ARCHIVE_NAME = "merman-flutter-package.tar.gz"
 RECEIPT_NAME = "merman-flutter-package.receipt.json"
@@ -169,7 +174,9 @@ def _verify_pubspec(data: bytes, version: str) -> None:
         )
 
 
-def _collect_files(root: Path, limits: ArchiveLimits) -> list[tuple[Path, str, os.stat_result]]:
+def _collect_files(
+    root: Path, limits: ArchiveLimits, *, thin: bool = False,
+) -> list[tuple[Path, str, os.stat_result]]:
     if root.is_symlink() or not root.is_dir():
         raise FlutterReleaseArchiveError(f"Flutter package root is missing or unsafe: {root}")
     root = root.resolve()
@@ -184,7 +191,9 @@ def _collect_files(root: Path, limits: ArchiveLimits) -> list[tuple[Path, str, o
         current = Path(directory)
         kept_directories = []
         for name in dirnames:
-            if name in IGNORED_DIRECTORIES:
+            if name in IGNORED_DIRECTORIES or (thin and current == root and name == "tool"):
+                continue
+            if thin and current == root and name == "native":
                 continue
             path = current / name
             if path.is_symlink():
@@ -244,6 +253,7 @@ def create_archive(
     source_sha: str,
     source_tree: str,
     version: str,
+    native_manifest: Path | None = None,
     limits: ArchiveLimits = DEFAULT_LIMITS,
 ) -> dict[str, object]:
     receipt = _receipt_identity(source_sha, source_tree, version)
@@ -257,7 +267,16 @@ def create_archive(
             raise FlutterReleaseArchiveError("release artifact outputs must be outside the package root")
         output.parent.mkdir(parents=True, exist_ok=True)
 
-    files = _collect_files(package_root, limits)
+    if native_manifest is not None:
+        try:
+            load_manifest(native_manifest, version=version, source_sha=source_sha, source_tree=source_tree)
+        except NativeAssetsError as error:
+            raise FlutterReleaseArchiveError(str(error)) from error
+    files = _collect_files(package_root, limits, thin=native_manifest is not None)
+    if native_manifest is not None:
+        files = [item for item in files if item[1] != MANIFEST_PATH]
+        files.append((native_manifest, MANIFEST_PATH, native_manifest.stat()))
+        files.sort(key=lambda item: item[1])
     try:
         with archive_path.open("xb") as raw:
             with gzip.GzipFile(
@@ -443,6 +462,7 @@ def verify_and_extract(
     expected_source_sha: str,
     expected_source_tree: str,
     expected_version: str,
+    require_thin: bool = False,
     limits: ArchiveLimits = DEFAULT_LIMITS,
 ) -> dict[str, object]:
     expected = _receipt_identity(expected_source_sha, expected_source_tree, expected_version)
@@ -463,9 +483,19 @@ def verify_and_extract(
         if pubspec is None:
             raise FlutterReleaseArchiveError("archive is missing pubspec.yaml")
         _verify_pubspec(pubspec, expected_version)
+        if require_thin:
+            paths = {path for path, _, _ in signatures}
+            if MANIFEST_PATH not in paths or any(path.startswith("native/") for path in paths):
+                raise FlutterReleaseArchiveError("thin archive requires native manifest and excludes native/")
         destination.mkdir(mode=0o700)
         stream.seek(0)
         _scan_archive(stream, limits, destination=destination, expected=signatures)
+    if require_thin:
+        try:
+            load_manifest(destination / MANIFEST_PATH, version=expected_version,
+                          source_sha=expected_source_sha, source_tree=expected_source_tree)
+        except NativeAssetsError as error:
+            raise FlutterReleaseArchiveError(str(error)) from error
     return receipt
 
 
@@ -474,8 +504,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     commands = parser.add_subparsers(dest="command", required=True)
     pack = commands.add_parser("pack")
     pack.add_argument("--package-root", type=Path, required=True)
+    pack.add_argument("--native-manifest", type=Path, help="Frozen target manifest; emit a thin facade without native/.")
     extract = commands.add_parser("extract")
     extract.add_argument("--destination", type=Path, required=True)
+    extract.add_argument("--require-thin", action="store_true")
     for command in (pack, extract):
         command.add_argument("--archive", type=Path, required=True)
         command.add_argument("--receipt", type=Path, required=True)
@@ -496,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_sha=args.source_sha,
                 source_tree=args.source_tree,
                 version=args.version,
+                native_manifest=args.native_manifest,
             )
             print(f"created {ARCHIVE_NAME} for {receipt['source_sha']}")
         else:
@@ -506,6 +539,7 @@ def main(argv: list[str] | None = None) -> int:
                 expected_source_sha=args.source_sha,
                 expected_source_tree=args.source_tree,
                 expected_version=args.version,
+                require_thin=args.require_thin,
             )
             print(f"verified {ARCHIVE_NAME} for {receipt['source_sha']}")
     except FlutterReleaseArchiveError as error:

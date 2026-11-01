@@ -109,11 +109,12 @@ describe("WASM artifact Cargo closure", () => {
     });
   }
 
-  it("keeps math outside every published browser artifact", () => {
+  it("selects math only for full and render products", () => {
     for (const descriptor of webPackageDescriptors) {
       const profile = wasmArtifactProfile(descriptor);
-      assert.equal(profile.features.includes("math"), false, descriptor.id);
-      assert.equal(profile.runtime_capability_ids.includes("math"), false, descriptor.id);
+      const expectsMath = descriptor.id === "full" || descriptor.id === "render";
+      assert.equal(profile.features.includes("math"), expectsMath, descriptor.id);
+      assert.equal(profile.runtime_capability_ids.includes("math"), expectsMath, descriptor.id);
     }
   });
 

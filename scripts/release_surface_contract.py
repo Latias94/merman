@@ -67,13 +67,17 @@ SURFACES = (
     ReleaseSurface(
         surface_id="android-aar",
         workflow=WORKFLOW_ROOT / "release-android.yml",
-        delivery="GitHub Release AAR",
+        delivery="GitHub Release AAR, selected-version Maven ZIP, and signed Central bundle handoff",
         publication_mode="manual-dispatch",
         preflight_job="android-aar",
         workflow_markers=(
             "workflow_dispatch:",
             "merman-android-${RELEASE_TAG}.aar",
             "Upload AAR to GitHub Release",
+            "scripts/android_package.py package",
+            "scripts/android_package.py qualify",
+            "scripts/android_package.py sign",
+            "--central-bundle",
             "scripts/release-version.py check --version \"$VERSION\"",
         ),
         profile_packages=(("android-native", "merman-android-jni"),),
@@ -81,7 +85,7 @@ SURFACES = (
     ReleaseSurface(
         surface_id="apple-xcframework",
         workflow=WORKFLOW_ROOT / "release-apple.yml",
-        delivery="GitHub Release XCFramework",
+        delivery="GitHub Release XCFramework and complete local/remote SwiftPM ZIP handoffs",
         publication_mode="manual-dispatch",
         preflight_job="apple-xcframework",
         workflow_markers=(
@@ -95,21 +99,21 @@ SURFACES = (
     ReleaseSurface(
         surface_id="python-wheel",
         workflow=WORKFLOW_ROOT / "release-python.yml",
-        delivery="GitHub Release wheels and PyPI",
+        delivery="Five target-native wheels on GitHub Release and PyPI; Linux glibc 2.28 baseline",
         publication_mode="manual-dispatch",
         preflight_job="python-wheel",
         workflow_markers=(
             "workflow_dispatch:",
             "publish_to_pypi:",
             "environment: pypi",
-            "scripts/release-version.py check --version \"$VERSION\"",
+            "uses: ./.github/workflows/build-python.yml",
         ),
         profile_packages=(("python-uniffi-native", "merman-uniffi"),),
     ),
     ReleaseSurface(
         surface_id="flutter-pub",
         workflow=WORKFLOW_ROOT / "release-flutter.yml",
-        delivery="pub.dev Native Assets",
+        delivery="pub.dev facade with immutable per-target GitHub Release Native Assets",
         publication_mode="flutter-tag-or-manual-validation",
         preflight_job="flutter-dry-run",
         workflow_markers=(
@@ -117,6 +121,7 @@ SURFACES = (
             "workflow_dispatch:",
             "environment: pub.dev",
             "reconcile_pub_package",
+            "scripts/flutter_native_assets.py verify-public",
             "scripts/release-version.py check --version \"$VERSION\"",
         ),
         profile_packages=(

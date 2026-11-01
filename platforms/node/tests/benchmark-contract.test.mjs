@@ -60,7 +60,7 @@ const STATIC_SVG_OPTION_GROUP_IDS = BINDING_OPTION_GROUP_SPECS
       spec.always_available ||
       spec.requires_svg_pipeline ||
       spec.any_capability_ids.some((id) =>
-        ["layout-cytoscape", "layout-elk", "svg"].includes(id)
+        ["layout-cytoscape", "layout-elk", "math", "svg"].includes(id)
       ),
   )
   .map((spec) => spec.id);
@@ -68,7 +68,7 @@ const STATIC_SVG_METADATA_IDS = METADATA_SPECS
   .filter(
     (spec) =>
       spec.required_capability_id === null ||
-      ["layout-cytoscape", "layout-elk", "svg"].includes(
+      ["layout-cytoscape", "layout-elk", "math", "svg"].includes(
         spec.required_capability_id,
       ),
   )
@@ -184,7 +184,7 @@ const CAPABILITY_RECIPE = {
   capability_recipe: {
     descriptor: "capabilities/feature-surface-v1.json",
     target: "native",
-    capabilities: ["layout-cytoscape", "layout-elk", "svg"],
+    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
   },
 };
 const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
@@ -210,7 +210,7 @@ const RUNTIME_CATALOG = {
     };
   }),
   capabilities: {
-    capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
+    capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
     output_ids: ["svg"],
     operation_ids: CANDIDATE_RUNTIME_CONTRACT.operationIds,
     system_adapter_ids: [],
@@ -279,6 +279,20 @@ const TARGETS = {
     rustTarget: "x86_64-unknown-linux-gnu",
     packageName: "@mermanjs/node-linux-x64-gnu",
   },
+  "linux-arm64-gnu": {
+    platform: "linux",
+    arch: "arm64",
+    libc: "gnu",
+    rustTarget: "aarch64-unknown-linux-gnu",
+    packageName: "@mermanjs/node-linux-arm64-gnu",
+  },
+  "linux-arm64-musl": {
+    platform: "linux",
+    arch: "arm64",
+    libc: "musl",
+    rustTarget: "aarch64-unknown-linux-musl",
+    packageName: "@mermanjs/node-linux-arm64-musl",
+  },
   "linux-x64-musl": {
     platform: "linux",
     arch: "x64",
@@ -304,6 +318,8 @@ const RUNTIME_EVIDENCE = {
     semantic_json_bytes: 120,
     svg_plan_json_bytes: 120,
     svg_bytes: 120,
+    math_svg_bytes: 120,
+    math_formula_viewports: 1,
     svg_structure_sha256: `sha256:${"7".repeat(64)}`,
     svg_geometry_sha256: `sha256:${"8".repeat(64)}`,
     unknown_operation_kind: "unknown-operation",
@@ -1107,6 +1123,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
         "all-diagrams",
         "layout-cytoscape",
         "layout-elk",
+        "math",
         "svg",
         "transport-napi",
       ],
@@ -1273,6 +1290,14 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   delete missingRuntimeEvidence.runtime;
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(missingRuntimeEvidence));
   assert.throws(() => readReceipt(), /runtime evidence/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  for (const field of ["math_svg_bytes", "math_formula_viewports"]) {
+    const missingMath = structuredClone(receipt);
+    delete missingMath.runtime.probe[field];
+    writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(missingMath));
+    assert.throws(() => readReceipt(), /runtime probe/i);
+  }
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
   const unparsedSvgEvidence = structuredClone(receipt);

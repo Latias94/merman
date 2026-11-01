@@ -30,12 +30,65 @@ See the [release boundary](../../docs/release/README.md#merman-092).
 
 ## Requirements
 
-- Dart 3.10 or newer; Flutter apps require Flutter 3.38 or newer
+- Dart 3.10 or newer; Flutter apps require Flutter 3.47.7 or newer
 - Android API 24 or newer
 - iOS 13 or newer
 - macOS 11 or newer
 
-This is a `package_ffi`-style Dart package and does not depend on the Flutter SDK. Its build hook selects and bundles the packaged native library for Flutter and Dart consumers. The public API can instead load a host-owned current-contract library with `Merman.openPath(...)`; `mermanPackageVersion` is the exact version expected by `Merman.open()`.
+The Flutter floor follows the current native-hooks dependency graph and its SDK-pinned
+`meta` compatibility. This package also supports native Dart without the Flutter SDK.
+
+This is a `package_ffi`-style Dart package and does not depend on the Flutter SDK. Its build hook selects and bundles the native library for Flutter and Dart consumers. The public API can instead load a host-owned current-contract library with `Merman.openPath(...)`; `mermanPackageVersion` is the exact version expected by `Merman.open()`.
+
+## Target Native Assets (Unreleased)
+
+The next release ships a thin Dart facade. During a build, the hook downloads only the selected
+OS, CPU and Apple SDK asset. `hook/native-assets.json` is generated from frozen release libraries
+and included in that facade; it pins the package version, source commit/tree, compressed bytes
+and library SHA-256 digests. Downloads and existing cache files are verified before bundling.
+There is no runtime download or automatic Cargo build.
+
+The cache lives in the hooks runner's `outputDirectoryShared` under `.dart_tool`. Preserve that
+directory between online and offline builds of the same app and package version. Configure
+acquisition in the **consuming app's** `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    merman:
+      offline: true
+```
+
+A cold offline cache fails with preparation instructions. To build without a network or a warm
+cache, explicitly supply a prepared native directory:
+
+```yaml
+hooks:
+  user_defines:
+    merman:
+      native_assets: vendor/merman-native
+      offline: true
+```
+
+The path is relative to the pubspec that declares it and contains the selected target subtree,
+for example `macos/arm64/libmerman_ffi.dylib` or `android/arm64-v8a/libmerman_ffi.so`.
+This override participates in the hook's bundling and dependency tracking. It deliberately
+selects host-owned bytes; package/ABI checks still run when the library is opened.
+`Merman.openPath(...)` alone does not override build-hook acquisition.
+
+An HTTPS mirror can host the same versioned asset filenames:
+
+```yaml
+hooks:
+  user_defines:
+    merman:
+      mirror: https://artifacts.example.org/merman/flutter-v0.9.3/
+```
+
+The mirror changes the download location only; package-pinned digests remain mandatory.
+HTTP is allowed solely for loopback qualification fixtures. Corrupt downloaded or cached bytes
+fail visibly; remove the named invalid cache file before retrying. A source checkout without a
+manifest can still use explicitly built `native/` libraries during this migration.
 
 ## Render A Diagram
 
@@ -61,7 +114,13 @@ print(output.metadata.rawJson); // Includes additive fields from newer producers
 
 Convenience methods are projections over `execute` and cover all 13 generated ABI operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
 
-The libraries bundled on pub.dev provide SVG, semantic and layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They intentionally omit math, PNG, JPEG, PDF, and native runtime adapters to keep the five-platform package small. The corresponding Dart methods remain part of the generated ABI facade for a current-contract custom library loaded with `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; against the bundled library, unavailable outputs raise `MermanMissingCapabilityException` with capability `math`, `png`, `jpeg`, or `pdf` as appropriate.
+Published `0.9.2` provides SVG, semantic and layout JSON, both native layout engines, ASCII,
+analysis, validation, and document analysis, and omits math and binary exporters. The next
+main-line target assets add math to ordinary SVG rendering. PNG, JPEG, PDF and native runtime
+adapters remain absent. The corresponding Dart methods remain part of the generated ABI facade
+for a current-contract custom library loaded with `Merman.openPath(...)` or
+`Merman.fromDynamicLibrary(...)`; unavailable exporters raise `MermanMissingCapabilityException`
+with capability `png`, `jpeg`, or `pdf`.
 
 A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the generated ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
 
@@ -278,12 +337,20 @@ flutter pub get
 dart run ffigen --config ffigen.yaml
 flutter analyze
 dart run tool/abi3_contract_test.dart
+dart run tool/native_assets_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart
 dart run tool/theme_authoring_smoke.dart
 ```
 
 CI regenerates the binding, rejects a stale checked-in result, runs analyzer and the ABI contract, then exercises the default Native Assets entry point against a real host library. `build-native.py all-desktop` assembles the complete Apple, Linux, and Windows release matrix on macOS; Android uses `platforms/android/build-android.py --artifact-profile flutter-android-native`. Native packaging is documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).
+
+Flutter release CI also qualifies the exact frozen thin package with
+`tool/qualify_packaged_app.py`. It creates a Flutter macOS app outside the checkout, fetches only
+the executing host's target through a local HTTP mirror, builds a release `.app`, removes the
+temporary package and hook cache, and runs the relocated app with the server stopped. That app renders SVG math
+and verifies that the three binary exporters remain unavailable. The uploaded qualification
+receipt records the executed host; it does not establish execution on every target.
 
 The repository-only theme authoring smoke compares light/dark materialization, full support
 discovery responses, and structured authoring/resource errors against shared cross-transport

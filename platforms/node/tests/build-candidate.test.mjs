@@ -61,6 +61,7 @@ test("candidate builds project diagram selection, capabilities, and one transpor
     assert.equal(recipe.targetId, item.target);
     assert.deepEqual(recipe.diagramFamilies, descriptor.expected.diagram_families);
     assert.equal(recipe.capabilityFeatures.includes("all-diagrams"), false);
+    assert.equal(recipe.capabilityFeatures.includes("math"), true);
     assert.deepEqual(
       invocation.args[featureIndex + 1].split(","),
       [...descriptor.cargo.features, ...descriptor.capability_recipe.capabilities, item.transportFeature].sort(),
@@ -71,6 +72,9 @@ test("candidate builds project diagram selection, capabilities, and one transpor
   }
   assert.equal(resolveCandidateRecipe("napi", "linux-x64-gnu").glibcFloor, "2.31");
   assert.equal(resolveCandidateRecipe("napi", "linux-x64-musl").glibcFloor, null);
+  assert.equal(resolveCandidateRecipe("napi", "linux-arm64-gnu").glibcFloor, "2.31");
+  assert.equal(resolveCandidateRecipe("napi", "linux-arm64-gnu").rustTarget, "aarch64-unknown-linux-gnu");
+  assert.equal(resolveCandidateRecipe("napi", "linux-arm64-musl").rustTarget, "aarch64-unknown-linux-musl");
 });
 
 test("full candidate parser families match the core artifact contract", async () => {
@@ -113,6 +117,27 @@ test("native candidate builds require their matching runtime host", () => {
     () => validateCandidateBuildHost(recipe, "linux-x64-gnu"),
     /matching runtime host/i,
   );
+  for (const target of ["linux-arm64-gnu", "linux-arm64-musl"]) {
+    const arm64 = resolveCandidateRecipe("napi", target);
+    assert.doesNotThrow(() => validateCandidateBuildHost(arm64, target));
+    assert.throws(() => validateCandidateBuildHost(arm64, target.replace("arm64", "x64")),
+      /matching runtime host/i);
+  }
+});
+
+test("native ARM64 musl uses the host linker and preserves an explicit override", () => {
+  const recipe = resolveCandidateRecipe("napi", "linux-arm64-musl");
+  const key = "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER";
+  const native = candidateBuildInvocation(recipe, "/tmp/merman-node-candidate", {});
+  assert.equal(native.env?.[key], "cc");
+  const configured = candidateBuildInvocation(recipe, "/tmp/merman-node-candidate", {
+    [key]: "/opt/toolchain/bin/custom-linker",
+  });
+  assert.equal(configured.env?.[key], "/opt/toolchain/bin/custom-linker");
+  const darwin = candidateBuildInvocation(
+    resolveCandidateRecipe("napi", "darwin-arm64"), "/tmp/merman-node-candidate", {},
+  );
+  assert.equal(darwin.env?.[key], undefined);
 });
 
 test("candidate runtime outputs follow explicit binding operation ownership", () => {

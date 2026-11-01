@@ -270,6 +270,10 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
     runtime.probe.svg_plan_json_bytes < 1 ||
     !Number.isSafeInteger(runtime.probe.svg_bytes) ||
     runtime.probe.svg_bytes < 1 ||
+    !Number.isSafeInteger(runtime.probe.math_svg_bytes) ||
+    runtime.probe.math_svg_bytes < 1 ||
+    !Number.isSafeInteger(runtime.probe.math_formula_viewports) ||
+    runtime.probe.math_formula_viewports < 1 ||
     !/^sha256:[0-9a-f]{64}$/.test(runtime.probe.svg_structure_sha256 ?? "") ||
     !/^sha256:[0-9a-f]{64}$/.test(runtime.probe.svg_geometry_sha256 ?? "") ||
     runtime.probe.unknown_operation_kind !== "unknown-operation" ||

@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -144,6 +145,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Verify the staged Android Maven publication contract and exit.",
     )
+    parser.add_argument(
+        "--android-maven-repository", type=Path,
+        default=ANDROID_ROOT / "build" / "repo",
+    )
+    parser.add_argument("--android-maven-group", default=ANDROID_MAVEN_COORDINATES[0])
+    parser.add_argument("--android-maven-version")
+    parser.add_argument("--android-require-signatures", action="store_true")
+    parser.add_argument("--verify-android-16kb", type=Path, metavar="AAR_OR_APK")
+    parser.add_argument("--android-zipalign", type=Path)
     parser.add_argument(
         "--only-android-instrumentation-smoke",
         action="store_true",
@@ -282,16 +292,16 @@ def android_expected_resource_entries(android_root: Path = ANDROID_ROOT) -> list
     )
 
 
-def resolve_android_llvm_nm(ndk_home: str | Path | None = None) -> Path:
+def resolve_android_ndk_tool(name: str, ndk_home: str | Path | None = None) -> Path:
     if ndk_home is None:
         ndk_home = os.environ.get("ANDROID_NDK_HOME") or os.environ.get("ANDROID_NDK_ROOT")
         if ndk_home is None:
             raise RuntimeError(
-                "Android NDK is required for native symbol verification; pass "
+                "Android NDK is required for native verification; pass "
                 "--android-ndk-home or set ANDROID_NDK_HOME"
             )
     ndk = Path(ndk_home).expanduser().resolve()
-    executable = "llvm-nm.exe" if os.name == "nt" else "llvm-nm"
+    executable = name + (".exe" if os.name == "nt" else "")
     candidates = sorted(
         path
         for path in (ndk / "toolchains" / "llvm" / "prebuilt").glob(
@@ -305,6 +315,43 @@ def resolve_android_llvm_nm(ndk_home: str | Path | None = None) -> Path:
             f"expected exactly one Android NDK {executable}, found: {rendered}"
         )
     return candidates[0]
+
+
+def resolve_android_llvm_nm(ndk_home: str | Path | None = None) -> Path:
+    return resolve_android_ndk_tool("llvm-nm", ndk_home)
+
+
+def assert_android_16kb_alignment(
+    archive_path: Path, llvm_objdump: Path, *, zipalign: Path | None = None,
+) -> None:
+    is_apk = archive_path.suffix == ".apk"
+    prefix = "lib/" if is_apk else "jni/"
+    expected = {entry.replace("jni/", prefix) for entry in ANDROID_NATIVE_LIBRARIES}
+    with zipfile.ZipFile(archive_path) as archive:
+        missing = expected - set(archive.namelist())
+        if missing:
+            raise RuntimeError(f"Android 16 KB qualification is missing libraries: {sorted(missing)}")
+        with tempfile.TemporaryDirectory(prefix="merman-android-16kb-") as temporary:
+            for entry in sorted(archive.namelist()):
+                if not entry.startswith(prefix) or not entry.endswith(".so"):
+                    continue
+                if is_apk and archive.getinfo(entry).compress_type != zipfile.ZIP_STORED:
+                    raise RuntimeError(f"Android 16 KB consumer APK must use uncompressed libraries: {entry}")
+                library = Path(temporary) / "library.so"
+                library.write_bytes(archive.read(entry))
+                result = subprocess.run(
+                    [str(llvm_objdump), "-p", str(library)],
+                    check=True, capture_output=True, text=True,
+                )
+                loads = [line for line in result.stdout.splitlines() if line.lstrip().startswith("LOAD ")]
+                alignments = [re.search(r"\balign 2\*\*(\d+)", line) for line in loads]
+                if not alignments or any(match is None or int(match[1]) < 14 for match in alignments):
+                    raise RuntimeError(f"Android 16 KB ELF LOAD alignment failed: {entry}")
+                print(f"Android 16 KB ELF LOAD alignment verified: {entry}")
+    if is_apk:
+        if zipalign is None:
+            raise RuntimeError("Android APK qualification requires --android-zipalign (SDK Build-Tools 35+)")
+        subprocess.run([str(zipalign), "-v", "-c", "-P", "16", "4", str(archive_path)], check=True)
 
 
 def android_library_symbols(library: Path, llvm_nm: Path | None = None) -> set[str]:
@@ -472,9 +519,45 @@ def _assert_sha256(artifact: Path) -> tuple[str, int]:
     return actual, size
 
 
-def _assert_android_maven_pom(pom_path: Path, version: str) -> None:
+def android_maven_checksums(artifact: Path) -> dict[str, str]:
+    digests = {algorithm: hashlib.new(algorithm) for algorithm in ("md5", "sha1", "sha256", "sha512")}
+    with artifact.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            for digest in digests.values():
+                digest.update(chunk)
+    return {algorithm: digest.hexdigest() for algorithm, digest in digests.items()}
+
+
+def assert_android_maven_sidecars(version_dir: Path, *, require_signatures: bool) -> None:
+    digests: dict[Path, dict[str, str]] = {}
+    for path in sorted(version_dir.iterdir()):
+        algorithm = path.suffix.removeprefix(".")
+        if algorithm not in {"md5", "sha1", "sha256", "sha512"}:
+            continue
+        artifact = path.with_suffix("")
+        if not artifact.is_file():
+            raise RuntimeError(f"Android Maven checksum has no artifact: {path}")
+        if artifact not in digests:
+            digests[artifact] = android_maven_checksums(artifact)
+        actual = digests[artifact][algorithm]
+        if path.read_text(encoding="ascii").strip().lower() != actual:
+            raise RuntimeError(f"Android Maven {algorithm} mismatch for {artifact.name}")
+    if require_signatures:
+        for path in sorted(version_dir.iterdir()):
+            if path.suffix not in {".aar", ".pom", ".module", ".jar"}:
+                continue
+            signature = path.with_name(path.name + ".asc")
+            if not signature.is_file() or not signature.stat().st_size:
+                raise RuntimeError(f"Android Maven artifact is missing signature: {signature}")
+            for algorithm in ("md5", "sha1"):
+                if not path.with_name(path.name + "." + algorithm).is_file():
+                    raise RuntimeError(f"Central artifact is missing {algorithm}: {path}")
+            subprocess.run(["gpg", "--batch", "--verify", str(signature), str(path)], check=True)
+
+
+def _assert_android_maven_pom(pom_path: Path, version: str, group_id: str) -> None:
     root = ET.parse(pom_path).getroot()
-    group_id, artifact_id = ANDROID_MAVEN_COORDINATES
+    _, artifact_id = ANDROID_MAVEN_COORDINATES
     expected_fields = {
         "groupId": group_id,
         "artifactId": artifact_id,
@@ -594,9 +677,10 @@ def _assert_android_gradle_module(
     module_path: Path,
     version: str,
     published_artifacts: dict[str, tuple[str, int]],
+    group_id: str,
 ) -> None:
     module = json.loads(module_path.read_text(encoding="utf-8"))
-    group_id, artifact_id = ANDROID_MAVEN_COORDINATES
+    _, artifact_id = ANDROID_MAVEN_COORDINATES
     expected_component = {
         "group": group_id,
         "module": artifact_id,
@@ -649,13 +733,26 @@ def assert_android_maven_publication(
     module_root: Path = ANDROID_MAVEN_MODULE_ROOT,
     android_root: Path = ANDROID_ROOT,
     llvm_nm: Path | None = None,
+    *,
+    group_id: str = ANDROID_MAVEN_COORDINATES[0],
+    version: str | None = None,
+    require_signatures: bool = False,
 ) -> Path:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*(?:\.[A-Za-z_][A-Za-z_0-9]*)+", group_id):
+        raise RuntimeError(f"invalid Android Maven group ID: {group_id!r}")
     if not module_root.is_dir():
         raise RuntimeError(f"Android Maven module repository not found: {module_root}")
-    version_dir = _single_path(
-        sorted(path for path in module_root.iterdir() if path.is_dir()),
-        "Android Maven publication version directory",
-    )
+    if version is None:
+        version_dir = _single_path(
+            sorted(path for path in module_root.iterdir() if path.is_dir()),
+            "Android Maven publication version directory",
+        )
+    else:
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)*", version):
+            raise RuntimeError(f"invalid Android Maven version: {version!r}")
+        version_dir = module_root / version
+        if not version_dir.is_dir():
+            raise RuntimeError(f"Android Maven selected version not found: {version_dir}")
     version = version_dir.name
     _, artifact_id = ANDROID_MAVEN_COORDINATES
     base_name = f"{artifact_id}-{version}"
@@ -672,7 +769,7 @@ def assert_android_maven_publication(
             raise RuntimeError(f"Android Maven publication is missing artifact: {artifact}")
         verified_artifacts[kind] = _assert_sha256(artifact)
 
-    _assert_android_maven_pom(artifacts["pom"], version)
+    _assert_android_maven_pom(artifacts["pom"], version, group_id)
     assert_android_aar_contract(artifacts["aar"], android_root, llvm_nm)
     _assert_android_source_jar(artifacts["sources"], android_root)
     _assert_android_javadoc_jar(artifacts["javadoc"])
@@ -684,7 +781,9 @@ def assert_android_maven_publication(
             artifacts["sources"].name: verified_artifacts["sources"],
             artifacts["javadoc"].name: verified_artifacts["javadoc"],
         },
+        group_id,
     )
+    assert_android_maven_sidecars(version_dir, require_signatures=require_signatures)
     return version_dir
 
 
@@ -696,6 +795,14 @@ def main() -> int:
     args = parse_args()
 
     try:
+        if args.verify_android_16kb:
+            assert_android_16kb_alignment(
+                args.verify_android_16kb,
+                resolve_android_ndk_tool("llvm-objdump", args.android_ndk_home),
+                zipalign=args.android_zipalign,
+            )
+            return 0
+
         if args.verify_android_aar:
             llvm_nm = resolve_android_llvm_nm(args.android_ndk_home)
             assert_android_aar_contract(llvm_nm=llvm_nm)
@@ -704,7 +811,14 @@ def main() -> int:
 
         if args.verify_android_maven:
             llvm_nm = resolve_android_llvm_nm(args.android_ndk_home)
-            version_dir = assert_android_maven_publication(llvm_nm=llvm_nm)
+            module_root = args.android_maven_repository.joinpath(
+                *args.android_maven_group.split("."), ANDROID_MAVEN_COORDINATES[1],
+            )
+            version_dir = assert_android_maven_publication(
+                module_root, llvm_nm=llvm_nm,
+                group_id=args.android_maven_group, version=args.android_maven_version,
+                require_signatures=args.android_require_signatures,
+            )
             print(f"Android Maven publication contract verified: {version_dir}")
             return 0
 

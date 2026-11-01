@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify an extracted Apple package and compare matched static distribution copies."""
+"""Qualify local or HTTPS SwiftPM delivery against the final staged Apple package."""
 
 from __future__ import annotations
 
@@ -8,15 +8,21 @@ import hashlib
 import json
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
+from urllib.parse import urlsplit
 import zipfile
 
 if __package__:
+    from .apple_package import _tree_files, _validate_artifact_url
     from .artifact_profile_recipe import load_artifact_profiles
+    from .release_archive import regular_files_equal
 else:
+    from apple_package import _tree_files, _validate_artifact_url
     from artifact_profile_recipe import load_artifact_profiles
+    from release_archive import regular_files_equal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -56,19 +62,73 @@ def validate_consumer(path: Path, *, capabilities, outputs, diagram_families, ve
     return result
 
 
-def compile_consumer(package: Path, source: Path, work: Path, *, triple=None, sdk=None) -> Path:
+def validate_remote_dependency(url: str | None, revision: str | None) -> None:
+    if url is None and revision is None:
+        return
+    try:
+        parsed = urlsplit(url or "")
+        valid_url = (parsed.scheme == "https" and parsed.hostname and parsed.path not in ("", "/")
+                     and parsed.username is None and parsed.password is None
+                     and "?" not in url and "#" not in url
+                     and not any(character.isspace() or ord(character) < 32 for character in url))
+        parsed.port
+    except ValueError:
+        valid_url = False
+    if not valid_url or not re.fullmatch(r"[0-9a-f]{40}", revision or ""):
+        raise ValueError("remote dependency requires an HTTPS repository URL without credentials, query or "
+                         "fragment and an exact 40-character commit revision")
+
+
+def verify_remote_sources(package: Path, command: list, *, work: Path,
+                          url: str, revision: str) -> None:
+    run(command + ["resolve"], cwd=work)
+    dependencies = json.loads(run(command + ["show-dependencies", "--format", "json"],
+                                  cwd=work, capture_output=True, text=True).stdout)
+    matches = [dependency for dependency in dependencies["dependencies"] if dependency["url"] == url]
+    if len(matches) != 1:
+        raise ValueError("SwiftPM did not resolve the requested remote dependency")
+    checkout = Path(matches[0]["path"])
+    actual_revision = run(["git", "-C", checkout, "rev-parse", "HEAD"], cwd=work,
+                          capture_output=True, text=True).stdout.strip()
+    if actual_revision != revision:
+        raise ValueError("resolved SwiftPM revision does not match the requested commit")
+    tracked = run(["git", "-C", checkout, "ls-files", "-z"], cwd=work,
+                  capture_output=True, text=True).stdout.split("\0")
+    expected = _tree_files(package)
+    if (set(filter(None, tracked)) != set(expected)
+            or any(not regular_files_equal(checkout / name, path) for name, path in expected.items())):
+        raise ValueError("resolved SwiftPM sources do not match the staged remote package")
+
+
+def compile_consumer(package: Path, source: Path, work: Path, *, triple=None, sdk=None,
+                     remote_package_url: str | None = None,
+                     remote_package_revision: str | None = None) -> Path:
+    validate_remote_dependency(remote_package_url, remote_package_revision)
     project = work / "consumer"
     project.mkdir(parents=True)
+    if remote_package_url is None:
+        dependency = f'.package(name: "Merman", path: {json.dumps(str(package), ensure_ascii=False)})'
+        product = '.product(name: "Merman", package: "Merman")'
+    else:
+        dependency = (f'.package(url: {json.dumps(remote_package_url, ensure_ascii=False)}, '
+                      f'revision: "{remote_package_revision}")')
+        product = '"Merman"'
     (project / "Package.swift").write_text(
         '// swift-tools-version: 5.9\nimport PackageDescription\n'
         'let package = Package(name: "InstalledConsumer", platforms: [.macOS(.v12), .iOS(.v14)], '
-        f'dependencies: [.package(name: "Merman", path: {json.dumps(str(package), ensure_ascii=False)})], '
+        f'dependencies: [{dependency}], '
         'targets: [.executableTarget(name: "InstalledConsumer", '
-        'dependencies: [.product(name: "Merman", package: "Merman")], path: "Sources")])\n'
+        f'dependencies: [{product}], path: "Sources")])\n'
     )
     (project / "Sources").mkdir()
     shutil.copyfile(source, project / "Sources/InstalledConsumer.swift")
     args = ["swift", "build", "--package-path", project, "--configuration", "release", "--jobs", "2"]
+    if remote_package_url is not None:
+        cache = work / "swift-cache"
+        args += ["--cache-path", cache]
+        verify_remote_sources(package, ["swift", "package", "--package-path", project,
+                              "--cache-path", cache], work=work,
+                              url=remote_package_url, revision=remote_package_revision)
     if triple:
         args += ["--triple", triple, "--sdk", sdk]
     run(args, cwd=work)
@@ -77,13 +137,25 @@ def compile_consumer(package: Path, source: Path, work: Path, *, triple=None, sd
 
 
 def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
-                    version: str, simulator: bool) -> tuple[dict, dict]:
+                    version: str, simulator: bool, remote_package_url: str | None = None,
+                    remote_package_revision: str | None = None) -> tuple[dict, dict]:
     profile = next(p for p in load_artifact_profiles(repo_root / "capabilities/artifact-profiles-v2.json")
                    if p.profile_id == "apple-uniffi-native")
     work_dir.mkdir(parents=True, exist_ok=False)
     source = repo_root / "platforms/apple/tests/InstalledConsumer.swift"
     package = package_dir.resolve()
-    binary = compile_consumer(package, source, work_dir / "macos")
+    if remote_package_url is not None:
+        description = json.loads(run(
+            ["swift", "package", "--package-path", package, "--scratch-path", work_dir / "manifest-build",
+             "--cache-path", work_dir / "manifest-cache", "dump-package"],
+            cwd=work_dir, capture_output=True, text=True).stdout)
+        binaries = [target for target in description["targets"]
+                    if target["name"] == "MermanFFI" and target["type"] == "binary"]
+        if len(binaries) != 1 or not isinstance(binaries[0].get("url"), str):
+            raise ValueError("remote qualification requires an HTTPS binary target, not a local XCFramework")
+        _validate_artifact_url(binaries[0]["url"], version, f"Merman.xcframework-v{version}.zip")
+    remote_options = dict(remote_package_url=remote_package_url, remote_package_revision=remote_package_revision)
+    binary = compile_consumer(package, source, work_dir / "macos", **remote_options)
     output = work_dir / "macos.json"
     with output.open("w") as stream:
         run([binary], cwd=work_dir, stdout=stream, timeout=120)
@@ -94,13 +166,14 @@ def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
               "macos_math_sha256": hashlib.sha256(result["math"]["svg"].encode()).hexdigest()}
     device_sdk = run(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], cwd=work_dir,
                      capture_output=True, text=True).stdout.strip()
-    compile_consumer(package, source, work_dir / "device", triple="arm64-apple-ios14.0", sdk=device_sdk)
+    compile_consumer(package, source, work_dir / "device", triple="arm64-apple-ios14.0", sdk=device_sdk,
+                     **remote_options)
     sim_sdk = run(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], cwd=work_dir,
                   capture_output=True, text=True).stdout.strip()
     host = run(["uname", "-m"], cwd=work_dir, capture_output=True, text=True).stdout.strip()
     arch = "arm64" if host == "arm64" else "x86_64"
     sim_binary = compile_consumer(package, source, work_dir / "simulator",
-                                  triple=f"{arch}-apple-ios14.0-simulator", sdk=sim_sdk)
+                                  triple=f"{arch}-apple-ios14.0-simulator", sdk=sim_sdk, **remote_options)
     if simulator:
         devices = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "--json"],
                                   cwd=work_dir, capture_output=True, text=True, timeout=60).stdout)
@@ -127,6 +200,9 @@ def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
                 run(["xcrun", "simctl", "shutdown", udid], cwd=work_dir, timeout=30)
     else:
         report["simulator_runtime"] = "not-requested"
+    if remote_package_url is not None:
+        report["remote_dependency"] = {"url": remote_package_url, "revision": remote_package_revision,
+                                       "staged_sources": "matched"}
     return report, result
 
 
@@ -188,7 +264,15 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--simulator", action="store_true")
     parser.add_argument("--compare-original", action="store_true")
+    parser.add_argument("--remote-package-url", help="HTTPS Git URL of the unmodified thin delivery tree")
+    parser.add_argument("--remote-package-revision", help="Exact commit of that delivery repository")
     args = parser.parse_args()
+    try:
+        validate_remote_dependency(args.remote_package_url, args.remote_package_revision)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.remote_package_url is not None and args.compare_original:
+        parser.error("--compare-original requires the complete local package, not a remote source tree")
     work = args.work_dir.resolve()
     work.mkdir(parents=True, exist_ok=False)
     extracted = work / "extracted"
@@ -198,7 +282,9 @@ def main() -> int:
     package = next(extracted.glob("*/Package.swift")).parent
     report, staged_result = qualify_package(repo_root=REPO_ROOT, package_dir=package,
                                            work_dir=work / "installed", version=args.version,
-                                           simulator=args.simulator)
+                                           simulator=args.simulator,
+                                           remote_package_url=args.remote_package_url,
+                                           remote_package_revision=args.remote_package_revision)
     if args.compare_original:
         report["matched_size"] = compare_original(repo_root=REPO_ROOT, package_dir=package,
                                                   work_dir=work / "comparison",

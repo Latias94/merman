@@ -216,6 +216,9 @@ jobs:
       - name: Install playground browsers
         run: npm run install:browsers --prefix playground/tests
 
+      - name: Qualify installed Web packages in Chromium and Worker
+        run: node platforms/web/scripts/installed-browser-consumer.mjs
+
       - name: Prepare playground browser runtime
         run: npm run prepare:browser-runtime --prefix playground
 

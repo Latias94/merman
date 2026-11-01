@@ -17,6 +17,7 @@ environment:
 
 dependencies:
   code_assets: ^2.1.0
+  crypto: ^3.0.7
   ffi: ^2.2.0
   hooks: ^2.2.0
 

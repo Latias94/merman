@@ -11,7 +11,8 @@ plugins {
     id("signing")
 }
 
-group = "io.merman"
+val mermanMavenGroup = providers.gradleProperty("mermanMavenGroup").orElse("io.merman")
+group = mermanMavenGroup.get()
 version = "0.9.3"
 
 android {
@@ -89,7 +90,7 @@ dependencies {
 publishing {
     publications {
         create<MavenPublication>("release") {
-            groupId = "io.merman"
+            groupId = mermanMavenGroup.get()
             artifactId = "merman-android"
             version = project.version.toString()
 

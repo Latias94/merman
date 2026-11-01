@@ -103,19 +103,26 @@ def validate_python_native_recipe(recipe: CargoArtifactRecipe) -> None:
         raise RuntimeError(f"python-uniffi-native manifest does not exist: {manifest}")
 
 
-def select_python_wheel_target(recipe: CargoArtifactRecipe) -> str:
+def select_python_wheel_target(
+    recipe: CargoArtifactRecipe, expected_target: str | None = None
+) -> str:
     target = rustc_host_target()
     if target not in recipe.build_targets:
         raise RuntimeError(
             f"Python wheels are not published for Rust host target {target!r}; "
             f"supported targets: {', '.join(recipe.build_targets)}"
         )
+    if expected_target is not None and target != expected_target:
+        raise RuntimeError(f"expected native wheel host {expected_target}, observed {target}")
     return target
 
 
 def wheel_build_environment(target: str) -> dict[str, str]:
     environment = os.environ.copy()
-    environment["_PYTHON_HOST_PLATFORM"] = wheel_platform_for_target(target)
+    wheel_platform = wheel_platform_for_target(target)
+    environment["_PYTHON_HOST_PLATFORM"] = wheel_platform
+    if target.endswith("-apple-darwin"):
+        environment["MACOSX_DEPLOYMENT_TARGET"] = wheel_platform.split("-", 2)[1]
     return environment
 
 
@@ -153,6 +160,10 @@ def python_generator_args(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--expected-target",
+        help="Require this Rust target to match the actual native build host.",
+    )
+    parser.add_argument(
         "--package-dir",
         default=str(REPO_ROOT / "platforms" / "python" / "merman"),
         help="Python package scaffold directory.",
@@ -170,7 +181,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-smoke",
         action="store_true",
-        help="Install the newest wheel into a temporary venv and run the checked-in smoke.",
+        help="Install the final wheel into a temporary venv and run the standalone consumer.",
     )
     return parser.parse_args()
 
@@ -258,6 +269,19 @@ def venv_python(venv_dir: Path) -> Path:
     raise RuntimeError(f"Python executable not found in venv: {venv_dir}")
 
 
+def smoke_installed_wheel(wheel: Path, python: str, package_source: Path) -> None:
+    example = package_source / "examples" / "wheel_smoke.py"
+    if not example.is_file():
+        raise RuntimeError(f"Python installed-wheel smoke example is missing: {example}")
+    with tempfile.TemporaryDirectory(prefix="merman-installed-wheel-") as temporary:
+        consumer = Path(temporary)
+        run([python, "-m", "venv", str(consumer / "venv")])
+        interpreter = str(venv_python(consumer / "venv"))
+        run([interpreter, "-m", "pip", "install", "--no-index", "--no-deps", str(wheel)])
+        shutil.copy2(example, consumer / "wheel_smoke.py")
+        run([interpreter, "-I", "wheel_smoke.py"], cwd=consumer)
+
+
 def newest_wheel(wheel_dir: Path) -> Path:
     wheels = sorted(
         wheel_dir.glob("merman-*.whl"),
@@ -324,8 +348,9 @@ def main() -> int:
 
     recipe = load_artifact_profile("python-uniffi-native")
     validate_python_native_recipe(recipe)
-    target = select_python_wheel_target(recipe)
-    run(cargo_build_args(recipe, locked=True, target=target))
+    target = select_python_wheel_target(recipe, args.expected_target)
+    environment = wheel_build_environment(target)
+    run(cargo_build_args(recipe, locked=True, target=target), env=environment)
     target_directory = cargo_target_directory()
     metadata_library = production_metadata_library_path(recipe, target, target_directory)
     if not metadata_library.is_file():
@@ -339,6 +364,7 @@ def main() -> int:
     with staged_python_package(package_source) as package_dir:
         run(
             python_generator_args(recipe, metadata_library, cdylib, package_dir),
+            env=environment,
         )
         verify_generated_python_support_files(package_source, package_dir)
         install_target_report(REPO_ROOT, package_dir, target)
@@ -357,7 +383,7 @@ def main() -> int:
                 "--wheel-dir",
                 str(wheel_dir),
             ],
-            env=wheel_build_environment(target),
+            env=environment,
         )
         wheel = newest_wheel(wheel_dir)
         require_native_platform_wheel(wheel)
@@ -368,16 +394,7 @@ def main() -> int:
         )
 
     if args.run_smoke:
-        venv_dir = REPO_ROOT / "target" / "python-wheel-smoke"
-        if venv_dir.exists():
-            shutil.rmtree(venv_dir)
-        run([args.python, "-m", "venv", str(venv_dir)])
-        python = venv_python(venv_dir)
-        run([str(python), "-m", "pip", "install", "--no-deps", str(wheel)])
-        example = package_source / "examples" / "smoke.py"
-        if not example.is_file():
-            raise RuntimeError(f"Python wheel smoke example is missing: {example}")
-        run([str(python), str(example)])
+        smoke_installed_wheel(wheel, args.python, package_source)
 
     return 0
 
