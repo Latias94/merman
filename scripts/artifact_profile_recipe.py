@@ -21,9 +21,13 @@ CargoBuildTool = Literal["cargo", "cargo-zigbuild"]
 EXACT_NATIVE_CARGO_PROFILES = frozenset({"native-distribution", "native-sdk"})
 PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 RECOMMENDED_PRODUCTS = {
-    "swift": "apple-uniffi-native",
-    "c": "sdk-native-full",
-    "wasi": "sdk-wasi-full",
+    "swift": ("apple-uniffi-native",),
+    "android": ("android-native",),
+    "python": ("python-uniffi-native",),
+    "flutter": ("flutter-android-native", "flutter-desktop-native", "flutter-ios-native"),
+    "web": ("web-full",),
+    "c": ("sdk-native-full",),
+    "wasi": ("sdk-wasi-full",),
 }
 
 
@@ -363,30 +367,35 @@ def recommend_artifact_profile(
     target: str | None = None,
     descriptor_path: Path = DEFAULT_DESCRIPTOR,
 ) -> ArtifactProfile:
-    """Select a pilot product without guessing a host or requiring a Rust installation."""
+    """Select a host product without guessing a target or requiring a Rust installation."""
     if host_interface not in RECOMMENDED_PRODUCTS:
         raise ArtifactProfileError(
             "choose a host interface: " + ", ".join(RECOMMENDED_PRODUCTS)
         )
-    profile_id = RECOMMENDED_PRODUCTS[host_interface]
-    profile = next(
-        (p for p in load_artifact_profiles(descriptor_path) if p.profile_id == profile_id),
-        None,
-    )
-    if profile is None:
-        raise ArtifactProfileError(f"recommended product {profile_id!r} is missing")
-    if target is not None and target not in profile.cargo.build_targets:
+    profiles = {p.profile_id: p for p in load_artifact_profiles(descriptor_path)}
+    choices = []
+    for profile_id in RECOMMENDED_PRODUCTS[host_interface]:
+        if profile_id not in profiles:
+            raise ArtifactProfileError(f"recommended product {profile_id!r} is missing")
+        choices.append(profiles[profile_id])
+    if target is None and len(choices) > 1:
+        raise ArtifactProfileError(f"{host_interface} requires an explicit target triple")
+    selected = [p for p in choices if target is None or target in p.cargo.build_targets]
+    if not selected:
         raise ArtifactProfileError(
-            f"{profile_id} does not support target {target!r}; choose one of: "
-            + ", ".join(profile.cargo.build_targets)
+            f"{host_interface} does not support target {target!r}; choose one of: "
+            + ", ".join(target for p in choices for target in p.cargo.build_targets)
         )
+    if len(selected) != 1:
+        raise ArtifactProfileError(f"{host_interface} has overlapping recipes for target {target!r}")
+    profile = selected[0]
     if output not in profile.outputs:
         alternative = (
             " For PDF/JPEG use the native C SDK on its declared desktop targets."
             if output in {"pdf", "jpeg"} and host_interface != "c" else ""
         )
         raise ArtifactProfileError(
-            f"{profile_id} does not provide {output.upper()}; supported outputs: "
+            f"{profile.profile_id} does not provide {output.upper()}; supported outputs: "
             + ", ".join(profile.outputs) + "." + alternative
         )
     return profile

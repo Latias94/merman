@@ -360,7 +360,7 @@ class RepositoryContractTests(unittest.TestCase):
     def test_repository_contract_and_notice_are_current(self) -> None:
         verify.verify_repository(REPOSITORY_ROOT)
 
-    def test_web_render_scopes_track_math_free_wasm_capabilities(self) -> None:
+    def test_web_render_scopes_cover_complete_svg_math_capabilities(self) -> None:
         contract = json.loads(
             (REPOSITORY_ROOT / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(
                 encoding="utf-8"
@@ -386,8 +386,8 @@ class RepositoryContractTests(unittest.TestCase):
                 capabilities = set(profiles[profile_id]["expected"]["capabilities"])
                 self.assertTrue(inherits(profile_id, "elk-render"))
                 self.assertIn("layout-elk", capabilities)
-                self.assertNotIn("math", capabilities)
-                self.assertFalse(inherits(profile_id, "ratex-render"))
+                self.assertIn("math", capabilities)
+                self.assertTrue(inherits(profile_id, "ratex-render"))
         self.assertIn("ascii", profiles["web-full"]["expected"]["capabilities"])
         self.assertTrue(inherits("web-full", "ascii-render"))
 

@@ -83,6 +83,12 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             ("swift", "aarch64-apple-ios", "svg", "apple-uniffi-native"),
             ("c", "x86_64-pc-windows-msvc", "pdf", "sdk-native-full"),
             ("wasi", "wasm32-wasip1", "png", "sdk-wasi-full"),
+            ("android", "aarch64-linux-android", "svg", "android-native"),
+            ("python", "x86_64-apple-darwin", "svg", "python-uniffi-native"),
+            ("web", "wasm32-unknown-unknown", "svg", "web-full"),
+            ("flutter", "aarch64-apple-ios-sim", "svg", "flutter-ios-native"),
+            ("flutter", "aarch64-linux-android", "ascii", "flutter-android-native"),
+            ("flutter", "aarch64-unknown-linux-gnu", "svg", "flutter-desktop-native"),
         )
         for interface, target, output, expected in requests:
             with self.subTest(interface=interface):
@@ -95,6 +101,10 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             artifact_profile_recipe.recommend_artifact_profile("swift", output="pdf")
         with self.assertRaisesRegex(artifact_profile_recipe.ArtifactProfileError, "does not support target"):
             artifact_profile_recipe.recommend_artifact_profile("wasi", target="aarch64-apple-ios")
+        with self.assertRaisesRegex(artifact_profile_recipe.ArtifactProfileError, "requires.*target"):
+            artifact_profile_recipe.recommend_artifact_profile("flutter")
+        with self.assertRaisesRegex(artifact_profile_recipe.ArtifactProfileError, "supported outputs: ascii, svg"):
+            artifact_profile_recipe.recommend_artifact_profile("python", output="png")
 
     def test_discovery_tracks_changed_descriptor_capabilities(self) -> None:
         descriptor = json.loads(artifact_profile_recipe.DEFAULT_DESCRIPTOR.read_text())
@@ -193,7 +203,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 self.assertFalse(recipe.default_features)
                 self.assertTrue(recipe.features)
 
-    def test_other_native_products_retain_their_existing_default_sku(self) -> None:
+    def test_native_svg_products_share_complete_document_capabilities(self) -> None:
         profile_ids = (
             "android-native",
             "flutter-android-native",
@@ -209,11 +219,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
         self.assertEqual(
             baseline["cargo"]["features"],
-            ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"],
+            ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
         )
         self.assertEqual(
             baseline["expected"]["capabilities"],
-            ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"],
+            ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
         )
         self.assertEqual(baseline["expected"]["outputs"], ["ascii", "svg"])
 
@@ -343,7 +353,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertIn("analysis", flutter.features)
         self.assertIn("ascii", flutter.features)
         self.assertNotIn("jpeg", flutter.features)
-        self.assertNotIn("math", flutter.features)
+        self.assertIn("math", flutter.features)
         self.assertNotIn("native-runtime", flutter.features)
         self.assertNotIn("pdf", flutter.features)
         self.assertNotIn("png", flutter.features)
@@ -763,7 +773,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             cdylib = root / "libmerman_uniffi.so"
             wheel = wheel_dir / "merman-0.0.0-py3-none-linux_x86_64.whl"
             source.mkdir()
-            example = source / "examples" / "smoke.py"
+            example = source / "examples" / "wheel_smoke.py"
             example.parent.mkdir()
             example.write_text("print('smoke')\n", encoding="utf-8")
             staged.mkdir()
@@ -775,6 +785,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 wheel_dir=str(wheel_dir),
                 python=sys.executable,
                 run_smoke=True,
+                expected_target=None,
             )
 
             with (
@@ -850,8 +861,9 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertNotIn(str(source), wheel_command)
         self.assertEqual(
             run.call_args_list[-1].args[0],
-            [str(venv_python), str(example.resolve())],
+            [str(venv_python), "-I", "wheel_smoke.py"],
         )
+        self.assertNotEqual(run.call_args_list[-1].kwargs["cwd"], source)
 
     def test_zigbuild_uses_the_same_exact_recipe_projection(self) -> None:
         recipe = load_artifact_profile("flutter-desktop-native")

@@ -38,8 +38,11 @@ const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
 ];
-const NODE_STATIC_SVG_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] =
-    &[CapabilityKey::LayoutCytoscape, CapabilityKey::LayoutElk];
+const NODE_STATIC_SVG_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutElk,
+    CapabilityKey::Math,
+];
 const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
     OperationKey::AnalysisFactsJson,
     OperationKey::AnalysisJson,
@@ -60,6 +63,7 @@ const DEFAULT_NATIVE_PREBUILT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::Fixes,
     CapabilityKey::LayoutCytoscape,
     CapabilityKey::LayoutElk,
+    CapabilityKey::Math,
 ];
 const DEFAULT_NATIVE_PREBUILT_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::HostTextMeasurement,

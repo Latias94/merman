@@ -291,7 +291,7 @@ class VerificationCaseTests(unittest.TestCase):
     def test_generic_svg_profiles_reject_resolved_math_backend_payloads(self) -> None:
         profiles = {
             "rust-native-svg", "rust-render-native-svg", "rust-static-svg",
-            "rustdoc-static-svg", "web-full", "web-render",
+            "rustdoc-static-svg",
         }
         cases = {current.recipe.profile_id: current for current in load_verification_cases()}
         for profile_id in profiles:
@@ -305,6 +305,20 @@ class VerificationCaseTests(unittest.TestCase):
                 failures, _ = check_case(current, closure)
                 self.assertTrue(any("ratex-katex-fonts" in failure and "ratex-svg" in failure
                                     for failure in failures), failures)
+
+    def test_complete_svg_web_profiles_allow_the_selected_math_backend(self) -> None:
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()}
+        for profile_id in ("web-full", "web-render"):
+            current = cases[profile_id]
+            with self.subTest(profile=profile_id):
+                self.assertIn("math", current.recipe.features)
+                closure = parse_fixture_metadata(
+                    metadata_document(current.recipe.package, {
+                        current.recipe.package: (), "ratex-svg": (), "ratex-katex-fonts": (),
+                    }), root_package=current.recipe.package,
+                )
+                failures, _ = check_case(current, closure)
+                self.assertEqual(failures, [])
 
     def test_sdk_profiles_keep_variant_and_wasi_runtime_boundaries(self) -> None:
         cases = {current.recipe.profile_id: current for current in load_verification_cases()

@@ -172,8 +172,8 @@
     },
     {
       "id": "web-render",
-      "description": "Browser SVG renderer with Cytoscape and ELK, without math, analysis, ASCII, or editor APIs.",
-      "extends": ["elk-render"],
+      "description": "Complete browser SVG renderer with math, Cytoscape and ELK, without analysis, ASCII, or editor APIs.",
+      "extends": ["elk-render", "ratex-render"],
       "components": []
     },
     {
@@ -196,8 +196,8 @@
     },
     {
       "id": "web-full",
-      "description": "Browser SDK including ASCII, Cytoscape and ELK without RaTeX math/font support.",
-      "extends": ["ascii-render", "elk-render"],
+      "description": "Browser SDK including ASCII, Cytoscape, ELK and RaTeX math/font support.",
+      "extends": ["ascii-render", "elk-render", "ratex-render"],
       "components": []
     },
     {
