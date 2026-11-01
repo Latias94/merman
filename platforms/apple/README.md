@@ -163,22 +163,26 @@ committed unchanged into a temporary Git repository, cloned bare and served usin
 is created or pushed, and Rust is never invoked by the helper. The existing clean
 source, matching facade, complete slice and production HTTPS validators still apply.
 
-Use an isolated macOS account or CI runner with Xcode, an installed iOS simulator
+Use a disposable macOS VM or CI runner with Xcode, an installed iOS simulator
 and noninteractive `sudo -n` access, as provided by the hosted macOS runner.
 The helper generates its own one-day localhost certificate and adds administrator-domain
 trust with `sudo -n security add-trusted-cert -d -r trustRoot` in
 `/Library/Keychains/System.keychain`. User-domain trust requires an authentication dialog
 and is unsuitable for this unattended fixture. Git uses the fixture certificate through
 `GIT_SSL_CAINFO`; SwiftPM's binary downloader uses the macOS trust entry.
-The `finally` cleanup removes trust from the same administrator domain and deletes only
-that certificate's Keychain entry, selected by its fingerprint. macOS can request an
-authorization dialog even when root removes administrator trust. Immediately around that
-removal, the helper saves `com.apple.trust-settings.admin`, temporarily permits the operation,
-and restores the original authorization policy through `security authorizationdb`. Use this
-fixture only on the isolated account or disposable runner described above. Each security
-command has a 30-second timeout; a failed trust removal or policy restoration still attempts
-certificate deletion and prevents a successful receipt. The helper leaves Keychain defaults
-and search lists unchanged. Its temporary TLS key, served ZIPs and Git repositories are removed.
+The `finally` cleanup replaces this certificate's administrator trust with explicit `deny`.
+It deletes only that certificate's Keychain entry, selected by its fingerprint. It then
+supplies the certificate itself to a fresh `security verify-cert` process, without a
+custom trust anchor, and requires `kSecTrustResultDeny`, and checks that the Keychain entry
+is absent.
+Removing the last administrator trust record can require an interactive authorization
+dialog on macOS 15; changing the authorization database is also denied there. The helper
+uses neither operation. Its explicit deny record persists until the disposable runner is
+destroyed, so do not run this fixture on a persistent development account. Each security
+command has a 30-second timeout; failed revocation or verification still attempts certificate
+deletion and prevents a successful receipt. The helper leaves other certificate settings,
+Keychain defaults and search lists unchanged. Its temporary TLS key, served ZIPs and Git
+repositories are removed.
 No HTTP dependency URLs, TLS verification bypasses, Git URL rewriting or SwiftPM
 mirrors are used.
 

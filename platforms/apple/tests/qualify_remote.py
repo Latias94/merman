@@ -60,28 +60,25 @@ def trusted_fixture_certificate(cert: Path):
     try:
         run(["sudo", "-n", "security", "add-trusted-cert", "-d", "-r", "trustRoot",
              "-k", keychain, cert], timeout=30)
+        run(["security", "verify-cert", "-c", cert, "-p", "ssl", "-s", "localhost", "-L"], timeout=30)
         yield
     finally:
         try:
-            # Root can add administrator trust without a dialog, but removing it can
-            # still require this authorization right on hosted macOS runners.
-            right = "com.apple.trust-settings.admin"
-            original = run(["sudo", "-n", "security", "authorizationdb", "read", right],
-                           capture_output=True, timeout=30).stdout
-            if not original:
-                raise RuntimeError("could not save the fixture trust authorization policy")
-            try:
-                run(["sudo", "-n", "security", "authorizationdb", "write", right, "allow"], timeout=30)
-                removed = run(["sudo", "-n", "security", "remove-trusted-cert", "-d", cert],
-                              check=False, timeout=30)
-            finally:
-                run(["sudo", "-n", "security", "authorizationdb", "write", right],
-                    input=original, timeout=30)
+            # Removing the final administrator trust entry can require interactive
+            # authorization. Revoke this random fixture explicitly instead; the
+            # inert deny record is discarded with the disposable runner.
+            run(["sudo", "-n", "security", "add-trusted-cert", "-d", "-r", "deny",
+                 "-k", keychain, cert], timeout=30)
         finally:
-            deleted = run(["sudo", "-n", "security", "delete-certificate", "-Z", certificate_id, keychain],
-                          check=False, timeout=30)
-        if removed.returncode or deleted.returncode:
-            raise RuntimeError("could not remove the fixture certificate trust or Keychain entry")
+            run(["sudo", "-n", "security", "delete-certificate", "-Z", certificate_id, keychain], timeout=30)
+        rejected = run(["security", "verify-cert", "-c", cert, "-p", "ssl", "-s", "localhost", "-L"],
+                       check=False, capture_output=True, text=True, timeout=30)
+        if rejected.returncode != 1 or "kSecTrustResultDeny" not in rejected.stderr:
+            raise RuntimeError("the fixture certificate must be explicitly denied after revocation")
+        certificates = run(["security", "find-certificate", "-a", "-Z", keychain],
+                           capture_output=True, text=True, timeout=30)
+        if certificate_id.upper() in certificates.stdout.upper():
+            raise RuntimeError("the fixture certificate remains in the System Keychain")
 
 
 def main():
@@ -153,6 +150,8 @@ extendedKeyUsage=serverAuth
                                           work / "wrong-checksum")
                 report.update(version=args.version, source_commit=args.source_commit,
                               checksum_rejection={"returncode": negative.returncode, "log": "wrong-checksum.log"})
+            report["certificate_cleanup"] = {"trust": "explicitly-denied", "keychain_entry": "deleted",
+                                             "deny_record_lifetime": "disposable-runner"}
         finally:
             if thread is not None and thread.is_alive():
                 server.shutdown()
