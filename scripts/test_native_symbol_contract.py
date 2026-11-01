@@ -309,6 +309,17 @@ class NativeSymbolContractCliTests(unittest.TestCase):
 
 
 class NativeSymbolContractTests(unittest.TestCase):
+    def test_exact_dll_contract_rejects_accidental_rust_exports(self) -> None:
+        assert_symbol_contract(
+            {"merman_get_native_api"}, C_ABI_SYMBOL_CONTRACT,
+            label="C ABI DLL", exact_exports=True,
+        )
+        with self.assertRaisesRegex(RuntimeError, "unexpected exported symbols: _RNvRustHelper"):
+            assert_symbol_contract(
+                {"merman_get_native_api", "_RNvRustHelper"}, C_ABI_SYMBOL_CONTRACT,
+                label="C ABI DLL", exact_exports=True,
+            )
+
     def test_c_abi_contract_canonicalizes_windows_import_aliases(self) -> None:
         assert_symbol_contract(
             {"merman_get_native_api", "__imp_merman_get_native_api"},

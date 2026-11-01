@@ -41,11 +41,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def run(args: list[str]) -> None:
-    print("+", " ".join(args))
+    print("+", " ".join(args), flush=True)
     subprocess.run(args, cwd=REPO_ROOT, check=True)
 
 
-def llvm_nm() -> Path:
+def llvm_nm(*, coff_exports: bool = False) -> Path:
     candidates = []
     if resolved := shutil.which("llvm-nm"):
         candidates.append(Path(resolved))
@@ -77,9 +77,10 @@ def llvm_nm() -> Path:
     filename = "llvm-nm.exe" if sys.platform == "win32" else "llvm-nm"
     candidates.append(sysroot / "lib" / "rustlib" / host / "bin" / filename)
     for candidate in candidates:
-        if candidate.is_file():
+        readobj = candidate.with_name(f"llvm-readobj{candidate.suffix}")
+        if candidate.is_file() and (not coff_exports or readobj.is_file()):
             return candidate
-    raise RuntimeError("llvm-nm not found; install the Rust llvm-tools-preview component")
+    raise RuntimeError("required LLVM tools not found; install the Rust llvm-tools-preview component")
 
 
 def build(recipe, target: str, *, zig: bool = False) -> Path:
@@ -98,10 +99,11 @@ def build(recipe, target: str, *, zig: bool = False) -> Path:
     assert_symbol_contract(
         read_defined_dynamic_symbols(
             artifact,
-            llvm_nm(),
+            llvm_nm(coff_exports=artifact.suffix.lower() == ".dll"),
         ),
         C_ABI_SYMBOL_CONTRACT,
         label=f"{recipe.profile_id} {target}",
+        exact_exports=artifact.suffix.lower() == ".dll",
     )
     return artifact
 

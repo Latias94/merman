@@ -355,7 +355,11 @@ consumer on a 16 KB device, and Apple's iOS/Simulator and HTTPS consumers.
 
 Execution exposed issues in unattended Apple certificate cleanup, minimum-Node npm
 selection, the ARM64 musl linker invocation, and Linux ARM64 Flutter local-build paths;
-the fixes remain part of this branch. Final candidate identity, complete job results,
+the fixes remain part of this branch. Flutter's complete Windows GNU product also exposed
+automatic export of Rust implementation symbols after the Zig driver discarded rustc's
+DEF argument. A DLL-only positional DEF preserves the single C entry point; the full
+math-capable library cross-links with the pinned tool and passes an exact PE export check.
+This local check does not claim Windows execution. Final candidate identity, complete job results,
 Flutter's packaged-app proof and any unresolved qualification failures are maintained in
 the PR's verification section. An earlier successful consumer does not by itself qualify
 a later source revision. This record does not certify a public release or authorize one.
