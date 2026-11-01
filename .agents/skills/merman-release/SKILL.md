@@ -109,6 +109,9 @@ selected registries. Distinguish configured bindings, live token exchange, and s
 Existing bindings generally span versions; a new package name may need bootstrap and registration.
 Inspect the descriptor's complete npm group, including newly added platform packages, for
 first-publication bootstrap and Trusted Publisher setup before starting the group publication.
+Follow the frozen-group bootstrap procedure in Required Credentials: hold an actual publishing
+run before its upload job, or manually reconcile the complete build-only group. A partially
+bootstrapped candidate is not permission to rebuild or bypass observation-only recovery.
 Use the workflows' pinned tools and compiler-floor lanes rather than copying versions into this
 skill. Diagnose first failures against the exact produced artifact.
 

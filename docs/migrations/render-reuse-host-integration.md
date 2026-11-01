@@ -102,7 +102,7 @@ Sequence migrations are listed in the preceding source-migration table.
 | `c4` | `C4DiagramRenderModel` -> `C4DiagramModel`<br>`C4ShapeRenderModel` -> `C4Shape`<br>`C4BoundaryRenderModel` -> `C4Boundary`<br>`C4RelRenderModel` -> `C4Relation` |
 | `cynefin` | `CynefinDiagramRenderModel` -> `CynefinDiagramModel` |
 | `er` | `ErDiagramRenderModel` -> `ErDiagramModel`<br>`ErAttributeRenderModel` -> `ErAttribute`<br>`ErRelSpecRenderModel` -> `ErRelSpec`<br>`ErRelationshipRenderModel` -> `ErRelationship`<br>`ErClassDefRenderModel` -> `ErClassDef`<br>`ErSubgraphRenderModel` -> `ErSubgraph`<br>`ErEntityRenderModel` -> `ErEntity` |
-| `eventmodeling` | `EventModelingDiagramRenderModel` -> `EventModelingDiagramModel`<br>`EventModelingFrameRenderModel` -> `EventModelingFrame`<br>`EventModelingDataEntityRenderModel` -> `EventModelingDataEntity` |
+| `event_modeling` | `EventModelingDiagramRenderModel` -> `EventModelingDiagramModel`<br>`EventModelingFrameRenderModel` -> `EventModelingFrame`<br>`EventModelingDataEntityRenderModel` -> `EventModelingDataEntity` |
 | `gantt` | `GanttRenderTaskRaw` -> `GanttTaskRaw`<br>`GanttRenderTaskStart` -> `GanttTaskStart`<br>`GanttRenderTaskEnd` -> `GanttTaskEnd`<br>`GanttRenderClickEvent` -> `GanttClickEvent` |
 | `git_graph` | `GitGraphRenderModel` -> `GitGraphDiagramModel`<br>`GitGraphBranchRenderModel` -> `GitGraphBranch`<br>`GitGraphCommitRenderModel` -> `GitGraphCommit` |
 | `ishikawa` | `IshikawaDiagramRenderModel` -> `IshikawaDiagramModel`<br>`IshikawaNodeRenderModel` -> `IshikawaNode` |
@@ -120,11 +120,11 @@ Sequence migrations are listed in the preceding source-migration table.
 | `usecase` | `UsecaseDiagramRenderModel` -> `UsecaseDiagramModel` |
 | `venn` | `VennSubsetRenderModel` -> `VennSubsetModel`<br>`VennTextNodeRenderModel` -> `VennTextNodeModel`<br>`VennStyleEntryRenderModel` -> `VennStyleEntryModel`<br>`VennDiagramRenderModel` -> `VennDiagramModel` |
 | `wardley` | `WardleyDiagramRenderModel` -> `WardleyDiagramModel`<br>`WardleyPointRenderModel` -> `WardleyPoint`<br>`WardleyNodeRenderModel` -> `WardleyNode`<br>`WardleyLinkRenderModel` -> `WardleyLink`<br>`WardleyTrendRenderModel` -> `WardleyTrend`<br>`WardleyPipelineRenderModel` -> `WardleyPipeline`<br>`WardleyAnnotationRenderModel` -> `WardleyAnnotation`<br>`WardleyNoteRenderModel` -> `WardleyNote`<br>`WardleyAcceleratorRenderModel` -> `WardleyAccelerator`<br>`WardleyDeacceleratorRenderModel` -> `WardleyDeaccelerator`<br>`WardleyAxesRenderModel` -> `WardleyAxes`<br>`WardleySizeRenderModel` -> `WardleySize` |
-| `xychart` | `XyChartAxisRenderModel` -> `XyChartAxisModel`<br>`XyChartPlotRenderModel` -> `XyChartPlotModel` |
+| `xy_chart` | `XyChartAxisRenderModel` -> `XyChartAxisModel`<br>`XyChartPlotRenderModel` -> `XyChartPlotModel` |
 | `zenuml` | `ZenumlDiagramRenderModel` -> `ZenumlDiagramModel` |
 
 State's shared `StateLink`, `StateLinks`, `StateNote`, `StateRecord`, `StateRelation`, and
-`StateStyleClass` are exported directly from `diagrams::state`. Import them there instead
+`StateStyleClass` are exported directly from `merman_model::families::state`. Import them there instead
 of using the removed `StateDiagramRender*` reexports. The full State model still owns its
 render nodes, render edges, and document graph.
 
@@ -135,17 +135,15 @@ Actual presentation carriers keep their names and gates. In particular:
 - `AgentflowDiagramRenderModel` / `AgentflowVisuals` retain parser-assigned DOM ordinals.
 - `GanttDiagramRenderModel` and `GanttRenderTask` retain display mode and rendered task ends;
   their raw/start/end/click records use the canonical names in the table.
-- `JourneyDiagramRenderModel`, `TimelineDiagramRenderModel`, `PacketDiagramRenderModel`,
-  `PieDiagramRenderModel`, `RadarDiagramRenderModel`, and `InfoDiagramRenderModel` retain
-  their full-output or compatibility state.
 - `StateDiagramRenderModel`, `StateDiagramRenderNode`, `StateDiagramRenderEdge`, and
   `XyChartDiagramRenderModel` retain their presentation data. Other actual render carriers,
   including Class, Flowchart, Mindmap, and Kanban records, are likewise unchanged.
 
-Do not replace an actual full carrier with its semantic model solely because some nested
-records now use canonical names. For example, `Vec<PieSection>` is shared data while
-`PieDiagramRenderModel` remains the full owner. Journey, Timeline, and Packet continue to
-expose their canonical owner through `semantic` as described above.
+Journey, Timeline, Packet, Pie, Radar, and Info instead use their canonical family models
+directly in `RenderSemanticModel`. Remove the redundant `*DiagramRenderModel` wrapper and
+its `semantic` field when migrating these families. Preserve output-specific context through
+the complete `PresentationDiagram` handoff rather than reconstructing it from the raw model.
+See the [model/source migration](model-source-boundaries.md#pass-presentation-data-to-graphical-consumers).
 
 ## Migrate edge geometry budgets
 

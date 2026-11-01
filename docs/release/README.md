@@ -9,9 +9,10 @@ Development source builds also have a
 [prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md)
 covering Rust borrowing/snapshots, geometry budgets, Web mounts and explicit Kanban width adaptation.
 The [model/source migration](../migrations/model-source-boundaries.md) covers independent model and output packages, canonical Rust imports, immutable presentation input, and requested fixes.
-Current source also makes math explicit, including for the retained complete SVG feature aggregates;
-see [ADR-0097](../adr/0097-explicit-math-capability.md). CLI release archives still select math,
-while source-default CLI and generic SVG/Web recipes omit it. Published artifacts are unchanged.
+Current Rust source keeps math opt-in, including for the retained complete SVG feature aggregates;
+see [ADR-0097](../adr/0097-explicit-math-capability.md). Ordinary prebuilt SVG products, including
+Web full/render and CLI release archives, select math explicitly. Source-default CLI omits it.
+The [host guide](PREBUILT_PRODUCTS.md) distinguishes these main-line products from published artifacts.
 
 ## 0.9 maintenance line
 
@@ -37,7 +38,7 @@ HTML label transforms and IDs, and the locked rustls dependency. See the
 [0.9.1 changelog](../../CHANGELOG.md#091---2026-10-18) for the complete delta and the
 [publication snapshot](PUBLISH_ORDER.md#091-publication-snapshot) for channel evidence.
 
-The theme refactor, Options JSON schema `3`, Web transport API `6`, and Mermaid `12.2.0` alignment
+The theme refactor, Options JSON schema `3`, current Web transport API `8`, and Mermaid `12.2.0` alignment
 remain in `[Unreleased]`. They are absent from published `0.9.1` artifacts. For source builds of the
 published patch, use `v0.9.1`; match generated wrappers and artifacts to that same tag. Typst wrapper
 `0.5.0` continues to bundle Merman `0.9.0`.

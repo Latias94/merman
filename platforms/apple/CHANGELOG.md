@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Added
 
-- Produce a complete thin remote SwiftPM delivery tree with matching Swift sources, resources and a checksum-bound binary target. The self-contained local SwiftPM package remains available. Publishing a delivery repository and its version tag is a separate release step.
+- Install a self-contained local SwiftPM package with matching Swift sources, resources, notices and XCFramework, or use the complete thin remote delivery tree with a checksum-bound binary target. The ordinary SVG product includes math. Publishing a delivery repository and its version tag is a separate release step.
 
 ### Breaking changes
 
@@ -17,6 +17,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Replace `presentationCatalogJson()` with `themeCatalogJson()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
 
 - Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes`; SVG-element and native SVG-backend overrides are rejected for this operation. The output remains schema `1`.
+- Constrained resource policy now rejects formulas even when math is compiled. Handle the rejection or choose an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits.
 
 ## [0.9.3] - 2026-10-30
 

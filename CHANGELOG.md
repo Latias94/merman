@@ -13,9 +13,7 @@ Development changes beyond the [0.9.3 maintenance release](#093---2026-10-30).
 Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) to distinguish current
 public packages from these unreleased main-line products:
 
-- Android, Python, Flutter and both Node transports include math in their ordinary SVG
-  products. Web full/render retain complete SVG including math; analysis, editor and ASCII
-  stay separate. Image encoders, host font services and resource policies remain explicit.
+- Apple, Android, Python, Flutter and both Node transports include math in their ordinary SVG products. Web full/render retain complete SVG including math; analysis, editor and ASCII stay separate. Image encoders, host font services and resource policies remain explicit. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
 - SwiftPM gains a complete remote-package delivery tree alongside the self-contained local
   package. Android retains a selected-version Maven repository and a signed Central upload
   bundle. Public repository and registry rollout remain separate release steps.
@@ -26,6 +24,7 @@ public packages from these unreleased main-line products:
   Flutter apps use the qualified `3.47.7+` SDK/dependency baseline; native Dart remains `3.10+`.
 - Node adds GNU and musl Linux ARM64 optional packages. Installing the root package selects
   one exact-version native package; Node-WASM remains an explicit alternative.
+- All five Web packages export a matching `./wasm` asset for bundler and self-hosted loading, including module Workers. Keep JavaScript, generated glue and WASM from the same package version. [#266](https://github.com/Latias94/merman/pull/266)
 
 ### Diagram themes (alpha)
 
@@ -103,6 +102,11 @@ For a maintained runnable Rust example, use `cargo run --locked -p merman --feat
 
 ### Other changes
 
+- Reuse parsed source across redraws with Rust `Renderer::prepare_source` / `render_prepared` and Web `prepareSource`; use Web `mountDiagram` to retain a responsive mounted diagram and select Kanban `fit-width` explicitly. See the [prepared-rendering migration](docs/migrations/render-reuse-host-integration.md) for ownership, disposal, text measurement and refresh behavior. [#224](https://github.com/Latias94/merman/pull/224)
+- **Geometry option migration:** `edge-geometry-json` uses `max_geometry_json_bytes` for encoded output and rejects irrelevant operation-local SVG-byte, SVG-element and native SVG-backend overrides. Replace an operation-local `max_svg_bytes` bound with `max_geometry_json_bytes`; the geometry payload remains schema `1`. See the [resource migration](docs/migrations/edge-geometry-resources.md). [#224](https://github.com/Latias94/merman/pull/224)
+- **Formula resource-policy migration:** constrained resource policy rejects mathematical rendering before invoking the formula backend, including in math-capable artifacts. Handle that rejection or select an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits. Published `0.9.3` constrained-formula behavior is unchanged on the maintenance line. [#178](https://github.com/Latias94/merman/pull/178)
+- Re-export the Rustdoc attribute through a facade by exposing both `merman` and `__render_doc` and selecting `crate_path` on the application attribute. Conditional documentation retains source order; see the [facade example](crates/merman-rustdoc/README.md#re-exporting-the-attribute-unreleased). [#258](https://github.com/Latias94/merman/pull/258)
+- CLI integration adds a repository setup Action, GNU container tooling and an Arch source recipe. Follow the [CLI distribution guide](docs/releasing/CLI.md) for source pinning and available routes; public container or package-registry rollout remains separate. [#195](https://github.com/Latias94/merman/pull/195)
 - Init directives match Mermaid 12.2.0's single/multiple handling. A single legacy `config` uses the detected type key, with Mermaid's `flowchart-v2` exception; unsupported keys such as `classDiagram`, `stateDiagram`, `xychart`, and `flowchart-elk` are filtered out. Multiple init directives sanitize legacy `config` away before merging. Use explicit configuration namespaces or frontmatter for consistent overrides.
 - WASI SDK archives use the existing `docs/WASI_ABI.md` protocol guide and hash-bound runtime catalog instead of packaging the handwritten `contracts/abi/merman-wasi-v1.json` mirror. WASI ABI 1 and runtime behavior are unchanged.
 - With `native-fonts`, `RenderEvidence::native_font_diagnostics()` exposes an immutable `NativeFontDiagnostics` snapshot through `identity()` and `selected_faces()`. CLI measurement diagnostics now describe the executing render's selected fonts, and native binary exports continue to inherit the document's font context.
@@ -123,7 +127,7 @@ For a maintained runnable Rust example, use `cargo run --locked -p merman --feat
 - Direct model rendering rejects malformed containment, overflowing integer ranges, and non-finite Treemap layouts with typed errors instead of panicking or producing invalid geometry. Kanban rejects visible cards outside their declared section in the ordered presentation data instead of moving them. Repeated labels and valid repeated section occurrences remain supported.
 - **Breaking Rust API changes:** move family types to `merman_model::families` or `merman::model::families`, use `SourcePresentationConfig` for full source-engine configuration, and pass shared `PresentationDiagram` values to low-level graphical consumers. Canonical parsing uses `SemanticParser`; full source processing uses `MermaidEngine`. Select `editor-facts`, `presentation`, and `compat-json` as needed. Update imports, removed wrappers, callbacks, and render handoffs using the [model/source migration](docs/migrations/model-source-boundaries.md) and [prepared-rendering guide](docs/migrations/render-reuse-host-integration.md).
 - Diagnostic-only Rust builds can omit replacement generation and its YAML writer. Enable `fixes` and request `FixGeneration::Generate` when a projection needs edits; the default is `Omit`, including in a fixes-capable build. The CLI fix command, LSP code actions, and analysis-capable native SDK recipes retain requested fixes, while lint/diagnostic publication avoids generating them. Custom hosts must declare the `fixes` capability. See the [fix-generation migration](docs/migrations/model-source-boundaries.md#request-fixes-explicitly).
-- **Breaking feature behavior:** `complete-svg` and `complete-svg-elk` remain available on `merman` and `merman-rustdoc`, but no longer enable `math`. They select SVG with Cytoscape, and SVG with Cytoscape plus ELK, respectively; diagram families remain independent. Enable `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, to retain mathematical-label rendering. The facade and CLI source defaults and generic Web full/render packages also omit math; official CLI release archives still include it. Source-built CLI users add `--features math`. [#241](https://github.com/Latias94/merman/pull/241)
+- **Breaking feature behavior:** `complete-svg` and `complete-svg-elk` remain available on `merman` and `merman-rustdoc`, but no longer enable `math`. They select SVG with Cytoscape, and SVG with Cytoscape plus ELK, respectively; diagram families remain independent. Enable `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, to retain mathematical-label rendering. The facade and CLI source defaults also omit math; official CLI release archives and prebuilt Web full/render packages include it. Source-built CLI users add `--features math`. [#241](https://github.com/Latias94/merman/pull/241), [#266](https://github.com/Latias94/merman/pull/266)
 
 ### Contributors
 

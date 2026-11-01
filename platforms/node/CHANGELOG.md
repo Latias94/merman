@@ -7,6 +7,8 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 ### Breaking changes
 
 - Advance binding Options JSON from schema `2` to `3` for both native and Node-WASM consumers. Move styling from `presentation.theme` to the closed top-level `theme` preset-or-spec group and replace `presentation-catalog` discovery with `theme-catalog`. Removed presentation-profile and host-owned CSS/security fields are rejected.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes`; SVG-element and native SVG-backend overrides are rejected for this operation. The output remains schema `1`.
+- Constrained resource policy rejects formulas in both math-capable transports. Handle the rejection or choose an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits.
 
 ### Added
 

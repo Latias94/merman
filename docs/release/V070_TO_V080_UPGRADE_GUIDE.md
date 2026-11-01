@@ -2,6 +2,8 @@
 
 This guide compares the stable `v0.7.0` tag, published on 2026-06-09, with `v0.8.0`. The Rust crates and CLI/LSP archives are published; check the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) for other package channels. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) records measured revisions, evidence, and comparison limits. The approximately four-month interval includes breaking API and default changes; upgrading the version alone is insufficient for custom integrations.
 
+Release instructions and defaults below describe immutable `v0.8.0` artifacts. Package guides may also describe newer source; use the [0.8.0 source tree](https://github.com/Latias94/merman/tree/v0.8.0) for frozen examples. Later source contracts are separated under [current development](#current-development-unreleased).
+
 ## Rust applications
 
 The workspace still requires Rust 1.95 and edition 2024, as v0.7.0 did. The compatibility breaks below concern APIs and dependency selection, not a newly raised compiler floor.
@@ -109,10 +111,9 @@ The refactor adds dedicated analysis and editor owners. Hosts retain document st
 
 These protocol versions are independent. An unchanged C ABI number does not make a changed JSON payload or generated binding record compatible.
 
-The source theme branch advances the inherited Web transport from API 5 to API 6: replace
-`presentationCatalog()` calls with `themeCatalog()` and deploy the matching package facade,
-generated glue, and WASM together. See the [current Web SDK](../../platforms/web/README.md)
-and [contract version audit](UNRELEASED_CONTRACT_VERSIONS.md) for this source-only transition.
+The published 0.8.0 presentation interface uses `presentation-catalog` metadata and Web
+`presentationCatalog()` with Options JSON schema 2. The later compiled-theme migration is
+not part of this release.
 
 ### Apply the package-specific migration
 
@@ -124,10 +125,10 @@ and [contract version audit](UNRELEASED_CONTRACT_VERSIONS.md) for this source-on
 | Apple/Swift | Replace hand-written C bindings and raw callback pointers with matching generated UniFFI records, `MermanEngine(optionsJson:services:)`, and constructor-owned services. Use the source facade and XCFramework from one release; Swift 5.9, iOS 14 / macOS 12 are the current package floors. | [Apple guide](../../platforms/apple/README.md) |
 | Android/Kotlin | Replace the C-forwarding JNI library with the direct JNI AAR, including `libmerman_android_jni.so`. Move `MermanReusableEngine` and mutable callbacks to `MermanEngine(optionsJson, services)` and immutable services; keep Kotlin and all native slices together. | [Android changelog](../../platforms/android/CHANGELOG.md) |
 | Python | Upgrade the generated package and native library together to UniFFI API 7; direct users retain `MermanOperationRequestV4` and adopt the API-7 probe and current payload decoders. | [Python changelog](../../platforms/python/merman/CHANGELOG.md) |
-| Node.js | This package group was introduced during the 0.8 alphas, so there is no 0.7.0 Node-package migration. On Node 22+, choose native `@mermanjs/node` or explicit `@mermanjs/node-wasm`; keep the selected group version aligned. The recipe is deterministic SVG/layout and does not include analysis, ASCII, math, or binary exports. | [Node guide](../../platforms/node/README.md) |
+| Node.js | This package group was introduced during the 0.8 alphas, so there is no 0.7.0 Node-package migration. On Node 22+, choose native `@mermanjs/node` or explicit `@mermanjs/node-wasm`; keep the selected group version aligned. The 0.8.0 recipe is deterministic SVG/layout and does not include analysis, ASCII, math, or binary exports. | [Node guide](../../platforms/node/README.md) |
 | Typst | Use the Typst package's own numeric version. Direct ID options override profile aliases; direct `site-config` replaces the profile object, and raw `options` bypasses shorthand validation. The plugin enforces its constrained policy. | [Typst guide](../../distribution/typst/merman/README.md) |
 
-Default Android, Apple, Python, and Flutter artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. They omit math, PNG/JPEG/PDF, and native clock/time-zone/random adapters. Select a matching custom artifact when those capabilities are needed; a helper method's existence does not prove its backend is compiled.
+Default 0.8.0 Android, Apple, Python, and Flutter artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. They omit math, PNG/JPEG/PDF, and native clock/time-zone/random adapters. Select a matching custom artifact when those capabilities are needed; a helper method's existence does not prove its backend is compiled.
 
 Query the installed artifact's runtime catalog before enabling optional operations. The current native package recipes and browser/Node packages have different capability sets; use [Package Surfaces](PACKAGE_SURFACES.md) rather than inferring them from Rust defaults. Publication is independent for each channel. Keep using the verified published version until the owning registry or release asset confirms `0.8.0` availability.
 
@@ -135,9 +136,21 @@ Query the installed artifact's runtime catalog before enabling optional operatio
 
 Build the actual dependency declaration outside the Merman workspace, then exercise every host-accepted family with the selected layout and output. Verify explicit rejection of an omitted family, cancellation, resource limits, and unavailable or denied backends. Run the final CSS/font/raster/DOM path and refresh snapshots only after reviewing output changes. Bind performance and size reports to the final reviewed source commit; rerun them if production code, compiler, profile, features, or lockfile changes.
 
-The current source also carries the compiled theme integration described in
-[the theme migration reference](ALPHA7_TO_0_8_0_THEME_MIGRATION.md). This later integration is not
-part of the immutable published `0.8.0` artifacts and does not qualify every artifact/family
-cell. The stable release contains its own theme compatibility and targeted correctness fixes.
+The stable release contains its own theme compatibility and targeted correctness fixes.
 The [comparison report](V070_TO_V080_RELEASE_REPORT.md) keeps product growth, comparable
 measurements, and unmeasured surfaces distinct.
+
+## Current development (unreleased)
+
+The current development branch after published `0.9.3` uses compiled themes, Options JSON
+schema 3, and Web transport API 8. Replace `presentation.theme` with top-level `theme` and
+`presentationCatalog()` with `themeCatalog()` only when migrating to matching current-source
+wrappers, package facades, generated glue, and native/WASM artifacts. See the
+[current theme guide](../rendering/custom-diagram-themes.md),
+[binding theme grammar](../bindings/OPTIONS_JSON.md#diagram-theme), and
+[Web SDK](../../platforms/web/README.md). These contracts do not apply to published 0.8.0.
+
+Main's ordinary native SVG products also select math explicitly, while current Rust source
+defaults and convenience aggregates are math-free. Use the [prebuilt product guide](PREBUILT_PRODUCTS.md)
+for current recipes and their publication boundaries; retain the historical 0.8.0 recipes above
+when upgrading only to that release.

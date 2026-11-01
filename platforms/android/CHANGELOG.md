@@ -9,6 +9,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 ### Breaking changes
 
 - Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Kotlin helpers and replace presentation discovery with `themeCatalogJson()`.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes`; SVG-element and native SVG-backend overrides are rejected for this operation. The output remains schema `1`.
+- Constrained resource policy rejects formulas even in the new math-capable product. Handle the rejection or choose an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits.
 
 ### Added
 

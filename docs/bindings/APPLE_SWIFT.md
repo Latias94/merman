@@ -27,7 +27,8 @@ The local SwiftPM package contains:
 Install `rustup component add llvm-tools-preview` before building distribution copies.
 The builder preserves the native build outputs, then removes delivery-only bitcode from
 all thin staged libraries before assembling universal slices. Rust LTO settings are unchanged.
-Main's recipe explicitly includes math, while Rust/source defaults remain unchanged.
+Main's recipe explicitly includes math; current Rust source defaults and convenience aggregates
+keep math opt-in.
 
 ```bash
 bash scripts/build-apple-xcframework.sh
@@ -116,10 +117,19 @@ Cancellation is cooperative. Parser, layout, SVG/ASCII emission, and export chec
 the shared control, but an opaque callback or encoder call may return before the next checkpoint.
 Use worker or process isolation when the host requires hard preemption.
 
-The default XCFramework supports SVG, ASCII, semantic/layout operations, analysis, validation, and
-document analysis. It omits math and the PNG, JPEG, and PDF exporters. The generated export helpers
-remain valid for custom current-contract libraries; the default artifact returns
-`.missingCapability` with the required descriptor ID.
+The main-line XCFramework supports SVG with math, both layout backends, ASCII, semantic/layout
+operations, analysis, fixes, validation, and document analysis. This expanded recipe is unreleased;
+published `0.9.3` retains the legacy math-free artifact described above. Main's default artifact
+still omits the PNG, JPEG, and PDF exporters. The generated export helpers remain valid for custom
+current-contract libraries; the default artifact returns `.missingCapability` with the required
+descriptor ID for those formats. Math does not add native font discovery or the C/WASI memory-font
+constructor service.
+
+For admitted formula workloads, construct the engine with
+`resourceOptionsJson(profile: .interactive, overrides: [])`. Main's constrained policy deliberately
+rejects opaque math rendering even when math is compiled. Retain host execution and memory limits;
+cooperative cancellation cannot preempt an opaque backend call. See the
+[Swift product example](../release/PREBUILT_PRODUCTS.md#swift-installation).
 
 Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
 required. Switch on `outputPlan.kind`, inspect optional format payloads, and retain `rawJson` for

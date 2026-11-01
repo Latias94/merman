@@ -33,6 +33,14 @@ members directly under the final tag. The current package-group operator does no
 dist-tags; resolve a tag conflict through a separately authorized operation after checking the
 current registry permissions. Verify registry
 provenance rather than treating an embedded provenance file as an attestation.
+For first-publication bootstrap, follow Required Credentials' same-artifact procedure. A
+nonpublishing candidate has no upload history report; cross-run observation-only recovery
+must not be used to publish the rest of a partially bootstrapped group.
+
+For Python wheel assets, rerun the original run's failed upload job with its retained wheels.
+It compares all existing same-name assets before sending missing ones, then compares the
+complete anonymous public downloads. Preserve that successful GitHub handoff before resuming
+the dependent PyPI job; do not rebuild wheels to repair a partial upload.
 
 For Flutter, retain the frozen thin facade, its source/tree/version/digest receipt and all
 manifest-pinned native assets from the original run. Rerun failed upload/publication jobs from

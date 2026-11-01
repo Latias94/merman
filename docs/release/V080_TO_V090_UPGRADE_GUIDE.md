@@ -1,6 +1,6 @@
 # Merman 0.8.0 to 0.9.0 upgrade guide
 
-This guide covers upgrading from Merman 0.8.0 to 0.9.0. It describes changes to Rust APIs, CLI commands, rendered output, bindings, and independently versioned packages. See the [release index](README.md) for earlier upgrade paths.
+This guide covers upgrading from Merman 0.8.0 to the immutable `v0.9.0` release. It describes changes to Rust APIs, CLI commands, rendered output, bindings, and independently versioned packages. Later development contracts are called out separately under [current development migration](#current-development-migration-unreleased); they do not apply to installed 0.9.0 artifacts. See the [release index](README.md) for earlier upgrade paths.
 
 ## Rust dependencies
 
@@ -11,7 +11,7 @@ Upgrade coupled Merman crates together and retain explicit feature selection. Ru
 merman = "0.9.0"
 ```
 
-Default facade features still include every built-in diagram family, SVG, Cytoscape, ELK, and math. For smaller builds, use the [feature recipes](../FEATURES.md); selecting Dagre at runtime does not remove compiled ELK. Mermaid remains at 12.1.0, so this upgrade does not introduce another Mermaid major-version migration.
+Default facade features still include every built-in diagram family, SVG, Cytoscape, ELK, and math. For smaller builds, use the [0.9.0 feature recipes](https://github.com/Latias94/merman/blob/v0.9.0/docs/FEATURES.md); selecting Dagre at runtime does not remove compiled ELK. Mermaid remains at 12.1.0, so this upgrade does not introduce another Mermaid major-version migration.
 
 ## Rust models and JSON
 
@@ -46,20 +46,22 @@ merman-cli render diagram.mmd --output diagram.svg --background white
 
 Rust callers set `SvgOutputPolicy.root_background_color`. `merman-cli mmdc` keeps its white default. Diagram-owned edge-label colors and opacity retain their established behavior. Review output snapshots for corrected hollow Class/ER markers, Unicode wrapping, and Block metadata updates.
 
-## Structured diagram themes
+## Presentation in 0.9.0
 
-Rust callers compile a `DiagramTheme` and attach it with `RenderRequest::with_theme(...)`. Mermaid-compatible configuration still belongs to `site_config`; reusable visual styling belongs to the compiled theme. Replace the removed presentation-profile APIs and `presentation-catalog` discovery with the theme APIs and `theme-catalog`.
+The release retains the Presentation API from 0.8.0. Rust callers use `merman::svg::Presentation`, `HostTheme`, and `PresentationProfile`. Resolve the presentation, materialize its engine configuration, and pass its render policy through `SvgRequest.presentation`; see the [0.9.0 Rust presentation example](https://github.com/Latias94/merman/blob/v0.9.0/docs/rendering/presentation-themes.md#rust-api).
 
-Bindings advance Options JSON from schema 2 to 3. Move `presentation.theme` to the closed top-level `theme` group. Select an artifact-supported preset, a complete spec, or a version-1 recipe; removed presentation paths are rejected. For example:
+Bindings retain Options JSON schema 2, including `presentation.profile` and `presentation.theme`. For example:
 
 ```json
 {
-  "version": 3,
-  "theme": { "preset": "editor-dark" }
+  "version": 2,
+  "presentation": {
+    "theme": { "preset": "editor-dark" }
+  }
 }
 ```
 
-Mermaid theme names such as `default`, `dark`, and `forest` remain Mermaid configuration values. Merman presets such as `editor-dark`, `brutalist`, `spotless`, and `cyberpunk` compile reusable styling and do not select a layout engine or SVG pipeline. Discover presets and query support against the loaded artifact: catalog availability does not establish support for every diagram family or output target. Use `raster.matte` and `pdf.page_paint` for export backgrounds. See the [theme authoring guide](../rendering/custom-diagram-themes.md) for customization, canonical JSON sharing, and the preset qualification scope.
+Discover presentation profiles and host-theme presets with `presentation-catalog` metadata or Web `presentationCatalog()`. Mermaid configuration belongs to top-level `site_config`, and SVG output policy belongs to `svg`. See the [0.9.0 binding presentation contract](https://github.com/Latias94/merman/blob/v0.9.0/docs/bindings/OPTIONS_JSON.md#presentation). The compiled `DiagramTheme`, top-level binding `theme`, and `theme-catalog` APIs belong to later development, not this release.
 
 ## Fonts and CLI discovery
 
@@ -71,7 +73,7 @@ merman-cli render diagram.mmd --format png --output diagram.png --font-dir fonts
 merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 ```
 
-Set Mermaid `fontFamily` to the actual supplied family. Explicit sources form a closed set unless `--font-system on` is added. Include every used bold/italic face; the CLI bundles no diagram text fonts, and SVG keeps text instead of embedding fonts. Codec painting may still discover fonts through its existing export path. Actual-font measurement does not promise browser pixel identity, and unsupported custom typography requires deterministic mode. See the [font guide](../../crates/merman-cli/README.md#explicit-fonts).
+Set Mermaid `fontFamily` to the actual supplied family. Explicit sources form a closed set unless `--font-system on` is added. Include every used bold/italic face; the CLI bundles no diagram text fonts, and SVG keeps text instead of embedding fonts. Codec painting may still discover fonts through its existing export path. Actual-font measurement does not promise browser pixel identity, and unsupported custom typography requires deterministic mode. See the [0.9.0 font guide](https://github.com/Latias94/merman/blob/v0.9.0/crates/merman-cli/README.md#explicit-fonts).
 
 Rust `RenderedDocument` values retain the native font context admitted during layout. PNG/JPEG/PDF exports inherit that context; an explicit override must be the same shared context. Supplying a different context, or adding one after deterministic layout, is rejected because painting cannot change completed text geometry. Select the font context before preparing the document.
 
@@ -105,11 +107,11 @@ Rust uses `with_node_padding`, `with_node_padding_x`, and `with_node_padding_y`.
 
 ## Binding artifacts and callbacks
 
-Keep generated wrappers and native/WASM artifacts from one release. Options JSON advances from schema 2 to 3, and Web transport advances from API 5 to 6 for the structured-theme contract. Native ABI 3, UniFFI API 7, Android JNI API 2, Node transport API 1, and ASCII report schema 3 retain their independent versions. An unchanged transport number does not make arbitrary artifact versions interchangeable; regenerate wrappers with their artifacts and query the installed runtime catalog before using additive operations.
+Keep generated wrappers and native/WASM artifacts from one release. Options JSON schema 2 and Web transport API 5 remain unchanged in 0.9.0, as do Native ABI 3, UniFFI API 7, Android JNI API 2, Node transport API 1, and ASCII report schema 3. An unchanged transport number does not make arbitrary artifact versions interchangeable; regenerate wrappers with their artifacts and query the installed runtime catalog before using additive operations.
 
 Custom host measurers now receive decoded HTML line-width candidates through `CanvasMeasureTextWidth` in the `Wrap` phase and must return a length. Update callbacks that only handled wrapped-metrics requests; preserve the full candidate text instead of interpreting decoded angle brackets as markup.
 
-Text-measurement protocol 1 adds signed length operations `raw-bbox-y-offset` (19), `raw-middle-bbox-y-offset` (20), and `raw-hanging-bbox-y-offset` (21). Update exhaustive custom callback handlers and preserve signed results; inspect [host measurement](../bindings/HOST_TEXT_MEASUREMENT.md) for result tagging, whitespace, and unsupported-operation behavior. Native CLI font flags do not add native font discovery to browser or default mobile/Python artifacts.
+Text-measurement protocol 1 adds signed length operations `raw-bbox-y-offset` (19), `raw-middle-bbox-y-offset` (20), and `raw-hanging-bbox-y-offset` (21). Update exhaustive custom callback handlers and preserve signed results; inspect [0.9.0 host measurement](https://github.com/Latias94/merman/blob/v0.9.0/docs/bindings/HOST_TEXT_MEASUREMENT.md) for result tagging, whitespace, and unsupported-operation behavior. Native CLI font flags do not add native font discovery to browser or default mobile/Python artifacts.
 
 ## Independent packages
 
@@ -121,3 +123,9 @@ Text-measurement protocol 1 adds signed length operations `raw-bbox-y-offset` (1
 | VS Code | Extension version 0.1.0 uses Merman 0.9.0 runtime binaries. See the [extension guide](../../tools/vscode-extension/README.md) for installation and runtime selection. |
 
 These packages use independent version numbers. Review the [dependency policy](../DEPENDENCY_POLICY.md) for compatible dependency lines, exact generator groups, and intentional upgrade exceptions.
+
+## Current development migration (unreleased)
+
+The current development branch after published `0.9.3` replaces the Presentation API with compiled `DiagramTheme` requests and `theme-catalog` discovery. Bindings use Options JSON schema 3 with a top-level `theme` group; Web uses transport API 8. Deploy matching wrappers, package facades, generated glue, and native/WASM artifacts from the same revision. These are unreleased contracts and do not change the 0.9.0 instructions above.
+
+Use the [current theme guide](../rendering/custom-diagram-themes.md), [binding theme grammar](../bindings/OPTIONS_JSON.md#diagram-theme), and [Web SDK](../../platforms/web/README.md) for that migration. The [prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md) covers the later Rust model, prepared-source, and geometry resource changes.

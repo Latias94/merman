@@ -15,6 +15,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Regenerate the direct UniFFI bindings and native library together for typed-theme authoring and diagnostics. UniFFI API `7` is unchanged; that number does not make wrappers from different releases interchangeable.
 - Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
 - Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes`; SVG-element and native SVG-backend overrides are rejected for this operation. The output remains schema `1`.
+- Constrained resource policy rejects formulas even in the new math-capable wheel. Handle the rejection or choose an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits.
 
 ## [0.9.3] - 2026-10-30
 
