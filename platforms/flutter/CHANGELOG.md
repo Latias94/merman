@@ -4,6 +4,8 @@
 
 ### Breaking changes
 
+- Qualify Flutter apps with Flutter `3.47.7+` to match native-hooks dependencies and the
+  Flutter SDK's pinned `meta` version. Native Dart keeps its `3.10+` SDK requirement.
 - Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
 
 ### Added

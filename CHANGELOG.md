@@ -23,6 +23,7 @@ public packages from these unreleased main-line products:
   x86-64, with Linux build, repair and installation at manylinux 2.28.
 - Flutter's thin facade downloads and verifies only its selected native target during the
   build. Local assets, mirrors and offline cached builds have explicit hook options.
+  Flutter apps use the qualified `3.47.7+` SDK/dependency baseline; native Dart remains `3.10+`.
 - Node adds GNU and musl Linux ARM64 optional packages. Installing the root package selects
   one exact-version native package; Node-WASM remains an explicit alternative.
 

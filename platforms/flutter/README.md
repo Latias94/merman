@@ -30,10 +30,13 @@ See the [release boundary](../../docs/release/README.md#merman-092).
 
 ## Requirements
 
-- Dart 3.10 or newer; Flutter apps require Flutter 3.38 or newer
+- Dart 3.10 or newer; Flutter apps require Flutter 3.47.7 or newer
 - Android API 24 or newer
 - iOS 13 or newer
 - macOS 11 or newer
+
+The Flutter floor follows the current native-hooks dependency graph and its SDK-pinned
+`meta` compatibility. This package also supports native Dart without the Flutter SDK.
 
 This is a `package_ffi`-style Dart package and does not depend on the Flutter SDK. Its build hook selects and bundles the native library for Flutter and Dart consumers. The public API can instead load a host-owned current-contract library with `Merman.openPath(...)`; `mermanPackageVersion` is the exact version expected by `Merman.open()`.
 
