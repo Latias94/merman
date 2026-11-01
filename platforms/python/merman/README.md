@@ -11,16 +11,35 @@ Parse, analyze, lay out, and render Mermaid diagrams from Python without a brows
 Install the exact version documented here:
 
 ```sh
-python -m pip install 'merman==0.9.2'
+python -m pip install --only-binary=:all: 'merman==0.9.2'
 ```
 
 For source builds, use the `v0.9.2` tag and build the wheel and native library together to preserve the binding contract.
 
-Compiled-theme APIs in this checkout are unreleased. Published `0.9.2` retains Options JSON
-schema `2`; use its tagged guide even though both interfaces retain UniFFI API `7`.
+Compiled-theme APIs, ordinary SVG math, and the expanded wheel matrix in this checkout are
+unreleased. Published `0.9.2` retains Options JSON schema `2` and its original capability/target
+set; use its tagged guide even though both interfaces retain UniFFI API `7`.
 See the [release boundary](../../../docs/release/README.md#merman-092).
 
 Published wheels currently target CPython-compatible Python `3.9+` on macOS arm64, manylinux x86_64, and Windows x86_64. A platform without a listed wheel is not an officially packaged target; supporting another target requires a native-port contribution rather than only a local `pip` build.
+
+The next release candidate preserves Python `>=3.9` and the UniFFI/ctypes transport, and prepares
+these five native wheels. This is a candidate build matrix, not a claim that new wheels are
+already on PyPI:
+
+| Rust target | Candidate wheel platform |
+| --- | --- |
+| `aarch64-apple-darwin` | `macosx_11_0_arm64` |
+| `x86_64-apple-darwin` | `macosx_10_13_x86_64` |
+| `aarch64-unknown-linux-gnu` | `manylinux_2_28_aarch64` |
+| `x86_64-unknown-linux-gnu` | `manylinux_2_28_x86_64` |
+| `x86_64-pc-windows-msvc` | `win_amd64` |
+
+Linux candidates build, undergo `auditwheel` repair, and run installed consumers in pinned
+official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and
+Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler.
+There is no qualified source distribution; use the repository's explicit source helper when
+building from source.
 
 ## Render A Diagram
 
@@ -34,7 +53,18 @@ svg = client.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The alpha.7 binding API is 7; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 3 with explicit encoding, requested/effective layouts, and Compact-attempt information.
+The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The next ordinary wheel supports SVG including math, ASCII, semantic/layout operations, analysis, validation, and document analysis. PNG, JPEG, and PDF methods remain available for custom current-contract libraries; the ordinary wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact codec capability ID. Published `0.9.2` also omits math. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The alpha.7 binding API is 7; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 3 with explicit encoding, requested/effective layouts, and Compact-attempt information.
+
+In a candidate built from this checkout, ordinary interactive rendering handles a formula:
+
+```python
+svg = client.render_svg('flowchart TD\nA["$$x^2$$"] --> B[Done]', None)
+```
+
+The `constrained` resource policy still excludes the native math backend. A constrained engine
+can render ordinary text diagrams and rejects formula input with the typed missing `math`
+capability error. Choose resource policy for the input's trust level; installing a math-capable
+wheel does not relax resource admission.
 
 ## Reuse An Engine
 
@@ -98,7 +128,7 @@ GUI, browser automation, and WebView hosts can implement `MermanTextMeasurer`, s
 
 Use a real font API from the surface that displays the SVG rather than estimating width from character counts. Keep callbacks fast and do not re-enter the same reusable engine while its callback is active. Callback-free engines allow concurrent operations; callback engines serialize admission and report typed `BUSY` to a competing caller, while same-engine callback reentry reports `REENTRANT_CALL`. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md) documents every operation and fallback; the repository's [Python smoke example](https://github.com/Latias94/merman/blob/main/platforms/python/merman/examples/smoke.py) demonstrates one representative callback path while owner-local tests enforce the complete protocol.
 
-The generated callback is `measure(self, request)`, not `measure_text`. One-shot and reusable operations accept request-local `options_json`; reusable values deeply merge over the construction baseline for that call. The wheel builder executes the linked smoke example against the installed final wheel, so it is the authoritative copy-paste reference.
+The generated callback is `measure(self, request)`, not `measure_text`. One-shot and reusable operations accept request-local `options_json`; reusable values deeply merge over the construction baseline for that call. The linked smoke example remains the source-owner callback and theme reference. Final wheel qualification uses the standalone [installed consumer](https://github.com/Latias94/merman/blob/main/platforms/python/merman/examples/wheel_smoke.py), which can run outside the repository.
 
 ## Output And Platform Limits
 
@@ -129,6 +159,13 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 
 The helper resolves the `python-uniffi-native` artifact recipe and chooses the platform library name (`.dylib`, `.so`, or `.dll`). The bundled release library excludes `binding-generation`; only source generation enables that feature. It also embeds the checked-in Rust dependency license report for the selected target rather than the union of every published wheel target. For manual binding generation, follow the [UniFFI maintainer guide](https://github.com/Latias94/merman/blob/main/crates/merman-uniffi/README.md).
 
+`--run-smoke` installs the built wheel without dependency resolution into a temporary environment
+and executes the standalone consumer with isolated imports outside the checkout. It checks
+wrapper/library identity, actual formula glyph geometry, constrained-policy rejection, and absent
+codecs. A local Linux helper build is a host wheel; only the release owner's pinned manylinux
+build/repair/execution qualifies the advertised glibc baseline. The owner separately repeats the
+installed-wheel consumer on Python `3.9` and `3.14` for each target.
+
 ## Documentation And Releases
 
 - [Python binding guide](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
@@ -138,6 +175,11 @@ The helper resolves the `python-uniffi-native` artifact recipe and chooses the p
 - [Source repository](https://github.com/Latias94/merman)
 
 PyPI is the supported registry channel for the Python package. Release wheels are also attached to the corresponding GitHub release; this README does not imply support for platforms without a listed wheel.
+
+The manual workflow defaults to nonpublishing qualification (`publish=false`,
+`publish_to_pypi=false`). It retains wheels and qualification evidence as workflow artifacts.
+Uploading GitHub Release assets requires `publish=true` and the matching immutable source tag;
+PyPI additionally requires `publish_to_pypi=true`. Public rollout remains a separate operation.
 
 ## License And Notices
 

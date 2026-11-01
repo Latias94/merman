@@ -2,6 +2,11 @@
 
 Status: experimental publishable Python package.
 
+This checkout prepares an unreleased five-target ordinary SVG product with math. Published
+`0.9.2` keeps its original three-target coverage and omits math; use its tagged documentation for
+that version. The expanded matrix is qualified by candidate runs before a separately authorized
+release, not by changing the existing PyPI artifacts.
+
 This guide owns Python generation, wheel assembly, and release procedures. The
 [package generator](../../crates/merman-uniffi/examples/generate_python_package.rs) reads UniFFI
 metadata from the matching Rust library and packages the production `merman-uniffi` cdylib. See the
@@ -25,7 +30,7 @@ UniFFI Python loader resolves the cdylib relative to `__file__`.
 ## Generate Locally
 
 `scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
-builds the release library set with the default native direct feature list, then runs a separate
+builds the release library set with the descriptor's native feature list including math, then runs a separate
 generator with only `binding-generation`. UniFFI metadata is read from the matching Rust `rlib`,
 because fully stripped ELF cdylibs intentionally omit the metadata symbol table; the generated
 package still embeds the size-optimized production cdylib. The builder rejects hosts outside the
@@ -113,9 +118,12 @@ finally:
     engine.close()
 ```
 
-The default wheel omits math, PNG, JPEG, and PDF. Their generated methods remain available for a
-custom current-contract library and otherwise raise `MermanError.Binding` with
-`MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID.
+The next ordinary wheel includes math and omits PNG, JPEG, and PDF. Codec methods remain available
+for a custom current-contract library and otherwise raise `MermanError.Binding` with
+`MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID. Math input is still rejected
+under the `constrained` resource policy because that policy excludes the native math backend.
+The ordinary interactive profile can render `flowchart TD\nA["$$x^2$$"] --> B` without adding
+source features. Published `0.9.2` also omits math.
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
 underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional
@@ -220,21 +228,72 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 The script builds `merman-uniffi`, copies the checked-in Python package scaffold into a temporary
 staging directory, generates UniFFI Python files only in that staging directory, and builds a
 platform wheel under `target/python-wheels`. With `--run-smoke`, it installs the wheel into a
-temporary venv and runs the canonical [package smoke](../../platforms/python/merman/examples/smoke.py).
-That smoke proves import and identity,
-one SVG operation, immutable constructor services, and deterministic close;
-owner-local Rust and generated-binding tests carry the exhaustive operation and protocol
-contracts. The build fails when generated support files differ from their checked-in projections or
+temporary venv without dependency resolution and copies only the standalone
+[wheel consumer](../../platforms/python/merman/examples/wheel_smoke.py) outside the checkout.
+The consumer runs with `python -I`, requires the imported package to come from that venv, compares
+the wheel's distribution version with the native library, validates the runtime catalog, and
+checks positive formula SVG geometry, constrained math rejection, and absent PNG/JPEG/PDF codecs.
+The separate [source smoke](../../platforms/python/merman/examples/smoke.py) retains callback,
+theme fixture, and reusable-engine coverage; owner-local Rust and generated-binding tests carry
+the exhaustive operation and protocol contracts. The build fails when generated support files differ from their checked-in projections or
 when setuptools emits a universal `py3-none-any` wheel, because the package carries a native
 library.
 
+`--expected-target <rust-triple>` additionally requires the actual Rust host to match the selected
+matrix member. It does not turn a cross compile into execution evidence. macOS builds use matching
+compiler deployment targets and single-architecture wheel tags: `11.0` for ARM64 and `10.13` for
+x86-64. Current hosted macOS execution does not establish execution on the oldest macOS tag.
+
+## Linux Baseline And Matrix Qualification
+
+The release owner builds exactly these targets:
+
+| Rust target | Wheel platform | Native runner |
+| --- | --- | --- |
+| `aarch64-apple-darwin` | `macosx_11_0_arm64` | `macos-15` |
+| `x86_64-apple-darwin` | `macosx_10_13_x86_64` | `macos-15-intel` |
+| `aarch64-unknown-linux-gnu` | `manylinux_2_28_aarch64` | `ubuntu-24.04-arm` plus pinned container |
+| `x86_64-unknown-linux-gnu` | `manylinux_2_28_x86_64` | `ubuntu-24.04` plus pinned container |
+| `x86_64-pc-windows-msvc` | `win_amd64` | `windows-2025-vs2026` |
+
+The two Linux members use official PyPA AlmaLinux 8 images tagged `2026.05.07-2`, pinned by
+architecture-specific manifest digest in the workflow. The digests were obtained from the
+official [x86-64 tag metadata](https://quay.io/api/v1/repository/pypa/manylinux_2_28_x86_64/tag/?onlyActiveTags=true&specificTag=2026.05.07-2)
+and [ARM64 tag metadata](https://quay.io/api/v1/repository/pypa/manylinux_2_28_aarch64/tag/?onlyActiveTags=true&specificTag=2026.05.07-2).
+The job asserts the actual libc is `glibc 2.28` and the CPU matches the matrix member, then builds
+the production cdylib and metadata rlib there. `auditwheel==6.8.2` audits the binary before and
+after repair, explicitly repairs with `--plat manylinux_2_28_<arch> --only-plat`, and the same
+baseline environment installs and executes the repaired wheel. Relabeling a wheel built on a
+newer Ubuntu host is not a baseline qualification.
+
+Every target uses separate installed consumers for Python `3.14` and the declared minimum `3.9`.
+The `python-qualification-<rust-triple>` workflow artifacts retain consumer JSON; Linux also
+retains the image/source identity and audit/repair output. The exact final wheels are retained as
+`python-wheel-<rust-triple>`. These declarations describe the owner recipe; actual qualification
+requires a successful run against the exact candidate commit.
+
+The aggregate check runs `python scripts/python_wheel_licenses.py --require-release-set` on all
+final wheels. It verifies the exact descriptor target set, rejects duplicate targets even when
+the file count is five, requires the declared platform tags, compares embedded WHEEL/METADATA
+identity, and checks each target's exact generated license report. Unsupported musl, universal2,
+and Windows ARM64 tags cannot stand in for GNU or single-architecture wheels. There is no
+qualified sdist; the repository helper remains the explicit source-build route.
+
 ## Release
 
-`release-python.yml` is a manual release workflow that accepts a `v*` release tag, resolves and
-verifies the matching immutable tag commit and tree, builds and smokes wheels on Linux, macOS, and
-Windows, repairs the Linux wheel with `auditwheel`, checks wheel metadata with `twine`, attaches
-wheels to the GitHub Release, and publishes to PyPI through Trusted Publishing. Dispatching an
-updated workflow definition from `main` never changes the artifact source.
+`release-python.yml` defaults to a nonpublishing candidate. Supply the matching version's `v*`
+release tag and `source_ref` equal to `main`, an exact 40-character commit, or the matching tag.
+For a main/commit candidate the tag need not exist. The workflow resolves one immutable source
+commit and tree before building all five wheels and retaining the qualification artifacts.
+`publish=false` guards both GitHub Release mutation and PyPI publication;
+`publish_to_pypi=true` without `publish=true` is rejected.
+
+A later authorized release sets `publish=true` and requires `source_ref` to be the matching
+immutable release tag. After qualification, the owner attaches wheels to the existing GitHub
+Release. `publish_to_pypi=true` additionally publishes through Trusted Publishing, retaining the
+existing exact-checksum reconciliation before and after publication. Both mutation boundaries
+recheck the remote tag. Dispatching an updated workflow definition never changes the selected
+artifact source.
 
 Configure the PyPI project `merman` with a Trusted Publisher for this repository and
 `.github/workflows/release-python.yml`. No PyPI API token is required for the OIDC path.
