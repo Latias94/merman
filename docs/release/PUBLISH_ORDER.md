@@ -1,13 +1,13 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-30 (Asia/Shanghai)
+Last updated: 2026-10-31 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, and native C/WASI SDK archives. Web, Node, Python, Flutter, Android, and Apple retain their separately verified `0.9.2` channel releases. Typst and other independently versioned surfaces retain their own publication boundaries.
+Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives, and the Apple XCFramework backfill below. Web, Node, Python, Flutter, and Android retain their separately verified `0.9.2` channel releases. Typst and other independently versioned surfaces retain their own publication boundaries.
 
 The `main` development checkout synchronizes the `0.9.3` package version baseline and published notes. Its `[Unreleased]` section retains subsequent development, including compiled themes, Rust API migration, and Mermaid `12.2.0`; package metadata alone does not make that source the published patch. Published artifacts bind the immutable source recorded below. Choose the next workspace version before preparing another development-line release.
 
@@ -21,7 +21,7 @@ Published on 2026-10-30 (Asia/Shanghai) after the maintainer explicitly authoriz
 | CLI and LSP | All five native targets, installers, checksums, and verification manifest are public: 26 assets. The downloaded bundle passes its owner verifier and source-bound attestation check; downloaded Windows CLI/LSP archives also pass execution smoke locally. | [41005974469](https://github.com/Latias94/merman/actions/runs/41005974469), all 21 jobs successful |
 | Native C and WASI SDKs | All 18 standard/math/full archives and 18 checksum sidecars are public. Downloaded archive bytes match the qualified producer; manifests, catalogs, ABI/capabilities, scoped license materials, payload hashes, and publisher attestations pass verification. | [Producer 40999149557](https://github.com/Latias94/merman/actions/runs/40999149557), [publisher 41008921699](https://github.com/Latias94/merman/actions/runs/41008921699), attempt 1 |
 
-The public [v0.9.3 Release](https://github.com/Latias94/merman/releases/tag/v0.9.3) contains 62 assets. SDK checksum files use LF after the publisher creates verified snapshots; Windows producer checksum files use CRLF, with identical filenames and archive digests. SDK archive bytes themselves are unchanged. Native SDK execution qualification covers the recorded C/C++ consumers and SVG/PNG controls; the output catalog alone does not establish equal smoke coverage for every codec.
+The initial public [v0.9.3 Release](https://github.com/Latias94/merman/releases/tag/v0.9.3) contained 62 assets before the Apple backfill below. SDK checksum files use LF after the publisher creates verified snapshots; Windows producer checksum files use CRLF, with identical filenames and archive digests. SDK archive bytes themselves are unchanged. Native SDK execution qualification covers the recorded C/C++ consumers and SVG/PNG controls; the output catalog alone does not establish equal smoke coverage for every codec.
 
 Web/npm, Node/npm, PyPI, pub.dev, Android AAR, Apple XCFramework, Pages, independent packages, and external package-manager submissions were outside this publication scope. Their non-publishing preflight checks do not establish registry availability. The earlier [candidate preflight 40990939540](https://github.com/Latias94/merman/actions/runs/40990939540) had a Flutter setup timeout and is not the publication receipt; the final source-matched preflight above passed Flutter package validation.
 
@@ -30,6 +30,18 @@ The post-publication changelog edit improves wording only. It removes preparatio
 WinGet follow-up on 2026-10-30: the maintainer separately authorized updating the unmerged initial-package [PR #447353](https://github.com/microsoft/winget-pkgs/pull/447353) to `Latias94.MermanCLI 0.9.3`. The submission contains one three-file manifest set, uses schema `1.28.0` as requested upstream, and retains the original published Windows ZIP. Its SHA-256 and release-workflow attestation match the immutable source above. [Registry candidate run 41038101443](https://github.com/Latias94/merman/actions/runs/41038101443), using workflow revision `8c9e65c58d7b540539b8ea4a52af73800c176f9b`, passed WinGet `1.29.380` validation, unattended installation, and installed-alias version/help/SVG smoke tests on Windows 2025. The submitted YAML blobs match that run's validated artifact. Upstream acceptance and catalog availability remain pending.
 
 Nixpkgs follow-up on 2026-10-30: after the maintainer reviewed the prepared patch and PR description, the existing initial-package [PR #570822](https://github.com/NixOS/nixpkgs/pull/570822) was updated to `0.9.3` at `98e793b844161d178a9a34ca243568388a91001d`. The expression pins the immutable release source and a Nix-prefetched NAR hash, with a byte-identical release `Cargo.lock`. It explicitly names the Bash completion to match the upstream installation contract and removes `x86_64-darwin`, which Nixpkgs 26.11 no longer supports. [Review build 41045190405](https://github.com/Latias94/merman/actions/runs/41045190405) passed evaluation, native builds, installed-CLI checks, the version test, and installed SVG/PNG/JPEG/PDF rendering on `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`, using Nixpkgs `1ef8781d97d9e204bbb213472d2995641065ec72` and the exact submitted package files. This directly builds the Nixpkgs expression; `nixpkgs-review` was not run. Upstream review and acceptance remain pending.
+
+Apple follow-up on 2026-10-31: the maintainer selected the previously deferred Apple channel after [issue #261](https://github.com/Latias94/merman/issues/261). [Apple publisher 41208150766](https://github.com/Latias94/merman/actions/runs/41208150766), attempt 1, completed validation, the five-target XCFramework build, Swift package compilation/runtime smoke, packaging, and upload from immutable `v0.9.3` source `3b915f69c02d55b873d252cf6c8a6048e7f3427d`. The public `Merman.xcframework-v0.9.3.zip` is 300,865,967 bytes with SHA-256 `b5163a4dcfccc0686f260b7d9f5ad73b6365ba8de06e6110c9afbdf43b1c797a`. Anonymous download verification matches the SHA-256 sidecar retrieved from producer artifact `13045749119`, its archive size, the public sidecar bytes, and `swift package compute-checksum`. The archive contains the iOS ARM64, iOS ARM64/x86-64 simulator, and macOS ARM64/x86-64 slices; all generated headers/module maps and 38 legal files match the tag. The Release now has 64 assets. This delivers the existing local SwiftPM/XCFramework route, not a remote `.binaryTarget(url:checksum:)` manifest. Published tag and previously accepted assets are unchanged.
+
+| Coupled channel | Selected scope and observed delivery on 2026-10-31 |
+| --- | --- |
+| Rust crates, CLI/LSP, native C/WASI SDKs | Initially selected; `0.9.3` available with the original owner evidence above |
+| Apple XCFramework | Selected for this backfill; `0.9.3` archive and checksum available and independently verified |
+| Web npm group | Deferred; all five public members' [`latest`](https://registry.npmjs.org/@mermanjs/web/latest) versions remain `0.9.2` |
+| Node npm group | Deferred; all seven public members' [`latest`](https://registry.npmjs.org/@mermanjs/node/latest) versions remain `0.9.2` |
+| Python | Deferred; [PyPI](https://pypi.org/pypi/merman/json) reports `0.9.2` |
+| Flutter | Deferred; [pub.dev](https://pub.dev/api/packages/merman) reports `0.9.2` |
+| Android AAR | Deferred; `merman-android-v0.9.2.aar` remains the available matching [Release asset](https://github.com/Latias94/merman/releases/tag/v0.9.2) |
 
 ## 0.9.2 preparation
 

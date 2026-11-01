@@ -18,7 +18,7 @@ The development baseline uses Options JSON schema `3` and Web transport API `8`,
 prepared sources and mounted diagrams. Those contracts and Mermaid `12.2.0` behavior are
 unreleased. Main's package metadata records the `0.9.3` version baseline, but only immutable
 `v0.9.3` identifies the published source and its artifacts. The Rust crates, CLI/LSP, and native
-C/WASI SDKs have verified `0.9.3` delivery; Web, Node, Python, Flutter, Android, and Apple retain
+C/WASI SDKs and Apple XCFramework have verified `0.9.3` delivery; Web, Node, Python, Flutter, and Android retain
 their separately published `0.9.2` packages.
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
