@@ -88,11 +88,13 @@ Constrained policy deliberately rejects opaque math rendering even when math is 
 For untrusted input, keep host execution and memory limits. The generated resource controls and
 cooperative cancellation do not preempt an opaque dependency call.
 
-A producer may supply `Merman-swiftpm-v<version>.Package.swift` as a remote-manifest handoff.
-It references the exact binary ZIP URL and checksum and must be combined with the matching
-`Sources/Merman` directory. It is not by itself a hosted SwiftPM repository. Public URL-based
-installation is established only after those assets and a matching package repository are
-published and an independent SwiftPM consumer resolves them.
+A producer can use `Merman-swiftpm-remote-v<version>.zip` as the complete thin delivery-tree
+handoff. It includes the matching Swift facade, resources and legal material, with a manifest
+that references the separate binary ZIP by its exact HTTPS URL and checksum. Publish that
+binary and commit the unchanged delivery tree to the selected SwiftPM repository. Public
+URL-based installation is established only after an independent consumer resolves that
+repository and downloads the matching binary. The standalone `Package.swift` is retained as
+an advanced handoff; users of the complete tree do not need to assemble its sources manually.
 
 See the [Apple package guide](../../platforms/apple/README.md) for examples and source builds.
 
