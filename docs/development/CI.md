@@ -4,6 +4,29 @@ Merman separates pull-request feedback, scheduled maintenance, and release evide
 in the earliest layer that can justify its cost, but it should not be repeated in every later job
 unless that job produces an independently releasable artifact.
 
+## Apple Binding Checks
+
+The platform owner separates compiler compatibility from Apple SDK integration:
+
+- `apple-swift-5-9-smoke` type-checks both checked-in Swift files and their unchanged C
+  declarations with the official Swift **5.9.2** Linux compiler, pinned by container digest.
+  A temporary module map omits the published map's Darwin imports. This exercises the real
+  pre-Swift-6 compiler branches; a new compiler's `-swift-version 5` mode is not a substitute.
+- `apple-uniffi-smoke` builds all five native architectures on `macos-15`, regenerates the
+  binding, checks its freshness, builds the macOS and iOS device/simulator SwiftPM consumers,
+  and runs the macOS smoke. The explicit iOS 14 targets are build checks, not execution on
+  the minimum supported OS.
+
+GitHub's [macOS 14 retirement](https://github.com/actions/runner-images/issues/13518) removed
+the hosted Xcode 15.2 lane. The Linux compiler check does **not** validate Apple Foundation,
+the published Darwin module map, or Xcode 15.2's iOS 17.2 SDK with Swift 5.9. Before claiming
+fresh evidence for that older Apple stack, use an official Xcode 15.2 installation on its
+supported macOS host, build `scripts/build-apple-xcframework.sh --ios`, and type-check both
+generated Swift files against the matching device and simulator SDKs and XCFramework headers.
+Retain the compiler/SDK versions and results in release evidence. Neither Linux plus a current
+Apple SDK nor a deployment-target flag establishes that older-stack result. The migration
+does not raise the package's declared Swift or OS requirements.
+
 ## Windows Checkout Paths
 
 Repository-relative tracked paths are limited to 160 UTF-16 code units by

@@ -82,7 +82,7 @@ build_staticlib() {
     local target="$1"
     echo "==> Building $RECIPE_PROFILE for $target"
     ensure_rust_target_installed "$target"
-    python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" \
+    CARGO_TARGET_DIR="$REPO_ROOT/target" python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" \
         --build --locked --target-triple "$target"
     if [[ -z "$METADATA_LIBRARY" ]]; then
         METADATA_LIBRARY="$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a"

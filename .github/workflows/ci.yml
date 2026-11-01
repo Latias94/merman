@@ -1130,44 +1130,34 @@ jobs:
     name: apple-swift-5-9-smoke
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: macos-14
+    runs-on: ubuntu-22.04
+    container:
+      image: swift:5.9.2-jammy@sha256:006635153a77dfc9d096dfc954b362d9017f1560d74c357100b50429bf5174c7
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
-      - name: Select Xcode 15.2 and verify Swift 5.9
+      - name: Type-check portable bindings with Swift 5.9.2
+        shell: bash
         run: |
-          sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
+          set -euo pipefail
           swift --version
-          swift --version | grep -Eq 'Apple Swift version 5\.9(\.[0-9]+)?([[:space:]]|$)'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-
-      - name: Build iOS XCFramework with Swift 5.9
-        env:
-          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: bash scripts/build-apple-xcframework.sh --ios
-
-      - name: Type-check generated Swift with Swift 5.9
-        run: |
-          swiftc -typecheck -module-name Merman \
-            -target arm64-apple-ios14.0 \
-            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
-            -I platforms/apple/Merman.xcframework/ios-arm64/Headers \
-            platforms/apple/Sources/Merman/Generated/Merman.swift
-          swiftc -typecheck -module-name Merman \
-            -target arm64-apple-ios14.0-simulator \
-            -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
-            -I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers \
-            platforms/apple/Sources/Merman/Generated/Merman.swift
-          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
+          swift --version | grep -Eq '^Swift version 5\.9\.2([[:space:]]|$)'
+          merman_generated="$GITHUB_WORKSPACE/platforms/apple/Sources/Merman/Generated"
+          merman_headers="$(mktemp -d)"
+          cp "$merman_generated/MermanFFI.h" "$merman_headers/"
+          # The published module map imports Darwin. Only the module map is
+          # adapted here; the generated Swift and C declarations stay unchanged.
+          printf '%s\n' \
+            'module MermanFFI {' \
+            '  header "MermanFFI.h"' \
+            '  export *' \
+            '}' > "$merman_headers/module.modulemap"
+          swiftc -typecheck -swift-version 5 -module-name Merman \
+            -I "$merman_headers" \
+            "$merman_generated/Merman.swift" \
+            "$merman_generated/MermanResourceContract.swift"
 
   apple-uniffi-smoke:
     name: apple-uniffi-smoke
