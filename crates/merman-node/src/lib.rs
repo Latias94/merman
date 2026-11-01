@@ -1,10 +1,10 @@
 #![cfg_attr(not(feature = "transport-napi"), forbid(unsafe_code))]
 #![cfg_attr(feature = "transport-napi", deny(unsafe_code))]
 
-//! Native `@mermanjs/node` transport and internal comparison transport.
+//! Native `@mermanjs/node` and explicit `@mermanjs/node-wasm` transports.
 //!
-//! The public npm package selects the N-API transport. The Node-targeted WASM transport remains an
-//! internal comparison implementation. Both delegate every operation, option, resource profile,
+//! The native npm package selects N-API; the separate Node-WASM package selects WASM explicitly.
+//! Both delegate every operation, option, resource profile,
 //! and typed error to `merman-bindings-core`.
 
 #[cfg(not(feature = "svg"))]

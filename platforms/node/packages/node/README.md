@@ -78,7 +78,7 @@ mounting.
 ## Supported hosts
 
 - macOS arm64 and x64
-- Linux x64 with glibc or musl
+- Linux x64 with glibc or musl; Linux ARM64 GNU/musl is added in this unreleased checkout
 - Windows x64 with MSVC
 - Node.js `>=22`
 
@@ -93,11 +93,21 @@ transports.
 
 ## Capability boundary
 
-The shipped recipe provides deterministic static SVG, Cytoscape and ELK layouts, metadata, layout
-plans, runtime-catalog inspection, and generic admitted operations. Math, binary export, analysis,
+The next-release recipe provides deterministic static SVG with math, Cytoscape and ELK layouts,
+metadata, layout plans, runtime-catalog inspection, and generic admitted operations. Math is
+included in this checkout's artifacts; published `0.9.2` predates this change. GNU Linux targets
+retain glibc 2.31 as their compatibility floor. Binary export, analysis,
 ASCII, text-measurement callbacks, browser fallback, and runtime downloads are outside this package
 surface. Requests for unavailable optional capabilities return Merman's typed
 missing-capability error.
+
+Matching next-release artifacts render formulas with the ordinary SVG methods:
+
+```js
+const formula = await engine.renderSvg('flowchart LR\nA["$$x^2$$"]');
+```
+
+The runtime catalog advertises `math` for both the native and explicit Node-WASM products.
 
 ## Lifecycle and concurrency
 

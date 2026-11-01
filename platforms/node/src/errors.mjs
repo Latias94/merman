@@ -134,7 +134,7 @@ export class MermanLifecycleError extends MermanError {
 export class MermanUnsupportedTargetError extends MermanError {
   constructor({ platform, arch, libc = null, reason = null }) {
     const target = [platform, arch, libc].filter(Boolean).join("-");
-    super(reason ?? `Unsupported Merman Node target: ${target}.`, {
+    super(`${reason ?? `Unsupported Merman Node target: ${target}.`} Use @mermanjs/node-wasm explicitly for a portable Node transport.`, {
       code: "MERMAN_UNSUPPORTED_TARGET",
     });
     this.platform = platform;
@@ -1120,7 +1120,8 @@ function validateErrorPayload(
     (error.kind === "unknown-operation" ||
       (error.kind === "missing-capability" &&
         (error.capability_id === expectation.availability_capability_id ||
-          availableCapabilityIds.includes(error.capability_id))))
+          // The environment policy may disable a compiled math backend for this request.
+          (error.capability_id !== "math" && availableCapabilityIds.includes(error.capability_id)))))
   ) {
     throw new MermanInvalidTransportError(
       "Merman transport contradicted its advertised operation catalog.",

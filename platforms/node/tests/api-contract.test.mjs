@@ -291,9 +291,9 @@ function runtimeCatalog(overrides = {}) {
       { id: "binding-result", version: 1 },
       { id: "operation-metadata", version: 1 },
     ],
-    metadata_ids: metadataIds(["layout-cytoscape", "layout-elk", "svg"]),
+    metadata_ids: metadataIds(["layout-cytoscape", "layout-elk", "math", "svg"]),
     option_group_ids: optionGroupIds(
-      ["layout-cytoscape", "layout-elk", "svg"],
+      ["layout-cytoscape", "layout-elk", "math", "svg"],
       { usesSvgPipeline: true },
     ),
     constructor_service_ids: [...NODE_WIRE_CONTRACT.artifact.constructor_service_ids],
@@ -306,7 +306,7 @@ function runtimeCatalog(overrides = {}) {
       };
     }),
     capabilities: {
-      capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
+      capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
       output_ids: ["svg"],
       operation_ids: [...NODE_WIRE_CONTRACT.artifact.operation_ids],
       system_adapter_ids: [],
@@ -373,6 +373,7 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
   assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, [
     "layout-cytoscape",
     "layout-elk",
+    "math",
     "svg",
   ]);
   assert.equal(engine.runtimeCatalog.output_contracts[0].future_output_metadata, true);
@@ -1954,8 +1955,11 @@ test("advertised SVG preserves missing content capabilities in sync and async ca
         assert.equal(error.capabilityId, capabilityId);
         return true;
       };
-      await assert.rejects(engine.renderSvg("flowchart TD\nA"), check);
-      assert.throws(() => engine.renderSvgSync("flowchart TD\nA"), check);
+      const options = capabilityId === "math"
+        ? { optionsJson: '{"environment":{"math_renderer":"none"}}' }
+        : {};
+      await assert.rejects(engine.renderSvg("flowchart TD\nA", options), check);
+      assert.throws(() => engine.renderSvgSync("flowchart TD\nA", options), check);
     } finally {
       await engine.dispose();
     }

@@ -24,6 +24,7 @@ import { NODE_WIRE_CONTRACT } from "../src/transport-contract.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 import { svgTransportEvidence } from "./benchmark/svg-signature.mjs";
 import { digestJson, stableJson } from "./stable-json.mjs";
+import { assertMathSvg } from "./theme-authoring-smoke.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
@@ -417,6 +418,15 @@ export function probeCandidateRuntime(stage, recipe) {
       throw new Error(`${recipe.candidate} runtime SVG probe failed.`);
     }
     const svgEvidence = svgTransportEvidence(success.result.data);
+    const math = parseWireResponse(engine.executeSync(JSON.stringify({
+      operation_id: "svg",
+      source: 'flowchart LR\nA["$$x^2$$"]',
+      options_json: JSON.stringify({ site_config: { htmlLabels: true } }),
+    })));
+    if (math.ok !== true || math.result?.media_type !== "image/svg+xml") {
+      throw new Error(`${recipe.candidate} runtime formula probe failed.`);
+    }
+    const formulaViewports = assertMathSvg(math.result.data);
     const limited = parseWireResponse(engine.executeSync(JSON.stringify({
       operation_id: "svg",
       source,
@@ -458,6 +468,8 @@ export function probeCandidateRuntime(stage, recipe) {
         semantic_json_bytes: Buffer.byteLength(semantic.result.data),
         svg_plan_json_bytes: Buffer.byteLength(svgPlan.result.data),
         svg_bytes: Buffer.byteLength(success.result.data),
+        math_svg_bytes: Buffer.byteLength(math.result.data),
+        math_formula_viewports: formulaViewports,
         svg_structure_sha256: svgEvidence.structure_sha256,
         svg_geometry_sha256: svgEvidence.geometry_sha256,
         unknown_operation_kind: unknown.error.kind,
@@ -616,6 +628,7 @@ export function collectLocalInputEntries(metadata) {
     path.join(nodeRoot, "scripts", "build-candidate.mjs"),
     path.join(nodeRoot, "scripts", "replace-directory.mjs"),
     path.join(nodeRoot, "scripts", "stable-json.mjs"),
+    path.join(nodeRoot, "scripts", "theme-authoring-smoke.mjs"),
     path.join(nodeRoot, "src", "bounded-executor.mjs"),
     path.join(nodeRoot, "src", "engine.mjs"),
     path.join(nodeRoot, "src", "errors.mjs"),

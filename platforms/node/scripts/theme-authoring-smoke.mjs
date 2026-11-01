@@ -46,6 +46,34 @@ export function parseSvg(svg) {
   return document;
 }
 
+export function assertMathSvg(svg) {
+  const document = new DOMParser({
+    onError(level, message) {
+      throw new Error(`invalid math SVG (${level}): ${message}`);
+    },
+  }).parseFromString(svg, "image/svg+xml");
+  assert.equal(document.documentElement.localName, "svg");
+  assert.equal(document.documentElement.namespaceURI, "http://www.w3.org/2000/svg");
+  assert.doesNotMatch(svg, /\$\$/, "formula delimiters must be replaced by rendered geometry");
+  const formulas = Array.from(document.getElementsByTagName("svg")).filter(
+    (element) => element !== document.documentElement,
+  );
+  assert.ok(formulas.length > 0, "expected an inline formula SVG viewport");
+  for (const formula of formulas) {
+    const viewBox = (formula.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
+    assert.ok(viewBox.length === 4 && viewBox.every(Number.isFinite)
+      && viewBox[2] > 0 && viewBox[3] > 0, "expected positive formula viewport geometry");
+    for (const dimension of ["width", "height"]) {
+      assert.ok(Number.parseFloat(formula.getAttribute(dimension)) > 0,
+        `expected positive formula ${dimension}`);
+    }
+    assert.ok(Array.from(formula.getElementsByTagName("path")).some(
+      (element) => (element.getAttribute("d") ?? "").trim().length > 0,
+    ), "expected outlined formula glyph paths");
+  }
+  return formulas.length;
+}
+
 export function stateFill(svg) {
   const document = parseSvg(svg);
   const hasClass = (element, name) => (element.getAttribute("class") ?? "").split(/\s+/).includes(name);
@@ -118,6 +146,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
     authoring_diagnostics: 0,
     resource_limit_checks: 0,
     content_capability_rejections: 0,
+    math_renders: 0,
     json_operations: 0,
     svg_renders: 0,
   };
@@ -256,15 +285,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
       }
     }
 
-    // SVG availability does not imply math rendering; theme font resources are unsupported.
-    assert.ok(!engine.runtimeCatalog.capabilities.capability_ids.includes("math"));
-    const checkMissingCapability = (capabilityId) => (error) => {
-      assert.ok(error instanceof module.MermanOperationError);
-      assert.equal(error.kind, "missing-capability");
-      assert.equal(error.capabilityId, capabilityId);
-      assert.equal(error.codeName, "MERMAN_UNSUPPORTED_OPERATION");
-      return true;
-    };
+    assert.ok(engine.runtimeCatalog.capabilities.capability_ids.includes("math"));
     const fontSpec = { assets: { fonts: [{
       id: "caller-font", format: "woff2", data_base64: "d09GMg==",
     }] } };
@@ -286,11 +307,33 @@ export async function runThemeAuthoringSmoke(module, engine) {
       await assert.rejects(module.createNodeEngine({ bindingOptions: { theme } }), check);
       counts.content_capability_rejections += 3;
     }
+    for (const mathSource of [
+      'flowchart LR\nA["$$x^2$$"]',
+      "sequenceDiagram\nAlice->>Bob: $$x^2$$",
+    ]) {
+      const options = { optionsJson: JSON.stringify({ site_config: { htmlLabels: true } }) };
+      for (const svg of [await engine.renderSvg(mathSource, options),
+        engine.renderSvgSync(mathSource, options)]) {
+        assertMathSvg(svg);
+        counts.math_renders += 1;
+        counts.svg_renders += 1;
+      }
+    }
     const mathSource = 'flowchart LR\nA["$$x^2$$"]';
-    const checkMath = checkMissingCapability("math");
-    await assert.rejects(engine.renderSvg(mathSource), checkMath);
-    assert.throws(() => engine.renderSvgSync(mathSource), checkMath);
+    const disabledMath = { optionsJson: '{"environment":{"math_renderer":"none"}}' };
+    const checkDisabledMath = (error) => {
+      assert.ok(error instanceof module.MermanOperationError);
+      assert.equal(error.codeName, "MERMAN_UNSUPPORTED_OPERATION");
+      assert.equal(error.kind, "missing-capability");
+      assert.equal(error.capabilityId, "math");
+      return true;
+    };
+    await assert.rejects(engine.renderSvg(mathSource, disabledMath), checkDisabledMath);
+    assert.throws(() => engine.renderSvgSync(mathSource, disabledMath), checkDisabledMath);
     counts.content_capability_rejections += 2;
+    assertMathSvg(await engine.renderSvg(mathSource));
+    counts.math_renders += 1;
+    counts.svg_renders += 1;
     const hostFontSvg = await renderTheme(engine, "flowchart", { spec: {
       typography: { default: { font_stack: ["Merman Smoke Absent Font", "sans-serif"] } },
     } });

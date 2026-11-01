@@ -45,6 +45,8 @@ const NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]
     CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
 ];
 
 // Keep feature selection in the transport owner. Dependency features may be unified by Cargo.
@@ -1380,7 +1382,10 @@ mod tests {
             capabilities["capability_ids"],
             serde_json::json!(&expected.capability_ids)
         );
-        assert!(!expected.capability_ids.iter().any(|id| id == "math"));
+        assert_eq!(
+            expected.capability_ids.iter().any(|id| id == "math"),
+            cfg!(feature = "math")
+        );
         assert_eq!(
             capabilities["output_ids"],
             serde_json::json!(&expected.output_ids)
@@ -1425,6 +1430,24 @@ mod tests {
         let mut drifted = catalog.clone();
         drifted["output_contracts"][0]["media_type"] = serde_json::json!("image/png");
         assert!(validate_runtime_catalog(&drifted).is_err());
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn math_feature_renders_formula_geometry_through_the_owned_transport_contract() {
+        let engine = create_engine("{}").unwrap();
+        let request = serde_json::json!({
+            "operation_id": "svg",
+            "source": "flowchart LR\nA[\"$$x^2$$\"]",
+            "options_json": "{\"site_config\":{\"htmlLabels\":true}}"
+        });
+        let response: serde_json::Value =
+            serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
+        assert_eq!(response["ok"], true);
+        let svg = response["result"]["data"].as_str().unwrap();
+        assert!(svg.matches("<svg").count() > 1);
+        assert!(svg.contains("<path"));
+        assert!(!svg.contains("$$x^2$$"));
     }
 
     #[test]

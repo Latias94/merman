@@ -49,6 +49,8 @@ test("public alpha manifests preserve the intended napi package shape", async ()
   const expectedTargets = [
     "darwin-arm64",
     "darwin-x64",
+    "linux-arm64-gnu",
+    "linux-arm64-musl",
     "linux-x64-gnu",
     "linux-x64-musl",
     "win32-x64-msvc",
@@ -170,9 +172,9 @@ test("Node CI uses the release toolchain required by npm pack contracts", async 
   assert.deepEqual(new Set([...release.matchAll(/npm@[0-9.]+/g)].map(([pin]) => pin)),
     new Set([packageManager]));
   const releaseNode = new Set([...release.matchAll(/node-version: "([^"]+)"/g)].map(([, pin]) => pin));
-  assert.equal(releaseNode.size, 1);
-  assert.deepEqual(new Set([...nodeJob.matchAll(/node-version: "([^"]+)"/g)].map(([, pin]) => pin)),
-    releaseNode);
+  const buildNode = new Set([...nodeJob.matchAll(/node-version: "([^"]+)"/g)].map(([, pin]) => pin));
+  assert.equal(buildNode.size, 1);
+  assert.deepEqual(releaseNode, new Set([...buildNode, "22.0.0"]));
 });
 
 test("candidate recipes pin the approved napi baseline and an explicit Node WASM target", async () => {
@@ -184,7 +186,7 @@ test("candidate recipes pin the approved napi baseline and an explicit Node WASM
   assert.deepEqual(recipes.capability_recipe, {
     descriptor: "capabilities/feature-surface-v1.json",
     target: "native",
-    capabilities: ["layout-cytoscape", "layout-elk", "svg"],
+    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
   });
   assert.equal(recipes.cargo.default_features, false);
   assert.deepEqual(recipes.cargo.features, ["all-diagrams"]);
