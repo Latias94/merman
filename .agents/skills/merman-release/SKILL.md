@@ -17,6 +17,9 @@ Inspect the working tree and existing conversation authorization. Record the sel
 delivery surfaces, intended date, and source identity; distinguish a new workspace release,
 independent package release, channel backfill, publication recovery, or status observation. For a
 status-only request, proceed directly to step 5 without version projection or publishing preflight.
+For a readiness review, distinguish product defects, normal candidate preparation, external
+channel setup and intentionally deferred channels. Review and fix preparation issues without
+treating the review as authorization to create tags or publish.
 
 Prepare source, documentation, checks, and a reviewable result within the request. Continue
 shipping and necessary recovery when the maintainer has already authorized that release and its
@@ -68,6 +71,11 @@ published ABI boundaries, historical evidence identities and unknown-version rej
 - For a selected headless SDK release, describe the `standard`, `math`, and `full` choices and
   supported transports in user-facing notes; claim downloads are available only after the SDK
   publisher succeeds and the matching GitHub Release assets are verified.
+- Describe ordinary prebuilt SVG products through the current artifact recipes and
+  [host guide](../../../docs/release/PREBUILT_PRODUCTS.md). Keep source feature choices,
+  task-specific Web packages, output codecs, font services and resource policies distinct.
+  State theme maturity and recorded family/output scope without inferring qualification from
+  a preset's availability or a successful best-effort render.
 - Describe performance in representative user workflows with bounded evidence. For optional font
   measurement, explain its approximate cost and when improved layout warrants enabling it.
 - Use plain fenced code blocks for Mermaid source examples in changelogs so GitHub displays the
@@ -88,6 +96,9 @@ Require successful immutable preflight for the selected workspace version and so
 workspace tag. Independent owners use their documented source, compatibility, package and artifact
 checks. Inspect upload-size warnings even when a dry run exits zero. Preserve documented target
 coverage and measure the final compressed upload, including native/WASM artifacts.
+Use `scope=release` for this gate. `scope=bindings` qualifies unreleased host products, skips
+release-readiness owners and never issues reusable release-preflight evidence. A prior binding
+candidate or PR CI run does not qualify a later version-projected release commit.
 
 For the SDK owner, run qualification only from a clean source tree. Preflight qualification uploads
 Actions artifacts but does not publish them; retain its run ID only when that run's `head_sha` equals
@@ -96,6 +107,8 @@ the selected release commit.
 Read [Required Credentials](../../../docs/release/RELEASING.md#required-credentials) for the
 selected registries. Distinguish configured bindings, live token exchange, and successful upload.
 Existing bindings generally span versions; a new package name may need bootstrap and registration.
+Inspect the descriptor's complete npm group, including newly added platform packages, for
+first-publication bootstrap and Trusted Publisher setup before starting the group publication.
 Use the workflows' pinned tools and compiler-floor lanes rather than copying versions into this
 skill. Diagnose first failures against the exact produced artifact.
 
@@ -110,6 +123,21 @@ distinct. Workspace, Flutter and independent grammar tags retain their owning tr
 
 Dispatch every selected manual owner using Tag And Push; tag-triggered owners keep their
 owning trigger. Preflight and Actions artifacts do not establish public delivery.
+
+Apple, Android and Python default to nonpublishing candidates. Their `publish=true` path
+requires the matching immutable tag and an existing GitHub Release; PyPI additionally requires
+`publish_to_pypi=true`. Android release uploads also require the verified Maven group and
+signed Central bundle. Preparing that bundle does not submit or promote it in Central.
+
+For Apple remote SwiftPM rollout, use the complete thin delivery tree with matching sources
+and the frozen binary URL/checksum. Native producer and delivery-repository commits are
+separate identities. Creating or tagging that repository is a separately scoped operation;
+uploading the package archives alone does not establish public URL-based installation.
+
+For Flutter, follow the pushed `flutter-v<version>` tag owner: freeze target assets and the
+thin facade, upload native assets to its existing non-draft GitHub Release, verify every
+manifest-pinned public download, then publish the same frozen facade to pub.dev. Manual runs
+validate only. Keep the public native downloads available before exposing the dependent facade.
 
 If the SDK surface is selected, publish its full matrix after the primary GitHub Release exists,
 using the manual SDK publisher and successful source-matched qualification run. Do not treat
@@ -138,6 +166,9 @@ complete only for the state actually proven: prepared, submitted, merged, or ava
 channel semantics: AAR/XCFramework release assets do not establish Maven Central/SwiftPM delivery.
 For Apple, follow the public-download verification in Tag And Push. Every selected channel
 requires its publishing owner to succeed and matching public delivery evidence before completion.
+Record Apple asset delivery separately from public SwiftPM repository resolution, and Android
+Maven repository/bundle delivery separately from Central availability. Flutter completion requires
+both the exact native asset downloads and the reconciled pub.dev facade.
 For SDK publication, reconcile all 18 archives and their 18 SHA-256 sidecars against the verified
 producer run and the matching GitHub Release before marking the SDK available; the release body
 must link only to assets confirmed present on that release.

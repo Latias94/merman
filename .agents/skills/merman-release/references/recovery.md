@@ -29,13 +29,19 @@ For Web/Node npm groups, retain the original package-group tarballs and verified
 Use the workflow's `recovery_run_id` and exact source SHA for a new recovery run; a failed-job retry
 stays in its original run. Independently rebuilt tarballs can differ despite the same source.
 Reconcile every exact version, integrity and dist-tag before writes. Publish proven-unattempted
-members directly under the final tag. Trusted Publishing does not authorize a later `dist-tag`
-repair; a tag conflict needs a separately authorized maintainer credential. Verify registry
+members directly under the final tag. The current package-group operator does not repair
+dist-tags; resolve a tag conflict through a separately authorized operation after checking the
+current registry permissions. Verify registry
 provenance rather than treating an embedded provenance file as an attestation.
 
-For Flutter, retain the frozen native package archive with its source/tree/version/digest receipt.
-Use the trusted extractor and archive verifier before configuring OIDC. Reconcile registry paths,
-executable bits, sizes and bytes; a workflow upload success alone does not establish byte identity.
+For Flutter, retain the frozen thin facade, its source/tree/version/digest receipt and all
+manifest-pinned native assets from the original run. Rerun failed upload/publication jobs from
+that run rather than rebuilding. If the Flutter-tagged GitHub Release is missing, create it
+within the authorized release scope before retrying the native-asset job. Matching existing
+native assets are kept; different bytes stop recovery. Require anonymous verification of every
+native download before publishing the facade. Use the trusted extractor and archive verifier
+before configuring OIDC. Reconcile pub.dev paths, executable bits, sizes and bytes; a workflow
+upload success alone does not establish byte identity.
 
 Acquire registry credentials only at the actual upload boundary. Workspace Cargo owners mint a
 fresh temporary token for each upload after batch dry runs and revoke it afterwards; single-crate

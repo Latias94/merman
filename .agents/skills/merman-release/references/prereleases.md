@@ -18,6 +18,12 @@ channel-only publication. Stable `0.x` versions without a prerelease suffix are 
 
 Done: fresh downstream resolution and the required previous-facade lane compile.
 
+Qualify the projected version at its frozen source with `scope=release`; unreleased
+`scope=bindings` evidence does not admit a new prerelease. Use the version projection's npm
+dist-tag and Python PEP 440 mapping, and the owners' matching workspace/Flutter tag formats.
+Keep a new compatibility line's intentional breaks in migration notes; do not infer same-line
+backward compatibility or universal theme qualification from an alpha label.
+
 ## Existing prerelease backfill or channel-only test
 
 Keep already accepted tags and packages immutable. For a historical prerelease published before
