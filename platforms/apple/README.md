@@ -171,10 +171,14 @@ trust with `sudo -n security add-trusted-cert -d -r trustRoot` in
 and is unsuitable for this unattended fixture. Git uses the fixture certificate through
 `GIT_SSL_CAINFO`; SwiftPM's binary downloader uses the macOS trust entry.
 The `finally` cleanup removes trust from the same administrator domain and deletes only
-that certificate's Keychain entry, selected by its fingerprint. Each security command has
-a 30-second timeout; a failed trust removal still attempts certificate deletion.
-The helper leaves Keychain defaults and search lists unchanged and fails if certificate
-cleanup fails. Its temporary TLS key, served ZIPs and Git repositories are removed.
+that certificate's Keychain entry, selected by its fingerprint. macOS can request an
+authorization dialog even when root removes administrator trust. Immediately around that
+removal, the helper saves `com.apple.trust-settings.admin`, temporarily permits the operation,
+and restores the original authorization policy through `security authorizationdb`. Use this
+fixture only on the isolated account or disposable runner described above. Each security
+command has a 30-second timeout; a failed trust removal or policy restoration still attempts
+certificate deletion and prevents a successful receipt. The helper leaves Keychain defaults
+and search lists unchanged. Its temporary TLS key, served ZIPs and Git repositories are removed.
 No HTTP dependency URLs, TLS verification bypasses, Git URL rewriting or SwiftPM
 mirrors are used.
 

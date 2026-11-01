@@ -63,8 +63,20 @@ def trusted_fixture_certificate(cert: Path):
         yield
     finally:
         try:
-            removed = run(["sudo", "-n", "security", "remove-trusted-cert", "-d", cert],
-                          check=False, timeout=30)
+            # Root can add administrator trust without a dialog, but removing it can
+            # still require this authorization right on hosted macOS runners.
+            right = "com.apple.trust-settings.admin"
+            original = run(["sudo", "-n", "security", "authorizationdb", "read", right],
+                           capture_output=True, timeout=30).stdout
+            if not original:
+                raise RuntimeError("could not save the fixture trust authorization policy")
+            try:
+                run(["sudo", "-n", "security", "authorizationdb", "write", right, "allow"], timeout=30)
+                removed = run(["sudo", "-n", "security", "remove-trusted-cert", "-d", cert],
+                              check=False, timeout=30)
+            finally:
+                run(["sudo", "-n", "security", "authorizationdb", "write", right],
+                    input=original, timeout=30)
         finally:
             deleted = run(["sudo", "-n", "security", "delete-certificate", "-Z", certificate_id, keychain],
                           check=False, timeout=30)
