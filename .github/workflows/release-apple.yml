@@ -202,6 +202,29 @@ jobs:
             --package-archive "target/apple-package/Merman-swiftpm-v$VERSION.zip" \
             --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
 
+      - name: Qualify controlled HTTPS SwiftPM handoff and checksum rejection
+        timeout-minutes: 45
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          python3 platforms/apple/tests/qualify_remote.py \
+            --work-dir target/apple-https-qualification --version "$VERSION" --source-commit "$SOURCE_SHA" \
+            --xcframework platforms/apple/Merman.xcframework
+
+      - name: Retain controlled HTTPS resolution and consumer evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-apple-https-qualification
+          if-no-files-found: error
+          path: |
+            target/apple-https-qualification/qualification.json
+            target/apple-https-qualification/*.log
+            target/apple-https-qualification/proof/qualification.json
+            target/apple-https-qualification/proof/installed/*.json
+            target/apple-https-qualification/proof/installed/*/consumer/Package.resolved
+
       - name: Upload XCFramework artifact
         uses: actions/upload-artifact@v7.0.2
         with:

@@ -138,104 +138,61 @@ qualification and the existing bitcode-cleaned/original comparison remain separa
 
 ### Controlled HTTPS Acceptance Without A Public Repository
 
-The smallest isolated setup is a localhost TLS file server serving the staged ZIP
-and a temporary bare Git repository with `git update-server-info` (Git's standard
-dumb HTTP transport). Use a disposable macOS qualification account with Xcode and an
-installed iOS simulator. The following recipe packages **already built** distribution
-copies and never invokes Rust. Its temporary user-trusted certificate is necessary
-because Git and SwiftPM's artifact downloader both need real TLS trust. No HTTP URLs,
-TLS verification bypasses, Git URL rewriting or SwiftPM mirrors are used.
+Release preflight's `apple-xcframework` job and the Apple release owner's `build`
+job always run this controlled fixture after their existing build and local checks,
+even when the optional external-repository inputs above are empty. Those inputs
+control qualification of an independently hosted delivery repository; the controlled
+fixture supplies localhost HTTPS transport evidence on every successful candidate.
 
-From a clean source checkout with the complete staged XCFramework, set a fresh work
-directory and the actual workspace version, then run this Python recipe. Port 8443
-must be free. The server binds only to loopback; the Git repository is local test state.
+From a clean, selected source revision with its complete, freshly built XCFramework,
+use the actual workspace version, exact source commit and a fresh work directory:
 
-```sh
-export APPLE_HTTPS_WORK="$(mktemp -d)"
-export APPLE_VERSION="<workspace-version>"
-python3 - <<'PY'
-import functools
-import hashlib
-import http.server
-import os
-from pathlib import Path
-import ssl
-import subprocess
-import sys
-import threading
-
-root = Path(os.environ["APPLE_HTTPS_WORK"]).resolve()
-version = os.environ["APPLE_VERSION"]
-www = root / "www"
-run = subprocess.check_call
-run([sys.executable, "scripts/apple_package.py", "--output-dir", str(www),
-     "--version", version, "--artifact-url",
-     f"https://localhost:8443/Merman.xcframework-v{version}.zip"])
-tree = www / f"Merman-swiftpm-remote-v{version}"
-run(["git", "init", str(tree)])
-run(["git", "-C", str(tree), "add", "."])
-run(["git", "-C", str(tree), "-c", "user.name=Apple qualification",
-     "-c", "user.email=apple-qualification@example.invalid", "commit", "-m", "Fixture delivery"])
-revision = subprocess.check_output(["git", "-C", str(tree), "rev-parse", "HEAD"], text=True).strip()
-run(["git", "clone", "--bare", "--no-hardlinks", str(tree), str(www / "Merman.git")])
-run(["git", "--git-dir", str(www / "Merman.git"), "update-server-info"])
-(root / "tls.cnf").write_text("""[req]
-distinguished_name=dn
-[dn]
-[server]
-subjectAltName=DNS:localhost,IP:127.0.0.1
-basicConstraints=critical,CA:TRUE
-keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
-extendedKeyUsage=serverAuth
-""")
-cert, key = root / "cert.pem", root / "key.pem"
-run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-     "-subj", "/CN=localhost", "-config", str(root / "tls.cnf"), "-extensions", "server",
-     "-keyout", str(key), "-out", str(cert)])
-keychain = str(Path.home() / "Library/Keychains/login.keychain-db")
-run(["security", "add-trusted-cert", "-r", "trustRoot", "-k", keychain, str(cert)])
-server = None
-try:
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(cert, key)
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(www))
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 8443), handler)
-    server.socket = context.wrap_socket(server.socket, server_side=True)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    command = [sys.executable, "scripts/apple_qualify.py", "--package-archive",
-               str(www / f"Merman-swiftpm-remote-v{version}.zip"), "--version", version,
-               "--simulator", "--remote-package-url", "https://localhost:8443/Merman.git",
-               "--remote-package-revision", revision]
-    env = dict(os.environ, GIT_SSL_CAINFO=str(cert))
-    run(command + ["--work-dir", str(root / "proof")], env=env)
-    binary = www / f"Merman.xcframework-v{version}.zip"
-    with binary.open("ab") as stream:
-        stream.write(b"intentional checksum mismatch")
-    negative = subprocess.run(command + ["--work-dir", str(root / "wrong-checksum")],
-                              env=env, capture_output=True, text=True)
-    (root / "wrong-checksum.log").write_text(negative.stdout + negative.stderr)
-    if (negative.returncode == 0 or (root / "wrong-checksum/qualification.json").exists()
-            or "checksum of downloaded artifact" not in negative.stderr):
-        raise RuntimeError("a different hosted binary must fail SwiftPM checksum validation")
-finally:
-    if server is not None:
-        server.shutdown()
-        server.server_close()
-    subprocess.call(["security", "remove-trusted-cert", str(cert)])
-    der = ssl.PEM_cert_to_DER_cert(cert.read_text())
-    certificate_id = hashlib.sha1(der).hexdigest()
-    subprocess.call(["security", "delete-certificate", "-Z", certificate_id, keychain])
-PY
+```text
+python3 platforms/apple/tests/qualify_remote.py \
+  --work-dir target/apple-https-qualification --version <workspace-version> \
+  --source-commit <40-character-source-commit> \
+  --xcframework platforms/apple/Merman.xcframework
 ```
 
-Keep the successful `proof/qualification.json`, `proof/installed/*.json`, resolved
-consumer lockfiles, the TLS server's Git/ZIP request log and the negative run's
-SwiftPM checksum diagnostic. The positive run must complete first; an unrelated
-negative-run failure is not checksum evidence. The binary mutation is confined to
-the disposable HTTPS fixture after its successful proof, never the release staging
-tree. This local-host proof does not prove public GitHub download availability;
-the release owner separately compares every published asset byte for byte and checks
-all three archive checksums without authentication.
+The bounded helper uses Python's standard library and the existing `package_apple`
+and `apple_qualify` operators. It packages the same staged XCFramework with an HTTPS
+binary URL using the port actually reserved by its localhost TLS server. It prefers
+8443 and falls back to an OS-assigned port when 8443 is occupied. The thin tree is
+committed unchanged into a temporary Git repository, cloned bare and served using
+`git update-server-info` and Git's standard dumb HTTP transport. No public repository
+is created or pushed, and Rust is never invoked by the helper. The existing clean
+source, matching facade, complete slice and production HTTPS validators still apply.
+
+Use an isolated macOS account or CI runner with Xcode, an installed iOS simulator
+and an accessible `~/Library/Keychains/login.keychain-db`. The helper generates its
+own one-day localhost certificate and adds user trust with
+`security add-trusted-cert -r trustRoot -k <login-keychain> <fixture-cert>`.
+Git uses that certificate through `GIT_SSL_CAINFO`; SwiftPM's binary downloader uses
+the macOS trust entry. The `finally` cleanup removes trust for that exact certificate
+and deletes only its Keychain entry, selected by its certificate fingerprint.
+The helper leaves Keychain defaults and search lists unchanged and fails if certificate
+cleanup fails. Its temporary TLS key, served ZIPs and Git repositories are removed.
+No HTTP dependency URLs, TLS verification bypasses, Git URL rewriting or SwiftPM
+mirrors are used.
+
+The positive run delegates exact `.package(url:revision:)` resolution, binary-target
+HTTPS download and checksum validation, strict source comparison, macOS execution,
+iOS compile/link checks and Simulator execution to `apple_qualify`. Only after that
+run succeeds does the helper corrupt its disposable served XCFramework ZIP. A second
+run uses fresh consumer/cache directories, the same manifest and exact Git revision.
+It must fail with SwiftPM's actual `MermanFFI` downloaded-artifact checksum mismatch
+diagnostic and must not write a successful qualification receipt. An unrelated TLS,
+Git or compiler error cannot satisfy the negative check. Release staging stays frozen.
+
+The work directory retains `proof/qualification.json`, `proof/installed/*.json`,
+resolved consumer `Package.resolved` files, `proof.log`, `https-requests.log` and
+`wrong-checksum.log`. Its top-level `qualification.json` is written only after both
+runs and certificate cleanup succeed. Both workflows retain these files as
+qualification artifacts, including available logs on failure. Keep this evidence in
+ignored `target/` or outside the source checkout. This localhost proof does not
+establish public GitHub download availability; the release owner separately compares
+every published asset byte for byte and checks all three archive checksums without
+authentication.
 
 ## Render A Diagram
 
