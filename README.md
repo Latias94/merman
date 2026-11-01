@@ -196,7 +196,7 @@ shared by analysis and rendering. Binary export starts from validated SVG, not a
 | Add incremental syntax trees, highlighting, or folding | [`tree-sitter-mermaid`] (independently versioned) |
 | Add diagnostics, completion, navigation, or rename | [`merman-lsp`] or [VS Code extension] |
 | Add Mermaid diagrams to Rustdoc | [CLI fragments][CLI Rustdoc] or [`merman-rustdoc`] |
-| Integrate C/C++, Python, Flutter, Android, Apple, or Typst | [Package surface guide] |
+| Integrate C/C++, Python, Flutter, Android, Apple, or Typst | [Installation choices](docs/release/PREBUILT_PRODUCTS.md), then [Package surface guide] |
 
 Use the [documentation index] for task-specific guides, the [release and upgrade index] when
 upgrading, and the [Changelog] for user-facing changes. Each package channel publishes separately;

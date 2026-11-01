@@ -4,9 +4,12 @@ Choose a package or artifact for the environment where you use Merman. Match gen
 and native or WASM artifacts to the same Merman version.
 
 For ordinary prebuilt use, start with [host and output choices](PREBUILT_PRODUCTS.md).
-The main-line pilot recommends complete Apple SVG and the existing native C/WASI full SDKs;
-expert source features and reduced SDK recipes remain available. The new Apple package is
-unreleased and does not change published v0.9.x assets.
+Main's ordinary SVG products include math and both layout engines; the existing native C/WASI
+full SDKs remain the recommendation for explicit fonts and binary outputs. Expert source features
+and reduced SDK recipes remain available. The expanded binding products and delivery handoffs are
+unreleased main-line changes under [ADR-0101](../adr/0101-binding-product-delivery.md) and the
+[binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md); they do not
+change published v0.9.x assets.
 
 ## Release versions
 
@@ -42,10 +45,10 @@ Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter 
 | One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
 | Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
-| Python host integration | `merman` | PyPI and release wheels |
-| Flutter/Dart host integration | `merman` | pub.dev |
-| Android host integration | `merman-android-<tag>.aar` | GitHub Release AAR |
-| Apple host integration | Complete `Merman-swiftpm-v<version>.zip` on main; legacy XCFramework route for v0.9.3 | Self-contained local SwiftPM package; separate binary-target ZIP |
+| Python host integration | `merman` | PyPI and release wheels; main targets five OS/CPU combinations |
+| Flutter/Dart host integration | `merman` | pub.dev; main freezes a thin facade with target-pinned native assets |
+| Android host integration | Maven coordinate selected by the publisher on main; legacy `merman-android-<tag>.aar` for published 0.9.2 | Complete Maven repository ZIP and signed Central bundle handoff; Central rollout is separate |
+| Apple host integration | Complete `Merman-swiftpm-v<version>.zip` on main; legacy XCFramework route for v0.9.3 | Local SwiftPM package, separate binary ZIP and complete thin remote delivery tree; no hosted repository is established |
 | Language-neutral native embedding with explicit fonts and binary exports | `sdk-native-full` recommended | C headers, static/shared libraries, CMake and pkg-config; reduced `standard`/`math` available |
 | Non-JavaScript sandbox embedding | `sdk-wasi-full` recommended | `wasm32-wasip1` reactor with independent scalar ABI 1; reduced `standard`/`math` available |
 | Binding source integration | `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, `merman-wasm` | crates.io source crates; native artifacts are separate owner surfaces |
@@ -55,15 +58,22 @@ Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter 
 Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
 publication; this repository only validates the external formula after a stable release.
 
-Android, Python, and Flutter retain their default prebuilt native capability SKU: SVG, semantic
-and layout operations, both supported layout engines, ASCII, analysis, validation, and document
-analysis. Main's Apple product additionally selects math explicitly; published v0.9.x Apple
-artifacts retain the former shared math-free selection. PNG, JPEG, PDF, and native runtime adapters
-remain available to custom source builds but are not bundled in these default packages. These platform artifacts intentionally include
-ELK and therefore ship under an artifact-specific notice closure; they are not equivalent to the
-default `merman` Cargo feature. The C ABI crate has no default features, so custom embedders can
+Android, Python, and Flutter main-line prebuilt products select math explicitly alongside SVG,
+semantic and layout operations, both supported layout engines, ASCII, analysis, validation, and
+document analysis. Published 0.9.x packages retain their version-specific capabilities. Main's
+Apple product, both Node transports, and Web full/render also select math explicitly. Published
+Web full/render 0.9.2 already includes math; published Node, Python, Flutter, Android and legacy
+Apple products retain their math-free selections. PNG, JPEG, PDF, and native runtime adapters
+remain available to custom source builds but are not bundled in these default language products.
+These platform artifacts intentionally include ELK and therefore ship under an artifact-specific
+notice closure; they are not equivalent to the default `merman` Cargo feature. The C ABI crate
+has no default features, so custom embedders can
 select semantic-only, SVG-only, export-capable, or complete builds. LSP remains a separate
 executable product and is not linked into any native binding artifact.
+
+Compiled math and resource policy are separate: main's explicitly constrained policy rejects
+opaque math execution. Use the binding's supported interactive policy for formulas and inspect
+the loaded runtime catalog for optional operations and services.
 
 ## Headless SDK Profiles
 
@@ -145,15 +155,21 @@ The repository-owned delivery routes are:
 1. crates.io for Rust crates, using `docs/release/PUBLISH_ORDER.md`.
 2. GitHub Release artifacts for `merman-cli` and `merman-lsp`.
 3. Native C and WASI headless SDK archives attached manually to an existing GitHub Release.
-4. GitHub Release XCFramework packaging for Apple.
-5. GitHub Release wheels and PyPI publishing for Python.
-6. pub.dev for Flutter.
-7. GitHub Release AAR for Android.
+4. Seven Apple release assets: binary XCFramework ZIP, complete local SwiftPM ZIP, complete thin
+   remote SwiftPM tree ZIP, their three checksum sidecars, and the remote manifest handoff.
+   Hosting and tagging a SwiftPM delivery repository remain separate rollout operations.
+5. GitHub Release wheels and PyPI publishing for Python, with five main-line target lanes.
+6. A thin Flutter facade on pub.dev after its pinned native target assets are uploaded and read
+   back from the existing `flutter-v<version>` GitHub Release.
+7. Android AAR and complete Maven repository ZIP, with a protected signing job producing the
+   standard Central bundle handoff. The workflow does not upload to Maven Central or establish
+   ownership of a namespace.
 8. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
    `release-web.yml` after Trusted Publishing setup.
-9. lockstep npm publishing for `@mermanjs/node`, its five native platform packages, and the
-   explicit `@mermanjs/node-wasm` package through `release-node.yml`. Node is an experimental alpha
-   surface; it requires first-publish bootstrap before npm Trusted Publishing can take over.
+9. lockstep npm publishing for `@mermanjs/node`, its seven native platform packages, and the
+   explicit `@mermanjs/node-wasm` package through `release-node.yml`: nine packages in total.
+   Node retains its experimental alpha admission; each new package name requires first-publish
+   bootstrap before npm Trusted Publishing can take over.
 10. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
@@ -179,15 +195,30 @@ Merman CI keeps publication separate from validation:
   `verify-playground-example-catalog` keep the published full/editor family set and source-backed
   examples aligned.
 - `platform-script-syntax` checks Python, Apple, and Flutter shell entry points.
-- `python-uniffi-wheel` builds and imports a local Python UniFFI wheel.
-- The platform binding gate runs Flutter dependency resolution, generated-binding drift checks, static analysis, formatting, ABI contract tests, and a native Dart smoke against the exact desktop artifact recipe. Release preflight also rejects a package whose Dart-reported compressed size exceeds 99 MB.
+- `python-uniffi-wheel` builds and imports a local Python UniFFI wheel. Release/preflight owners
+  cover macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64 MSVC. Linux builds and
+  repaired-wheel consumers run in pinned, architecture-native manylinux_2_28 containers at actual
+  glibc 2.28; Python 3.9 and the current owner runtime install the final wheels outside the checkout.
+- The platform binding gate runs Flutter dependency resolution, generated-binding drift checks,
+  static analysis, formatting, ABI contract tests, and a native Dart smoke against the exact
+  desktop artifact recipe. Release/preflight owners freeze separate native target assets and a
+  thin facade, reject bundled native bytes in that facade, enforce Dart's 99 MB compressed-package
+  ceiling, and execute a relocated macOS app built from the extracted package.
 - `apple-uniffi-smoke` builds `Merman.xcframework` and validates the generated UniFFI Swift package.
+  Release/preflight owners additionally qualify the extracted local package, device compile/link
+  and simulator execution; the release owner's optional remote inputs qualify the exact HTTPS
+  delivery-repository commit against the thin archive.
+- The Android release/preflight owners resolve the extracted Maven repository in an external
+  Gradle app, check delivered ELF/APK alignment for both ABIs, and execute JNI on a 16 KB x86-64
+  emulator. ARM64 device execution is not established by the alignment checks.
 - `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
   then packs and verifies the complete lockstep npm group without publishing it.
 - `release-node.yml` builds, packs, installs, and renders the public Node loader through its real
-  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native packages, plus the explicit
-  Node-targeted WASM package. Its publisher receives a verified seven-package group only and
-  publishes platform packages, WASM, and then the root loader under the requested final dist-tag.
+  macOS arm64/x64, Linux arm64/x64 glibc/musl, and Windows x64 native packages, plus the explicit
+  Node-targeted WASM package. Native consumers install only the root package with optional
+  dependencies enabled and execute on the Node 22.0.0 floor. Its publisher receives a verified
+  nine-package group and publishes platform packages, WASM, and then the root loader under the
+  requested final dist-tag.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
@@ -197,41 +228,50 @@ Merman CI keeps publication separate from validation:
   every installed formula runs Homebrew's linkage audit and formula test.
 
 Release preflight is manual and publish-free. Crates and cargo-dist remain tag-driven after
-preflight passes. Platform publishing is manual so a fixed workflow on `main` can build and upload
-assets for an existing release tag without moving that tag. Registry credentials still need to be
-configured per surface before the corresponding workflow can publish.
+preflight passes. Apple, Android and Python dispatches default to `publish=false` and accept
+`main`, an exact commit or the matching tag for candidate builds. Uploads require `publish=true`
+and the matching immutable tag as `source_ref`; Android additionally requires a signed handoff,
+and PyPI additionally requires `publish_to_pypi=true`. Web/Node default to
+`publish_to_npm=false`. Flutter manual runs only validate; its native-asset and pub.dev jobs run
+from the pushed Flutter tag with separate write/OIDC permissions. See
+[the operator guide](RELEASING.md) for exact inputs, protected environments and recovery rules.
 
 ## Browser WASM Package Group
 
 `platforms/web` is a private build workspace, not an npm product. The public browser SDK is a
-lockstep package group described by `platforms/web/web-surface-descriptor.json`. Each published
-package exports only `.` and contains exactly one owned WASM artifact at
-`artifacts/wasm/merman_wasm_bg.wasm`; raw `pkg/**` files and package subpaths are not public API.
+lockstep package group described by `platforms/web/web-surface-descriptor.json`. Each main-line
+package exports its facade at `.` and a narrow `./wasm` raw asset convenience for bundlers and
+self-hosting. It contains exactly one owned WASM artifact at
+`artifacts/wasm/merman_wasm_bg.wasm`; raw `pkg/**` files and capability subpaths are not public API.
 
 | Package | Artifact profile | Intended use |
 | --- | --- | --- |
-| `@mermanjs/web` | `web-full` | Browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts. |
+| `@mermanjs/web` | `web-full` | Browser SDK: SVG with math, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts. |
 | `@mermanjs/web-analysis` | `web-analysis` | Analysis, diagnostics, facts, and detection without rendering. |
 | `@mermanjs/web-editor` | `web-editor` | Analysis plus parser-backed editor intelligence, intended for a dedicated Worker. |
 | `@mermanjs/web-ascii` | `web-ascii` | ASCII/Unicode diagram output. |
-| `@mermanjs/web-render` | `web-render` | SVG-only renderer with Cytoscape and ELK layouts. |
+| `@mermanjs/web-render` | `web-render` | SVG-only renderer with math, Cytoscape and ELK layouts. |
 
 The package group deliberately has no Node or SSR fallback. Browser consumers import one package,
 then use its generated wrapper and runtime capability report. Unsupported operations are rejected by
 the artifact's typed missing-capability behavior; consumers should not infer support from package
 names or Cargo features.
 
-The generic browser packages omit math. Required math labels return the typed missing-capability
-error with id `math`; custom source builds can select the positive `math` feature explicitly.
+Dedicated browser packages keep their task scopes. The full and render packages include math;
+required math labels in a reduced artifact still return the typed missing-capability error with
+id `math`; custom source builds can select the positive `math` feature explicitly.
 See the [Rust embedding and capability guide](../rendering/RUST_EMBEDDING.md).
 
 Release builds pack every public member into one verified artifact group. The manifest records the
 release version, source commit, target dist-tag, package/profile identity, tarball hash and npm
-integrity, and legal-material digest. The publisher preflights every existing version and target tag,
-then publishes missing versions directly under the final tag in dependency order. npm Trusted
-Publisher cannot perform a later `dist-tag` mutation, so a conflicting existing tag stops the run
-before any publish; a retry safely skips members whose integrity and tag already match. npm cannot
-provide cross-package transactions, so the root package is deliberately published last.
+integrity, and legal-material digest. The publisher preflights every existing exact version's
+integrity and requested tag, then publishes missing versions directly under the final tag in
+dependency order. The current operator does not mutate dist-tags separately: an existing exact
+version with a different requested tag stops the run before uploads; a retry skips members whose
+integrity and tag already match. npm documents
+[separately authorized OIDC dist-tag management](https://docs.npmjs.com/trusted-publishers/#managing-dist-tags-with-trusted-publishing);
+that capability does not establish this repository's configured permissions or add tag repair to
+its operator. npm cannot provide cross-package transactions, so the root package is published last.
 
 ## Compatibility And Migration Notes
 
@@ -248,7 +288,8 @@ Current source semantics are intentionally explicit:
   initialization rather than relying on struct layout compatibility.
 - Browser package identity is part of the public API. Migrate old
   `@mermanjs/web/<subpath>` imports to the matching standalone package in the table above. There is
-  no compatibility subpath or raw WASM fallback.
+  no compatibility capability subpath or alternative runtime fallback. Main adds a narrow
+  `./wasm` raw asset export to each existing package for bundlers and self-hosting.
 - `merman-wasm` is the wasm-bindgen implementation crate published through crates.io. It is not a
   browser package, a Node module, or evidence that a Typst artifact supports the same capability set.
 - A new public browser package, changed default package, or candidate admission requires a separate
@@ -257,17 +298,17 @@ Current source semantics are intentionally explicit:
 
 ## Native Prebuilt SKU Policy
 
-Python, Android, and Flutter retain the same default native prebuilt SKU through
-surface-owned transports. Its direct features are `analysis`, `ascii`, `layout-cytoscape`,
-`layout-elk`, and `svg`; its outputs are ASCII and SVG. It omits math, binary export, and native
-runtime adapters to keep common downloads materially smaller. The generated wrappers still expose
-the complete operation vocabulary, while runtime discovery and typed missing-capability errors
-describe the loaded artifact precisely.
+Python, Android, and Flutter main-line products use their surface-owned transports with explicit
+`analysis`, `ascii`, `fixes`, `layout-cytoscape`, `layout-elk`, `math`, `svg` and diagram selection.
+Their outputs remain ASCII and SVG. Binary export and native runtime adapters remain separate.
+The generated wrappers expose the complete operation vocabulary, while runtime discovery and
+typed missing-capability errors describe the loaded artifact precisely.
 
 Main's Apple recipe adds math explicitly for complete SVG document semantics. Its distribution
 copies omit delivery-only bitcode without changing Rust LTO settings or original build outputs.
-See [ADR-0100](../adr/0100-prebuilt-product-entry-points.md). This main-only amendment leaves
-source defaults and published v0.9.x products unchanged.
+See [ADR-0100](../adr/0100-prebuilt-product-entry-points.md) and
+[ADR-0101](../adr/0101-binding-product-delivery.md). These main-only amendments leave source
+defaults and published v0.9.x products unchanged.
 
 The C ABI is published as the source-only `merman-ffi` crate. Its `c-abi-native` artifact profile
 continues to build the complete host reference library for ABI and output-path verification, not a
@@ -280,11 +321,11 @@ differ:
 
 | Surface | Compiled capabilities | Product rationale |
 | --- | --- | --- |
-| Android, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Existing native prebuilt defaults. |
-| Apple on main | analysis, ASCII, SVG, math, Cytoscape, ELK | Complete SVG local SwiftPM package; published v0.9.x remains math-free. |
+| Android, Python, Flutter | analysis, ASCII, SVG, math, Cytoscape, ELK | Main-line complete SVG products; published maintenance packages retain their own capabilities. |
+| Apple on main | analysis, ASCII, SVG, math, Cytoscape, ELK | Complete local SwiftPM package and thin remote delivery handoff; published v0.9.x remains math-free. |
 | Typst | analysis, SVG, Cytoscape, ELK | Matches the six-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
-| Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
-| Browser packages | package-specific | `web-full` and `web-render` omit math; dedicated packages own analysis, editor, and ASCII workflows. Custom source builds can opt into math. |
+| Node alpha package group | SVG, math, Cytoscape, ELK | Matches the complete deterministic static-SVG interface; codecs and ambient services remain out of the prebuilt download. |
+| Browser packages | package-specific | `web-full` and `web-render` include math; dedicated packages own analysis, editor, and ASCII workflows. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 
 Do not add another prebuilt matrix solely because another source closure compiles. A proposed SKU
@@ -299,12 +340,16 @@ library-size evidence.
 
 | Surface | Required evidence |
 | --- | --- |
-| Browser npm package group | Pinned Mermaid and editor descriptors, exact artifact profiles, TypeScript/WASM contracts, package projection, install smoke, lockstep group assembly, and provenance all agree. |
+| Browser npm package group | Pinned Mermaid and editor descriptors, exact artifact profiles, TypeScript/WASM contracts, package projection, installed production-bundler consumers in Chromium and a Worker, lockstep group assembly, and provenance all agree. |
+| Apple | Complete local package and thin remote tree share generated Swift, resource declarations and notices; the remote manifest pins the separate binary ZIP. Seven release assets receive public byte comparison and three checksum checks. Remote resolution requires the explicit HTTPS repository/commit qualifier. |
+| Android | Selected-version Maven archive preserves AAR, POM, Gradle metadata, sources, javadoc and sidecars; the external app and 16 KB checks pass. Protected signing verifies the configured group and frozen bytes before producing a standard Central handoff; public Central resolution is a later rollout proof. |
+| Python | Five target wheels have matching facade/native bytes and legal material; final repaired Linux wheels are audited and installed at glibc 2.28. Minimum/current Python consumers execute outside the checkout; PyPI reconciliation compares the exact wheel set. |
+| Flutter | The extracted frozen thin facade contains its generated target manifest and no native payloads; a relocated macOS app fetches only its selected target and executes. Every pinned native asset is read back before pub.dev OIDC publication, then public package members are reconciled. |
 | VS Code extension | Descriptor-owned LSP and CLI artifacts pass extension tests, binary preparation, target-specific VSIX packaging, and package-content verification. |
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
 | Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 3, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `html5ever`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
-| Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, packed tarballs, five native install/render smokes, and one WASM install/render smoke agree. |
+| Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, nine packed tarballs, seven native root-package install/render smokes, and one WASM install/render smoke agree. |
 
 ## WASM Size Matrix
 
@@ -331,17 +376,23 @@ must cover every exact Web and Typst artifact profile once, with no legacy featu
 or stale profiles. Compare only artifacts with the same profile and target; browser and Typst
 transports deliberately have different closures.
 
-The 2026-08-03 complete-SVG admission refresh measured the final `web-render` npm WASM against the
-capability-superset `web-full` artifact produced by the same wasm-pack toolchain:
+The latest main-line math-inclusive Web measurements and budget rationale belong to
+[the 2026-11-01 binding WASM report](../performance/binding_wasm_budget_2026-11-01.md).
+Use final package bytes from the same source and toolchain when changing current ceilings.
+
+The following table is historical evidence from the 2026-08-03 complete-SVG admission refresh,
+which measured the then-final `web-render` npm WASM against the capability-superset `web-full`
+artifact produced by the same wasm-pack toolchain. It is not the current math-inclusive budget:
 
 | Artifact profile | Raw | Stripped | Gzip | Brotli |
 | --- | ---: | ---: | ---: | ---: |
 | `web-full` | 12,584,849 | 12,584,626 | 4,787,991 | 3,406,733 |
 | `web-render` | 11,844,334 | 11,844,111 | 4,500,248 | 3,195,427 |
 
-Removing analysis, ASCII, and editor saves 5.88% by stripped bytes and 6.20% by Brotli. The package
-is admitted because it establishes the complete SVG-only capability contract, not because it meets
-the 15% threshold used for workflow-specific slim packages. Do not weaken `web-render` to basic SVG
+In that historical comparison, removing analysis, ASCII, and editor saved 5.88% by stripped bytes
+and 6.20% by Brotli. The package was admitted because it established the complete SVG-only
+capability contract, not because it met the 15% threshold used for workflow-specific slim packages.
+Do not weaken `web-render` to basic SVG
 under the same package identity: it would no longer be capability-equivalent. A future basic-SVG
 package needs a separate workflow and at least a 15% measured reduction against its declared
 comparison artifact before release admission is considered.
