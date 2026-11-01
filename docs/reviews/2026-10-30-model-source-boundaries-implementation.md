@@ -833,8 +833,28 @@ platform-binding job do not qualify that full scope.
 
 The merge commit is `5fa86a0361419f0d3f23c578b11f0e77d59a4a8a`. Its Git tree equals the
 qualified PR head's tree. The [main-push CI run](https://github.com/Latias94/merman/actions/runs/41180710300)
-has a separate source identity; the PR result does not assert that this run completed successfully.
+has a separate source identity and subsequently completed successfully.
 Historical measurements above retain their actual candidate identities.
+
+## Direct-model follow-up and merged CI, 2026-10-31
+
+[#259](https://github.com/Latias94/merman/pull/259) added family-local output admission for
+independently constructed models: effective Class/State/ER containment cycles, repeated Block
+child records and column overflow, invalid Packet ranges, non-finite Treemap geometry, and Kanban
+visible cards assigned to the wrong section occurrence. The patch preserves repeated authored
+labels, valid section occurrences, note-group aliases and deliberately non-rendered Kanban entries.
+It adds no dependencies, packages or general validation framework. The migration guide documents
+the direct producer's representation requirements.
+
+The [final PR CI](https://github.com/Latias94/merman/actions/runs/41184267937) passed on
+`c56db08ffbe5e3ce931e9918f1a60c1ecdb838f3`: 68 successful jobs and four intentional skips.
+All PR checks totaled 70 successes and seven skips, including the separate performance contracts.
+The maintainer merged it as `3c09f00dcd1ccbcd22f1da5b875833fdf9c28cba`; the merge tree equals
+the PR tree, and the [main CI](https://github.com/Latias94/merman/actions/runs/41191165371) also
+passed with 68 successes and four skips. This includes the complete workspace, three SVG DOM
+policies and Chromium containment, platform consumers, and the split feature/theme owners.
+The [CI runtime record](../research/2026-10-31-ci-core-runtime.md#successful-split-job-observations)
+reports the actual elapsed and runner costs without treating them as compiler benchmarks.
 
 ## Outstanding applicable qualification
 
@@ -844,6 +864,21 @@ replace platform-owned execution. M6/M8 and the overall goal remain open for the
 | Owner | Remaining evidence / environment |
 | --- | --- |
 | Flutter Apple slices and macOS Dart consumer | Complete Flutter iOS/macOS native slices and artifact-matrix checks, plus macOS Dart ABI3, example and theme consumers under Release Preflight's `flutter-dry-run`. Apple UniFFI/Swift PR smokes are completed evidence for their separate scope. |
+
+The manual [Flutter owner run](https://github.com/Latias94/merman/actions/runs/41213854955) was
+dispatched on 2026-10-31 with immutable source
+`3c09f00dcd1ccbcd22f1da5b875833fdf9c28cba`. Its `build` job uses the same complete native
+matrix and Dart consumer commands as `flutter-dry-run`, with additional package/archive evidence.
+The workflow's actual publisher requires a tag-push event; this manual event cannot publish.
+The `flutter-v0.9.3` input matches the source's current version projections and selects no new
+release or tag. At dispatch follow-up the input-validation job was still queued without a runner;
+this is pending execution, not qualification evidence.
+
+The expected evidence covers all iOS/macOS slice builds, symbols and packaging, plus Dart runtime
+execution on the macOS runner's host architecture. It does not claim iOS device execution,
+runtime execution on both macOS architectures, or an installed pub.dev product. The workflow also
+performs read-only registry reconciliation: record the `build` result independently if that later
+job rejects a different package already published under the same metadata version.
 
 This gate is pending, not not-applicable. Run its existing CI/preflight commands against the
 final candidate when the matching environment is available; no new validation framework is

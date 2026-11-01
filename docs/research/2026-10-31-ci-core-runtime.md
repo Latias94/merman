@@ -47,5 +47,40 @@ outweigh the benefit, the bounded fallback is to retain only the separate theme 
 feature/Rustdoc commands to `build-test`.
 
 The source merge `5fa86a0361419f0d3f23c578b11f0e77d59a4a8a` has the same Git tree as the
-qualified PR head. Its main-push run is separate evidence; this record does not claim its outcome
-or rebind the architecture refactor's historical measurements to that merge identity.
+qualified PR head. Its separate [main-push run](https://github.com/Latias94/merman/actions/runs/41180710300)
+also completed successfully. The architecture refactor's historical measurements retain their
+original source identities.
+
+## Successful split-job observations
+
+Both the [#259 PR run](https://github.com/Latias94/merman/actions/runs/41184267937), on
+`c56db08ffbe5e3ce931e9918f1a60c1ecdb838f3`, and its
+[main-push run](https://github.com/Latias94/merman/actions/runs/41191165371), on
+`3c09f00dcd1ccbcd22f1da5b875833fdf9c28cba`, succeeded with 68 successful CI jobs and four
+intentional skips each. All #259 PR checks totaled 70 successes and seven skips. The separate
+performance workflow passed its eligibility and contract jobs; measurement jobs were not selected.
+The merge tree equals the PR head tree.
+
+| Observation | #258 PR, before split | #259 PR | #259 main push |
+| --- | ---: | ---: | ---: |
+| Linux `build-test` execution | 85.6 min | 32.7 min | 33.0 min |
+| `feature-contracts` execution | Included above | 34.5 min | 24.8 min |
+| `theme-contracts` execution | Included above | 22.5 min | 18.9 min |
+| Sum of these core job durations | 85.6 min | 89.7 min | 76.7 min |
+| Workflow creation to successful gate, including queues | 86.2 min | 52.8 min | 66.6 min |
+
+The PR feature job started 18.1 minutes after workflow creation and finished at 09:14:02 UTC;
+`pr-gate` completed at 09:14:17. Its cold build and queue still set that run's final gate time.
+The three core jobs together used about 4.1 more runner minutes than the old Linux job in this
+PR observation, while their independent execution shortened the serial feedback path.
+
+On the main push, all three core jobs completed by 10:42:15 UTC. The final dependency was
+[Playground](https://github.com/Latias94/merman/actions/runs/41191165371/job/124512196821),
+which started at 10:57:24 and completed at 11:09:35, followed by `push-gate` at 11:09:53.
+That run demonstrates why the complete feedback time cannot be inferred from the longest core
+job alone: runner queues and the existing Web producer/consumer chain remain material.
+
+These successful observations support keeping the split. They measure workflow placement under
+the observed runners, caches and queues; they do not establish faster Rust compilation or a
+controlled percentage improvement. No additional CI split, target transfer, feature union or
+routine timing job is justified by these two observations alone.
