@@ -204,6 +204,16 @@ Export {
             with self.subTest(output=output), self.assertRaises(RuntimeError):
                 parse_coff_exports(output)
 
+    def test_coff_export_names_preserve_real_aliases_for_exact_checks(self) -> None:
+        aliases = {"merman_get_native_api", "__imp_merman_get_native_api"}
+        output = "".join(f"Export {{\n  Name: {name}\n}}\n" for name in aliases)
+        self.assertEqual(parse_coff_exports(output), aliases)
+        with self.assertRaisesRegex(RuntimeError, "unexpected exported symbols: __imp_merman_get_native_api"):
+            assert_symbol_contract(
+                parse_coff_exports(output), C_ABI_SYMBOL_CONTRACT,
+                label="C ABI DLL", exact_exports=True,
+            )
+
     def test_reader_can_select_one_macho_architecture(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
