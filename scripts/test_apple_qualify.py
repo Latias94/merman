@@ -1,9 +1,12 @@
 """Behavior checks for installed Apple consumer evidence."""
 
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 from pathlib import Path
 import plistlib
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +17,7 @@ import zipfile
 
 from scripts import apple_qualify
 from scripts.artifact_profile_recipe import load_artifact_profiles
+from scripts.release_archive import ArchiveVerificationError
 
 
 def consumer_payload():
@@ -104,17 +108,60 @@ class InstalledPackageFlowTests(unittest.TestCase):
         self.calls = []
         self.failure = None
         self.different_original = False
+        self.remote_url = None
+        self.remote_revision = "b" * 40
+        self.resolved_revision = self.remote_revision
+        self.resolve_failure = False
+        self.wrong_version = False
+        self.binary_target = {"name": "MermanFFI", "type": "binary", "checksum": "a" * 64,
+                              "url": "https://localhost:8443/Merman.xcframework-v0.9.3.zip"}
         self.enterContext(mock.patch.object(apple_qualify, "run", side_effect=self.process))
+
+    def remote_fixture(self):
+        self.remote_url = "https://localhost:8443/Merman.git"
+        generated = self.package / "Sources/Merman/Generated/Merman.swift"
+        generated.parent.mkdir(parents=True)
+        generated.write_text("public struct Merman {}\n")
+        (self.package / "Package.swift").write_text(
+            '// swift-tools-version: 5.9\n// HTTPS binary manifest fixture\n')
+        self.checkout = self.root / "resolved-checkout"
+        shutil.copytree(self.package, self.checkout)
 
     def process(self, command, *, cwd, **options):
         command = [str(x) for x in command]
         self.calls.append((command, options))
+        if command[:2] == ["swift", "package"]:
+            self.assertIn("--cache-path", command)
+            if command[-1] == "dump-package":
+                self.assertIn("--scratch-path", command)
+                return SimpleNamespace(stdout=json.dumps({"targets": [self.binary_target]}))
+            if command[-1] == "resolve":
+                if self.resolve_failure:
+                    raise subprocess.CalledProcessError(1, command, stderr="SwiftPM artifact resolution failed")
+                return SimpleNamespace(stdout="")
+            self.assertEqual(command[-3:], ["show-dependencies", "--format", "json"])
+            return SimpleNamespace(stdout=json.dumps({"dependencies": [
+                {"url": self.remote_url, "path": str(self.checkout), "dependencies": []}]}))
+        if command[:2] == ["git", "-C"]:
+            self.assertEqual(Path(command[2]), self.checkout)
+            if command[3:] == ["rev-parse", "HEAD"]:
+                return SimpleNamespace(stdout=self.resolved_revision + "\n")
+            self.assertEqual(command[3:], ["ls-files", "-z"])
+            return SimpleNamespace(stdout="".join(path.relative_to(self.checkout).as_posix() + "\0"
+                for path in sorted(self.checkout.rglob("*")) if path.is_file()))
         if command[:2] == ["swift", "build"]:
             project = Path(command[command.index("--package-path") + 1])
             manifest = (project / "Package.swift").read_text()
             expected_package = (project.parent.parent / "original-package"
                                 if project.parent.name == "original-consumer" else self.package)
-            self.assertIn(str(expected_package), manifest)
+            if self.remote_url:
+                self.assertIn(f'.package(url: "{self.remote_url}"', manifest)
+                self.assertIn(f'revision: "{self.remote_revision}"', manifest)
+                self.assertNotIn(str(expected_package), manifest)
+                self.assertNotIn(".package(name: \"Merman\", path:", manifest)
+                self.assertIn("--cache-path", command)
+            else:
+                self.assertIn(str(expected_package), manifest)
             binary_dir = project.parent / "bin"
             binary_dir.mkdir(exist_ok=True)
             (binary_dir / "InstalledConsumer").write_text("consumer binary")
@@ -136,6 +183,8 @@ class InstalledPackageFlowTests(unittest.TestCase):
             if self.failure == "consumer" or (self.failure == "spawn" and command[0] == "xcrun"):
                 raise subprocess.TimeoutExpired(command, options["timeout"])
             payload = consumer_payload()
+            if self.wrong_version:
+                payload["catalog"]["package_version"] = "0.9.2"
             if self.different_original and "original-consumer" in command[0]:
                 payload["basic"]["svg"] = payload["basic"]["svg"].replace("Hello", "Hello!")
                 payload["basic"]["metadata"]["byte_length"] += 1
@@ -166,6 +215,92 @@ class InstalledPackageFlowTests(unittest.TestCase):
                         package_dir=self.package, work_dir=self.root / failure, version="0.9.3", simulator=True)
                 self.assertTrue(any(command[2:4] == ["shutdown", "task-simulator"]
                                     for command, _ in self.calls))
+
+    def remote_archive(self):
+        archive = self.root / "remote.zip"
+        with zipfile.ZipFile(archive, "w") as zipped:
+            for path in sorted(self.package.rglob("*")):
+                if path.is_file():
+                    zipped.write(path, "remote/" + path.relative_to(self.package).as_posix())
+        return archive
+
+    def remote_arguments(self, work):
+        return ["apple_qualify.py", "--package-archive", str(self.remote_archive()),
+                "--work-dir", str(work), "--version", "0.9.3",
+                "--remote-package-url", self.remote_url,
+                "--remote-package-revision", self.remote_revision, "--simulator"]
+
+    def test_remote_entry_resolves_pinned_https_dependency_and_compares_final_sources(self):
+        self.remote_fixture()
+        work = self.root / "remote-consumer"
+        with mock.patch.object(sys, "argv", self.remote_arguments(work)), redirect_stdout(io.StringIO()):
+            self.assertEqual(apple_qualify.main(), 0)
+        report = json.loads((work / "qualification.json").read_text())
+        self.assertEqual(report["remote_dependency"], {
+            "url": self.remote_url, "revision": self.remote_revision, "staged_sources": "matched"})
+        self.assertEqual(report["simulator_runtime"], "passed")
+        resolves = [command for command, _ in self.calls if command[:2] == ["swift", "package"]
+                    and command[-1] == "resolve"]
+        self.assertEqual(len(resolves), 3)
+
+    def test_remote_resolution_source_revision_and_runtime_failures_never_write_success(self):
+        self.remote_fixture()
+        for failure in ("resolution", "revision", "facade", "manifest", "version"):
+            with self.subTest(failure=failure):
+                self.resolve_failure = failure == "resolution"
+                self.resolved_revision = "c" * 40 if failure == "revision" else self.remote_revision
+                self.wrong_version = failure == "version"
+                changed = self.checkout / ("Sources/Merman/Generated/Merman.swift"
+                                           if failure == "facade" else "Package.swift")
+                original = changed.read_bytes()
+                if failure == "facade":
+                    changed.unlink()
+                elif failure == "manifest":
+                    changed.write_text("// different binary URL/checksum\n")
+                work = self.root / failure
+                try:
+                    with mock.patch.object(sys, "argv", self.remote_arguments(work)):
+                        with self.assertRaises((subprocess.CalledProcessError, ValueError)):
+                            apple_qualify.main()
+                    self.assertFalse((work / "qualification.json").exists())
+                finally:
+                    changed.write_bytes(original)
+
+    def test_remote_entry_cannot_qualify_a_local_or_nonmatching_binary_reference(self):
+        self.remote_fixture()
+        targets = ({"name": "MermanFFI", "type": "binary", "path": "Merman.xcframework"},
+                   dict(self.binary_target, url="http://localhost:8443/Merman.xcframework-v0.9.3.zip"),
+                   dict(self.binary_target, url="https://localhost:8443/Merman.xcframework-v0.9.2.zip"))
+        for index, target in enumerate(targets):
+            self.binary_target = target
+            work = self.root / f"wrong-reference-{index}"
+            with self.subTest(index=index), mock.patch.object(sys, "argv", self.remote_arguments(work)):
+                with self.assertRaises((ValueError, ArchiveVerificationError)):
+                    apple_qualify.main()
+            self.assertFalse((work / "qualification.json").exists())
+
+    def test_remote_entry_requires_https_and_an_exact_revision_without_local_fallback(self):
+        self.remote_fixture()
+        cases = (("http://localhost/Merman.git", self.remote_revision),
+                 ("file:///tmp/Merman.git", self.remote_revision),
+                 ("https://user:secret@localhost/Merman.git", self.remote_revision),
+                 (self.remote_url + "?token=secret", self.remote_revision),
+                 (self.remote_url + "#fragment", self.remote_revision),
+                 (self.remote_url, "main"), (self.remote_url, "v0.9.3"),
+                 (self.remote_url, None), (None, self.remote_revision))
+        for index, (url, revision) in enumerate(cases):
+            work = self.root / f"invalid-{index}"
+            arguments = self.remote_arguments(work)[:-5]
+            if url is not None:
+                arguments += ["--remote-package-url", url]
+            if revision is not None:
+                arguments += ["--remote-package-revision", revision]
+            with (self.subTest(index=index), mock.patch.object(sys, "argv", arguments),
+                  redirect_stderr(io.StringIO())):
+                with self.assertRaises(SystemExit):
+                    apple_qualify.main()
+            self.assertFalse(work.exists())
+        self.assertEqual(self.calls, [])
 
     def test_main_extracts_package_and_never_records_success_after_consumer_failure(self):
         archive = self.root / "package.zip"

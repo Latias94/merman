@@ -163,6 +163,45 @@ class ApplePackageTests(unittest.TestCase):
             self.package(output_dir=self.root / "wrong-archive", artifact_url=self.remote_url(),
                          expected_checksum=package_digest)
 
+    def test_remote_tree_is_a_complete_thin_repository_from_the_same_staging(self):
+        result = self.package(artifact_url=self.remote_url())
+        name = f"Merman-swiftpm-remote-v{self.version}"
+        self.assertEqual(result["remote_package_dir"], (self.output / name).resolve())
+        archive = result["remote_package_archive"]
+        self.assertEqual(archive.name, name + ".zip")
+        remote = {key.removeprefix(name + "/"): value
+                  for key, value in self.members(archive).items()}
+        staged = {path.relative_to(result["remote_package_dir"]).as_posix(): path.read_bytes()
+                  for path in result["remote_package_dir"].rglob("*") if path.is_file()}
+        self.assertEqual(remote, staged)
+        local = {path.relative_to(result["package_dir"]).as_posix(): path.read_bytes()
+                 for path in result["package_dir"].rglob("*") if path.is_file()}
+        shared = {key: value for key, value in local.items()
+                  if not key.startswith("Merman.xcframework/") and key not in {"Package.swift", "README.md"}}
+        self.assertEqual(shared, {key: value for key, value in remote.items()
+                                  if key not in {"Package.swift", "README.md"}})
+        self.assertEqual(remote["Package.swift"], result["remote_manifest"].read_bytes())
+        self.assertFalse(any(key.startswith("Merman.xcframework/") for key in remote))
+        self.assertIn("Sources/Merman/Generated/Nested/Additional.swift", remote)
+        self.assertIn("THIRD_PARTY_LICENSES/rust-cargo-dependencies.json", remote)
+        self.assertNotIn("as a local", remote["README.md"].decode())
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        self.assertEqual(Path(str(archive) + ".checksum").read_text(), f"{digest}  {archive.name}\n")
+        self.assertNotIn(digest, remote["Package.swift"].decode())
+
+    def test_existing_remote_checksum_is_preserved_before_any_outputs_are_emitted(self):
+        checksum = self.write(self.output / f"Merman-swiftpm-remote-v{self.version}.zip.checksum", "accepted\n")
+        with self.assertRaisesRegex(ArchiveVerificationError, "already exists"):
+            self.package(artifact_url=self.remote_url())
+        self.assertEqual(list(self.output.iterdir()), [checksum])
+        self.assertEqual(checksum.read_text(), "accepted\n")
+
+    def test_remote_handoff_keeps_the_local_and_binary_archives_identical(self):
+        local = self.package()
+        remote = self.package(output_dir=self.root / "with-remote", artifact_url=self.remote_url())
+        for key in ("package_archive", "binary_archive"):
+            self.assertEqual(local[key].read_bytes(), remote[key].read_bytes())
+
     def test_checksum_mismatch_fails_without_emitting_a_handoff(self):
         for checksum in ("0" * 64, "not-a-sha256"):
             with self.subTest(checksum=checksum):
@@ -184,14 +223,14 @@ class ApplePackageTests(unittest.TestCase):
                     self.package(artifact_url=url)
 
     def test_archives_are_deflated_and_deterministic_across_input_metadata(self):
-        first = self.package()
+        first = self.package(artifact_url=self.remote_url())
         for directory in (self.generated, self.xcf, self.legal / "THIRD_PARTY_LICENSES"):
             for path in directory.rglob("*"):
                 if path.is_file():
                     os.utime(path, (1760000000, 1760000000))
                     path.chmod(0o600)
-        second = self.package(output_dir=self.root / "repeat")
-        for key in ("package_archive", "binary_archive"):
+        second = self.package(output_dir=self.root / "repeat", artifact_url=self.remote_url())
+        for key in ("package_archive", "binary_archive", "remote_package_archive"):
             self.assertEqual(first[key].read_bytes(), second[key].read_bytes())
             with zipfile.ZipFile(second[key]) as archive:
                 self.assertTrue(all(info.compress_type == zipfile.ZIP_DEFLATED for info in archive.infolist()))
@@ -318,7 +357,8 @@ class ApplePackageTests(unittest.TestCase):
                                              "--artifact-url", self.remote_url()])
             self.assertEqual(status, 0)
             result = json.loads(output.getvalue())
-            self.assertEqual(set(result), {"package_dir", "package_archive", "binary_archive", "remote_manifest"})
+            self.assertEqual(set(result), {"package_dir", "package_archive", "binary_archive", "remote_manifest",
+                                           "remote_package_dir", "remote_package_archive"})
             self.assertTrue(all(Path(path).exists() for path in result.values()))
 
 

@@ -159,15 +159,26 @@ let package = Package(
 '''
 
 
-def _readme(version: str, profile) -> str:
+def _readme(version: str, profile, *, remote: bool = False) -> str:
+    if remote:
+        installation = '''This is the complete source tree for a thin SwiftPM delivery repository.
+Commit the contents of this directory at the repository root, preserving Package.swift,
+Sources and legal files. The manifest downloads the separately hosted, checksum-pinned
+XCFramework ZIP. Publish that exact binary before qualifying or tagging the repository.
+Consumers add the delivery repository's HTTPS URL in Xcode or SwiftPM and link Merman.
+A Rust compiler or source checkout is not required.
+'''
+    else:
+        installation = f'''Extract this archive and add the Merman-swiftpm-v{version} directory as a local
+package in Xcode, then link the Merman library product. With SwiftPM, add
+`.package(path: "../Merman-swiftpm-v{version}")` to your package dependencies
+and select its Merman product. A Rust compiler or source checkout is not required.
+'''
     return f'''# Merman {version} for Apple
 
 Requires Swift 5.9 or newer, iOS 14 or newer, or macOS 12 or newer.
 
-Extract this archive and add the Merman-swiftpm-v{version} directory as a local
-package in Xcode, then link the Merman library product. With SwiftPM, add
-`.package(path: "../Merman-swiftpm-v{version}")` to your package dependencies
-and select its Merman product. A Rust compiler or source checkout is not required.
+{installation.rstrip()}
 
 ```swift
 import Merman
@@ -181,7 +192,7 @@ Expected capabilities: {", ".join(profile.capabilities)}.
 Expected outputs: {", ".join(profile.outputs)}.
 Use runtimeCatalogJson() to inspect the installed renderer's actual capabilities.
 
-Keep the supplied Swift sources, resource contract and XCFramework together.
+Keep the supplied Swift sources, resource contract and {"matching binary reference" if remote else "XCFramework"} together.
 LICENSE, THIRD_PARTY_NOTICES.md and THIRD_PARTY_LICENSES contain the legal material.
 SOURCE_AVAILABILITY.txt identifies the exact matching source revision.
 '''
@@ -255,8 +266,13 @@ def package_apple(*, repo_root: Path, xcframework: Path, output_dir: Path, versi
               "binary_archive": output_dir / binary_name}
     if artifact_url is not None:
         result["remote_manifest"] = output_dir / f"{package_name}.Package.swift"
+        result["remote_package_dir"] = output_dir / f"Merman-swiftpm-remote-v{version}"
+        result["remote_package_archive"] = output_dir / f"Merman-swiftpm-remote-v{version}.zip"
+    archive_keys = ["package_archive", "binary_archive"]
+    if artifact_url is not None:
+        archive_keys.append("remote_package_archive")
     destinations = [*result.values(), *(Path(str(result[key]) + ".checksum")
-                                       for key in ("package_archive", "binary_archive"))]
+                                       for key in archive_keys)]
     if any(path.exists() or path.is_symlink() for path in destinations):
         raise ArchiveVerificationError("Apple output already exists; refusing to replace it")
 
@@ -284,9 +300,21 @@ def package_apple(*, repo_root: Path, xcframework: Path, output_dir: Path, versi
         _write_zip(stage / result["package_archive"].name,
                    {f"{package_name}/{name}": path for name, path in staged_files.items()})
         if artifact_url is not None:
-            (stage / result["remote_manifest"].name).write_text(
-                _manifest(artifact_url=artifact_url, checksum=binary_checksum), encoding="utf-8", newline="\n")
-        for key in ("binary_archive", "package_archive"):
+            remote = stage / result["remote_package_dir"].name
+            remote.mkdir()
+            for name, source in staged_files.items():
+                if name.startswith("Merman.xcframework/") or name in {"Package.swift", "README.md"}:
+                    continue
+                destination = remote / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
+            remote_manifest = _manifest(artifact_url=artifact_url, checksum=binary_checksum)
+            (remote / "Package.swift").write_text(remote_manifest, encoding="utf-8", newline="\n")
+            (remote / "README.md").write_text(_readme(version, profile, remote=True), encoding="utf-8", newline="\n")
+            (stage / result["remote_manifest"].name).write_text(remote_manifest, encoding="utf-8", newline="\n")
+            _write_zip(stage / result["remote_package_archive"].name,
+                       {f"{remote.name}/{name}": path for name, path in _tree_files(remote).items()})
+        for key in archive_keys:
             archive = stage / result[key].name
             digest = binary_checksum if key == "binary_archive" else sha256_file(archive)
             (stage / f"{archive.name}.checksum").write_text(
