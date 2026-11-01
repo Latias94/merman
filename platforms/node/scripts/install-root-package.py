@@ -21,7 +21,8 @@ from scripts.node_package_group import load_descriptor, npm_integrity, read_tarb
 from scripts.npm_package_group import npm_executable
 
 
-def install_root_package(tarball_dir: Path, project: Path, target: str, version: str) -> dict:
+def install_root_package(tarball_dir: Path, project: Path, target: str, version: str,
+                         npm_cli: Path | None = None) -> dict:
     descriptor = load_descriptor(ROOT / "platforms/node/package-surfaces.json")
     target_package = next(item["name"] for item in descriptor["targets"] if item["target"] == target)
     packages: dict[str, dict] = {}
@@ -86,7 +87,8 @@ def install_root_package(tarball_dir: Path, project: Path, target: str, version:
                 npmrc = Path(temporary) / "npmrc"
                 npmrc.write_text("")
                 result = subprocess.run(
-                    [npm_executable(), "install", "--ignore-scripts", "--no-audit", "--no-fund",
+                    [*(["node", str(npm_cli.resolve())] if npm_cli else [npm_executable()]),
+                     "install", "--ignore-scripts", "--no-audit", "--no-fund",
                      "--include=optional", "--engine-strict", "--registry", registry,
                      "--userconfig", str(npmrc), "--cache", str(Path(temporary) / "cache"),
                      str(root_tarball.resolve())],
@@ -126,6 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--target", required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--npm-cli", type=Path, help="Use this npm CLI with the selected Node runtime")
     arguments = parser.parse_args()
     print(json.dumps(install_root_package(arguments.tarball_dir, arguments.project,
-                                        arguments.target, arguments.version)))
+                                        arguments.target, arguments.version, arguments.npm_cli)))

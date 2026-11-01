@@ -1405,6 +1405,8 @@ jobs:
                 self.assertIn("/source/platforms/node/scripts/install-root-package.py", build)
                 self.assertIn("python3 platforms/node/scripts/install-root-package.py", build)
                 self.assertIn('test "$(node --version)" = "v22.0.0"', build)
+                self.assertIn('dirname(process.execPath)', build)
+                self.assertIn('--npm-cli "$npm_cli"', build)
 
     def test_android_preflight_qualifies_selected_maven_coordinate_on_16kb_device(self) -> None:
         build = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "android-aar")

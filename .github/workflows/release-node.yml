@@ -537,9 +537,10 @@ jobs:
           set -euo pipefail
           test "$(node --version)" = "v22.0.0"
           smoke_root="$RUNNER_TEMP/node-install-smoke"
+          npm_cli="$(node -p 'require("node:path").join(require("node:path").dirname(process.execPath), process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "../lib/node_modules/npm/bin/npm-cli.js")')"
           python3 platforms/node/scripts/install-root-package.py \
             --tarball-dir "$RUNNER_TEMP/node-smoke-tarballs" \
-            --project "$smoke_root" --version "$VERSION" --target "$TARGET"
+            --project "$smoke_root" --version "$VERSION" --target "$TARGET" --npm-cli "$npm_cli"
           node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
             --project "$smoke_root" \
             --version "$VERSION" \
