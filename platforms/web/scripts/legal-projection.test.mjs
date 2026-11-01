@@ -66,7 +66,7 @@ test("browser scopes select distinct reports bound to their artifact recipes", (
   assert.equal(sources.size, webPackages.length);
 });
 
-test("browser legal scopes retain selected renderers and exclude math components", () => {
+test("browser legal scopes include math only in the complete SVG products", () => {
   const full = legalProjectionForArtifactProfile("web-full");
   const analysis = legalProjectionForArtifactProfile("web-analysis");
   const editor = legalProjectionForArtifactProfile("web-editor");
@@ -82,7 +82,16 @@ test("browser legal scopes retain selected renderers and exclude math components
       `${projection.scopeId} must not carry ELK legal material.`,
     );
   }
-  for (const projection of [full, render, analysis, editor, ascii]) {
+  for (const projection of [full, render]) {
+    for (const componentId of ["ratex", "katex-fonts"]) {
+      assert.equal(
+        projection.componentIds.includes(componentId),
+        true,
+        `${projection.scopeId} must carry ${componentId} legal material.`,
+      );
+    }
+  }
+  for (const projection of [analysis, editor, ascii]) {
     for (const componentId of ["ratex", "katex-fonts"]) {
       assert.equal(
         projection.componentIds.includes(componentId),

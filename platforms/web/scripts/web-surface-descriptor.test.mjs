@@ -16,7 +16,7 @@ import {
 } from "./web-surface-descriptor.mjs";
 import { webPackages } from "./surface-manifest.mjs";
 
-test("checked-in Web descriptor owns one math-free default package graph", () => {
+test("checked-in Web descriptor owns complete SVG and independent task packages", () => {
   assert.equal(webSurfaceDescriptor.schema_version, WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION);
   assert.equal(webSurfaceDescriptor.default_package, "full");
   assert.deepEqual(
@@ -31,9 +31,9 @@ test("checked-in Web descriptor owns one math-free default package graph", () =>
   );
   assertPackageContract("full", {
     runtimeProfile: "full",
-    features: ["all-diagrams", "analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "svg"],
-    capabilities: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "svg"],
-    runtimeIds: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "svg"],
+    features: ["all-diagrams", "analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+    runtimeIds: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
     outputs: ["ascii", "svg"],
   });
   assertPackageContract("editor", {
@@ -45,9 +45,9 @@ test("checked-in Web descriptor owns one math-free default package graph", () =>
   });
   assertPackageContract("render", {
     runtimeProfile: "render",
-    features: ["all-diagrams", "layout-cytoscape", "layout-elk", "svg"],
-    capabilities: ["layout-cytoscape", "layout-elk", "svg"],
-    runtimeIds: ["layout-cytoscape", "layout-elk", "svg"],
+    features: ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    runtimeIds: ["layout-cytoscape", "layout-elk", "math", "svg"],
     outputs: ["svg"],
   });
 });

@@ -9,7 +9,8 @@
     ".": {
       "import": "./dist/package-entries/render.js",
       "types": "./dist/package-entries/render.d.ts"
-    }
+    },
+    "./wasm": "./artifacts/wasm/merman_wasm_bg.wasm"
   },
   "repository": {
     "type": "git",

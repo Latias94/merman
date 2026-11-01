@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "updated": "2026-10-25",
+  "updated": "2026-11-01",
   "compression_source": "stripped",
-  "notes": "Semantic/presentation boundary baseline 1a9e8b377, measured by Linux CI run 40113172363 with Rust 1.95.0, wasm-pack 0.15.0, Binaryen 133 and wasm-tools 1.261.0. Each raw, stripped, gzip and Brotli ceiling is its measured value plus 3%, rounded upward to 1,000 bytes. All six canonical profiles are reassessed, including lower full/render ceilings after math becomes explicit. Web uses wasm-tools strip --all on final assembled npm WASM; Typst retains release wasm-opt -Oz and strip. Feature recipes, compression and functional gates are unchanged by this budget decision. Downloaded Web artifacts, source/closure analysis, exact measurements and old/new limits are recorded in docs/performance/semantic_wasm_budget_2026-10-25.md. This does not establish equal-capability full/render savings, latency or memory acceptance, or U1-U9 completion.",
+  "notes": "Semantic/presentation boundary baseline 1a9e8b377, measured by Linux CI run 40113172363 with Rust 1.95.0, wasm-pack 0.15.0, Binaryen 133 and wasm-tools 1.261.0. Each raw, stripped, gzip and Brotli ceiling is its measured value plus 3%, rounded upward to 1,000 bytes. All six canonical profiles are reassessed, including lower full/render ceilings after math becomes explicit. Web uses wasm-tools strip --all on final assembled npm WASM; Typst retains release wasm-opt -Oz and strip. Feature recipes, compression and functional gates are unchanged by this budget decision. Downloaded Web artifacts, source/closure analysis, exact measurements and old/new limits are recorded in docs/performance/semantic_wasm_budget_2026-10-25.md. This does not establish equal-capability full/render savings, latency or memory acceptance, or U1-U9 completion. Main binding-delivery refresh on 2026-11-01 replaces only web-full and web-render ceilings after explicit math inclusion. Final assembled npm WASM measurements and installed Chromium/Worker startup and linear-memory observations are in docs/performance/binding_wasm_budget_2026-11-01.md. Each replacement ceiling uses the measured bytes plus 3%, rounded upward to 1,000 bytes. This is a product capability change, not an equal-capability performance optimization; other four profile ceilings are unchanged.",
   "artifact_profiles": {
     "typst-wasm": {
       "max_raw_bytes": 20729000,
@@ -29,16 +29,16 @@
       "max_brotli_bytes": 1242000
     },
     "web-full": {
-      "max_raw_bytes": 14806000,
-      "max_stripped_bytes": 14806000,
-      "max_gzip_bytes": 5449000,
-      "max_brotli_bytes": 4001000
+      "max_raw_bytes": 17717000,
+      "max_stripped_bytes": 17717000,
+      "max_gzip_bytes": 6550000,
+      "max_brotli_bytes": 4819000
     },
     "web-render": {
-      "max_raw_bytes": 12744000,
-      "max_stripped_bytes": 12743000,
-      "max_gzip_bytes": 4736000,
-      "max_brotli_bytes": 3485000
+      "max_raw_bytes": 15629000,
+      "max_stripped_bytes": 15629000,
+      "max_gzip_bytes": 5834000,
+      "max_brotli_bytes": 4298000
     }
   }
 }

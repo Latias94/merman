@@ -129,8 +129,11 @@ export function assertPackageManifest(descriptor, manifest) {
   if (!exports || typeof exports !== "object" || Array.isArray(exports)) {
     throw new Error(`${descriptor.name} must declare a closed exports object.`);
   }
-  if (JSON.stringify(Object.keys(exports).sort()) !== JSON.stringify(["."])) {
-    throw new Error(`${descriptor.name} may export only its package root.`);
+  if (JSON.stringify(Object.keys(exports).sort()) !== JSON.stringify([".", "./wasm"])) {
+    throw new Error(`${descriptor.name} may export only its package root and WASM asset.`);
+  }
+  if (exports["./wasm"] !== "./artifacts/wasm/merman_wasm_bg.wasm") {
+    throw new Error(`${descriptor.name} WASM asset export must point at its own packaged artifact.`);
   }
   const entryJavaScript = `./dist/package-entries/${descriptor.id}.js`;
   const entryTypes = `./dist/package-entries/${descriptor.id}.d.ts`;

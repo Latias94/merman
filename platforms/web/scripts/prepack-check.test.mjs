@@ -137,12 +137,19 @@ test("package manifest closes npm files and lifecycle hooks", () => {
         import: "./dist/package-entries/analysis.js",
         types: "./dist/package-entries/analysis.d.ts",
       },
+      "./wasm": "./artifacts/wasm/merman_wasm_bg.wasm",
     },
     merman: { artifact_profile: "web-analysis" },
     publishConfig: { access: "public" },
   };
 
   assert.doesNotThrow(() => assertPackageManifest(descriptor, manifest));
+  assert.throws(
+    () => assertPackageManifest(descriptor, {
+      ...manifest, exports: { ...manifest.exports, "./wasm": "./foreign.wasm" },
+    }),
+    /WASM asset export must point at its own packaged artifact/,
+  );
   assert.throws(
     () => assertPackageManifest(descriptor, { ...manifest, files: [...manifest.files, "secret.txt"] }),
     /closed package files allowlist/,

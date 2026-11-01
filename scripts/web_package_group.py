@@ -439,8 +439,10 @@ def validate_package_manifest(entry: dict[str, Any], path: Path, *, expected_ver
     validate_package_file_surface(manifest, owner)
 
     exports = manifest.get("exports")
-    if not isinstance(exports, dict) or set(exports) != {"."}:
-        raise PackageGroupError(f"{owner}: public API must export exactly '.'")
+    if not isinstance(exports, dict) or set(exports) != {".", "./wasm"}:
+        raise PackageGroupError(f"{owner}: public API must export exactly '.' and './wasm'")
+    if exports["./wasm"] != "./artifacts/wasm/merman_wasm_bg.wasm":
+        raise PackageGroupError(f"{owner}: WASM asset must be the owned package artifact")
     if any("pkg/" in str(target) for target in exports.values()):
         raise PackageGroupError(f"{owner}: exports must not expose legacy pkg artifacts")
     return manifest
@@ -746,7 +748,10 @@ def verify_tarball_entrypoints(
         raise PackageGroupError(f"{tarball_name}: main must point to {expected_main}")
     if package_manifest.get("types") != expected_types:
         raise PackageGroupError(f"{tarball_name}: types must point to {expected_types}")
-    expected_exports = {".": {"import": expected_main, "types": expected_types}}
+    expected_exports = {
+        ".": {"import": expected_main, "types": expected_types},
+        "./wasm": "./artifacts/wasm/merman_wasm_bg.wasm",
+    }
     if package_manifest.get("exports") != expected_exports:
         raise PackageGroupError(f"{tarball_name}: exports must expose exactly the owned package entrypoint")
     expected_members = {
