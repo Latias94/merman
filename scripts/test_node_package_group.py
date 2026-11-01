@@ -105,7 +105,9 @@ class NodePackageGroupTests(unittest.TestCase):
         self.assertEqual(locked["os"], [selected["os"]])
         self.assertEqual(locked["cpu"], [selected["cpu"]])
         if "libc" in selected:
-            self.assertEqual(locked["libc"], [selected["libc"]])
+            # npm versions differ in whether they copy libc into package-lock.json.
+            installed = json.loads((project / "node_modules" / selected["name"] / "package.json").read_text())
+            self.assertEqual(installed["libc"], [selected["libc"]])
         self.assertEqual((project / "node_modules" / selected["name"] / "merman.node").read_bytes(),
                          b"native")
 
