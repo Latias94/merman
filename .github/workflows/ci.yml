@@ -1169,7 +1169,7 @@ jobs:
           scripts.test_android_package scripts.test_android_packaging_qualification
           scripts.test_apple_package scripts.test_apple_qualify
           platforms.apple.tests.test_qualify_remote
-          scripts.test_flutter_native_assets scripts.test_flutter_release_archive
+          scripts.test_flutter_native_builder scripts.test_flutter_native_assets scripts.test_flutter_release_archive
           scripts.test_flutter_packaged_app
 
       - name: Check shell scripts

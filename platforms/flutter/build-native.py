@@ -156,12 +156,18 @@ def build_windows() -> None:
 def build_host() -> None:
     system = platform.system()
     machine = platform.machine().lower()
-    arch = "arm64" if machine in {"arm64", "aarch64"} else "x86_64"
+    if machine in {"arm64", "aarch64"}:
+        arch = "arm64"
+    elif machine in {"x86_64", "amd64"}:
+        arch = "x86_64"
+    else:
+        raise RuntimeError(f"unsupported Flutter host: {system}/{machine}")
     if system == "Darwin":
         target = "aarch64-apple-darwin" if arch == "arm64" else "x86_64-apple-darwin"
         build_macos(target, arch)
     elif system == "Linux":
-        target = "aarch64-unknown-linux-gnu" if arch == "arm64" else "x86_64-unknown-linux-gnu"
+        arch = "aarch64" if arch == "arm64" else arch
+        target = f"{arch}-unknown-linux-gnu"
         package(build(DESKTOP_RECIPE, target), f"linux/{arch}/libmerman_ffi.so")
     elif system == "Windows" and arch == "x86_64":
         artifact = build(DESKTOP_RECIPE, "x86_64-pc-windows-gnu")
