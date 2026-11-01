@@ -164,12 +164,15 @@ is created or pushed, and Rust is never invoked by the helper. The existing clea
 source, matching facade, complete slice and production HTTPS validators still apply.
 
 Use an isolated macOS account or CI runner with Xcode, an installed iOS simulator
-and an accessible `~/Library/Keychains/login.keychain-db`. The helper generates its
-own one-day localhost certificate and adds user trust with
-`security add-trusted-cert -r trustRoot -k <login-keychain> <fixture-cert>`.
-Git uses that certificate through `GIT_SSL_CAINFO`; SwiftPM's binary downloader uses
-the macOS trust entry. The `finally` cleanup removes trust for that exact certificate
-and deletes only its Keychain entry, selected by its certificate fingerprint.
+and noninteractive `sudo -n` access, as provided by the hosted macOS runner.
+The helper generates its own one-day localhost certificate and adds administrator-domain
+trust with `sudo -n security add-trusted-cert -d -r trustRoot` in
+`/Library/Keychains/System.keychain`. User-domain trust requires an authentication dialog
+and is unsuitable for this unattended fixture. Git uses the fixture certificate through
+`GIT_SSL_CAINFO`; SwiftPM's binary downloader uses the macOS trust entry.
+The `finally` cleanup removes trust from the same administrator domain and deletes only
+that certificate's Keychain entry, selected by its fingerprint. Each security command has
+a 30-second timeout; a failed trust removal still attempts certificate deletion.
 The helper leaves Keychain defaults and search lists unchanged and fails if certificate
 cleanup fails. Its temporary TLS key, served ZIPs and Git repositories are removed.
 No HTTP dependency URLs, TLS verification bypasses, Git URL rewriting or SwiftPM
