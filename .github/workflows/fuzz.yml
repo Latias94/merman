@@ -169,7 +169,7 @@ jobs:
         run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
           workspaces: |
@@ -325,7 +325,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           key: parser-differential
           cache-targets: false

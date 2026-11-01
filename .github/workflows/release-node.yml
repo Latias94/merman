@@ -220,7 +220,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: crates/merman-node
 
@@ -360,7 +360,7 @@ jobs:
 
       - name: Rust cache
         if: ${{ !startsWith(matrix.target, 'linux-') }}
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: crates/merman-node
 
