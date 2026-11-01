@@ -92,8 +92,9 @@ build_staticlib() {
 copy_staticlib() {
     local target="$1"
     local dest="$2"
-    mkdir -p "$(dirname "$dest")"
-    cp "$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" "$dest"
+    python3 "$REPO_ROOT/scripts/native_static_archive.py" \
+        --source "$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
+        --output "$dest" --target "$target"
 }
 
 generate_swift_bindings() {
@@ -124,6 +125,7 @@ generate_swift_bindings() {
 
 cleanup_binding_generator_target() {
     rm -rf -- "$BINDING_GENERATOR_TARGET_DIR"
+    rm -rf -- "$OUT_DIR/thin"
 }
 
 require_tool rustup
@@ -142,11 +144,23 @@ if "$BUILD_IOS"; then
     copy_staticlib aarch64-apple-ios "$OUT_DIR/ios-arm64/lib$NATIVE_LIBRARY_STEM.a"
 
     build_staticlib aarch64-apple-ios-sim
+    copy_staticlib aarch64-apple-ios-sim "$OUT_DIR/thin/aarch64-apple-ios-sim/lib$NATIVE_LIBRARY_STEM.a"
     build_staticlib x86_64-apple-ios
+    copy_staticlib x86_64-apple-ios "$OUT_DIR/thin/x86_64-apple-ios/lib$NATIVE_LIBRARY_STEM.a"
+fi
+
+if "$BUILD_MACOS"; then
+    build_staticlib aarch64-apple-darwin
+    copy_staticlib aarch64-apple-darwin "$OUT_DIR/thin/aarch64-apple-darwin/lib$NATIVE_LIBRARY_STEM.a"
+    build_staticlib x86_64-apple-darwin
+    copy_staticlib x86_64-apple-darwin "$OUT_DIR/thin/x86_64-apple-darwin/lib$NATIVE_LIBRARY_STEM.a"
+fi
+
+if "$BUILD_IOS"; then
     mkdir -p "$OUT_DIR/ios-simulator"
     lipo -create \
-        "$REPO_ROOT/target/aarch64-apple-ios-sim/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
-        "$REPO_ROOT/target/x86_64-apple-ios/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
+        "$OUT_DIR/thin/aarch64-apple-ios-sim/lib$NATIVE_LIBRARY_STEM.a" \
+        "$OUT_DIR/thin/x86_64-apple-ios/lib$NATIVE_LIBRARY_STEM.a" \
         -output "$OUT_DIR/ios-simulator/lib$NATIVE_LIBRARY_STEM.a"
 
     XC_ARGS+=(
@@ -156,12 +170,10 @@ if "$BUILD_IOS"; then
 fi
 
 if "$BUILD_MACOS"; then
-    build_staticlib aarch64-apple-darwin
-    build_staticlib x86_64-apple-darwin
     mkdir -p "$OUT_DIR/macos"
     lipo -create \
-        "$REPO_ROOT/target/aarch64-apple-darwin/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
-        "$REPO_ROOT/target/x86_64-apple-darwin/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
+        "$OUT_DIR/thin/aarch64-apple-darwin/lib$NATIVE_LIBRARY_STEM.a" \
+        "$OUT_DIR/thin/x86_64-apple-darwin/lib$NATIVE_LIBRARY_STEM.a" \
         -output "$OUT_DIR/macos/lib$NATIVE_LIBRARY_STEM.a"
     XC_ARGS+=(-library "$OUT_DIR/macos/lib$NATIVE_LIBRARY_STEM.a" -headers "$INCLUDE_DIR")
 fi
@@ -171,6 +183,7 @@ if [[ "${#XC_ARGS[@]}" -eq 0 ]]; then
     exit 2
 fi
 
+rm -rf -- "$OUT_DIR/thin"
 generate_swift_bindings
 cp "$SWIFT_BINDINGS_DIR/MermanFFI.h" "$INCLUDE_DIR/MermanFFI.h"
 cp "$SWIFT_BINDINGS_DIR/MermanFFI.modulemap" "$INCLUDE_DIR/module.modulemap"

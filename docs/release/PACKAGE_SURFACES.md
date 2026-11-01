@@ -3,6 +3,11 @@
 Choose a package or artifact for the environment where you use Merman. Match generated wrappers
 and native or WASM artifacts to the same Merman version.
 
+For ordinary prebuilt use, start with [host and output choices](PREBUILT_PRODUCTS.md).
+The main-line pilot recommends complete Apple SVG and the existing native C/WASI full SDKs;
+expert source features and reduced SDK recipes remain available. The new Apple package is
+unreleased and does not change published v0.9.x assets.
+
 ## Release versions
 
 Merman `0.9.3` is the latest published patch on `0.9.0` and retains Mermaid `12.1.0`, parser `2.0.1`, and reference CLI
@@ -40,9 +45,9 @@ Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter 
 | Python host integration | `merman` | PyPI and release wheels |
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `merman-android-<tag>.aar` | GitHub Release AAR |
-| Apple host integration | `Merman.xcframework` | GitHub Release asset or local SwiftPM package |
-| Language-neutral native embedding with explicit fonts and binary exports | `sdk-native-{standard,math,full}` | C headers, static/shared libraries, CMake and pkg-config archive recipes |
-| Non-JavaScript sandbox embedding | `sdk-wasi-{standard,math,full}` | `wasm32-wasip1` reactor archive recipes with independent scalar ABI 1 |
+| Apple host integration | Complete `Merman-swiftpm-v<version>.zip` on main; legacy XCFramework route for v0.9.3 | Self-contained local SwiftPM package; separate binary-target ZIP |
+| Language-neutral native embedding with explicit fonts and binary exports | `sdk-native-full` recommended | C headers, static/shared libraries, CMake and pkg-config; reduced `standard`/`math` available |
+| Non-JavaScript sandbox embedding | `sdk-wasi-full` recommended | `wasm32-wasip1` reactor with independent scalar ABI 1; reduced `standard`/`math` available |
 | Binding source integration | `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, `merman-wasm` | crates.io source crates; native artifacts are separate owner surfaces |
 | Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
@@ -50,10 +55,11 @@ Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter 
 Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
 publication; this repository only validates the external formula after a stable release.
 
-Android, Apple, Python, and Flutter share one default prebuilt native capability SKU: SVG, semantic
+Android, Python, and Flutter retain their default prebuilt native capability SKU: SVG, semantic
 and layout operations, both supported layout engines, ASCII, analysis, validation, and document
-analysis. Math, PNG, JPEG, PDF, and native runtime adapters remain available to custom source
-builds but are not bundled in the default packages. These platform artifacts intentionally include
+analysis. Main's Apple product additionally selects math explicitly; published v0.9.x Apple
+artifacts retain the former shared math-free selection. PNG, JPEG, PDF, and native runtime adapters
+remain available to custom source builds but are not bundled in these default packages. These platform artifacts intentionally include
 ELK and therefore ship under an artifact-specific notice closure; they are not equivalent to the
 default `merman` Cargo feature. The C ABI crate has no default features, so custom embedders can
 select semantic-only, SVG-only, export-capable, or complete builds. LSP remains a separate
@@ -61,8 +67,8 @@ executable product and is not linked into any native binding artifact.
 
 ## Headless SDK Profiles
 
-The SDK archive recipes add a separate delivery surface; they do not change the default
-Android, Apple, Python, Flutter, Node or Web package contents. Archives are release-qualified
+The SDK archive recipes add a separate delivery surface. Their recommended full entry point
+does not change the meanings of standard or math, or the other language packages. Archives are release-qualified
 by their owner workflow, not implied to exist for an already published version.
 
 | Profile | Math | ELK | Native outputs | WASI outputs |
@@ -251,12 +257,17 @@ Current source semantics are intentionally explicit:
 
 ## Native Prebuilt SKU Policy
 
-Python, Apple, Android, and Flutter releases ship the same default native prebuilt SKU through
+Python, Android, and Flutter retain the same default native prebuilt SKU through
 surface-owned transports. Its direct features are `analysis`, `ascii`, `layout-cytoscape`,
 `layout-elk`, and `svg`; its outputs are ASCII and SVG. It omits math, binary export, and native
 runtime adapters to keep common downloads materially smaller. The generated wrappers still expose
 the complete operation vocabulary, while runtime discovery and typed missing-capability errors
 describe the loaded artifact precisely.
+
+Main's Apple recipe adds math explicitly for complete SVG document semantics. Its distribution
+copies omit delivery-only bitcode without changing Rust LTO settings or original build outputs.
+See [ADR-0100](../adr/0100-prebuilt-product-entry-points.md). This main-only amendment leaves
+source defaults and published v0.9.x products unchanged.
 
 The C ABI is published as the source-only `merman-ffi` crate. Its `c-abi-native` artifact profile
 continues to build the complete host reference library for ABI and output-path verification, not a
@@ -269,7 +280,8 @@ differ:
 
 | Surface | Compiled capabilities | Product rationale |
 | --- | --- | --- |
-| Android, Apple, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
+| Android, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Existing native prebuilt defaults. |
+| Apple on main | analysis, ASCII, SVG, math, Cytoscape, ELK | Complete SVG local SwiftPM package; published v0.9.x remains math-free. |
 | Typst | analysis, SVG, Cytoscape, ELK | Matches the six-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
 | Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
 | Browser packages | package-specific | `web-full` and `web-render` omit math; dedicated packages own analysis, editor, and ASCII workflows. Custom source builds can opt into math. |

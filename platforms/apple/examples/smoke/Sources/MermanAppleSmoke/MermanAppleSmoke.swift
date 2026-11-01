@@ -9,6 +9,28 @@ struct MermanAppleSmoke {
         guard client.bindingApiVersionV7() == 7 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
         }
+        let catalogData = Data(try client.runtimeCatalogJson().utf8)
+        let catalog = try JSONSerialization.jsonObject(with: catalogData) as? [String: Any]
+        let capabilities = catalog?["capabilities"] as? [String: Any]
+        let capabilityIds = Set(capabilities?["capability_ids"] as? [String] ?? [])
+        guard capabilityIds.isSuperset(of: ["svg", "math", "layout-elk"]),
+              capabilityIds.isDisjoint(with: ["png", "jpeg", "pdf"]) else {
+            throw SmokeError.failed("recommended Apple SVG capabilities drifted")
+        }
+        let mathematicalEngine = try MermanEngine(
+            optionsJson: resourceOptionsJson(profile: .interactive, overrides: []), services: nil
+        )
+        let mathematicalSvg = try mathematicalEngine.renderSvg(
+            source: "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]",
+            optionsJson: #"{"svg":{"pipeline":"resvg-safe"}}"#
+        )
+        guard mathematicalSvg.contains("merman-prepared-math-native"),
+              mathematicalSvg.contains("data-merman-prepared-math-width="),
+              !mathematicalSvg.contains(#"data-merman-math-native="unavailable""#),
+              !mathematicalSvg.contains("<foreignObject") else {
+            throw SmokeError.failed("interactive mathematical SVG smoke failed")
+        }
+        try mathematicalEngine.close()
         let iconPack = MermanIconPack(
             json: #"{"icons":{"rocket":{"body":"<path data-icon=\"apple-registry\" d=\"M0 0H16V16H0z\"/>"}}}"#,
             registrationName: "smoke"
@@ -102,6 +124,7 @@ struct MermanAppleSmoke {
         try requireMissingCapability("pdf") {
             _ = try engine.renderPdf(source: basicSource, optionsJson: nil)
         }
+        // Constrained policy still rejects opaque math even in the complete product.
         try requireMissingCapability("math") {
             _ = try engine.renderSvg(
                 source: "flowchart TD\nA[\"$$x^2$$\"] --> B",

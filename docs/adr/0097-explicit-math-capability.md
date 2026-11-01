@@ -5,6 +5,10 @@ Accepted for the development branch on 2026-10-20, after published `0.9.1`.
 Amended on 2026-10-25 by maintainer decision: retain the convenience aggregate names with
 math-free membership, replacing this ADR's original aggregate-retirement decision.
 
+Main-line Apple prebuilt selection is amended by
+[ADR-0100](0100-prebuilt-product-entry-points.md), which selects `math` explicitly for that
+binary product. Source defaults and published v0.9.x recipes retain this ADR's policy.
+
 Math is a positive capability selected by a consumer or exact artifact recipe. Diagram family,
 SVG and layout selection must not pull in its backend or font payload indirectly.
 `merman` and `merman-rustdoc` retain `complete-svg = ["svg", "layout-cytoscape"]` and

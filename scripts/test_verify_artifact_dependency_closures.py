@@ -229,7 +229,8 @@ def write_descriptor(
                     {
                         "id": profile_id,
                         "semantic_target": "native",
-                        "expected": {"diagram_families": []},
+                        "expected": {"diagram_families": [], "capabilities": [],
+                                     "runtime_ids": [], "outputs": []},
                         "cargo": {
                             "package": "fixture",
                             "manifest": "Cargo.toml",

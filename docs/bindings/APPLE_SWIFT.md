@@ -8,6 +8,12 @@ This guide owns Swift generation and XCFramework integration. The
 [package README](../../platforms/apple/README.md) owns application examples, and the
 [UniFFI contract](UNIFFI.md) owns shared API versions, output records, and lifecycle rules.
 
+For binary installation, start with the complete local SwiftPM archive described in the
+[prebuilt product guide](../release/PREBUILT_PRODUCTS.md). That main-line package includes
+the facade and resource contract beside the XCFramework. Published v0.9.3 retains the older
+matching-checkout installation and math-free artifact. The root manifest below is for source
+development, not the layout of the extracted binary package.
+
 The local SwiftPM package contains:
 
 - the root `Package.swift` product named `Merman`;
@@ -17,6 +23,11 @@ The local SwiftPM package contains:
 - `scripts/build-apple-xcframework.sh`, which regenerates the Swift binding before packaging.
 
 ## Build On macOS
+
+Install `rustup component add llvm-tools-preview` before building distribution copies.
+The builder preserves the native build outputs, then removes delivery-only bitcode from
+all thin staged libraries before assembling universal slices. Rust LTO settings are unchanged.
+Main's recipe explicitly includes math, while Rust/source defaults remain unchanged.
 
 ```bash
 bash scripts/build-apple-xcframework.sh

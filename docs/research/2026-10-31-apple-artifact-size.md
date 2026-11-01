@@ -1,7 +1,9 @@
 # Apple Artifact Size And Capability Variants
 
 Date: 2026-10-31 (Asia/Shanghai).
-Status: measured investigation and recommendations; no new release variant or packaging change.
+Status: historical v0.9.3 measurements. The main-line product decision is now
+[ADR-0100](../adr/0100-prebuilt-product-entry-points.md); its implementation does not change
+the published artifact measured here.
 
 ## Findings
 
@@ -181,7 +183,15 @@ combination only when a concrete consumer needs that tradeoff; do not generate e
 feature combination. Standard is not an MIT-only closure: MPL and font notices still apply,
 and full additionally includes the ELK/EPL material.
 
-### Apple Recommendation
+### Original Apple Recommendation and Subsequent Decision
+
+The optional Math variant below was this investigation's incremental recommendation.
+The maintainer's subsequent main-line product review selected one recommended complete
+SVG product with math, a self-contained local SwiftPM package, and bitcode cleanup instead
+of adding another ordinary installation choice. See
+[ADR-0100](../adr/0100-prebuilt-product-entry-points.md) and the
+[current selection guide](../release/PREBUILT_PRODUCTS.md). Retain the measurements below
+as evidence for v0.9.3, not instructions to publish two main-line Apple variants.
 
 Keep **Merman** as the existing default. Removing ELK to rename it "standard" would change
 layout behavior and an accepted default capability; see

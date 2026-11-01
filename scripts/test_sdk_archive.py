@@ -705,5 +705,82 @@ class SourceIdentityTests(unittest.TestCase):
                 sdk_archive.require_clean_source_tree(sdk_archive.REPO_ROOT)
 
 
+class SdkLibraryStagingTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.built = self.root / "built"
+        self.artifact = self.root / "artifact"
+        self.built.mkdir()
+        self.artifact.mkdir()
+
+    def libraries(self, target):
+        names = sdk_archive.library_names(target)
+        for name in names.values():
+            (self.built / name).write_bytes(b"original " + name.encode())
+        return names
+
+    def test_native_cleanup_stages_only_the_static_library(self):
+        for target in ("x86_64-unknown-linux-gnu", "aarch64-apple-darwin"):
+            with self.subTest(target=target):
+                names = self.libraries(target)
+
+                def clean(source, destination, target):
+                    destination.write_bytes(b"cleaned static library")
+
+                with mock.patch.object(sdk_qualify, "stage_static_library", side_effect=clean) as stage, \
+                        mock.patch.object(sdk_qualify, "run") as run:
+                    sdk_qualify.stage_libraries(self.built, self.artifact, target, repo_root=self.root)
+                stage.assert_called_once_with(
+                    self.built / names["static"], self.artifact / names["static"], target,
+                )
+                self.assertEqual((self.artifact / names["static"]).read_bytes(), b"cleaned static library")
+                self.assertEqual((self.artifact / names["dynamic"]).read_bytes(),
+                                 (self.built / names["dynamic"]).read_bytes())
+                for name in names.values():
+                    self.assertEqual((self.built / name).read_bytes(), b"original " + name.encode())
+                if "apple" in target:
+                    library = self.artifact / names["dynamic"]
+                    self.assertEqual(run.call_args_list, [
+                        mock.call(["install_name_tool", "-id", "@rpath/" + library.name, library],
+                                  repo_root=self.root),
+                        mock.call(["codesign", "--force", "--sign", "-", "--timestamp=none", library],
+                                  repo_root=self.root),
+                    ])
+                else:
+                    run.assert_not_called()
+
+    def test_windows_static_dynamic_and_import_libraries_are_byte_identical(self):
+        target = "x86_64-pc-windows-msvc"
+        names = self.libraries(target)
+        with mock.patch.object(sdk_qualify.subprocess, "run") as process:
+            sdk_qualify.stage_libraries(self.built, self.artifact, target, repo_root=self.root)
+        process.assert_not_called()
+        for name in names.values():
+            self.assertEqual((self.artifact / name).read_bytes(), b"original " + name.encode())
+            self.assertEqual((self.built / name).read_bytes(), b"original " + name.encode())
+
+    def test_wasi_bypasses_native_static_cleanup(self):
+        names = self.libraries(sdk_archive.WASI_TARGET)
+        with mock.patch.object(sdk_qualify, "stage_static_library") as stage:
+            sdk_qualify.stage_libraries(
+                self.built, self.artifact, sdk_archive.WASI_TARGET, repo_root=self.root,
+            )
+        stage.assert_not_called()
+        for name in names.values():
+            self.assertEqual((self.artifact / name).read_bytes(), b"original " + name.encode())
+
+    def test_static_cleanup_failure_is_not_accepted(self):
+        target = "x86_64-unknown-linux-gnu"
+        names = self.libraries(target)
+        with mock.patch.object(sdk_qualify, "stage_static_library", side_effect=RuntimeError), \
+                self.assertRaises(RuntimeError):
+            sdk_qualify.stage_libraries(self.built, self.artifact, target, repo_root=self.root)
+        self.assertFalse((self.artifact / names["static"]).exists())
+        self.assertEqual((self.built / names["static"]).read_bytes(),
+                         b"original " + names["static"].encode())
+
+
 if __name__ == "__main__":
     unittest.main()

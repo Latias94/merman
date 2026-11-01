@@ -726,6 +726,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
+          components: llvm-tools-preview
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
@@ -739,11 +740,16 @@ jobs:
       - name: Validate Swift package
         run: |
           swift package describe
-          swift build
-          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
-          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
+
+      - name: Qualify installed package, simulator and matched distribution sizes
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          python3 scripts/apple_package.py --output-dir target/apple-package --version "$VERSION"
+          python3 scripts/apple_qualify.py --package-archive "target/apple-package/Merman-swiftpm-v$VERSION.zip" \
+            --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
 
   web-npm-dry-run:
     needs: validate-inputs

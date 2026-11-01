@@ -1,5 +1,13 @@
 # Merman SDK archives
 
+Start with **full** for general Mermaid rendering: `sdk-native-full` for direct native
+C/C++ integration, or `sdk-wasi-full` for a non-JavaScript sandbox host. Both include math
+and ELK. Download the archive for your target and its checksum, then use the included
+examples below. `standard` and `math` remain advanced choices when their deliberate
+capability reduction fits your documents. See the
+[host/output selection guide](../../docs/release/PREBUILT_PRODUCTS.md) for the current
+development policy and published-version boundary.
+
 SDKs are packaged from existing artifacts; the packager never builds or installs tools.
 The capability descriptor owns the six exact recipes: `sdk-native-standard`,
 `sdk-native-math`, `sdk-native-full`, and their `sdk-wasi-*` counterparts.
@@ -125,8 +133,8 @@ imports or claim execution evidence.
 Build and qualify one SDK locally with the same entry point used by CI:
 
 ```text
-python3 scripts/sdk_qualify.py --profile sdk-wasi-math --target wasm32-wasip1 --work-dir target/sdk-check/wasi-math --output-dir target/sdk-check/archives
-python3 scripts/sdk_qualify.py --profile sdk-native-math --target aarch64-apple-darwin --work-dir target/sdk-check/native-math --output-dir target/sdk-check/archives --wasi-dir target/sdk-check/wasi-math/wasi-smoke
+python3 scripts/sdk_qualify.py --profile sdk-wasi-full --target wasm32-wasip1 --work-dir target/sdk-check/wasi-full --output-dir target/sdk-check/archives
+python3 scripts/sdk_qualify.py --profile sdk-native-full --target aarch64-apple-darwin --work-dir target/sdk-check/native-full --output-dir target/sdk-check/archives --wasi-dir target/sdk-check/wasi-full/wasi-smoke
 ```
 
 Choose a native target matching `rustc -vV` on the machine running the command.
@@ -141,6 +149,10 @@ target installed, cargo-about 0.9.2 on `PATH`, and the pinned host dependencies 
 `platforms/wasi/requirements.txt`. WASI additionally needs the Go version in
 `platforms/wasi/README.md`; native qualification needs CMake and the platform's C
 toolchain. macOS uses its `install_name_tool`, `codesign` and `otool`. The command
+also needs the pinned Rust `llvm-tools-preview` component for Mach-O/ELF static
+distribution cleanup; original build outputs retain their bitcode and LTO settings.
+Windows COFF archives retain their original bytes because the pinned object tool
+cannot process their required short import members. The command
 does not install tools. Run it with the Python environment containing those host
 dependencies; it invokes that same interpreter for all Python helpers.
 

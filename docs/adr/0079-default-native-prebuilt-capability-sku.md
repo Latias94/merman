@@ -1,7 +1,8 @@
 # ADR 0079: Default Native Prebuilt Capability SKU
 
 - Status: accepted
-- Web math selection is superseded by [ADR-0097](0097-explicit-math-capability.md); native SKU choices remain unchanged.
+- Web math selection is superseded by [ADR-0097](0097-explicit-math-capability.md).
+- Main-line Apple delivery is amended by [ADR-0100](0100-prebuilt-product-entry-points.md); other native defaults and published v0.9.x artifacts retain this decision.
 - Supersedes: the native prebuilt SKU decision in ADR-0076
 - Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`
 

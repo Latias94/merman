@@ -40,14 +40,14 @@
     },
     {
       "id": "apple-uniffi-native",
-      "description": "Default native binding UniFFI static libraries for the published Apple XCFramework slices.",
+      "description": "Recommended complete SVG product for Apple Swift, delivered as matching UniFFI sources and XCFramework slices.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-uniffi",
         "manifest": "crates/merman-uniffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_uniffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -67,8 +67,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },

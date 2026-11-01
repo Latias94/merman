@@ -60,9 +60,12 @@ The platform owner separates compiler compatibility from Apple SDK integration:
   A temporary module map omits the published map's Darwin imports. This exercises the real
   pre-Swift-6 compiler branches; a new compiler's `-swift-version 5` mode is not a substitute.
 - `apple-uniffi-smoke` builds all five native architectures on `macos-15`, regenerates the
-  binding, checks its freshness, builds the macOS and iOS device/simulator SwiftPM consumers,
-  and runs the macOS smoke. The explicit iOS 14 targets are build checks, not execution on
-  the minimum supported OS.
+  binding, checks its freshness, and runs the macOS smoke. It packages a complete local
+  SwiftPM archive, builds a separate consumer against its extracted contents for macOS and
+  iOS device/simulator, and executes the macOS and iOS Simulator consumers. The explicit
+  iOS 14 target is a build check; execution uses an installed simulator runtime, not proof
+  of the minimum supported OS. The same owner, release preflight and Apple candidates compare
+  matched original/cleaned XCFramework compression and equivalent macOS consumer output.
 
 GitHub's [macOS 14 retirement](https://github.com/actions/runner-images/issues/13518) removed
 the hosted Xcode 15.2 lane. The Linux compiler check does **not** validate Apple Foundation,

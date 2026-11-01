@@ -13,13 +13,30 @@ Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS
 
 For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
 
-This guide targets Merman `0.9.3` with UniFFI API `7`. Use matching generated Swift and native slices; see the [changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks). Alpha.6 artifacts retain API `6`.
+This checkout documents the main development line, with UniFFI API `7` and unreleased
+Options JSON schema `3`. Use matching generated Swift and native slices; see the
+[changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
 
 Compiled-theme APIs in this checkout are unreleased. Published `0.9.3` retains Options JSON
 schema `2`; use its tagged guide even though both interfaces retain UniFFI API `7`.
 See the [release boundary](../../docs/release/README.md#merman-093).
 
-## Add A Release XCFramework
+## Add the Complete Swift Package
+
+For a release containing the new package, download `Merman-swiftpm-v<version>.zip`
+and its `.checksum` from that release's assets. Extract it and add the resulting
+`Merman-swiftpm-v<version>` directory as a local package in Xcode or with
+`.package(path: "../Merman-swiftpm-v<version>")`. Link the `Merman` product.
+The package includes matching generated Swift, resource declarations, XCFramework,
+manifest and legal material. No Rust checkout or compiler is needed to consume it.
+
+This complete package is a **main-line, unreleased delivery change**. The separately
+named `Merman.xcframework-v<version>.zip` remains the binary-target input. Its checksum
+differs from the complete Swift package's checksum. An emitted remote manifest is a
+publisher handoff using that exact binary URL/digest; it is not an already hosted
+SwiftPM repository. See [choose a prebuilt renderer](../../docs/release/PREBUILT_PRODUCTS.md).
+
+## Install Published v0.9.3
 
 Download the [0.9.3 archive](https://github.com/Latias94/merman/releases/download/v0.9.3/Merman.xcframework-v0.9.3.zip)
 and [checksum](https://github.com/Latias94/merman/releases/download/v0.9.3/Merman.xcframework-v0.9.3.zip.checksum),
@@ -27,7 +44,10 @@ and use the matching `v0.9.3` checkout.
 
 Check out the source tree at the same release tag as the archive, then extract `Merman.xcframework-<tag>.zip` from [GitHub Releases](https://github.com/Latias94/merman/releases) so the framework is located at `platforms/apple/Merman.xcframework`. Add the repository root as a local package in Xcode or SwiftPM and link the `Merman` product.
 
-The release archive contains the binary XCFramework and legal material. The matching checkout supplies the generated Swift facade and `Package.swift`; mixing tags is unsupported.
+The published v0.9.3 archive contains the binary XCFramework and legal material.
+Its matching checkout supplies the generated Swift facade and `Package.swift`;
+mixing tags is unsupported. That artifact omits math and binary codecs. The new
+complete package and math default do not change its bytes or capabilities.
 
 ## Build The Local Package
 
@@ -35,7 +55,18 @@ The release archive contains the binary XCFramework and legal material. The matc
 bash scripts/build-apple-xcframework.sh
 ```
 
-Add the repository root as a local package in Xcode or SwiftPM and link the `Merman` product. The root `Package.swift` resolves `platforms/apple/Merman.xcframework` by path. Release workflows attach a versioned XCFramework archive and checksum to GitHub Releases; the manifest deliberately does not currently declare a remote `.binaryTarget(url:checksum:)`.
+Add the repository root as a local package in Xcode or SwiftPM and link the `Merman` product.
+The root `Package.swift` resolves `platforms/apple/Merman.xcframework` by path and remains
+the source-development manifest. After a complete build, produce a self-contained
+distribution from a clean source tree:
+
+```text
+python3 scripts/apple_package.py --output-dir target/apple-package --version <workspace-version>
+```
+
+Partial `--ios` or `--macos` builds remain useful locally but cannot be packaged as
+the complete distribution. Source builds also require
+`rustup component add llvm-tools-preview` for distribution-copy cleanup.
 
 ## Render A Diagram
 
@@ -79,7 +110,15 @@ evidence, diagnostic failures preserve their stable code and optional source pro
 registry failures preserve their structured registration evidence, and cancellation preserves its
 reason and checkpoint phase without message parsing.
 
-The default XCFramework includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits math, PNG, JPEG, and PDF. The generated helpers remain available for custom current-contract libraries; the default artifact returns `.missingCapability` with `math`, `png`, `jpeg`, or `pdf` as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `themeCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
+The main-line default includes semantic and layout JSON, analysis, validation, document
+analysis, ASCII, SVG, math, Cytoscape and ELK. PNG, JPEG and PDF remain typed absences.
+For formulas, use `resourceOptionsJson(profile: .interactive, overrides: [])` when
+constructing the engine; constrained policy still rejects opaque math. Compiled math
+does not remove the need for host execution/memory limits. Swift's host measurement
+callback is independent of the native C/WASI memory-font constructor, which this
+package does not expose. Check `runtimeCatalogJson()` for the installed artifact's
+actual capability IDs and `themeCatalogJson()` for presentation choices. Catalog IDs
+remain open strings. Published v0.9.3 retains its math-free catalog.
 
 ## Text Measurement
 
