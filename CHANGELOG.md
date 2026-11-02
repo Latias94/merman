@@ -84,6 +84,7 @@ Use `merman-model` for typed diagram data without source parsers, and select ASC
 
 ### Other changes
 
+- Raise the Markdown parser minimum to `pulldown-cmark 0.13.6`, which fixes [RUSTSEC-2026-0433](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's existing Markdown entrypoints do not enable the affected Wikilinks option.
 - Target Mermaid 12.2.0. Mindmap adds `mindmap.colorBy: depth` and updated circle/label sizing; Swimlane updates source ordering and title/edge placement; Agentflow self-loops and Usecase labels/markers follow the updated upstream geometry. Review SVG snapshots for these families after upgrading. [#196](https://github.com/Latias94/merman/pull/196)
 - Re-export the Rustdoc attribute through an intermediary crate using `crate_path`, with both `merman` and `__render_doc` re-exported. See the [facade example](crates/merman-rustdoc/README.md#re-exporting-the-attribute). [#258](https://github.com/Latias94/merman/pull/258)
 - Install CLI releases in CI through the repository setup Action, or build with the GNU container tooling and Arch source recipe. The [CLI distribution guide](docs/releasing/CLI.md) distinguishes these routes from public container/package registries awaiting rollout. [#195](https://github.com/Latias94/merman/pull/195)

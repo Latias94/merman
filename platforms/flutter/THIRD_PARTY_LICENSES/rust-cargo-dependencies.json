@@ -292,7 +292,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "e5d209066404b14a02b0ee0bb92f07843484063fccd634026570a4699083e24f",
+    "cargo_lock_sha256": "b6041d532377878de67040cf3d183747be6de5b951ca358bcc5bc198ebce098d",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "b3030c431abb12f44bedd1589f9919df88fe1b34aec9aabf9794a6ae5a16a2fb"
   },
@@ -301,72 +301,72 @@
       "artifact_profile_id": "flutter-android-native",
       "target": "aarch64-linux-android",
       "package_count": 158,
-      "packages_sha256": "cedc4b18a8e2dbf90c43154866bdd3a9a010268833720f08768eaf46826b54d4"
+      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "armv7-linux-androideabi",
       "package_count": 157,
-      "packages_sha256": "f76e58e38b7e22ac6f40a693bc69fc6c7ac3605f49f7e5bf4145de6860a8ef23"
+      "packages_sha256": "2cec8af4edc9862ab86281d72835ccb949390b9fbc84e31659312cb0b95eb354"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "x86_64-linux-android",
       "package_count": 158,
-      "packages_sha256": "cedc4b18a8e2dbf90c43154866bdd3a9a010268833720f08768eaf46826b54d4"
+      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-apple-darwin",
       "package_count": 158,
-      "packages_sha256": "cedc4b18a8e2dbf90c43154866bdd3a9a010268833720f08768eaf46826b54d4"
+      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-unknown-linux-gnu",
       "package_count": 160,
-      "packages_sha256": "697920b4d00932f9d1dac884477b7832770f2a47a07b213bf12fb76d64769216"
+      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-apple-darwin",
       "package_count": 158,
-      "packages_sha256": "cedc4b18a8e2dbf90c43154866bdd3a9a010268833720f08768eaf46826b54d4"
+      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-pc-windows-gnu",
       "package_count": 162,
-      "packages_sha256": "1ac490eb732c06f2c8f02d5a729b3dc2c4db0917bd14861de7cb11644164040d"
+      "packages_sha256": "a51c07846d150936a2d0dbe30780d041d927553fc93cb199131f65531967238b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-unknown-linux-gnu",
       "package_count": 160,
-      "packages_sha256": "697920b4d00932f9d1dac884477b7832770f2a47a07b213bf12fb76d64769216"
+      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios",
       "package_count": 160,
-      "packages_sha256": "697920b4d00932f9d1dac884477b7832770f2a47a07b213bf12fb76d64769216"
+      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios-sim",
       "package_count": 160,
-      "packages_sha256": "697920b4d00932f9d1dac884477b7832770f2a47a07b213bf12fb76d64769216"
+      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "x86_64-apple-ios",
       "package_count": 160,
-      "packages_sha256": "697920b4d00932f9d1dac884477b7832770f2a47a07b213bf12fb76d64769216"
+      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
     }
   ],
   "dependency_closure": {
     "package_count": 165,
-    "packages_sha256": "d28c1e05bd754bb5e60a4e330e602f4f93066185466e08a027f6e8247c160ac9"
+    "packages_sha256": "0009a5ce49916f82bbdefb82dfcad3888e74ae4acd31fe6b83f5cf2bdb21c6b4"
   },
   "licenses": [
     {
@@ -1889,7 +1889,7 @@
       "packages": [
         {
           "name": "pulldown-cmark",
-          "version": "0.13.5",
+          "version": "0.13.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [

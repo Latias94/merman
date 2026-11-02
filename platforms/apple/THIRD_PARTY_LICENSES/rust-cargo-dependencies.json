@@ -112,7 +112,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "e5d209066404b14a02b0ee0bb92f07843484063fccd634026570a4699083e24f",
+    "cargo_lock_sha256": "b6041d532377878de67040cf3d183747be6de5b951ca358bcc5bc198ebce098d",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "e9905a015dda341f5ac80e5ea2436c63b4585ecf6eee908c7b51da0ef733ade6"
   },
@@ -121,36 +121,36 @@
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-darwin",
       "package_count": 181,
-      "packages_sha256": "dc7a217bd5084cbbcf0919983c2d720b764f46cbed6eb8aef50e0300025ea4a1"
+      "packages_sha256": "7d048dabca5c7d2dcb03416a88374bc2e7d59ff703979e6ecfac01b5e59aa008"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios",
       "package_count": 183,
-      "packages_sha256": "1c759b08df0543e65a183f89471b577cdb0e6b6d3ae3360f8e8402f3f10db190"
+      "packages_sha256": "3efd66309d9b372b17c3cb042a8b4776116beecfcc98d2d3df87b04e0266ddc7"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios-sim",
       "package_count": 183,
-      "packages_sha256": "1c759b08df0543e65a183f89471b577cdb0e6b6d3ae3360f8e8402f3f10db190"
+      "packages_sha256": "3efd66309d9b372b17c3cb042a8b4776116beecfcc98d2d3df87b04e0266ddc7"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-darwin",
       "package_count": 181,
-      "packages_sha256": "dc7a217bd5084cbbcf0919983c2d720b764f46cbed6eb8aef50e0300025ea4a1"
+      "packages_sha256": "7d048dabca5c7d2dcb03416a88374bc2e7d59ff703979e6ecfac01b5e59aa008"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-ios",
       "package_count": 183,
-      "packages_sha256": "1c759b08df0543e65a183f89471b577cdb0e6b6d3ae3360f8e8402f3f10db190"
+      "packages_sha256": "3efd66309d9b372b17c3cb042a8b4776116beecfcc98d2d3df87b04e0266ddc7"
     }
   ],
   "dependency_closure": {
     "package_count": 183,
-    "packages_sha256": "1c759b08df0543e65a183f89471b577cdb0e6b6d3ae3360f8e8402f3f10db190"
+    "packages_sha256": "3efd66309d9b372b17c3cb042a8b4776116beecfcc98d2d3df87b04e0266ddc7"
   },
   "licenses": [
     {
@@ -1835,7 +1835,7 @@
       "packages": [
         {
           "name": "pulldown-cmark",
-          "version": "0.13.5",
+          "version": "0.13.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
