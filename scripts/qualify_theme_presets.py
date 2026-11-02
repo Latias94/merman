@@ -80,9 +80,13 @@ def qualify_cli(
                 source = cell["source"].encode("utf-8")
                 if hashlib.sha256(source).hexdigest() != cell["source_digest"]:
                     raise RuntimeError("CLI qualification source digest differs from the Rust scenario")
+                # Match the Rust runner's default measurement environment. Encoded CLI output
+                # otherwise opts into native layout, while this profile uses system fonts only
+                # for painting the deterministic SVG.
                 command = [
                     str(binary), "render", "--theme-preset", preset["preset"],
                     "--format", cell["output"], "--config-file", str(config_path),
+                    "--font-measurement", "deterministic",
                 ]
                 if cell["output"] == "svg":
                     command.extend(["--svg-pipeline", "resvg-safe"])
