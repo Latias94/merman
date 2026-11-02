@@ -24,7 +24,7 @@ This transition does not change package versions, feature ownership, or transpor
 
 The alpha uses Options JSON schema `3` and Web transport API `8`, including prepared sources and mounted diagrams. Its projected package version does not establish publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs. See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
 
-Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
+Independent prerequisites prepared for this alpha are `roughr-merman 0.12.5` and Tree-sitter `0.3.2`; their latest verified published versions remain `0.12.4` and `0.3.1` until their own release owners complete. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
 ## Choose A Surface
 

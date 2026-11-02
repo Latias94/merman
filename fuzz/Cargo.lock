@@ -1778,7 +1778,7 @@ dependencies = [
 
 [[package]]
 name = "roughr-merman"
-version = "0.12.4"
+version = "0.12.5"
 dependencies = [
  "euclid",
  "num-traits",
@@ -2264,7 +2264,7 @@ checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
 
 [[package]]
 name = "tree-sitter-mermaid"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cc",
  "tree-sitter-language",

@@ -17,6 +17,8 @@ Preparation starts from `cb3642b6becef62ca288748013b6ef6c457fa781`, the PR #267 
 
 The root and package changelogs describe the net user delta, with the Python version projected as `0.10.0a1`. Cargo sibling requirements are exact `=0.10.0-alpha.1`; npm groups use the `alpha` tag, leaving stable `latest` unchanged. Roughr, Tree-sitter, Typst wrapper and VS Code versions retain their independent axes. Package READMEs target the candidate API, while the host guide continues to record actual public versions.
 
+The initial candidate preflight exposed two independent production changes that still used published versions. Prepare `roughr-merman 0.12.5` for the SVG arc-angle rounding fix and `tree-sitter-mermaid 0.3.2` for its raised `cc` build-dependency minimum. The workspace and LSP minimum requirements follow those candidates. These patches preserve the Roughr public API and the grammar's syntax, query, language ABI and runtime contracts; their owner compatibility, generated-artifact and package checks remain required. Publish and verify both independent Cargo prerequisites before the coupled workspace graph. This preparation does not create tags or upload either package, and grammar npm/GitHub delivery retains its own owner.
+
 ### Observed channel prerequisites
 
 Read-only observations on 2026-11-02 (Asia/Shanghai) found no exact alpha.1 versions in the coupled crates.io, npm, PyPI or pub.dev channels and no workspace/Flutter alpha tag or Release. These observations precede any publication authorization. The table records preparation and recommended sequencing; it does not select upload scopes on the maintainer's behalf.
@@ -31,11 +33,12 @@ Read-only observations on 2026-11-02 (Asia/Shanghai) found no exact alpha.1 vers
 | Flutter / pub.dev | `0.9.2`; latest prerelease `0.8.0-alpha.7` | Existing package; use its exact `flutter-v0.10.0-alpha.1` tag/Release, verify public native assets before publishing the same frozen facade. |
 | Apple local SwiftPM / XCFramework | Legacy `0.9.3` binary ZIP and checksum | The complete local/remote handoff assets can publish through the Apple owner after the primary Release exists. Public Git-based SwiftPM installation separately requires a selected and qualified delivery repository; none was established by this review. |
 | Android | `0.9.2` AAR Release asset | The formal asset owner requires a verified Maven namespace and signed Central handoff. The `maven-central` environment is absent; resolve that channel setup or explicitly defer Android. Central submission/promotion remains separate. |
-| Independent packages, stable package managers and VS Code Marketplace | Existing independent release records below | No independent release, stable-registry update or Marketplace publication is selected by this preparation. |
+| Independent Rust prerequisites | Roughr `0.12.4`; Tree-sitter `0.3.1` | Prepare and verify Roughr `0.12.5` and grammar `0.3.2`. Their independent publishing owners must complete before the coupled workspace graph can resolve from crates.io. No upload is selected by preparation. |
+| Other independent packages, stable package managers and VS Code Marketplace | Existing independent release records below | No other independent release, stable-registry update or Marketplace publication is selected by this preparation. |
 
 Registry observations used the [crates.io API](https://crates.io/api/v1/crates/merman), the new names' Cargo sparse-index entries, all 14 [Web/Node npm members](https://registry.npmjs.org/@mermanjs%2fweb), [PyPI](https://pypi.org/pypi/merman/json), [pub.dev](https://pub.dev/api/packages/merman), the GitHub tag/Release APIs and authenticated read-only environment metadata. Environment existence does not prove registry permission or a successful future token exchange. The release operator retains detailed observation responses outside the source tree; no credential values were queried.
 
-Before the first authorized upload, record each chosen channel as `selected` and each other coupled channel as `deferred` with its current public version. Core alpha publication needs the three Rust bootstraps; Node bootstrap, Android signing and public Apple repository rollout can be scheduled independently. Preserve accepted artifacts and immutable tags throughout recovery.
+Before the first authorized upload, record each chosen channel as `selected` and each other coupled channel as `deferred` with its current public version. Core alpha publication needs the two independent Cargo prerequisites and three Rust bootstraps; Node bootstrap, Android signing and public Apple repository rollout can be scheduled independently. Preserve accepted artifacts and immutable tags throughout recovery.
 
 ## 0.9.3 publication
 
