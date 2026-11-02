@@ -3,7 +3,7 @@
 Status: prepared recovery; no incident exception or new Windows send is authorized.
 Observed on 2026-11-03 (Asia/Shanghai).
 
-The stable Web group, Python wheels and Android AAR are delivered. Node's loader and WASM
+The stable Web group, Python wheels, Flutter package and Android AAR are delivered. Node's loader and WASM
 package remain at `0.9.2` while its original seven-member `0.9.3` publication is incomplete.
 The Windows member has an uncertain upload outcome. Its missing registry version is not
 permission to resend it. See the [publication ledger](PUBLISH_ORDER.md#093-binding-backfill).
@@ -55,6 +55,11 @@ transparency-log and identity verification for this exact bundle:
 - Source: the immutable stable commit above.
 - Invocation: `https://github.com/Latias94/merman/actions/runs/41503526369/attempts/2`.
 - Bundle file SHA-256: `7d377383905b41aac589109843230609e00e46a89ecfdbafe4b5abfc242957ec`.
+
+An additional in-process check exercises the actual pinned `libnpmpublish` with a mocked npm
+registry. It verifies and attaches the original tarball and bundle, never calls the provenance
+generator, and rejects a mismatched subject digest before any PUT. That check uses the official
+trust-root cache from the independent verification above and performs no real registry writes.
 
 The original Windows tarball is 9,797,506 bytes:
 
