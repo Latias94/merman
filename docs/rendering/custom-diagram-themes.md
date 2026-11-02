@@ -1,6 +1,6 @@
 # Create, Customize, and Share Diagram Themes
 
-This guide describes the current theme source branch and its experimental version-1 authoring
+This guide targets `0.10.0-alpha.1` and its experimental version-1 theme authoring
 contract. Use a matching runtime artifact that exposes theme authoring and catalog operations;
 a package version alone does not establish channel availability or feature support. Examples
 assume an initialized SVG-capable runtime.

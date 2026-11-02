@@ -4,22 +4,22 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
+This guide targets the `0.10.0-alpha.1` release candidate. Check the
+[prebuilt product status](../../docs/release/PREBUILT_PRODUCTS.md) and
+[publish order](../../docs/release/PUBLISH_ORDER.md) for verified public availability. See the
+[current Node changelog](CHANGELOG.md) for changes and upgrade actions.
+
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
 ## Quick start
 
-The loader, selected native platform package, and explicit `@mermanjs/node-wasm` transport use one package-group version. Pin an exact version when reproducible installs matter.
+The loader, selected native platform package, and explicit `@mermanjs/node-wasm` transport use one
+exact package-group version. The packages target Mermaid `12.2.0` and use
+[Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md).
 
 ```sh
-npm install @mermanjs/node@0.9.2
+npm install --save-exact @mermanjs/node@0.10.0-alpha.1
 ```
-
-Version `0.9.2` includes Mermaid 12.1 and Agentflow/Usecase support; see the [package changelog](CHANGELOG.md). For source builds, use the `v0.9.2` tag with its matching package workspace and lockfile.
-
-The compiled-theme APIs documented in this checkout are unreleased. Published `0.9.2` retains
-Options JSON schema `2`; see the [release boundary](../../docs/release/README.md#merman-092).
-This checkout also adds ordinary SVG math to both Node transports and native Linux ARM64
-GNU/musl packages. Those additions require matching next-release artifacts.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";
@@ -60,10 +60,10 @@ labels. It does not
 provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for browser DOM
 mounting.
 
-The next-release package supports macOS arm64/x64, Linux arm64/x64 glibc/musl, and Windows x64
-MSVC. Its recipe includes deterministic SVG with math plus Cytoscape and ELK layouts. Binary export, analysis,
-ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain outside this
-surface.
+The native package supports macOS arm64/x64, Linux arm64/x64 glibc/musl, and Windows x64 MSVC.
+Both Node transports include deterministic SVG with math plus Cytoscape and ELK layouts. Binary
+export, analysis, ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain
+outside this surface.
 
 The [host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes)
 describe the library boundary across Rust and other delivery surfaces. This native package can
@@ -71,16 +71,17 @@ serve the SVG recipe; it does not expose the ASCII/agent-log or PNG recipe. Use 
 CLI build for those outputs instead of inferring package support from workspace capabilities.
 The host owns semantic theme selection, caching, scheduling, persistence, and viewer or clipboard
 actions. SVG presentation values remain separate from the terminal palette used by ASCII-capable
-artifacts. The unreleased compiled-theme API uses [Options JSON 3](../../docs/bindings/OPTIONS_JSON.md); see the [package guide](packages/node/README.md#compiled-themes-unreleased) for preset selection and discovery. Published alpha.6 remains on Options 2.
+artifacts. See the [compiled-theme guide](packages/node/README.md#compiled-themes) for preset
+selection, discovery, and the theme system's alpha boundaries.
 
-## Loaded icon packs (unreleased)
+## Loaded icon packs
 
 Both Node packages accept `createNodeEngine({ iconPacks: [{ json, registrationName? }] })`.
 `json` is an already loaded Iconify pack JSON string; `registrationName` optionally replaces its
 prefix. This constructor service is separate from `bindingOptions` and request options. Each
 engine owns an immutable registry, and an omitted or empty array preserves ordinary rendering.
 The host owns file loading, network requests, and disposal. See the
-[native package example](packages/node/README.md#loaded-icon-packs-unreleased).
+[native package example](packages/node/README.md#loaded-icon-packs).
 
 ## Package layout
 

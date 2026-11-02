@@ -33,7 +33,7 @@ host runtime policy, and pass that context together with the caller-owned `Opera
 `AsciiResourcePolicy` to `AsciiRenderer::render_model`. Deterministic and sandboxed applications
 should provide explicit operation values instead of enabling system adapters.
 
-The model-package boundary described here applies to the development checkout. Released 0.9.3 uses the previous core model paths; use its tagged documentation when consuming that release.
+This guide targets `merman-ascii 0.10.0-alpha.1`. When upgrading from `0.9.x`, migrate core model imports to `merman-model` using the [model/source guide](../../docs/migrations/model-source-boundaries.md).
 
 ## Quick Start
 
@@ -41,7 +41,7 @@ Most applications should use the `merman` facade so parsing and text rendering s
 
 ```toml
 [dependencies]
-merman = { version = "0.9.3", default-features = false, features = ["all-diagrams", "ascii"] }
+merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["all-diagrams", "ascii"] }
 ```
 
 For a current-source checkout beside the application, select the required families explicitly:

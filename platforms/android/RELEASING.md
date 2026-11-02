@@ -10,7 +10,7 @@ Select the checkout's projected version and an explicit Maven group:
 
 ```sh
 gh workflow run release-android.yml \
-  -f release_tag=v0.9.3 -f source_ref=<40-character-source-commit> \
+  -f release_tag=v0.10.0-alpha.1 -f source_ref=<40-character-source-commit> \
   -f maven_group=<selected-group> -f publish=false -f prepare_central_bundle=false
 ```
 
@@ -27,14 +27,14 @@ platforms/android/gradlew -p platforms/android \
   -PmermanMavenGroup=<selected-group> \
   publishReleasePublicationToLocalStagingRepository --max-workers=2
 python3 scripts/verify-platform-bindings.py --verify-android-maven \
-  --android-maven-group <selected-group> --android-maven-version 0.9.3 \
+  --android-maven-group <selected-group> --android-maven-version 0.10.0-alpha.1 \
   --android-ndk-home <pinned-ndk>
 python3 scripts/android_package.py package --repository platforms/android/build/repo \
-  --group-id <selected-group> --version 0.9.3 --output-dir target/android-delivery
+  --group-id <selected-group> --version 0.10.0-alpha.1 --output-dir target/android-delivery
 ```
 
 `package` preserves all selected-version bytes and sidecars and checks them before emitting
-`merman-android-0.9.3-maven.zip` and its SHA-256. Repository `maven-metadata.xml` is narrowed to
+`merman-android-0.10.0-alpha.1-maven.zip` and its SHA-256. Repository `maven-metadata.xml` is narrowed to
 the selected version and receives fresh MD5, SHA-1, SHA-256 and SHA-512 checksums. A missing or
 wrong selected version fails; additional staged versions are not copied. The ZIP has no wrapper
 directory above the Maven group path.
@@ -52,8 +52,8 @@ With the SDK, pinned NDK and JDK already installed:
 
 ```sh
 python3 scripts/android_package.py qualify \
-  --archive target/android-delivery/merman-android-0.9.3-maven.zip \
-  --group-id <selected-group> --version 0.9.3 \
+  --archive target/android-delivery/merman-android-0.10.0-alpha.1-maven.zip \
+  --group-id <selected-group> --version 0.10.0-alpha.1 \
   --work-dir <new-external-directory> --android-ndk-home <pinned-ndk> \
   --zipalign <sdk>/build-tools/35.0.0/zipalign --connected
 ```
@@ -103,16 +103,16 @@ putting a passphrase in command arguments:
 
 ```sh
 python3 scripts/android_package.py sign --repository platforms/android/build/repo \
-  --group-id <verified-group> --version 0.9.3 --signing-key-id <fingerprint> \
+  --group-id <verified-group> --version 0.10.0-alpha.1 --signing-key-id <fingerprint> \
   --android-ndk-home <pinned-ndk>
 python3 scripts/android_package.py package --repository platforms/android/build/repo \
-  --group-id <verified-group> --version 0.9.3 --output-dir target/android-delivery \
+  --group-id <verified-group> --version 0.10.0-alpha.1 --output-dir target/android-delivery \
   --android-ndk-home <pinned-ndk> --central-bundle
 ```
 
 `--central-bundle` requires GPG-verifiable detached signatures and MD5/SHA-1 sidecars for the
 AAR, POM, module metadata, sources and javadoc. It emits both the complete repository ZIP and
-`merman-android-0.9.3-central.zip`, using the
+`merman-android-0.10.0-alpha.1-central.zip`, using the
 [official Central upload format](https://central.sonatype.org/publish/publish-portal-upload/):
 Maven-relative version directories, signatures and checksums. Central's aggregate metadata is
 excluded from that upload bundle. No Portal client or registry upload is implemented here.

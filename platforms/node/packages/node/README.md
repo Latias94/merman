@@ -3,14 +3,17 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-This package is experimental. Pin an exact package version when reproducible installs matter.
+This guide targets the `0.10.0-alpha.1` release candidate with Options JSON schema `3`. Check the
+[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
+and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
+for verified public availability. The package remains experimental.
 
 ## Quick start
 
 Install the loader package, not a platform package:
 
 ```sh
-npm install @mermanjs/node@0.9.2
+npm install --save-exact @mermanjs/node@0.10.0-alpha.1
 ```
 
 ```js
@@ -28,11 +31,10 @@ try {
 
 Create an engine once, reuse it for related work, and dispose it during teardown.
 
-## Compiled themes (unreleased)
+## Compiled themes
 
-The current source interface uses Options JSON 3; published alpha.6 packages use Options 2.
-Experimental compiled-theme operations require a matching artifact that exposes them; a package
-version alone does not establish their availability. Select a preset through the closed `theme` group:
+Select a preset through the top-level `theme` group in Options JSON schema `3`. Discover preset
+IDs through the initialized engine's theme catalog:
 
 ```js
 const catalog = JSON.parse(engine.metadataJson("theme-catalog"));
@@ -41,13 +43,21 @@ const themedSvg = await engine.renderSvg("flowchart LR\nA --> B", {
 });
 ```
 
-Catalog `available` means that the recipe can compile under the current resource policy.
-Presets remain alpha; availability and unknown profile/admission IDs never grant Portable
-support. Use `executeOperation()` or `executeOperationSync()` with operation IDs
+Catalog `available` means that the recipe can compile under the current resource policy. All
+built-in presets remain `alpha` with empty `qualified_cells`; availability and unknown
+profile/admission IDs never establish portable output. Flowchart glow and shadow effects require
+the Classic look and supported shapes. SVG fonts resolve on the viewing host; exported recipes
+do not embed them.
+
+Use `executeOperation()` or `executeOperationSync()` with operation IDs
 `materialize-theme-json`, `describe-theme-support-json`, or `export-theme-preset-json` for
 shared definition JSON, support queries and preset export. Materialization returns a complete
 spec that can be passed as `theme: { spec }`; no intermediate file is required. Replace old
-`presentation.theme` inputs and `presentation-catalog` metadata calls when upgrading.
+`presentation.theme` inputs and `presentation-catalog` metadata calls when upgrading. See the
+[theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
+for authoring and portability, and the
+[current Node changelog](https://github.com/Latias94/merman/blob/main/platforms/node/CHANGELOG.md)
+for upgrade actions.
 
 ## SVG output pipelines
 
@@ -78,7 +88,7 @@ mounting.
 ## Supported hosts
 
 - macOS arm64 and x64
-- Linux x64 with glibc or musl; Linux ARM64 GNU/musl is added in this unreleased checkout
+- Linux arm64 and x64 with glibc or musl
 - Windows x64 with MSVC
 - Node.js `>=22`
 
@@ -93,21 +103,22 @@ transports.
 
 ## Capability boundary
 
-The next-release recipe provides deterministic static SVG with math, Cytoscape and ELK layouts,
-metadata, layout plans, runtime-catalog inspection, and generic admitted operations. Math is
-included in this checkout's artifacts; published `0.9.2` predates this change. GNU Linux targets
-retain glibc 2.31 as their compatibility floor. Binary export, analysis,
-ASCII, text-measurement callbacks, browser fallback, and runtime downloads are outside this package
-surface. Requests for unavailable optional capabilities return Merman's typed
-missing-capability error.
+The package provides deterministic static SVG with math, Cytoscape and ELK layouts, metadata,
+layout plans, runtime-catalog inspection, and generic admitted operations. GNU Linux targets retain
+glibc 2.31 as their compatibility floor. Binary export, analysis, ASCII, text-measurement callbacks,
+browser fallback, and runtime downloads are outside this package surface. Requests for unavailable
+optional capabilities return Merman's typed missing-capability error.
 
-Matching next-release artifacts render formulas with the ordinary SVG methods:
+Render formulas with the ordinary SVG methods:
 
 ```js
 const formula = await engine.renderSvg('flowchart LR\nA["$$x^2$$"]');
 ```
 
 The runtime catalog advertises `math` for both the native and explicit Node-WASM products.
+The default `interactive` resource profile admits formulas; an explicitly `constrained` profile
+rejects them even when math is compiled. For untrusted input, enforce host execution, memory,
+and concurrency limits alongside the selected resource profile.
 
 ## Lifecycle and concurrency
 
@@ -120,7 +131,7 @@ or transport-admission checkpoint and reports Merman's typed cancellation detail
 Use `renderSvgSync()` only for an explicitly synchronous static-site build path. It refuses to run
 while asynchronous operations are active or queued.
 
-## Loaded icon packs (unreleased)
+## Loaded icon packs
 
 Load Iconify pack JSON in the host and pass its text as a constructor service:
 

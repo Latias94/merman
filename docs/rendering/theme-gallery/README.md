@@ -1,7 +1,7 @@
 # Theme gallery
 
 Six examples from the current 11-preset catalog show different visual designs, light and dark
-palettes, and five diagram families. Use the built-in recipes in a matching source runtime.
+palettes, and five diagram families. Use the built-in recipes in a matching `0.10.0-alpha.1` runtime.
 These are actual Merman exports; design scope, runtime availability, and portable output are
 separate facts reported by the installed catalog and each render's metadata.
 

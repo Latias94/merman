@@ -4,17 +4,19 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
 
-> `Merman.open()` accepts only the exact native package version bundled with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
+This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for version and channel availability.
+
+> `Merman.open()` accepts only the exact native package version `0.10.0-alpha.1` paired with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
 ## Install
 
 Pin the exact package version when pairing the Dart facade with its Native Assets libraries:
 
 ```sh
-flutter pub add 'merman:0.9.2'
+flutter pub add 'merman:0.10.0-alpha.1'
 ```
 
-Version `0.9.2` includes Mermaid 12.1 and schema-3 ASCII output; alpha.6 has the older contract. For source development, check out the `v0.9.2` tag and use a local path dependency:
+For source development, use the matching `0.10.0-alpha.1` source revision and a local path dependency:
 
 ```yaml
 dependencies:
@@ -24,9 +26,9 @@ dependencies:
 
 Run `flutter pub get` after adding the dependency.
 
-Compiled-theme APIs in this checkout are unreleased. Published `0.9.2` retains Options JSON
-schema `2`; follow its tagged guide and pair the Dart facade with its exact native artifacts.
-See the [release boundary](../../docs/release/README.md#merman-092).
+For a legacy `0.9.2` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.2/platforms/flutter/README.md).
+That release uses Options JSON schema `2` and math-free native libraries; keep its facade and
+artifacts together rather than using them with the theme API documented here.
 
 ## Requirements
 
@@ -40,13 +42,20 @@ The Flutter floor follows the current native-hooks dependency graph and its SDK-
 
 This is a `package_ffi`-style Dart package and does not depend on the Flutter SDK. Its build hook selects and bundles the native library for Flutter and Dart consumers. The public API can instead load a host-owned current-contract library with `Merman.openPath(...)`; `mermanPackageVersion` is the exact version expected by `Merman.open()`.
 
-## Target Native Assets (Unreleased)
+<a id="target-native-assets-unreleased"></a>
 
-The next release ships a thin Dart facade. During a build, the hook downloads only the selected
+## Target Native Assets
+
+The package ships a thin Dart facade. During a build, the hook downloads only the selected
 OS, CPU and Apple SDK asset. `hook/native-assets.json` is generated from frozen release libraries
 and included in that facade; it pins the package version, source commit/tree, compressed bytes
 and library SHA-256 digests. Downloads and existing cache files are verified before bundling.
 There is no runtime download or automatic Cargo build.
+
+For this version, the manifest's native asset URLs use the release path
+`https://github.com/Latias94/merman/releases/download/flutter-v0.10.0-alpha.1/` and filenames
+such as `merman-flutter-native-0.10.0-alpha.1-macos-arm64.gz`. Keep the facade, manifest and
+target assets from the same release together.
 
 The cache lives in the hooks runner's `outputDirectoryShared` under `.dart_tool`. Preserve that
 directory between online and offline builds of the same app and package version. Configure
@@ -82,13 +91,13 @@ An HTTPS mirror can host the same versioned asset filenames:
 hooks:
   user_defines:
     merman:
-      mirror: https://artifacts.example.org/merman/flutter-v0.9.3/
+      mirror: https://artifacts.example.org/merman/flutter-v0.10.0-alpha.1/
 ```
 
 The mirror changes the download location only; package-pinned digests remain mandatory.
 HTTP is allowed solely for loopback qualification fixtures. Corrupt downloaded or cached bytes
 fail visibly; remove the named invalid cache file before retrying. A source checkout without a
-manifest can still use explicitly built `native/` libraries during this migration.
+manifest can use explicitly built `native/` libraries as described in [Local Development](#local-development).
 
 ## Render A Diagram
 
@@ -114,10 +123,9 @@ print(output.metadata.rawJson); // Includes additive fields from newer producers
 
 Convenience methods are projections over `execute` and cover all 13 generated ABI operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
 
-Published `0.9.2` provides SVG, semantic and layout JSON, both native layout engines, ASCII,
-analysis, validation, and document analysis, and omits math and binary exporters. The next
-main-line target assets add math to ordinary SVG rendering. PNG, JPEG, PDF and native runtime
-adapters remain absent. The corresponding Dart methods remain part of the generated ABI facade
+The target assets provide SVG including math, semantic and layout JSON, Cytoscape and ELK layout,
+ASCII, analysis, validation, and document analysis. PNG, JPEG, PDF and native runtime adapters
+remain absent. The corresponding Dart methods remain part of the generated ABI facade
 for a current-contract custom library loaded with `Merman.openPath(...)` or
 `Merman.fromDynamicLibrary(...)`; unavailable exporters raise `MermanMissingCapabilityException`
 with capability `png`, `jpeg`, or `pdf`.
@@ -173,12 +181,13 @@ try {
 
 The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and compiled-theme catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Theme preset and descriptor IDs remain open strings so compatible producers can add values without requiring Dart enum updates.
 
-In the current source interface, `MermanThemePreset.previewColors` exposes ordered picker swatches,
+`MermanThemePreset.previewColors` exposes ordered picker swatches,
 `familyDesigns` exposes curated family treatment, and `applicationNotes` contains typed
 `MermanThemePresetApplicationNote` values with an open `id`, `familyId`, readable `message`, and
 nullable `recommendedConfig` map. Use a matching artifact that provides this metadata; a package
-version alone does not establish its availability. Missing additive arrays from older runtimes
-normalize to empty immutable lists; malformed present fields are rejected. Recommendation maps
+version alone does not establish its availability for host-owned libraries loaded with
+`Merman.openPath(...)`. Missing additive arrays from older runtimes normalize to empty immutable
+lists; malformed present fields are rejected. Recommendation maps
 and their nested maps/lists are also copied and immutable. `base_only` is the shared base appearance with necessary family adaptations;
 `dedicated` is an intentional family design, and absent or unknown treatments remain unreviewed.
 Unknown values survive decoding. This metadata does not grant qualification or portability and
@@ -205,9 +214,29 @@ final rawCatalog = merman.metadataJson('supported-diagrams');
 
 All six methods use the ABI 3 `metadata_collect` table slot. Discovery requires the current complete table before any engine or metadata API is exposed, including for `Merman.openPath(...)`.
 
+Select a discovered preset through Options JSON schema `3`:
+
+```dart
+const pieSource = 'pie\n"A":35\n"B":65';
+final themedSvg = merman.renderSvg(
+  pieSource,
+  optionsJson: '{"version":3,"theme":{"preset":"ghibli"}}',
+);
+```
+
+For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
+or supply a complete selection or recipe to replace it.
+
+Flowchart glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);
+selecting a preset does not change the look or layout engine. Fonts must be supplied by the
+host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
+resources in recipes are rejected. This Dart facade does not expose the native C/WASI
+memory-font constructor. See the [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
+for version-1 recipes, support discovery, and portability policy.
+
 ## Options And Resource Limits
 
-One-shot `Merman` methods accept the complete options document for that operation. `MermanEngine` accepts constructor options as a reusable baseline; method-level `optionsJson` values deeply override that baseline for one call while unspecified nested values remain inherited. Select `runtime_policy` only in the constructor options.
+One-shot `Merman` methods accept the complete schema-3 options document for that operation. `MermanEngine` accepts constructor options as a reusable baseline; method-level `optionsJson` values deeply override that baseline for one call while unspecified nested values remain inherited. Select `runtime_policy` only in the constructor options.
 
 ```dart
 final engine = MermanEngine(
@@ -229,6 +258,10 @@ try {
 The packaged library is deterministic and does not include native clock, time-zone, or random adapters. A custom artifact may enable the atomic `native-runtime` feature and then select `"runtime_policy":"native"`. The bundled artifact raises `MermanUnsupportedOperationException` when native policy is requested, and runtime discovery reports concrete adapter IDs only when they are present.
 
 Use `constrained` for untrusted or multi-tenant input, `interactive` for cooperative local editing, and `trusted-native` for local native automation. `MermanResourceOptionsBuilder` produces the shared resource-options fragment. Its profile is optional: omit it for a reusable request that must inherit its constructor ceiling, and use `MermanResourceOverrideId` for limits. The runtime catalog is the source of truth for compiled capabilities, accepted option groups, constructor services, service limits, and enforced operation limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md) for the complete schema.
+
+The default interactive profile admits SVG math. Explicit `constrained` policy rejects the
+native math backend with `MermanMissingCapabilityException` and capability `math`; compiled
+math does not remove the need for host execution and memory limits.
 
 `MermanResourceLimitId` describes every catalog limit; `MermanResourceOverrideId` is the narrower option-construction ID set. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded ABI 3 library's complete phase, description, minimum, hard-cap, applicable operation IDs, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
 
@@ -356,7 +389,7 @@ The repository-only theme authoring smoke compares light/dark materialization, f
 discovery responses, and structured authoring/resource errors against shared cross-transport
 fixtures. It runs through the bundled Native Assets library using both one-shot and reusable
 engines in platform verification and Flutter release/preflight CI. It does not qualify final
-application bundles or certify the C7a candidate.
+application bundles or visual output.
 
 ## Documentation And Releases
 

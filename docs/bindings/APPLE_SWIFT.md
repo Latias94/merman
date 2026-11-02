@@ -118,7 +118,7 @@ the shared control, but an opaque callback or encoder call may return before the
 Use worker or process isolation when the host requires hard preemption.
 
 The main-line XCFramework supports SVG with math, both layout backends, ASCII, semantic/layout
-operations, analysis, fixes, validation, and document analysis. This expanded recipe is unreleased;
+operations, analysis, fixes, validation, and document analysis. This expanded recipe targets `0.10.0-alpha.1`;
 published `0.9.3` retains the legacy math-free artifact described above. Main's default artifact
 still omits the PNG, JPEG, and PDF exporters. The generated export helpers remain valid for custom
 current-contract libraries; the default artifact returns `.missingCapability` with the required

@@ -2,12 +2,16 @@
 
 Render supported Mermaid diagram families as ASCII or Unicode text in a browser.
 
-Pin an exact package version when reproducible installs matter.
+This guide targets the `0.10.0-alpha.1` release candidate, with Web transport API `8` and Options
+JSON schema `3`. Check the
+[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
+and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
+for verified public availability.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-ascii@0.9.2
+npm install --save-exact @mermanjs/web-ascii@0.10.0-alpha.1
 ```
 
 ```ts
@@ -30,4 +34,6 @@ matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPOR
 before choosing this package for a required diagram set.
 
 See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
-for package selection, runtime lifecycle, resource policy, and source-checkout development.
+for package selection, runtime lifecycle, resource policy, and source-checkout development. See the
+[current changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md) for changes and
+upgrade actions.

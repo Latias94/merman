@@ -96,6 +96,7 @@ class CliQualificationTests(unittest.TestCase):
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         self.qualification["render_config"] = {
             "htmlLabels": False,
+            "layout": "dagre",
             "flowchart": {"look": "classic", "layout": "dagre"},
             "sequence": {"look": "classic"},
         }
@@ -134,6 +135,43 @@ class CliQualificationTests(unittest.TestCase):
         self.assertEqual(evidence["executable_sha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest())
         self.assertEqual(self.commands[0][-3:], ["--svg-pipeline", "resvg-safe", "-"])
         self.assertEqual(self.commands[1][-3:], ["--scale", "4.0", "-"])
+
+    def test_cli_replay_pins_measurement_when_encoded_output_defaults_to_native(self):
+        def output_default_cli(command, **options):
+            result = self.run_cli(command, **options)
+            if command[1] == "render":
+                output = command[command.index("--format") + 1]
+                measurement = (
+                    command[command.index("--font-measurement") + 1]
+                    if "--font-measurement" in command
+                    else "native" if output == "png" else "deterministic"
+                )
+                if measurement == "native":
+                    result.stdout = b"PNG with native text layout"
+            return result
+
+        evidence = qualify_cli(self.binary, self.qualification, runner=output_default_cli)
+        self.assertEqual(evidence["matched_outputs"], 2)
+        for command in self.commands[:-1]:
+            self.assertEqual(command[command.index("--font-measurement") + 1], "deterministic")
+
+        # Reproduce the old invocation: SVG still matches, but PNG must fail the exact byte check.
+        self.commands.clear()
+
+        def without_measurement_override(command, **options):
+            command = list(command)
+            if "--font-measurement" in command:
+                index = command.index("--font-measurement")
+                del command[index:index + 2]
+            return output_default_cli(command, **options)
+
+        with self.assertRaisesRegex(
+            RuntimeError, r"^CLI output differs from qualified bytes: brutalist/state-v1/png$",
+        ):
+            qualify_cli(self.binary, self.qualification, runner=without_measurement_override)
+        self.assertEqual(
+            [command[command.index("--format") + 1] for command in self.commands], ["svg", "png"],
+        )
 
     def test_cli_requires_runner_owned_render_configuration(self):
         del self.qualification["render_config"]

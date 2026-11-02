@@ -3,12 +3,16 @@
 Detect, validate, and analyze Mermaid source in a browser without shipping SVG rendering, ASCII
 output, or retained editor sessions.
 
-Pin an exact package version when reproducible installs matter.
+This guide targets the `0.10.0-alpha.1` release candidate, with Web transport API `8` and Options
+JSON schema `3`. Check the
+[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
+and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
+for verified public availability.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-analysis@0.9.2
+npm install --save-exact @mermanjs/web-analysis@0.10.0-alpha.1
 ```
 
 ```ts
@@ -42,4 +46,6 @@ for in-process SVG rendering.
 See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
 for custom WASM loading, resource policy, package selection, and source-checkout development. See
 the [integration guide](https://github.com/Latias94/merman/blob/main/docs/integrations/README.md)
-for lint ownership and adapter boundaries.
+for lint ownership and adapter boundaries, and the
+[current changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md) for changes and
+upgrade actions.

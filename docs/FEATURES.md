@@ -1,12 +1,6 @@
 # Choosing Merman capabilities
 
-This page documents current-source capabilities; Rust and CLI installation examples select the published `0.9.3`
-patch, while other channels retain the versions in their package guides. Compiled-theme authoring and Mermaid `12.2.0` alignment remain unreleased. The CLI
-encoded-output font defaults shipped in `0.9.3`. Use the
-[release index](release/README.md) for installed-version contracts and the
-[0.9.0 upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for the preceding model and output
-changes. Workspace path snippets are for source development. See the
-[Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
+This page targets `0.10.0-alpha.1`, including experimental compiled themes and Mermaid `12.2.0`. Use the [host guide](release/PREBUILT_PRODUCTS.md) for independently published channel versions and the [alpha changelog](../CHANGELOG.md#0100-alpha1---2026-11-02) for upgrade actions. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select data, source parsers, or output handlers at the owning package. Selected
@@ -446,7 +440,7 @@ EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install merman-cli --version 0.9.3 --locked
+cargo install merman-cli --version 0.10.0-alpha.1 --locked
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd
@@ -563,15 +557,14 @@ the artifact contract. Generated APIs keep optional operation names for custom c
 libraries; inspect the runtime catalog and handle typed missing-capability errors before exposing
 optional output choices.
 
-These expanded native recipes are unreleased. Published Android, Python, and Flutter `0.9.2` and
+These expanded recipes target `0.10.0-alpha.1`. Published Android, Python, and Flutter `0.9.2` and
 legacy Apple `0.9.3` remain math-free; published Web full/render `0.9.2` already includes math.
 Current Rust source defaults and convenience aggregates still require explicit `math`. See
 [prebuilt products](release/PREBUILT_PRODUCTS.md) for the per-channel installation boundaries.
 
-Flutter `0.9.2` uses `flutter pub add 'merman:0.9.2'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
-matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
-transport API 2 rather than C ABI 3. Main also prepares a Maven publication bundle; this does not
-establish public Central availability. Main's Apple delivery prepares a complete local SwiftPM
+Flutter uses `flutter pub add 'merman:0.10.0-alpha.1'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android resolves the matching Maven repository handoff or uses its AAR directly; its Kotlin surface is direct JNI
+transport API 2 rather than C ABI 3. The Maven publication bundle does not
+establish public Central availability. Apple delivery includes a complete local SwiftPM
 package with matching sources, resources, and XCFramework; public remote SwiftPM installation
 awaits a hosted package repository. C and C++ can use the published `0.9.3` native SDK, with
 `sdk-native-full` recommended for SVG, PNG, JPEG, PDF, ASCII, math, both layout backends, and

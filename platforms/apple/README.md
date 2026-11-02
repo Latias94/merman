@@ -2,7 +2,9 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-> **Binding contract:** Merman `0.9.3` uses direct UniFFI binding API `7`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for version and channel availability.
+
+> **Binding contract:** Merman `0.10.0-alpha.1` uses direct UniFFI binding API `7` and Options JSON schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
 ## Requirements
 
@@ -13,33 +15,32 @@ Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS
 
 For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
 
-This checkout documents the main development line, with UniFFI API `7` and unreleased
-Options JSON schema `3`. Use matching generated Swift and native slices; see the
-[changelog](CHANGELOG.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
-
-Compiled-theme APIs in this checkout are unreleased. Published `0.9.3` retains Options JSON
-schema `2`; use its tagged guide even though both interfaces retain UniFFI API `7`.
-See the [release boundary](../../docs/release/README.md#merman-093).
-
 ## Add the Complete Swift Package
 
-For a release containing the new package, download `Merman-swiftpm-v<version>.zip`
-and its `.checksum` from that release's assets. Extract it and add the resulting
-`Merman-swiftpm-v<version>` directory as a local package in Xcode or with
-`.package(path: "../Merman-swiftpm-v<version>")`. Link the `Merman` product.
-The package includes matching generated Swift, resource declarations, XCFramework,
+Use `Merman-swiftpm-v0.10.0-alpha.1.zip` and its `.zip.checksum` from the candidate owner,
+or produce them from the matching source revision with [Build The Local Package](#build-the-local-package).
+Extract the archive and add the resulting `Merman-swiftpm-v0.10.0-alpha.1` directory as a
+local package in Xcode. A Swift package can declare:
+
+```swift
+.package(path: "../Merman-swiftpm-v0.10.0-alpha.1")
+```
+
+Link the `Merman` product. The package includes matching generated Swift, resource declarations, XCFramework,
 manifest and legal material. No Rust checkout or compiler is needed to consume it.
 
-This complete package is a **main-line, unreleased delivery change**. The separately
-named `Merman.xcframework-v<version>.zip` remains the binary-target input. Its checksum
+The separately named `Merman.xcframework-v0.10.0-alpha.1.zip` is the binary-target input. Its checksum
 differs from the complete Swift package's checksum. An emitted remote manifest is a
 publisher handoff using that exact binary URL/digest. The corresponding
-`Merman-swiftpm-remote-v<version>.zip` contains the complete thin delivery repository
+`Merman-swiftpm-remote-v0.10.0-alpha.1.zip` contains the complete thin delivery repository
 tree, including that manifest, the same generated facade and legal material. It
 does not contain the XCFramework. These archives do not establish an already hosted
-SwiftPM repository. See [choose a prebuilt renderer](../../docs/release/PREBUILT_PRODUCTS.md).
+public SwiftPM repository; URL-based installation requires a separately published and
+qualified delivery repository.
 
-## Install Published v0.9.3
+<a id="install-published-v093"></a>
+
+## Legacy: Install Published v0.9.3
 
 Download the [0.9.3 archive](https://github.com/Latias94/merman/releases/download/v0.9.3/Merman.xcframework-v0.9.3.zip)
 and [checksum](https://github.com/Latias94/merman/releases/download/v0.9.3/Merman.xcframework-v0.9.3.zip.checksum),
@@ -49,8 +50,10 @@ Check out the source tree at the same release tag as the archive, then extract `
 
 The published v0.9.3 archive contains the binary XCFramework and legal material.
 Its matching checkout supplies the generated Swift facade and `Package.swift`;
-mixing tags is unsupported. That artifact omits math and binary codecs. The new
-complete package and math default do not change its bytes or capabilities.
+mixing tags is unsupported. That artifact uses Options JSON schema `2`, omits math and
+binary codecs, and does not provide the complete SwiftPM archives. Follow its
+[tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/apple/README.md) for API
+examples; the schema-3 theme examples in this README require the candidate's matching build.
 
 ## Build The Local Package
 
@@ -64,7 +67,7 @@ the source-development manifest. After a complete build, produce a self-containe
 distribution from a clean source tree:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version <workspace-version>
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.1
 ```
 
 Partial `--ios` or `--macos` builds remain useful locally but cannot be packaged as
@@ -73,22 +76,23 @@ the complete distribution. Source builds also require
 
 ## Prepare The Remote SwiftPM Handoff
 
-From the clean, matching source revision and its complete staged XCFramework:
+From the clean, matching source revision and its complete staged XCFramework, select the
+intended HTTPS upload destination for the binary ZIP:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version <workspace-version> \
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.1 \
   --source-commit <source-commit> \
-  --artifact-url https://github.com/Latias94/merman/releases/download/v<workspace-version>/Merman.xcframework-v<workspace-version>.zip
+  --artifact-url https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman.xcframework-v0.10.0-alpha.1.zip
 ```
 
 The producer freezes these seven release assets:
 
 | Asset | Use |
 | --- | --- |
-| `Merman.xcframework-v<version>.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
-| `Merman-swiftpm-v<version>.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
-| `Merman-swiftpm-remote-v<version>.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
-| `Merman-swiftpm-v<version>.Package.swift` | Identical copy of the thin tree's remote manifest |
+| `Merman.xcframework-v0.10.0-alpha.1.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
+| `Merman-swiftpm-v0.10.0-alpha.1.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
+| `Merman-swiftpm-remote-v0.10.0-alpha.1.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
+| `Merman-swiftpm-v0.10.0-alpha.1.Package.swift` | Identical copy of the thin tree's remote manifest |
 
 The extracted remote directory contains `Package.swift`, `Sources/Merman`, `README.md`,
 `SOURCE_AVAILABILITY.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`.
@@ -112,8 +116,8 @@ repository containing its unmodified contents, and an exact delivery commit:
 
 ```text
 python3 scripts/apple_qualify.py \
-  --package-archive target/apple-package/Merman-swiftpm-remote-v<version>.zip \
-  --work-dir /absolute/fresh/apple-remote-proof --version <version> --simulator \
+  --package-archive target/apple-package/Merman-swiftpm-remote-v0.10.0-alpha.1.zip \
+  --work-dir /absolute/fresh/apple-remote-proof --version 0.10.0-alpha.1 --simulator \
   --remote-package-url https://your-controlled-host/Merman.git \
   --remote-package-revision <40-character-delivery-commit>
 ```
@@ -145,11 +149,11 @@ control qualification of an independently hosted delivery repository; the contro
 fixture supplies localhost HTTPS transport evidence on every successful candidate.
 
 From a clean, selected source revision with its complete, freshly built XCFramework,
-use the actual workspace version, exact source commit and a fresh work directory:
+use the candidate version, exact source commit and a fresh work directory:
 
 ```text
 python3 platforms/apple/tests/qualify_remote.py \
-  --work-dir target/apple-https-qualification --version <workspace-version> \
+  --work-dir target/apple-https-qualification --version 0.10.0-alpha.1 \
   --source-commit <40-character-source-commit> \
   --xcframework platforms/apple/Merman.xcframework
 ```
@@ -247,7 +251,7 @@ evidence, diagnostic failures preserve their stable code and optional source pro
 registry failures preserve their structured registration evidence, and cancellation preserves its
 reason and checkpoint phase without message parsing.
 
-The main-line default includes semantic and layout JSON, analysis, validation, document
+The default XCFramework includes semantic and layout JSON, analysis, validation, document
 analysis, ASCII, SVG, math, Cytoscape and ELK. PNG, JPEG and PDF remain typed absences.
 For formulas, use `resourceOptionsJson(profile: .interactive, overrides: [])` when
 constructing the engine; constrained policy still rejects opaque math. Compiled math
@@ -255,7 +259,30 @@ does not remove the need for host execution/memory limits. Swift's host measurem
 callback is independent of the native C/WASI memory-font constructor, which this
 package does not expose. Check `runtimeCatalogJson()` for the installed artifact's
 actual capability IDs and `themeCatalogJson()` for presentation choices. Catalog IDs
-remain open strings. Published v0.9.3 retains its math-free catalog.
+remain open strings.
+
+## Diagram Themes
+
+Use `client.themeCatalogJson()` to discover presets, then select one through schema-3 options:
+
+```swift
+let pieSource = "pie\n\"A\":35\n\"B\":65"
+let themedSvg = try client.renderSvg(
+    source: pieSource,
+    optionsJson: #"{"version":3,"theme":{"preset":"ghibli"}}"#
+)
+```
+
+For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
+or supply a complete selection or recipe to replace it.
+
+Built-in presets are alpha, with empty public qualification cells. Catalog availability and
+family design scope do not certify the result for every diagram or output target. Flowchart
+glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);
+selecting a preset does not change the look or layout engine. Fonts must be supplied by the
+host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
+resources in recipes are rejected. See the [theme guide](../../docs/rendering/custom-diagram-themes.md)
+for version-1 recipes, support discovery, and portability policy.
 
 ## Text Measurement
 

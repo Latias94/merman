@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node-linux-arm64-gnu",
-  "version": "0.9.3",
+  "version": "0.10.0-alpha.1",
   "description": "Native Linux ARM64 glibc binary for @mermanjs/node.",
   "engines": {
     "node": ">=22.0.0"

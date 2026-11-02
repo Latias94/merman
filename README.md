@@ -29,16 +29,13 @@ Try the [Playground] for more examples; its hosted build follows its deployed pa
 
 ## Quick start
 
-For a prebuilt renderer, [choose by host and required output](docs/release/PREBUILT_PRODUCTS.md).
-The main-line Apple pilot includes a complete local SwiftPM package with mathematical SVG;
-native C and WASI recommend their existing full SDKs. These source-level choices do not change
-already published artifacts.
+This guide targets `0.10.0-alpha.1`. For a prebuilt renderer, [choose by host and required output](docs/release/PREBUILT_PRODUCTS.md); that guide records the independently published channel versions. See the [changelog](CHANGELOG.md#0100-alpha1---2026-11-02) for the alpha's features and required migrations from `0.9.3`.
 
 With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "0.9.3"
+merman = "=0.10.0-alpha.1"
 ```
 
 Render a source string to SVG:
@@ -70,7 +67,7 @@ cargo run --locked -p merman --example render_svg > diagram.svg
 
 ## Diagram themes
 
-The current source branch includes compiled visual presets such as Brutalist, Spotless,
+Use compiled visual presets such as Brutalist, Spotless,
 Cyberpunk, and Ghibli. Open the Playground's **Theme** panel: **Mermaid theme** chooses the
 base appearance shared by both engines; **Merman styling** adds a preset or imported recipe
 to Merman. Cards describe the current diagram's design scope, and the selected preset shows
@@ -107,15 +104,15 @@ If several SVGs will share one DOM, give every request a `diagram_id` that remai
 [renderer reuse](crates/merman/examples/render_many.rs), and
 [embedding several SVGs](crates/merman/examples/embed_multiple_svgs.rs).
 
-For redraws of unchanged source, current source builds expose `Renderer::prepare_source()` and
+For redraws of unchanged source, use `Renderer::prepare_source()` and
 `render_prepared()`. Each output receives fresh controls, budgets, runtime state, and layout.
 The [Rust embedding guide] covers semantic and presentation artifacts, output targets, editor
-snapshots, and prepared rendering; the [development migration](docs/migrations/render-reuse-host-integration.md)
+snapshots, and prepared rendering; the [0.10 migration](docs/migrations/render-reuse-host-integration.md)
 also covers Web prepared sources and persistent mounts.
 
 ## Cargo features
 
-The current-source `merman` dependency defaults to `all-diagrams`, `svg`, `layout-cytoscape` and
+The `merman` dependency defaults to `all-diagrams`, `svg`, `layout-cytoscape` and
 `layout-elk`: all built-in families and SVG rendering with both layouts. Math labels require the
 explicit `math` feature. The convenience features `complete-svg` (SVG and Cytoscape) and
 `complete-svg-elk` (also ELK) remain available but no longer enable math; add `math` explicitly
@@ -127,7 +124,7 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 
 ```toml
 [dependencies]
-merman = { version = "0.9.3", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
+merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
 For command-line use, follow the [CLI installation guide][CLI install], then render a Mermaid file:
@@ -138,10 +135,9 @@ merman-cli render diagram.mmd --output diagram.svg
 
 Selecting Dagre at runtime does not remove compiled ELK or its distribution notices. Explicit presentation settings do not guarantee pixel-identical output to earlier Mermaid versions; see the [stable upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md#presentation-and-snapshots).
 
-In the current source, positive `diagram-*` features select built-in families independently of
+Positive `diagram-*` features select built-in families independently of
 outputs and engines. Low-level crates and facade consumers disabling defaults must select
-`all-diagrams` or their required families explicitly. Packages at alpha.6 and earlier predate this
-feature/API migration; see the [capability guide] for current-source recipes.
+`all-diagrams` or their required families explicitly; see the [capability guide] for source recipes.
 
 Themes select font-family names and typography values. Browsers and native export backends resolve
 host fonts. Caller-supplied font bytes in theme recipes are rejected; no fonts are bundled.
@@ -206,10 +202,7 @@ check its guide for available versions and capabilities.
 
 For the 0.8.0 to 0.9.0 API and output changes, use the [upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). CLI SVG text measurement remains deterministic by default. Mermaid-to-PNG/JPEG/PDF exports share native fonts between layout and painting when built with `system-fonts`; use `--font-measurement deterministic` without font sources to retain previous layout estimates and CSS support. See the [CLI font guide](crates/merman-cli/README.md#explicit-fonts).
 
-Published Merman `0.9.3` carries selected fixes on the `0.9.x` line and retains Mermaid `12.1.0`,
-the Presentation API, and Options JSON schema `2`.
-The development branch targets Mermaid `12.2.0` and includes the unreleased theme APIs described
-here. Use the [release index](docs/release/README.md) and documentation at the matching release tag
+Merman `0.10.0-alpha.1` targets Mermaid `12.2.0`, compiled diagram themes and Options JSON schema `3`. The `0.9.x` maintenance line retains Mermaid `12.1.0` and its existing Presentation and Options schema `2` contracts. Use the [release index](docs/release/README.md) and documentation at the matching release tag
 for installed packages. See the [alignment dashboard] for current source-backed checks of semantic
 models, layout, and SVG structure.
 

@@ -34,12 +34,13 @@ const CYBERPUNK_HOST_PROFILE: &str = "native-cyberpunk-full-scenes-system-fonts-
 
 /// Site configuration shared by native preset qualification and its CLI replay.
 ///
-/// Flowchart and Sequence retain the classic look observed by the original qualification scenes;
-/// Flowchart also retains Dagre layout. Other families keep their current defaults. This does not
-/// change any public preset recipe.
+/// Graph families use Dagre even when the consuming artifact also contains ELK. Flowchart and
+/// Sequence retain the classic look observed by the original qualification scenes; other family
+/// settings keep their current defaults. This does not change any public preset recipe.
 pub fn preset_qualification_config() -> SourcePresentationConfig {
     SourcePresentationConfig::from_value(serde_json::json!({
         "htmlLabels": false,
+        "layout": "dagre",
         "flowchart": { "look": "classic", "layout": "dagre" },
         "sequence": { "look": "classic" },
     }))
@@ -355,8 +356,8 @@ pub struct PresetAdmissionError {
 
 /// Executes the catalog's own recipe without substituting a C6 proof recipe or modifying rules.
 ///
-/// The fixed profile disables HTML labels, uses classic Flowchart and Sequence looks with Dagre
-/// for Flowchart, and retains the default deterministic environment and font policy. Best-effort
+/// The fixed profile disables HTML labels, uses Dagre for graph families and classic Flowchart and
+/// Sequence looks, and retains the default deterministic environment and font policy. Best-effort
 /// rendering allows inspection of rejected admission receipts;
 /// it does not upgrade their status. Failures to produce an artifact remain explicit errors.
 pub fn inspect_preset_admission(

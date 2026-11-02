@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-31 (Asia/Shanghai)
+Last updated: 2026-11-02 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -9,7 +9,36 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 
 Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives, and the Apple XCFramework backfill below. Web, Node, Python, Flutter, and Android retain their separately verified `0.9.2` channel releases. Typst and other independently versioned surfaces retain their own publication boundaries.
 
-The `main` development checkout synchronizes the `0.9.3` package version baseline and published notes. Its `[Unreleased]` section retains subsequent development, including compiled themes, Rust API migration, and Mermaid `12.2.0`; package metadata alone does not make that source the published patch. Published artifacts bind the immutable source recorded below. Choose the next workspace version before preparing another development-line release.
+The next main-line candidate is `0.10.0-alpha.1`, including compiled themes, Rust API migration and Mermaid `12.2.0`. Its version and intended 2026-11-02 changelog date are prepared after merged [PR #267](https://github.com/Latias94/merman/pull/267). This is candidate preparation, not authorization to upload packages or evidence of a published alpha. The `0.9.x` maintenance line is unchanged.
+
+## 0.10.0-alpha.1 preparation
+
+Preparation starts from `cb3642b6becef62ca288748013b6ef6c457fa781`, the PR #267 merge. The reviewed PR head passed 68 checks with four intentional skips; the merge's own CI and final candidate qualification retain separate source identities. Freeze the final version-prepared commit and run complete `scope=release` preflight from that same workflow/source ref. Previous PR and binding-candidate results do not admit this later source, and Actions artifacts are not public downloads.
+
+The root and package changelogs describe the net user delta, with the Python version projected as `0.10.0a1`. Cargo sibling requirements are exact `=0.10.0-alpha.1`; npm groups use the `alpha` tag, leaving stable `latest` unchanged. Roughr, Tree-sitter, Typst wrapper and VS Code versions retain their independent axes. Package READMEs target the candidate API, while the host guide continues to record actual public versions.
+
+The initial candidate preflight exposed two independent production changes that still used published versions. Prepare `roughr-merman 0.12.5` for the SVG arc-angle rounding fix and `tree-sitter-mermaid 0.3.2` for its raised `cc` build-dependency minimum. The workspace and LSP minimum requirements follow those candidates. These patches preserve the Roughr public API and the grammar's syntax, query, language ABI and runtime contracts; their owner compatibility, generated-artifact and package checks remain required. Publish and verify both independent Cargo prerequisites before the coupled workspace graph. This preparation does not create tags or upload either package, and grammar npm/GitHub delivery retains its own owner.
+
+### Observed channel prerequisites
+
+Read-only observations on 2026-11-02 (Asia/Shanghai) found no exact alpha.1 versions in the coupled crates.io, npm, PyPI or pub.dev channels and no workspace/Flutter alpha tag or Release. These observations precede any publication authorization. The table records preparation and recommended sequencing; it does not select upload scopes on the maintainer's behalf.
+
+| Channel | Existing public version | Candidate prerequisite and next step |
+| --- | --- | --- |
+| Rust workspace | 23 existing names at `0.9.3`; three names have no published crate | `merman-model`, `merman-markup` and `merman-theme-contract` return 404 from both crates.io API and sparse index. After final preflight and authorization, bootstrap their actual alpha packages in the publisher's dependency order with a maintainer API token, reconcile accepted checksums, and configure each Trusted Publisher. OIDC alone cannot create these names. |
+| CLI/LSP and native C/WASI archives | `0.9.3` Release assets | Qualify the frozen candidate before tagging. SDK publication additionally uses its exact source-matched producer run after the primary Release exists. |
+| Web npm | All five members: `latest=0.9.2`, `alpha=0.8.0-alpha.7` | Existing names need the normal publisher check and frozen five-member group publication; there is no observed new-name bootstrap requirement. |
+| Node npm | Seven existing members: `latest=0.9.2`, `alpha=0.8.0-alpha.7` | The two Linux ARM64 names return 404. The `npm` environment has no approval hold. Choose a documented same-artifact bootstrap route before selecting the complete nine-member publication; do not create only two names and then rebuild the remaining group. |
+| Python / PyPI | `0.9.2`; latest prerelease `0.8.0a7` | Existing project; verify its publisher at upload time and publish the five frozen wheels through the owner. No new project bootstrap is inferred from a version change. |
+| Flutter / pub.dev | `0.9.2`; latest prerelease `0.8.0-alpha.7` | Existing package; use its exact `flutter-v0.10.0-alpha.1` tag/Release, verify public native assets before publishing the same frozen facade. |
+| Apple local SwiftPM / XCFramework | Legacy `0.9.3` binary ZIP and checksum | The complete local/remote handoff assets can publish through the Apple owner after the primary Release exists. Public Git-based SwiftPM installation separately requires a selected and qualified delivery repository; none was established by this review. |
+| Android | `0.9.2` AAR Release asset | The formal asset owner requires a verified Maven namespace and signed Central handoff. The `maven-central` environment is absent; resolve that channel setup or explicitly defer Android. Central submission/promotion remains separate. |
+| Independent Rust prerequisites | Roughr `0.12.4`; Tree-sitter `0.3.1` | Prepare and verify Roughr `0.12.5` and grammar `0.3.2`. Their independent publishing owners must complete before the coupled workspace graph can resolve from crates.io. No upload is selected by preparation. |
+| Other independent packages, stable package managers and VS Code Marketplace | Existing independent release records below | No other independent release, stable-registry update or Marketplace publication is selected by this preparation. |
+
+Registry observations used the [crates.io API](https://crates.io/api/v1/crates/merman), the new names' Cargo sparse-index entries, all 14 [Web/Node npm members](https://registry.npmjs.org/@mermanjs%2fweb), [PyPI](https://pypi.org/pypi/merman/json), [pub.dev](https://pub.dev/api/packages/merman), the GitHub tag/Release APIs and authenticated read-only environment metadata. Environment existence does not prove registry permission or a successful future token exchange. The release operator retains detailed observation responses outside the source tree; no credential values were queried.
+
+Before the first authorized upload, record each chosen channel as `selected` and each other coupled channel as `deferred` with its current public version. Core alpha publication needs the two independent Cargo prerequisites and three Rust bootstraps; Node bootstrap, Android signing and public Apple repository rollout can be scheduled independently. Preserve accepted artifacts and immutable tags throughout recovery.
 
 ## 0.9.3 publication
 

@@ -3,19 +3,19 @@
 Choose the host where Merman will run, then the output your application needs. Cargo features
 are for source builds; installing a prebuilt renderer does not require choosing them.
 
-This guide separates the **main development line** from published packages. Choose a host below,
+This guide separates the **0.10.0-alpha.1 candidate** from published packages. Choose a host below,
 then follow that package's guide. Its wrapper and native/WASM library must belong to the same
 release. Ordinary prebuilt use does not need a Rust checkout or compiler on supported targets.
 
 ## Published Versions
 
-Registry metadata checked on 2026-11-01 shows these versions. Channels release separately;
+Registry metadata checked on 2026-11-02 shows these versions. Channels release separately;
 main's workspace version does not establish a download on every registry.
 
 | Channel | Published version | Installation |
 | --- | --- | --- |
-| Rust | `0.9.3` | `cargo add merman`; [source feature choices](../../README.md) |
-| CLI / standalone LSP | `0.9.3` | [Release installers and archives](../../crates/merman-cli/README.md) |
+| Rust | `0.9.3` | `cargo add merman@0.9.3`; [tagged source feature choices](https://github.com/Latias94/merman/blob/v0.9.3/README.md) |
+| CLI / standalone LSP | `0.9.3` | [Tagged release installers and archives](https://github.com/Latias94/merman/blob/v0.9.3/crates/merman-cli/README.md) |
 | Browser / Worker | `0.9.2` | `npm install @mermanjs/web@0.9.2` |
 | Native Node | `0.9.2` | `npm install @mermanjs/node@0.9.2` |
 | Python | `0.9.2` | `python -m pip install merman==0.9.2` |
@@ -26,8 +26,14 @@ main's workspace version does not establish a download on every registry.
 
 Published Web full/render `0.9.2` includes math. Published Node, Python, Flutter, Android and
 legacy Apple products have their version-specific, math-free capability selections. Main's
-expanded products and new delivery handoffs below are **unreleased**. Use documentation at
+expanded products and new delivery handoffs below belong to the **alpha candidate**. Use documentation at
 the matching tag for installed packages; do not mix main wrappers with maintenance binaries.
+
+## Alpha Candidate
+
+Package guides and install examples target `0.10.0-alpha.1`; Python uses the equivalent PEP 440 spelling `0.10.0a1`. These examples describe the prepared package, not current registry availability. Keep the published-version table above as the installation boundary until each owner has delivered and verified its alpha artifacts. The [preparation record](PUBLISH_ORDER.md#0100-alpha1-preparation) tracks qualification and channel prerequisites.
+
+The Python candidate covers five wheel targets, with GNU Linux ARM64/x86-64 at manylinux 2.28 (glibc `2.28+`). Its final repaired wheels must pass the owner consumers at that floor; published `0.9.2` keeps its original three-wheel coverage and Linux floor. Native SVG math, thin Flutter assets and complete SwiftPM handoffs likewise require their matching alpha products.
 
 ## Recommended Paths
 
