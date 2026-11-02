@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/web-ascii",
-  "version": "0.9.3",
+  "version": "0.10.0-alpha.1",
   "description": "Browser-only Merman WebAssembly SDK for ASCII diagram output.",
   "type": "module",
   "main": "./dist/package-entries/ascii.js",
