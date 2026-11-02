@@ -96,6 +96,7 @@ class CliQualificationTests(unittest.TestCase):
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         self.qualification["render_config"] = {
             "htmlLabels": False,
+            "layout": "dagre",
             "flowchart": {"look": "classic", "layout": "dagre"},
             "sequence": {"look": "classic"},
         }
