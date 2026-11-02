@@ -10,8 +10,9 @@ Android, Apple, Web, Node, and VS Code remain owner-dispatched surfaces.
 
 Main's [binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md)
 adds complete SVG math products and ecosystem-specific handoffs. The selected Rust, CLI/LSP,
-C/WASI SDK and Web surfaces shipped in `0.10.0-alpha.1`; the other bindings remain prepared
-source until their own channel release. They do not replace published 0.9.x artifacts. Use [prebuilt product choices](PREBUILT_PRODUCTS.md)
+C/WASI SDK and Web surfaces shipped in `0.10.0-alpha.1`; the other alpha bindings remain prepared
+source until their own channel release. Stable binding backfills retain the original 0.9.x products
+and do not deliver main's math or packaging changes. Use [prebuilt product choices](PREBUILT_PRODUCTS.md)
 for host selection and the tagged package guides for existing installations. Candidate
 qualification, a complete handoff and a publicly resolvable package are distinct release states.
 
