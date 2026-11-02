@@ -6,17 +6,21 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+For users upgrading from the published `0.9.2` package, this release also includes the [source-only `0.9.3` fixes below](#093---2026-10-30).
+
 ### Added
 
-- Include math in the ordinary SVG wheel product without adding image encoders or ambient font services. Wheel candidates cover macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64; Linux candidates are built, repaired and installed at manylinux 2.28. Normal wheel installation does not require Rust.
+- Install a native SVG wheel without Rust on macOS ARM64/x86-64, GNU Linux ARM64/x86-64 or Windows x86-64. Linux wheel candidates use manylinux 2.28 and require glibc 2.28 or newer. See the [package guide](README.md). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+- Render formulas with the ordinary SVG wheel; no custom math-enabled build is needed. Image encoders and system font discovery remain outside this product.
+- Apply 11 alpha theme presets or share your own editable JSON recipe. `theme_catalog_json()` lists presets and their intended diagram families; theme authoring operations export recipes and query styling support for your diagram and output. See the [theme guide and gallery](../../../docs/rendering/custom-diagram-themes.md) and [Python example](examples/theme_authoring.py). [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
 ### Breaking changes
 
-- Regenerate the direct UniFFI bindings and native library together for typed-theme authoring and diagnostics. UniFFI API `7` is unchanged; that number does not make wrappers from different releases interchangeable.
-- Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
-- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
-- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes`; SVG-element and native SVG-backend overrides are rejected for this operation. The output remains schema `1`.
-- Constrained resource policy rejects formulas even in the new math-capable wheel. Handle the rejection or choose an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits.
+- Upgrade the Python wrapper and native library together; regenerate both for custom builds. Replace `presentation_catalog_json()` with `theme_catalog_json()`.
+- Custom text measurers must handle `html-line-height` (operation `22`) with a length result or leave it unhandled for fallback measurement. Text-measurement protocol `1` is unchanged; see the [callback contract](../../../docs/bindings/HOST_TEXT_MEASUREMENT.md#text-measurement-protocol-summary). [#249](https://github.com/Latias94/merman/pull/249)
+- Update saved Options JSON from schema `2` to `3`: replace `presentation` styling inputs with top-level `theme: {preset: ...}` or `theme: {spec: ...}`, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile and host-owned CSS/security fields are rejected.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes` and remove SVG-element/backend overrides. The geometry payload remains schema `1`. See the [migration guide](../../../docs/migrations/edge-geometry-resources.md).
+- Formulas are rejected under `constrained` even when math is installed. Handle that rejection, or select `interactive` or an appropriate trusted policy for permitted workloads with host execution and memory limits.
 
 ## [0.9.3] - 2026-10-30
 

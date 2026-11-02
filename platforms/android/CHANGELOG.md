@@ -6,18 +6,21 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+For users upgrading from the published `0.9.2` package, this release also includes the [source-only `0.9.3` fixes below](#093---2026-10-30).
+
 ### Breaking changes
 
-- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Kotlin helpers and replace presentation discovery with `themeCatalogJson()`.
-- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes`; SVG-element and native SVG-backend overrides are rejected for this operation. The output remains schema `1`.
-- Constrained resource policy rejects formulas even in the new math-capable product. Handle the rejection or choose an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits.
+- Upgrade the AAR as a unit; custom builds must regenerate matching Kotlin helpers and native libraries. Replace `presentationCatalogJson()` with `themeCatalogJson()`.
+- Custom text measurers must handle `html-line-height` (operation `22`) with a length result or leave it unhandled for fallback measurement. Text-measurement protocol `1` is unchanged; see the [callback contract](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#text-measurement-protocol-summary). [#249](https://github.com/Latias94/merman/pull/249)
+- Update saved Options JSON from schema `2` to `3`: replace `presentation` styling inputs with top-level `theme: {preset: ...}` or `theme: {spec: ...}`, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile and host-owned CSS/security fields are rejected.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes` and remove SVG-element/backend overrides. The geometry payload remains schema `1`. See the [migration guide](../../docs/migrations/edge-geometry-resources.md).
+- Formulas are rejected under `constrained` even when math is installed. Handle that rejection, or select `interactive` or an appropriate trusted policy for permitted workloads with host execution and memory limits.
 
 ### Added
 
-- Include math in the ordinary SVG product. Retain the full selected-version Maven repository, qualify it from an external coordinate consumer with 16 KB native/APK checks, and prepare a signed standard Central upload bundle under an explicitly verified namespace. Preparing the bundle does not publish to Central.
-
-- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
-- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+- Resolve the AAR and its dependencies from a complete, selected-version Maven repository archive. A signed Central upload bundle is prepared separately; this does not establish an available Maven Central release. See the [Maven installation guide](README.md#resolve-a-candidate-maven-publication). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+- Render formulas with the ordinary SVG product; no custom math-enabled build is needed. Image encoders and system font discovery remain outside this product.
+- Apply 11 alpha theme presets or share your own editable JSON recipe. `themeCatalogJson()` lists presets and their intended diagram families; theme authoring operations export recipes and query styling support for your diagram and output. See the [theme guide and gallery](../../docs/rendering/custom-diagram-themes.md) for examples and alpha limitations. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
 ## [0.9.3] - 2026-10-30
 

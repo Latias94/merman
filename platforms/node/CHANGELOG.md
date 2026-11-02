@@ -4,18 +4,20 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [Unreleased]
 
+For users upgrading from the published `0.9.2` package group, this release also includes the [source-only `0.9.3` fixes below](#093---2026-10-30).
+
 ### Breaking changes
 
-- Advance binding Options JSON from schema `2` to `3` for both native and Node-WASM consumers. Move styling from `presentation.theme` to the closed top-level `theme` preset-or-spec group and replace `presentation-catalog` discovery with `theme-catalog`. Removed presentation-profile and host-owned CSS/security fields are rejected.
-- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes`; SVG-element and native SVG-backend overrides are rejected for this operation. The output remains schema `1`.
-- Constrained resource policy rejects formulas in both math-capable transports. Handle the rejection or choose an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits.
+- Upgrade the loader and selected native or WASM transport packages together. Replace `metadataJson("presentation-catalog")` with `metadataJson("theme-catalog")`.
+- Update saved Options JSON from schema `2` to `3` in both transports: replace `presentation` styling inputs with top-level `theme: {preset: ...}` or `theme: {spec: ...}`, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile and host-owned CSS/security fields are rejected.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes` and remove SVG-element/backend overrides. The geometry payload remains schema `1`. See the [migration guide](../../docs/migrations/edge-geometry-resources.md).
+- Formulas are rejected under `constrained` in both transports even when math is installed. Handle that rejection, or select `interactive` or an appropriate trusted policy for permitted workloads with host execution and memory limits.
 
 ### Added
 
-- Include math in both native and explicit Node-WASM SVG products. Add GNU and musl Linux ARM64 optional packages, bringing the lockstep group to nine packages; root-only installation selects one exact-version native target. The native glibc floor is 2.31.
-
-- Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
-- Added artifact-aware discovery for the alpha preset inventory, including Brutalist, Spotless, Cyberpunk and Ghibli. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
+- Install `@mermanjs/node` on GNU or musl Linux ARM64 as well as the existing native targets. Installing the root package selects the matching exact-version optional dependency. Native GNU Linux builds require glibc 2.31 or newer. See the [package guide](README.md). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+- Render formulas with both native `@mermanjs/node` and explicit `@mermanjs/node-wasm` SVG products; no custom math-enabled build is needed.
+- Apply 11 alpha theme presets or share your own editable JSON recipe. `metadataJson("theme-catalog")` lists presets and their intended diagram families; theme authoring operations export recipes and query styling support for your diagram and output. See the [theme guide and gallery](../../docs/rendering/custom-diagram-themes.md) for examples and alpha limitations. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
 ## [0.9.3] - 2026-10-30
 
