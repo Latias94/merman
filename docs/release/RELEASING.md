@@ -290,10 +290,9 @@ The public browser packages are `@mermanjs/web`, `@mermanjs/web-analysis`,
 `@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. Configure npm Trusted
 Publishing for every package in that lockstep group with workflow file `release-web.yml` and GitHub
 environment `npm`. Trusted publishes automatically include npm provenance; the workflow does not
-need `--provenance`. For any package name that does not yet exist, first run the workflow without
-publication, publish only the verified missing tarball directly under the requested final tag with a
-maintainer's 2FA-protected credential, configure its trusted publisher, and rerun the workflow with
-publication enabled. Do not add the bootstrap credential to GitHub Actions.
+need `--provenance`. A new package name needs a maintainer's 2FA-protected first publication
+before its trusted publisher can be configured. Use the frozen-group procedure below; a new
+workflow run can rebuild different native bytes. Do not add the bootstrap credential to GitHub Actions.
 
 The independent syntax package is `@mermanjs/tree-sitter-mermaid`, owned by
 `release-tree-sitter-mermaid.yml`. Its first `0.1.0` npm publication used a verified workflow
@@ -327,6 +326,25 @@ in that workflow run; if the original artifact must be recovered in a new run, p
 prior run identity before downloading the single unexpired package-group artifact. Do not rebuild
 the group and assume npm bytes will match, and do not add a persistent npm token to the repository
 workflow.
+
+Before starting a Web or Node publication that includes new package names, choose one procedure:
+
+1. Prefer one `publish_to_npm=true` run with an **actually configured environment approval**
+   holding its publication job. After the build completes, verify that run's package-group
+   artifact, bootstrap only the new names from its exact tarballs under the requested final
+   tag, configure their trusted publishers, then approve that original waiting job. It can
+   reconcile the matching manual publications and publish the remaining members. An environment
+   without an approval rule does not hold the job; confirm the rule before dispatching this route.
+2. If using a nonpublishing candidate without that hold, manually publish and reconcile the
+   **complete original group** in manifest order under the requested final tag. Preserve its
+   artifact and record the lack of npm provenance for manually accepted versions. Configure
+   trusted publishers for later versions. Do not bootstrap only a subset and start a new build
+   to complete that same version.
+
+Neither procedure uses report-less cross-run recovery to authorize new uploads. A build-only
+candidate has no publishing history report; the recovery owner deliberately observes registry
+state without publishing missing members in that case. For subsequent ordinary releases, use
+the existing same-run OIDC owner and verify its registry provenance independently.
 
 For an npm-only alpha test, `release-node.yml` treats `release_tag` as the package version label and
 `source_ref` as the build source. The source may be a reviewed full commit SHA newer than the
@@ -652,9 +670,10 @@ Actions use reviewed full version tags; source identity uses the commit and tree
 is used for downloaded release tools, staged release artifacts, and immutable registry reconciliation
 (crates.io, npm, and PyPI). Ordinary unit tests and in-workspace builds do not calculate or compare
 extra hashes. pub.dev uses a member-level content comparison because Dart rewrites tar metadata.
-Python and Android GitHub Release uploads fail closed on an existing asset name. Apple and
-Flutter's native-asset owner compare existing assets with the original run artifact and upload
-only missing items; differing bytes fail closed and no asset is overwritten. Tree-sitter native
+Python, Android, Apple and Flutter's native-asset owners compare existing assets with the
+original run artifact and upload only missing items; differing bytes fail closed and no asset
+is overwritten. Python verifies the complete public wheel set before its PyPI job can run.
+Tree-sitter native
 prebuild recovery stays within the same workflow run.
 
 The formal Release's final Linux CLI archive must also pass
@@ -888,9 +907,10 @@ Apple, Android, and Python attach their additional assets to that existing relea
 alone do not establish delivery. Flutter's native assets use its separate Flutter-tagged Release.
 
 Asset uploads are intentionally non-destructive: never use `--clobber`, delete an accepted asset,
-or replace its bytes. Python and Android reject existing asset names. Apple and Flutter's
-native-asset owner support byte-verified recovery from the original run artifact; mismatches stop
-the upload. Inspect the original run and existing release before recovering.
+or replace its bytes. Python, Android, Apple and Flutter's native-asset owners support
+byte-verified recovery from the original run artifact; mismatches stop the upload. Rerun only
+the original run's failed upload/publication jobs and preserve its successful builders.
+Inspect the original run and existing release before recovering.
 
 After the primary release exists, dispatch the selected manual platform owners. Run only the
 commands for channels selected in the release scope; this list is a command reference:

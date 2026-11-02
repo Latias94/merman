@@ -178,7 +178,9 @@ catalog entry independently of rendering support. `family_designs` describes cur
 `dedicated` is a family-specific design, `base_only` is the shared base appearance (including
 necessary family adaptations), and missing or unknown treatments are unreviewed. None of these
 states certifies readable output or portability; those depend on the actual scene and target.
-Use `diagramFamilyCapabilities()` to map a detected `diagram_type` to its `family_id`.
+Use `diagramFamilyCapabilities()` to map the detected `syntaxId` to its `family_id`.
+Its `diagram_type` field uses parser syntax IDs; the detection's `diagramType` is a separate
+normalized metadata ID, which differs for families such as Git Graph and Quadrant Chart.
 
 ```ts
 import {
@@ -190,8 +192,9 @@ const source = "flowchart LR\nA[Start] --> B[Done]";
 const selectedId = "brutalist";
 const catalog = themeCatalog();
 const detected = detectDiagramFacts(source);
-const familyId = diagramFamilyCapabilities()
-  .find((family) => family.diagram_type === detected.diagramType)?.family_id;
+const familyId = detected.status === "available"
+  ? diagramFamilyCapabilities().find((family) => family.diagram_type === detected.syntaxId)?.family_id
+  : undefined;
 const selected = catalog.presets.find((preset) => preset.id === selectedId);
 if (!selected) throw new Error(`Unknown saved preset: ${selectedId}`);
 if (!selected.available) throw new Error(selected.availability_reason_ids.join(", "));

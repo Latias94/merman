@@ -1130,7 +1130,7 @@ jobs:
                 self.assertIn("gh release upload", text)
                 if path.name == "release-python.yml":
                     self.assertNotIn("gh release download", text)
-                    self.assertNotIn("cmp ", text)
+                    self.assertIn('cmp "$asset" "$existing_dir/$name"', text)
 
     def test_apple_publication_serializes_the_tag_and_checks_ios_consumers(self) -> None:
         owner = read(WORKFLOW_ROOT / "release-apple.yml")
@@ -1318,6 +1318,154 @@ jobs:
                 else:
                     self.assertNotEqual(result.returncode, 0)
                     self.assertFalse(summary.exists())
+
+    @unittest.skipUnless(BASH and shutil.which("jq"), "requires Bash and jq")
+    def test_python_upload_recovers_only_matching_original_public_wheels(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "release-python.yml")
+        owner = workflow_job(workflow, "github-release")
+        self.assertIn("Upload Python wheels to GitHub Release", owner)
+        self.assertNotIn("Create GitHub Release", owner)
+        step = owner.split("        id: upload-release-assets\n", 1)[1]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        self.assertIn("curl --disable --fail --location", command)
+        self.assertIn("--proto '=https' --proto-redir '=https'", command)
+        self.assertNotIn("Authorization:", command)
+        stubs = """
+        gh() {
+          if [ "$1" = 'api' ]; then
+            case "$2" in
+              "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG") return 0 ;;
+              "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG") printf '%s\\n' "$TEST_TAG_SHA" ;;
+              "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")
+                [ "$TEST_NO_RELEASE" = '0' ] || return 22
+                cat "$TEST_RELEASE_JSON" ;;
+              *) return 1 ;;
+            esac
+          elif [ "$1 $2" = 'release upload' ]; then
+            [ "$#" -gt 3 ] || return 1
+            shift 3
+            for file in "$@"; do
+              local name="${file##*/}"
+              test ! -e "$TEST_PUBLIC/$name" || return 1
+              cp "$file" "$TEST_PUBLIC/$name"
+              printf '%s\\n' "$name" >> "$TEST_UPLOAD_LOG"
+              if [ "$TEST_FAIL_UPLOAD" = '1' ]; then return 1; fi
+            done
+          else
+            return 1
+          fi
+        }
+        curl() {
+          [ "$1" = '--disable' ] || return 1
+          local destination='' name=''
+          while [ "$#" -gt 0 ]; do
+            case "$1" in
+              --disable|--fail|--location|--silent|--show-error) shift ;;
+              --proto|--proto-redir) [ "$2" = '=https' ] || return 1; shift 2 ;;
+              --connect-timeout|--max-time) shift 2 ;;
+              --output) destination="$2"; shift 2 ;;
+              "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/"*) name="${1##*/}"; shift ;;
+              *) return 1 ;;
+            esac
+          done
+          printf '%s\\n' "$name" >> "$TEST_DOWNLOAD_LOG"
+          [ "$name" != "$TEST_BLOCK_PUBLIC" ] || return 22
+          if [ "$name" = "$TEST_CHANGE_PUBLIC" ]; then
+            printf 'different public bytes' > "$destination"
+          else
+            cp "$TEST_PUBLIC/$name" "$destination"
+          fi
+        }
+        """
+        files = {
+            "merman-0.9.3-py3-none-macosx_11_0_arm64.whl": b"qualified macOS wheel",
+            "merman-0.9.3-py3-none-manylinux_2_28_x86_64.whl": b"qualified Linux wheel",
+            "merman-0.9.3-py3-none-win_amd64.whl": b"qualified Windows wheel",
+        }
+        names = sorted(files)
+        scenarios = (
+            "empty", "complete", "partial-upload", "late-conflict", "draft", "missing-release",
+            "moved-tag", "existing-public-404", "public-404", "public-changed",
+            *(f"different:{name}" for name in names),
+        )
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                producer = root / "wheels"
+                producer.mkdir()
+                public = root / "public"
+                public.mkdir()
+                for name, payload in files.items():
+                    (producer / name).write_bytes(payload)
+                    if scenario == "complete" or scenario.startswith("different:"):
+                        (public / name).write_bytes(payload)
+                if scenario.startswith("different:"):
+                    (public / scenario.split(":", 1)[1]).write_bytes(b"unrelated build")
+                elif scenario == "late-conflict":
+                    (public / names[-1]).write_bytes(b"unrelated build")
+                elif scenario == "existing-public-404":
+                    (public / names[-1]).write_bytes(files[names[-1]])
+                original_public = {path.name: path.read_bytes() for path in public.iterdir()}
+                log = root / "uploads.txt"
+                downloads = root / "downloads.txt"
+                metadata = root / "release.json"
+                environment = dict(
+                    os.environ,
+                    SOURCE_SHA="a" * 40,
+                    RELEASE_TAG="v0.9.3",
+                    GITHUB_REPOSITORY="Latias94/merman",
+                    GH_REPO="Latias94/merman",
+                    RUNNER_TEMP=str(root),
+                    TEST_TAG_SHA=("b" if scenario == "moved-tag" else "a") * 40,
+                    TEST_PUBLIC=str(public),
+                    TEST_RELEASE_JSON=str(metadata),
+                    TEST_NO_RELEASE="1" if scenario == "missing-release" else "0",
+                    TEST_UPLOAD_LOG=str(log),
+                    TEST_DOWNLOAD_LOG=str(downloads),
+                    TEST_FAIL_UPLOAD="1" if scenario == "partial-upload" else "0",
+                    TEST_BLOCK_PUBLIC=names[-1] if scenario in {"public-404", "existing-public-404"} else "",
+                    TEST_CHANGE_PUBLIC=names[-1] if scenario == "public-changed" else "",
+                )
+
+                def execute() -> subprocess.CompletedProcess[str]:
+                    metadata.write_text(json.dumps({
+                        "draft": scenario == "draft",
+                        "assets": [{"name": path.name} for path in public.iterdir()],
+                    }), encoding="utf-8")
+                    return subprocess.run(
+                        [BASH, "-c", textwrap.dedent(stubs) + command],
+                        cwd=root, env=environment, capture_output=True, text=True, check=False,
+                        timeout=15,
+                    )
+
+                result = execute()
+                if scenario == "partial-upload":
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(log.read_text().splitlines(), names[:1])
+                    self.assertEqual([path.name for path in public.iterdir()], names[:1])
+                    self.assertFalse(downloads.exists())
+                    environment["TEST_FAIL_UPLOAD"] = "0"
+                    result = execute()
+                uploaded = log.read_text().splitlines() if log.exists() else []
+                observed = downloads.read_text().splitlines() if downloads.exists() else []
+                for name, payload in files.items():
+                    self.assertEqual((producer / name).read_bytes(), payload)
+                if scenario in {"empty", "complete", "partial-upload"}:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(uploaded, [] if scenario == "complete" else names)
+                    self.assertEqual(
+                        observed,
+                        names * 2 if scenario == "complete" else names[:1] + names if scenario == "partial-upload" else names,
+                    )
+                    self.assertEqual({path.name: path.read_bytes() for path in public.iterdir()}, files)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    if scenario in {"public-404", "public-changed"}:
+                        self.assertEqual(uploaded, names)
+                        self.assertEqual(observed, names)
+                    else:
+                        self.assertEqual(uploaded, [])
+                        self.assertEqual({path.name: path.read_bytes() for path in public.iterdir()}, original_public)
 
     def test_pypi_skip_existing_is_guarded_by_checksum_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-python.yml")

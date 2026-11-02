@@ -6,55 +6,28 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-Development changes beyond the [0.9.3 maintenance release](#093---2026-10-30).
-
-### Binding installation and delivery
-
-Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) to distinguish current
-public packages from these unreleased main-line products:
-
-- Android, Python, Flutter and both Node transports include math in their ordinary SVG
-  products. Web full/render retain complete SVG including math; analysis, editor and ASCII
-  stay separate. Image encoders, host font services and resource policies remain explicit.
-- SwiftPM gains a complete remote-package delivery tree alongside the self-contained local
-  package. Android retains a selected-version Maven repository and a signed Central upload
-  bundle. Public repository and registry rollout remain separate release steps.
-- Python wheel candidates cover macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows
-  x86-64, with Linux build, repair and installation at manylinux 2.28.
-- Flutter's thin facade downloads and verifies only its selected native target during the
-  build. Local assets, mirrors and offline cached builds have explicit hook options.
-  Flutter apps use the qualified `3.47.7+` SDK/dependency baseline; native Dart remains `3.10+`.
-- Node adds GNU and musl Linux ARM64 optional packages. Installing the root package selects
-  one exact-version native package; Node-WASM remains an explicit alternative.
+Changes since the [0.9.3 maintenance release](#093---2026-10-30); see [upgrade actions](#breaking-changes-and-upgrade-actions) before migrating. The APIs and examples below require matching main-line builds; the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) lists each channel's published version.
 
 ### Diagram themes (alpha)
 
-Apply reusable visual designs through Rust, Web, native CLI, or the Playground. The current catalog includes 11 presets: Editor Light/Dark, One Dark, Gruvbox Light/Dark, Ayu Light/Dark, Brutalist, Spotless, Cyberpunk, and Ghibli. Export a preset as editable JSON to customize its tokens, typography, canvas, and supported family rules, then share the same recipe across integrations. Use a matching development runtime; this section does not announce package publication.
-
-Brutalist, Spotless, Cyberpunk, and Ghibli draw their visual design references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid). Thanks to the Modern Mermaid Team for those designs. Merman adapts selected visual mechanisms into typed recipes with its own rendering and family coverage; the [gallery's design references](docs/rendering/theme-gallery/README.md#design-references-and-license) record the pinned source and retained MIT notice.
-
-These are real Merman native PNG exports, with native font measurement sharing the painting font context to size labels. The [six-theme gallery](docs/rendering/theme-gallery/README.md) includes every source, configuration, and reproduction command.
+Apply reusable colors, typography, canvas backgrounds and supported effects through Rust, Web, native bindings, CLI or the Playground. Choose from 11 presets, including Brutalist, Ghibli, Spotless, Cyberpunk and editor-style light/dark palettes, or export a preset as editable JSON and share your customized recipe across integrations. Mermaid's built-in base theme and Merman styling are separate inputs that can be combined. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#253](https://github.com/Latias94/merman/pull/253)
 
 | Brutalist · Flowchart | Ghibli · Pie |
 | --- | --- |
 | ![Brutalist Flowchart with bold outlines, accent colors and hard shadows](docs/rendering/theme-gallery/brutalist.png) | ![Ghibli Pie with warm paper, muted slices and distinct text sizes](docs/rendering/theme-gallery/ghibli.png) |
-| **Spotless · Sequence** | **Cyberpunk · Flowchart** |
-| ![Spotless Sequence with a paper grid, ink outlines and bold participants](docs/rendering/theme-gallery/spotless.png) | ![Cyberpunk Flowchart with cyan glow over a dark grid](docs/rendering/theme-gallery/cyberpunk.png) |
-| **One Dark · Class** | **Gruvbox Light · XY Chart** |
-| ![One Dark Class diagram with dark surfaces and a blue relationship](docs/rendering/theme-gallery/one-dark.png) | ![Gruvbox Light XY Chart with a cream canvas, teal bars and an olive line](docs/rendering/theme-gallery/gruvbox-light.png) |
 
-Brutalist, Spotless, and Ghibli have dedicated designs for the families shown; Cyberpunk, One Dark, and Gruvbox Light have base-style catalog scope. Brutalist shadows and Cyberpunk node glow need supported Classic Flowchart shapes; these examples explicitly use [Classic/Dagre configuration](docs/rendering/theme-gallery/brutalist.config.json). All presets remain alpha. Fonts resolve on the host, and the One Dark/Gruvbox examples retain an unverified compatibility diagnostic; successful best-effort output is not a portable-output guarantee.
+These are native PNG exports. The [six-theme gallery](docs/rendering/theme-gallery/README.md) includes sources, settings and reproduction commands for Flowchart, Pie, Sequence, Class and XY Chart. Brutalist, Spotless, Cyberpunk and Ghibli adapt visual designs from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid); thanks to the Modern Mermaid Team. The gallery retains the design references and MIT notice.
 
-#### Try a preset
+In the Playground, the theme picker shows the current diagram's design scope and settings guidance. Preview Merman styling, the Mermaid base theme, fonts and suggested settings together before **Apply**; **Cancel** discards those appearance drafts. Import/export shares a standalone recipe, while a workspace link includes the applied source and settings. [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
-Native CLI:
+Try the gallery scenes with a matching CLI, from the repository root:
 
 ```text
 merman-cli render docs/rendering/theme-gallery/ghibli.mmd --theme-preset ghibli -o ghibli.svg
 merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-preset brutalist --config-file docs/rendering/theme-gallery/brutalist.config.json -o brutalist.svg
 ```
 
-Web, using a matching SVG-capable `@mermanjs/web` artifact:
+In an SVG-capable Web build:
 
 ```ts
 import { initMerman, renderSvgResult } from "@mermanjs/web";
@@ -70,60 +43,61 @@ const { svg, metadata } = renderSvgResult(source, {
 });
 ```
 
-Rust, with the `svg` feature enabled:
+For Mermaid's built-in dark theme, use `site_config: { theme: "dark" }`. For Rust, run the maintained example with `cargo run --locked -p merman --features svg --example theme_preset > themed.svg`. The [theme guide](docs/rendering/custom-diagram-themes.md) covers customization and how source/configuration overrides interact with a recipe.
 
-```rust
-use merman::svg::{DiagramThemeCompiler, ThemePreset};
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+Presets and JSON authoring remain alpha. The installed catalog distinguishes dedicated designs, shared base styling and unreviewed families; actual support depends on your diagram and output. Brutalist's hard shadows require supported Classic Flowchart shapes, as selected explicitly by the example configuration. Fonts resolve on the host. CLI warns about partial application; use `--theme-file theme.json` for your own recipe, `--theme-report report.json` for render details, or `--theme-portability require-portable` to reject output that cannot meet the strict policy.
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pie title Market Share\n  \"Company A\": 35\n  \"Others\": 65";
-    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::Ghibli)?;
-    let output = Renderer::new().render(
-        RenderRequest::svg(source, OperationControl::new(), SvgRequest::default())
-            .with_theme(theme),
-    )?;
-    let RenderOutput::Svg(Some(svg)) = output else {
-        return Err("no Mermaid diagram detected".into());
-    };
-    print!("{}", svg.svg());
-    Ok(())
+### Reuse parsed diagrams
+
+Parse once and produce multiple outputs with Rust `Renderer::prepare_source` / `render_prepared` or Web `prepareSource`. A snapshot retains source, configuration and theme; each output receives fresh cancellation and resource checks. For example, after Web initialization, render SVG and query painted edge geometry from the same parsed source: [#224](https://github.com/Latias94/merman/pull/224)
+
+```ts
+import { prepareSource } from "@mermanjs/web";
+
+const prepared = prepareSource("flowchart LR\nA[Start] --> B[Done]");
+try {
+  const svg = prepared.renderSvg();
+  const edges = prepared.edgeGeometryJson();
+} finally {
+  prepared.dispose();
 }
 ```
 
-For a maintained runnable Rust example, use `cargo run --locked -p merman --features svg --example theme_preset > themed.svg`. The [theme guide](docs/rendering/custom-diagram-themes.md) explains Mermaid base themes versus Merman styling, source/configuration precedence, editable recipes, and actual-render diagnostics.
+For an interactive page, Web `mountDiagram` manages redraws, resizing and cleanup while retaining the last successful diagram if an update fails. Select browser text measurement when layout must match the page's fonts, and opt into `layout.adaptation: "fit-width"` for responsive Kanban columns. See the [Web lifecycle examples](platforms/web/README.md#maintain-a-mounted-diagram) and [Rust migration](docs/migrations/render-reuse-host-integration.md).
 
-#### Integration and migration
+### Binding installation and delivery
 
-- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract. [#178](https://github.com/Latias94/merman/pull/178)
-- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct. Catalog colors and family guidance describe design intent; qualification applies only to recorded artifact/family/output combinations. Ghibli adds typed Pie title, percentage, and legend styling. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#253](https://github.com/Latias94/merman/pull/253)
-- Playground theme choices share one preview/Apply/Cancel model for Merman styling, Mermaid base theme, fonts, and suggested configuration. New workspaces inherit theme/source fonts; historical share links preserve their original defaults. Import/export and workspace links share reusable recipes, and failed imports can recover the last validated selection. Source/configuration declarations and current-family guidance explain overrides without changing authored content. [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
-- Native CLI selects built-in recipes with `--theme-preset` and reusable JSON with `--theme-file`; `capabilities` reports artifact-aware preset scope. `render` and `batch` report partial theme application on stderr, support separate ordered rendering evidence through `--theme-report PATH`, and offer strict renderer policy through `--theme-portability require-portable`. Reports describe rendering before image publication. Theme CSS and host security controls remain capability-gated. [#178](https://github.com/Latias94/merman/pull/178), [#253](https://github.com/Latias94/merman/pull/253)
-- **Binding migration:** Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `8`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline. [#178](https://github.com/Latias94/merman/pull/178), [#241](https://github.com/Latias94/merman/pull/241)
+Ordinary Apple, Android, Python, Flutter, native Node and Node-WASM SVG products now include math. Output codecs and host font services remain separate capabilities. The [host installation guide](docs/release/PREBUILT_PRODUCTS.md) explains supported targets and the publication steps still needed for each channel. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+
+| Host | Installation change |
+| --- | --- |
+| Swift / Apple | A complete local SwiftPM ZIP includes the facade, resources and XCFramework. A thin remote package tree references the matching binary by URL and checksum; URL-based installation awaits a hosted delivery repository and tag. |
+| Android | Release candidates include the selected-version Maven repository and a signed Central upload bundle. Central publication remains a separate step. |
+| Python | Prebuilt wheel candidates cover macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64. The Linux baseline is manylinux 2.28; supported wheel installs need no Rust compiler. |
+| Flutter / native Dart | A thin Dart package downloads and verifies only the selected native target during the build. Local assets, mirrors and offline builds have explicit options. Flutter apps require `3.47.7+`; native Dart retains `3.10+`. |
+| Node | Native optional packages add GNU and musl Linux ARM64. Root-package installation selects the matching native package; Node-WASM remains an explicit alternative. |
+| Browser / Worker | All five Web packages export a matching `./wasm` asset for bundler or self-hosted loading. Full/render retain their existing math support. |
+
+### Lighter Rust embedding
+
+Use `merman-model` for typed diagram data without source parsers, and select ASCII, rendering or SVG export independently. Applications processing Mermaid source retain the `merman` facade or `merman-core`; semantic-only analysis can omit presentation and fix generation. Direct model consumers receive typed validation errors for malformed containment or invalid geometry. See the [package selection guide](docs/migrations/model-source-boundaries.md#choose-the-packages-your-application-consumes). [#241](https://github.com/Latias94/merman/pull/241), [#258](https://github.com/Latias94/merman/pull/258), [#259](https://github.com/Latias94/merman/pull/259)
 
 ### Other changes
 
-- Init directives match Mermaid 12.2.0's single/multiple handling. A single legacy `config` uses the detected type key, with Mermaid's `flowchart-v2` exception; unsupported keys such as `classDiagram`, `stateDiagram`, `xychart`, and `flowchart-elk` are filtered out. Multiple init directives sanitize legacy `config` away before merging. Use explicit configuration namespaces or frontmatter for consistent overrides.
-- WASI SDK archives use the existing `docs/WASI_ABI.md` protocol guide and hash-bound runtime catalog instead of packaging the handwritten `contracts/abi/merman-wasi-v1.json` mirror. WASI ABI 1 and runtime behavior are unchanged.
-- With `native-fonts`, `RenderEvidence::native_font_diagnostics()` exposes an immutable `NativeFontDiagnostics` snapshot through `identity()` and `selected_faces()`. CLI measurement diagnostics now describe the executing render's selected fonts, and native binary exports continue to inherit the document's font context.
-- On the development line, `merman-export` codec features no longer implicitly enable host font discovery. Select `system-fonts` explicitly or provide a `NativeFontContext::from_font_bytes(...)` context; `bundled-fonts` supplies an optional, licensed Cousine fallback. SVG uses these fonts for measurement but does not embed them. The maintenance line retains its published native codec feature semantics.
-- Compiled host presets retain Gantt task states and readable label colors; empty or typography-only ZenUML themes preserve independently authored border colors. [#234](https://github.com/Latias94/merman/pull/234)
-- Under compiled host styling, explicit diagram-source Mermaid themes preserve their derived palettes. Site and recipe theme selections remain fallback palettes, while explicit site/source color variables retain property-specific precedence. ER and Requirement custom paints override fallback Redux palettes, and ER subgraph labels consume typed text colors. Independent typography, effects and canvas decoration remain applicable. [#234](https://github.com/Latias94/merman/pull/234)
-- Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes. PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero. PNG/JPEG/PDF continue best-effort output for known backend shadow and CSS limitations, recording diagnostics in export reports and CLI warnings; explicit portable-output requirements remain strict. [#178](https://github.com/Latias94/merman/pull/178), [#203](https://github.com/Latias94/merman/pull/203)
-- Rust binding engines can share an explicit operation-local font context across measurement and native painting with the opt-in `native-fonts` feature. CLI exports report unresolved fonts and missing glyphs. The [font fitting evidence](docs/assets/issue-199-font-bounds/README.md) explains the deterministic and native measurement choices. [#178](https://github.com/Latias94/merman/pull/178), [issue #199](https://github.com/Latias94/merman/issues/199)
-- Family-owned Mermaid configuration now reaches C4 text, boundaries and relationships; ZenUML colors and typography; Wardley anchors and dividers; Gantt axes; XY Chart styles and font measurement; and Mindmap icon-label backgrounds. Site and source overrides retain their precedence. Compiled theme paint and text rules keep their independent owners; the retired presentation API is not restored. [#178](https://github.com/Latias94/merman/pull/178), [issue #197](https://github.com/Latias94/merman/issues/197), [issue #198](https://github.com/Latias94/merman/issues/198), and [issue #199](https://github.com/Latias94/merman/issues/199).
-- Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`, center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions, including HandDrawn circle paths with resource checks before generation; ELK terminal straightening preserves label clearance. Swimlane nodes retain source order, title bands avoid boundary rails, terminal routes remain separated, and cluster IDs include the diagram ID. [#178](https://github.com/Latias94/merman/pull/178), [#196](https://github.com/Latias94/merman/pull/196)
-- Preserve Agentflow's unmerged Dagre self-loop segments and SVG label order. Usecase SVG edge backgrounds participate in layout and label clearance, and classic markers retain their source variant. Swimlane synthetic colors follow nested declaration slots; unchanged pinned routes keep their label anchors inside the root viewport. [#196](https://github.com/Latias94/merman/pull/196)
-- Playground comparison keeps fallback fonts consistent across its rendering panes, including C4 on Windows. [#196](https://github.com/Latias94/merman/pull/196)
-- The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds no syntax family, Cargo feature, FFI version, or editor-facts schema version. [#196](https://github.com/Latias94/merman/pull/196)
+- Target Mermaid 12.2.0. Mindmap adds `mindmap.colorBy: depth` and updated circle/label sizing; Swimlane updates source ordering and title/edge placement; Agentflow self-loops and Usecase labels/markers follow the updated upstream geometry. Review SVG snapshots for these families after upgrading. [#196](https://github.com/Latias94/merman/pull/196)
+- Re-export the Rustdoc attribute through an intermediary crate using `crate_path`, with both `merman` and `__render_doc` re-exported. See the [facade example](crates/merman-rustdoc/README.md#re-exporting-the-attribute-unreleased). [#258](https://github.com/Latias94/merman/pull/258)
+- Install CLI releases in CI through the repository setup Action, or build with the GNU container tooling and Arch source recipe. The [CLI distribution guide](docs/releasing/CLI.md) distinguishes these routes from public container/package registries awaiting rollout. [#195](https://github.com/Latias94/merman/pull/195)
 
-### Lightweight embedding and Rust migration
+### Breaking changes and upgrade actions
 
-- Use `merman-model` to work with typed Mermaid data independently of source parsing. ASCII consumes these models directly; Render and Export can process existing presentation data or SVG without pulling in Mermaid grammars, YAML, or JSON5. Source applications retain `merman-core` and the `merman` facade, with the semantic and full presentation paths introduced in [#241](https://github.com/Latias94/merman/pull/241). Select only the data, parsers, and output handlers your application needs; required validation, security normalization, cancellation, and resource accounting remain in place. See the [package selection guide](docs/migrations/model-source-boundaries.md#choose-the-packages-your-application-consumes).
-- Direct model rendering rejects malformed containment, overflowing integer ranges, and non-finite Treemap layouts with typed errors instead of panicking or producing invalid geometry. Kanban rejects visible cards outside their declared section in the ordered presentation data instead of moving them. Repeated labels and valid repeated section occurrences remain supported.
-- **Breaking Rust API changes:** move family types to `merman_model::families` or `merman::model::families`, use `SourcePresentationConfig` for full source-engine configuration, and pass shared `PresentationDiagram` values to low-level graphical consumers. Canonical parsing uses `SemanticParser`; full source processing uses `MermaidEngine`. Select `editor-facts`, `presentation`, and `compat-json` as needed. Update imports, removed wrappers, callbacks, and render handoffs using the [model/source migration](docs/migrations/model-source-boundaries.md) and [prepared-rendering guide](docs/migrations/render-reuse-host-integration.md).
-- Diagnostic-only Rust builds can omit replacement generation and its YAML writer. Enable `fixes` and request `FixGeneration::Generate` when a projection needs edits; the default is `Omit`, including in a fixes-capable build. The CLI fix command, LSP code actions, and analysis-capable native SDK recipes retain requested fixes, while lint/diagnostic publication avoids generating them. Custom hosts must declare the `fixes` capability. See the [fix-generation migration](docs/migrations/model-source-boundaries.md#request-fixes-explicitly).
-- **Breaking feature behavior:** `complete-svg` and `complete-svg-elk` remain available on `merman` and `merman-rustdoc`, but no longer enable `math`. They select SVG with Cytoscape, and SVG with Cytoscape plus ELK, respectively; diagram families remain independent. Enable `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, to retain mathematical-label rendering. The facade and CLI source defaults and generic Web full/render packages also omit math; official CLI release archives still include it. Source-built CLI users add `--features math`. [#241](https://github.com/Latias94/merman/pull/241)
+- **Themes and binding options:** replace presentation-profile inputs with the top-level `theme` preset-or-spec group in Options JSON schema `3`; use `raster.matte` and `pdf.page_paint` for export backgrounds. In Rust, compile a `DiagramTheme` and attach it with `RenderRequest::with_theme(...)`. Replace presentation-catalog discovery with your binding's theme catalog. Web/WASM transport API advances from `5` to `8`; update wrappers, JavaScript glue and native/WASM artifacts together even where a transport version is unchanged. See the [theme guide](docs/rendering/custom-diagram-themes.md) and [options reference](docs/bindings/OPTIONS_JSON.md). [#178](https://github.com/Latias94/merman/pull/178), [#241](https://github.com/Latias94/merman/pull/241)
+- **Rust imports and render handoffs:** move family types to `merman_model::families` or `merman::model::families`. Use `SemanticParser` for canonical parsing, `MermaidEngine` with `SourcePresentationConfig` for full source processing, and `PresentationDiagram` for low-level graphical consumers. Update removed wrappers and select `editor-facts`, `presentation` and `compat-json` as needed using the [model/source migration](docs/migrations/model-source-boundaries.md) and [prepared-rendering guide](docs/migrations/render-reuse-host-integration.md). [#258](https://github.com/Latias94/merman/pull/258)
+- **Rust math features:** source defaults and `complete-svg` / `complete-svg-elk` on `merman` and `merman-rustdoc` require explicit `math`, for example `features = ["complete-svg-elk", "math"]`. Source-built CLI users add `--features math`. Official CLI archives and Web full/render products include it. [#241](https://github.com/Latias94/merman/pull/241), [#266](https://github.com/Latias94/merman/pull/266)
+- **Rust fix generation:** enable `fixes` and request `FixGeneration::Generate` when your application needs edits; the default is now `Omit`, including in a fixes-capable build. Custom hosts must declare the `fixes` capability. CLI fix and LSP code actions retain requested fixes. See the [fix-generation migration](docs/migrations/model-source-boundaries.md#request-fixes-explicitly). [#258](https://github.com/Latias94/merman/pull/258)
+- **Font discovery in Rust exports:** `merman-export` codec features no longer enable system font discovery implicitly. Select `system-fonts` or supply `NativeFontContext::from_font_bytes(...)`; `bundled-fonts` provides an optional Cousine fallback. SVG viewers still need matching fonts. See the [font guide](docs/bindings/HOST_TEXT_MEASUREMENT.md).
+- **Custom text measurers:** handle the new `html-line-height` operation (`22`) with a `length` result, or leave it unhandled to use fallback measurement. Rust exhaustive matches need an `HtmlLineHeight` arm. Protocol `1` is unchanged; see the [callback contract](docs/bindings/HOST_TEXT_MEASUREMENT.md#text-measurement-protocol-summary). [#249](https://github.com/Latias94/merman/pull/249)
+- **Edge geometry limits:** replace operation-local `max_svg_bytes` with `max_geometry_json_bytes` on `edge-geometry-json`. SVG-element and native SVG-backend overrides are rejected for this operation; the geometry payload remains schema `1`. See the [resource migration](docs/migrations/edge-geometry-resources.md). [#224](https://github.com/Latias94/merman/pull/224)
+- **Constrained formulas:** constrained resource policy rejects formulas even when math is compiled. Handle the rejection or select an appropriate interactive/trusted policy for permitted workloads with host execution and memory limits. The `0.9.x` maintenance behavior is unchanged. See the [SDK policy guidance](distribution/sdk/README.md#native-c-sdk). [#178](https://github.com/Latias94/merman/pull/178)
 
 ### Contributors
 

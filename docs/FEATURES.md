@@ -67,9 +67,10 @@ The current development branch retains `complete-svg = ["svg", "layout-cytoscape
 Neither aggregate selects diagram families or math. This changes their previously math-enabled
 behavior: add `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, when
 upgrading a mathematical-label consumer. Direct output/layout leaves remain available. The facade defaults to
-`all-diagrams + svg + layout-cytoscape + layout-elk`; generic SVG recipes and Web full/render
-packages omit math. Official CLI archives select math explicitly, while CLI source defaults and
-the `rustdoc` leaf omit it. Installed `0.9.3` artifacts retain their published recipes.
+`all-diagrams + svg + layout-cytoscape + layout-elk`, without math. Ordinary prebuilt SVG
+products, including Web full/render and official CLI archives, select math explicitly.
+CLI source defaults and the `rustdoc` leaf omit it; custom source builds choose their own leaves.
+Installed `0.9.3` artifacts retain their published recipes.
 The ELK notices and source provenance still accompany artifacts that include it. To omit ELK,
 disable defaults and select required families plus `svg` and the required layout leaves.
 
@@ -231,16 +232,18 @@ operation or batch and never accumulate user fonts in a process-global cache.
 | One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-elk`; add `math` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
-| C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; source builds use `native-runtime` when native runtime policy is required |
+| C/C++ embedding | Native C SDK (`sdk-native-full`) or `merman-ffi` | Use the matching full SDK archive for a supported target; `c-abi-native` remains the reference/custom source recipe, with `native-runtime` for explicit native runtime policy |
 | Flutter/Dart embedding | `merman` on pub.dev | Use the Flutter package, which consumes ABI 3 internally |
-| Android/Kotlin embedding | `merman-android-<tag>.aar` | Use the direct JNI AAR from the matching GitHub Release; no remote Maven coordinate is published |
-| Apple/Swift embedding | `Merman.xcframework` | Use the UniFFI XCFramework release asset or local SwiftPM package |
+| Android/Kotlin embedding | `merman-android-<tag>.aar` | Use the direct JNI AAR from the matching GitHub Release; main prepares a Maven repository bundle, while public Central rollout remains separate |
+| Apple/Swift embedding | `Merman.xcframework` with matching Swift facade | Main prepares a complete local SwiftPM package; published `0.9.3` uses the legacy matching-checkout route, and public remote SwiftPM hosting remains separate |
 | Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
 Node/SSG users can select the experimental `@mermanjs/node` alpha package. It installs a small
-loader plus one exact-version N-API platform package and uses the deterministic static-SVG recipe:
-SVG and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not
-a supported Node transport or fallback.
+loader plus one exact-version N-API platform package. Main's next-release recipe selects
+deterministic SVG with math and both layout backends, without analysis, ASCII, or binary export;
+published `0.9.2` retains its math-free recipe. `@mermanjs/node-wasm` is an explicit alternative
+with the same SVG scope. Browser WASM is not a supported Node transport or fallback. See the
+[Node guide](../platforms/node/README.md) for host requirements and publication boundaries.
 
 ## Select diagram families
 
@@ -515,8 +518,8 @@ Browser package names are the user-facing selection mechanism:
 
 | Package | Compiled workflow | Status |
 | --- | --- | --- |
-| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape and ELK | Browser SDK; custom source math opt-in |
-| `@mermanjs/web-render` | SVG, Cytoscape and ELK | SVG-only package; custom source math opt-in |
+| `@mermanjs/web` | SVG with math, analysis, editor, ASCII, Cytoscape and ELK | Complete browser SDK |
+| `@mermanjs/web-render` | SVG with math, Cytoscape and ELK | Complete SVG package |
 | `@mermanjs/web-analysis` | Analysis | Slim package |
 | `@mermanjs/web-editor` | Analysis and editor | Slim package |
 | `@mermanjs/web-ascii` | ASCII | Slim package |
@@ -549,21 +552,35 @@ engine = merman.MermanEngine(None, None)
 svg = engine.render_svg("flowchart TD\n  A --> B", None)
 ```
 
-The default Android, Apple, Python, and Flutter native packages include SVG, both supported layout
-engines, ASCII, analysis, validation, and document analysis. They omit math, PNG, JPEG, PDF, and
-native runtime adapters to reduce distributed binary size. Because these are prebuilt ELK artifacts,
-their package-specific notices and source provenance are part of the release contract. Their
-generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
-missing-capability errors before exposing optional output choices.
+Main's Android, Apple, Python, and Flutter native products select
+`all-diagrams,analysis,ascii,fixes,layout-cytoscape,layout-elk,math,svg` in the artifact descriptor.
+They include mathematical SVG, both layout engines, ASCII, analysis, fixes, validation, and document
+analysis. They omit PNG, JPEG, PDF, ambient native runtime adapters, and the C/WASI memory-font
+service. Math availability does not override constrained-policy rejection of opaque math rendering.
+Use an appropriate interactive/trusted policy for admitted formulas and retain host execution and
+memory limits. Their package-specific math and ELK notices and source provenance remain part of
+the artifact contract. Generated APIs keep optional operation names for custom current-contract
+libraries; inspect the runtime catalog and handle typed missing-capability errors before exposing
+optional output choices.
+
+These expanded native recipes are unreleased. Published Android, Python, and Flutter `0.9.2` and
+legacy Apple `0.9.3` remain math-free; published Web full/render `0.9.2` already includes math.
+Current Rust source defaults and convenience aggregates still require explicit `math`. See
+[prebuilt products](release/PREBUILT_PRODUCTS.md) for the per-channel installation boundaries.
 
 Flutter `0.9.2` uses `flutter pub add 'merman:0.9.2'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
-transport API 2 rather than C ABI 3. Apple consumes the matching
-XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
-artifact profile. The [Flutter](../platforms/flutter/README.md),
+transport API 2 rather than C ABI 3. Main also prepares a Maven publication bundle; this does not
+establish public Central availability. Main's Apple delivery prepares a complete local SwiftPM
+package with matching sources, resources, and XCFramework; public remote SwiftPM installation
+awaits a hosted package repository. C and C++ can use the published `0.9.3` native SDK, with
+`sdk-native-full` recommended for SVG, PNG, JPEG, PDF, ASCII, math, both layout backends, and
+caller-owned fonts on supported desktop targets. `c-abi-native` remains the complete source
+reference build, not the downloadable SDK. The [SDK](../distribution/sdk/README.md),
+[Flutter](../platforms/flutter/README.md),
 [Android](../platforms/android/README.md), [Apple](../platforms/apple/README.md), and
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
-and lifecycle rules; there is no interchangeable generic native binary SDK.
+and lifecycle rules; keep each transport's headers, facade, and binaries paired.
 
 Typst is independently versioned. Use the `0.5.0` wrapper with Typst `0.15.0` or later:
 

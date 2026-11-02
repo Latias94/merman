@@ -6,17 +6,21 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+Changes below are relative to the published `0.9.3` package.
+
 ### Added
 
-- Produce a complete thin remote SwiftPM delivery tree with matching Swift sources, resources and a checksum-bound binary target. The self-contained local SwiftPM package remains available. Publishing a delivery repository and its version tag is a separate release step.
+- Install a complete local SwiftPM package containing the matching Swift sources, resources, notices and XCFramework without a Rust checkout. A separate remote-delivery archive prepares the package for URL-based installation; hosting its repository and version tag remains a separate rollout. See the [installation guide](README.md#add-the-complete-swift-package). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+- Render formulas with the ordinary SVG product; no custom math-enabled build is needed. Image encoders and system font discovery remain outside this product.
+- Apply 11 alpha theme presets or share your own editable JSON recipe. `themeCatalogJson()` lists presets and their intended diagram families; theme authoring operations export recipes and query styling support for your diagram and output. See the [theme guide and gallery](../../docs/rendering/custom-diagram-themes.md) for examples and alpha limitations. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
 ### Breaking changes
 
-- Regenerate the direct UniFFI bindings and native library together for the typed-theme authoring and diagnostic changes. Published alpha.7 already exposed API `7` through `bindingApiVersionV7()`; that historical number does not establish compatibility with this development interface. Schema-3 ASCII plans retain requested/effective layouts and Compact-attempt information.
-
-- Replace `presentationCatalogJson()` with `themeCatalogJson()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
-
-- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+- Upgrade the Swift sources and XCFramework together; regenerate both for custom builds. Replace `presentationCatalogJson()` with `themeCatalogJson()`.
+- Custom text measurers must handle `html-line-height` (operation `22`) with a length result or leave it unhandled for fallback measurement. Text-measurement protocol `1` is unchanged; see the [callback contract](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#text-measurement-protocol-summary). [#249](https://github.com/Latias94/merman/pull/249)
+- Update saved Options JSON from schema `2` to `3`: replace `presentation` styling inputs with top-level `theme: {preset: ...}` or `theme: {spec: ...}`, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile and host-owned CSS/security fields are rejected.
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes` and remove SVG-element/backend overrides. The geometry payload remains schema `1`. See the [migration guide](../../docs/migrations/edge-geometry-resources.md).
+- Formulas are rejected under `constrained` even when math is installed. Handle that rejection, or select `interactive` or an appropriate trusted policy for permitted workloads with host execution and memory limits.
 
 ## [0.9.3] - 2026-10-30
 

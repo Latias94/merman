@@ -14,7 +14,7 @@ main's workspace version does not establish a download on every registry.
 
 | Channel | Published version | Installation |
 | --- | --- | --- |
-| Rust | `0.9.3` | `cargo add merman`; [source feature choices](../../crates/merman/README.md) |
+| Rust | `0.9.3` | `cargo add merman`; [source feature choices](../../README.md) |
 | CLI / standalone LSP | `0.9.3` | [Release installers and archives](../../crates/merman-cli/README.md) |
 | Browser / Worker | `0.9.2` | `npm install @mermanjs/web@0.9.2` |
 | Native Node | `0.9.2` | `npm install @mermanjs/node@0.9.2` |

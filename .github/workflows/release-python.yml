@@ -143,7 +143,8 @@ jobs:
           path: wheels
           merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Upload Python wheels to GitHub Release
+        id: upload-release-assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -160,12 +161,32 @@ jobs:
           shopt -s nullglob
           wheels=(wheels/merman-*.whl)
           test "${#wheels[@]}" -gt 0
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${wheels[@]}"
-          else
-            echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading Python wheel assets."
-            exit 1
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/python-release.json"
+          jq -e '.draft == false' "$RUNNER_TEMP/python-release.json" >/dev/null
+          existing_dir="$(mktemp -d)"
+          trap 'rm -rf "$existing_dir"' EXIT
+          missing_assets=()
+          for asset in "${wheels[@]}"; do
+            name="${asset##*/}"
+            if jq -e --arg name "$name" '.assets[] | select(.name == $name)' "$RUNNER_TEMP/python-release.json" >/dev/null; then
+              curl --disable --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+                --connect-timeout 30 --max-time 180 \
+                "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name" --output "$existing_dir/$name"
+              cmp "$asset" "$existing_dir/$name"
+            else
+              missing_assets+=("$asset")
+            fi
+          done
+          if test "${#missing_assets[@]}" -gt 0; then
+            gh release upload "$RELEASE_TAG" "${missing_assets[@]}"
           fi
+          for asset in "${wheels[@]}"; do
+            name="${asset##*/}"
+            curl --disable --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+              --connect-timeout 30 --max-time 180 \
+              "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$name" --output "$existing_dir/$name"
+            cmp "$asset" "$existing_dir/$name"
+          done
 
   publish:
     needs:

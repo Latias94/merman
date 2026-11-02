@@ -56,40 +56,67 @@ Artifact profiles describe compiled components, not every package that redistrib
 ## CLI Font Policy
 
 Default and release CLI binaries compile `native-fonts` and `system-fonts` so native font
-measurement remains available as a runtime choice. Ordinary Mermaid graphical output defaults to
-`deterministic` measurement, with `default_font_source: none` and
-`default_system_discovery: disabled`. Compiled capability and runtime availability fields describe
-what the binary can do; they do not enable system discovery for an ordinary invocation.
+measurement is available. Mermaid SVG defaults to `deterministic` measurement, with
+`default_font_source: none` and `default_system_discovery: disabled`, scoped by
+`default_policy_scope: "mermaid-svg-input"`. Mermaid PNG/JPEG/PDF default to native measurement
+with bounded system discovery before layout, sharing one font context between measurement and
+painting. `encoded_output_defaults` reports that separate policy. These encoded-output defaults
+already shipped in `0.9.3`; they are not a new development-line capability.
 
 Providing `--font-file` or `--font-dir` selects native measurement automatically. Explicit font
 inputs form a closed set unless `--font-system on` is supplied. Without explicit font inputs,
 `--font-measurement native` permits bounded system discovery; `--font-system on` also explicitly
-opts into system fonts. The experimental system-font query backend remains outside the default and
-release feature recipes, and compiling it does not change the deterministic measurement default.
-These defaults apply to Mermaid graphical input; legacy raw SVG exports retain their existing
-per-output environment contracts. CLI contract version 6 and the 22 measurement operations remain
-unchanged.
+opts into system fonts. Use `--font-measurement deterministic` without explicit font sources to
+retain the previous encoded-output estimates and CSS path. Encoded painting may still acquire
+system fonts through its existing export environment. The experimental system-font query backend
+remains outside the default and release feature recipes; ordinary releases use bounded discovery.
+These defaults apply to Mermaid input in `render`, `batch`, and `mmdc`; raw SVG conversion paints
+existing geometry without relayout. CLI capabilities schema 2, CLI contract 6, and text-measurement
+protocol 1 retain their versions; the current measurement contract has 23 operations. See the
+[CLI font guide](../crates/merman-cli/README.md#explicit-fonts).
 
-## Default Native Prebuilt SKU
+## Main-Line Native Products
 
-The Android, Apple, Python, and Flutter artifact profiles select all families and one shared
-default native capability set through these Cargo features:
+The current main-line Android, Apple, Python, and Flutter artifact profiles select all families
+and one shared native capability set through these Cargo features:
 
 ```text
-all-diagrams,analysis,ascii,layout-cytoscape,layout-elk,svg
+all-diagrams,analysis,ascii,fixes,layout-cytoscape,layout-elk,math,svg
 ```
 
-Those prebuilt packages omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime`. Their generated
+Those products omit `png`, `jpeg`, `pdf`, and `native-runtime`; selecting math does not add
+native font services or system discovery. Their generated
 language APIs retain the complete operation vocabulary; the loaded runtime catalog reports the
 actual subset, and an unavailable valid operation returns a typed `missing-capability` error.
-Custom source builds may select any valid direct leaves. The `c-abi-native` profile remains a
-complete host reference build for ABI verification rather than a downloadable default package.
-See [ADR-0079](../docs/adr/0079-default-native-prebuilt-capability-sku.md) for the product decision.
+Constrained policy rejects opaque math rendering even when math is compiled. Select an appropriate
+interactive/trusted policy for admitted formula workloads and retain host execution and memory limits.
+
+These expanded native products are unreleased. Published Android, Python, and Flutter `0.9.2`
+and legacy Apple `0.9.3` retain their math-free recipes. The
+[prebuilt product guide](../docs/release/PREBUILT_PRODUCTS.md) records installed-version and host
+boundaries. [ADR-0100](../docs/adr/0100-prebuilt-product-entry-points.md) and
+[ADR-0101](../docs/adr/0101-binding-product-delivery.md) amend the original
+[ADR-0079](../docs/adr/0079-default-native-prebuilt-capability-sku.md) selection.
+
+Native C/C++ consumers should start with `sdk-native-full`: SVG, PNG, JPEG, PDF, ASCII, math,
+both layout backends, and caller-owned font bytes. Native C and WASI SDKs already have a published
+`0.9.3` release; main's contracts must still be paired with main's headers and libraries. The
+`c-abi-native` profile remains a complete host reference build for ABI verification and custom
+source embedding, rather than the downloadable default SDK. See the
+[SDK guide](../distribution/sdk/README.md) for full/reduced recipes and supported targets.
 
 Other cross-language artifacts are interface-shaped rather than forced into that native SKU.
-Typst publishes SVG, canonical analysis, theme authoring, and both layout backends. The private Node candidates
-compile SVG plus both layout backends only. Browser WASM keeps package-specific full and slim
-profiles because npm package identity is its capability-selection mechanism.
+The current Typst recipe selects SVG, canonical analysis, theme authoring, and both layout backends.
+The experimental Node native and Node-WASM recipes select SVG with math and both layout backends,
+without analysis, ASCII, or binary export; published Node `0.9.2` remains math-free. Browser WASM
+keeps package-specific full and slim profiles because npm package identity is its capability-selection
+mechanism. Web full/render include math, as published `0.9.2` already does; npm users do not select
+Cargo features.
+
+Rust source defaults and the `complete-svg` / `complete-svg-elk` convenience aggregates remain
+math-free on main. Custom source consumers select `math` explicitly and choose diagram families
+separately. CLI source defaults and its `rustdoc` leaf omit math, while the official `cli-release`
+recipe selects it explicitly. Exact product recipes do not change those source defaults.
 
 The verifier does not parse README prose, plan text, or private symbol names. User documentation is reviewed and example-tested where useful, but prose is not a release authority. Generated reference tables may have freshness checks because their source is structured machine data.
 
