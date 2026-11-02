@@ -328,6 +328,17 @@ class PreflightWorkflowTests(unittest.TestCase):
                 self.assertTrue(required <= installed, f"missing targets: {required - installed}")
                 self.assertLess(job.index(setup), job.index("verify-feature-matrix --strict"))
 
+    def test_complete_binding_library_tests_enable_their_diagram_families(self):
+        workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
+        versions = self.job(workflow, "versions-and-packages")
+        command = re.search(
+            r"cargo test --locked -p merman-bindings-core --no-default-features \\\n"
+            r"\s+--features ([^\s]+) --lib",
+            versions,
+        )
+        self.assertIsNotNone(command)
+        self.assertEqual(set(command.group(1).split(",")), {"svg", "all-diagrams"})
+
     def test_issuer_requires_all_owners_and_trusted_tooling(self):
         workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
         issuer = self.job(workflow, "release-preflight-evidence")

@@ -9,7 +9,7 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 
 Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives, and the Apple XCFramework backfill below. Web, Node, Python, Flutter, and Android retain their separately verified `0.9.2` channel releases. Typst and other independently versioned surfaces retain their own publication boundaries.
 
-The next main-line candidate is `0.10.0-alpha.1`, including compiled themes, Rust API migration and Mermaid `12.2.0`. Its version and intended 2026-11-02 changelog date are prepared after merged [PR #267](https://github.com/Latias94/merman/pull/267). This is candidate preparation, not authorization to upload packages or evidence of a published alpha. The `0.9.x` maintenance line is unchanged.
+The next main-line release is `0.10.0-alpha.1`, including compiled themes, Rust API migration and Mermaid `12.2.0`. Its version and intended 2026-11-02 changelog date are prepared after merged [PR #267](https://github.com/Latias94/merman/pull/267). The maintainer has authorized the selected surfaces recorded below; publication remains pending final source qualification and registry reconciliation. The `0.9.x` maintenance line is unchanged.
 
 ## 0.10.0-alpha.1 preparation
 
@@ -38,7 +38,27 @@ Read-only observations on 2026-11-02 (Asia/Shanghai) found no exact alpha.1 vers
 
 Registry observations used the [crates.io API](https://crates.io/api/v1/crates/merman), the new names' Cargo sparse-index entries, all 14 [Web/Node npm members](https://registry.npmjs.org/@mermanjs%2fweb), [PyPI](https://pypi.org/pypi/merman/json), [pub.dev](https://pub.dev/api/packages/merman), the GitHub tag/Release APIs and authenticated read-only environment metadata. Environment existence does not prove registry permission or a successful future token exchange. The release operator retains detailed observation responses outside the source tree; no credential values were queried.
 
-Before the first authorized upload, record each chosen channel as `selected` and each other coupled channel as `deferred` with its current public version. Core alpha publication needs the two independent Cargo prerequisites and three Rust bootstraps; Node bootstrap, Android signing and public Apple repository rollout can be scheduled independently. Preserve accepted artifacts and immutable tags throughout recovery.
+### Authorized publication scope
+
+On 2026-11-02, the maintainer requested publication after merging [PR #269](https://github.com/Latias94/merman/pull/269). Independent read-only observations completed at `2026-11-02T08:48:16Z`; selected alpha packages, the workspace tag and Release were absent. Final qualification must use the source containing the full-bindings preflight recipe repair. The earlier `41402238880` run passed its 765 strict feature checks but failed eleven binding tests because its full-library command enabled only Flowchart. Enabling `svg,all-diagrams` passes all 295 binding-library tests; no product behavior or test assertions are relaxed.
+
+| Surface | Scope | Verified state before publication |
+| --- | --- | --- |
+| Workspace Rust, all 26 crates | selected, pending | 23 names have newest public `0.9.3`; `merman-model`, `merman-markup` and `merman-theme-contract` are absent from both API and sparse index. Bootstrap the new names in dependency order with the maintainer token, preserve their accepted checksums, and use the normal owner for the complete graph. The maintainer will configure their Trusted Publishers after publication. |
+| CLI/LSP | selected, pending | Latest workspace Release is `v0.9.3`; final alpha delivery belongs to the tag-triggered owner. |
+| Native C/WASI SDK | selected, pending | Public archives remain `0.9.3`. Publish all 18 qualified archives and 18 checksum sidecars from the successful source-matched preflight after the primary Release exists. |
+| Web npm, all five members | selected, pending | Every member has `latest=0.9.2`, `alpha=0.8.0-alpha.7`. Publish one frozen group under `alpha`, retaining stable `latest`. |
+| Node npm, all nine members | deferred | Seven members have `latest=0.9.2`, `alpha=0.8.0-alpha.7`; both Linux ARM64 names return 404. No Node bootstrap or publication is selected. |
+| Python / PyPI | deferred | `0.9.2`; newest non-yanked prerelease `0.8.0a7`. |
+| Flutter / pub.dev and native assets | deferred | `0.9.2`; newest prerelease `0.8.0-alpha.7`. |
+| Apple | deferred | Legacy `Merman.xcframework-v0.9.3.zip` and checksum on [v0.9.3](https://github.com/Latias94/merman/releases/tag/v0.9.3). Alpha SwiftPM/XCFramework and public remote repository rollout are not selected. |
+| Android | deferred | `merman-android-v0.9.2.aar` on [v0.9.2](https://github.com/Latias94/merman/releases/tag/v0.9.2); this does not establish Maven Central delivery. |
+| Stable package managers | deferred | Homebrew, Scoop and Conda-forge report `0.9.3`; the initial-package WinGet and Nixpkgs `0.9.3` PRs remain open and their checked official package paths are absent. |
+| VS Code Marketplace | deferred | Official exact-name query for `latias94.merman-vscode` returns no public match. Source version `0.1.0` is independent and does not establish Marketplace availability. |
+
+The independent prerequisite releases `roughr-merman 0.12.5` and `tree-sitter-mermaid 0.3.2` are selected through their owners, including the grammar's npm package and GitHub assets. Before publication, both candidates are absent from the Cargo API/index; grammar npm and GitHub remain at `0.3.1`. Their compatibility and package checks precede upload, and both Cargo releases must resolve before the coupled workspace dependents publish. No Typst wrapper, Pages deployment, container registry, setup-Action Marketplace rollout or other independent release is selected.
+
+These observations use the official registries linked above, the [GitHub Releases API](https://api.github.com/repos/Latias94/merman/releases), [Homebrew](https://formulae.brew.sh/api/formula/merman-cli.json), [Scoop](https://github.com/ScoopInstaller/Main/blob/master/bucket/merman-cli.json), [Conda-forge](https://api.anaconda.org/package/conda-forge/merman-cli), existing [WinGet](https://github.com/microsoft/winget-pkgs/pull/447353) and [Nixpkgs](https://github.com/NixOS/nixpkgs/pull/570822) submissions, and the official Marketplace exact-name query. Environment inspection confirms the legacy `CARGO_REGISTRY_TOKEN` secret exists, but current owners use OIDC and do not read it. Initial new-name uploads use the operator's existing token; configure their bindings afterwards without changing accepted versions or bytes. Preserve immutable tags and original artifacts throughout recovery.
 
 ## 0.9.3 publication
 

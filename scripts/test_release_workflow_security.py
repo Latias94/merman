@@ -596,8 +596,10 @@ jobs:
             self.assertIn("system-fonts", features)
 
     def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
-        for name, runner in (("ci.yml", "cargo nextest run"),
-                             ("release-preflight.yml", "cargo test")):
+        for name, runner, binding_features in (
+            ("ci.yml", "cargo nextest run", "svg,diagram-flowchart"),
+            ("release-preflight.yml", "cargo test", "svg,all-diagrams"),
+        ):
             with self.subTest(workflow=name):
                 step = read(WORKFLOW_ROOT / name).split(
                     "      - name: Test theme authoring and font resource boundaries\n", 1,
@@ -618,7 +620,7 @@ jobs:
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-bindings-core --no-default-features "
-                    "--features svg,diagram-flowchart --lib", command,
+                    f"--features {binding_features} --lib", command,
                 )
                 self.assertNotIn("embedded-fonts", command)
 
