@@ -9,8 +9,9 @@ uses its own `flutter-v<version>` tag because pub.dev requires a tag-triggered w
 Android, Apple, Web, Node, and VS Code remain owner-dispatched surfaces.
 
 Main's [binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md)
-adds complete SVG math products and ecosystem-specific handoffs. These are unreleased changes;
-they do not replace published 0.9.x artifacts. Use [prebuilt product choices](PREBUILT_PRODUCTS.md)
+adds complete SVG math products and ecosystem-specific handoffs. The selected Rust, CLI/LSP,
+C/WASI SDK and Web surfaces shipped in `0.10.0-alpha.1`; the other bindings remain prepared
+source until their own channel release. They do not replace published 0.9.x artifacts. Use [prebuilt product choices](PREBUILT_PRODUCTS.md)
 for host selection and the tagged package guides for existing installations. Candidate
 qualification, a complete handoff and a publicly resolvable package are distinct release states.
 
@@ -245,7 +246,8 @@ can be registered. Inspect the release's package plan for new names, bootstrap e
 crate in dependency order, then configure its owning workflow binding for later versions. Record
 the exact accepted version and checksum in Publish Order.
 
-For `0.10.0-alpha.1`, the explicit `release-crates-bootstrap.yml` owner admits only
+The `0.10.0-alpha.1` first publication is complete. Do not dispatch bootstrap again for that
+accepted release. For historical recovery, the explicit `release-crates-bootstrap.yml` owner admits only
 `merman-model`, `merman-theme-contract`, and `merman-markup`. It uses the existing environment
 secret without exporting it from Actions or changing the ordinary OIDC publisher. Run it once
 after complete source-matched release preflight and before pushing the workspace tag:

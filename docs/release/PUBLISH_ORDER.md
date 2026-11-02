@@ -1,15 +1,40 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-02 (Asia/Shanghai)
+Last updated: 2026-11-03 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives, and the Apple XCFramework backfill below. Web, Node, Python, Flutter, and Android retain their separately verified `0.9.2` channel releases. Typst and other independently versioned surfaces retain their own publication boundaries.
+Latest verified maintenance release: `0.9.3` from `release/0.9.x`, originally covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives and the Apple XCFramework. The maintainer selected Web, Node, Python, Flutter and Android backfill after the alpha publication below; those owners are running from the accepted stable tag. Record them as available only after independent public reconciliation.
 
-The next main-line release is `0.10.0-alpha.1`, including compiled themes, Rust API migration and Mermaid `12.2.0`. Its version and intended 2026-11-02 changelog date are prepared after merged [PR #267](https://github.com/Latias94/merman/pull/267). The maintainer has authorized the selected surfaces recorded below; publication remains pending final source qualification and registry reconciliation. The `0.9.x` maintenance line is unchanged.
+The main-line `0.10.0-alpha.1` is published for all 26 Rust crates, CLI/LSP, native C/WASI SDKs and all five Web npm packages. Node, Python, Flutter, Android and Apple alpha packages remain deferred. The `0.9.x` maintenance source and tags are unchanged.
+
+## 0.10.0-alpha.1 publication
+
+Published and reconciled on 2026-11-03 (Asia/Shanghai), with the prepared 2026-11-02 changelog date. Immutable `v0.10.0-alpha.1` identifies `808f4c406e3453b0fa492b98cf7075a539811f1f`, tree `1c3ede040366d16672a7678cc2f5f28148e1b024`. Main was fast-forwarded to that exact reviewed commit after [CI 41453231279](https://github.com/Latias94/merman/actions/runs/41453231279) passed 68 checks with four intentional skips. The [Release](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) is a public prerelease; stable Latest remains `v0.9.3`.
+
+Complete [preflight 41453348164](https://github.com/Latias94/merman/actions/runs/41453348164), attempt 2, passed all 54 jobs, including the 765-check strict feature matrix, every platform owner, all 18 SDK recipes and three native/WASI/CLI output comparisons. Its source, tree, version, workflow/run HEAD and immutable receipt match the tag. Receipt artifact `13163628119` has digest `sha256:a8e969fbdf719076e555cfa2c48a4b4764f99c70a16d2de7425990aeeb059008`. Attempt 1's macOS ARM64 math SDK never received a hosted runner; only that unstarted job and its dependents were rerun, retaining successful artifacts.
+
+| Selected surface | Independently verified delivery | Publishing owner |
+| --- | --- | --- |
+| Rust workspace | All 26 crates at `0.10.0-alpha.1`, across eight complete dependency batches. Prepared receipts, non-yanked sparse index, API checksums, anonymous archive bytes and packaged Git source agree for every crate. The 23 ordinary uploads carry registry OIDC metadata for the same source/run. | [41491730200](https://github.com/Latias94/merman/actions/runs/41491730200), attempt 1 |
+| CLI/LSP | Five targets, installers, checksums, verification manifest and source-bound native preset catalog: 27 public assets. Every public byte matches the original publication bundle; the bundle verifier and signed 27-subject provenance pass source/tag/signer checks. | [41491729641](https://github.com/Latias94/merman/actions/runs/41491729641), attempt 2; 21 successful jobs |
+| Native C/WASI SDK | All 18 archives and 18 SHA-256 sidecars are public. Anonymous archive bytes match the original producer artifacts; manifests, catalogs, ABI, licenses and payload hashes pass verification. Parsed public sidecars match each archive. One verified source/tag/signer attestation covers all 18 archive digests. | [41501709585](https://github.com/Latias94/merman/actions/runs/41501709585), producer preflight above |
+| Web npm | All five packages at `0.10.0-alpha.1` under `alpha`. Integrities, public tarballs and registry provenance match the original frozen group from artifact `13166603161`; artifact digest `sha256:33088b6f1431b427d2bf7782a55759436b2c05a27e57d7da814742eed1a5a565`. A fresh registry consumer verifies five registry signatures and five attestations. `latest=0.9.2` and all other tags were retained at publication. | [41491775050](https://github.com/Latias94/merman/actions/runs/41491775050), attempt 1 |
+
+The explicit [bootstrap 41491262832](https://github.com/Latias94/merman/actions/runs/41491262832) first published three names using the configured Actions environment token. Their original `.crate` bytes match the public downloads, API and sparse index. They have no OIDC attestation; the normal publisher retained matching accepted bytes. The maintainer will configure repository `Latias94/merman`, workflow `release-crates.yml`, environment `crates.io` for each name before its next new-version publication.
+
+| First-published crate | Accepted SHA-256 |
+| --- | --- |
+| `merman-model` | `65172bab3293960ea736a4b45a09eda4b1ea9606649326397ced0210ff36e535` |
+| `merman-theme-contract` | `13d2fc4432707a688f763950731fc5a6a412f6181dbb69424b41e2ea8cc8a5c4` |
+| `merman-markup` | `f5f69fccc337fb824ee7bb628f6f300e59a2796a10a9dad94550640ad1eb7348` |
+
+The CLI run's first macOS ARM64 builder also never received a hosted runner. Its single-job rerun retained the other four targets and passed all dependent native verification, attestation and upload. Neither recovery moved the tag or changed accepted package bytes. The public Release notes now include the theme gallery, migration examples, actual delivered channels, deferred alpha bindings and the verified SDK download table. After release qualification, the previously paused Dependabot CI `41415708144` was resumed.
+
+Node, Python, Flutter and Android retained public `0.9.2` at the alpha completion boundary; Apple retained legacy `0.9.3`. Stable package managers, VS Code Marketplace, new SwiftPM repository rollout and Maven Central were outside this alpha. The newly authorized stable binding backfill below is a separate operation from the immutable `v0.9.3` source; it does not expand the alpha's delivered channels.
 
 ## 0.10.0-alpha.1 preparation
 
@@ -91,6 +116,22 @@ changes in [PR #272](https://github.com/Latias94/merman/pull/272). Freeze the re
 and run complete source-matched release preflight again before bootstrap or a workspace tag.
 Bootstrap retains the original crate bytes, records upload intent, keeps the environment token
 out of packaging and dry runs, and requires both registry API and sparse-index checksums.
+
+## 0.9.3 binding backfill
+
+On 2026-11-03 (Asia/Shanghai), the maintainer requested the remaining stable bindings after alpha delivery. Fresh registry observations found all five Web and seven Node `0.9.3` versions absent, Python and pub.dev at `0.9.2`, and no `merman-android-v0.9.3.aar`. Existing Apple delivery and all 64 stable Release assets were unchanged. Every selected stable package name already exists; no new-name bootstrap is required.
+
+All owners use workflow ref `v0.9.3` and accepted product source `3b915f69c02d55b873d252cf6c8a6048e7f3427d`, tree `fc57c459736f1857b5bdc6dd148d9bb0ad645e9c`. The original successful preflight `40999149557` remains the source qualification. Stable Node retains seven packages and Python three wheels; main's additional platforms, math capability and delivery redesign are not backported. npm publishes only under `latest`, preserving the accepted Web `alpha=0.10.0-alpha.1` and other tags.
+
+| Selected stable surface | State | Owner |
+| --- | --- | --- |
+| Web, five packages | Publishing; public reconciliation pending | [41503526390](https://github.com/Latias94/merman/actions/runs/41503526390) |
+| Node, seven packages | Publishing; public reconciliation pending | [41503526369](https://github.com/Latias94/merman/actions/runs/41503526369) |
+| Python, three wheels | Publishing GitHub assets then PyPI; public reconciliation pending | [41503525971](https://github.com/Latias94/merman/actions/runs/41503525971) |
+| Android AAR | Publishing to existing Release; no Maven Central rollout | [41503527230](https://github.com/Latias94/merman/actions/runs/41503527230) |
+| Flutter | Nonpublishing validation running; push `flutter-v0.9.3` at the same stable source only after it passes | [41503528578](https://github.com/Latias94/merman/actions/runs/41503528578) |
+
+Keep the existing stable tag, packages and 64 assets immutable. Append only missing binding assets and use each owner's original artifacts/receipts for any recovery. Retain detailed channel checks and final public byte/provenance evidence before changing a row to available.
 
 ## 0.9.3 publication
 
