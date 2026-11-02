@@ -3,12 +3,16 @@
 Parser-backed diagnostics, symbols, and editor intelligence for browser-based Mermaid editors. Use
 retained sessions from a dedicated module Worker when the editor benefits from an isolated runtime.
 
-Pin an exact package version when reproducible installs matter.
+This guide targets the `0.10.0-alpha.1` release candidate, with Web transport API `8` and Options
+JSON schema `3`. Check the
+[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
+and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
+for verified public availability.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-editor@0.9.2
+npm install --save-exact @mermanjs/web-editor@0.10.0-alpha.1
 ```
 
 ```ts
@@ -43,4 +47,6 @@ only in a browser main thread or Web Worker. Dispose every retained session, and
 after failure, replacement, or application teardown.
 
 See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
-for runtime lifecycle, resource policy, package selection, and source-checkout development.
+for runtime lifecycle, resource policy, package selection, and source-checkout development. See the
+[current changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md) for changes and
+upgrade actions.

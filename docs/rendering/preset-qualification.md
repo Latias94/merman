@@ -16,11 +16,13 @@ The other nine presets retain the small Flowchart/State/Sequence admission sourc
 This inventory does not exercise HTML labels, PDF, controlled caller fonts or installed consumers.
 The separate qualification runner adds the semantic and pixel checks described below.
 
-The shared native profile explicitly sets `htmlLabels: false`, `flowchart.look: classic`,
-`flowchart.layout: dagre`, and `sequence.look: classic`. These family settings preserve the original
-qualification conditions after Mermaid 12 changed the defaults to Neo and ELK. The fixed subgraph
+The shared native profile explicitly sets `htmlLabels: false`, root `layout: dagre`,
+`flowchart.look: classic`, `flowchart.layout: dagre`, and `sequence.look: classic`. These settings
+preserve the original qualification conditions after Mermaid 12 changed the defaults to Neo and
+ELK. The root layout keeps State on Dagre in both the qualification runner and artifacts compiled
+with ELK; leaving it implicit would compare different layouts across their feature sets. The fixed subgraph
 pixel checks exercise the vertical Dagre connection, its arrowhead, and the separate label
-background. Other families retain their current defaults. These are runner conditions; public
+background. Other family settings retain their current defaults. These are runner conditions; public
 preset recipes do not force a look or layout.
 
 The profile does not qualify the default Neo look for Flowchart or Sequence. In particular,
@@ -30,7 +32,9 @@ classic for this profile does not upgrade its admission. A separate explicit Neo
 checks that Spotless note fill survives the built-in scoped filter.
 
 The Rust runner emits its exact `render_config`; CLI replay consumes that configuration rather
-than maintaining a separate copy. Earlier records still require fresh execution.
+than maintaining a separate copy. Replay explicitly selects deterministic text measurement for both
+SVG and PNG, matching the runner's layout while system fonts paint the PNG. Earlier records still
+require fresh execution.
 
 ## Brutalist and Spotless profile
 

@@ -27,6 +27,8 @@ Version `0.12.3` restores the `OptionsBuilder::seed` and `svgtypes` 0.11 call su
 
 Version `0.12.4`, used by Merman `0.9.0`, upgrades private host-random dependencies to rand 0.10.3 and getrandom 0.4.3 while retaining the public legacy `svgtypes` 0.11 compatibility surface and default compatibility feature. See the [dependency policy](../../docs/DEPENDENCY_POLICY.md).
 
+The `0.12.5` candidate normalizes SVG arc angles with JavaScript-compatible decimal rounding before converting arcs to cubic curves. This keeps tiny rounded paths finite and aligns their geometry with Rough.js. Public APIs and default features remain compatible with `0.12.4`.
+
 ## Scope
 
 The crate produces operation sets for lines, curves, arcs, polygons, ellipses, and SVG paths. It does not choose a canvas, raster backend, or UI framework, and this repository does not ship the old upstream Piet gallery adapter.

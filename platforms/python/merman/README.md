@@ -4,30 +4,21 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-> The `0.9.2` package targets direct UniFFI binding API `7`, independently of the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases.
+This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../../docs/release/PREBUILT_PRODUCTS.md) for version and channel availability.
+
+> The Python package version is `0.10.0a1` (PEP 440), corresponding to native Merman `0.10.0-alpha.1`. It uses direct UniFFI binding API `7` and Options JSON schema `3`, independently of the C ABI and text-measurement protocol. Install the Python wrapper and native library as one wheel rather than mixing releases.
 
 ## Install
 
 Install the exact version documented here:
 
 ```sh
-python -m pip install --only-binary=:all: 'merman==0.9.2'
+python -m pip install --only-binary=:all: 'merman==0.10.0a1'
 ```
 
-For source builds, use the `v0.9.2` tag and build the wheel and native library together to preserve the binding contract.
+The package supports Python `>=3.9` through the UniFFI/ctypes transport with five native wheels:
 
-Compiled-theme APIs, ordinary SVG math, and the expanded wheel matrix in this checkout are
-unreleased. Published `0.9.2` retains Options JSON schema `2` and its original capability/target
-set; use its tagged guide even though both interfaces retain UniFFI API `7`.
-See the [release boundary](../../../docs/release/README.md#merman-092).
-
-Published wheels currently target CPython-compatible Python `3.9+` on macOS arm64, manylinux x86_64, and Windows x86_64. A platform without a listed wheel is not an officially packaged target; supporting another target requires a native-port contribution rather than only a local `pip` build.
-
-The next release candidate preserves Python `>=3.9` and the UniFFI/ctypes transport, and prepares
-these five native wheels. This is a candidate build matrix, not a claim that new wheels are
-already on PyPI:
-
-| Rust target | Candidate wheel platform |
+| Rust target | Wheel platform |
 | --- | --- |
 | `aarch64-apple-darwin` | `macosx_11_0_arm64` |
 | `x86_64-apple-darwin` | `macosx_10_13_x86_64` |
@@ -35,11 +26,16 @@ already on PyPI:
 | `x86_64-unknown-linux-gnu` | `manylinux_2_28_x86_64` |
 | `x86_64-pc-windows-msvc` | `win_amd64` |
 
-Linux candidates build, undergo `auditwheel` repair, and run installed consumers in pinned
+Linux wheels build, undergo `auditwheel` repair, and run installed consumers in pinned
 official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and
 Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler.
 There is no qualified source distribution; use the repository's explicit source helper when
-building from source.
+building from the matching `0.10.0-alpha.1` source revision. Build the wrapper and native library
+together to preserve the binding contract.
+
+For a legacy `0.9.2` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.2/platforms/python/merman/README.md).
+That release uses Options JSON schema `2`, omits math, and has three wheels, including a
+`manylinux_2_35_x86_64` wheel. Its binaries do not provide the theme API documented here.
 
 ## Render A Diagram
 
@@ -53,9 +49,9 @@ svg = client.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The next ordinary wheel supports SVG including math, ASCII, semantic/layout operations, analysis, validation, and document analysis. PNG, JPEG, and PDF methods remain available for custom current-contract libraries; the ordinary wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact codec capability ID. Published `0.9.2` also omits math. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The alpha.7 binding API is 7; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 3 with explicit encoding, requested/effective layouts, and Compact-attempt information.
+The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The ordinary wheel supports SVG including math, Cytoscape and ELK layout, ASCII, semantic/layout operations, analysis, validation, and document analysis. PNG, JPEG, and PDF methods remain available for custom current-contract libraries; the ordinary wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact codec capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The binding API is `7`; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 3 with explicit encoding, requested/effective layouts, and Compact-attempt information.
 
-In a candidate built from this checkout, ordinary interactive rendering handles a formula:
+Ordinary interactive rendering handles formulas:
 
 ```python
 svg = client.render_svg('flowchart TD\nA["$$x^2$$"] --> B[Done]', None)
@@ -84,7 +80,7 @@ facts = engine.analyze_document_facts_json(
 engine.close()
 ````
 
-`options_json` is optional and follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants. Reusable request options deeply merge over the construction baseline for one operation without mutating it. They cannot change the constructor-owned `runtime_policy`. `MermanError.Binding.kind` distinguishes `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; only the latter carries a non-null, descriptor-owned `capability_id`.
+`options_json` is optional and follows [Options JSON schema `3`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants. Reusable request options deeply merge over the construction baseline for one operation without mutating it. They cannot change the constructor-owned `runtime_policy`. `MermanError.Binding.kind` distinguishes `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; only the latter carries a non-null, descriptor-owned `capability_id`.
 
 Release wheels use deterministic runtime state and do not bundle native clock, time-zone, or random adapters. A custom source build may enable the atomic `native-runtime` feature and then select `{"runtime_policy":"native"}`. The default wheel raises the generated unsupported-operation error when native policy is requested, and runtime discovery reports concrete adapter IDs only when they are present.
 
@@ -119,6 +115,27 @@ and put it in `MermanOperationRequestV4.control`. Calling `cancel()` from anothe
 cooperative termination. `MermanError.Binding.cancellation` reports the reason and observed phase;
 resource failures continue to use the separate `resource` field. Opaque callbacks may complete
 before the next checkpoint, so hard preemption requires a worker or process boundary.
+
+## Diagram Themes
+
+Use `client.theme_catalog_json()` to discover presets, then select one through schema-3 options:
+
+```python
+pie_source = 'pie\n"A":35\n"B":65'
+themed_svg = client.render_svg(pie_source, '{"version":3,"theme":{"preset":"ghibli"}}')
+```
+
+For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
+or supply a complete selection or recipe to replace it.
+
+Built-in presets are alpha, with empty public qualification cells. Catalog availability and
+family design scope do not certify the result for every diagram or output target. Flowchart
+glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);
+selecting a preset does not change the look or layout engine. Fonts must be supplied by the
+host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
+resources in recipes are rejected. The wheel does not expose the native C/WASI memory-font
+constructor. See the [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
+for version-1 recipes, support discovery, and portability policy.
 
 ## Text Measurement
 

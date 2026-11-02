@@ -7,9 +7,9 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Prepared version: `0.3.1`, required by Merman LSP `0.9.0`; not a registry publication observation
-- Latest recorded published version: `0.3.0` (2026-10-06, Asia/Shanghai; Merman LSP `0.8.0`)
-- Intended independent release tag: `tree-sitter-mermaid-v0.3.1` (not created by preparation)
+- Prepared version: `0.3.2`, required by the Merman LSP `0.10.0-alpha.1` candidate; not a registry publication observation
+- Latest recorded published version: `0.3.1` (2026-10-12, Asia/Shanghai; Merman LSP `0.9.0`)
+- Intended independent release tag: `tree-sitter-mermaid-v0.3.2` (not created by preparation)
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
@@ -22,9 +22,16 @@ publication without the protected release environment and maintainer credentials
 - Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0
 - ZenUML Core baseline: 3.50.1
 
-The [dated publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) records the completed `0.3.0` publication from commit `2029bd547077b1a6800878e125663633d81e6d87`, including recovery with the original package bytes. Consumer changes are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). The 0.3.1 candidate updates the exact generator/runtime group and selects the compatible language adapter requirement `^0.1.9`, without changing generated language ABI 15. Run this checklist and publish the independently verified grammar before workspace crates that require it; retain registry visibility and package/provenance evidence in the [preparation record](PUBLISH_ORDER.md#090-preparation).
+The [dated publication snapshot](PUBLISH_ORDER.md#090-publication-snapshot) records the completed `0.3.1` publication from commit `f754a3c3077d35d2a372c2fec04f9e9b87db1c3f`. The `0.3.2` candidate raises the Rust `cc` build-dependency minimum from `1.8.0` to `1.10.0` and maintains workspace conformance tests. Accepted syntax, queries, Mermaid/ZenUML baselines, language ABI 15, and the selected generator/runtime group remain unchanged. Consumer changes across earlier versions are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). Run this checklist and publish the independently verified grammar before workspace crates that require it; retain registry visibility and package/provenance evidence in the [preparation record](PUBLISH_ORDER.md#0100-alpha1-preparation).
 
 Cargo, npm (including its lockfile), `tree-sitter.json`, `metadata/provenance.json`, Make, and CMake versions must match. Regenerate the C parser and language WASM after a version change because they embed the language version. A release tag must resolve to the immutable commit containing the generated parser, root WASM, queries, and legal material.
+
+Use the existing generation entry points to refresh the embedded version metadata:
+
+```console
+npm run generate --prefix distribution/tree-sitter-mermaid
+npm run generate:wasm --prefix distribution/tree-sitter-mermaid
+```
 
 ## Preflight
 
@@ -65,7 +72,7 @@ git diff --check
 
 One candidate release stages:
 
-- `tree-sitter-mermaid-0.3.1.crate` for crates.io;
+- `tree-sitter-mermaid-0.3.2.crate` for crates.io;
 - an `@mermanjs/tree-sitter-mermaid` tarball containing Node source fallback and release-built
   N-API prebuilds;
 - root `tree-sitter-mermaid.wasm` for npm and GitHub Releases;
@@ -128,5 +135,5 @@ not assume those registry assets exist until the npm publication completes.
 
 Use a minor release for named-node or field removals, canonical capture removals, language ABI
 changes, or a selected Mermaid/ZenUML baseline change. Use a patch release for compatible grammar
-fixes, recovery improvements, and additive query captures. Document migrations in
+fixes, recovery improvements, additive query captures, and compatible build-dependency updates. Document migrations in
 `distribution/tree-sitter-mermaid/docs/query-migration.md`.

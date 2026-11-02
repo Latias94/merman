@@ -4,14 +4,19 @@ The complete browser SDK for SVG rendering, analysis, ASCII output, and parser-b
 intelligence. Start here when evaluating Merman or when one browser realm needs more than one
 workflow.
 
-Pin an exact package version when reproducible installs matter. Full includes math, Cytoscape
-and ELK for complete SVG rendering, as published `0.9.2` does. Its analysis, editor and ASCII
+This guide targets the `0.10.0-alpha.1` release candidate, with Web transport API `8` and Options
+JSON schema `3`. Check the
+[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
+and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
+for verified public availability.
+
+The package includes math, Cytoscape and ELK for SVG rendering. Its analysis, editor and ASCII
 operations share one initialized runtime.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web@0.9.2
+npm install --save-exact @mermanjs/web@0.10.0-alpha.1
 ```
 
 ```ts
@@ -26,11 +31,13 @@ renderSvgToElement(target, `flowchart TD
   A[Start] --> B[Done]`);
 ```
 
-Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element. Source builds also
-expose `prepareSource()` for repeated SVG, layout and geometry outputs from frozen parse facts.
+Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
+Use `prepareSource()` for repeated SVG, layout and geometry outputs from frozen parse facts.
 Dispose the returned snapshot when finished; see the
 [prepared-source guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#reuse-a-parsed-source).
 
+For retained DOM updates and explicit Kanban width adaptation, use
+[`mountDiagram()`](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#maintain-a-mounted-diagram).
 
 ## Runtime boundary
 
@@ -43,4 +50,5 @@ Dispose retained editor and text-measurement sessions when they are no longer ne
 
 See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
 for package selection, safe DOM mounting, custom WASM loading, resource limits, and source-checkout
-development.
+development. See the [current changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md)
+for changes and upgrade actions.

@@ -6,7 +6,7 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-> This guide and its dependency examples target `merman-rustdoc 0.9.3`.
+> This guide and its dependency examples target `merman-rustdoc 0.10.0-alpha.1`.
 
 > The offline resource defaults and resource-budget options documented below are new in `0.8.0`. Published `0.8.0-alpha.7` uses the interactive 800,000-unit budget and does not expose these options.
 
@@ -16,7 +16,7 @@ Keep the renderer out of ordinary builds by making it an optional documentation 
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "0.9.3", optional = true }
+merman-rustdoc = { version = "=0.10.0-alpha.1", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -56,7 +56,7 @@ The source code still contains the original Mermaid fence. Only the rustdoc outp
 
 ![Rendered Mermaid diagram in rustdoc light theme](resources/rustdoc-light.png)
 
-## Re-exporting The Attribute (Unreleased)
+## Re-exporting The Attribute
 
 A renamed direct Cargo dependency is detected automatically. When an application depends only on
 an intermediary crate, that facade must re-export both the attribute and its deferred helper:
@@ -131,10 +131,9 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-The `0.9.3` release defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
+The `0.10.0-alpha.1` release defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
 `layout-elk`: all built-in families and deterministic SVG rendering with both layout engines.
-Math is opt-in; add `math` when diagrams contain mathematical labels. The current development
-branch retains `complete-svg` (SVG and Cytoscape) and `complete-svg-elk` (also ELK), but neither
+Math is opt-in; add `math` when diagrams contain mathematical labels. The retained `complete-svg` (SVG and Cytoscape) and `complete-svg-elk` (also ELK), but neither
 aggregate enables math or selects diagram families. Users of the previously math-enabled
 aggregates or alpha.6's math-enabled default must enable `math` explicitly when upgrading.
 
@@ -151,7 +150,7 @@ Use a smaller closure when the documented diagrams need only the base SVG render
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "0.9.3", default-features = false, features = ["diagram-flowchart", "svg"], optional = true }
+merman-rustdoc = { version = "=0.10.0-alpha.1", default-features = false, features = ["diagram-flowchart", "svg"], optional = true }
 ```
 
 | Feature | Adds |

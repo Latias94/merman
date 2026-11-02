@@ -4,9 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.10.0-alpha.1] - 2026-11-02
 
-Changes since the [0.9.3 maintenance release](#093---2026-10-30); see [upgrade actions](#breaking-changes-and-upgrade-actions) before migrating. The APIs and examples below require matching main-line builds; the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) lists each channel's published version.
+Changes since the [0.9.3 maintenance release](#093---2026-10-30); see [upgrade actions](#breaking-changes-and-upgrade-actions) before migrating. Use matching wrappers and runtime artifacts; the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) lists each channel's independently published version.
 
 ### Diagram themes (alpha)
 
@@ -85,7 +85,7 @@ Use `merman-model` for typed diagram data without source parsers, and select ASC
 ### Other changes
 
 - Target Mermaid 12.2.0. Mindmap adds `mindmap.colorBy: depth` and updated circle/label sizing; Swimlane updates source ordering and title/edge placement; Agentflow self-loops and Usecase labels/markers follow the updated upstream geometry. Review SVG snapshots for these families after upgrading. [#196](https://github.com/Latias94/merman/pull/196)
-- Re-export the Rustdoc attribute through an intermediary crate using `crate_path`, with both `merman` and `__render_doc` re-exported. See the [facade example](crates/merman-rustdoc/README.md#re-exporting-the-attribute-unreleased). [#258](https://github.com/Latias94/merman/pull/258)
+- Re-export the Rustdoc attribute through an intermediary crate using `crate_path`, with both `merman` and `__render_doc` re-exported. See the [facade example](crates/merman-rustdoc/README.md#re-exporting-the-attribute). [#258](https://github.com/Latias94/merman/pull/258)
 - Install CLI releases in CI through the repository setup Action, or build with the GNU container tooling and Arch source recipe. The [CLI distribution guide](docs/releasing/CLI.md) distinguishes these routes from public container/package registries awaiting rollout. [#195](https://github.com/Latias94/merman/pull/195)
 
 ### Breaking changes and upgrade actions

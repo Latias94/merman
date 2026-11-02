@@ -2,8 +2,8 @@
   "schema": 1,
   "generator": {
     "package": "merman-cli",
-    "version": "0.9.3",
-    "merman_version": "0.9.3",
+    "version": "0.10.0-alpha.1",
+    "merman_version": "0.10.0-alpha.1",
     "mermaid_version": "12.2.0",
     "capability_digest": "sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb",
     "profile": "rustdoc-static-v1"

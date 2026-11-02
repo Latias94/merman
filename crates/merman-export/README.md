@@ -1,10 +1,5 @@
 # merman-export
 
-> [!NOTE]
-> This README documents the current `main` branch. The operation-scoped `Renderer`,
-> `RenderedDocument`, and target-admission examples were introduced after the published
-> `0.8.0-alpha.5` tag. Use matching Git revisions for current-main APIs.
-
 `merman-export` is the bounded binary-export layer behind Merman's PNG, JPEG, and PDF output. It encodes SVG that has already passed Merman's terminal resvg-compatible finalizer; it does not parse Mermaid source or choose a layout engine.
 
 Most applications should depend on [`merman`](https://crates.io/crates/merman) and select its
@@ -12,7 +7,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
-This guide targets the development checkout after published `0.9.3`. Independent presentation data and explicit font-discovery features belong to the next breaking development release; use the `v0.9.3` tagged guide for the maintenance APIs and codec defaults. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for current imports and output handoffs.
+This guide targets `merman-export 0.10.0-alpha.1`. Select font discovery explicitly or provide a font context. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for imports and output handoffs when upgrading from `0.9.x`.
 
 ## Choose A Feature
 
@@ -73,7 +68,7 @@ It owns admitted data and performs no file acquisition or ambient discovery, eve
 crate's WebAssembly code paths; explicit file/directory requests return a source error there.
 
 ```toml
-merman-export = { version = "0.9.3", default-features = false, features = ["png", "bundled-fonts"] }
+merman-export = { version = "=0.10.0-alpha.1", default-features = false, features = ["png", "bundled-fonts"] }
 ```
 
 ```rust
@@ -133,7 +128,7 @@ required basic SVG path without Cytoscape, ELK, or math engines:
 
 ```toml
 [dependencies]
-merman = { version = "0.9.3", default-features = false, features = ["diagram-flowchart", "png", "system-fonts"] }
+merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["diagram-flowchart", "png", "system-fonts"] }
 ```
 
 ```rust
@@ -176,9 +171,9 @@ operation control:
 
 ```toml
 [dependencies]
-merman-model = { version = "0.9.3", default-features = false }
-merman-render = { version = "0.9.3", default-features = false }
-merman-export = { version = "0.9.3", default-features = false, features = ["png", "system-fonts"] }
+merman-model = { version = "=0.10.0-alpha.1", default-features = false }
+merman-render = { version = "=0.10.0-alpha.1", default-features = false }
+merman-export = { version = "=0.10.0-alpha.1", default-features = false, features = ["png", "system-fonts"] }
 ```
 
 ```rust

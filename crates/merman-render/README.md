@@ -11,7 +11,7 @@
 
 Direct users own the typed presentation data, render session, text measurement, layout, and SVG postprocessing lifecycle. This package has no production dependency on Mermaid source parsing. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for independent data construction.
 
-The shared presentation API described here belongs to the development checkout after published `0.9.3`. Use matching Git revisions for current source consumers, or the tagged guide for a released package.
+This guide targets `merman-render 0.10.0-alpha.1`. Upgrade shared model and renderer packages together; the [model/source migration](../../docs/migrations/model-source-boundaries.md) covers changes from `0.9.x`.
 
 ## What It Provides
 

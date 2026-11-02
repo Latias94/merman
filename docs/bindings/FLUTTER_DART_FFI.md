@@ -279,7 +279,7 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 | Linux | arm64 and x86_64 `libmerman_ffi.so` |
 | Windows | `merman_ffi.dll` |
 
-Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile, including math for ordinary SVG rendering. PNG, JPEG, PDF and native runtime adapters remain absent. This main-line delivery change is unreleased; published `0.9.2` retains its original package and capability contract. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
+Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile, including math for ordinary SVG rendering. PNG, JPEG, PDF and native runtime adapters remain absent. This recipe targets `0.10.0-alpha.1`; published `0.9.2` retains its original package and capability contract. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
 
 `hook/build.dart` maps the requested OS, architecture, and iOS SDK to one target, acquires its
 prebuilt library, then emits a bundled dynamic `CodeAsset` with the same asset ID used by the
@@ -311,7 +311,7 @@ Consumers configure `hooks.user_defines.merman` in their root/workspace `pubspec
 | --- | --- |
 | `native_assets: vendor/merman-native` | Explicit native root resolved through `input.userDefines.path`; contains the selected subtree such as `ios/arm64-simulator/libmerman_ffi.dylib`. Tracked as a dependency and used without network or manifest digest checks. Runtime ABI/version admission still applies. |
 | `offline: true` | Require already verified hook cache bytes. First build online and preserve `.dart_tool` or supply `native_assets`; a cold cache explains the missing input. |
-| `mirror: https://artifacts.example.org/flutter-v0.9.3/` | Replace only the asset URL prefix; use the same immutable filenames and package-pinned hashes. |
+| `mirror: https://artifacts.example.org/flutter-v0.10.0-alpha.1/` | Replace only the asset URL prefix; use the same immutable filenames and package-pinned hashes. |
 
 All downloads require HTTPS, with HTTP permitted only for loopback fixtures. Signed CDN
 redirect URLs are supported. A local runtime `Merman.openPath(...)` does not configure the build

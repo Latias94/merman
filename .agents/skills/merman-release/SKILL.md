@@ -50,6 +50,10 @@ For a new workspace version, follow the
 Use its clean linked-worktree projection rather than hand-editing generated versions or locks.
 For independent packages, preserve their own version, bundled runtime mapping, ABI, and date.
 
+Follow the Version Checklist's generated-output refresh after projection, including committed
+Rustdoc receipts and the current native-memory contracts' changed lockfile identity. Keep historical
+measurements and performance limits unchanged; version projection alone does not refresh these owners.
+
 Version each public contract against its latest published baseline. Keep new unpublished theme
 contracts at version 1 and consolidate one unreleased compatibility change once. Preserve
 published ABI boundaries, historical evidence identities and unknown-version rejection; see

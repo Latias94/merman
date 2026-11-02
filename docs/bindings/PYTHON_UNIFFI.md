@@ -2,10 +2,7 @@
 
 Status: experimental publishable Python package.
 
-This checkout prepares an unreleased five-target ordinary SVG product with math. Published
-`0.9.2` keeps its original three-target coverage and omits math; use its tagged documentation for
-that version. The expanded matrix is qualified by candidate runs before a separately authorized
-release, not by changing the existing PyPI artifacts.
+This guide targets `0.10.0-alpha.1` (`0.10.0a1` on PyPI), a five-target ordinary SVG product with math. Published `0.9.2` keeps its original three-target coverage and omits math; use its tagged documentation for that version. Candidate qualification does not establish PyPI availability or change existing artifacts.
 
 This guide owns Python generation, wheel assembly, and release procedures. The
 [package generator](../../crates/merman-uniffi/examples/generate_python_package.rs) reads UniFFI
