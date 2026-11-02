@@ -17,11 +17,11 @@ main's workspace version does not establish a download on every registry.
 | --- | --- | --- | --- |
 | Rust | `0.9.3` | `0.10.0-alpha.1` | `cargo add merman@0.10.0-alpha.1`; [alpha source feature choices](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/README.md) |
 | CLI / standalone LSP | `0.9.3` | `0.10.0-alpha.1` | [Alpha release installers and archives](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) |
-| Browser / Worker | `0.9.2` | `0.10.0-alpha.1` | `npm install @mermanjs/web@0.10.0-alpha.1` or `@mermanjs/web@alpha` |
+| Browser / Worker | `0.9.3` | `0.10.0-alpha.1` | `npm install @mermanjs/web@0.9.3` or `@mermanjs/web@alpha` |
 | Native Node | `0.9.2` | Deferred | `npm install @mermanjs/node@0.9.2` |
-| Python | `0.9.2` | Deferred | `python -m pip install merman==0.9.2` |
+| Python | `0.9.3` | Deferred | `python -m pip install merman==0.9.3` |
 | Flutter / native Dart | `0.9.2` | Deferred | `flutter pub add merman:0.9.2` |
-| Android | `0.9.2` AAR | Deferred | [Tagged Android guide](https://github.com/Latias94/merman/blob/v0.9.2/platforms/android/README.md) |
+| Android | `0.9.3` AAR | Deferred | [Tagged Android guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) |
 | Apple | `0.9.3` legacy XCFramework | Deferred | [Tagged Apple guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/apple/README.md) |
 | Native C / WASI SDK | `0.9.3` | `0.10.0-alpha.1` | [Alpha SDK downloads and flavor choices](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) |
 
@@ -41,7 +41,7 @@ is a prerelease and does not replace stable `v0.9.3` as Latest.
 Node, Python, Flutter, Android and Apple alpha delivery is deferred. Their main guides and install
 examples describe prepared packages, not a registry download. Python's prepared version uses the
 PEP 440 spelling `0.10.0a1` and covers five wheel targets, with GNU Linux ARM64/x86-64 at manylinux
-2.28 (glibc `2.28+`). Published `0.9.2` keeps its original three-wheel coverage and Linux floor.
+2.28 (glibc `2.28+`). Published `0.9.3` keeps its original three-wheel coverage and Linux floor.
 Native SVG math, thin Flutter assets and complete SwiftPM handoffs likewise require their matching
 future packages.
 
@@ -49,11 +49,11 @@ future packages.
 
 | Your application | Start here | Outputs and boundaries |
 | --- | --- | --- |
-| Browser or browser Worker | `@mermanjs/web`: [stable guide](https://github.com/Latias94/merman/blob/v0.9.2/platforms/web/README.md), [alpha guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/platforms/web/README.md) | Complete browser SDK; use `web-render` for SVG alone, or analysis/editor/ASCII task packages |
+| Browser or browser Worker | `@mermanjs/web`: [stable guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/web/README.md), [alpha guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/platforms/web/README.md) | Complete browser SDK; use `web-render` for SVG alone, or analysis/editor/ASCII task packages |
 | Node, static-site generation or server rendering | [`@mermanjs/node`](https://github.com/Latias94/merman/blob/v0.9.2/platforms/node/README.md) | Platform package selected automatically; `node-wasm` is an explicit portable alternative |
-| Python | [`merman` wheel](https://github.com/Latias94/merman/blob/v0.9.2/platforms/python/merman/README.md) | pip/uv selects a matching native wheel; no Rust for ordinary supported installs |
+| Python | [`merman` wheel](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md) | pip/uv selects a matching native wheel; no Rust for ordinary supported installs |
 | Flutter or native Dart | [`merman` on pub.dev](https://github.com/Latias94/merman/blob/v0.9.2/platforms/flutter/README.md) | Stable package bundles its native libraries; no separate target download |
-| Kotlin on Android | [Release AAR](https://github.com/Latias94/merman/blob/v0.9.2/platforms/android/README.md) | Matching Kotlin/JNI in one AAR; add the local AAR to Gradle |
+| Kotlin on Android | [Release AAR](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) | Matching Kotlin/JNI in one AAR; add the local AAR to Gradle |
 | Swift on iOS or macOS | [Stable Apple guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/apple/README.md) | Matching `v0.9.3` checkout supplies Swift sources and `Package.swift`; add the published XCFramework |
 | Native application with C/C++ interoperability | `sdk-native-full` for your target | SVG, PNG, JPEG, PDF and ASCII; math and ELK; caller-owned font bytes |
 | Go, Python or another non-JavaScript sandbox host | `sdk-wasi-full` | SVG and PNG; math and ELK; one WASI reactor with a separate ABI |
@@ -138,7 +138,7 @@ in every viewer. See [host text measurement](../bindings/HOST_TEXT_MEASUREMENT.m
 
 Python wheel compatibility includes OS, CPU and libc, not just the Python version. Main
 targets GNU Linux ARM64/x86-64, macOS ARM64/x86-64 and Windows x86-64; its Linux baseline
-must be qualified from the final repaired wheel. Published `0.9.2` has three wheels, including
+must be qualified from the final repaired wheel. Published `0.9.3` has three wheels, including
 `manylinux_2_35_x86_64`, and has no source distribution. An unsupported target does not gain
 support merely by installing Rust; see the explicit source-helper route in the Python guide.
 

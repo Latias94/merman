@@ -121,17 +121,28 @@ out of packaging and dry runs, and requires both registry API and sparse-index c
 
 On 2026-11-03 (Asia/Shanghai), the maintainer requested the remaining stable bindings after alpha delivery. Fresh registry observations found all five Web and seven Node `0.9.3` versions absent, Python and pub.dev at `0.9.2`, and no `merman-android-v0.9.3.aar`. Existing Apple delivery and all 64 stable Release assets were unchanged. Every selected stable package name already exists; no new-name bootstrap is required.
 
-All owners use workflow ref `v0.9.3` and accepted product source `3b915f69c02d55b873d252cf6c8a6048e7f3427d`, tree `fc57c459736f1857b5bdc6dd148d9bb0ad645e9c`. The original successful preflight `40999149557` remains the source qualification. Stable Node retains seven packages and Python three wheels; main's additional platforms, math capability and delivery redesign are not backported. npm publishes only under `latest`, preserving the accepted Web `alpha=0.10.0-alpha.1` and other tags.
+Initial manual owners use workflow ref `v0.9.3` and accepted product source `3b915f69c02d55b873d252cf6c8a6048e7f3427d`, tree `fc57c459736f1857b5bdc6dd148d9bb0ad645e9c`. Flutter's actual publication is triggered by `flutter-v0.9.3` at that same source after manual validation. The original successful preflight `40999149557` remains the source qualification. Stable Node retains seven packages and Python three wheels; main's additional platforms, math capability and delivery redesign are not backported. npm publishes only under `latest`, preserving the accepted Web `alpha=0.10.0-alpha.1` and other tags.
 
 | Selected stable surface | State | Owner |
 | --- | --- | --- |
-| Web, five packages | Publishing; public reconciliation pending | [41503526390](https://github.com/Latias94/merman/actions/runs/41503526390) |
+| Web, five packages | All `0.9.3` packages are public under `latest`. Integrities, downloaded tarballs and source/tag/run provenance match original artifact `13172688049` (ZIP digest `sha256:3e7d9be1b754ef5603c38fec5ec153dde800cac9881f55b65d97c635c2344951`). A fresh consumer using the official npm registry verifies all five signatures and attestations. Web `alpha=0.10.0-alpha.1` and every other tag are retained. | [41503526390](https://github.com/Latias94/merman/actions/runs/41503526390), attempt 1 |
 | Node, seven packages | Publishing; public reconciliation pending | [41503526369](https://github.com/Latias94/merman/actions/runs/41503526369) |
-| Python, three wheels | Publishing GitHub assets then PyPI; public reconciliation pending | [41503525971](https://github.com/Latias94/merman/actions/runs/41503525971) |
-| Android AAR | Publishing to existing Release; no Maven Central rollout | [41503527230](https://github.com/Latias94/merman/actions/runs/41503527230) |
-| Flutter | Nonpublishing validation running; push `flutter-v0.9.3` at the same stable source only after it passes | [41503528578](https://github.com/Latias94/merman/actions/runs/41503528578) |
+| Python, three wheels | `0.9.3` is available on PyPI and as GitHub Release wheels. All public bytes and SHA-256 values match the retained Linux/Windows attempt-1 artifacts and macOS attempt-2 artifact. `pypi-attestations 0.0.30` verifies each signature; source/tag/run certificate claims match the stable publisher. A clean macOS ARM64 consumer installs from PyPI and passes the stable UniFFI smoke. | [41503525971](https://github.com/Latias94/merman/actions/runs/41503525971), attempt 2 |
+| Android AAR | `merman-android-v0.9.3.aar` is public: 16,254,551 bytes, SHA-256 `f26a3205cf3590db3aec3874692988952f521c8fde5b4b78fb72cdc468f154bf`. Anonymous download matches original artifact `13171517108` (ZIP digest `sha256:3515815e71792551ec249b3c48a55f95a54ca38b800d7aa56c05381222f2aba1`). The stable verifier passes both JNI slices, symbols, Kotlin API, resources and legal material. No Maven Central rollout. | [41503527230](https://github.com/Latias94/merman/actions/runs/41503527230), attempt 1 |
+| Flutter | Nonpublishing validation passed; the pushed `flutter-v0.9.3` identifies the original stable source and starts the actual pub.dev owner. Registry delivery remains pending. | Validation [41503528578](https://github.com/Latias94/merman/actions/runs/41503528578); publication [41514124799](https://github.com/Latias94/merman/actions/runs/41514124799) |
 
 Keep the existing stable tag, packages and 64 assets immutable. Append only missing binding assets and use each owner's original artifacts/receipts for any recovery. Retain detailed channel checks and final public byte/provenance evidence before changing a row to available.
+
+Python's first macOS ARM64 job never acquired a hosted runner (`runner_id=0`, no steps); GitHub
+reported capacity constraints. Only that job and its dependents were rerun. The original Linux
+and Windows wheels were retained. The three accepted wheels keep Python `>=3.9` and the original
+`macosx_11_0_arm64`, `manylinux_2_35_x86_64` and `win_amd64` tags:
+
+| Stable wheel target | Public SHA-256 |
+| --- | --- |
+| macOS ARM64 | `bdcec53fcacb2a396ddfaaf5c7e35571576fddc222e3c1d3f314aa09bea672fb` |
+| GNU Linux x64 | `f83b97ef9723a5638da0b103d2e2194ef780f578ab6c4b67fabbe971c75e78a9` |
+| Windows x64 | `17070e4f48ae2626b09e8cdfd8bad8293d3f25ac4701b149cf56b93ee0f076e5` |
 
 ## 0.9.3 publication
 
