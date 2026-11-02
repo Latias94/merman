@@ -339,6 +339,29 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertIsNotNone(command)
         self.assertEqual(set(command.group(1).split(",")), {"svg", "all-diagrams"})
 
+    def test_native_theme_consumers_enable_all_families_and_required_fonts(self):
+        workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
+        versions = self.job(workflow, "versions-and-packages")
+        step = versions.split("      - name: Test native theme consumers\n", 1)[1].split(
+            "\n      - name:", 1,
+        )[0]
+        features = re.search(r"--features ([^\s]+)", step)
+        self.assertIsNotNone(features)
+        self.assertTrue(
+            {"svg", "all-diagrams", "png", "pdf", "layout-cytoscape", "system-fonts", "compat-json"}
+            <= set(features.group(1).split(",")),
+        )
+        self.assertEqual(
+            set(re.findall(r"--test ([^\s]+)", step)),
+            {"theme_flowchart_edge_effects", "flowchart_edge_label_theme", "render_operation",
+             "theme_composed_effects"},
+        )
+        fonts = versions.split(
+            "      - name: Install CLI validators and native qualification fonts\n", 1,
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("fonts-dejavu-core", fonts)
+        self.assertIn("fonts-noto-cjk", fonts)
+
     def test_issuer_requires_all_owners_and_trusted_tooling(self):
         workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
         issuer = self.job(workflow, "release-preflight-evidence")

@@ -172,7 +172,7 @@ jobs:
         run: |
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core fonts-noto-cjk
 
       - name: Verify release versions
         env:
@@ -258,7 +258,7 @@ jobs:
 
       - name: Test native theme consumers
         run: |
-          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart,png,pdf,layout-cytoscape,system-fonts,compat-json \
+          cargo test --locked -p merman --no-default-features --features svg,all-diagrams,png,pdf,layout-cytoscape,system-fonts,compat-json \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
             --test theme_composed_effects
 
