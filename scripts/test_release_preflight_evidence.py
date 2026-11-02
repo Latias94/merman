@@ -362,6 +362,16 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertIn("fonts-dejavu-core", fonts)
         self.assertIn("fonts-noto-cjk", fonts)
 
+    def test_public_all_feature_consumer_has_native_font_build_dependencies(self):
+        workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
+        versions = self.job(workflow, "versions-and-packages")
+        setup = versions.split(
+            "      - name: Install CLI validators and native qualification fonts\n", 1,
+        )[1].split("\n      - name:", 1)[0]
+        for dependency in ("libfontconfig1-dev", "pkg-config"):
+            self.assertIn(dependency, setup)
+        self.assertLess(versions.index(setup), versions.index("verify_theme_acceptance_boundary.py"))
+
     def test_issuer_requires_all_owners_and_trusted_tooling(self):
         workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
         issuer = self.job(workflow, "release-preflight-evidence")

@@ -75,16 +75,20 @@ The workflow-only recovery initially selected that same product source, with [SD
 
 This dependency update supersedes the unshipped product candidate and its in-progress qualification runs. Freeze the final patched source and run complete `scope=release` preflight with a matching workflow/run HEAD before the workspace tag; the 18 SDK archives will then come from that successful producer. The independently accepted Roughr and grammar packages retain their original source, versions and byte receipts above; their owned production trees are unchanged and the coupled publisher treats them as registry prerequisites. Do not rerun their independent upload owners from the new product SHA. No coupled alpha package, workspace tag or Release was accepted before this preparation update.
 
-The patched product is frozen at `364630c51944e979847ccf9d8724d09c01b878d9`, tree
-`1b6a7c5f91a05bfe5015b23984cf3f6eac4109ea`. Its [CI 41440858829](https://github.com/Latias94/merman/actions/runs/41440858829)
-and complete [preflight 41441001853](https://github.com/Latias94/merman/actions/runs/41441001853)
-are the final qualification owners. The Android job's first attempt built and tested the native/AAR
-products, then failed during emulator unlock with an ADB `Broken pipe` before instrumentation;
-retry that job after the original run completes rather than changing the selected source.
+The patched candidate `364630c51944e979847ccf9d8724d09c01b878d9`, tree
+`1b6a7c5f91a05bfe5015b23984cf3f6eac4109ea`, has [CI 41440858829](https://github.com/Latias94/merman/actions/runs/41440858829).
+Its complete [preflight 41441001853](https://github.com/Latias94/merman/actions/runs/41441001853)
+passed the strict feature matrix and optimized theme tests, then exposed missing Linux build
+dependencies in the all-feature public consumer check: `yeslogic-fontconfig-sys` requires
+`libfontconfig1-dev` and `pkg-config`. Install both as the central CI owner already does, retaining
+the independent consumer's complete feature set and private-import rejection. The Android job
+also failed during emulator unlock with an ADB `Broken pipe` before instrumentation; the same
+source passed central CI instrumentation. Every other platform owner passed. This unsuccessful
+preflight cannot issue release evidence or qualify its skipped SDK matrix.
 
-The explicit three-crate bootstrap owner is a separate tooling change. Its workflow revision may
-advance independently, but its product checkout and required preflight HEAD remain the frozen
-patched source above. The normal workspace tag will continue to identify that product source.
+The explicit three-crate bootstrap owner and missing font build dependencies are preparation
+changes in [PR #272](https://github.com/Latias94/merman/pull/272). Freeze the resulting candidate
+and run complete source-matched release preflight again before bootstrap or a workspace tag.
 Bootstrap retains the original crate bytes, records upload intent, keeps the environment token
 out of packaging and dry runs, and requires both registry API and sparse-index checksums.
 

@@ -172,7 +172,7 @@ jobs:
         run: |
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core fonts-noto-cjk
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core fonts-noto-cjk libfontconfig1-dev pkg-config
 
       - name: Verify release versions
         env:
