@@ -4,7 +4,7 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [Unreleased]
+## [0.10.0-alpha.1] - 2026-11-02
 
 For users upgrading from the published `0.9.2` package, this release also includes the [source-only `0.9.3` fixes below](#093---2026-10-30).
 

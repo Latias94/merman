@@ -2,6 +2,11 @@
 
 Use Merman's Rust parser, renderers, analysis, and editor APIs in a browser through WebAssembly.
 
+This guide targets the `0.10.0-alpha.1` release candidate. Check the
+[prebuilt product status](../../docs/release/PREBUILT_PRODUCTS.md) and
+[publish order](../../docs/release/PUBLISH_ORDER.md) for verified public availability. See the
+[current changelog](../../CHANGELOG.md) for changes and upgrade actions.
+
 Start with `@mermanjs/web` when evaluating Merman or when one browser realm needs several
 workflows. Choose a focused package when the application has one isolated workflow and the smaller
 boundary is useful. These packages require a browser main thread or Web Worker; for Node.js and
@@ -17,14 +22,15 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version. Version `0.9.2` retains Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
+All public browser packages use one lockstep version, Web transport API `8`, and
+[Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.2.0`;
+ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and
+WASM binary at the same exact version.
 
-This checkout also documents unreleased compiled-theme, prepared-source and adaptive Kanban APIs with Web transport API `8`.
-Full/render products include mathematical labels and both existing layout backends. Published
-`0.9.2` includes math too. Dedicated analysis/editor/ASCII products retain their task scope;
-source builds can omit the positive `math` leaf. No extra npm math tier is required.
-Published `0.9.2` uses Web transport API `5` and Options JSON schema `2`; use its tagged guide and
-matching artifacts. See the [release boundary](../../docs/release/README.md#merman-092).
+Full/render products include mathematical labels, Cytoscape and ELK layouts, compiled themes,
+prepared-source reuse, and mounted-diagram updates with explicit Kanban width adaptation.
+Dedicated analysis/editor/ASCII products retain their task scope. No extra npm math tier is
+required.
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.
@@ -40,10 +46,8 @@ See the [Astro host integration guide](../../docs/integrations/astro.md) for bro
 ## Quick start
 
 ```sh
-npm install @mermanjs/web@0.9.2
+npm install --save-exact @mermanjs/web@0.10.0-alpha.1
 ```
-
-For source builds, use the repository's package workspace and lockfile at the `v0.9.2` tag.
 
 ```ts
 import { initMerman, renderSvgToElement } from "@mermanjs/web";
@@ -62,7 +66,7 @@ needs the serialized SVG string rather than a mounted element.
 
 ### Bundlers and Self-Hosted WASM
 
-Main adds a raw asset export for each browser package. With Vite, import its URL and pass it
+Each browser package exports its matching WASM asset. With Vite, import its URL and pass it
 to initialization:
 
 ```ts
@@ -86,7 +90,7 @@ The package does not require a CDN, JavaScript `unsafe-eval` or a fake browser i
 
 ## Reuse a parsed source
 
-Source builds of `@mermanjs/web` and `@mermanjs/web-render` expose `prepareSource()`:
+`@mermanjs/web` and `@mermanjs/web-render` expose `prepareSource()`:
 
 ```ts
 import { initMerman, prepareSource } from "@mermanjs/web-render";
@@ -104,15 +108,15 @@ try {
 }
 ```
 
-The snapshot freezes successful semantics, effective configuration, parse settings, the existing
+The snapshot freezes successful semantics, effective configuration, parse settings, the
 compiled theme binding, and parse-time dates or generated IDs. Prepare again to change those
 facts. Each output has fresh cancellation, deadline and resource admission; a failed output does
-not poison the snapshot. Layout options keep each diagram family's existing meaning.
+not poison the snapshot. Layout options retain each diagram family's documented meaning.
 
 Use `renderSvgResult()` on the snapshot for execution metadata, or `edgeGeometryJson()` for
 edge geometry. All four output methods have `WithTextMeasurer` variants that accept the measurer
 for that call. Keep `environment.text_measurement` omitted when selecting a host measurer;
-the existing explicit-selector conflict also applies to defaults supplied during preparation.
+this restriction also applies to defaults supplied during preparation.
 The wrapper stays bound to its creating WASM runtime. Dispose is idempotent and
 invalidates the wrapper immediately; disposal inside a measurement callback frees Rust data after
 the active call returns. Calls after disposal fail explicitly. Semantic JSON is an export, not a
@@ -120,9 +124,12 @@ serialized snapshot format. Analysis, editor and ASCII packages do not expose `p
 
 ## Maintain a mounted diagram
 
-Source builds of the full and render packages expose `mountDiagram()`:
+The full and render packages expose `mountDiagram()`. After initialization, retain the controller
+to update the source or refresh the layout:
 
 ```ts
+import { mountDiagram } from "@mermanjs/web";
+
 const mounted = mountDiagram(target, kanbanSource, {
   outputOptions: { layout: { adaptation: "fit-width" }, timeout_ms: 250 },
   onError: (error) => console.error(error),
@@ -155,7 +162,7 @@ measurable is observed through its actual size change.
 Measurement remains deterministic unless `textMeasurement: "browser"` or a host callback is
 selected. Browser measurement uses the target Document's probes and refreshes after font loading.
 Do not combine a host/browser measurer with an explicit `environment.text_measurement` selector;
-the existing binding admission reports that conflict. Arbitrary external typography changes need
+binding option admission reports that conflict. Arbitrary external typography changes need
 an explicit refresh. After adopting the target into another Document, call `refresh()` to rebind
 its observers, font listeners and probes. No global DOM observer discovers arbitrary adoption.
 
@@ -166,12 +173,12 @@ Keep `renderSvgToElement()` for a single publication without a retained lifecycl
 
 ## Choose a preset for a diagram
 
-Read `themeCatalog().presets` from the initialized runtime to build a picker. Use each entry's
-open `id` as the saved selection and `display_name` as its label; use `appearance` for light/dark
-grouping and the ordered `preview_colors` for swatches. Discover the inventory instead of keeping
+In the full or render package, read `themeCatalog().presets` from the initialized runtime to build
+a picker. Use each entry's open `id` as the saved selection and `display_name` as its label;
+use `appearance` for light/dark grouping and the ordered `preview_colors` for swatches.
+Discover the inventory instead of keeping
 a preset list or count in the host. `supportedThemes()` lists Mermaid base themes and is separate
-from these Merman presets. This source API requires a matching artifact; published `0.9.2` does
-not expose the unreleased discovery contract.
+from these Merman presets.
 
 `available` means that the runtime's compiler can construct the recipe. `maturity` describes the
 catalog entry independently of rendering support. `family_designs` describes curated design intent for a logical family:
@@ -242,9 +249,9 @@ With existing configuration, merge the accepted object into it while preserving 
 keys, then pass the result through `site_config`. Parse and validate stored configuration before
 offering this action; show invalid JSON to the user instead of replacing their edits. Recommendations
 are separate from `options.theme` and exported recipes, so persist accepted configuration separately.
-On older compatible runtimes, absent `preview_colors`, `family_designs`, and `application_notes`
-normalize to empty arrays; malformed present fields are rejected. IDs remain open strings, and
-Web catalog reads return defensive copies, including nested recommendation objects.
+Absent `preview_colors`, `family_designs`, and `application_notes` fields normalize to empty arrays;
+malformed present fields are rejected. IDs remain open strings, and Web catalog reads return
+defensive copies, including nested recommendation objects.
 
 Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
 rules and explain the design scope. Query `describeThemeSupport()` for requested mechanisms;
@@ -277,7 +284,7 @@ must not be interpreted as portable. The metadata is descriptive, not an indepen
 It contains coarse status and target reasons, not per-rule or per-property explanations.
 Use `renderSvgResultWithTextMeasurer()` for the corresponding host-measured workflow.
 
-Set `environment: { theme_portability: "require-portable" }` to require the renderer's existing
+Set `environment: { theme_portability: "require-portable" }` to require the renderer's
 native portability admission. Failure throws the normal structured render error; the runtime does
 not change your preset. The default is `"best-effort"`. Strict requests may reject unsupported theme
 facets, host-dependent fonts, or other target residuals; this is stronger than choosing the
@@ -285,10 +292,9 @@ facets, host-dependent fonts, or other target residuals; this is stronger than c
 
 ## Save and share a theme
 
-The current source API accepts a preset ID, a complete specification, or a versioned
+The full and render packages accept a preset ID, a complete specification, or a versioned
 `ThemeRecipeV1` document in `options.theme`. Export a preset once and keep the returned document
-intact when saving or sharing it. Use a matching artifact that exposes these experimental theme
-operations; a package version alone does not establish their availability:
+intact when saving or sharing it:
 
 ```ts
 import { exportThemePreset, renderSvg, type ThemeRecipeV1 } from "@mermanjs/web";
@@ -383,12 +389,8 @@ contract.
 
 ## Deadlines and cancellation
 
-The current source-branch browser transport API is `8`, reported by `transportApiVersion()` and
-the runtime catalog. API 8 adds the required layout-adaptation capability-plan field and ordinary
-width/overflow observations. API 7 added the render-capable `PreparedSource` class; API 6 introduced
-`themeCatalog()` and the theme-authoring exports. Replace the package facade, generated glue and
-WASM together. Initialization rejects a different transport epoch or a missing required export
-before publishing the module.
+Use `transportApiVersion()` and `runtimeCatalog()` to inspect the loaded runtime. Initialization
+validates Web transport API `8` and all required exports before making the module available.
 
 SVG calls, preparation and each prepared output expose a typed top-level `timeout_ms` option.
 Other transport-dispatched one-shot operations accept this field through their JSON-string options.

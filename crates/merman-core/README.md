@@ -6,7 +6,7 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-The examples below target the current checkout. Use tagged documentation and matching dependencies for published releases.
+This guide targets `0.10.0-alpha.1`. Match source, generated bindings and dependencies to the same release; see the [0.10 migration](../../docs/migrations/model-source-boundaries.md) when upgrading from `0.9.x`.
 
 ## Source Feature Migration
 
@@ -187,9 +187,7 @@ operations. Full custom detectors and compatibility adapters remain full-only. S
 
 Semantic JSON uses `merman_model::ManagedJson`; keep its managed owner for deep clone, equality, destruction, and output. Direct State, Block, Treemap, and Ishikawa model users must migrate to canonical document/child indices. See the [0.8.0 to 0.9.0 migration](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#rust-models-and-json) for the original lifecycle change and the [model/source migration](../../docs/migrations/model-source-boundaries.md) for current development imports and output handoffs.
 
-Published Merman 0.9.3 retains the Mermaid `12.1.0` baseline selected by stable 0.8.0. Development
-targets Mermaid `12.2.0`; use the matching release tag for published parser behavior. The selected
-pinned upstream behavior graph is the compatibility authority for the current checkout.
+Merman `0.10.0-alpha.1` targets Mermaid `12.2.0`; the `0.9.x` maintenance line retains Mermaid `12.1.0`. Use the matching release tag for parser behavior. The selected pinned upstream behavior graph is the compatibility authority.
 Compatibility semantic JSON is the public serialized parser projection. It is not a second
 successful grammar or the master built-in render input. Typed render models and editor facts
 project the same family semantic construction into purpose-specific shapes.

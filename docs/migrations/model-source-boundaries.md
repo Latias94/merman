@@ -1,6 +1,6 @@
 # Model, source, and output migration
 
-This guide describes the development branch after published Merman `0.9.3`. Upgrade coupled Rust packages and generated wrappers together. These breaking Rust changes belong to the next pre-1.0 minor release; the published `0.9.x` maintenance line retains its existing APIs.
+This guide covers migration from Merman `0.9.3` to `0.10.0-alpha.1`. Upgrade coupled Rust packages and generated wrappers together. These breaking Rust changes belong to the next pre-1.0 minor release; the published `0.9.x` maintenance line retains its existing APIs.
 
 ## Choose the packages your application consumes
 

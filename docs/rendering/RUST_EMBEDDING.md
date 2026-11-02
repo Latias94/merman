@@ -1,16 +1,13 @@
 # Embedding Merman in a Rust application
 
-This guide describes Rust embedding against the current development source. Build against the
-same revision as the APIs below; the dependency examples use a sibling checkout, so adjust `path`
+This guide targets `0.10.0-alpha.1`. Match coupled packages to that release; the dependency examples use a sibling checkout, so adjust `path`
 to your local source. Use the [0.8.0 to 0.9.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for
 published managed JSON and canonical record migrations, the
 [versioned upgrade index](../release/README.md) for other releases, and
 [package surfaces](../release/PACKAGE_SURFACES.md) to choose a binding or artifact.
 Compiled-theme authoring remains experimental and requires a matching artifact.
 
-For current development builds, the [prepared rendering migration](../migrations/render-reuse-host-integration.md)
-adds reusable parsed sources, borrowed low-level family preparation and independent geometry
-budgets. Those APIs are newer than the published versions described above.
+The [0.10 prepared-rendering migration](../migrations/render-reuse-host-integration.md) covers reusable parsed sources, borrowed low-level family preparation and independent geometry budgets when upgrading from `0.9.x`.
 
 ## Select languages, outputs, and layout backends
 

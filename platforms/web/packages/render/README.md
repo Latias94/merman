@@ -3,14 +3,19 @@
 Render Mermaid diagrams to SVG in a browser with Cytoscape and ELK layouts,
 without shipping the analysis, editor, or ASCII workflows from the complete SDK.
 
-Pin an exact package version when reproducible installs matter. This renderer includes math,
-Cytoscape and ELK, as published `0.9.2` does. It stays focused by omitting the complete SDK's
+This guide targets the `0.10.0-alpha.1` release candidate, with Web transport API `8` and Options
+JSON schema `3`. Check the
+[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
+and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
+for verified public availability.
+
+This renderer includes math, Cytoscape and ELK. It stays focused by omitting the complete SDK's
 analysis, editor and ASCII operations.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-render@0.9.2
+npm install --save-exact @mermanjs/web-render@0.10.0-alpha.1
 ```
 
 ```ts
@@ -25,11 +30,13 @@ renderSvgToElement(target, `flowchart TD
   A --> B`);
 ```
 
-Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element. Source builds also
-expose `prepareSource()` for repeated SVG, layout and geometry outputs from frozen parse facts.
+Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
+Use `prepareSource()` for repeated SVG, layout and geometry outputs from frozen parse facts.
 Dispose the returned snapshot when finished; see the
 [prepared-source guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#reuse-a-parsed-source).
 
+For retained DOM updates and explicit Kanban width adaptation, use
+[`mountDiagram()`](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#maintain-a-mounted-diagram).
 
 ## Runtime and resources
 
@@ -43,4 +50,5 @@ process-isolation limits as well.
 
 See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
 for safe DOM mounting, custom WASM loading, resource policy, package selection, and source-checkout
-development.
+development. See the [current changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md)
+for changes and upgrade actions.

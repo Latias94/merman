@@ -12,7 +12,7 @@ Select `diagram-*` features for canonical family data, `all-diagrams` for every 
 `presentation-data` for full data and borrowed presentation views. These flags do not compile source parsers.
 The [implementation record](../../docs/reviews/2026-10-30-model-source-boundaries-implementation.md)
 tracks extraction of all 34 payloads, integrated presentation/product migration, and final validation.
-This package is a development-line addition; it was not included in the published 0.9.3 artifacts.
+This guide targets `merman-model 0.10.0-alpha.1`. The package is new in the `0.10` line; existing `0.9.x` applications should follow the migration below.
 
 `presentation-data` includes immutable configuration, metadata, full family values, output context, and checked `PresentationDiagram` construction. `compat-json` selects pure Mermaid-compatible data projection. These APIs do not authenticate source history or evaluate visual themes; source producers retain that responsibility. Existing model and output admission still applies.
 

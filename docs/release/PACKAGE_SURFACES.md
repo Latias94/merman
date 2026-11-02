@@ -4,10 +4,10 @@ Choose a package or artifact for the environment where you use Merman. Match gen
 and native or WASM artifacts to the same Merman version.
 
 For ordinary prebuilt use, start with [host and output choices](PREBUILT_PRODUCTS.md).
-Main's ordinary SVG products include math and both layout engines; the existing native C/WASI
+The `0.10.0-alpha.1` ordinary SVG products include math and both layout engines; the native C/WASI
 full SDKs remain the recommendation for explicit fonts and binary outputs. Expert source features
 and reduced SDK recipes remain available. The expanded binding products and delivery handoffs are
-unreleased main-line changes under [ADR-0101](../adr/0101-binding-product-delivery.md) and the
+part of this alpha candidate under [ADR-0101](../adr/0101-binding-product-delivery.md) and the
 [binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md); they do not
 change published v0.9.x assets.
 
@@ -18,16 +18,11 @@ Merman `0.9.3` is the latest published patch on `0.9.0` and retains Mermaid `12.
 and the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for the preceding API,
 command, and output changes.
 
-The development baseline selects Mermaid `12.2.0`, retaining parser `2.0.1` and reference CLI
+The `0.10.0-alpha.1` baseline selects Mermaid `12.2.0`, retaining parser `2.0.1` and reference CLI
 `12.0.0`. Its source and artifact admission are recorded in [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).
 This transition does not change package versions, feature ownership, or transport schemas.
 
-The development baseline uses Options JSON schema `3` and Web transport API `8`, including
-prepared sources and mounted diagrams. Those contracts and Mermaid `12.2.0` behavior are
-unreleased. Main's package metadata records the `0.9.3` version baseline, but only immutable
-`v0.9.3` identifies the published source and its artifacts. The Rust crates, CLI/LSP, and native
-C/WASI SDKs and Apple XCFramework have verified `0.9.3` delivery; Web, Node, Python, Flutter, and Android retain
-their separately published `0.9.2` packages.
+The alpha uses Options JSON schema `3` and Web transport API `8`, including prepared sources and mounted diagrams. Its projected package version does not establish publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs. See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
