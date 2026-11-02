@@ -312,6 +312,22 @@ class PreflightWorkflowTests(unittest.TestCase):
         following = re.search(r"\n  [a-z][a-z0-9-]*:\n", text[start + 1:])
         return text[start:] if following is None else text[start:start + 1 + following.start()]
 
+    def test_strict_feature_owners_install_cross_transport_targets(self):
+        required = {"aarch64-linux-android", "wasm32-unknown-unknown", "wasm32-wasip1"}
+        for name, job_id in (("release-preflight.yml", "versions-and-packages"),
+                             ("release-crates.yml", "preflight")):
+            with self.subTest(workflow=name):
+                workflow = (ROOT / ".github/workflows" / name).read_text()
+                job = self.job(workflow, job_id)
+                setup = job.split("      - name: Install Rust toolchain\n", 1)[1].split(
+                    "\n      - ", 1,
+                )[0]
+                targets = re.search(r"(?m)^\s+targets: ([^\n]+)$", setup)
+                self.assertIsNotNone(targets)
+                installed = {target.strip() for target in targets.group(1).split(",")}
+                self.assertTrue(required <= installed, f"missing targets: {required - installed}")
+                self.assertLess(job.index(setup), job.index("verify-feature-matrix --strict"))
+
     def test_issuer_requires_all_owners_and_trusted_tooling(self):
         workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
         issuer = self.job(workflow, "release-preflight-evidence")
