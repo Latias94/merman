@@ -477,6 +477,13 @@ Preparation or pre-apply validation failures leave the caller worktree unchanged
 reported owner failure, keep the release worktree clean, and rerun the same command; do not copy
 partial files out of the disposable worktree or hand-edit generated locks.
 
+Review independently versioned production changes before freezing the workspace candidate.
+Workspace projection preserves those versions; it cannot establish that their current sources match
+published packages. Run the preflight's independent-version guard against the same baseline, and
+prepare required patches through their own release owners. Align workspace minimum requirements
+and regenerate independent parser/WASM metadata where applicable before refreshing shared lockfile
+identities and legal reports. Do not change the comparison baseline to bypass a missing patch.
+
 After the version projection succeeds, regenerate the CLI completions, manual pages, and
 Playground catalog from the selected package version, then verify their source gates:
 
@@ -486,6 +493,15 @@ python3 scripts/generate_cli_assets.py --check
 cargo run -p xtask -- gen-playground-example-catalog
 cargo run -p xtask -- verify-playground-example-catalog
 ```
+
+Refresh the committed Rustdoc fragments with the candidate CLI, then check their receipt. Its generator version follows the workspace version even when the rendered diagrams are unchanged:
+
+```sh
+cargo run --locked -p merman-cli -- rustdoc build --config crates/merman/merman-rustdoc.toml
+cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
+```
+
+The current native-memory probe contracts under `docs/performance/contracts/` pin their build inputs. When the version projection changes `Cargo.lock`, refresh only its recorded SHA-256 in those current contracts; preserve workload definitions, metric ceilings and historical measurements. Run `python3 tools/bench/test_perf_contracts.py` to verify the current inputs before the candidate freeze. A refreshed input record is not a new performance result.
 
 Refresh workspace package versions in the governed dependency paths in
 `docs/security/RUSTSEC_EXCEPTIONS.json`, preserving the advisory, affected dependency versions,
