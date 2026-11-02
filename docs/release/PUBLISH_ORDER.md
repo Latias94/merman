@@ -44,7 +44,7 @@ On 2026-11-02, the maintainer requested publication after merging [PR #269](http
 
 | Surface | Scope | Verified state before publication |
 | --- | --- | --- |
-| Workspace Rust, all 26 crates | selected, pending | 23 names have newest public `0.9.3`; `merman-model`, `merman-markup` and `merman-theme-contract` are absent from both API and sparse index. Bootstrap the new names in dependency order with the maintainer token, preserve their accepted checksums, and use the normal owner for the complete graph. The maintainer will configure their Trusted Publishers after publication. |
+| Workspace Rust, all 26 crates | selected, pending | 23 names have newest public `0.9.3`; `merman-model`, `merman-markup` and `merman-theme-contract` are absent from both API and sparse index. Bootstrap the new names in dependency order through the explicit Actions token owner, preserve their accepted checksums, and use the normal owner for the complete graph. The maintainer will configure their Trusted Publishers after publication. |
 | CLI/LSP | selected, pending | Latest workspace Release is `v0.9.3`; final alpha delivery belongs to the tag-triggered owner. |
 | Native C/WASI SDK | selected, pending | Public archives remain `0.9.3`. Publish all 18 qualified archives and 18 checksum sidecars from the successful source-matched preflight after the primary Release exists. |
 | Web npm, all five members | selected, pending | Every member has `latest=0.9.2`, `alpha=0.8.0-alpha.7`. Publish one frozen group under `alpha`, retaining stable `latest`. |
@@ -58,7 +58,7 @@ On 2026-11-02, the maintainer requested publication after merging [PR #269](http
 
 The independent prerequisite releases `roughr-merman 0.12.5` and `tree-sitter-mermaid 0.3.2` are selected through their owners, including the grammar's npm package and GitHub assets. Before publication, both candidates are absent from the Cargo API/index; grammar npm and GitHub remain at `0.3.1`. Their compatibility and package checks precede upload, and both Cargo releases must resolve before the coupled workspace dependents publish. No Typst wrapper, Pages deployment, container registry, setup-Action Marketplace rollout or other independent release is selected.
 
-These observations use the official registries linked above, the [GitHub Releases API](https://api.github.com/repos/Latias94/merman/releases), [Homebrew](https://formulae.brew.sh/api/formula/merman-cli.json), [Scoop](https://github.com/ScoopInstaller/Main/blob/master/bucket/merman-cli.json), [Conda-forge](https://api.anaconda.org/package/conda-forge/merman-cli), existing [WinGet](https://github.com/microsoft/winget-pkgs/pull/447353) and [Nixpkgs](https://github.com/NixOS/nixpkgs/pull/570822) submissions, and the official Marketplace exact-name query. Environment inspection confirms the legacy `CARGO_REGISTRY_TOKEN` secret exists, but current owners use OIDC and do not read it. Initial new-name uploads use the operator's existing token; configure their bindings afterwards without changing accepted versions or bytes. Preserve immutable tags and original artifacts throughout recovery.
+These observations use the official registries linked above, the [GitHub Releases API](https://api.github.com/repos/Latias94/merman/releases), [Homebrew](https://formulae.brew.sh/api/formula/merman-cli.json), [Scoop](https://github.com/ScoopInstaller/Main/blob/master/bucket/merman-cli.json), [Conda-forge](https://api.anaconda.org/package/conda-forge/merman-cli), existing [WinGet](https://github.com/microsoft/winget-pkgs/pull/447353) and [Nixpkgs](https://github.com/NixOS/nixpkgs/pull/570822) submissions, and the official Marketplace exact-name query. Environment inspection confirms `CARGO_REGISTRY_TOKEN` exists in the `crates.io` environment; ordinary owners use OIDC and do not read it. A read-only authentication check rejected the local Cargo credential, so initial new-name uploads select the explicit Actions bootstrap owner and its existing environment secret. Configure the three bindings afterwards without changing accepted versions or bytes. Preserve immutable tags and original artifacts throughout recovery.
 
 ### Independent delivery and workflow recovery
 
@@ -74,6 +74,19 @@ The complete [preflight 41418063813](https://github.com/Latias94/merman/actions/
 The workflow-only recovery initially selected that same product source, with [SDK qualification 41432173938](https://github.com/Latias94/merman/actions/runs/41432173938) retaining a source-matched run HEAD. Before any coupled alpha upload or tag, the [PR #271](https://github.com/Latias94/merman/pull/271) dependency-policy check then detected the newly admitted [RUSTSEC-2026-0433](https://rustsec.org/advisories/RUSTSEC-2026-0433.html) against `pulldown-cmark 0.13.5`. The candidate minimum and all four governed locks advance to `0.13.6`; explicit Merman Markdown options do not enable the affected Wikilinks path. Refresh the dependency-owned legal projections and current lock-input records without changing performance ceilings or historical measurements.
 
 This dependency update supersedes the unshipped product candidate and its in-progress qualification runs. Freeze the final patched source and run complete `scope=release` preflight with a matching workflow/run HEAD before the workspace tag; the 18 SDK archives will then come from that successful producer. The independently accepted Roughr and grammar packages retain their original source, versions and byte receipts above; their owned production trees are unchanged and the coupled publisher treats them as registry prerequisites. Do not rerun their independent upload owners from the new product SHA. No coupled alpha package, workspace tag or Release was accepted before this preparation update.
+
+The patched product is frozen at `364630c51944e979847ccf9d8724d09c01b878d9`, tree
+`1b6a7c5f91a05bfe5015b23984cf3f6eac4109ea`. Its [CI 41440858829](https://github.com/Latias94/merman/actions/runs/41440858829)
+and complete [preflight 41441001853](https://github.com/Latias94/merman/actions/runs/41441001853)
+are the final qualification owners. The Android job's first attempt built and tested the native/AAR
+products, then failed during emulator unlock with an ADB `Broken pipe` before instrumentation;
+retry that job after the original run completes rather than changing the selected source.
+
+The explicit three-crate bootstrap owner is a separate tooling change. Its workflow revision may
+advance independently, but its product checkout and required preflight HEAD remain the frozen
+patched source above. The normal workspace tag will continue to identify that product source.
+Bootstrap retains the original crate bytes, records upload intent, keeps the environment token
+out of packaging and dry runs, and requires both registry API and sparse-index checksums.
 
 ## 0.9.3 publication
 

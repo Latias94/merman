@@ -90,6 +90,7 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
 | `release-cli-registries.yml` | Nothing; verifies published stable assets and produces separately validated WinGet/Scoop candidates | GitHub Actions artifacts |
 | `release-crates.yml` | Rust workspace crates | crates.io |
+| `release-crates-bootstrap.yml` | Explicit first publication of the three new alpha workspace crate names | crates.io, using the existing environment API-token secret |
 | `release-yank-crates.yml` | Selected workspace-coupled versions after an incomplete publication | crates.io |
 | `release-apple.yml` | Seven assets: binary ZIP, complete local SwiftPM ZIP, thin remote tree ZIP, three checksum sidecars and remote manifest | Actions candidates by default; existing GitHub Release with `publish=true` |
 | `release-python.yml` | Five `merman` wheels: macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64 MSVC | Actions candidates by default; existing GitHub Release with `publish=true`, plus PyPI with `publish_to_pypi=true` |
@@ -193,6 +194,7 @@ For WinGet and Scoop, run the independent [CLI registry candidate workflow](../r
 | Surface | Credential |
 | --- | --- |
 | crates.io publish | Trusted Publishing / OIDC for each crate, its owning release workflow, and the `crates.io` environment |
+| New alpha crate bootstrap | Existing `CARGO_REGISTRY_TOKEN` secret in the `crates.io` environment, only for the explicit manual bootstrap owner |
 | crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
 | pub.dev | Automated publishing configured for `merman`, this repository, tag pattern `flutter-v{{version}}`, and the `pub.dev` environment |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
@@ -242,6 +244,29 @@ An initial upload of a new crate still requires a maintainer API token before it
 can be registered. Inspect the release's package plan for new names, bootstrap each admitted new
 crate in dependency order, then configure its owning workflow binding for later versions. Record
 the exact accepted version and checksum in Publish Order.
+
+For `0.10.0-alpha.1`, the explicit `release-crates-bootstrap.yml` owner admits only
+`merman-model`, `merman-theme-contract`, and `merman-markup`. It uses the existing environment
+secret without exporting it from Actions or changing the ordinary OIDC publisher. Run it once
+after complete source-matched release preflight and before pushing the workspace tag:
+
+```text
+gh workflow run release-crates-bootstrap.yml --ref main \
+  -f source_sha="$SOURCE_SHA" -f version="$VERSION" \
+  -f preflight_run_id="$PREFLIGHT_RUN_ID"
+```
+
+The selected product source must be a reviewed commit on main's history. Recovery tooling may use
+a separately reviewed workflow revision; the selected preflight run must still have the exact
+product source as its HEAD. The owner verifies that complete preflight receipt, derives dependency order from Cargo metadata,
+keeps the credential out of package checks, records upload intent and retained crate bytes, and
+reconciles both API and sparse-index checksums. Reruns observe the original source without
+uploading missing names again; unresolved or unattempted members need operator review of the
+original receipts before any further action. Do not dispatch a new run to retry an uncertain upload.
+Matching accepted versions are retained by the ordinary workspace publisher. Register Trusted
+Publishers for these names after their initial upload; the bootstrap itself does not have OIDC
+provenance. This owner is deliberately limited to the new alpha names, not a token fallback for
+ordinary registry authentication failures.
 
 Local workflow and mocked protocol/recovery checks validate the integration without uploading
 another version; they do not prove live token exchange or registry upload. Confirm those on the
