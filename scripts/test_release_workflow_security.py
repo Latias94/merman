@@ -223,6 +223,11 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("--simulator", apple)
         self.assertIn("MermanAppleSmoke", apple)
         self.assertIn("git diff --exit-code -- platforms/apple/Sources/Merman/Generated", apple)
+        self.assertIn('--output-dir "$RUNNER_TEMP/apple-package"', apple)
+        self.assertIn('--work-dir "$RUNNER_TEMP/apple-qualification"', apple)
+        self.assertIn("${{ runner.temp }}/apple-qualification/qualification.json", apple)
+        self.assertNotIn("target/apple-package", apple)
+        self.assertNotIn("target/apple-qualification", apple)
 
     def test_sdk_native_qualification_uses_native_errors_and_relocatable_libraries(self) -> None:
         workflow = read(WORKFLOW_ROOT / "release-sdk.yml")

@@ -1428,9 +1428,9 @@ jobs:
       - name: Qualify installed SwiftPM package and simulator consumer
         run: |
           version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
-          python3 scripts/apple_package.py --output-dir target/apple-package --version "$version"
-          python3 scripts/apple_qualify.py --package-archive "target/apple-package/Merman-swiftpm-v$version.zip" \
-            --work-dir target/apple-qualification --version "$version" --simulator --compare-original
+          python3 scripts/apple_package.py --output-dir "$RUNNER_TEMP/apple-package" --version "$version"
+          python3 scripts/apple_qualify.py --package-archive "$RUNNER_TEMP/apple-package/Merman-swiftpm-v$version.zip" \
+            --work-dir "$RUNNER_TEMP/apple-qualification" --version "$version" --simulator --compare-original
 
       - name: Retain Apple installed-consumer and size evidence
         uses: actions/upload-artifact@v7.0.2
@@ -1438,9 +1438,9 @@ jobs:
           name: apple-installed-consumer
           if-no-files-found: error
           path: |
-            target/apple-qualification/qualification.json
-            target/apple-qualification/installed/*.json
-            target/apple-qualification/comparison/original.json
+            ${{ runner.temp }}/apple-qualification/qualification.json
+            ${{ runner.temp }}/apple-qualification/installed/*.json
+            ${{ runner.temp }}/apple-qualification/comparison/original.json
 
   npm-owner:
     name: npm-owner
