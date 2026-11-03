@@ -261,6 +261,9 @@ test("Infinite Canvas reveals visual overflow while ViewBox Frame preserves root
   );
 
   const viewport = page.locator('[data-merman-svg-viewport="true"]').first();
+  await expect.poll(() => previewSvgText(page)).toContain(
+    "A diagram title that is quite long and might affect vertical bounds",
+  );
   const forceTitleOverflow = async () => {
     // Keep the viewport contract independent of renderer bugs: deliberately move a
     // title across the root boundary, then fit using the actual mounted geometry.

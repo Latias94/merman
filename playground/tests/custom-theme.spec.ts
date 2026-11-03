@@ -277,7 +277,8 @@ test("same-render summary is readable before Advanced and retains raw execution 
     return text ? JSON.parse(text).theme_execution_evidence?.family_id : null;
   }).toBe("class");
   const evidence = JSON.parse((await raw.textContent())!).theme_execution_evidence;
-  expect(evidence.version).toBe(1);
+  expect(evidence.version).toBe(2);
+  expect(evidence.materialized_theme).toBe("redux-color");
   expect(["residual", "incomplete"]).toContain(evidence.theme_status);
   expect(evidence.target_status).not.toBe("portable");
 });
