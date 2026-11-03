@@ -134,7 +134,14 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
 
     def test_native_candidates_keep_write_and_oidc_access_in_explicit_publish_jobs(self) -> None:
         owners = {
-            "release-android.yml": {"upload-release": "inputs.publish"},
+            "release-android.yml": {
+                "upload-release": (
+                    "!cancelled() && inputs.publish && needs.validate-inputs.result == 'success'"
+                    " && needs.build.result == 'success'"
+                    " && ((!inputs.prepare_central_bundle && needs.central-bundle.result == 'skipped')"
+                    " || (inputs.prepare_central_bundle && needs.central-bundle.result == 'success'))"
+                ),
+            },
             "release-apple.yml": {"upload-release": "inputs.publish"},
             "release-python.yml": {
                 "github-release": (
@@ -1573,6 +1580,8 @@ jobs:
 
     def test_android_signing_executes_only_the_trusted_operator(self) -> None:
         signing = workflow_job(read(WORKFLOW_ROOT / "release-android.yml"), "central-bundle")
+        self.assertIn("if: ${{ inputs.prepare_central_bundle }}", signing)
+        self.assertIn("environment: maven-central", signing)
         self.assertIn("ref: ${{ github.workflow_sha }}\n          path: trusted", signing)
         self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}\n          path: selected-source", signing)
         self.assertIn("git -C selected-source rev-parse", signing)
@@ -1582,8 +1591,35 @@ jobs:
         self.assertEqual(signing.count("--android-root selected-source/platforms/android"), 2)
         self.assertNotIn("python3 scripts/", signing)
 
+    @unittest.skipUnless(BASH, "workflow execution requires Bash")
+    def test_android_signing_rejects_missing_configuration_before_executing_tools(self) -> None:
+        from scripts.test_android_packaging_qualification import workflow_shell
+
+        command = workflow_shell(
+            "central-bundle", "Sign frozen Maven publication and prepare standard Central bundle",
+        )
+        for key, key_id in (("", "fixture-fingerprint"), ("fixture-key", "")):
+            with self.subTest(key_configured=bool(key), key_id_configured=bool(key_id)):
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    result = subprocess.run(
+                        [BASH, "-c", command], cwd=root, capture_output=True, text=True, timeout=15,
+                        env={
+                            "PATH": "", "SIGNING_KEY": key, "SIGNING_KEY_ID": key_id,
+                            "MAVEN_GROUP": "org.example", "VERSION": "0.10.0-alpha.1",
+                            "GNUPGHOME": str(root / "gnupg"), "ANDROID_NDK_HOME": str(root / "ndk"),
+                            "MERMAN_ANDROID_SIGNING_PASSWORD": "",
+                        },
+                    )
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(list(root.iterdir()), [])
+
     def test_android_public_assets_are_resumable_and_anonymously_verified(self) -> None:
         upload = workflow_job(read(WORKFLOW_ROOT / "release-android.yml"), "upload-release")
+        signed_download = upload.split("      - name: Download signed Maven handoff\n", 1)[1].split(
+            "\n      - ", 1
+        )[0]
+        self.assertIn("if: ${{ inputs.prepare_central_bundle }}", signed_download)
         self.assertIn("jq -e '.draft == false'", upload)
         self.assertIn('gh release upload "$RELEASE_TAG" "${missing_assets[@]}"', upload)
         self.assertIn("curl --disable --fail --location", upload)
@@ -1591,6 +1627,179 @@ jobs:
         self.assertIn('cmp "$asset" "$existing_dir/$name"', upload)
         self.assertNotIn("--clobber", upload)
         self.assertNotIn("Authorization:", upload)
+
+    @unittest.skipUnless(BASH, "workflow execution requires Bash")
+    def test_android_release_input_step_accepts_unsigned_github_publication_and_rejects_bad_sources(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-android.yml")
+        step = workflow_job(text, "validate-inputs").split(
+            "      - name: Validate release inputs\n", 1
+        )[1].split("\n      - uses:", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        tag = "v0.10.0-alpha.1"
+        commit = "a" * 40
+        cases = (
+            (False, False, "main", tag, "org.example", "refs/heads/main"),
+            (False, True, commit, tag, "org.example", commit),
+            (True, False, tag, tag, "org.example", f"refs/tags/{tag}"),
+            (True, True, f"refs/tags/{tag}", tag, "org.example", f"refs/tags/{tag}"),
+            (True, False, "main", tag, "org.example", None),
+            (True, False, commit, tag, "org.example", None),
+            (True, True, "main", tag, "org.example", None),
+            (True, True, commit, tag, "org.example", None),
+            (True, False, "v0.9.3", tag, "org.example", None),
+            (False, False, "feature/other", tag, "org.example", None),
+            (False, False, commit[:12], tag, "org.example", None),
+            (False, False, "main\nsource_sha=other", tag, "org.example", None),
+            (True, False, tag, tag, "org.example\nother=value", None),
+            (True, True, tag, tag, "", None),
+            (False, False, "main", "v0.10.0-alpha.1\nother=value", "org.example", None),
+        )
+        for publish, central, source, release_tag, group, expected in cases:
+            with self.subTest(publish=publish, central=central, source=source, tag=release_tag, group=group):
+                with tempfile.TemporaryDirectory() as temporary:
+                    output = Path(temporary) / "output"
+                    result = subprocess.run(
+                        [BASH, "-c", command], capture_output=True, text=True, timeout=15,
+                        env=dict(
+                            os.environ, DISPATCH_RELEASE_TAG=release_tag, DISPATCH_SOURCE_REF=source,
+                            PUBLISH=str(publish).lower(), PREPARE_CENTRAL_BUNDLE=str(central).lower(),
+                            MAVEN_GROUP=group, GITHUB_OUTPUT=str(output),
+                        ),
+                    )
+                    if expected is None:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(output.exists())
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(
+                            dict(line.split("=", 1) for line in output.read_text().splitlines()),
+                            {
+                                "source_ref": expected, "release_tag": tag,
+                                "version": tag.removeprefix("v"), "maven_group": group,
+                            },
+                        )
+
+    @unittest.skipUnless(BASH, "workflow execution requires Bash")
+    def test_android_release_asset_step_selects_only_verified_unsigned_or_signed_handoff(self) -> None:
+        from scripts.test_android_packaging_qualification import AndroidReleaseUploadTests
+
+        text = read(WORKFLOW_ROOT / "release-android.yml")
+        prepare_step = workflow_job(text, "build").split(
+            "      - name: Prepare release asset\n", 1
+        )[1].split("\n      - ", 1)[0]
+        prepare_command = textwrap.dedent(prepare_step.split("        run: |\n", 1)[1])
+        step = workflow_job(text, "upload-release").split(
+            "      - name: Select and verify GitHub Release assets\n", 1
+        )[1].split("\n      - ", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        version = "0.10.0-alpha.1"
+        tag = f"v{version}"
+        cases = (
+            (False, None),
+            (True, None),
+            (False, "missing-aar-checksum"),
+            (False, "bad-aar-checksum"),
+            (False, "bad-repository-checksum"),
+            (True, "missing-signed-repository"),
+            (True, "missing-central-bundle"),
+            (True, "bad-central-bundle-checksum"),
+            (True, "bad-repository-checksum"),
+        )
+        for central, failure in cases:
+            with self.subTest(central=central, failure=failure), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                candidate = root / "target/candidate-release-assets"
+                signed = root / "target/signed-release-assets"
+                aar_name = f"merman-android-{tag}.aar"
+                repository_name = f"merman-android-{version}-maven.zip"
+                central_name = f"merman-android-{version}-central.zip"
+                staged_aar = root / (
+                    f"platforms/android/build/repo/org/example/merman-android/{version}/"
+                    f"merman-android-{version}.aar"
+                )
+                staged_aar.parent.mkdir(parents=True)
+                staged_aar.write_bytes(b"consumer-qualified AAR")
+                environment = dict(
+                    os.environ, RELEASE_TAG=tag, VERSION=version, MAVEN_GROUP="org.example",
+                    PREPARE_CENTRAL_BUNDLE=str(central).lower(),
+                )
+                prepared = subprocess.run(
+                    [BASH, "-c", prepare_command], cwd=root, capture_output=True, text=True,
+                    timeout=15, env=environment,
+                )
+                self.assertEqual(prepared.returncode, 0, prepared.stderr)
+                (root / "target/release-assets").rename(candidate)
+                payloads = {
+                    candidate / repository_name: b"consumer-qualified unsigned Maven repository",
+                }
+                if central:
+                    signed.mkdir()
+                    payloads[signed / repository_name] = b"signed Maven repository"
+                    payloads[signed / central_name] = b"standard Central bundle"
+                for path, payload in payloads.items():
+                    path.write_bytes(payload)
+                    path.with_name(path.name + ".sha256").write_text(
+                        hashlib.sha256(payload).hexdigest() + "\n", encoding="ascii",
+                    )
+                if failure == "missing-aar-checksum":
+                    (candidate / f"{aar_name}.sha256").unlink()
+                elif failure == "bad-aar-checksum":
+                    (candidate / f"{aar_name}.sha256").write_text("0" * 64 + "\n")
+                elif failure == "bad-repository-checksum":
+                    repository_dir = signed if central else candidate
+                    (repository_dir / f"{repository_name}.sha256").write_text("0" * 64 + "\n")
+                elif failure == "missing-signed-repository":
+                    (signed / repository_name).unlink()
+                elif failure == "missing-central-bundle":
+                    (signed / central_name).unlink()
+                elif failure == "bad-central-bundle-checksum":
+                    (signed / f"{central_name}.sha256").write_text("0" * 64 + "\n")
+
+                result = subprocess.run(
+                    [BASH, "-c", command], cwd=root, capture_output=True, text=True, timeout=15,
+                    env=environment,
+                )
+                if failure:
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    continue
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                output = root / "target/release-assets"
+                expected = {
+                    f"merman-android-{tag}.aar": b"consumer-qualified AAR",
+                    f"merman-android-{version}-maven.zip": (
+                        b"signed Maven repository" if central
+                        else b"consumer-qualified unsigned Maven repository"
+                    ),
+                }
+                if central:
+                    expected[central_name] = b"standard Central bundle"
+                expected_assets: dict[str, bytes] = {}
+                for name, payload in expected.items():
+                    expected_assets[name] = payload
+                    expected_assets[f"{name}.sha256"] = (
+                        hashlib.sha256(payload).hexdigest() + "\n"
+                    ).encode()
+                self.assertEqual(
+                    {path.name: path.read_bytes() for path in output.iterdir()}, expected_assets,
+                )
+                upload = AndroidReleaseUploadTests()
+                self.addCleanup(upload.doCleanups)
+                upload.setUp()
+                upload_dir = upload.root / "target/release-assets"
+                for name in upload.assets:
+                    (upload_dir / name).unlink()
+                for name, payload in expected_assets.items():
+                    (upload_dir / name).write_bytes(payload)
+                upload.assets = expected_assets
+                upload.environment["RELEASE_TAG"] = tag
+                result, events = upload.execute()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    {event["name"] for event in events if event["event"] == "uploaded"},
+                    expected_assets.keys(),
+                )
+                upload.assert_public_bytes()
 
     def test_preflight_qualifies_installed_web_packages_with_browser_tools(self) -> None:
         job = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "web-npm-dry-run")

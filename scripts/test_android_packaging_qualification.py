@@ -172,7 +172,7 @@ class AndroidCandidateWorkflowTests(unittest.TestCase):
             (True, True, "main", None),
             (True, True, commit, None),
             (True, True, "v0.9.2", None),
-            (True, False, "v0.9.3", None),
+            (True, False, "v0.9.3", "refs/tags/v0.9.3"),
         ]
         for publish, central, source, expected in cases:
             with self.subTest(publish=publish, source=source, central=central):
